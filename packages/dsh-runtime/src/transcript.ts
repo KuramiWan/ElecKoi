@@ -1,4 +1,6 @@
 import type { HarnessNotification } from '@deepseek-ai/dsh-sdk-client'
+import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
+import { deriveTurnTokenUsage, type TurnTokenUsage } from '@deepseek-ai/dsh-token-meter/client'
 import { DshProcessProjector, finalReplyText } from './notifications'
 import { readDshSessionLog, type DshSessionEventRecord } from './trajectory'
 import type { DshFileAttachmentRef, DshImageAttachmentRef, DshProcessItem } from './types'
@@ -16,6 +18,7 @@ export interface DshTranscriptTurn {
   assistantText: string
   process: DshProcessItem[]
   completed: boolean
+  turnUsage?: TurnTokenUsage
 }
 
 /** The persisted message and process projection of one DSH Session. */
@@ -26,6 +29,7 @@ export function readDshTranscript(sessionRoot: string, sessionId: string): DshTr
 
 export function projectDshTranscript(events: readonly DshSessionEventRecord[], sessionId = ''): DshTranscriptTurn[] {
   const turns = new Map<number, DshTranscriptTurn>()
+  const turnEvents = new Map<number, DshSessionEventRecord[]>()
   const processProjector = new DshProcessProjector(sessionId)
   let activeTurn = 0
   for (const event of events) {
@@ -36,6 +40,7 @@ export function projectDshTranscript(events: readonly DshSessionEventRecord[], s
     if (turnNumber === 0) continue
     let turn: DshTranscriptTurn | undefined = turns.get(turnNumber)
     if (event.type === 'turn/start') {
+      turnEvents.set(turnNumber, [event])
       const started: DshTranscriptTurn = {
         turn: turnNumber, startSeq: nonnegativeInteger(event.seq) ?? 0, userSeq: null, userMessageId: null, userText: '', userImages: [], userFiles: [],
         assistantSeq: null, assistantMessageId: null, assistantText: '', process: [], completed: false
@@ -44,6 +49,7 @@ export function projectDshTranscript(events: readonly DshSessionEventRecord[], s
       turns.set(turnNumber, started)
     }
     if (turn === undefined) continue
+    if (event.type !== 'turn/start') turnEvents.get(turnNumber)?.push(event)
     if (event.type === 'user/message' && event.surfaceOp === 'append') {
       const message = data.message && typeof data.message === 'object' ? record(data.message) : data
       const source = record(message.source)
@@ -64,6 +70,9 @@ export function projectDshTranscript(events: readonly DshSessionEventRecord[], s
       }
     } else if (event.type === 'turn/end') {
       turn.completed = true
+      const usage = deriveTurnTokenUsage(turnEvents.get(turnNumber) as SessionEvent[])
+      if (usage) turn.turnUsage = usage
+      turnEvents.delete(turnNumber)
       activeTurn = 0
     }
     const projected = processProjector.project({

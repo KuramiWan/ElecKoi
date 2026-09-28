@@ -2,6 +2,25 @@ import { describe, expect, it } from 'vitest'
 import { projectDshTranscript } from '@eleckoi/dsh-runtime'
 
 describe('DSH transcript projection', () => {
+  it('projects exact completed-turn usage onto the matching assistant response', () => {
+    const turns = projectDshTranscript([
+      { seq: 1, time: 1, type: 'turn/start', data: { turn: 1 } },
+      { seq: 2, time: 2, type: 'step/start', data: { turn: 1, step: 1 } },
+      { seq: 3, time: 3, type: 'assistant/message', surfaceOp: 'append', data: {
+        turn: 1, step: 1, usage: { inputTokens: 100, outputTokens: 20, totalTokens: 170, cacheReadTokens: 50 },
+        message: { id: 'assistant-1', role: 'assistant', source: { kind: 'model', provider: 'deepseek', model: 'deepseek-chat' }, content: [{ type: 'text', text: '回答' }] }
+      } },
+      { seq: 4, time: 4, type: 'step/end', data: { turn: 1, step: 1 } },
+      { seq: 5, time: 5, type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+      { seq: 6, time: 6, type: 'turn/start', data: { turn: 2 } }
+    ], 'session-usage')
+    expect(turns[0]?.turnUsage).toEqual({
+      uncachedInputTokens: 100, outputTokens: 20, totalTokens: 170,
+      cacheReadTokens: 50, routes: [{ provider: 'deepseek', model: 'deepseek-chat' }]
+    })
+    expect(turns[1]?.turnUsage).toBeUndefined()
+  })
+
   it('reads uploaded file references from the user message', () => {
     const attachment = { attachmentId: `sha256:${'a'.repeat(64)}`, name: 'notes.md', bytes: 12 }
     const turns = projectDshTranscript([

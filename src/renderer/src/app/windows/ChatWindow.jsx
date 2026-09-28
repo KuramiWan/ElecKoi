@@ -43,6 +43,8 @@ export function ChatWindow({ conversations, characters, models, persona, renderR
           renderRoleplay={renderRoleplay}
           hasActiveChat={Boolean(chat.sessionId || chat.chatCharacter?.character_id)}
           conversationId={chat.sessionId}
+          isSwitchingChat={chat.isSwitchingChat}
+          conversationTransitionRevision={chat.conversationTransitionRevision}
           runtimeSessionId={chat.runtimeSessionId}
           hasCharacters={Boolean(chat.characters?.items?.length)}
           currentTitle={chat.currentTitle}

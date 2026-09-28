@@ -92,6 +92,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   const [selectionReady, setSelectionReady] = useState(false);
   const [selectionRevision, setSelectionRevision] = useState(0);
   const loadGenerationRef = useRef(0);
+  const [isSwitchingChat, setIsSwitchingChat] = useState(false);
+  const [conversationTransitionRevision, setConversationTransitionRevision] = useState(0);
   const [input, setInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -315,18 +317,26 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     clearInputImages();
     discardInputFiles();
     const loadGeneration = ++loadGenerationRef.current;
+    const switching = sessionIdToLoad !== sessionId || Boolean(options.transition);
+    if (switching) setIsSwitchingChat(true);
     const shouldBumpToTop = Boolean(options.bumpToTop);
-    const data = await getChat(sessionIdToLoad, { model: conversations });
-    if (!data || loadGeneration !== loadGenerationRef.current) return;
-    if (data.chat.character_id) {
-      rememberPreferredSession(data.chat.character_id, data.chat.id);
-    }
-    setSessionId(data.chat.id);
-    replaceChatMessages(data.chat, "auto");
-    setChatCharacter(normalizeLatestChatCharacter(data.chat));
-    setActiveSectionState("messages");
-    if (shouldBumpToTop) {
-      await refreshSessionsOnly({ keepSection: true });
+    try {
+      const data = await getChat(sessionIdToLoad, { model: conversations });
+      if (!data || loadGeneration !== loadGenerationRef.current) return;
+      if (data.chat.character_id) {
+        rememberPreferredSession(data.chat.character_id, data.chat.id);
+      }
+      setSessionId(data.chat.id);
+      replaceChatMessages(data.chat, "auto");
+      setChatCharacter(normalizeLatestChatCharacter(data.chat));
+      setActiveSectionState("messages");
+      if (switching) setConversationTransitionRevision((value) => value + 1);
+      setIsSwitchingChat(false);
+      if (shouldBumpToTop) {
+        await refreshSessionsOnly({ keepSection: true });
+      }
+    } finally {
+      if (loadGeneration === loadGenerationRef.current) setIsSwitchingChat(false);
     }
   }
 
@@ -340,30 +350,36 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     const characterName = characterData.assistant_name || characterData.character_name || "未命名角色";
     if (!characterId) return;
     const selectionGeneration = ++loadGenerationRef.current;
+    setIsSwitchingChat(true);
     clearInputImages();
     discardInputFiles();
-    setChatCharacter(characterData);
-    const data = await readSessions();
-    if (selectionGeneration !== loadGenerationRef.current) return;
-    const items = data.items || [];
-    if (!conversations) setLocalSessions(items);
-    const preferredId = conversations?.preferredSession?.(characterId)
-      || preferredSessionByCharacterRef.current.get(characterId)
-      || (chatCharacter.character_id === characterId ? sessionId : "");
-    const existing = selectSessionForCharacter(items, characterId, preferredId);
-    if (existing?.id) {
-      restoreChatEntry(existing.id);
-      await loadChat(existing.id, { bumpToTop: true });
-      return;
+    try {
+      const data = await readSessions();
+      if (selectionGeneration !== loadGenerationRef.current) return;
+      const items = data.items || [];
+      if (!conversations) setLocalSessions(items);
+      const preferredId = conversations?.preferredSession?.(characterId)
+        || preferredSessionByCharacterRef.current.get(characterId)
+        || (chatCharacter.character_id === characterId ? sessionId : "");
+      const existing = selectSessionForCharacter(items, characterId, preferredId);
+      if (existing?.id) {
+        restoreChatEntry(existing.id);
+        await loadChat(existing.id, { bumpToTop: true, transition: true });
+        return;
+      }
+      const created = await createChatSession(characterName, characterData);
+      if (selectionGeneration !== loadGenerationRef.current) return;
+      rememberPreferredSession(characterId, created.chat.id);
+      setSessionId(created.chat.id);
+      replaceChatMessages(created.chat, "auto");
+      setChatCharacter(normalizeLatestChatCharacter(created.chat));
+      setConversationTransitionRevision((value) => value + 1);
+      setIsSwitchingChat(false);
+      await refreshSessionsOnly();
+      setActiveSectionState("messages");
+    } finally {
+      if (selectionGeneration === loadGenerationRef.current) setIsSwitchingChat(false);
     }
-    const created = await createChatSession(characterName, characterData);
-    if (selectionGeneration !== loadGenerationRef.current) return;
-    rememberPreferredSession(characterId, created.chat.id);
-    setSessionId(created.chat.id);
-    replaceChatMessages(created.chat, "auto");
-    setChatCharacter(normalizeLatestChatCharacter(created.chat));
-    await refreshSessionsOnly();
-    setActiveSectionState("messages");
   }
 
   function abortActiveRequest() {
@@ -390,9 +406,12 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     abortActiveRequest();
     clearInputImages();
     discardInputFiles();
+    const creationGeneration = ++loadGenerationRef.current;
+    setIsSwitchingChat(true);
     const characterName = chatCharacter.assistant_name || chatCharacter.character_name || "新对话";
     try {
       const created = await createChatSession(characterName, chatCharacter);
+      if (creationGeneration !== loadGenerationRef.current) return;
       const chat = created.chat;
       rememberPreferredSession(chatCharacter.character_id, chat.id);
       setSessionId(chat.id);
@@ -400,11 +419,15 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       setInput("");
       setIsSending(false);
       setChatCharacter(normalizeLatestChatCharacter(chat));
+      setConversationTransitionRevision((value) => value + 1);
+      setIsSwitchingChat(false);
       await refreshSessionsOnly();
       setStatus("新会话");
       setActiveSectionState("messages");
     } catch (error) {
       setStatus(getErrorMessage(error, "新建会话失败"));
+    } finally {
+      if (creationGeneration === loadGenerationRef.current) setIsSwitchingChat(false);
     }
   }
 
@@ -438,6 +461,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
 
   function clearActiveChat() {
     loadGenerationRef.current += 1;
+    setIsSwitchingChat(false);
     abortActiveRequest();
     clearInputImages();
     discardInputFiles();
@@ -726,6 +750,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   return {
     sessions: displaySessions,
     sessionId,
+    isSwitchingChat,
+    conversationTransitionRevision,
     runtimeSessionId: detailsSnapshot.id === sessionId
       ? detailsSnapshot.details?.runtimeSessionId || detailsSnapshot.runtimeSessionId || '' : '',
     messages: visibleMessages,

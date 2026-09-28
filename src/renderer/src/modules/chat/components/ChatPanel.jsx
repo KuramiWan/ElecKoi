@@ -72,6 +72,8 @@ export function ChatPanel({
   runtimeSessionId = "",
   renderRoleplaySlot,
   renderRoleplayMessage,
+  isSwitchingChat = false,
+  conversationTransitionRevision = 0,
 }) {
   const [messageAreaHovered, setMessageAreaHovered] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
@@ -268,6 +270,8 @@ export function ChatPanel({
   const displayedMessages = messages.filter((item) => !(
     item.role === "assistant" && !String(item.content || "").trim() && !(item.process || []).length
   ));
+  const pendingStartedAt = messages.findLast((message) => message.role === "assistant" && message.pending)?.created_at;
+  const parsedStartedAt = pendingStartedAt ? Date.parse(pendingStartedAt) : NaN;
 
   function openChatBackground(event) {
     event.preventDefault();
@@ -397,10 +401,12 @@ export function ChatPanel({
             onLoadOlderMessages?.();
           }
         }}
-        aria-busy={isLoadingOlderMessages || undefined}
+        aria-busy={isSwitchingChat || isLoadingOlderMessages || undefined}
       >
-        <MessageList
+        {isSwitchingChat ? null : <MessageList
+          key={`${conversationId}:${conversationTransitionRevision}`}
           conversationId={conversationId}
+          entering={conversationTransitionRevision > 0}
           messages={displayedMessages}
           scrollElement={messageScrollElement}
           scrollRequest={scrollRequest}
@@ -429,7 +435,7 @@ export function ChatPanel({
           runtimeSessionId={runtimeSessionId}
           renderRoleplaySlot={renderRoleplaySlot}
           renderRoleplayMessage={renderRoleplayMessage}
-        />
+        />}
       </div>
 
       {pinnedAvatar ? <PinnedAvatar src={pinnedAvatar.src} name={pinnedAvatar.name} containerRef={chatPanelRef} onClose={() => setPinnedAvatar(null)} /> : null}
@@ -454,7 +460,7 @@ export function ChatPanel({
           </div>
         ) : (
           <>
-            {isSending ? <div className="chat-waiting-slot"><ChatWaitingReply /></div> : null}
+            {isSending ? <ChatWaitingReply startTime={Number.isFinite(parsedStartedAt) ? parsedStartedAt : undefined} /> : null}
             <ChatComposer
           input={input}
           setInput={setInput}
@@ -538,6 +544,7 @@ export function ChatPanel({
 
 function MessageList({
   conversationId,
+  entering,
   messages,
   scrollElement,
   scrollRequest,
@@ -663,7 +670,7 @@ function MessageList({
   }, [onFollowingTailChange, returnToBottomRef, scrollElement]);
 
   return (
-    <div className="message-flow">
+    <div className={`message-flow${entering ? " is-conversation-entering" : ""}`}>
       {messages.map((item, index) => {
         const pluginMessage = !deleteMode && renderRoleplaySlot
           && item.runtimeSessionId === runtimeSessionId && !item.pending;

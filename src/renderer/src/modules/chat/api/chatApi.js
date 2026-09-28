@@ -1,5 +1,4 @@
 import { desktopClient } from "../../../bridge/desktopClient.ts";
-import { primeRichMessageHeightCache } from "../../authorFrontend/index.js";
 
 const streamDeltaListeners = new Set();
 const processListeners = new Set();
@@ -21,6 +20,7 @@ function mapMessage(message) {
     status: message.status,
     pending: message.status === "streaming",
     process: message.process || [],
+    turnUsage: message.turnUsage,
     inputImageAttachments: message.inputImageAttachments || [],
     inputFileAttachments: message.inputFileAttachments || [],
     openingOptions: message.openingOptions || [],
@@ -67,10 +67,8 @@ export async function listChats() {
 }
 
 export async function getChat(sessionId, { model } = {}) {
-  const [details] = await Promise.all([
-    model ? model.open(sessionId) : desktopClient.request("query.conversations.details", { conversationId: sessionId }),
-    primeRichMessageHeightCache(sessionId),
-  ]);
+  const details = model ? await model.open(sessionId)
+    : await desktopClient.request("query.conversations.details", { conversationId: sessionId });
   return details ? { chat: mapChatDetails(details) } : null;
 }
 

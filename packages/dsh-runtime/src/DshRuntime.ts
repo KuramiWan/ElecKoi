@@ -1020,14 +1020,11 @@ function removePresetSection(source: string, section: string): string {
 }
 
 function decodeImage(image: DshEncodedImageAttachment): SaveImageAttachment {
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.data)) {
-    throw new Error('图片数据损坏，请重新添加。')
+  return {
+    data: Buffer.from(image.data, 'base64'),
+    mediaType: image.mediaType,
+    ...(image.name ? { name: image.name } : {})
   }
-  const data = Buffer.from(image.data, 'base64')
-  if (data.byteLength === 0 || data.toString('base64') !== image.data) {
-    throw new Error('图片数据损坏，请重新添加。')
-  }
-  return { data, mediaType: image.mediaType, ...(image.name ? { name: image.name } : {}) }
 }
 
 function safeConversationDirectory(conversationId: string): string {

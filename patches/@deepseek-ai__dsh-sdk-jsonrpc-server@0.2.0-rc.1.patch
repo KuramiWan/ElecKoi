@@ -1,8 +1,6 @@
-diff --git a/lib/index.js b/lib/index.js
-index 9b71830e9b8b8ed4b3294254f64a0d1f6fc37595..fe17bf8e8f34584bb071c378d2abfa45bea4e008 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -72,6 +72,9 @@ var HarnessSdkJsonRpcServer = class {
+@@ -72,6 +72,9 @@
  			};
  			this.transport.notify("session.event", payload);
  		}));
@@ -12,7 +10,7 @@ index 9b71830e9b8b8ed4b3294254f64a0d1f6fc37595..fe17bf8e8f34584bb071c378d2abfa45
  		this.disposers.push(ctx.on("agent/status", ({ agent, status }) => {
  			this.transport.notify("session.status", {
  				sessionId: String(agent.session.id),
-@@ -153,6 +153,22 @@ var HarnessSdkJsonRpcServer = class {
+@@ -153,6 +156,22 @@
  		rec.handle.agent.followup(message);
  		return { messageId: message.id };
  	}
@@ -35,7 +33,7 @@ index 9b71830e9b8b8ed4b3294254f64a0d1f6fc37595..fe17bf8e8f34584bb071c378d2abfa45
  	assertLiveAgent(rec, sessionId) {
  		if (this.ctx.agents.get(rec.handle.agent.id) !== rec.handle.agent) throw new Error(`session agent was disposed outside the server: ${sessionId}`);
  	}
-@@ -196,6 +212,8 @@ var HarnessSdkJsonRpcServer = class {
+@@ -196,6 +215,8 @@
  		switch (method) {
  			case "initialize": return this.initialize(params);
  			case "session/prompt": return this.prompt(params);
@@ -44,7 +42,7 @@ index 9b71830e9b8b8ed4b3294254f64a0d1f6fc37595..fe17bf8e8f34584bb071c378d2abfa45
  			case "shutdown": return this.shutdown();
  			default: throw new Error(`unknown DeepSeek Harness SDK runtime method: ${method}`);
  		}
-@@ -216,16 +234,25 @@ var HarnessSdkJsonRpcServer = class {
+@@ -216,16 +237,25 @@
  		return creation;
  	}
  	async createSession(sessionId) {

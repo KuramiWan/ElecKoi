@@ -13,6 +13,17 @@ const message = {
 };
 
 describe("roleplay message metadata", () => {
+  it("places completed turn usage before edit in the agent toolbar", () => {
+    const response = { ...message, turnUsage: { uncachedInputTokens: 100, outputTokens: 20, totalTokens: 170 } };
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, { message: response, layoutMode: "agent" }));
+    expect(html).toContain('aria-label="用量 170 tok"');
+    expect(html.indexOf('aria-label="用量 170 tok"')).toBeLessThan(html.indexOf('aria-label="编辑"'));
+    const user = renderToStaticMarkup(React.createElement(MessageBubble, {
+      message: { ...response, role: "user" }, layoutMode: "agent",
+    }));
+    expect(user).not.toContain('aria-label="用量 170 tok"');
+  });
+
   it("shows timestamp beside the name and floor below the avatar only in roleplay", () => {
     const roleplay = renderToStaticMarkup(React.createElement(MessageBubble, {
       message, name: "角色甲", layoutMode: "roleplay", floorNumber: 4,
