@@ -6,7 +6,6 @@ import { Database, Paperclip } from "@phosphor-icons/react";
 import { ChatModelPicker } from "./ChatModelPicker.jsx";
 import { ChatImageGallery } from "./ChatImageGallery.jsx";
 import { ChatFileCards } from "./ChatFileCards.jsx";
-import { GenerationStatsLine } from "./GenerationStats.jsx";
 
 export function ChatComposer({
   input,
@@ -38,8 +37,6 @@ export function ChatComposer({
   canDeleteMessages = false,
   onRegenerate,
   regenerateTargetMessageId,
-  generationStats,
-  showGenerationStats = true,
   conversationId,
   renderRoleplaySlot,
 }) {
@@ -128,10 +125,12 @@ export function ChatComposer({
             }
           }}
         />
+        {renderRoleplaySlot?.("eleckoi.roleplay.conversation.input.overlay", {})}
         {renderRoleplaySlot?.("eleckoi.roleplay.input.overlay", { conversationId, input, setInput, isSending })}
 
         <div className="composer-row">
           <div className="composer-tools">
+            {renderRoleplaySlot?.("eleckoi.roleplay.conversation.input.left", {})}
             {renderRoleplaySlot?.("eleckoi.roleplay.input.left", { conversationId, input, setInput, isSending })}
             <div className="composer-more-anchor" ref={menuRef}>
               <button
@@ -201,6 +200,7 @@ export function ChatComposer({
           </div>
 
           <div className="composer-trailing">
+            {renderRoleplaySlot?.("eleckoi.roleplay.conversation.input.right", {})}
             {renderRoleplaySlot?.("eleckoi.roleplay.input.right", { conversationId, input, setInput, isSending })}
             <ChatModelPicker
               configs={modelConfigs}
@@ -224,7 +224,6 @@ export function ChatComposer({
           </div>
         </div>
         </div>
-        {showGenerationStats ? <GenerationStatsLine stats={generationStats} /> : null}
       </div>
     </form>
   );

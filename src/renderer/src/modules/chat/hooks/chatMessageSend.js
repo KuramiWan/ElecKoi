@@ -66,8 +66,8 @@ export async function runChatMessageSend(options) {
       id: `local-${Date.now()}`, conversationId: targetSessionId, role: "user", content: text,
       variableStateJson: '{}', created_at: createdAt,
       inputImageAttachments: draftImages.map((image, index) => ({
-        attachmentId: image.localId, mediaType: image.mediaType, bytes: image.bytes, name: image.name,
-        dataUrl: `data:${image.mediaType};base64,${encodedImages[index].data}`,
+        attachmentId: image.localId, mediaType: encodedImages[index].mediaType, bytes: image.bytes, name: image.name,
+        dataUrl: `data:${encodedImages[index].mediaType};base64,${encodedImages[index].data}`,
       })),
       inputFileAttachments: draftFiles.map((file) => ({ attachmentId: file.id, name: file.name, bytes: file.bytes })),
     };

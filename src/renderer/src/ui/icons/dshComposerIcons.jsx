@@ -130,6 +130,14 @@ export function DshTrashIcon({ size = 16, className }) {
   );
 }
 
+export function DshToBottomIcon({ size = 14, className }) {
+  return (
+    <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" strokeWidth="1">
+      <path d="M4 6L7.29289 9.29289C7.68342 9.68342 8.31658 9.68342 8.70711 9.29289L12 6" stroke="currentColor" />
+    </svg>
+  );
+}
+
 export function DshCopyIcon({ size = 16, className }) {
   return (
     <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

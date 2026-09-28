@@ -156,6 +156,26 @@ describe("variable configuration versions and transfer", () => {
     expect(restored.objects).toHaveLength(2);
   });
 
+  it("creates a named version from the selected source or as an empty version", () => {
+    const source = config();
+    const copied = createVariableVersion(source, { name: "正式版 · 副本", sourceVersionId: "v1" });
+    expect(copied.name).toBe("正式版 · 副本");
+    expect(copied.objects).toEqual(source.objects);
+    expect(copied.objects).not.toBe(source.objects);
+    expect(copied.variables).toEqual(source.variables);
+    expect(copied.schemaCode).toBe(source.schemaCode);
+
+    const blank = createVariableVersion(copied, { name: "空白版" });
+    expect(blank.name).toBe("空白版");
+    expect(blank.objects).toEqual([]);
+    expect(blank.variables).toEqual([]);
+    expect(blank.schemaCode).toBe("");
+
+    const fromHistory = createVariableVersion(blank, { name: "从历史复制", sourceVersionId: "v1" });
+    expect(fromHistory.objects).toEqual(source.objects);
+    expect(fromHistory.variables).toEqual(source.variables);
+  });
+
   it("exports the Android-compatible document and imports it as a new draft version", () => {
     const source = config();
     const exported = JSON.parse(serializeVariableConfig(source));

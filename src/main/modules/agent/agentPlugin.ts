@@ -97,6 +97,7 @@ export const agentPlugin = {
     sessionCleanup.drain()
     const unregisterDeleteGuard = ctx.conversations.registerDeleteGuard(generations)
     const unregisterDeleteParticipant = ctx.conversations.registerDeleteParticipant(sessions)
+    const detachSessionCreator = ctx.conversations.attachSessionCreator(id => sessions.createSession(id))
 
     const unregister = [
       ctx.desktopGateway.register('command.conversations.archive.export', ({ conversationId }) => {
@@ -171,6 +172,9 @@ export const agentPlugin = {
           requestId
         )
       )),
+      ctx.desktopGateway.register('command.conversations.messages.edit', ({ conversationId, messageId, content }) => (
+        sessions.editMessage(conversationId, messageId, content)
+      )),
       ctx.desktopGateway.register('command.conversations.messages.delete_from', ({ conversationId, messageId }) => (
         sessions.deleteMessagesFrom(conversationId, messageId)
       )),
@@ -199,6 +203,7 @@ export const agentPlugin = {
     return async () => {
       for (const dispose of unregister.reverse()) dispose()
       unregisterDeleteParticipant()
+      detachSessionCreator()
       unregisterDeleteGuard()
       unregisterDeleteCleanup()
       unregisterSessionCleanup()

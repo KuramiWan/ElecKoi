@@ -1,6 +1,6 @@
 export function dshClientPlugin(registration: { factory: (...args: any[]) => any }) {
   const plugin = registration.factory((name: string) => {
-    if (name === 'react') return { createElement: () => null }
+    if (name === 'react') return { createElement: () => null, lazy: () => () => null }
     throw new Error(`Unexpected client module ${name}`)
   })
   return {

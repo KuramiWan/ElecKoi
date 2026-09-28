@@ -142,8 +142,8 @@ export const conversationsPlugin = {
         conversations.get(input.conversationId)
         return richMessageHeights.save(input)
       }),
-      ctx.desktopGateway.register('command.conversations.create', (input) => {
-        const created = conversations.create(input)
+      ctx.desktopGateway.register('command.conversations.create', async (input) => {
+        const created = await conversations.createWithSession(input)
         ctx.desktopGateway.broadcast('records.changed', { module: 'conversations' })
         return details(ctx, projector, created.conversation.id)
       }),

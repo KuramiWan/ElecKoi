@@ -1,6 +1,8 @@
 import { SettingsPanel } from "../../../src/renderer/src/modules/settings/index.js";
+import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
 
-export function SettingsPage({ view }) {
+export function SettingsPage() {
+  const view = useMainPageView();
   const { chat, appearance, appUpdates, settingsSections, renderSettingsSection, settingsPage, setSettingsPage, changeActiveSection, renderLayout } = view;
   return <SettingsPanel
     activePage={settingsPage}

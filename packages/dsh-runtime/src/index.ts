@@ -11,6 +11,7 @@ export { projectDshTranscript, readDshTranscript } from './transcript'
 export { exportDshSession, importDshSessions } from './sessionTransfer'
 export type { DshSessionArchive } from './sessionTransfer'
 export { rewindDshSession } from './sessionRewind'
+export { editDshSessionMessage } from './sessionMessageEdit'
 export type { DshTranscriptTurn } from './transcript'
 export { DshProcessProjector, DshReplyProjector, finalReplyText } from './notifications'
 export {

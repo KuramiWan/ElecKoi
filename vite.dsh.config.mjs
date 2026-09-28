@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { authorVendorPlugin } from './scripts/vite-author-vendor-plugin.ts'
+import { dshClientPages } from './scripts/dsh-client-pages.mjs'
 
 const platformExports = {
   react: [
@@ -56,6 +57,17 @@ export default defineConfig({
   build: {
     outDir: 'out/renderer-dsh',
     emptyOutDir: true,
-    rollupOptions: { input: resolve('src/renderer/dsh.html') }
+    cssCodeSplit: false,
+    rollupOptions: {
+      preserveEntrySignatures: 'strict',
+      input: {
+        app: resolve('src/renderer/dsh.html'),
+        ...Object.fromEntries(dshClientPages.map(page => [
+          `eleckoi-page-${page.key}`,
+          resolve(`packages/${page.package}/src/${page.entry}`)
+        ]))
+      },
+      output: { entryFileNames: 'assets/[name].js' }
+    }
   }
 })

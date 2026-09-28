@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-shell',
   factory(require) {
     const React = require('react')
+    const SettingsPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-settings.js')
+      .then(module => ({ default: module.SettingsPage })))
     const nativeSettingsSections = new Set(['account', 'general', 'models', 'agent-presets'])
     const shellActions = new Set(['community'])
     function ElecKoiRoot({ layout, slots, locale, theme, subscribeTheme, conversations, characters, characterConfiguration, models, persona, presets, renderSlot, renderSlotChain }) {
@@ -14,6 +16,10 @@ window.__ModuleLoader__.load({
       const navigationVersion = React.useSyncExternalStore(
         listener => slots.subscribe('sidebar.panellist', listener),
         () => slots.getVersion('sidebar.panellist')
+      )
+      const footerVersion = React.useSyncExternalStore(
+        listener => slots.subscribe('eleckoi.sidebar.footer.action', listener),
+        () => slots.getVersion('eleckoi.sidebar.footer.action')
       )
       const mainVersion = React.useSyncExternalStore(
         listener => slots.subscribe('main', listener),
@@ -49,11 +55,16 @@ window.__ModuleLoader__.load({
           }))
           .sort((a, b) => a.order - b.order)
       }, [slots, navigationVersion, mainVersion, localeRevision])
+      const productPanelIds = React.useMemo(() => slots.entriesOfSlot('main')
+        .filter(entry => entry.registrant?.startsWith('@eleckoi/dsh-client-'))
+        .map(entry => entry.options.key), [slots, mainVersion])
+      const hasSidebarFooterActions = React.useMemo(() =>
+        slots.entriesOfSlot('eleckoi.sidebar.footer.action').length > 0, [slots, footerVersion])
       React.useEffect(() => {
         const selected = panelInfo.activePanelId
         const panels = slots.entriesOfSlot('main').map(entry => entry.options.key)
-        if (selected && panels.includes('messages') && !panels.includes(selected)) {
-          layout.selectPanel('messages')
+        if (selected && !panels.includes(selected) && panels.length > 0) {
+          layout.selectPanel(panels.includes('messages') ? 'messages' : panels[0])
         }
       }, [layout, mainVersion, panelInfo, slots])
       React.useEffect(() => {
@@ -241,11 +252,14 @@ window.__ModuleLoader__.load({
           conversations, characters, characterConfiguration, models, persona, presets, settingsSections,
           navigation: {
             items: navigationItems,
+            productPanelIds,
             selectedPanelId: panelInfo.activePanelId,
             selectPanel: id => layout.selectPanel(id),
-            renderPanel: (id, props = {}) => renderSlot('main', props, { entryKey: id })
+            renderPanel: id => renderSlot('main', {}, { entryKey: id })
           },
           renderSettingsSection: (section, close) => renderSlot('settings.section', { close }, { only: section.id }),
+          sidebarFooterActions: hasSidebarFooterActions
+            ? renderSlot('eleckoi.sidebar.footer.action', { wide: true }) : null,
           renderRoleplay: owner => renderSlotChain('eleckoi.roleplay', owner, {
             fallback: React.createElement('section', {
               className: 'chat-panel chat-panel-empty-state',
@@ -256,6 +270,7 @@ window.__ModuleLoader__.load({
         }) : loadError),
         React.createElement('div', {
           className: 'eleckoi-plugin-overlay-seat',
+          'data-shell-overlay': true,
           style: { position: 'fixed', inset: 0, zIndex: 20, pointerEvents: 'none' }
         }, renderSlot('shell.overlay', {}))
       )
@@ -307,6 +322,7 @@ window.__ModuleLoader__.load({
             'shell.leading': { kind: 'single', scope: 'root' },
             'settings.section': { kind: 'list', scope: 'root' },
             'settings.general.item': { kind: 'list', scope: 'root' },
+            'eleckoi.sidebar.footer.action': { kind: 'list', scope: 'root' },
             'eleckoi.roleplay': { kind: 'chain', scope: 'root' }
           },
           inject: () => ({ layout, slots: ctx.slots, locale: ctx.locale,
@@ -325,9 +341,42 @@ window.__ModuleLoader__.load({
         }
       }, 'eleckoi client root and layout')
 
-      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'settings' },
-        ({ productMainPages, view }) => productMainPages?.settings
-          ? React.createElement(productMainPages.settings, { view }) : null))
+      ctx.slots.inject('eleckoi.sidebar.footer.action', () => {
+        const projected = new Map()
+        const sync = () => {
+          const spec = ctx.slots.spec('sidebar.footer.action')
+          const entries = spec?.kind === 'list' && spec.scope === 'root'
+            ? ctx.slots.entriesOfSlot('sidebar.footer.action') : []
+          const current = new Set(entries)
+          for (const [entry, dispose] of projected) {
+            if (current.has(entry)) continue
+            dispose()
+            projected.delete(entry)
+          }
+          for (const entry of entries) {
+            if (projected.has(entry)) continue
+            const options = {
+              ...entry.options,
+              name: 'eleckoi.sidebar.footer.action',
+              id: `dsh:${entry.options.id}`,
+              ...(entry.inject ? { inject: entry.inject } : {}),
+              ...(entry.store ? { store: entry.store } : {}),
+              ...(entry.locale ? { locale: entry.locale } : {}),
+              ...(entry.registrant ? { registrant: entry.registrant } : {})
+            }
+            projected.set(entry, ctx.slots.register(options, entry.component))
+          }
+        }
+        const unsubscribe = ctx.slots.subscribe('sidebar.footer.action', sync)
+        sync()
+        return () => {
+          unsubscribe()
+          for (const dispose of projected.values()) dispose()
+        }
+      })
+
+      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'settings', registrant: '@eleckoi/dsh-client-shell' },
+        () => React.createElement(SettingsPage)))
       ctx.slots.inject('sidebar.panellist', () => [
         ctx.slots.register({
           name: 'sidebar.panellist', id: 'community', order: 20,

@@ -16,9 +16,11 @@ export interface HostRunRequest {
 
 export type ParentHostMessage =
   | HostRunRequest
+  | { type: 'create'; id: string; sessionId: string; cwd: string }
   | { type: 'cancel'; id: string; sessionId: string }
   | { type: 'dispose'; id: string; sessionId: string }
   | { type: 'rewind'; id: string; sessionId: string; fromTurn: number }
+  | { type: 'edit-message'; id: string; sessionId: string; messageId: string; role: 'user' | 'assistant'; content: string }
   | { type: 'reconfigure'; id: string; providerPatchPath?: string; credentials: Record<string, string> }
   | { type: 'shutdown' }
 
@@ -29,7 +31,9 @@ export type ChildHostMessage =
   | { type: 'run-notification'; id: string; method: string; params: Record<string, unknown> }
   | { type: 'run-complete'; id: string; finalResponse: string }
   | { type: 'run-failed'; id: string; message: string }
+  | { type: 'create-complete'; id: string; message?: string }
   | { type: 'cancel-complete'; id: string; cancelled: boolean; message?: string }
   | { type: 'dispose-complete'; id: string; disposed: boolean; message?: string }
   | { type: 'rewind-complete'; id: string; cut?: number; unavailable?: boolean; message?: string }
+  | { type: 'edit-message-complete'; id: string; message?: string }
   | { type: 'reconfigure-complete'; id: string; message?: string }

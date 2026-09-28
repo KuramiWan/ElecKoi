@@ -188,7 +188,7 @@ function MessagePresentation({ message, content, streaming }) {
   })}</div>;
 }
 
-function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onSelectOpening, onEdit, onRegenerate, pluginActions, pluginAfter, renderMessageContent }) {
+function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, pluginActions, pluginAfter, renderMessageContent }) {
   const { role, content, pending = false } = message;
   const displayContent = message.displayContent ?? content;
   const isUser = role === "user";
@@ -258,11 +258,10 @@ function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "role
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(displayContent));
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     const next = draft.trim();
     if (!next || next === content) { setEditing(false); return; }
-    onEdit?.(message, next);
-    setEditing(false);
+    if (await onEdit?.(message, next)) setEditing(false);
   }
   function openProcess() {
     setExpanded(false);
@@ -398,7 +397,7 @@ function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "role
         </div> : null}
       </div>
       {layoutMode !== "agent" ? openingPager : null}
-      {avatarPreviewOpen && avatar ? <AvatarPreviewDialog src={avatar} name={name} onClose={() => setAvatarPreviewOpen(false)} /> : null}
+      {avatarPreviewOpen && avatar ? <AvatarPreviewDialog src={avatar} name={name} onClose={() => setAvatarPreviewOpen(false)} onPin={onPinAvatar ? () => { onPinAvatar({ src: pinSrc || avatar, name }); setAvatarPreviewOpen(false); } : undefined} /> : null}
       {jumpOpen && typeof document !== "undefined" ? createPortal(
         <div className="opening-jump-backdrop" onPointerDown={() => closePageJump()}>
           <form ref={jumpDialogRef} className="opening-jump-dialog" role="dialog" aria-modal="true" aria-labelledby="opening-jump-title" onPointerDown={(event) => event.stopPropagation()} onSubmit={submitPageJump}>

@@ -1,7 +1,9 @@
 import { ConversationList } from "../../../src/renderer/src/modules/chat/index.js";
 import { RoleplayPanel } from "../../../src/renderer/src/app/windows/RoleplayPanel.jsx";
+import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
 
-export function MessagesPage({ view }) {
+export function MessagesPage() {
+  const view = useMainPageView();
   const { chat, appearance, conversations, renderRoleplay, renderLayout, selectConversation, openChatBackground, openPresetTools, openCharacterSection } = view;
   return renderLayout({
     sidePanel: <ConversationList
@@ -56,10 +58,7 @@ export function MessagesPage({ view }) {
       onOpenPresetTools={openPresetTools}
       onRegenerate={chat.regenerateReply}
       onDeleteMessages={chat.deleteMessagesFrom}
-      onEditMessage={(message, replacementMessage) => chat.regenerateReply({
-        targetMessageId: message.turnId || message.id,
-        replacementMessage,
-      })}
+      onEditMessage={chat.editMessage}
       onEditOpening={chat.editOpening}
       onSelectOpening={chat.selectOpening}
       onGoCharacterSettings={openCharacterSection}

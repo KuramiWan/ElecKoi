@@ -93,6 +93,7 @@ export interface AgentRunCallbacks {
 export type AgentRunResult = 'complete' | 'cancelled'
 
 export interface AgentRuntimePort {
+  createSession?(input: Omit<AgentRunInput, 'runId' | 'text'>): Promise<void>
   prepareImages?(images: EncodedChatImageAttachment[]): Promise<ChatUserImageAttachment[]>
   readImage?(image: ChatUserImageAttachment): Promise<{ mediaType: ChatImageMediaType; data: string }>
   run(input: AgentRunInput, callbacks: AgentRunCallbacks): Promise<AgentRunResult>
@@ -104,6 +105,7 @@ export interface AgentRuntimePort {
   ): AgentTrajectorySnapshot
   cancel(conversationId: string): Promise<boolean>
   rewindConversation?(conversationId: string, runtimeThreadId: string, fromTurn: number): Promise<'rewound' | 'unavailable'>
+  editMessage?(conversationId: string, runtimeThreadId: string, messageId: string, role: 'user' | 'assistant', content: string): Promise<void>
   confirmRewind?(conversationId: string): void
   rollbackRewind?(conversationId: string, runtimeThreadId: string): Promise<void>
   disposeConversation(

@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative } from 'node:path'
@@ -19,7 +19,8 @@ import { DshProcessProjector, DshReplyProjector, finalReplyText } from './notifi
 import {
   createDshProviderCatalog,
   resolveDshProviderBinding,
-  type DshProviderCatalog
+  type DshProviderCatalog,
+  type DshProviderBinding
 } from './modelProfiles'
 import {
   DshGenerationStatsProjector,
@@ -153,17 +154,26 @@ export class DshRuntime {
   removeImage(attachmentId: string): void {
     const match = /^sha256:([a-f0-9]{64})$/.exec(attachmentId)
     if (!match?.[1]) throw new Error('图片附件编号无效。')
-    removeStoredAttachment(join(this.options.runtimeDataRoot, 'home', 'attachments', 'v1', 'objects', match[1].slice(0, 2), match[1]))
+    const root = join(this.options.runtimeDataRoot, 'home', 'attachments', 'v1', 'objects')
+    const path = join(root, match[1].slice(0, 2), match[1])
+    removeStoredAttachment(path)
+    pruneEmptyAttachmentDirectories(path, root)
   }
 
   removeFile(reference: DshFileAttachmentRef, retainObject: boolean): void {
     const path = this.filePath(reference)
     const match = /^sha256:([a-f0-9]{64})$/.exec(reference.attachmentId)!
-    const objectPath = join(this.options.runtimeDataRoot, 'home', 'attachments', 'v1', 'file-objects', match[1]!.slice(0, 2), match[1]!)
+    const root = join(this.options.runtimeDataRoot, 'home', 'attachments', 'v1')
+    const objectRoot = join(root, 'file-objects')
+    const objectPath = join(objectRoot, match[1]!.slice(0, 2), match[1]!)
     removeStoredAttachment(path)
+    pruneEmptyAttachmentDirectories(path, join(root, 'files'))
     if (retainObject) {
       if (existsSync(objectPath)) chmodSync(objectPath, 0o400)
-    } else removeStoredAttachment(objectPath)
+    } else {
+      removeStoredAttachment(objectPath)
+      pruneEmptyAttachmentDirectories(objectPath, objectRoot)
+    }
   }
 
   filePath(reference: DshFileAttachmentRef): string {
@@ -175,6 +185,33 @@ export class DshRuntime {
     }
     const root = join(this.options.runtimeDataRoot, 'home', 'attachments', 'v1')
     return join(root, 'files', match[1].slice(0, 2), match[1], reference.name)
+  }
+
+  async createSession(input: {
+    conversationId: string
+    runtimeThreadId: string
+    settings: DshModelSettings
+    subagentSettings?: DshModelSettings | undefined
+    variableContext?: DshVariableRuntimeContext | undefined
+    conversationContext?: DshConversationContext | undefined
+    toolPolicy?: DshToolPolicy | undefined
+    agentPreset?: DshAgentPreset | undefined
+    webSearch?: DshWebSearchSettings | undefined
+  }): Promise<void> {
+    const selectedWebSearch = input.webSearch ?? defaultWebSearchSettings()
+    const subagentSettings = input.subagentSettings ?? input.settings
+    const catalog = createDshProviderCatalog([
+      ...(this.options.modelCatalog?.() ?? []), input.settings, subagentSettings
+    ])
+    const mainBinding = resolveDshProviderBinding(catalog, input.settings)
+    const subagentBinding = resolveDshProviderBinding(catalog, subagentSettings)
+    const host = this.requireSessionHost()
+    await host.start(this.hostConfiguration(catalog, selectedWebSearch, input.settings))
+    this.prepareSessionSnapshot({
+      ...input, text: '', selectedWebSearch, subagentSettings,
+      subagentBinding, mainBinding
+    })
+    await host.createSession(input.runtimeThreadId, this.options.workspaceRoot)
   }
 
   async stream(
@@ -256,62 +293,13 @@ export class DshRuntime {
         )
         await this.discardGenerationStats(conversationId, sessionRoot, discardRuntimeThreadIds, runtimeThreadId)
       }
+      this.prepareSessionSnapshot({
+        conversationId, runtimeThreadId, text, settings, subagentSettings: effectiveSubagentSettings,
+        variableContext, conversationContext, toolPolicy, agentPreset: selectedAgentPreset,
+        selectedWebSearch, subagentBinding, mainBinding
+      })
       const variableStateFile = join(sessionRoot, 'eleckoi-variable-state.json')
-      writeVariableBridge(variableStateFile, variableContext)
       const settingStateFile = join(sessionRoot, 'eleckoi-setting-library-state.json')
-      writeSettingBridge(settingStateFile, conversationContext?.currentPromptText ?? text, conversationContext, variableContext)
-      const contextFile = join(sessionRoot, 'eleckoi-conversation-context.json')
-      writeContextBridge(contextFile, conversationContext?.currentPromptText ?? text, conversationContext)
-      const effectiveToolPolicy = sessionToolPolicy(
-        toolPolicy,
-        variableContext !== undefined,
-        conversationContext?.settingLibrary !== undefined,
-        selectedAgentPreset.roleplayPlan.steps.length > 0
-      )
-      const requestedPresetId = this.materializeAgentPreset(
-        selectedAgentPreset,
-        effectiveToolPolicy,
-        effectiveSubagentSettings,
-        subagentBinding.provider,
-        selectedWebSearch,
-        settings
-      )
-      const snapshotRoot = join(this.options.runtimeDataRoot, 'session-snapshots')
-      const storedSession = readDshSessionLog(join(this.options.runtimeDataRoot, 'sessions'), runtimeThreadId)
-      const selectedPresetEvent = storedSession && [...storedSession.events].reverse()
-        .find((event) => event.type === 'agent-preset/selected')
-      const recordedPresetId = selectedPresetEvent && isRecord(selectedPresetEvent.data)
-        ? selectedPresetEvent.data.agentPreset
-        : storedSession?.header.agentPreset
-      const mountedPresetId = typeof recordedPresetId === 'string' && recordedPresetId.length > 0
-        ? recordedPresetId
-        : requestedPresetId
-      if (storedSession && mountedPresetId !== requestedPresetId
-        && !existsSync(join(this.options.runtimeDataRoot, 'generated-presets', mountedPresetId, 'preset.json'))) {
-        throw new Error(`DSH 会话原预设 ${mountedPresetId} 的组合文件不存在，不能安全切换配置。`)
-      }
-      const nextSessionSnapshot = {
-        conversationId,
-        runtimeThreadId,
-        mountedPresetId,
-        ...(mountedPresetId === requestedPresetId ? {} : { pendingPresetId: requestedPresetId }),
-        model: requestSnapshot(settings, mainBinding),
-        subagentModel: requestSnapshot(effectiveSubagentSettings, subagentBinding),
-        variableStateFile,
-        settingStateFile,
-        contextFile,
-        variablesEnabled: variableContext !== undefined,
-        settingLibraryEnabled: conversationContext?.settingLibrary !== undefined,
-        disabledToolGroupIds: effectiveToolPolicy.disabledGroupIds,
-        roleplayPlanSteps: selectedAgentPreset.roleplayPlan.steps,
-        historyCompactionInstructions: selectedAgentPreset.historyCompactionInstructions ?? '',
-      }
-      writeSessionSnapshot(
-        snapshotRoot,
-        runtimeThreadId,
-        nextSessionSnapshot
-      )
-      this.conversationSessions.set(conversationId, runtimeThreadId)
       if (run.cancelled) return 'cancelled'
       const processProjector = new DshProcessProjector(runtimeThreadId, effectiveSubagentSettings.model)
       const replyProjector = new DshReplyProjector(runtimeThreadId)
@@ -498,6 +486,15 @@ export class DshRuntime {
     return 'rewound'
   }
 
+  async editMessage(conversationId: string, runtimeThreadId: string, messageId: string, role: 'user' | 'assistant', content: string): Promise<void> {
+    if (this.activeRuns.has(conversationId) || this.startingRuns.has(conversationId)) {
+      throw new Error('回复仍在生成，不能编辑消息。')
+    }
+    if (this.pendingRewinds.has(conversationId)) throw new Error('上一次 DSH 回退尚未提交。')
+    await this.requireSessionHost().editMessage(runtimeThreadId, messageId, role, content)
+    this.trajectoryEvents.delete(trajectoryKey(conversationId, runtimeThreadId))
+  }
+
   confirmRewind(conversationId: string): void {
     const pending = this.pendingRewinds.get(conversationId)
     if (!pending) return
@@ -648,6 +645,73 @@ export class DshRuntime {
     else events.push(event)
     if (events.length > 20_000) events.splice(0, events.length - 20_000)
     this.trajectoryEvents.set(key, events)
+  }
+
+  private prepareSessionSnapshot(input: {
+    conversationId: string
+    runtimeThreadId: string
+    text: string
+    settings: DshModelSettings
+    subagentSettings: DshModelSettings
+    variableContext?: DshVariableRuntimeContext
+    conversationContext?: DshConversationContext
+    toolPolicy?: DshToolPolicy
+    agentPreset?: DshAgentPreset
+    selectedWebSearch: DshWebSearchSettings
+    mainBinding: DshProviderBinding
+    subagentBinding: DshProviderBinding
+  }): void {
+    const {
+      conversationId, runtimeThreadId, text, settings, subagentSettings,
+      variableContext, conversationContext, toolPolicy, selectedWebSearch,
+      mainBinding, subagentBinding
+    } = input
+    const selectedAgentPreset = input.agentPreset ?? defaultAgentPreset()
+    const sessionRoot = join(this.options.runtimeDataRoot, 'sessions', safeConversationDirectory(conversationId))
+    mkdirSync(sessionRoot, { recursive: true })
+    const variableStateFile = join(sessionRoot, 'eleckoi-variable-state.json')
+    writeVariableBridge(variableStateFile, variableContext)
+    const settingStateFile = join(sessionRoot, 'eleckoi-setting-library-state.json')
+    writeSettingBridge(settingStateFile, conversationContext?.currentPromptText ?? text, conversationContext, variableContext)
+    const contextFile = join(sessionRoot, 'eleckoi-conversation-context.json')
+    writeContextBridge(contextFile, conversationContext?.currentPromptText ?? text, conversationContext)
+    const effectiveToolPolicy = sessionToolPolicy(
+      toolPolicy,
+      variableContext !== undefined,
+      conversationContext?.settingLibrary !== undefined,
+      selectedAgentPreset.roleplayPlan.steps.length > 0
+    )
+    const requestedPresetId = this.materializeAgentPreset(
+      selectedAgentPreset, effectiveToolPolicy, subagentSettings,
+      subagentBinding.provider, selectedWebSearch, settings
+    )
+    const snapshotRoot = join(this.options.runtimeDataRoot, 'session-snapshots')
+    const storedSession = readDshSessionLog(join(this.options.runtimeDataRoot, 'sessions'), runtimeThreadId)
+    const selectedPresetEvent = storedSession && [...storedSession.events].reverse()
+      .find((event) => event.type === 'agent-preset/selected')
+    const recordedPresetId = selectedPresetEvent && isRecord(selectedPresetEvent.data)
+      ? selectedPresetEvent.data.agentPreset
+      : storedSession?.header.agentPreset
+    const mountedPresetId = typeof recordedPresetId === 'string' && recordedPresetId.length > 0
+      ? recordedPresetId
+      : requestedPresetId
+    if (storedSession && mountedPresetId !== requestedPresetId
+      && !existsSync(join(this.options.runtimeDataRoot, 'generated-presets', mountedPresetId, 'preset.json'))) {
+      throw new Error(`DSH 会话原预设 ${mountedPresetId} 的组合文件不存在，不能安全切换配置。`)
+    }
+    writeSessionSnapshot(snapshotRoot, runtimeThreadId, {
+      conversationId, runtimeThreadId, mountedPresetId,
+      ...(mountedPresetId === requestedPresetId ? {} : { pendingPresetId: requestedPresetId }),
+      model: requestSnapshot(settings, mainBinding),
+      subagentModel: requestSnapshot(subagentSettings, subagentBinding),
+      variableStateFile, settingStateFile, contextFile,
+      variablesEnabled: variableContext !== undefined,
+      settingLibraryEnabled: conversationContext?.settingLibrary !== undefined,
+      disabledToolGroupIds: effectiveToolPolicy.disabledGroupIds,
+      roleplayPlanSteps: selectedAgentPreset.roleplayPlan.steps,
+      historyCompactionInstructions: selectedAgentPreset.historyCompactionInstructions ?? ''
+    })
+    this.conversationSessions.set(conversationId, runtimeThreadId)
   }
 
   private materializeAgentPreset(
@@ -983,6 +1047,24 @@ function removeStoredAttachment(path: string): void {
       if (existsSync(path)) chmodSync(path, 0o400)
       throw retryError
     }
+  }
+}
+
+function pruneEmptyAttachmentDirectories(path: string, root: string): void {
+  for (let directory = dirname(path); directory !== root && directory !== dirname(directory); directory = dirname(directory)) {
+    if (!removeEmptyAttachmentDirectory(directory)) break
+  }
+}
+
+function removeEmptyAttachmentDirectory(path: string): boolean {
+  try {
+    rmdirSync(path)
+    return true
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') return true
+    if (code === 'ENOTEMPTY' || code === 'EEXIST' || code === 'EPERM' || code === 'EACCES') return false
+    throw error
   }
 }
 

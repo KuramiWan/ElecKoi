@@ -25,6 +25,8 @@ describe('ElecKoi DSH client navigation', () => {
         for (const _dispose of result) { /* Cordis owns each disposer. */ }
       },
       entriesOfSlot: (name: string) => entries.filter(entry => entry.options.name === name),
+      spec: () => undefined,
+      subscribe: () => () => {},
     }
     for (const packageName of packages) {
       let registration: any
@@ -34,7 +36,11 @@ describe('ElecKoi DSH client navigation', () => {
         AbortController,
       })
       const plugin = registration.factory((name: string) => {
-        if (name === 'react') return { createElement: (component: any, props: any) => ({ component, props }) }
+        if (name === 'react') return {
+          Suspense: 'Suspense',
+          lazy: (load: any) => ({ load }),
+          createElement: (component: any, props: any, ...children: any[]) => ({ component, props, children })
+        }
         if (name === 'react-dom') return {}
         throw new Error(`Unexpected module ${name}`)
       })
@@ -54,13 +60,12 @@ describe('ElecKoi DSH client navigation', () => {
     expect(railItems).toEqual(['community', 'messages', 'character', 'presets', 'model'])
     expect(panels).toEqual(['settings', 'messages', 'character', 'presets', 'model'])
 
-    const view = { marker: 'product page state' }
     for (const id of panels) {
-      const Page = () => null
       const entry = entries.find(item => item.options.name === 'main' && item.options.key === id)
-      const rendered = entry?.component({ productMainPages: { [id]: Page }, view })
-      expect(rendered?.component).toBe(Page)
-      expect(rendered?.props.view).toBe(view)
+      const rendered = entry?.component({})
+      expect(entry?.options.registrant).toMatch(/^@eleckoi\/dsh-client-/)
+      expect(rendered?.component.load).toBeTypeOf('function')
+      expect(rendered?.props).toBeUndefined()
     }
 
     const layout = root.inject().layout
@@ -68,5 +73,94 @@ describe('ElecKoi DSH client navigation', () => {
     layout.selectPanel('extension-page')
     expect(layout.panelInfo.getSnapshot().activePanelId).toBe('extension-page')
     expect(() => layout.selectPanel('missing-page')).toThrow('not registered')
+  })
+
+  it('renders official sidebar footer actions in the product sidebar with wide layout', () => {
+    let registration: any
+    let rootComponent: any
+    let rootOptions: any
+    const slotCalls: Array<{ name: string; owner: any }> = []
+    const sourceEntry = {
+      options: { name: 'sidebar.footer.action', id: 'example' },
+      component: () => null,
+    }
+    const sourceEntries = [sourceEntry]
+    const projectedEntries: any[] = []
+    let notifySource = () => {}
+    const slots = {
+      subscribe: (name: string, listener: () => void) => {
+        if (name === 'sidebar.footer.action') notifySource = listener
+        return () => {}
+      },
+      getVersion: () => 1,
+      spec: (name: string) => name === 'sidebar.footer.action' ? { kind: 'list', scope: 'root' } : undefined,
+      entriesOfSlot: (name: string) => name === 'sidebar.footer.action' ? sourceEntries
+        : name === 'eleckoi.sidebar.footer.action' ? projectedEntries : [],
+      provideRoot: () => () => {},
+      register: (options: any, component: any) => {
+        if (options.name === 'root') {
+          rootComponent = component
+          rootOptions = options
+        }
+        if (options.name === 'eleckoi.sidebar.footer.action') {
+          const entry = { options, component }
+          projectedEntries.push(entry)
+          return () => { projectedEntries.splice(projectedEntries.indexOf(entry), 1) }
+        }
+        return () => {}
+      },
+      inject: (_name: string, register: () => void) => { register() },
+    }
+    const ProductApp = () => null
+    let stateIndex = 0
+    const React = {
+      Fragment: 'Fragment',
+      lazy: () => ProductApp,
+      useState: () => [stateIndex++ === 0 ? ProductApp : '', () => {}],
+      useSyncExternalStore: (_subscribe: any, getSnapshot: () => any) => getSnapshot(),
+      useMemo: (calculate: () => any) => calculate(),
+      useEffect: () => {},
+      createElement: (component: any, props: any, ...children: any[]) => ({ component, props, children }),
+    }
+    const source = readFileSync(new URL('../packages/dsh-client-shell/src/client.js', import.meta.url), 'utf8')
+    runInNewContext(source, {
+      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
+      AbortController,
+    })
+    const plugin = registration.factory((name: string) => {
+      if (name === 'react') return React
+      throw new Error(`Unexpected module ${name}`)
+    })
+    let effectCount = 0
+    plugin.apply({
+      slots,
+      reflect: { provide: () => () => {} },
+      effect: (run: () => void) => { if (effectCount++ === 0) run() },
+    })
+    const render = () => {
+      stateIndex = 0
+      const tree = rootComponent({
+        layout: { panelInfo: { subscribe: () => () => {}, getSnapshot: () => ({ activePanelId: 'messages' }) } },
+        slots,
+        locale: { subscribe: () => () => {}, getSnapshot: () => ({ revision: 0 }) },
+        renderSlot: (name: string, owner: any) => {
+          if (!rootOptions.children[name]) throw new Error(`root cannot render ${name}`)
+          slotCalls.push({ name, owner })
+          return { slot: name }
+        },
+      })
+      return tree.children[0].children[0].props
+    }
+
+    expect(projectedEntries).toHaveLength(1)
+    expect(projectedEntries[0].component).toBe(sourceEntry.component)
+    expect(render().sidebarFooterActions).toEqual({ slot: 'eleckoi.sidebar.footer.action' })
+    expect(slotCalls).toContainEqual({ name: 'eleckoi.sidebar.footer.action', owner: { wide: true } })
+    sourceEntries.length = 0
+    notifySource()
+    slotCalls.length = 0
+    expect(render().sidebarFooterActions).toBeNull()
+    expect(projectedEntries).toHaveLength(0)
+    expect(slotCalls.some(call => call.name === 'eleckoi.sidebar.footer.action')).toBe(false)
   })
 })

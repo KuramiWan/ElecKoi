@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { dshClientPages } from './dsh-client-pages.mjs'
 
 const unpacked = process.env.ELECKOI_UNPACKED_DIR ?? join(process.cwd(), 'release', 'win-unpacked')
 const executable = join(unpacked, 'ElecKoi.exe')
@@ -71,6 +72,9 @@ const probe = `
     if (!productScript || !productStyle) throw new Error('Packaged ElecKoi DSH renderer entry is incomplete.')
     await access(join(productRenderer, 'assets', productScript))
     await access(join(productRenderer, 'assets', productStyle))
+    for (const pageAsset of ${JSON.stringify(dshClientPages.map(page => `eleckoi-page-${page.key}.js`))}) {
+      await access(join(productRenderer, 'assets', pageAsset))
+    }
     process.stdout.write('Packaged ElecKoi DSH renderer assets are present.\\n')
     const runtimeUrl = pathToFileURL(join(appAsar, 'node_modules', '@eleckoi', 'dsh-runtime', 'dist', 'index.mjs')).href
     const { DshDesktopPluginHost, DshRuntime } = await import(runtimeUrl)

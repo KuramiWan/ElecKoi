@@ -6,7 +6,7 @@ function stopDrag(event) {
   event.stopPropagation();
 }
 
-function WindowControls({ onClose }) {
+export function WindowControls({ onClose }) {
   return (
     <div className="window-controls">
       <button className="window-control-button minimize" type="button" title="最小化" onPointerDown={stopDrag} onClick={() => appWindow.minimize()}>

@@ -1,6 +1,7 @@
 import { ChatComposer } from "./ChatComposer.jsx";
 import { ChatWaitingReply } from "./ChatWaitingReply.jsx";
 import { ChatDropOverlay } from "./ChatDropOverlay.jsx";
+import { PinnedAvatar } from "./PinnedAvatar.jsx";
 import { AgentProcessDialog } from "./AgentProcessDialog.jsx";
 import { TrajectoryDialog } from "./TrajectoryDialog.jsx";
 import { VariableViewerDialog } from "./VariableViewerDialog.jsx";
@@ -8,7 +9,7 @@ import { AgentToolsDialog } from "./AgentToolsDialog.jsx";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
-import { DshNewChatIcon } from "../../../ui/icons/dshComposerIcons.jsx";
+import { DshNewChatIcon, DshToBottomIcon } from "../../../ui/icons/dshComposerIcons.jsx";
 import { Path, SlidersHorizontal } from "@phosphor-icons/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getGenerationStats, listenGenerationStatsEvent } from "../api/chatApi.js";
@@ -21,7 +22,7 @@ import {
   resolveChatDisplayProfile,
 } from "../../appearance/index.js";
 import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.js";
-import { retainVisibleGenerationStats } from "./GenerationStats.jsx";
+import { ContextMeter, retainVisibleGenerationStats } from "./GenerationStats.jsx";
 
 export function ChatPanel({
   hasActiveChat,
@@ -80,11 +81,18 @@ export function ChatPanel({
   const [toolsOpen, setToolsOpen] = useState(false);
   const [imageDragActive, setImageDragActive] = useState(false);
   const [messageScrollElement, setMessageScrollElement] = useState(null);
+  const [followingTail, setFollowingTail] = useState(true);
   const [generationStats, setGenerationStats] = useState(null);
+  const generationStatsRequestRef = useRef(0);
+  const generationStatsConversationRef = useRef(conversationId);
+  generationStatsConversationRef.current = conversationId;
   const [deleteMode, setDeleteMode] = useState(false);
   const [deleteFromMessageId, setDeleteFromMessageId] = useState("");
   const [deletingMessages, setDeletingMessages] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [pinnedAvatar, setPinnedAvatar] = useState(null);
+  const chatPanelRef = useRef(null);
+  const returnToBottomRef = useRef(null);
   const headerMenuRef = useRef(null);
   const imageDragDepthRef = useRef(0);
   const previousMessageScrollTopRef = useRef(null);
@@ -97,12 +105,16 @@ export function ChatPanel({
     previousMessageScrollTopRef.current = null;
   }, [scrollRequest.revision]);
 
+  useEffect(() => setFollowingTail(true), [conversationId]);
+
   useEffect(() => {
     setDeleteMode(false);
     setDeleteFromMessageId("");
     setDeletingMessages(false);
     setDeleteConfirmationOpen(false);
   }, [conversationId]);
+
+  useEffect(() => setPinnedAvatar(null), [conversationId]);
 
   useEffect(() => {
     if (!deleteMode || deleteConfirmationOpen) return undefined;
@@ -128,13 +140,17 @@ export function ChatPanel({
 
   useEffect(() => {
     let active = true;
+    const request = ++generationStatsRequestRef.current;
     setGenerationStats(null);
     if (!conversationId) return undefined;
     getGenerationStats(conversationId)
-      .then((stats) => { if (active) setGenerationStats(stats); })
+      .then((stats) => {
+        if (active && generationStatsRequestRef.current === request) setGenerationStats(stats);
+      })
       .catch(() => {});
     const dispose = listenGenerationStatsEvent((event) => {
       if (active && event.conversationId === conversationId) {
+        generationStatsRequestRef.current += 1;
         setGenerationStats((previous) => retainVisibleGenerationStats(previous, event.stats));
       }
     });
@@ -282,10 +298,15 @@ export function ChatPanel({
     setDeletingMessages(true);
     const deleted = await onDeleteMessages?.(deleteFromMessageId);
     if (deleted !== false) {
+      const request = ++generationStatsRequestRef.current;
       setGenerationStats(null);
       if (conversationId) {
         getGenerationStats(conversationId)
-          .then((stats) => setGenerationStats(stats))
+          .then((stats) => {
+            if (generationStatsRequestRef.current === request && generationStatsConversationRef.current === conversationId) {
+              setGenerationStats(stats);
+            }
+          })
           .catch(() => {});
       }
       setDeleteMode(false);
@@ -296,7 +317,7 @@ export function ChatPanel({
   }
 
   function regenerateFrom(message) {
-    setGenerationStats(null);
+    generationStatsRequestRef.current += 1;
     return onRegenerate?.(message);
   }
 
@@ -325,6 +346,7 @@ export function ChatPanel({
 
   return (
     <section
+      ref={chatPanelRef}
       className={`chat-panel layout-${layoutMode}${profile?.assistant_bubble_enabled ? " assistant-bubble-enabled" : ""}${deleteMode ? " message-delete-mode" : ""}`}
       style={displayStyle}
     >
@@ -382,11 +404,16 @@ export function ChatPanel({
           messages={displayedMessages}
           scrollElement={messageScrollElement}
           scrollRequest={scrollRequest}
+          onFollowingTailChange={setFollowingTail}
+          returnToBottomRef={returnToBottomRef}
           layoutMode={layoutMode}
           profile={profile}
           avatarShape={avatarShape}
           userAvatar={userAvatar}
           assistantAvatar={assistantAvatar}
+          userPinImage={persona.user_portrait || persona.user_square || userAvatar}
+          assistantPinImage={persona.assistant_cover || persona.assistant_square || assistantAvatar}
+          onPinAvatar={setPinnedAvatar}
           userName={persona.user_name}
           assistantName={persona.assistant_name}
           showRoleplayTimestamp={chatDisplay?.roleplay_timestamps_enabled !== false}
@@ -405,7 +432,14 @@ export function ChatPanel({
         />
       </div>
 
+      {pinnedAvatar ? <PinnedAvatar src={pinnedAvatar.src} name={pinnedAvatar.name} containerRef={chatPanelRef} onClose={() => setPinnedAvatar(null)} /> : null}
+
       <div className="chat-composer-region">
+        {!followingTail ? (
+          <div className="chat-to-bottom-slot">
+            <button type="button" className="chat-to-bottom" aria-label="回到底部" onClick={() => returnToBottomRef.current?.()}><DshToBottomIcon /></button>
+          </div>
+        ) : null}
         {deleteMode ? (
           <div className="chat-message-delete-bar" aria-label="删除消息">
             <button
@@ -451,14 +485,16 @@ export function ChatPanel({
           canDeleteMessages={displayedMessages.some((message) => message.id !== "opening")}
           onRegenerate={regenerateFrom}
           regenerateTargetMessageId={regenerateTargetMessageId}
-          generationStats={generationStats}
-          showGenerationStats={chatDisplay?.generation_stats_enabled !== false}
           renderRoleplaySlot={renderRoleplaySlot}
           conversationId={conversationId}
             />
           </>
         )}
-        {renderRoleplaySlot?.("eleckoi.roleplay.composer.dock", { conversationId })}
+        <div className="chat-composer-dock" data-stats-hidden={chatDisplay?.generation_stats_enabled === false || undefined}>
+          {renderRoleplaySlot?.("eleckoi.roleplay.conversation.composer.dock", { generationStats })}
+          {renderRoleplaySlot?.("eleckoi.roleplay.composer.dock", { conversationId })}
+          {chatDisplay?.generation_stats_enabled !== false ? <ContextMeter stats={generationStats} /> : null}
+        </div>
       </div>
       {imageDragActive ? <ChatDropOverlay disabled={isSending} /> : null}
       {processMessage ? (
@@ -505,11 +541,16 @@ function MessageList({
   messages,
   scrollElement,
   scrollRequest,
+  onFollowingTailChange,
+  returnToBottomRef,
   layoutMode,
   profile,
   avatarShape,
   userAvatar,
   assistantAvatar,
+  userPinImage,
+  assistantPinImage,
+  onPinAvatar,
   userName,
   assistantName,
   showRoleplayTimestamp,
@@ -541,35 +582,56 @@ function MessageList({
     restoredConversationRef.current = conversationId;
     scrollRevisionRef.current = scrollRequest.revision;
     followingRef.current = true;
+    onFollowingTailChange(true);
     scrollElement.scrollTop = scrollElement.scrollHeight;
-  }, [conversationId, messages.length, scrollElement, scrollRequest.revision]);
+  }, [conversationId, messages.length, onFollowingTailChange, scrollElement, scrollRequest.revision]);
 
   useLayoutEffect(() => {
     if (!scrollElement || scrollRevisionRef.current === scrollRequest.revision) return;
     scrollRevisionRef.current = scrollRequest.revision;
     followingRef.current = true;
+    onFollowingTailChange(true);
     scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: scrollRequest.behavior || "auto" });
-  }, [scrollElement, scrollRequest.behavior, scrollRequest.revision]);
+  }, [onFollowingTailChange, scrollElement, scrollRequest.behavior, scrollRequest.revision]);
 
   useLayoutEffect(() => {
     if (!scrollElement) return undefined;
     const flow = scrollElement.querySelector('.message-flow');
     if (!flow) return undefined;
     const follow = () => {
-      if (followingRef.current) scrollElement.scrollTop = scrollElement.scrollHeight;
+      const gap = scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
+      if (gap <= 25) {
+        followingRef.current = true;
+        onFollowingTailChange(true);
+      } else if (followingRef.current) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
     };
     const observe = typeof ResizeObserver === 'function' ? new ResizeObserver(follow) : null;
     observe?.observe(flow);
     const onScroll = () => {
       const gap = scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
-      if (gap <= 32) followingRef.current = true;
-      else if (readerGestureRef.current) followingRef.current = false;
+      if (gap <= 25) {
+        followingRef.current = true;
+        onFollowingTailChange(true);
+      } else if (readerGestureRef.current) {
+        followingRef.current = false;
+        onFollowingTailChange(false);
+      }
     };
-    const onWheel = (event) => { if (event.deltaY < 0) followingRef.current = false; };
+    const onWheel = (event) => {
+      if (event.deltaY < 0 && scrollElement.scrollHeight - scrollElement.clientHeight > 25) {
+        followingRef.current = false;
+        onFollowingTailChange(false);
+      }
+    };
     const onPointerDown = () => { readerGestureRef.current = true; };
     const onPointerUp = () => { readerGestureRef.current = false; };
     const onKeyDown = (event) => {
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) followingRef.current = false;
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key) && scrollElement.scrollHeight - scrollElement.clientHeight > 25) {
+        followingRef.current = false;
+        onFollowingTailChange(false);
+      }
     };
     scrollElement.addEventListener('scroll', onScroll, { passive: true });
     scrollElement.addEventListener('wheel', onWheel, { passive: true });
@@ -585,7 +647,20 @@ function MessageList({
       window.removeEventListener('pointerup', onPointerUp);
       scrollElement.removeEventListener('keydown', onKeyDown);
     };
-  }, [scrollElement]);
+  }, [onFollowingTailChange, scrollElement]);
+
+  useLayoutEffect(() => {
+    if (!scrollElement) return undefined;
+    const returnToBottom = () => {
+      followingRef.current = true;
+      onFollowingTailChange(true);
+      scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: "instant" });
+    };
+    returnToBottomRef.current = returnToBottom;
+    return () => {
+      if (returnToBottomRef.current === returnToBottom) returnToBottomRef.current = null;
+    };
+  }, [onFollowingTailChange, returnToBottomRef, scrollElement]);
 
   return (
     <div className="message-flow">
@@ -629,6 +704,7 @@ function MessageList({
                 <MessageBubble
                   message={item}
                   avatar={item.role === "user" ? userAvatar : assistantAvatar}
+                  pinSrc={item.role === "user" ? userPinImage : assistantPinImage}
                   name={item.role === "user" ? userName : assistantName}
                   layoutMode={layoutMode}
                   avatarShape={avatarShape}
@@ -637,6 +713,7 @@ function MessageList({
                   showRoleplayTimestamp={showRoleplayTimestamp}
                   showRoleplayFloor={showRoleplayFloor}
                   onOpenProcess={onOpenProcess}
+                  onPinAvatar={onPinAvatar}
                   onSelectOpening={onSelectOpening}
                   pluginActions={pluginActions}
                   pluginAfter={pluginAfter}
@@ -647,6 +724,7 @@ function MessageList({
               <MessageBubble
                 message={item}
                 avatar={item.role === "user" ? userAvatar : assistantAvatar}
+                pinSrc={item.role === "user" ? userPinImage : assistantPinImage}
                 name={item.role === "user" ? userName : assistantName}
                 layoutMode={layoutMode}
                 avatarShape={avatarShape}
@@ -655,6 +733,7 @@ function MessageList({
                 showRoleplayTimestamp={showRoleplayTimestamp}
                 showRoleplayFloor={showRoleplayFloor}
                 onOpenProcess={onOpenProcess}
+                onPinAvatar={onPinAvatar}
                 onEdit={item.id === "opening" ? onEditOpening : onEditMessage}
                 onSelectOpening={onSelectOpening}
                 onRegenerate={(message) => onRegenerate?.({ targetMessageId: message.turnId || message.id })}

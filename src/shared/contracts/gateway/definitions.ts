@@ -126,6 +126,10 @@ export const requestContracts = {
       remainingMessageCount: z.number().int().nonnegative()
     })
   ),
+  'command.conversations.messages.edit': defineRoute(
+    z.object({ conversationId: z.string().min(1), messageId: z.string().min(1), content: z.string().min(1) }),
+    z.object({ ok: z.literal(true) })
+  ),
   'command.conversations.opening.select': defineRoute(
     z.object({ conversationId: z.string().min(1), openingId: z.string().min(1) }),
     conversationDetails

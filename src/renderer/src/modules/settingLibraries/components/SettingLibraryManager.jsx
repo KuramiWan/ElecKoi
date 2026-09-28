@@ -357,20 +357,14 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
 
           <section className="setting-library-manager-card">
             <h3>版本</h3>
-            <div className="setting-library-manager-rows">
-              {current.versions.map((version) => (
-                <button type="button" className="setting-library-version-row" key={version.id} onClick={() => onChange(switchLibraryVersion(current, version.id))}>
-                  <span>{version.id === current.activeVersionId ? <Check size={17} weight="bold" /> : null}</span>
-                  <strong>{versionLabel(version)}</strong>
-                </button>
-              ))}
-              <button type="button" className="setting-library-manager-row is-accent" onClick={() => setDialog("create")}><Plus size={18} /><strong>新建版本</strong></button>
-            </div>
+            <select className="setting-library-manager-version-select" aria-label="设定库版本" value={current.activeVersionId} onChange={(event) => onChange(switchLibraryVersion(current, event.target.value))}>
+              {current.versions.map((version) => <option key={version.id} value={version.id}>{versionLabel(version)}</option>)}
+            </select>
           </section>
 
           <section className="setting-library-manager-card">
-            <h3>导入 · 导出</h3>
             <div className="setting-library-manager-rows">
+              <button type="button" className="setting-library-manager-row is-accent" onClick={() => setDialog("create")}><Plus size={18} /><strong>新建版本</strong><CaretRight size={15} /></button>
               <button type="button" className="setting-library-manager-row" onClick={() => setPage("sources")}><ArrowsMerge size={18} /><strong>并入设定库</strong><CaretRight size={15} /></button>
               <button type="button" className="setting-library-manager-row" onClick={() => setDialog("import")}><ImportIcon size={18} /><strong>导入设定库</strong><CaretRight size={15} /></button>
               <button type="button" className="setting-library-manager-row" onClick={exportLibrary}><ExportIcon size={18} /><strong>导出设定库</strong><CaretRight size={15} /></button>

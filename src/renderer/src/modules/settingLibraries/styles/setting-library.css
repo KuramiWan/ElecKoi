@@ -1910,6 +1910,25 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   font-weight: 650;
 }
 
+.setting-library-manager-version-select {
+  display: block;
+  width: calc(100% - 26px);
+  height: 38px;
+  margin: 5px 13px 13px;
+  padding: 0 10px;
+  color: var(--text);
+  background: var(--field-bg);
+  border: 1px solid color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.setting-library-manager-version-select:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
 .setting-library-version-name-card {
   padding: 12px;
 }
@@ -1955,8 +1974,7 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   display: grid;
 }
 
-.setting-library-manager-row,
-.setting-library-version-row {
+.setting-library-manager-row {
   display: grid;
   width: 100%;
   min-width: 0;
@@ -1969,7 +1987,7 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   text-align: left;
 }
 
-.setting-library-manager-card h3 + .setting-library-manager-rows > :first-child {
+.setting-library-manager-row:first-child {
   border-top: 0;
 }
 
@@ -1985,12 +2003,7 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   grid-template-columns: 20px minmax(0, 1fr);
 }
 
-.setting-library-version-row {
-  grid-template-columns: 20px minmax(0, 1fr);
-}
-
-.setting-library-manager-row:hover:not(:disabled),
-.setting-library-version-row:hover {
+.setting-library-manager-row:hover:not(:disabled) {
   background: var(--active);
 }
 
@@ -2000,8 +2013,7 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   opacity: .6;
 }
 
-.setting-library-manager-row strong,
-.setting-library-version-row strong {
+.setting-library-manager-row strong {
   min-width: 0;
   overflow: hidden;
   font-size: 13px;
@@ -2018,14 +2030,6 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
 
 .setting-library-manager-row > svg:last-child {
   color: var(--soft-text);
-}
-
-.setting-library-version-row > span {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  color: var(--blue);
 }
 
 .setting-library-manager-row.is-accent,

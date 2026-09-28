@@ -903,6 +903,20 @@ describe('shared SQLite baseline', () => {
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
+  it('keeps a new chat only after its DSH Session is created', async () => {
+    const { conversations } = harness()
+    const createdIds: string[] = []
+    const detach = conversations.attachSessionCreator(async id => { createdIds.push(id) })
+    const created = await conversations.createWithSession({ title: '新对话' })
+    expect(createdIds).toEqual([created.conversation.id])
+    expect(conversations.get(created.conversation.id).id).toBe(created.conversation.id)
+    detach()
+
+    conversations.attachSessionCreator(async () => { throw new Error('DSH 创建失败') })
+    await expect(conversations.createWithSession({ title: '失败对话' })).rejects.toThrow('DSH 创建失败')
+    expect(conversations.list().map(row => row.conversation.id)).toEqual([created.conversation.id])
+  })
+
   it('binds an active historical reply to its exact DSH turn without changing message text', () => {
     const { conversations, messages, database } = harness()
     const conversationId = conversations.create({}).conversation.id
