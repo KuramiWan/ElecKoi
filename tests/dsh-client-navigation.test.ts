@@ -75,37 +75,27 @@ describe('ElecKoi DSH client navigation', () => {
     expect(() => layout.selectPanel('missing-page')).toThrow('not registered')
   })
 
-  it('renders official sidebar footer actions in the product sidebar with wide layout', () => {
+  it('owns the official sidebar contract and renders its footer without a second slot', () => {
     let registration: any
     let rootComponent: any
     let rootOptions: any
+    let sidebarComponent: any
+    let sidebarOptions: any
     const slotCalls: Array<{ name: string; owner: any }> = []
-    const sourceEntry = {
-      options: { name: 'sidebar.footer.action', id: 'example' },
-      component: () => null,
-    }
-    const sourceEntries = [sourceEntry]
-    const projectedEntries: any[] = []
-    let notifySource = () => {}
+    const footerEntries = [{ options: { name: 'sidebar.footer.action', id: 'example' } }]
     const slots = {
-      subscribe: (name: string, listener: () => void) => {
-        if (name === 'sidebar.footer.action') notifySource = listener
-        return () => {}
-      },
+      subscribe: () => () => {},
       getVersion: () => 1,
-      spec: (name: string) => name === 'sidebar.footer.action' ? { kind: 'list', scope: 'root' } : undefined,
-      entriesOfSlot: (name: string) => name === 'sidebar.footer.action' ? sourceEntries
-        : name === 'eleckoi.sidebar.footer.action' ? projectedEntries : [],
+      entriesOfSlot: (name: string) => name === 'sidebar.footer.action' ? footerEntries : [],
       provideRoot: () => () => {},
       register: (options: any, component: any) => {
         if (options.name === 'root') {
           rootComponent = component
           rootOptions = options
         }
-        if (options.name === 'eleckoi.sidebar.footer.action') {
-          const entry = { options, component }
-          projectedEntries.push(entry)
-          return () => { projectedEntries.splice(projectedEntries.indexOf(entry), 1) }
+        if (options.name === 'sidebar') {
+          sidebarComponent = component
+          sidebarOptions = options
         }
         return () => {}
       },
@@ -152,15 +142,22 @@ describe('ElecKoi DSH client navigation', () => {
       return tree.children[0].children[0].props
     }
 
-    expect(projectedEntries).toHaveLength(1)
-    expect(projectedEntries[0].component).toBe(sourceEntry.component)
-    expect(render().sidebarFooterActions).toEqual({ slot: 'eleckoi.sidebar.footer.action' })
-    expect(slotCalls).toContainEqual({ name: 'eleckoi.sidebar.footer.action', owner: { wide: true } })
-    sourceEntries.length = 0
-    notifySource()
-    slotCalls.length = 0
-    expect(render().sidebarFooterActions).toBeNull()
-    expect(projectedEntries).toHaveLength(0)
-    expect(slotCalls.some(call => call.name === 'eleckoi.sidebar.footer.action')).toBe(false)
+    expect(rootOptions.children.sidebar).toEqual({ kind: 'single', scope: 'root' })
+    expect(sidebarOptions.children['sidebar.panellist']).toEqual({ kind: 'list', scope: 'root' })
+    expect(sidebarOptions.children['sidebar.footer.action']).toEqual({ kind: 'list', scope: 'root' })
+    expect(render().navigation.hasSidebarFooterActions).toBe(true)
+    const content = (renderSidebarSlot: any) => renderSidebarSlot('sidebar.footer.action', { wide: true })
+    expect(render().navigation.renderSidebar(content)).toEqual({ slot: 'sidebar' })
+    expect(slotCalls.some(call => call.name === 'sidebar' && call.owner.renderContent === content)).toBe(true)
+    const childCalls: Array<{ name: string; owner: any }> = []
+    expect(sidebarComponent({
+      renderContent: content,
+      renderSlot: (name: string, owner: any) => {
+        childCalls.push({ name, owner })
+        return { slot: name }
+      },
+    })).toEqual({ slot: 'sidebar.footer.action' })
+    expect(childCalls).toEqual([{ name: 'sidebar.footer.action', owner: { wide: true } }])
+    expect(rootOptions.children['eleckoi.sidebar.footer.action']).toBeUndefined()
   })
 })

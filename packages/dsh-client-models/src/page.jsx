@@ -1,5 +1,6 @@
 import { ModelConfigPanel } from "../../../src/renderer/src/modules/models/index.js";
 import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
+export { ModelNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/icons/navIcons.jsx";
 
 export function ModelPage() {
   const view = useMainPageView();

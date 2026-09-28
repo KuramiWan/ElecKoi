@@ -480,9 +480,11 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiConversations', catalog)
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'messages', registrant: '@eleckoi/dsh-client-conversations' },
         () => React.createElement(MessagesPage)))
+      const NavigationIcon = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-messages.js')
+        .then(module => ({ default: module.NavigationIcon })))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-        name: 'sidebar.panellist', id: 'messages', order: -40, label: '消息'
-      }, () => null))
+        name: 'sidebar.panellist', id: 'messages', order: -40, label: '消息', registrant: '@eleckoi/dsh-client-conversations'
+      }, () => React.createElement(NavigationIcon)))
       ctx.effect(() => {
         catalog.start()
         const stopReset = ctx.on('connection/reset', () => catalog.restoreConnection())

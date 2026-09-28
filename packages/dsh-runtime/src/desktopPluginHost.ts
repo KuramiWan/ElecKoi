@@ -153,6 +153,8 @@ export class DshDesktopPluginHost {
       '    compression: none',
       '- id: ui-layout',
       '  disabled: true',
+      '- id: ui-sidebar',
+      '  disabled: true',
       '- id: ui-settings-general',
       '  disabled: true',
       '- id: ui-settings-models',

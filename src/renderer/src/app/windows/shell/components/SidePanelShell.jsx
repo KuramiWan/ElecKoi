@@ -5,7 +5,7 @@ function stopDrag(event) {
   event.stopPropagation();
 }
 
-export function SidePanelShell({ collapsed = false, onCollapse, footerActions, children }) {
+export function SidePanelShell({ collapsed = false, onCollapse, footerActions, renderSidebarSlot, children }) {
   return (
     <section
       className={`side-panel-shell${collapsed ? " collapsed" : ""}${footerActions ? " has-footer-actions" : ""}`}
@@ -15,7 +15,7 @@ export function SidePanelShell({ collapsed = false, onCollapse, footerActions, c
     >
       <header className="side-panel-header" data-tauri-drag-region>
         <div className="side-panel-brand">
-          <strong>ElecKoi</strong>
+          {renderSidebarSlot?.("sidebar.brand.name", { content: <strong>ElecKoi</strong> }) || <strong>ElecKoi</strong>}
         </div>
         <button
           className="side-panel-collapse-button"
