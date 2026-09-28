@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-presets',
   factory(require) {
     const React = require('react')
+    const PresetsPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-presets.js')
+      .then(module => ({ default: module.PresetsPage })))
     class PresetCatalog {
       constructor(bridge) {
         this.bridge = bridge
@@ -156,9 +158,8 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const catalog = new PresetCatalog(window.eleckoi)
       ctx.provide('eleckoiPresets', catalog)
-      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'presets' },
-        ({ productMainPages, view }) => productMainPages?.presets
-          ? React.createElement(productMainPages.presets, { view }) : null))
+      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'presets', registrant: '@eleckoi/dsh-client-presets' },
+        () => React.createElement(PresetsPage)))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
         name: 'sidebar.panellist', id: 'presets', order: -20, label: '预设'
       }, () => null))

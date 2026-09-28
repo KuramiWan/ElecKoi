@@ -1,6 +1,8 @@
 import { CharacterListPanel, CharacterProfilePanel, openCharacterEditorWindow } from "../../../src/renderer/src/modules/persona/index.js";
+import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
 
-export function CharacterPage({ view }) {
+export function CharacterPage() {
+  const view = useMainPageView();
   const { chat, appearance, renderLayout } = view;
   return renderLayout({
     sidePanel: <CharacterListPanel

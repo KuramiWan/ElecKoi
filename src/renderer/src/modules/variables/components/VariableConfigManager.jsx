@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { CheckIcon, ExportIcon, ImportIcon, PlusIcon, TrashIcon, XIcon } from "../../../ui/icons/index.jsx";
+import { ExportIcon, ImportIcon, PlusIcon, TrashIcon, XIcon } from "../../../ui/icons/index.jsx";
+import { uniqueVariableName, syncActiveVersion } from "../model/variableConfigEditing.js";
 import {
   createVariableVersion,
   deleteActiveVariableVersion,
@@ -17,15 +18,71 @@ function downloadText(filename, content) {
   URL.revokeObjectURL(url);
 }
 
+function versionLabel(version) {
+  return version.name.trim() || "待命名";
+}
+
+function suggestedVersionName(config, sourceId) {
+  const source = config.versions.find((version) => version.id === sourceId);
+  const base = source ? `${version.name.trim() || "未命名版本"} · 副本` : "新版本";
+  return uniqueVariableName(base, new Set(config.versions.map((version) => version.name.trim())));
+}
+
+function CreateVersionDialog({ config, onCancel, onCreate }) {
+  const [sourceId, setSourceId] = useState(config.activeVersionId);
+  const [name, setName] = useState(() => suggestedVersionName(config, config.activeVersionId));
+  const [edited, setEdited] = useState(false);
+  const [validation, setValidation] = useState("");
+  const ordered = [...config.versions].sort((left, right) => left.id === config.activeVersionId ? -1 : right.id === config.activeVersionId ? 1 : 0);
+
+  function selectSource(nextId) {
+    setSourceId(nextId);
+    setValidation("");
+    if (!edited) setName(suggestedVersionName(config, nextId));
+  }
+
+  function submit() {
+    const normalized = name.trim();
+    if (!normalized) return setValidation("请输入版本名称");
+    if (config.versions.some((version) => version.name.trim() === normalized)) return setValidation("版本名称已存在");
+    onCreate(normalized, sourceId === "__blank__" ? "" : sourceId);
+  }
+
+  return (
+    <div className="setting-library-dialog-overlay" role="presentation" onMouseDown={onCancel}>
+      <section className="setting-library-dialog variable-manager-dialog" role="dialog" aria-modal="true" aria-labelledby="variable-create-version-title" onMouseDown={(event) => event.stopPropagation()}>
+        <h2 id="variable-create-version-title">新建版本</h2>
+        <div className="variable-manager-dialog-body">
+          <label className="variable-version-name-field">
+            <span>版本名称</span>
+            <input autoFocus value={name} maxLength={60} aria-invalid={Boolean(validation)} onChange={(event) => { setName(event.target.value); setEdited(true); setValidation(""); }} />
+            {validation ? <small role="alert">{validation}</small> : null}
+          </label>
+          <fieldset className="variable-version-source">
+            <legend>创建方式</legend>
+            {ordered.map((version) => (
+              <label key={version.id}>
+                <input type="radio" name="variable-version-source" checked={sourceId === version.id} onChange={() => selectSource(version.id)} />
+                <span><strong>{version.id === config.activeVersionId ? "复制当前版本" : versionLabel(version)}</strong><small>{version.id === config.activeVersionId ? versionLabel(version) : "从这个历史版本复制"}</small></span>
+              </label>
+            ))}
+            <label>
+              <input type="radio" name="variable-version-source" checked={sourceId === "__blank__"} onChange={() => selectSource("__blank__")} />
+              <span><strong>创建空白版本</strong><small>不复制变量组、变量或校验脚本</small></span>
+            </label>
+          </fieldset>
+        </div>
+        <div className="variable-manager-dialog-actions"><button type="button" onClick={onCancel}>取消</button><button type="button" className="is-primary" onClick={submit}>创建版本</button></div>
+      </section>
+    </div>
+  );
+}
+
 export function VariableConfigManager({ config, onChange, onClose, onError }) {
   const fileRef = useRef(null);
   const [dialog, setDialog] = useState("");
   const [notice, setNotice] = useState("");
-
-  function createConfig() {
-    onChange(createVariableVersion(config));
-    setNotice("已新建空白变量配置，保存后生效。");
-  }
+  const current = syncActiveVersion(config);
 
   async function importFile(event) {
     const file = event.target.files?.[0];
@@ -52,19 +109,13 @@ export function VariableConfigManager({ config, onChange, onClose, onError }) {
         </section>
         <section className="variable-manager-card">
           <h3>变量配置版本</h3>
-          <div className="variable-manager-rows">
-            {config.versions.map((version) => (
-              <button key={version.id} type="button" className="variable-version-row" onClick={() => onChange(switchVariableVersion(config, version.id))}>
-                <span>{version.id === config.activeVersionId ? <CheckIcon size={15} /> : null}</span>
-                <strong>{version.name || "待命名"}</strong>
-              </button>
-            ))}
-            <button type="button" className="variable-manager-row is-accent" onClick={createConfig}><PlusIcon size={17} /><strong>新建变量配置</strong></button>
-          </div>
+          <select className="variable-manager-version-select" aria-label="变量配置版本" value={current.activeVersionId} onChange={(event) => onChange(switchVariableVersion(current, event.target.value))}>
+            {current.versions.map((version) => <option key={version.id} value={version.id}>{versionLabel(version)}</option>)}
+          </select>
         </section>
         <section className="variable-manager-card">
-          <h3>导入 · 导出</h3>
           <div className="variable-manager-rows">
+            <button type="button" className="variable-manager-row is-accent" onClick={() => setDialog("create")}><PlusIcon size={17} /><strong>新建版本</strong></button>
             <button type="button" className="variable-manager-row" onClick={() => fileRef.current?.click()}><ImportIcon size={17} /><strong>导入为新版本</strong></button>
             <button type="button" className="variable-manager-row" onClick={() => downloadText(`${(config.name || "变量配置").replace(/[\\/:*?\"<>|]/g, "-")}.json`, serializeVariableConfig(config))}><ExportIcon size={17} /><strong>导出当前版本</strong></button>
           </div>
@@ -76,6 +127,7 @@ export function VariableConfigManager({ config, onChange, onClose, onError }) {
         {notice ? <p className="variable-manager-notice" role="status">{notice}</p> : null}
         </div>
 
+      {dialog === "create" ? <CreateVersionDialog config={current} onCancel={() => setDialog("")} onCreate={(name, sourceVersionId) => { onChange(createVariableVersion(current, { name, sourceVersionId })); setDialog(""); setNotice(`已创建“${name}”，保存后生效`); }} /> : null}
       {dialog === "delete" ? (
         <div className="setting-library-dialog-overlay" role="presentation" onMouseDown={() => setDialog("")}>
           <section className="setting-library-dialog" role="alertdialog" aria-modal="true" aria-labelledby="variable-delete-version-title" onMouseDown={(event) => event.stopPropagation()}>

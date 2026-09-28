@@ -136,18 +136,19 @@ export function switchVariableVersion(config, versionId) {
   return activateVariableVersion(synced, target, synced.versions);
 }
 
-export function createVariableVersion(config, { name = "", copyCurrent = false } = {}) {
+export function createVariableVersion(config, { name = "", sourceVersionId = "" } = {}) {
   const synced = syncActiveVersion(config);
   const names = new Set(synced.versions.map((item) => item.name));
   const requestedName = name.trim();
   const versionName = requestedName ? uniqueVariableName(requestedName, names).slice(0, 60) : "";
   const createdAt = stamp();
-  const version = copyCurrent ? {
-    ...synced.versions.find((item) => item.id === synced.activeVersionId),
+  const source = synced.versions.find((item) => item.id === sourceVersionId);
+  const version = source ? {
+    ...source,
     id: createVariableId("variable-version"), name: versionName,
-    objects: synced.objects.filter((item) => item.id !== VARIABLE_INITIALIZATION_OBJECT_ID).map((item) => ({ ...item })),
-    variables: synced.variables.map((item) => ({ ...item })),
-    expandedObjectIds: [...synced.expandedObjectIds], createdAt, updatedAt: createdAt,
+    objects: source.objects.filter((item) => item.id !== VARIABLE_INITIALIZATION_OBJECT_ID).map((item) => ({ ...item })),
+    variables: source.variables.map((item) => ({ ...item })),
+    expandedObjectIds: [...source.expandedObjectIds], createdAt, updatedAt: createdAt,
   } : {
     id: createVariableId("variable-version"), name: versionName, initialStateJson: "{}", schemaCode: "",
     objects: [], variables: [], expandedObjectIds: [], createdAt, updatedAt: createdAt,

@@ -1,6 +1,8 @@
 import { ModelConfigPanel } from "../../../src/renderer/src/modules/models/index.js";
+import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
 
-export function ModelPage({ view }) {
+export function ModelPage() {
+  const view = useMainPageView();
   const { chat, modelConfigPanelRef, setModelConfigDirty, renderLayout } = view;
   return <ModelConfigPanel
     ref={modelConfigPanelRef}

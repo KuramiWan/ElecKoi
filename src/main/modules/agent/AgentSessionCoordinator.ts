@@ -85,6 +85,7 @@ export interface AgentSessionDependencies {
 }
 
 export class AgentSessionCoordinator {
+  private readonly editingConversations = new Set<string>()
   private readonly activeRuns = new Map<string, ActiveRun>()
   private readonly settlingRuns = new Map<string, Promise<void>>()
   private readonly preparingRuns = new Map<string, PreparingRun>()
@@ -218,6 +219,9 @@ export class AgentSessionCoordinator {
     const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
     this.dependencies.messages.reconcileUnboundActiveResponses(runtimeThreadId)
     const targetMessage = this.dependencies.messages.get(conversationId, targetMessageId)
+    if (replacementMessage !== undefined && targetMessage.role !== 'user') {
+      throw new Error('只能替换用户输入；编辑 AI 回复请使用消息编辑。')
+    }
     const sourceInput = targetMessage.role === 'user'
       ? targetMessage
       : this.dependencies.messages.get(conversationId, targetMessage.turnId ?? '')
@@ -307,6 +311,29 @@ export class AgentSessionCoordinator {
       prepared.inputFiles.map((reference) => ({ id: reference.attachmentId, path: '', name: reference.name, bytes: reference.bytes, reference })))
     void active.done
     return { accepted: true as const, conversationId, runId, messageId: assistantMessage.id }
+  }
+
+  async editMessage(conversationId: string, messageId: string, content: string) {
+    this.assertCanStart(conversationId)
+    const next = content.trim()
+    if (!next) throw new Error('消息内容不能为空。')
+    const message = this.dependencies.messages.get(conversationId, messageId)
+    if (message.id === 'opening') throw new Error('开场白请使用开场白编辑。')
+    if (message.status !== 'complete' || !message.runtimeSessionId || !message.dshMessageId
+      || !this.dependencies.runtime.editMessage) {
+      throw new Error('这条消息尚未写入 DSH 会话，不能安全编辑。')
+    }
+    if (message.content === next) return { ok: true as const }
+    this.editingConversations.add(conversationId)
+    try {
+      await this.dependencies.runtime.editMessage(
+        conversationId, message.runtimeSessionId, message.dshMessageId, message.role, next
+      )
+      this.emitMessagesChanged(conversationId, 'edited', [messageId])
+      return { ok: true as const }
+    } finally {
+      this.editingConversations.delete(conversationId)
+    }
   }
 
   async cancel(
@@ -530,6 +557,7 @@ export class AgentSessionCoordinator {
 
   private assertCanStart(conversationId: string): void {
     if (this.deletingConversations.has(conversationId)) throw new Error('这个对话正在删除。')
+    if (this.editingConversations.has(conversationId)) throw new Error('这个对话正在编辑消息。')
     if (this.activeRuns.has(conversationId) || this.preparingRuns.has(conversationId)) {
       throw new Error('这个对话仍有回复正在生成。')
     }
@@ -537,6 +565,72 @@ export class AgentSessionCoordinator {
 
   private discardPreparedImages(images: readonly ChatUserImageAttachment[]): void {
     this.dependencies.discardPreparedImages?.(images.map((image) => image.attachmentId))
+  }
+
+  async createSession(conversationId: string): Promise<void> {
+    if (!this.dependencies.runtime.createSession) throw new Error('DSH 会话创建服务未装载。')
+    const settings = this.dependencies.models.resolve(this.dependencies.userSettings.read('models.active'), '')
+    const subagentSelection = this.dependencies.agentPresets?.subagentModelSelection()
+    const subagentSettings = subagentSelection
+      ? this.dependencies.models.resolveExact(subagentSelection.configId, subagentSelection.model, '')
+      : undefined
+    const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
+    const { variableContext, conversationContext, disabledGroupIds } = this.runtimeContext(conversationId, '')
+    await this.dependencies.runtime.createSession({
+      conversationId, runtimeThreadId, settings, subagentSettings, variableContext, conversationContext,
+      toolPolicy: { disabledGroupIds },
+      webSearch: this.dependencies.webSearchSettings?.runtimeSettings(),
+      agentPreset: this.dependencies.agentPresets?.runtimeSelection()
+    })
+  }
+
+  private runtimeContext(conversationId: string, text: string) {
+    const metadata = this.dependencies.conversations.getMetadata(conversationId)
+    const characterBinding = this.dependencies.conversations.getCharacterBinding(conversationId)
+    const macroValues = characterCardMacroValues(metadata, this.dependencies.personas.get().user_name)
+    const variableContext = resolveVariableContextCharacterCardMacros(
+      this.dependencies.variableStates?.runtimeContext(conversationId, characterBinding),
+      macroValues
+    )
+    const regexRules = metadata.characterId && this.dependencies.regexRules
+      ? this.dependencies.regexRules.get(metadata.characterId)
+      : undefined
+    const disabledGroupIds = this.dependencies.agentPresets?.disabledToolGroupIds() ?? []
+    const rawSettingLibrary = mergeAgentPresetAndCharacterLibraries(
+      this.dependencies.agentPresets?.runtimeContext(),
+      this.dependencies.settingLibraries?.runtimeContext(conversationId, characterBinding)
+    )
+    const settingLibrarySource = resolveSettingLibraryCharacterCardMacros(rawSettingLibrary, macroValues)
+    const settingLibrary = settingLibrarySource && regexRules
+      ? {
+        ...settingLibrarySource,
+        entries: settingLibrarySource.entries.map((entry) => ({
+          ...entry,
+          content: transformCollectionSurface(entry.content, regexRules, 'SettingContent', 'Prompt')
+        }))
+      }
+      : settingLibrarySource
+    const history = this.dependencies.messages.runtimeHistory(conversationId).map((item) => {
+      const macroContent = macroValues ? resolveCharacterCardMacros(item.content, macroValues) : item.content
+      return {
+        ...item,
+        content: regexRules
+          ? transformCollectionSurface(macroContent, regexRules,
+            item.role === 'user' ? 'UserInput' : 'AiOutput', 'Prompt')
+          : macroContent
+      }
+    })
+    const macroPromptText = macroValues ? resolveCharacterCardMacros(text, macroValues) : text
+    const promptText = regexRules
+      ? transformCollectionSurface(macroPromptText, regexRules, 'UserInput', 'Prompt')
+      : macroPromptText
+    const conversationContext = {
+      characterId: metadata.characterId,
+      characterName: metadata.characterName,
+      persona: {}, history, currentPromptText: promptText,
+      ...(settingLibrary ? { settingLibrary } : {})
+    }
+    return { variableContext, conversationContext, disabledGroupIds, regexRules, rawSettingLibrary, settingLibrary }
   }
 
   private async execute(
@@ -547,62 +641,8 @@ export class AgentSessionCoordinator {
     inputFiles: AgentInputFile[] = []
   ): Promise<void> {
     this.emitState(active.conversationId, 'starting', '正在启动 DSH')
-    const metadata = this.dependencies.conversations.getMetadata(active.conversationId)
-    const characterBinding = this.dependencies.conversations.getCharacterBinding(active.conversationId)
-    const macroValues = characterCardMacroValues(metadata, this.dependencies.personas.get().user_name)
-    const variableContext = resolveVariableContextCharacterCardMacros(
-      this.dependencies.variableStates?.runtimeContext(active.conversationId, characterBinding),
-      macroValues
-    )
-    const regexRules = metadata.characterId && this.dependencies.regexRules
-      ? this.dependencies.regexRules.get(metadata.characterId)
-      : undefined
-    const disabledGroupIds = this.dependencies.agentPresets?.disabledToolGroupIds() ?? []
-    const rawSettingLibrary = mergeAgentPresetAndCharacterLibraries(
-      this.dependencies.agentPresets?.runtimeContext(),
-      this.dependencies.settingLibraries?.runtimeContext(active.conversationId, characterBinding)
-    )
-    const settingLibrarySource = resolveSettingLibraryCharacterCardMacros(
-      rawSettingLibrary,
-      macroValues
-    )
-    const settingLibrary = settingLibrarySource && regexRules
-      ? {
-        ...settingLibrarySource,
-        entries: settingLibrarySource.entries.map((entry) => ({
-          ...entry,
-          content: transformCollectionSurface(entry.content, regexRules, 'SettingContent', 'Prompt')
-        }))
-      }
-      : settingLibrarySource
-    const history = this.dependencies.messages.runtimeHistory(active.conversationId).map((item) => {
-      const macroContent = macroValues
-        ? resolveCharacterCardMacros(item.content, macroValues)
-        : item.content
-      return {
-        ...item,
-        content: regexRules
-        ? transformCollectionSurface(
-          macroContent,
-          regexRules,
-          item.role === 'user' ? 'UserInput' : 'AiOutput',
-          'Prompt'
-        )
-        : macroContent
-      }
-    })
-    const macroPromptText = macroValues ? resolveCharacterCardMacros(text, macroValues) : text
-    const promptText = regexRules
-      ? transformCollectionSurface(macroPromptText, regexRules, 'UserInput', 'Prompt')
-      : macroPromptText
-    const conversationContext = {
-      characterId: metadata.characterId,
-      characterName: metadata.characterName,
-      persona: {},
-      history,
-      currentPromptText: promptText,
-      ...(settingLibrary ? { settingLibrary } : {})
-    }
+    const { variableContext, conversationContext, disabledGroupIds, regexRules, rawSettingLibrary, settingLibrary } =
+      this.runtimeContext(active.conversationId, text)
     let finalContent = ''
     let finalVariableState = ''
     let finalSettingLibraryState = ''

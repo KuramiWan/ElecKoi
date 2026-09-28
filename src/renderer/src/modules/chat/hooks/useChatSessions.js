@@ -4,6 +4,7 @@ import {
   createChat as createChatSession,
   deleteChat,
   deleteChatMessagesFrom,
+  editChatMessage,
   getChat,
   listenAgentProcess,
   listenChatStreamDelta,
@@ -421,15 +422,17 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   }
 
   async function editOpening(message, replacementMessage) {
-    if (!sessionId || chatBusy || message?.id !== "opening") return;
+    if (!sessionId || chatBusy || message?.id !== "opening") return false;
     try {
       const result = await updateChatOpening(sessionId, replacementMessage);
       replaceChatMessages(result.chat, "auto");
       conversations?.invalidateDetails(sessionId);
       setChatCharacter(normalizeLatestChatCharacter(result.chat));
       await refreshSessionsOnly({ keepSection: true });
+      return true;
     } catch (error) {
       setStatus(getErrorMessage(error, "修改开场白失败"));
+      return false;
     }
   }
 
@@ -550,6 +553,21 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       return true;
     } catch (error) {
       setStatus(getErrorMessage(error, "删除消息失败"));
+      return false;
+    }
+  }
+
+  async function editMessage(message, replacementMessage) {
+    if (!sessionId || !message?.id || chatBusy) return false;
+    try {
+      const result = await editChatMessage(sessionId, message.id, replacementMessage);
+      replaceChatMessages(result.chat, "auto");
+      conversations?.invalidateDetails(sessionId);
+      setChatCharacter(normalizeLatestChatCharacter(result.chat));
+      await refreshSessionsOnly({ keepSection: true });
+      return true;
+    } catch (error) {
+      setStatus(getErrorMessage(error, "修改消息失败"));
       return false;
     }
   }
@@ -749,6 +767,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     sendMessage,
     stopSend,
     regenerateReply,
+    editMessage,
     deleteMessagesFrom,
     togglePinChat,
     hideChatEntry,

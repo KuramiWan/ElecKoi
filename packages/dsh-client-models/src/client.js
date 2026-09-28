@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-models',
   factory(require) {
     const React = require('react')
+    const ModelPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-model.js')
+      .then(module => ({ default: module.ModelPage })))
     class ModelCatalog {
       constructor(bridge) {
         this.bridge = bridge
@@ -79,9 +81,8 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const catalog = new ModelCatalog(window.eleckoi)
       ctx.provide('eleckoiModels', catalog)
-      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'model' },
-        ({ productMainPages, view }) => productMainPages?.model
-          ? React.createElement(productMainPages.model, { view }) : null))
+      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'model', registrant: '@eleckoi/dsh-client-models' },
+        () => React.createElement(ModelPage)))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
         name: 'sidebar.panellist', id: 'model', order: 30, label: '模型配置'
       }, () => null))

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatBackgroundModal, ChatWallpaperLayer, HistoryModal } from "../../modules/chat/index.js";
 import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { useChatClient } from "../hooks/useChatClient.js";
@@ -9,19 +9,31 @@ import { SidebarRail } from "./shell/components/SidebarRail.jsx";
 import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
 import { SidePanelShell } from "./shell/components/SidePanelShell.jsx";
 import { PluginCenterSurface, PluginListPanel } from "./shell/components/PluginCenter.jsx";
-import { productMainPages } from "./ProductMainPages.jsx";
 import { SidePanelResizeHandle } from "./shell/components/SidePanelResizeHandle.jsx";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { useSidePanelLayout } from "./shell/hooks/useSidePanelLayout.js";
 import { AppUpdateController, useAppUpdates } from "../../modules/updates/index.js";
 import { desktopClient } from "../../bridge/desktopClient.ts";
+import { MainPageContext } from "./MainPageContext.jsx";
 
-export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderRoleplay }) {
+class MainPageErrorBoundary extends Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    return this.state.error ? this.props.fallback(this.state.error) : this.props.children;
+  }
+}
+
+export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderRoleplay, sidebarFooterActions }) {
   const chat = useChatClient({ conversations, characters, models, persona, navigation });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const sidePanelLayout = useSidePanelLayout();
   const appUpdates = useAppUpdates();
-  const isPluginPanel = Boolean(navigation && !productMainPages[chat.activeSection] && chat.activeSection !== "plugins");
+  const isPluginPanel = Boolean(navigation && !navigation.productPanelIds?.includes(chat.activeSection) && chat.activeSection !== "plugins");
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState("chat");
@@ -114,7 +126,7 @@ export function MainWindow({ conversations, characters, models, persona, presets
           />
         </section>
 
-        <SidePanelShell collapsed={sidePanelLayout.sidePanelCollapsed || isPluginPanel} onCollapse={sidePanelLayout.collapseSidePanel}>
+        <SidePanelShell collapsed={sidePanelLayout.sidePanelCollapsed || isPluginPanel} onCollapse={sidePanelLayout.collapseSidePanel} footerActions={sidebarFooterActions}>
           {sidePanel}
         </SidePanelShell>
 
@@ -170,10 +182,12 @@ export function MainWindow({ conversations, characters, models, persona, presets
       mainPanel: navigation.renderPanel(chat.activeSection),
     });
   } else if (navigation) {
-    windowLayout = navigation.renderPanel(chat.activeSection, { productMainPages, view: pageView });
+    windowLayout = navigation.renderPanel(chat.activeSection);
   } else {
-    const Page = productMainPages[chat.activeSection] || productMainPages.messages;
-    windowLayout = <Page view={pageView} />;
+    windowLayout = renderWindowLayout({
+      sidePanel: null,
+      mainPanel: <div className="chat-empty-guide" role="alert">客户端插件未加载。</div>,
+    });
   }
   return (
     <main
@@ -183,7 +197,19 @@ export function MainWindow({ conversations, characters, models, persona, presets
       data-side-panel-dragging={sidePanelLayout.sidePanelDragging || undefined}
     >
       {showChatWallpaper ? <ChatWallpaperLayer wallpaper={chatWallpaper} /> : null}
-      {windowLayout}
+      <MainPageContext.Provider value={pageView}>
+        <MainPageErrorBoundary
+          key={chat.activeSection}
+          fallback={(error) => renderWindowLayout({
+            sidePanel: null,
+            mainPanel: <div className="chat-empty-guide" role="alert">页面加载失败：{error?.message || String(error)}</div>,
+          })}
+        >
+          <Suspense fallback={renderWindowLayout({ sidePanel: null, mainPanel: null })}>
+            {windowLayout}
+          </Suspense>
+        </MainPageErrorBoundary>
+      </MainPageContext.Provider>
       {!sidePanelLayout.sidePanelCollapsed && !isPluginPanel ? (
         <SidePanelResizeHandle
           onStart={sidePanelLayout.startSidePanelResize}

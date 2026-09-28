@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-characters',
   factory(require) {
     const React = require('react')
+    const CharacterPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-character.js')
+      .then(module => ({ default: module.CharacterPage })))
     class CharacterCatalog {
       constructor(bridge) {
         this.bridge = bridge
@@ -90,9 +92,8 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const catalog = new CharacterCatalog(window.eleckoi)
       ctx.provide('eleckoiCharacters', catalog)
-      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'character' },
-        ({ productMainPages, view }) => productMainPages?.character
-          ? React.createElement(productMainPages.character, { view }) : null))
+      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'character', registrant: '@eleckoi/dsh-client-characters' },
+        () => React.createElement(CharacterPage)))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
         name: 'sidebar.panellist', id: 'character', order: -30, label: '角色列表'
       }, () => null))

@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-conversations',
   factory(require) {
     const React = require('react')
+    const MessagesPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-messages.js')
+      .then(module => ({ default: module.MessagesPage })))
     class ConversationCatalog {
       constructor(bridge) {
         this.bridge = bridge
@@ -476,9 +478,8 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const catalog = new ConversationCatalog(window.eleckoi)
       ctx.provide('eleckoiConversations', catalog)
-      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'messages' },
-        ({ productMainPages, view }) => productMainPages?.messages
-          ? React.createElement(productMainPages.messages, { view }) : null))
+      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'messages', registrant: '@eleckoi/dsh-client-conversations' },
+        () => React.createElement(MessagesPage)))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
         name: 'sidebar.panellist', id: 'messages', order: -40, label: '消息'
       }, () => null))

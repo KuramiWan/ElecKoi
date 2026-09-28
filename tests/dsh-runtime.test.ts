@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { DshDesktopPluginHost, DshRuntime, type DshRuntimeOptions } from '@eleckoi/dsh-runtime'
+import { DshDesktopPluginHost, DshRuntime, readDshSessionLog, type DshRuntimeOptions } from '@eleckoi/dsh-runtime'
 import { describe, expect, it, vi } from 'vitest'
 
 function createHostedRuntime(options: DshRuntimeOptions): DshRuntime {
@@ -53,12 +53,12 @@ describe('packaged DSH runtime composition', () => {
       for await (const _chunk of request) {
         // Drain the request before returning the provider failure.
       }
-      response.writeHead(429, { 'content-type': 'application/json', 'retry-after': '59' })
+      response.writeHead(400, { 'content-type': 'application/json' })
       response.end(JSON.stringify({
         error: {
           message: 'RAW_PROVIDER_QUOTA_FAILURE',
-          code: 429,
-          status: 'Too Many Requests'
+          code: 400,
+          status: 'Bad Request'
         }
       }))
     })
@@ -79,7 +79,7 @@ describe('packaged DSH runtime composition', () => {
     try {
       // The desktop host can boot before the first model is configured.
       await (runtime as unknown as { sessionHost: DshDesktopPluginHost }).sessionHost.start()
-      await expect(runtime.stream('conversation-provider-error', '你好', {
+      const settings = {
         configId: 'provider-error',
         provider: 'deepseek',
         apiKey: 'test-key',
@@ -90,7 +90,16 @@ describe('packaged DSH runtime composition', () => {
         customHeaders: {},
         contextWindow: 128_000,
         supportsImageInput: false
-      }, {
+      } as const
+      await runtime.createSession({
+        conversationId: 'conversation-provider-error',
+        runtimeThreadId: 'conversation-provider-error',
+        settings
+      })
+      const blank = readDshSessionLog(join(root, 'runtime', 'sessions'), 'conversation-provider-error')
+      expect(blank?.header.id).toBe('conversation-provider-error')
+      expect(blank?.events.some(event => event.type === 'turn/start')).toBe(false)
+      await expect(runtime.stream('conversation-provider-error', '你好', settings, {
         onDelta: () => undefined,
         onFinal: () => undefined
       })).rejects.toThrow(/RAW_PROVIDER_QUOTA_FAILURE/)

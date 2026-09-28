@@ -4,7 +4,7 @@ import { CharacterEditorWindow } from "./CharacterEditorWindow.jsx";
 import { CharacterManagerWindow } from "./CharacterManagerWindow.jsx";
 import { PresetManagerWindow } from "./PresetManagerWindow.jsx";
 
-export default function App({ conversations, characters, characterConfiguration, models, persona, presets, settingsSections, navigation, renderSettingsSection, renderRoleplay } = {}) {
+export default function App({ conversations, characters, characterConfiguration, models, persona, presets, settingsSections, navigation, renderSettingsSection, renderRoleplay, sidebarFooterActions } = {}) {
   const params = new URLSearchParams(window.location.search);
   if (params.get("view") === "chat") {
     return <ChatWindow conversations={conversations} characters={characters} models={models} persona={persona} renderRoleplay={renderRoleplay} />;
@@ -19,5 +19,6 @@ export default function App({ conversations, characters, characterConfiguration,
     return <PresetManagerWindow presetCatalog={presets} />;
   }
   return <MainWindow conversations={conversations} characters={characters} models={models} persona={persona} presets={presets}
-    settingsSections={settingsSections} navigation={navigation} renderSettingsSection={renderSettingsSection} renderRoleplay={renderRoleplay} />;
+    settingsSections={settingsSections} navigation={navigation} renderSettingsSection={renderSettingsSection} renderRoleplay={renderRoleplay}
+    sidebarFooterActions={sidebarFooterActions} />;
 }

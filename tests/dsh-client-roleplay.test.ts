@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { resolve } from 'node:path'
 import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
+import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { describe, expect, it } from 'vitest'
 
 const source = readFileSync(new URL('../packages/dsh-client-roleplay/src/client.js', import.meta.url), 'utf8')
@@ -30,7 +31,7 @@ describe('ElecKoi roleplay client contribution', () => {
       sessions: {},
       slots: {
         inject: (name: string, register: () => () => void) => {
-          expect(name).toBe('eleckoi.roleplay')
+          if (name !== 'eleckoi.roleplay') return
           const dispose = register()
           dispose()
         },
@@ -78,7 +79,9 @@ describe('ElecKoi roleplay client contribution', () => {
       useEffect: () => {}
     }))
     plugin.apply({ sessions: {}, slots: {
-      inject: (_name: string, register: () => void) => register(),
+      inject: (name: string, register: () => void) => {
+        if (name === 'eleckoi.roleplay') register()
+      },
       register: (_options: unknown, view: unknown) => { component = view }
     } })
     const ChatView = () => null
@@ -104,7 +107,9 @@ describe('ElecKoi roleplay client contribution', () => {
     let selected: unknown
     const reference = { sessionId: 'dsh-session-2', ready: Promise.resolve(), release: () => { released += 1 } }
     runInNewContext(source, {
-      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } }
+      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
+      setTimeout,
+      clearTimeout
     })
     const plugin = registration.factory(() => ({
       createElement: (type: unknown, props: unknown) => ({ type, props }),
@@ -117,7 +122,9 @@ describe('ElecKoi roleplay client contribution', () => {
       retain: () => reference
     }
     plugin.apply({ sessions, slots: {
-      inject: (_name: string, register: () => void) => register(),
+      inject: (name: string, register: () => void) => {
+        if (name === 'eleckoi.roleplay') register()
+      },
       register: (_options: unknown, view: unknown) => { component = view }
     } })
     component({
@@ -129,5 +136,143 @@ describe('ElecKoi roleplay client contribution', () => {
     expect(selected).toBe(reference)
     cleanup?.()
     expect(released).toBe(1)
+  })
+
+  it('retries a failed initial Session binding without leaving the chat page', async () => {
+    let registration: any
+    let component: any
+    let cleanup: (() => void) | undefined
+    let selected: any
+    let retained = 0
+    let released = 0
+    const timers = new Map<number, () => void>()
+    let nextTimerId = 0
+    runInNewContext(source, {
+      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
+      setTimeout: (callback: () => void) => { const id = ++nextTimerId; timers.set(id, callback); return id },
+      clearTimeout: (id: number) => { timers.delete(id) }
+    })
+    const plugin = registration.factory(() => ({
+      createElement: (type: unknown, props: unknown) => ({ type, props }),
+      useState: () => [null, (value: unknown) => { selected = value }],
+      useEffect: (effect: () => () => void) => { cleanup = effect() }
+    }))
+    const readyReference = { sessionId: 'session-retry', ready: Promise.resolve(), release: () => { released += 1 } }
+    const sessions = {
+      list: { getSnapshot: () => ({ byId: { 'session-retry': {} } }) },
+      retain: () => {
+        retained += 1
+        return retained === 1
+          ? { sessionId: 'session-retry', ready: Promise.reject(new Error('not ready')), release: () => { released += 1 } }
+          : readyReference
+      }
+    }
+    plugin.apply({ sessions, slots: {
+      inject: (name: string, register: () => void) => {
+        if (name === 'eleckoi.roleplay') register()
+      },
+      register: (_options: unknown, view: unknown) => { component = view }
+    } })
+    component({
+      matched: { component: () => null, props: { runtimeSessionId: 'session-retry' } },
+      sessions
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(retained).toBe(1)
+    expect(selected).toBeNull()
+    expect(timers.size).toBe(1)
+    const retryEntry = [...timers.entries()][0]
+    if (!retryEntry) throw new Error('Expected a Session retry timer')
+    timers.delete(retryEntry[0])
+    retryEntry[1]()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(retained).toBe(2)
+    expect(selected).toBe(readyReference)
+    cleanup?.()
+    expect(released).toBe(2)
+  })
+
+  it('projects live DSH composer contributions into the retained roleplay seats', async () => {
+    let registration: any
+    runInNewContext(source, {
+      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } }
+    })
+    const plugin = registration.factory(() => ({
+      createElement: (type: unknown, props: unknown) => ({ type, props }),
+      useState: () => [null, () => {}], useEffect: () => {}
+    }))
+    const slots: any = new SlotCore()
+    const injectors: Array<() => void> = []
+    const clientSlots = Object.assign(slots, {
+      inject(name: string, register: () => () => void) {
+        let release: (() => void) | undefined
+        const sync = () => {
+          release?.()
+          release = slots.spec(name) ? register() : undefined
+        }
+        const unsubscribe = slots.subscribeDeclaration(name, sync)
+        sync()
+        injectors.push(() => { unsubscribe(); release?.() })
+      }
+    })
+    const releaseRoot = slots.register({
+      name: 'root',
+      children: {
+        'eleckoi.roleplay': { kind: 'chain', scope: 'root' },
+        'conversation.input.left': { kind: 'list', scope: 'session' },
+        'conversation.input.right': { kind: 'list', scope: 'session' },
+        'conversation.input.overlay': { kind: 'list', scope: 'session' },
+        'conversation.composer.dock': { kind: 'list', scope: 'session' }
+      }
+    }, () => null)
+    plugin.apply({ sessions: {}, slots: clientSlots })
+
+    const extensionButton = () => null
+    const extensionDock = () => null
+    const store = () => null
+    const inject = () => ({ value: 1 })
+    const releaseButton = slots.register({
+      name: 'conversation.input.right', id: 'sample-button', order: 12,
+      inject, store, locale: 'sample', registrant: 'sample-extension'
+    }, extensionButton)
+    const releaseDock = slots.register({
+      name: 'conversation.composer.dock', id: 'sample-dock', order: 4,
+      registrant: 'sample-extension'
+    }, extensionDock)
+    const releaseLeft = slots.register({ name: 'conversation.input.left', id: 'left-button' }, extensionButton)
+    const releaseOverlay = slots.register({ name: 'conversation.input.overlay', id: 'overlay' }, extensionButton)
+    await Promise.resolve()
+
+    const button = slots.entriesOfSlot('eleckoi.roleplay.conversation.input.right')[0]
+    const dock = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')[0]
+    expect(button?.component({ marker: 'button' })).toEqual({ type: extensionButton, props: { marker: 'button' } })
+    expect(button?.options).toMatchObject({ id: 'dsh:conversation.input.right:sample-button', order: 12 })
+    expect(button?.inject).toBe(inject)
+    expect(button?.store).toBe(store)
+    expect(button?.locale).toBe('sample')
+    const upstreamProjection = (key: string) => `old:${key}`
+    const stats = { turns: 1, steps: 3, tokenUsage: { outputTokens: 42 } }
+    const dockRender = dock?.component({ generationStats: stats, useProjection: upstreamProjection })
+    expect(dockRender.type).toBe(extensionDock)
+    expect(dockRender.props.useProjection('sessionStats')).toEqual(stats)
+    expect(dockRender.props.useProjection('tokenUsage')).toEqual(stats.tokenUsage)
+    expect(dockRender.props.useProjection('other')).toBe('old:other')
+    expect(dock?.component({ generationStats: null, useProjection: upstreamProjection }).props.useProjection('sessionStats'))
+      .toEqual({ turns: 0, steps: 0 })
+    expect(slots.spec('eleckoi.roleplay.conversation.input.right')).toEqual({ kind: 'list', scope: 'session' })
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.left')).toHaveLength(1)
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.overlay')).toHaveLength(1)
+
+    releaseButton()
+    releaseDock()
+    releaseLeft()
+    releaseOverlay()
+    await Promise.resolve()
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.right')).toHaveLength(0)
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')).toHaveLength(0)
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.left')).toHaveLength(0)
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.overlay')).toHaveLength(0)
+    for (const dispose of injectors.reverse()) dispose()
+    releaseRoot()
   })
 })

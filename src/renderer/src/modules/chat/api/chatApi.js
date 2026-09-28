@@ -129,6 +129,13 @@ export async function deleteChatMessagesFrom(sessionId, messageId) {
   return { ...result, chat: current.chat };
 }
 
+export async function editChatMessage(sessionId, messageId, content) {
+  await desktopClient.request("command.conversations.messages.edit", {
+    conversationId: sessionId, messageId, content,
+  });
+  return getChat(sessionId);
+}
+
 export async function selectChatOpening(sessionId, openingId) {
   const details = await desktopClient.request("command.conversations.opening.select", {
     conversationId: sessionId,

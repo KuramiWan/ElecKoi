@@ -33,6 +33,10 @@
   z-index: 3;
 }
 
+.side-panel-shell.has-footer-actions {
+  grid-template-rows: 40px minmax(0, 1fr) auto;
+}
+
 .side-panel-header {
   position: relative;
   display: flex;
@@ -112,6 +116,27 @@
   grid-column: 3;
   background: var(--list);
   z-index: 1;
+}
+
+.side-panel-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 4px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--list);
+  scrollbar-width: thin;
+}
+
+.side-panel-footer-actions > * {
+  flex: none;
+}
+
+.eleckoi-plugin-overlay-seat > * {
+  pointer-events: auto;
 }
 
 .main-panel-content {

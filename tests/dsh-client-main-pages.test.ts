@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
+import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { describe, expect, it } from 'vitest'
 
 const pages = [
@@ -14,11 +15,13 @@ describe('ElecKoi DSH main pages', () => {
     const source = readFileSync(new URL(`../packages/dsh-client-${feature}/src/client.js`, import.meta.url), 'utf8')
     let registration: any
     const entries: Array<{ options: any; component: any }> = []
+    const disposers: Array<() => void> = []
     const slots = {
-      inject: (_name: string, register: () => void) => register(),
+      inject: (_name: string, register: () => () => void) => { disposers.push(register()) },
       register: (options: any, component: any) => {
-        entries.push({ options, component })
-        return () => {}
+        const entry = { options, component }
+        entries.push(entry)
+        return () => { entries.splice(entries.indexOf(entry), 1) }
       },
     }
     runInNewContext(source, {
@@ -28,7 +31,11 @@ describe('ElecKoi DSH main pages', () => {
       },
     })
     const plugin = registration.factory((name: string) => {
-      if (name === 'react') return { createElement: (component: any, props: any) => ({ component, props }) }
+      if (name === 'react') return {
+        Suspense: 'Suspense',
+        lazy: (load: any) => ({ load }),
+        createElement: (component: any, props: any, ...children: any[]) => ({ component, props, children })
+      }
       throw new Error(`Unexpected client module ${name}`)
     })
     plugin.apply({
@@ -41,10 +48,22 @@ describe('ElecKoi DSH main pages', () => {
     const navigation = entries.find(entry => entry.options.name === 'sidebar.panellist' && entry.options.id === id)
     expect(page).toBeDefined()
     expect(navigation).toBeDefined()
-    const Page = () => null
-    const view = { marker: id }
-    const rendered = page!.component({ productMainPages: { [id]: Page }, view })
-    expect(rendered.component).toBe(Page)
-    expect(rendered.props.view).toBe(view)
+    const rendered = page!.component({})
+    expect(page!.options.registrant).toBe(`@eleckoi/dsh-client-${feature}`)
+    expect(rendered.component.load).toBeTypeOf('function')
+    expect(rendered.props).toBeUndefined()
+    for (const dispose of disposers.reverse()) dispose()
+    expect(entries).toEqual([])
+  })
+
+  it('keeps the product marker in the upstream slot registry', () => {
+    const slots: any = new SlotCore()
+    const stopRoot = slots.register({
+      name: 'root', children: { main: { kind: 'keyed', scope: 'root' } }
+    }, () => null)
+    const stopPage = slots.register({ name: 'main', key: 'messages', registrant: '@eleckoi/dsh-client-conversations' }, () => null)
+    expect(slots.entriesOfSlot('main')[0]?.registrant).toBe('@eleckoi/dsh-client-conversations')
+    stopPage()
+    stopRoot()
   })
 })

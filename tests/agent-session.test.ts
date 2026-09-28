@@ -750,7 +750,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
 
     const accepted = await (replacement === undefined
       ? harness.coordinator.regenerate(harness.conversationId, assistant.id)
-      : harness.coordinator.regenerate(harness.conversationId, assistant.id, replacement))
+      : harness.coordinator.regenerate(harness.conversationId, user.id, replacement))
 
     expect(harness.events).toContainEqual({
       name: 'messages.changed',

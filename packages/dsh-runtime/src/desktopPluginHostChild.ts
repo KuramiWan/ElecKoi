@@ -120,7 +120,10 @@ async function main(): Promise<void> {
     }
   }).eleckoiPresetRegistrar
   const sessionEditor = (ctx as typeof ctx & {
-    eleckoiSessionEditor?: { rewind(sessionId: string, fromTurn: number): Promise<number | undefined> }
+    eleckoiSessionEditor?: {
+      rewind(sessionId: string, fromTurn: number): Promise<number | undefined>
+      editMessage(sessionId: string, messageId: string, role: 'user' | 'assistant', content: string): Promise<void>
+    }
   }).eleckoiSessionEditor
   const runSession = async (request: HostRunRequest): Promise<void> => {
     const sessionId = request.sessionId as SessionId
@@ -190,6 +193,18 @@ async function main(): Promise<void> {
       void stop()
     } else if (message.type === 'run') {
       void runSession(message)
+    } else if (message.type === 'create') {
+      void (async () => {
+        if (presetRegistrar === undefined) throw new Error('ElecKoi Agent 预设注册器未装载。')
+        const agentPreset = await presetRegistrar.registerForSession(message.sessionId)
+        await ctx.sessionController.create({ sessionId: message.sessionId as SessionId, cwd: message.cwd, agentPreset })
+        const session = ctx.sessions.get(message.sessionId as SessionId)
+        if (session === undefined) throw new Error('DSH 新建会话未进入会话仓库。')
+        await ctx.sessions.flush(session)
+        await send({ type: 'create-complete', id: message.id })
+      })().catch(error => {
+        void send({ type: 'create-complete', id: message.id, message: String(error) })
+      })
     } else if (message.type === 'cancel') {
       try {
         ctx.sessionController.cancel({ sessionId: message.sessionId as SessionId })
@@ -212,6 +227,15 @@ async function main(): Promise<void> {
         await send({ type: 'rewind-complete', id: message.id, ...(cut === undefined ? { unavailable: true } : { cut }) })
       })().catch(error => {
         void send({ type: 'rewind-complete', id: message.id, message: String(error) })
+      })
+    } else if (message.type === 'edit-message') {
+      void (async () => {
+        if (sessionEditor === undefined) throw new Error('ElecKoi 会话编辑插件未装载。')
+        if (activeRuns.size > 0) throw new Error('回复仍在生成，不能编辑消息。')
+        await sessionEditor.editMessage(message.sessionId, message.messageId, message.role, message.content)
+        await send({ type: 'edit-message-complete', id: message.id })
+      })().catch(error => {
+        void send({ type: 'edit-message-complete', id: message.id, message: String(error) })
       })
     } else if (message.type === 'reconfigure') {
       void reconfigure(message).then(() => send({ type: 'reconfigure-complete', id: message.id })).catch(error => {

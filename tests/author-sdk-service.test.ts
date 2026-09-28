@@ -64,6 +64,7 @@ function service() {
       getMetadata: (id: string) => conversationRows.find((item) => item.conversation.id === id)!.metadata,
       list: () => conversationRows,
       create: createConversation,
+      createWithSession: async (input: Parameters<typeof createConversation>[0]) => createConversation(input),
       delete: deleteConversation,
       selectOpening
     } as never,

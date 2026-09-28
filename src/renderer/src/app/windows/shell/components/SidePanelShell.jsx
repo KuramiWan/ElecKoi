@@ -1,13 +1,14 @@
+import React from "react";
 import { DshPanelLeftIcon } from "../../../../ui/icons/dshComposerIcons.jsx";
 
 function stopDrag(event) {
   event.stopPropagation();
 }
 
-export function SidePanelShell({ collapsed = false, onCollapse, children }) {
+export function SidePanelShell({ collapsed = false, onCollapse, footerActions, children }) {
   return (
     <section
-      className={`side-panel-shell${collapsed ? " collapsed" : ""}`}
+      className={`side-panel-shell${collapsed ? " collapsed" : ""}${footerActions ? " has-footer-actions" : ""}`}
       aria-label="侧边栏"
       aria-hidden={collapsed || undefined}
       inert={collapsed ? "" : undefined}
@@ -28,6 +29,7 @@ export function SidePanelShell({ collapsed = false, onCollapse, children }) {
         </button>
       </header>
       <div className="side-panel-content">{children}</div>
+      {footerActions ? <div className="side-panel-footer-actions" aria-label="侧边栏插件操作">{footerActions}</div> : null}
     </section>
   );
 }

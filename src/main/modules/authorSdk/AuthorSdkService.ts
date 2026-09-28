@@ -461,11 +461,10 @@ export class AuthorSdkService {
       case 'chat.create': {
         if (!metadata.characterId) throw new AuthorApiError('INVALID_CONTEXT', '当前聊天没有绑定角色')
         const title = typeof params.title === 'string' ? params.title.trim() : ''
-        const created = this.dependencies.conversations.create({
+        return this.dependencies.conversations.createWithSession({
           title: title || metadata.characterName || '新对话',
           metadata
-        })
-        return { chat: publicChat(created) }
+        }).then(created => ({ chat: publicChat(created) }))
       }
       case 'chat.open': {
         const sessionId = typeof params.sessionId === 'string' ? params.sessionId.trim() : ''
@@ -486,13 +485,13 @@ export class AuthorSdkService {
         if (!metadata.characterId || targetMetadata.characterId !== metadata.characterId) {
           throw new AuthorApiError('OUT_OF_SCOPE', '角色对话界面只能删除当前角色的聊天')
         }
-        return this.dependencies.conversations.delete(sessionId).then(() => {
+        return this.dependencies.conversations.delete(sessionId).then(async () => {
           const remaining = this.dependencies.conversations.list()
             .filter((item) => item.metadata.characterId === metadata.characterId)
           const next = sessionId !== conversationId
             ? remaining.find((item) => item.conversation.id === conversationId) ?? remaining[0]
             : remaining[0]
-          const active = next ?? this.dependencies.conversations.create({
+          const active = next ?? await this.dependencies.conversations.createWithSession({
             title: metadata.characterName || '新对话',
             metadata
           })

@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { initProfile, loadOverlayPatches, PROFILE_PATCH_FILENAME, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { isMap, isSeq, parseDocument } from 'yaml'
 import type { HarnessNotification } from '@deepseek-ai/dsh-sdk-client'
-import type { ChildHostMessage, HostPromptPart, ParentHostMessage } from './hostSessionProtocol'
+import type { ChildHostMessage, HostPromptPart, HostRunRequest, ParentHostMessage } from './hostSessionProtocol'
 
 const require = createRequire(import.meta.url)
 const runtimeRequire = createRequire(require.resolve('@eleckoi/dsh-runtime'))
@@ -70,11 +70,15 @@ function isChildMessage(value: unknown): value is ChildHostMessage {
   if (message.type === 'run-notification') return typeof message.id === 'string' && typeof message.method === 'string'
   if (message.type === 'run-complete') return typeof message.id === 'string' && typeof message.finalResponse === 'string'
   if (message.type === 'run-failed') return typeof message.id === 'string' && typeof message.message === 'string'
+  if (message.type === 'create-complete') return typeof message.id === 'string'
+    && (message.message === undefined || typeof message.message === 'string')
   if (message.type === 'cancel-complete') return typeof message.id === 'string' && typeof message.cancelled === 'boolean'
   if (message.type === 'dispose-complete') return typeof message.id === 'string' && typeof message.disposed === 'boolean'
   if (message.type === 'rewind-complete') return typeof message.id === 'string'
     && (message.cut === undefined || Number.isSafeInteger(message.cut))
     && (message.unavailable === undefined || message.unavailable === true)
+    && (message.message === undefined || typeof message.message === 'string')
+  if (message.type === 'edit-message-complete') return typeof message.id === 'string'
     && (message.message === undefined || typeof message.message === 'string')
   if (message.type === 'reconfigure-complete') return typeof message.id === 'string'
     && (message.message === undefined || typeof message.message === 'string')
@@ -97,6 +101,7 @@ export class DshDesktopPluginHost {
   private readonly runs = new Map<string, ActiveHostRun>()
   private readonly controls = new Map<string, { resolve: (value: boolean) => void; reject: (error: Error) => void }>()
   private readonly rewinds = new Map<string, { resolve: (cut: number | undefined) => void; reject: (error: Error) => void }>()
+  private readonly messageEdits = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
   private readonly reconfigurations = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
 
   constructor(private readonly options: DshDesktopPluginHostOptions) {}
@@ -246,12 +251,13 @@ export class DshDesktopPluginHost {
             else run.reject(new Error(value.message))
           }
         }
-        if (value.type === 'cancel-complete' || value.type === 'dispose-complete') {
+        if (value.type === 'cancel-complete' || value.type === 'dispose-complete' || value.type === 'create-complete') {
           const pending = this.controls.get(value.id)
           if (pending !== undefined) {
             this.controls.delete(value.id)
             if (value.message) pending.reject(new Error(value.message))
-            else pending.resolve(value.type === 'cancel-complete' ? value.cancelled : value.disposed)
+            else pending.resolve(value.type === 'cancel-complete' ? value.cancelled
+              : value.type === 'dispose-complete' ? value.disposed : true)
           }
         }
         if (value.type === 'rewind-complete') {
@@ -260,6 +266,14 @@ export class DshDesktopPluginHost {
             this.rewinds.delete(value.id)
             if (value.message) pending.reject(new Error(value.message))
             else pending.resolve(value.unavailable ? undefined : value.cut)
+          }
+        }
+        if (value.type === 'edit-message-complete') {
+          const pending = this.messageEdits.get(value.id)
+          if (pending !== undefined) {
+            this.messageEdits.delete(value.id)
+            if (value.message) pending.reject(new Error(value.message))
+            else pending.resolve()
           }
         }
         if (value.type === 'reconfigure-complete') {
@@ -285,6 +299,8 @@ export class DshDesktopPluginHost {
         this.controls.clear()
         for (const pending of this.rewinds.values()) pending.reject(error)
         this.rewinds.clear()
+        for (const pending of this.messageEdits.values()) pending.reject(error)
+        this.messageEdits.clear()
         for (const pending of this.reconfigurations.values()) pending.reject(error)
         this.reconfigurations.clear()
         if (this.child === child) {
@@ -316,6 +332,22 @@ export class DshDesktopPluginHost {
       child.send(message, error => {
         if (error === null) return
         this.reconfigurations.delete(id)
+        reject(error)
+      })
+    })
+  }
+
+  async createSession(sessionId: string, cwd: string): Promise<void> {
+    await (this.readyTask ?? this.start())
+    const child = this.child
+    if (child === undefined || !child.connected) throw new Error('DSH 会话宿主未连接。')
+    const id = randomUUID()
+    await new Promise<void>((resolve, reject) => {
+      this.controls.set(id, { resolve: () => resolve(), reject })
+      const message: ParentHostMessage = { type: 'create', id, sessionId, cwd }
+      child.send(message, error => {
+        if (error === null) return
+        this.controls.delete(id)
         reject(error)
       })
     })
@@ -385,6 +417,22 @@ export class DshDesktopPluginHost {
       child.send(message, error => {
         if (error === null) return
         this.rewinds.delete(id)
+        reject(error)
+      })
+    })
+  }
+
+  async editMessage(sessionId: string, messageId: string, role: 'user' | 'assistant', content: string): Promise<void> {
+    await (this.readyTask ?? this.start())
+    const child = this.child
+    if (child === undefined || !child.connected) throw new Error('DSH 会话宿主未连接。')
+    const id = randomUUID()
+    return new Promise((resolve, reject) => {
+      this.messageEdits.set(id, { resolve, reject })
+      const message: ParentHostMessage = { type: 'edit-message', id, sessionId, messageId, role, content }
+      child.send(message, error => {
+        if (error === null) return
+        this.messageEdits.delete(id)
         reject(error)
       })
     })

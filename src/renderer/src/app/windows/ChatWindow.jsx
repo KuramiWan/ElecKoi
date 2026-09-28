@@ -77,10 +77,7 @@ export function ChatWindow({ conversations, characters, models, persona, renderR
           }}
           onRegenerate={chat.regenerateReply}
           onDeleteMessages={chat.deleteMessagesFrom}
-          onEditMessage={(message, replacementMessage) => chat.regenerateReply({
-            targetMessageId: message.turnId || message.id,
-            replacementMessage,
-          })}
+          onEditMessage={chat.editMessage}
           onEditOpening={chat.editOpening}
           onSelectOpening={chat.selectOpening}
           onGoCharacterSettings={() => {}}

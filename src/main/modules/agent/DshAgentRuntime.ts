@@ -76,6 +76,20 @@ export class DshAgentRuntime implements AgentRuntimePort {
     return importDshSessions(this.sessionLogRoot, this.workspaceRoot, archives, ids)
   }
 
+  createSession(input: Omit<AgentRunInput, 'runId' | 'text'>): Promise<void> {
+    return this.runtime.createSession({
+      conversationId: input.conversationId,
+      runtimeThreadId: input.runtimeThreadId ?? input.conversationId,
+      settings: input.settings,
+      subagentSettings: input.subagentSettings,
+      variableContext: input.variableContext,
+      conversationContext: input.conversationContext,
+      toolPolicy: input.toolPolicy,
+      agentPreset: input.agentPreset,
+      webSearch: input.webSearch
+    })
+  }
+
   run(input: AgentRunInput, callbacks: AgentRunCallbacks): Promise<AgentRunResult> {
     return this.runtime.stream(
       input.conversationId,
@@ -150,6 +164,10 @@ export class DshAgentRuntime implements AgentRuntimePort {
 
   rewindConversation(conversationId: string, runtimeThreadId: string, fromTurn: number): Promise<'rewound' | 'unavailable'> {
     return this.runtime.rewindConversation(conversationId, runtimeThreadId, fromTurn)
+  }
+
+  editMessage(conversationId: string, runtimeThreadId: string, messageId: string, role: 'user' | 'assistant', content: string): Promise<void> {
+    return this.runtime.editMessage(conversationId, runtimeThreadId, messageId, role, content)
   }
 
   confirmRewind(conversationId: string): void {

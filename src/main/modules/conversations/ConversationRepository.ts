@@ -42,6 +42,7 @@ export class ConversationRepository {
   private readonly deleteParticipants = new Set<ConversationDeleteParticipant>()
   private readonly pendingDeletes = new Map<string, Promise<void>>()
   private previewReader: ((conversationId: string) => string | undefined) | undefined
+  private sessionCreator: ((conversationId: string) => Promise<void>) | undefined
 
   constructor(
     private readonly store: SqliteDatabase,
@@ -58,6 +59,28 @@ export class ConversationRepository {
     if (this.previewReader) throw new Error('会话预览读取器已注册。')
     this.previewReader = reader
     return () => { if (this.previewReader === reader) this.previewReader = undefined }
+  }
+
+  attachSessionCreator(create: (conversationId: string) => Promise<void>): () => void {
+    if (this.sessionCreator) throw new Error('DSH 会话创建器已注册。')
+    this.sessionCreator = create
+    return () => { if (this.sessionCreator === create) this.sessionCreator = undefined }
+  }
+
+  async createWithSession(input: Parameters<ConversationRepository['create']>[0]): Promise<ReturnType<ConversationRepository['create']>> {
+    const created = this.create(input)
+    try {
+      await this.initializeCreatedSession(created.conversation.id)
+      return created
+    } catch (error) {
+      await this.delete(created.conversation.id)
+      throw error
+    }
+  }
+
+  private async initializeCreatedSession(conversationId: string): Promise<void> {
+    if (!this.sessionCreator) throw new Error('DSH 会话创建器未装载。')
+    await this.sessionCreator(conversationId)
   }
 
   registerDeleteCleanup(cleanup: ConversationDeleteCleanup): () => void {

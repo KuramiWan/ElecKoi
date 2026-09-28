@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
+import type { AgentGenerationStats } from '../../../src/shared/contracts/agent/generationStats'
 
 export interface RoleplayMessageOwner {
   conversationId: string
@@ -55,6 +56,26 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       kind: 'list'
       scope: 'session'
       owner: { conversationId: string }
+    }
+    'eleckoi.roleplay.conversation.input.right': {
+      kind: 'list'
+      scope: 'session'
+      owner: Record<string, never>
+    }
+    'eleckoi.roleplay.conversation.input.left': {
+      kind: 'list'
+      scope: 'session'
+      owner: Record<string, never>
+    }
+    'eleckoi.roleplay.conversation.input.overlay': {
+      kind: 'list'
+      scope: 'session'
+      owner: Record<string, never>
+    }
+    'eleckoi.roleplay.conversation.composer.dock': {
+      kind: 'list'
+      scope: 'session'
+      owner: { generationStats: AgentGenerationStats | null }
     }
   }
 }
