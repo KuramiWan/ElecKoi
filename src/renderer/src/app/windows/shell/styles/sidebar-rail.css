@@ -10,18 +10,25 @@
   background: var(--rail);
 }
 
-.rail-brand-logo {
+.rail-brand-seat {
   position: absolute;
   top: -35px;
   left: 50%;
-  display: block;
+  display: grid;
+  place-items: center;
   width: 30px;
   height: 30px;
-  object-fit: contain;
-  image-rendering: pixelated;
   pointer-events: none;
   user-select: none;
   transform: translateX(-50%);
+}
+
+.rail-brand-seat img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 
 .rail-nav-group {

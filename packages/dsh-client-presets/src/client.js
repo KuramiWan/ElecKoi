@@ -160,9 +160,11 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiPresets', catalog)
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'presets', registrant: '@eleckoi/dsh-client-presets' },
         () => React.createElement(PresetsPage)))
+      const NavigationIcon = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-presets.js')
+        .then(module => ({ default: module.NavigationIcon })))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-        name: 'sidebar.panellist', id: 'presets', order: -20, label: '预设'
-      }, () => null))
+        name: 'sidebar.panellist', id: 'presets', order: -20, label: '预设', registrant: '@eleckoi/dsh-client-presets'
+      }, () => React.createElement(NavigationIcon)))
       ctx.effect(() => {
         catalog.start()
         const stopReset = ctx.on('connection/reset', () => {

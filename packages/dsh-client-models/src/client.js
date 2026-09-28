@@ -83,9 +83,11 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiModels', catalog)
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'model', registrant: '@eleckoi/dsh-client-models' },
         () => React.createElement(ModelPage)))
+      const NavigationIcon = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-model.js')
+        .then(module => ({ default: module.NavigationIcon })))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-        name: 'sidebar.panellist', id: 'model', order: 30, label: '模型配置'
-      }, () => null))
+        name: 'sidebar.panellist', id: 'model', order: 30, label: '模型配置', registrant: '@eleckoi/dsh-client-models'
+      }, () => React.createElement(NavigationIcon)))
       ctx.effect(() => {
         catalog.start()
         const stopReset = ctx.on('connection/reset', () => { void catalog.refresh().catch(() => {}) })

@@ -1,16 +1,9 @@
-import { CommunityNavIcon, MessageNavIcon, ModelNavIcon, PersonNavIcon, PluginNavIcon, PresetNavIcon, SettingsIcon } from "../../../../ui/icons/index.jsx";
+import { Suspense } from "react";
+import { PluginNavIcon, SettingsIcon } from "../../../../ui/icons/index.jsx";
 import { Avatar } from "../../../../ui/ui/Avatar.jsx";
 import logoIcon from "../../../../assets/eleckoi-app-icon.png";
 
-const PRODUCT_ICONS = {
-  messages: MessageNavIcon,
-  character: PersonNavIcon,
-  presets: PresetNavIcon,
-  model: ModelNavIcon,
-  community: CommunityNavIcon,
-};
-
-function RailIconButton({ label, active, onClick, icon: Icon, productIcon }) {
+function RailIconButton({ label, active, onClick, icon, productIcon }) {
   function handleClick() {
     Promise.resolve(onClick?.()).catch((error) => {
       console.error(`Rail action failed: ${label}`, error);
@@ -27,10 +20,10 @@ function RailIconButton({ label, active, onClick, icon: Icon, productIcon }) {
       onClick={handleClick}
     >
       <span className="rail-icon-layer base">
-        <Icon />
+        <Suspense fallback={<PluginNavIcon />}>{icon}</Suspense>
       </span>
       <span className="rail-icon-layer active-fill" aria-hidden="true">
-        <Icon />
+        <Suspense fallback={<PluginNavIcon />}>{icon}</Suspense>
       </span>
     </button>
   );
@@ -70,26 +63,32 @@ function RailSettingsButton({ active, onOpenSettings }) {
   );
 }
 
-export function SidebarRail({ activeSection, navigationItems = [], profileActive, onSectionChange, onNavigationAction, persona, onOpenProfile, onOpenSettings }) {
-  const renderItem = ({ id, label, action }) => (
+export function SidebarRail({ activeSection, navigationItems = [], renderSidebarSlot, profileActive, onSectionChange, onNavigationAction, persona, onOpenProfile, onOpenSettings }) {
+  const renderItem = ({ id, label, action, productIcon }) => (
     <RailIconButton
       key={id}
       label={label}
       active={!action && activeSection === id}
       onClick={() => action ? onNavigationAction?.(id) : onSectionChange(id)}
-      icon={PRODUCT_ICONS[id] || PluginNavIcon}
-      productIcon={Boolean(PRODUCT_ICONS[id])}
+      icon={renderSidebarSlot?.("sidebar.panellist", { size: 24, active: !action && activeSection === id }, { only: id }) || <PluginNavIcon />}
+      productIcon={productIcon}
     />
   );
   return (
     <aside className="qq-rail" aria-label="侧边功能栏">
-      <img className="rail-brand-logo" src={logoIcon} alt="" aria-hidden="true" draggable="false" />
+      <span className="rail-brand-seat" aria-hidden="true">
+        {renderSidebarSlot?.("sidebar.brand.mark", { size: 30, content: <img src={logoIcon} alt="" draggable="false" /> }) || <img src={logoIcon} alt="" draggable="false" />}
+        {renderSidebarSlot?.("sidebar.toggle.badge", {})}
+      </span>
       <div className="rail-nav-group">
         {navigationItems.map(renderItem)}
       </div>
       <div className="rail-bottom-zone">
         <RailProfileButton persona={persona} active={profileActive} onOpenProfile={onOpenProfile} />
-        <RailSettingsButton active={activeSection === "settings" && !profileActive} onOpenSettings={onOpenSettings} />
+        {renderSidebarSlot?.("sidebar.settings", {
+          wide: false,
+          content: <RailSettingsButton active={activeSection === "settings" && !profileActive} onOpenSettings={onOpenSettings} />,
+        }) || <RailSettingsButton active={activeSection === "settings" && !profileActive} onOpenSettings={onOpenSettings} />}
       </div>
     </aside>
   );

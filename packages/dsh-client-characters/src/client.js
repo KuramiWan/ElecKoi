@@ -94,9 +94,11 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiCharacters', catalog)
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'character', registrant: '@eleckoi/dsh-client-characters' },
         () => React.createElement(CharacterPage)))
+      const NavigationIcon = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-character.js')
+        .then(module => ({ default: module.NavigationIcon })))
       ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-        name: 'sidebar.panellist', id: 'character', order: -30, label: '角色列表'
-      }, () => null))
+        name: 'sidebar.panellist', id: 'character', order: -30, label: '角色列表', registrant: '@eleckoi/dsh-client-characters'
+      }, () => React.createElement(NavigationIcon)))
       ctx.effect(() => {
         catalog.start()
         const stopReset = ctx.on('connection/reset', () => { void catalog.refresh().catch(() => {}) })

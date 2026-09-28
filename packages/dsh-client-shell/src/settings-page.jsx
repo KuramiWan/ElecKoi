@@ -1,5 +1,6 @@
 import { SettingsPanel } from "../../../src/renderer/src/modules/settings/index.js";
 import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
+export { CommunityNavIcon as CommunityNavigationIcon } from "../../../src/renderer/src/ui/icons/navIcons.jsx";
 
 export function SettingsPage() {
   const view = useMainPageView();

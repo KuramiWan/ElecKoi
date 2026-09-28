@@ -28,7 +28,7 @@ class MainPageErrorBoundary extends Component {
   }
 }
 
-export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderRoleplay, sidebarFooterActions }) {
+export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderRoleplay }) {
   const chat = useChatClient({ conversations, characters, models, persona, navigation });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const sidePanelLayout = useSidePanelLayout();
@@ -102,33 +102,42 @@ export function MainWindow({ conversations, characters, models, persona, presets
   }
 
   function renderWindowLayout({ sidePanel, mainPanel, overlays = null }) {
+    const renderSidebarContent = (renderSidebarSlot) => <>
+      <section className="navigation-rail-shell" aria-label="功能导航栏">
+        <div className="navigation-rail-title" data-tauri-drag-region />
+        <SidebarRail
+          activeSection={chat.activeSection}
+          navigationItems={navigation?.items}
+          renderSidebarSlot={renderSidebarSlot}
+          profileActive={chat.activeSection === "settings" && settingsPage === "profile"}
+          onSectionChange={changeActiveSection}
+          onNavigationAction={(id) => {
+            if (id === "community") setCommunityOpen(true);
+          }}
+          persona={chat.persona}
+          onOpenProfile={() => {
+            setSettingsPage("profile");
+            changeActiveSection("settings");
+          }}
+          onOpenSettings={() => {
+            setSettingsPage("chat");
+            changeActiveSection("settings");
+          }}
+        />
+      </section>
+
+      <SidePanelShell
+        collapsed={sidePanelLayout.sidePanelCollapsed || isPluginPanel}
+        onCollapse={sidePanelLayout.collapseSidePanel}
+        renderSidebarSlot={renderSidebarSlot}
+        footerActions={navigation?.hasSidebarFooterActions ? renderSidebarSlot?.("sidebar.footer.action", { wide: true }) : null}
+      >
+        {renderSidebarSlot?.("sidebar.workspaces", { wide: true, content: sidePanel }) || sidePanel}
+      </SidePanelShell>
+    </>;
     return (
       <>
-        <section className="navigation-rail-shell" aria-label="功能导航栏">
-          <div className="navigation-rail-title" data-tauri-drag-region />
-          <SidebarRail
-            activeSection={chat.activeSection}
-            navigationItems={navigation?.items}
-            profileActive={chat.activeSection === "settings" && settingsPage === "profile"}
-            onSectionChange={changeActiveSection}
-            onNavigationAction={(id) => {
-              if (id === "community") setCommunityOpen(true);
-            }}
-            persona={chat.persona}
-            onOpenProfile={() => {
-              setSettingsPage("profile");
-              changeActiveSection("settings");
-            }}
-            onOpenSettings={() => {
-              setSettingsPage("chat");
-              changeActiveSection("settings");
-            }}
-          />
-        </section>
-
-        <SidePanelShell collapsed={sidePanelLayout.sidePanelCollapsed || isPluginPanel} onCollapse={sidePanelLayout.collapseSidePanel} footerActions={sidebarFooterActions}>
-          {sidePanel}
-        </SidePanelShell>
+        {navigation?.renderSidebar ? navigation.renderSidebar(renderSidebarContent) : renderSidebarContent(null)}
 
         <section className="main-panel-shell" aria-label="主功能界面">
           <TitleBar
