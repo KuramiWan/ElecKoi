@@ -24,18 +24,21 @@ ElecKoi aims to build a continuously improving creative flywheel: turn the commu
 ## App Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/eleckoi-windows-chat-dark.png" alt="ElecKoi for Windows character conversation screen" width="960">
+  <img src="docs/screenshots/eleckoi-windows-chat.png" alt="ElecKoi for Windows character conversation screen" width="960">
   <br><sub>ElecKoi for Windows character conversation screen</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/eleckoi-windows-plugins.png" alt="ElecKoi for Windows plugin management screen" width="960">
+  <br><sub>ElecKoi for Windows plugin management screen</sub>
 </p>
 
 ## Upcoming Development Goals
 
 > This section lists future work and does not indicate that these features are already implemented.
 
-- [ ] Support prompt templates and frontend character-card startup flows, so clicking Start can initiate the first AI turn using the intended template.
-- [ ] Expand the frontend API documentation and examples so Agents can design frontend styles and automatically load character cards.
+- [ ] Expand frontend extension APIs for character works, enabling creation Agents and character cards to support richer interfaces, interactions, and gameplay.
 - [ ] Improve DSH plugin management and MCP integration with unified configuration, permissions, and runtime status.
-- [ ] Support the official APIs of more model providers.
 - [ ] Continue improving the Windows and Android clients while aligning the core character-creation and roleplay experience across platforms.
 - [ ] Improve image-generation capabilities, including model integrations, parameter controls, editing, and iterative creation workflows.
 
