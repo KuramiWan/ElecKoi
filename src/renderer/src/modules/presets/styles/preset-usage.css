@@ -33,7 +33,7 @@
 .preset-update-step:last-child::before { display: none; }
 .preset-update-node {
   position: absolute; z-index: 1; top: var(--timeline-node-top); left: 3px; box-sizing: border-box; width: var(--timeline-node-size); height: var(--timeline-node-size);
-  border: 3px solid color-mix(in srgb, var(--muted) 65%, var(--preset-canvas)); border-radius: 50%; background: var(--preset-canvas);
+  border: 3px solid color-mix(in srgb, var(--muted) 65%, var(--preset-canvas)); border-radius: 50%; corner-shape: round; background: var(--preset-canvas);
 }
 .preset-update-step.is-latest > .preset-update-node { border-color: var(--blue); background: var(--blue); }
 .preset-update-step.is-editing > .preset-update-node { border-color: var(--blue); background: var(--surface-raised); }

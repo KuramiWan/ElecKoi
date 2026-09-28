@@ -228,7 +228,8 @@
 
 .dynamic-settings-tree-row {
   display: grid;
-  grid-template-columns: 18px 21px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 6px;
   width: 100%;
   min-width: 0;
   height: 38px;
@@ -252,21 +253,49 @@
   white-space: nowrap;
 }
 
-.dynamic-settings-tree-chevron,
 .dynamic-settings-tree-icon {
   display: grid;
+  width: 16px;
+  height: 20px;
   place-items: center;
-  color: var(--muted);
+  color: var(--tree-folder-fg);
 }
 
-.dynamic-settings-tree-chevron svg,
 .dynamic-settings-tree-icon svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
 }
 
-.dynamic-settings-tree-chevron .is-expanded {
+.dynamic-settings-tree-folder,
+.dynamic-settings-tree-arrow {
+  grid-area: 1 / 1;
+}
+
+.dynamic-settings-tree-folder {
+  display: grid;
+  place-items: center;
+}
+
+.dynamic-settings-tree-icon .dynamic-settings-tree-arrow {
+  display: none;
+  width: 14px;
+  height: 14px;
+  color: var(--tree-chevron-fg);
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dynamic-settings-tree-arrow.is-expanded {
   transform: rotate(90deg);
+}
+
+.dynamic-settings-tree-row.is-folder:hover .dynamic-settings-tree-folder,
+.dynamic-settings-tree-row.is-folder:focus-visible .dynamic-settings-tree-folder {
+  display: none;
+}
+
+.dynamic-settings-tree-row.is-folder:hover .dynamic-settings-tree-arrow,
+.dynamic-settings-tree-row.is-folder:focus-visible .dynamic-settings-tree-arrow {
+  display: block;
 }
 
 .dynamic-settings-inspector {
@@ -424,7 +453,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dynamic-settings-tree-chevron .is-expanded {
+  .dynamic-settings-tree-icon .dynamic-settings-tree-arrow {
     transition: none;
   }
 }

@@ -85,6 +85,19 @@ describe('DSH native model profiles', () => {
     expect(plan.providers[plan.main.provider]?.models?.[0]).not.toHaveProperty('topP')
   })
 
+  it('keeps a configured provider identity stable when its API key changes', () => {
+    const settings: DshModelSettings = {
+      ...kimiK3, configId: 'stable-config', provider: 'custom',
+      baseUrl: 'https://gateway.example/v1', model: 'private-model', apiKey: 'first-key'
+    }
+    const first = createDshProviderCatalog([settings])
+    const second = createDshProviderCatalog([{ ...settings, apiKey: 'second-key' }])
+    expect(resolveDshProviderBinding(first, settings)).toEqual(
+      resolveDshProviderBinding(second, { ...settings, apiKey: 'second-key' })
+    )
+    expect(Object.keys(first.credentials)).toEqual(Object.keys(second.credentials))
+  })
+
   it('uses an explicit pi-ai reasoning profile for a custom relay model', () => {
     const custom: DshModelSettings = {
       ...kimiK3,
@@ -172,7 +185,8 @@ describe('DSH native model profiles', () => {
       provider: 'deepseek',
       apiKey: 'deepseek-test-key',
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-chat'
+      model: 'deepseek-chat',
+      apiFormat: 'anthropic-messages'
     }
     const catalog = createDshProviderCatalog([deepseek, google])
 
@@ -184,7 +198,7 @@ describe('DSH native model profiles', () => {
     expect(resolveDshProviderBinding(catalog, google)).toMatchObject({ provider: 'google', model: 'gemini-3.6-flash' })
   })
 
-  it('uses the DSH DeepSeek adapter capability for every dedicated chat-completions model id', () => {
+  it('uses the DSH DeepSeek Messages adapter capability for every dedicated model id', () => {
     const deepseek: DshModelSettings = {
       ...kimiK3,
       configId: 'deepseek-config',
@@ -192,6 +206,7 @@ describe('DSH native model profiles', () => {
       apiKey: 'deepseek-test-key',
       baseUrl: 'https://api.deepseek.com',
       model: 'future-deepseek-model',
+      apiFormat: 'anthropic-messages',
       reasoningEffort: 'max'
     }
     expect(describeDshModelCapabilities(deepseek)).toEqual({
@@ -201,15 +216,48 @@ describe('DSH native model profiles', () => {
     })
     const catalog = createDshProviderCatalog([deepseek])
     expect(catalog.providers).toEqual({})
+    expect(catalog.credentials.DEEPSEEK_API_KEY).toBe('deepseek-test-key')
     expect(catalog.deepseek).toMatchObject({
-      apiKeyEnv: 'ELECKOI_DEEPSEEK_API_KEY',
-      baseURL: 'https://api.deepseek.com',
+      apiKeyEnv: 'DEEPSEEK_API_KEY',
+      baseURL: 'https://api.deepseek.com/anthropic',
       models: [expect.objectContaining({ id: 'future-deepseek-model' })]
     })
     expect(resolveDshProviderBinding(catalog, deepseek)).toEqual({
       provider: 'deepseek-official',
       model: 'future-deepseek-model',
       reasoningEffort: 'max'
+    })
+  })
+
+  it('keeps existing DeepSeek Chat Completions configurations on the pi-ai route', () => {
+    const deepseek: DshModelSettings = {
+      ...kimiK3,
+      configId: 'deepseek-chat-config',
+      provider: 'deepseek',
+      apiKey: 'deepseek-test-key',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-chat',
+      reasoningEffort: 'high'
+    }
+    expect(describeDshModelCapabilities(deepseek)).toEqual({
+      provider: null,
+      source: 'dsh_catalog',
+      reasoningEfforts: ['off', 'low', 'high', 'max']
+    })
+    const catalog = createDshProviderCatalog([deepseek])
+    expect(catalog.deepseek).toBeUndefined()
+    expect(catalog.credentials.DEEPSEEK_API_KEY).toBe('deepseek-test-key')
+    expect(() => DshPiAiConfig({ providers: catalog.providers })).not.toThrow()
+    expect(Object.values(catalog.providers)[0]).toMatchObject({
+      apiKeyEnv: 'DEEPSEEK_API_KEY',
+      models: [expect.objectContaining({
+        id: 'deepseek-chat',
+        reasoningEfforts: { off: 'none', low: 'low', high: 'high', max: 'max' }
+      })]
+    })
+    expect(resolveDshProviderBinding(catalog, deepseek)).toMatchObject({
+      model: 'deepseek-chat',
+      reasoningEffort: 'high'
     })
   })
 
@@ -231,6 +279,7 @@ describe('DSH native model profiles', () => {
     })
     const catalog = createDshProviderCatalog([deepseek])
     expect(() => DshPiAiConfig({ providers: catalog.providers })).not.toThrow()
+    expect(catalog.credentials.DEEPSEEK_API_KEY).toBe('deepseek-test-key')
     expect(Object.values(catalog.providers)[0]?.models?.[0]).toMatchObject({
       id: 'future-deepseek-model',
       reasoningEfforts: {
@@ -244,5 +293,26 @@ describe('DSH native model profiles', () => {
       model: 'future-deepseek-model',
       reasoningEffort: 'max'
     })
+  })
+
+  it('keeps distinct direct DeepSeek accounts and relay credentials separate', () => {
+    const direct = {
+      ...kimiK3,
+      configId: 'direct-deepseek',
+      provider: 'deepseek' as const,
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-chat',
+      apiKey: 'first-key'
+    }
+    const another = { ...direct, configId: 'another-deepseek', apiKey: 'second-key' }
+    const relay = { ...direct, configId: 'relay-deepseek', baseUrl: 'https://relay.example/v1' }
+    expect(createDshProviderCatalog([relay]).credentials).not.toHaveProperty('DEEPSEEK_API_KEY')
+    const catalog = createDshProviderCatalog([direct, another, relay])
+
+    expect(catalog.credentials).not.toHaveProperty('DEEPSEEK_API_KEY')
+    const refs = Object.values(catalog.providers).map((profile) => profile.apiKeyEnv)
+    expect(refs).toHaveLength(3)
+    expect(new Set(refs).size).toBe(3)
+    expect(refs.every((ref) => /^ELECKOI_MODEL_KEY_/.test(ref ?? ''))).toBe(true)
   })
 })

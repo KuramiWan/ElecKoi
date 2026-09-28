@@ -4,7 +4,6 @@ export { ModelPicker } from "./components/ModelPicker.jsx";
 export { useModelRuntime } from "./hooks/useModelRuntime.js";
 export {
   getActiveModelSelection,
-  getModelConfig,
   getModelMeta,
   listenActiveModelSelectionChanged,
   saveActiveModelSelection,

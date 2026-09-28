@@ -15,6 +15,7 @@ const defaults: { [TKey in SettingKey]: SettingValue<TKey> } = {
   'appearance.mode': 'light',
   'appearance.ui': {},
   'chat.display': DEFAULT_CHAT_DISPLAY_PREFERENCES,
+  'chat.selection': { active_conversation_id: '', preferred_sessions: {} },
   'locale.current': 'zh-CN',
   'models.active': {
     capability: 'chat',

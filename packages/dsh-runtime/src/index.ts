@@ -1,14 +1,22 @@
 export { DshRuntime } from './DshRuntime'
+export { DshDesktopPluginHost, resolveDshWebFrontendDirectory } from './desktopPluginHost'
+export type { DshDesktopPluginHostOptions, DshDesktopPluginHostReady } from './desktopPluginHost'
 export {
   createDshProviderCatalog,
   describeDshModelCapabilities,
   resolveDshProviderBinding
 } from './modelProfiles'
-export { projectDshTrajectory, readDshTrajectory } from './trajectory'
+export { projectDshTrajectory, readDshSessionLog, readDshTrajectory } from './trajectory'
+export { projectDshTranscript, readDshTranscript } from './transcript'
+export { exportDshSession, importDshSessions } from './sessionTransfer'
+export type { DshSessionArchive } from './sessionTransfer'
+export { rewindDshSession } from './sessionRewind'
+export type { DshTranscriptTurn } from './transcript'
 export { DshProcessProjector, DshReplyProjector, finalReplyText } from './notifications'
 export {
   DshGenerationStatsProjector,
   emptyStoredGenerationStats,
+  generationStatsFromSessionEvents,
   parseStoredGenerationStats,
   regenerationGenerationStats
 } from './generationStats'
@@ -53,6 +61,5 @@ export type {
 export type {
   DshRequestContextItem,
   DshRequestContextKind,
-  DshRequestContextRole,
-  DshRequestContextSnapshot
+  DshRequestContextRole
 } from './requestContext'

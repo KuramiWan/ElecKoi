@@ -1,6 +1,7 @@
 import {
   cancelChatStream,
   createChat as createChatSession,
+  discardChatFileDrafts,
   getChat,
   listenAgentProcess,
   listenChatStreamDelta,
@@ -10,16 +11,17 @@ import { encodeImageDraft } from "./useChatInputImages.js";
 
 export async function runChatMessageSend(options) {
   const {
-    event, input, inputImagesRef, isSending, modelConfig, modelSupportsImages, setStatus,
+    event, input, inputImagesRef, inputFilesRef, isSending, modelConfig, modelSupportsImages, setStatus,
     requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
-    setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages,
+    setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
     setMessages, updatePendingReply, requestScrollToEnd,
-    reconcileChatMessages, commitPendingError, notify, restoreChatEntry,
+    reconcileChatMessages, commitPendingError, notify, restoreChatEntry, conversationModel,
   } = options;
   event.preventDefault();
   const text = input.trim();
   const draftImages = [...inputImagesRef.current];
-  if ((!text && !draftImages.length) || isSending) return;
+  const draftFiles = [...inputFilesRef.current];
+  if ((!text && !draftImages.length && !draftFiles.length) || isSending) return;
   if (!modelConfig?.id || !modelConfig.model?.trim()) {
     setStatus("请先在发送按钮左侧选择模型");
     return;
@@ -36,6 +38,8 @@ export async function runChatMessageSend(options) {
   setStatus(draftImages.length ? "正在处理图片..." : "正在回复...");
   let assistantId = "";
   let targetSessionId = sessionId;
+  let filesCleared = false;
+  let requestDispatched = false;
 
   try {
     const encodedImages = await Promise.all(draftImages.map(encodeImageDraft));
@@ -54,6 +58,7 @@ export async function runChatMessageSend(options) {
     }
 
     restoreChatEntry?.(targetSessionId);
+    activeRequest.conversationId = targetSessionId;
 
     setInput("");
     const createdAt = new Date().toISOString();
@@ -64,37 +69,44 @@ export async function runChatMessageSend(options) {
         attachmentId: image.localId, mediaType: image.mediaType, bytes: image.bytes, name: image.name,
         dataUrl: `data:${image.mediaType};base64,${encodedImages[index].data}`,
       })),
+      inputFileAttachments: draftFiles.map((file) => ({ attachmentId: file.id, name: file.name, bytes: file.bytes })),
     };
     clearInputImages();
+    clearInputFiles();
+    filesCleared = true;
     const payload = {
       message: text,
       images: encodedImages,
+      files: draftFiles.map((file) => file.id),
       session_id: targetSessionId,
     };
 
     assistantId = `pending-${Date.now()}`;
     const requestId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     activeRequest.requestId = requestId;
-    const unlistenProcess = await listenAgentProcess((event) => {
-      if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.item) return;
-      updatePendingReply((current) => current?.id === assistantId
-        ? { ...current, process: upsertProcess(current.process, event.item) }
-        : current);
-    });
-    activeRequest.unlisten = unlistenProcess;
-    throwIfAborted(controller.signal);
-    const unlistenDelta = await listenChatStreamDelta((event) => {
-      if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.delta) return;
-      updatePendingReply((current) => current?.id === assistantId
-        ? { ...current, pending: true, content: `${current.content || ""}${event.delta}` }
-        : current);
-    });
-    activeRequest.unlisten = () => { unlistenDelta(); unlistenProcess(); };
+    if (!conversationModel) {
+      const unlistenProcess = await listenAgentProcess((event) => {
+        if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.item) return;
+        updatePendingReply((current) => current?.id === assistantId
+          ? { ...current, process: upsertProcess(current.process, event.item) }
+          : current);
+      });
+      activeRequest.unlisten = unlistenProcess;
+      throwIfAborted(controller.signal);
+      const unlistenDelta = await listenChatStreamDelta((event) => {
+        if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.delta) return;
+        updatePendingReply((current) => current?.id === assistantId
+          ? { ...current, pending: true, content: `${current.content || ""}${event.delta}` }
+          : current);
+      });
+      activeRequest.unlisten = () => { unlistenDelta(); unlistenProcess(); };
+    }
     throwIfAborted(controller.signal);
     setMessages((items) => [...items, userMessage]);
     updatePendingReply({ id: assistantId, conversationId: targetSessionId, role: "assistant", content: "", variableStateJson: '{}', pending: true, created_at: createdAt });
-    requestScrollToEnd("smooth");
-    const result = await sendChatMessage(payload, requestId);
+    requestScrollToEnd("auto");
+    requestDispatched = true;
+    const result = await sendChatMessage(payload, requestId, { model: conversationModel });
     if (result.cancelled) {
       if (requestRef.current === null || requestRef.current === activeRequest) {
         reconcileChatMessages(result.chat);
@@ -110,11 +122,16 @@ export async function runChatMessageSend(options) {
     if (requestRef.current !== activeRequest) return;
     setStatus("回复完成");
   } catch (error) {
+    if (filesCleared && !requestDispatched && draftFiles.length) {
+      await discardChatFileDrafts(draftFiles.map((file) => file.id)).catch(() => {});
+    }
     if (requestRef.current === activeRequest && !isAbortError(error)) {
       let reconciled = false;
       if (targetSessionId) {
         try {
-          const durable = await getChat(targetSessionId);
+          const durable = conversationModel
+            ? await getChat(targetSessionId, { model: conversationModel })
+            : await getChat(targetSessionId);
           if (requestRef.current === activeRequest) {
             reconcileChatMessages(durable.chat);
             setChatCharacter(normalizeLatestChatCharacter(durable.chat || {}));

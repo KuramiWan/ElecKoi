@@ -29,8 +29,9 @@ const avatarMediaTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'imag
 
 const modelFamilies = new Set<AgentPreset['modelFamily']>(['general', 'claude', 'openai', 'gemini', 'deepseek', 'other'])
 const entryKinds = new Set<SettingLibraryEntry['kind']>(['normal', 'opening', 'history_compaction', 'hidden_tool_timeline'])
-const readStrategies = new Set<SettingLibraryEntry['agentReadStrategy']>(['required', 'keyword', 'normal', 'variable_condition'])
-const dynamicModes = new Set<SettingLibraryEntry['dynamicMode']>(['standard', 'ejs_controller', 'ejs_reference'])
+const readStrategies = new Set<SettingLibraryEntry['agentReadStrategy']>(['required', 'keyword', 'normal'])
+const dynamicModes = new Set<SettingLibraryEntry['dynamicMode']>(['standard', 'ejs_reference'])
+const contentModes = new Set<SettingLibraryEntry['contentMode']>(['plain_text', 'ejs'])
 const keywordConditions = new Set<SettingLibraryEntry['keywordCondition']>(['none', 'any', 'all', 'not_any'])
 const positions = new Set<NonNullable<SettingLibraryEntry['position']>>([
   'instructions', 'insert_point_1', 'insert_point_2', 'insert_point_3', 'insert_point_4', 'insert_point_5'
@@ -367,6 +368,7 @@ function entryFromPortable(value: JsonObject, index: number, timestamp: string):
   if (!entryKinds.has(kind)) throw new Error(`ElecKoi 预设包含不支持的设定类型：${kind || '空值'}。`)
   const strategy = stringValue(value.agent_read_strategy) as SettingLibraryEntry['agentReadStrategy']
   const dynamic = stringValue(value.dynamic_mode) as SettingLibraryEntry['dynamicMode']
+  const contentMode = stringValue(value.content_mode) as SettingLibraryEntry['contentMode']
   const condition = stringValue(value.keyword_condition) as SettingLibraryEntry['keywordCondition']
   const trigger = stringValue(value.trigger_mode)
   const position = stringValue(value.position) as NonNullable<SettingLibraryEntry['position']>
@@ -383,6 +385,7 @@ function entryFromPortable(value: JsonObject, index: number, timestamp: string):
     agentSelectionHint: stringValue(value.agent_selection_hint),
     agentReadStrategy: readStrategies.has(strategy) ? strategy : 'normal',
     dynamicMode: dynamicModes.has(dynamic) ? dynamic : 'standard',
+    contentMode: contentModes.has(contentMode) ? contentMode : 'plain_text',
     keywords: stringList(value.keywords), keywordScanDepth: Math.max(0, integerValue(value.keyword_scan_depth, 1)),
     conditionKeywords: stringList(value.condition_keywords),
     keywordCondition: keywordConditions.has(condition) ? condition : 'none',
@@ -408,6 +411,7 @@ function entryToPortable(entry: SettingLibraryEntry): JsonObject {
     default_opening_message_id: entry.defaultOpeningMessageId,
     agent_selection_hint: entry.agentSelectionHint, agent_read_strategy: entry.agentReadStrategy,
     dynamic_mode: entry.dynamicMode,
+    content_mode: entry.contentMode,
     keywords: entry.keywords, keyword_scan_depth: entry.keywordScanDepth,
     condition_keywords: entry.conditionKeywords, keyword_condition: entry.keywordCondition,
     keyword_use_regex: entry.keywordUseRegex, keyword_ignore_case: entry.keywordIgnoreCase,
@@ -443,7 +447,7 @@ function emptyEntry(id: string, timestamp: string): SettingLibraryEntry {
   return {
     id, title: '', iconId: '', kind: 'normal', groupId: '', content: '', openingMessages: [],
     defaultOpeningMessageId: '', agentSelectionHint: '', agentReadStrategy: 'normal',
-    dynamicMode: 'standard', keywords: [], keywordScanDepth: 1,
+    dynamicMode: 'standard', contentMode: 'plain_text', keywords: [], keywordScanDepth: 1,
     conditionKeywords: [], keywordCondition: 'none', keywordUseRegex: false, keywordIgnoreCase: true,
     keywordWholeWord: false, keywordRecursionDepth: 0, triggerMode: null, enabled: true,
     position: null, promptPositionId: '', insertRole: 'system', order: 1, viewOrder: 0,

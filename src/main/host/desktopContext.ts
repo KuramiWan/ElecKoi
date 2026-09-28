@@ -14,6 +14,8 @@ import type { AppPaths } from '@main/platform/filesystem/AppPaths'
 import type { SqliteDatabase } from '@main/platform/sqlite/SqliteDatabase'
 import type { CredentialCipher } from '@main/platform/electron/CredentialCipher'
 import type { ElectronDirectoryPicker } from '@main/platform/electron/ElectronDirectoryPicker'
+import type { ElectronFileOpener } from '@main/platform/electron/ElectronFileOpener'
+import type { AgentFileDrafts } from '@main/modules/agent/AgentFileDrafts'
 import type { ConversationFiles } from '@main/platform/filesystem/ConversationFiles'
 import type { LocalMediaStore } from '@main/platform/filesystem/LocalMediaStore'
 import type { AuthorSdkService } from '@main/modules/authorSdk'
@@ -28,6 +30,8 @@ declare module '@deepseek-ai/cordis' {
     database: SqliteDatabase
     credentialCipher: CredentialCipher
     directoryPicker: ElectronDirectoryPicker
+    fileOpener: ElectronFileOpener
+    fileDrafts: AgentFileDrafts
     conversationFiles: ConversationFiles
     mediaAssets: LocalMediaStore
     desktopGateway: DesktopGateway
@@ -43,6 +47,11 @@ declare module '@deepseek-ai/cordis' {
     models: ModelRepository
     userSettings: UserSettingsStore
     agentSessions: AgentSessionCoordinator
+    pluginHost: {
+      start(): Promise<{ url: string; injections: readonly unknown[] }>
+      frontendDirectory(): string
+      onFailure(listener: (error: Error) => void): () => void
+    }
     authorSdk: AuthorSdkService
     agentPresets: AgentPresetRepository
     webSearchSettings: WebSearchSettingsRepository

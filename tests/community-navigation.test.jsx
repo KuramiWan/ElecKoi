@@ -13,8 +13,12 @@ describe("community navigation", () => {
     const html = renderToStaticMarkup(
       <SidebarRail
         activeSection="messages"
+        navigationItems={[
+          { id: "community", label: "社区", action: true },
+          { id: "model", label: "模型配置" },
+        ]}
         onSectionChange={() => {}}
-        onOpenCommunity={() => {}}
+        onNavigationAction={() => {}}
         onOpenProfile={() => {}}
         onOpenSettings={() => {}}
       />,

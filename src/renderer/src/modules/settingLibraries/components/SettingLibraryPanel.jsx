@@ -11,7 +11,6 @@ import {
   Plus,
   Trash,
 } from "@phosphor-icons/react";
-import { getSettingLibrary, saveSettingLibrary, saveSettingLibraryViewState } from "../api/settingLibraryApi.js";
 import { DshFolderClosedIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { SETTING_LIBRARY_CREATE_ICONS } from "../../../ui/icons/settingLibraryCreateIcons.jsx";
 import { SettingLibraryManager } from "./SettingLibraryManager.jsx";
@@ -42,12 +41,12 @@ const CreateReferenceIcon = SETTING_LIBRARY_CREATE_ICONS.reference;
 
 function nodeIcon(entry) {
   if (entry?.kind === "opening") return ChatCircleDots;
-  if (entry?.dynamicMode === "ejs_controller") return Code;
+  if (entry?.contentMode === "ejs") return Code;
   if (entry?.dynamicMode === "ejs_reference") return LinkSimple;
   return FileText;
 }
 
-export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, onDirtyChange }, ref) {
+export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, onDirtyChange }, ref) {
   const [library, setLibrary] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [selectedKey, setSelectedKey] = useState("");
@@ -86,18 +85,33 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     let active = true;
     setError("");
     setSaveNotice("");
-    getSettingLibrary(characterId).then((loaded) => {
-      if (!active) return;
+    libraryRef.current = null;
+    persistedRef.current = null;
+    setLibrary(null);
+    setPersisted(null);
+    setSelectedKey("");
+    setManagerOpen(false);
+    const adopt = (loaded) => {
+      if (!active || savePromiseRef.current || (libraryRef.current && persistedRef.current
+        && JSON.stringify(libraryRef.current) !== JSON.stringify(persistedRef.current))) return;
       libraryRef.current = loaded;
       persistedRef.current = loaded;
       setLibrary(loaded);
       setPersisted(loaded);
-      setExpandedKeys(loaded.expandedGroupIds.map((id) => nodeKey("group", id)));
-      setSelectedKey("");
-      setManagerOpen(false);
-    }).catch((cause) => active && setError(cause?.message || "读取设定库失败"));
-    return () => { active = false; };
-  }, [characterId]);
+      const expanded = loaded.expandedGroupIds.map((id) => nodeKey("group", id));
+      expandedKeysRef.current = expanded;
+      setExpandedKeys(expanded);
+    };
+    const stop = settingLibraries.subscribe((kind, id, snapshot) => {
+      if (kind === "configuration" && id === characterId && snapshot.status === "ready") adopt(snapshot.value);
+    });
+    const cached = settingLibraries.getSnapshot(characterId);
+    if (cached.status === "ready") adopt(cached.value);
+    void settingLibraries.read(characterId).catch((cause) => {
+      if (active) setError(cause?.message || "读取设定库失败");
+    });
+    return () => { active = false; stop(); };
+  }, [characterId, settingLibraries]);
 
   function changeLibrary(updater) {
     setError("");
@@ -126,7 +140,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       setError("");
       setSaveNotice("");
       try {
-        const saved = await saveSettingLibrary(characterId, {
+        const saved = await settingLibraries.save(characterId, {
           ...snapshot,
           listAllExpanded: false,
           expandedGroupIds: expandedKeysRef.current.map(parseNodeKey).filter((item) => item.kind === "group").map((item) => item.id),
@@ -372,7 +386,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     persistedRef.current = applyViewState(persistedRef.current);
     setLibrary((current) => applyViewState(current));
     setPersisted((current) => applyViewState(current));
-    void saveSettingLibraryViewState(characterId, nextGroupIds).catch(() => {});
+    void settingLibraries.saveViewState(characterId, nextGroupIds).catch(() => {});
   }
 
   function openContextMenu(event, node) {
@@ -467,6 +481,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       {managerOpen ? (
         <SettingLibraryManager
           characterId={characterId}
+          settingLibraries={settingLibraries}
           library={library}
           onChange={applyManagerChange}
           onClose={() => setManagerOpen(false)}

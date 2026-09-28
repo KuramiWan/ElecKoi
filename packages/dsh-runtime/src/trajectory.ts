@@ -4,12 +4,11 @@ import {
   readdirSync,
   realpathSync
 } from 'node:fs'
-import { isAbsolute, join, relative } from 'node:path'
-import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
-import {
-  readRequestContextSnapshots,
-  type DshRequestContextItem
-} from './requestContext'
+import { dirname, isAbsolute, join, relative } from 'node:path'
+import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog, sessionFormatCatalog, SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format-catalog'
+import { historicalChildCatalogSource } from '@deepseek-ai/dsh-session-format-v3-to-v4'
+import { finalReplyText } from './notifications'
+import type { DshRequestContextItem, DshRequestContextRole } from './requestContext'
 
 const REQUEST_PROJECTION_PLUGIN = 'eleckoi-request-projection'
 
@@ -107,59 +106,12 @@ export function readDshTrajectory(
   sessionLogRoot: string,
   runtimeThreadId: string,
   options: DshTrajectoryReadOptions = {},
-  liveEvents: readonly DshSessionEventRecord[] = [],
-  conversationStateRoot: string = sessionLogRoot
+  liveEvents: readonly DshSessionEventRecord[] = []
 ): DshTrajectoryPage {
   const empty = emptyPage(runtimeThreadId)
-  const located = locateSessionLog(sessionLogRoot, runtimeThreadId)
-  if (located === undefined && liveEvents.length === 0) return empty
-  let header: DshSessionHeader = {}
-  const events: DshSessionEventRecord[] = []
-  if (located !== undefined) {
-    const source = readFileSync(located, 'utf8')
-    const lines = source.split(/\r?\n/)
-    const headerValue = parseJsonLine(lines[0], 'DSH 轨迹日志缺少有效的会话头。')
-    let restore: ReturnType<typeof sessionFormatCatalog.createRestore>
-    try {
-      restore = sessionFormatCatalog.createRestore(headerValue, {
-        recovery: 'recoverable',
-        validation: 'transformed'
-      })
-    } catch (error) {
-      throw new Error('DSH 轨迹日志缺少有效的会话头。', { cause: error })
-    }
-    if (restore.header.id !== runtimeThreadId) throw new Error('DSH 轨迹日志缺少有效的会话头。')
-    header = restore.header
-    const finalLineIndex = source.endsWith('\n') || source.endsWith('\r') ? lines.length : lines.length - 1
-
-    for (let index = 1; index < lines.length; index += 1) {
-      const line = lines[index]?.trim()
-      if (!line) continue
-      let stored: unknown
-      try {
-        stored = JSON.parse(line)
-      } catch (error) {
-        if (index === finalLineIndex) break
-        throw new Error('DSH 轨迹日志包含损坏的记录。', { cause: error })
-      }
-      try {
-        restore.decodeRow(stored)
-      } catch (error) {
-        throw new Error('DSH 轨迹日志中的流式记录无法解码。', { cause: error })
-      }
-    }
-    try {
-      events.push(...restore.finish().events)
-    } catch (error) {
-      throw new Error('DSH 轨迹日志中的流式记录无法解码。', { cause: error })
-    }
-  }
-
-  const projected = projectDshTrajectory(mergeLiveEvents(events, liveEvents), header)
-  attachRequestContexts(
-    projected.records,
-    readRequestContextSnapshots(conversationStateRoot, runtimeThreadId)
-  )
+  const stored = readDshSessionLog(sessionLogRoot, runtimeThreadId)
+  if (stored === undefined && liveEvents.length === 0) return empty
+  const projected = projectDshTrajectory(mergeLiveEvents(stored?.events ?? [], liveEvents), stored?.header ?? {})
   const beforeIndex = options.beforeIndex
   const eligible = beforeIndex === undefined
     ? projected.records
@@ -178,14 +130,75 @@ export function readDshTrajectory(
   }
 }
 
-function attachRequestContexts(
-  records: DshTrajectoryRecord[],
-  snapshots: ReturnType<typeof readRequestContextSnapshots>
-): void {
-  if (snapshots.length === 0) return
-  const byRequestSeq = new Map(snapshots.map((snapshot) => [snapshot.requestSeq, snapshot.items]))
-  for (const record of records) {
-    for (const request of record.requests) request.context = byRequestSeq.get(request.seq) ?? []
+/** Decode a stored Session through the locked DSH format catalog. */
+export function readDshSessionLog(
+  sessionLogRoot: string,
+  runtimeThreadId: string
+): ({ path: string } & ReturnType<ReturnType<typeof sessionFormatCatalog.createRestore>['finish']>) | undefined {
+  const located = locateSessionLog(sessionLogRoot, runtimeThreadId)
+  if (located === undefined) return undefined
+  const source = readFileSync(located, 'utf8')
+  const lines = source.split(/\r?\n/)
+  const headerValue = parseJsonLine(lines[0], 'DSH 轨迹日志缺少有效的会话头。')
+  let restore: ReturnType<typeof sessionFormatCatalog.createRestore>
+  let historical = false
+  try {
+    const descriptor = sessionFormatCatalog.readHeader(headerValue)
+    if (descriptor.status === 'malformed' || descriptor.status === 'unsupported') {
+      throw new Error('Unsupported Session header')
+    }
+    const catalog = descriptor.status === 'migration-required'
+      ? createSessionFormatCatalogWithChildren(collectHistoricalChildren(located, descriptor.header.id))
+      : sessionFormatCatalog
+    historical = descriptor.status === 'migration-required'
+    restore = catalog.createRestore(headerValue, {
+      recovery: 'recoverable',
+      validation: 'transformed'
+    })
+  } catch (error) {
+    throw new Error('DSH 轨迹日志缺少有效的会话头。', { cause: error })
+  }
+  if (restore.header.id !== runtimeThreadId) throw new Error('DSH 轨迹日志缺少有效的会话头。')
+  const finalLineIndex = source.endsWith('\n') || source.endsWith('\r') ? lines.length : lines.length - 1
+
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = lines[index]?.trim()
+    if (!line) continue
+    let stored: unknown
+    try {
+      stored = JSON.parse(line)
+    } catch (error) {
+      if (index === finalLineIndex) break
+      throw new Error('DSH 轨迹日志包含损坏的记录。', { cause: error })
+    }
+    try {
+      restore.decodeRow(stored)
+    } catch (error) {
+      throw new Error('DSH 轨迹日志中的流式记录无法解码。', { cause: error })
+    }
+  }
+  try {
+    const artifact = restore.finish()
+    return { path: located, ...artifact }
+  } catch (error) {
+    if (historical && error instanceof SessionFormatUnsupportedMigrationError) {
+      try {
+        const legacy = historicalSessionFormatCatalog.createRestore(headerValue, {
+          recovery: 'recoverable', validation: 'transformed'
+        })
+        for (let index = 1; index < lines.length; index += 1) {
+          const line = lines[index]?.trim()
+          if (!line) continue
+          let stored: unknown
+          try { stored = JSON.parse(line) } catch { break }
+          legacy.decodeRow(stored)
+        }
+        return { path: located, ...legacy.finish() }
+      } catch (historicalError) {
+        throw new Error('DSH 历史会话日志无法解码。', { cause: historicalError })
+      }
+    }
+    throw new Error('DSH 轨迹日志中的流式记录无法解码。', { cause: error })
   }
 }
 
@@ -200,6 +213,162 @@ function mergeLiveEvents(
     event
   ))
   return [...merged.entries()].sort(([left], [right]) => left - right).map(([, event]) => event)
+}
+
+/** Rebuild request details from the same Session surface used by DSH. */
+function attachRequestContextsFromLog(records: DshTrajectoryRecord[], events: readonly NormalizedEvent[]): void {
+  const surface: NormalizedEvent[] = []
+  const contexts = new Map<number, DshRequestContextItem[]>()
+  let requestSeq: number | undefined
+  for (const event of events) {
+    if (event.type === 'step/start') requestSeq = event.seq
+    if (requestSeq !== undefined && !contexts.has(requestSeq)
+      && (event.type === 'assistant/message' || event.type === 'assistant/attempt' || event.type === 'tool/call' || event.type === 'step/end')) {
+      contexts.set(requestSeq, contextItemsFromSurface(surface))
+    }
+    if (event.type === 'step/end' || event.type === 'turn/end') requestSeq = undefined
+    const operation = event.surfaceOp
+    if (operation === 'append') {
+      surface.push(event)
+    } else if (isRecord(operation) && operation.op === 'replace') {
+      const start = surface.findIndex((item) => item.seq === operation.startSeq)
+      const end = surface.findIndex((item) => item.seq === operation.endSeq)
+      if (start >= 0 && end >= start) surface.splice(start, end - start + 1, event)
+    }
+  }
+  for (const record of records) {
+    for (const request of record.requests) request.context = contexts.get(request.seq) ?? []
+  }
+}
+
+function contextItemsFromSurface(surface: readonly NormalizedEvent[]): DshRequestContextItem[] {
+  const envelope = [...surface].reverse().find((event) => {
+    if (event.type !== 'user/message') return false
+    return record(record(event.data).source).kind === `plugin:${REQUEST_PROJECTION_PLUGIN}`
+  })
+  const plan = projectionPlanFromEnvelope(envelope)
+  const visible = surface.filter((event) => event !== envelope)
+    .map((event) => ({ event, item: contextItemFromEvent(event) }))
+    .filter((entry): entry is { event: NormalizedEvent; item: DshRequestContextItem } => entry.item !== undefined)
+  const firstDialogue = visible.findIndex(({ item }) => item.role !== 'system' && item.kind !== 'tool')
+  const currentUserOnSurface = lastIndexWhere(visible, ({ item }) => item.kind === 'user')
+  const system = visible.flatMap(({ item }, index) => item.role === 'system'
+    && (currentUserOnSurface < 0 || index < firstDialogue || index >= currentUserOnSurface)
+    ? [item] : [])
+  const dialogue = visible.filter(({ item }) => item.role !== 'system')
+  const currentUser = lastIndexWhere(dialogue, ({ item }) => item.kind === 'user')
+  const projectedDialogue = currentUser < 0
+    ? dialogue.map(({ item }) => item)
+    : [
+        ...historicalDialogueItems(dialogue.slice(0, currentUser)),
+        ...dialogue.slice(currentUser).map(({ item }) => item)
+      ]
+  const latestUser = lastIndexWhere(projectedDialogue, (item) => item.kind === 'user')
+  const at = (anchor: string) => plan.filter((item) => item.anchor === anchor)
+  const ordered = latestUser < 0
+    ? [...system, ...at('insert_point_1'), ...at('insert_point_2'), ...projectedDialogue,
+      ...at('insert_point_3'), ...at('insert_point_4'), ...at('insert_point_5')]
+    : [...system, ...at('insert_point_1'), ...at('insert_point_2'),
+      ...projectedDialogue.slice(0, latestUser), ...at('insert_point_3'), projectedDialogue[latestUser]!,
+      ...at('insert_point_4'), ...projectedDialogue.slice(latestUser + 1), ...at('insert_point_5')]
+  const latestDirectUser = lastIndexWhere(ordered, (item) => item.kind === 'user')
+  return ordered.map((item, index) => ({
+    ...item,
+    order: index + 1,
+    ...(index === latestDirectUser ? { title: '用户最新输入', source: '本轮输入' } : {})
+  }))
+}
+
+function historicalDialogueItems(
+  entries: readonly { event: NormalizedEvent; item: DshRequestContextItem }[]
+): DshRequestContextItem[] {
+  const history: DshRequestContextItem[] = []
+  const checkpointIndex = lastIndexWhere(entries, ({ event }) =>
+    event.type === 'user/message'
+      && contentText(messageFrom(event.data).content).includes('<compacted-summary>'))
+  if (checkpointIndex >= 0) {
+    history.push({
+      ...entries[checkpointIndex]!.item,
+      title: '历史摘要', source: '上下文压缩'
+    })
+  }
+  let reply: DshRequestContextItem | undefined
+  for (const { event, item } of entries.slice(checkpointIndex + 1)) {
+    if (item.kind === 'user') {
+      if (reply) history.push(reply)
+      reply = undefined
+      history.push({ ...item, kind: 'history', title: '历史用户消息', source: '聊天记录' })
+      continue
+    }
+    if (event.type !== 'assistant/message') continue
+    const blocks = array(messageFrom(event.data).content).map(record)
+    if (blocks.some((block) => text(block.type) === 'tool-call')) continue
+    const content = finalReplyText(blocks
+      .filter((block) => text(block.type) === 'text')
+      .map((block) => text(block.text)).join(''))
+    if (content.trim()) reply = {
+      ...item, kind: 'history', title: '历史助手消息', source: '聊天记录', content
+    }
+  }
+  if (reply) history.push(reply)
+  return history
+}
+
+function lastIndexWhere<T>(items: readonly T[], predicate: (item: T) => boolean): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (predicate(items[index]!)) return index
+  }
+  return -1
+}
+
+function projectionPlanFromEnvelope(envelope: NormalizedEvent | undefined): DshRequestContextItem[] {
+  if (!envelope) return []
+  const raw = contentText(envelope.data.content)
+  const prefix = 'ELECKOI_REQUEST_PROJECTION_V1\n'
+  if (!raw.startsWith(prefix)) return []
+  let value: unknown
+  try { value = JSON.parse(raw.slice(prefix.length)) } catch { return [] }
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry, index) => {
+    if (!isRecord(entry) || typeof entry.content !== 'string' || !entry.content) return []
+    const role: DshRequestContextRole = entry.role === 'system' || entry.role === 'assistant' ? entry.role : 'user'
+    return [{
+      order: index + 1,
+      messageId: `${REQUEST_PROJECTION_PLUGIN}:${text(entry.id)}`,
+      role,
+      kind: 'prompt' as const,
+      title: text(entry.traceTitle) || '设定提示词',
+      source: text(entry.traceSource),
+      anchor: text(entry.anchor),
+      content: entry.content
+    }]
+  })
+}
+
+function contextItemFromEvent(event: NormalizedEvent): DshRequestContextItem | undefined {
+  if (!['system/message', 'developer/message', 'user/message', 'assistant/message', 'tool/result'].includes(event.type)) return undefined
+  const message = messageFrom(event.data)
+  const source = record(message.source)
+  const sourceKind = text(source.kind)
+  const content = contentText(message.content)
+  if (!content) return undefined
+  const role: DshRequestContextRole = event.type === 'system/message' ? 'system'
+    : event.type === 'assistant/message' ? 'assistant' : 'user'
+  const kind = role === 'system' ? 'system' as const
+    : event.type === 'tool/result' ? 'tool' as const
+      : role === 'assistant' ? 'assistant' as const
+        : sourceKind === 'user' ? 'user' as const : 'context' as const
+  return {
+    order: 0,
+    messageId: text(message.id) || `${event.type}:${event.seq}`,
+    role,
+    kind,
+    title: role === 'system' ? '系统提示词' : kind === 'tool' ? '工具结果'
+      : role === 'assistant' ? '助手消息' : kind === 'user' ? '用户消息' : '上下文',
+    source: sourceKind || role,
+    anchor: '',
+    content
+  }
 }
 
 export function projectDshTrajectory(
@@ -325,13 +494,13 @@ export function projectDshTrajectory(
     if (type === 'user/message') {
       const message = messageFrom(data)
       const source = record(message.source)
-      if (text(source.plugin) === REQUEST_PROJECTION_PLUGIN) continue
+      if (text(source.kind) === `plugin:${REQUEST_PROJECTION_PLUGIN}`) continue
       const sourceKind = text(source.kind)
       const content = contentText(message.content)
       const kind: DshTrajectoryRecordKind = sourceKind === 'user' || sourceKind === '' ? 'user' : 'context'
       const sourceSections = array(source.sections)
       const firstSection = sourceSections.length > 0 ? record(sourceSections[0]) : {}
-      const elecKoiContext = text(source.plugin) === 'eleckoi-conversation-context'
+      const elecKoiContext = sourceKind === 'plugin:eleckoi-conversation-context'
       const item = baseRecord(event, {
         kind,
         title: kind === 'user' ? '用户消息' : elecKoiContext ? text(firstSection.name) || '设定上下文' : contextTitle(sourceKind),
@@ -528,6 +697,7 @@ export function projectDshTrajectory(
 
   const orderedRecords = records
   orderedRecords.forEach((item, index) => { item.index = index + 1 })
+  attachRequestContextsFromLog(orderedRecords, events)
   const times = events.map((event) => nonnegativeInteger(event.time)).filter((value): value is number => value !== null)
   const createdAt = nonnegativeInteger(header.createdAt)
   return {
@@ -601,6 +771,43 @@ function latestSessionLog(directory: string): string | undefined {
     .filter((entry): entry is { name: string; version: number } => entry.version !== undefined)
     .sort((left, right) => right.version - left.version)
   return candidates[0] === undefined ? undefined : join(directory, candidates[0].name)
+}
+
+function collectHistoricalChildren(parentLog: string, parentId: string): ReturnType<typeof historicalChildCatalogSource>[] {
+  const facts: ReturnType<typeof historicalChildCatalogSource>[] = []
+  const projectDirectory = dirname(dirname(parentLog))
+  for (const entry of readdirSync(projectDirectory, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+    const childLog = latestSessionLog(join(projectDirectory, entry.name))
+    if (childLog === undefined || childLog === parentLog) continue
+    try {
+      const source = readFileSync(childLog, 'utf8')
+      const lines = source.split(/\r?\n/)
+      const headerValue = parseJsonLine(lines[0], 'DSH 子会话日志缺少有效的会话头。')
+      const descriptor = sessionFormatCatalog.readHeader(headerValue)
+      if (descriptor.status === 'malformed' || descriptor.status === 'unsupported'
+        || descriptor.header.origin !== 'subagent' || descriptor.header.parentSession !== parentId) continue
+      const catalog = descriptor.status === 'migration-required'
+        ? historicalSessionFormatCatalog : sessionFormatCatalog
+      const restore = catalog.createRestore(headerValue, { recovery: 'recoverable', validation: 'transformed' })
+      const finalLineIndex = source.endsWith('\n') || source.endsWith('\r') ? lines.length : lines.length - 1
+      for (let index = 1; index < lines.length; index += 1) {
+        const line = lines[index]?.trim()
+        if (!line) continue
+        let row: unknown
+        try { row = JSON.parse(line) }
+        catch (error) {
+          if (index === finalLineIndex) break
+          throw error
+        }
+        restore.decodeRow(row)
+      }
+      facts.push(historicalChildCatalogSource(restore.finish()))
+    } catch {
+      // A damaged child cannot contribute evidence to its parent's catalog.
+    }
+  }
+  return facts
 }
 
 function sessionLogVersion(filename: string): number | undefined {

@@ -4,6 +4,7 @@ import {
   filterHiddenConversationEntries,
   hideConversationEntry,
   restoreConversationEntry,
+  selectSessionForCharacter,
   sortSessionsByPinned,
 } from "../src/renderer/src/modules/chat/model/chatSessionView.js";
 
@@ -17,6 +18,29 @@ function session(id, characterId, updatedAt) {
 }
 
 describe("conversation list entries", () => {
+  it("prefers the chosen history over the newest record when reentering a character", () => {
+    const allSessions = [
+      session("newest-a", "character-a", "2026-09-19T03:00:00Z"),
+      session("chosen-a", "character-a", "2026-09-19T01:00:00Z"),
+      session("only-b", "character-b", "2026-09-19T02:00:00Z"),
+    ];
+
+    expect(selectSessionForCharacter(allSessions, "character-a", "chosen-a")?.id).toBe("chosen-a");
+    expect(selectSessionForCharacter(allSessions, "character-b", "chosen-a")?.id).toBe("only-b");
+    expect(selectSessionForCharacter(allSessions, "character-a", "deleted-a")?.id).toBe("newest-a");
+  });
+
+  it("keeps each character's chosen history in the collapsed message list", () => {
+    const allSessions = [
+      session("newest-a", "character-a", "2026-09-19T03:00:00Z"),
+      session("chosen-a", "character-a", "2026-09-19T01:00:00Z"),
+      session("active-b", "character-b", "2026-09-19T02:00:00Z"),
+    ];
+    const preferred = new Map([["character-a", "chosen-a"], ["character-b", "active-b"]]);
+    expect(collapseSessionsByCharacter(sortSessionsByPinned(allSessions, []), "active-b", preferred)
+      .map((item) => item.id)).toEqual(["chosen-a", "active-b"]);
+  });
+
   it("hides the collapsed entry without deleting any conversation history", () => {
     const allSessions = [
       session("latest-session", "same-character", "2026-09-19T03:00:00Z"),

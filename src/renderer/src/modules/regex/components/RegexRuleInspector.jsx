@@ -13,7 +13,7 @@ function Switch({ checked, onChange, label }) {
   );
 }
 
-export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange, onMoveScope, onClose, onDuplicate, onDelete }) {
+export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange, onMoveScope, onClose, onDuplicate, onDelete, onTest = testRegexRule }) {
   const [testInput, setTestInput] = useState("");
   const [testOutput, setTestOutput] = useState("");
   const [testError, setTestError] = useState("");
@@ -29,7 +29,7 @@ export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange,
     setTesting(true);
     setTestError("");
     try {
-      const result = await testRegexRule(testInput, rule, rule.targets[0] || "AiOutput");
+      const result = await onTest(testInput, rule, rule.targets[0] || "AiOutput");
       setTestOutput(result.output);
       setTestError(result.validationMessage || "");
     } catch (error) {

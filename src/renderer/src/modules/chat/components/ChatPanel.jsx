@@ -1,5 +1,6 @@
 import { ChatComposer } from "./ChatComposer.jsx";
 import { ChatWaitingReply } from "./ChatWaitingReply.jsx";
+import { ChatDropOverlay } from "./ChatDropOverlay.jsx";
 import { AgentProcessDialog } from "./AgentProcessDialog.jsx";
 import { TrajectoryDialog } from "./TrajectoryDialog.jsx";
 import { VariableViewerDialog } from "./VariableViewerDialog.jsx";
@@ -8,8 +9,7 @@ import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
 import { DshNewChatIcon } from "../../../ui/icons/dshComposerIcons.jsx";
-import { ImageSquare, Path, SlidersHorizontal } from "@phosphor-icons/react";
-import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import { Path, SlidersHorizontal } from "@phosphor-icons/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getGenerationStats, listenGenerationStatsEvent } from "../api/chatApi.js";
 import {
@@ -28,6 +28,7 @@ export function ChatPanel({
   hasCharacters,
   currentTitle,
   conversationId,
+  conversationModel,
   persona,
   messages,
   input,
@@ -35,6 +36,11 @@ export function ChatPanel({
   inputImages = [],
   onAddImages,
   onRemoveImage,
+  inputFiles = [],
+  onAddFiles,
+  onRemoveFile,
+  filesUploading = false,
+  fileUploadProgress = null,
   isSending,
   modelConfigs,
   selectedModelConfigId,
@@ -62,7 +68,9 @@ export function ChatPanel({
   isLoadingOlderMessages = false,
   onLoadOlderMessages,
   chatDisplay,
-  composerStyle = "glass",
+  runtimeSessionId = "",
+  renderRoleplaySlot,
+  renderRoleplayMessage,
 }) {
   const [messageAreaHovered, setMessageAreaHovered] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
@@ -80,7 +88,6 @@ export function ChatPanel({
   const headerMenuRef = useRef(null);
   const imageDragDepthRef = useRef(0);
   const previousMessageScrollTopRef = useRef(null);
-
   const bindMessageScrollElement = useCallback((element) => {
     scrollRef.current = element;
     setMessageScrollElement(element);
@@ -163,6 +170,54 @@ export function ChatPanel({
     return () => window.removeEventListener("keydown", switchOpening);
   }, [deleteMode, headerMenuOpen, input, isSending, onSelectOpening, openingMessage, processMessage]);
 
+  useEffect(() => {
+    if (!hasActiveChat) return undefined;
+    const resetDrop = () => {
+      imageDragDepthRef.current = 0;
+      setImageDragActive(false);
+    };
+    const enterFileDrop = (event) => {
+      if (!hasFileDrag(event)) return;
+      event.preventDefault();
+      imageDragDepthRef.current += 1;
+      setImageDragActive(true);
+    };
+    const overFileDrop = (event) => {
+      if (!hasFileDrag(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = isSending ? 'none' : 'copy';
+    };
+    const leaveFileDrop = (event) => {
+      if (!hasFileDrag(event)) return;
+      imageDragDepthRef.current = Math.max(0, imageDragDepthRef.current - 1);
+      if (imageDragDepthRef.current === 0) setImageDragActive(false);
+      const outside = event.clientX <= 0 || event.clientY <= 0
+        || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
+      if (outside && (event.target === document.body || event.target === document.documentElement)) resetDrop();
+    };
+    const receiveDrop = (event) => {
+      if (!hasFileDrag(event)) return;
+      event.preventDefault();
+      resetDrop();
+      if (isSending) return;
+      const files = [...(event.dataTransfer.files || [])];
+      receiveImages(files.filter((file) => file.type.startsWith('image/')));
+      receiveFiles(files.filter((file) => !file.type.startsWith('image/')));
+    };
+    document.addEventListener('dragenter', enterFileDrop);
+    document.addEventListener('dragover', overFileDrop);
+    document.addEventListener('dragleave', leaveFileDrop);
+    document.addEventListener('drop', receiveDrop);
+    window.addEventListener('dragend', resetDrop);
+    return () => {
+      document.removeEventListener('dragenter', enterFileDrop);
+      document.removeEventListener('dragover', overFileDrop);
+      document.removeEventListener('dragleave', leaveFileDrop);
+      document.removeEventListener('drop', receiveDrop);
+      window.removeEventListener('dragend', resetDrop);
+    };
+  }, [hasActiveChat, isSending, onAddFiles, onAddImages, onNotify]);
+
   if (!hasActiveChat) {
     return (
       <section className="chat-panel chat-panel-empty-state" aria-label="未选择聊天">
@@ -208,7 +263,7 @@ export function ChatPanel({
   function enterDeleteMode(event) {
     event?.preventDefault();
     event?.stopPropagation();
-    if (isSending || displayedMessages.length === 0) return;
+    if (isSending || !displayedMessages.some((message) => message.id !== "opening")) return;
     setHeaderMenuOpen(false);
     setProcessMessage(null);
     setDeleteFromMessageId("");
@@ -227,11 +282,22 @@ export function ChatPanel({
     setDeletingMessages(true);
     const deleted = await onDeleteMessages?.(deleteFromMessageId);
     if (deleted !== false) {
+      setGenerationStats(null);
+      if (conversationId) {
+        getGenerationStats(conversationId)
+          .then((stats) => setGenerationStats(stats))
+          .catch(() => {});
+      }
       setDeleteMode(false);
       setDeleteFromMessageId("");
       setDeleteConfirmationOpen(false);
     }
     setDeletingMessages(false);
+  }
+
+  function regenerateFrom(message) {
+    setGenerationStats(null);
+    return onRegenerate?.(message);
   }
 
   const deleteFromIndex = displayedMessages.findIndex((message) => message.id === deleteFromMessageId);
@@ -245,6 +311,14 @@ export function ChatPanel({
     }
   }
 
+  function receiveFiles(files) {
+    try {
+      Promise.resolve(onAddFiles?.(files)).catch((error) => onNotify?.("error", error?.message || "文件添加失败"));
+    } catch (error) {
+      onNotify?.("error", error?.message || "文件添加失败");
+    }
+  }
+
   function hasFileDrag(event) {
     return [...(event.dataTransfer?.types || [])].includes("Files");
   }
@@ -253,30 +327,6 @@ export function ChatPanel({
     <section
       className={`chat-panel layout-${layoutMode}${profile?.assistant_bubble_enabled ? " assistant-bubble-enabled" : ""}${deleteMode ? " message-delete-mode" : ""}`}
       style={displayStyle}
-      onDragEnter={(event) => {
-        if (!hasFileDrag(event)) return;
-        event.preventDefault();
-        imageDragDepthRef.current += 1;
-        setImageDragActive(true);
-      }}
-      onDragOver={(event) => {
-        if (!hasFileDrag(event)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-      }}
-      onDragLeave={(event) => {
-        if (!hasFileDrag(event)) return;
-        event.preventDefault();
-        imageDragDepthRef.current = Math.max(0, imageDragDepthRef.current - 1);
-        if (imageDragDepthRef.current === 0) setImageDragActive(false);
-      }}
-      onDrop={(event) => {
-        if (!hasFileDrag(event)) return;
-        event.preventDefault();
-        imageDragDepthRef.current = 0;
-        setImageDragActive(false);
-        receiveImages([...(event.dataTransfer.files || [])]);
-      }}
     >
       <header className="chat-header">
         <h1>{currentTitle}</h1>
@@ -327,7 +377,8 @@ export function ChatPanel({
         }}
         aria-busy={isLoadingOlderMessages || undefined}
       >
-        <VirtualizedMessageList
+        <MessageList
+          conversationId={conversationId}
           messages={displayedMessages}
           scrollElement={messageScrollElement}
           scrollRequest={scrollRequest}
@@ -344,10 +395,13 @@ export function ChatPanel({
           onEditMessage={onEditMessage}
           onEditOpening={onEditOpening}
           onSelectOpening={onSelectOpening}
-          onRegenerate={onRegenerate}
+          onRegenerate={regenerateFrom}
           deleteMode={deleteMode}
           deleteFromMessageId={deleteFromMessageId}
           onSelectDeleteFrom={setDeleteFromMessageId}
+          runtimeSessionId={runtimeSessionId}
+          renderRoleplaySlot={renderRoleplaySlot}
+          renderRoleplayMessage={renderRoleplayMessage}
         />
       </div>
 
@@ -373,6 +427,11 @@ export function ChatPanel({
           inputImages={inputImages}
           onAddImages={receiveImages}
           onRemoveImage={onRemoveImage}
+          inputFiles={inputFiles}
+          onAddFiles={receiveFiles}
+          onRemoveFile={onRemoveFile}
+          filesUploading={filesUploading}
+          fileUploadProgress={fileUploadProgress}
           isSending={isSending}
           modelConfigs={modelConfigs}
           selectedModelConfigId={selectedModelConfigId}
@@ -389,23 +448,19 @@ export function ChatPanel({
           onOpenTools={() => setToolsOpen(true)}
           onOpenVariables={() => setVariablesOpen(true)}
           onEnterDeleteMode={enterDeleteMode}
-          canDeleteMessages={displayedMessages.length > 0}
-          onRegenerate={onRegenerate}
+          canDeleteMessages={displayedMessages.some((message) => message.id !== "opening")}
+          onRegenerate={regenerateFrom}
           regenerateTargetMessageId={regenerateTargetMessageId}
-          composerStyle={composerStyle}
           generationStats={generationStats}
           showGenerationStats={chatDisplay?.generation_stats_enabled !== false}
+          renderRoleplaySlot={renderRoleplaySlot}
+          conversationId={conversationId}
             />
           </>
         )}
+        {renderRoleplaySlot?.("eleckoi.roleplay.composer.dock", { conversationId })}
       </div>
-      {imageDragActive ? (
-        <div className="chat-image-drop-overlay" role="status" aria-live="polite">
-          <ImageSquare size={56} weight="duotone" aria-hidden="true" />
-          <strong>松开即可添加图片</strong>
-          <span>最多 4 张，单张及合计不超过 20 MB</span>
-        </div>
-      ) : null}
+      {imageDragActive ? <ChatDropOverlay disabled={isSending} /> : null}
       {processMessage ? (
         <AgentProcessDialog
           message={messages.find((item) => (
@@ -421,7 +476,7 @@ export function ChatPanel({
         isSending={isSending}
         onClose={() => setTrajectoryOpen(false)}
       /> : null}
-      {variablesOpen ? <VariableViewerDialog conversationId={conversationId} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
+      {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
       {toolsOpen ? <AgentToolsDialog
         modelConfigs={modelConfigs}
         modelOptionsByKey={modelOptionsByKey}
@@ -445,7 +500,8 @@ export function ChatPanel({
   );
 }
 
-function VirtualizedMessageList({
+function MessageList({
+  conversationId,
   messages,
   scrollElement,
   scrollRequest,
@@ -466,55 +522,88 @@ function VirtualizedMessageList({
   deleteMode,
   deleteFromMessageId,
   onSelectDeleteFrom,
+  runtimeSessionId,
+  renderRoleplaySlot,
+  renderRoleplayMessage,
 }) {
-  const activeMessageIndex = messages.findIndex((message) => message.pending);
   const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant" && !message.pending);
-  const getItemKey = useCallback(
-    (index) => messages[index]?.renderKey || messages[index]?.id || `${messages[index]?.role || "message"}-${messages[index]?.created_at || index}`,
-    [messages],
-  );
-  const rangeExtractor = useCallback((range) => {
-    const visible = defaultRangeExtractor(range);
-    if (activeMessageIndex < 0 || visible.includes(activeMessageIndex)) return visible;
-    return [...visible, activeMessageIndex].sort((left, right) => left - right);
-  }, [activeMessageIndex]);
-  const virtualizer = useVirtualizer({
-    count: messages.length,
-    getScrollElement: () => scrollElement,
-    getItemKey,
-    estimateSize: () => layoutMode === "roleplay" ? 102 : layoutMode === "agent" ? 82 : 88,
-    measureElement: (element) => element?.getBoundingClientRect().height ?? 0,
-    overscan: 12,
-    anchorTo: "end",
-    followOnAppend: "auto",
-    scrollEndThreshold: 96,
-    rangeExtractor,
-  });
+  const followingRef = useRef(true);
+  const restoredConversationRef = useRef("");
+  const scrollRevisionRef = useRef(scrollRequest.revision);
+  const readerGestureRef = useRef(false);
   const deleteFromIndex = deleteMode
     ? messages.findIndex((message) => message.id === deleteFromMessageId)
     : -1;
 
   useLayoutEffect(() => {
-    if (!scrollElement) return undefined;
-    virtualizer.measure();
-    const frame = window.requestAnimationFrame(() => virtualizer.measure());
-    return () => window.cancelAnimationFrame(frame);
-  }, [deleteMode, scrollElement, virtualizer]);
+    if (!scrollElement || !conversationId || messages.length === 0
+      || restoredConversationRef.current === conversationId) return;
+    restoredConversationRef.current = conversationId;
+    scrollRevisionRef.current = scrollRequest.revision;
+    followingRef.current = true;
+    scrollElement.scrollTop = scrollElement.scrollHeight;
+  }, [conversationId, messages.length, scrollElement, scrollRequest.revision]);
 
   useLayoutEffect(() => {
-    if (!scrollRequest.revision) return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      virtualizer.scrollToEnd({ behavior: scrollRequest.behavior || "auto" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [scrollRequest.behavior, scrollRequest.revision, virtualizer]);
+    if (!scrollElement || scrollRevisionRef.current === scrollRequest.revision) return;
+    scrollRevisionRef.current = scrollRequest.revision;
+    followingRef.current = true;
+    scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: scrollRequest.behavior || "auto" });
+  }, [scrollElement, scrollRequest.behavior, scrollRequest.revision]);
+
+  useLayoutEffect(() => {
+    if (!scrollElement) return undefined;
+    const flow = scrollElement.querySelector('.message-flow');
+    if (!flow) return undefined;
+    const follow = () => {
+      if (followingRef.current) scrollElement.scrollTop = scrollElement.scrollHeight;
+    };
+    const observe = typeof ResizeObserver === 'function' ? new ResizeObserver(follow) : null;
+    observe?.observe(flow);
+    const onScroll = () => {
+      const gap = scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
+      if (gap <= 32) followingRef.current = true;
+      else if (readerGestureRef.current) followingRef.current = false;
+    };
+    const onWheel = (event) => { if (event.deltaY < 0) followingRef.current = false; };
+    const onPointerDown = () => { readerGestureRef.current = true; };
+    const onPointerUp = () => { readerGestureRef.current = false; };
+    const onKeyDown = (event) => {
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key)) followingRef.current = false;
+    };
+    scrollElement.addEventListener('scroll', onScroll, { passive: true });
+    scrollElement.addEventListener('wheel', onWheel, { passive: true });
+    scrollElement.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointerup', onPointerUp);
+    scrollElement.addEventListener('keydown', onKeyDown);
+    follow();
+    return () => {
+      observe?.disconnect();
+      scrollElement.removeEventListener('scroll', onScroll);
+      scrollElement.removeEventListener('wheel', onWheel);
+      scrollElement.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      scrollElement.removeEventListener('keydown', onKeyDown);
+    };
+  }, [scrollElement]);
 
   return (
-    <div className="message-virtualizer" style={{ height: `${virtualizer.getTotalSize()}px` }}>
-      {virtualizer.getVirtualItems().map((virtualItem) => {
-        const item = messages[virtualItem.index];
-        const selectedForDelete = deleteFromIndex >= 0 && virtualItem.index >= deleteFromIndex;
-        const nextRole = messages[virtualItem.index + 1]?.role;
+    <div className="message-flow">
+      {messages.map((item, index) => {
+        const pluginMessage = !deleteMode && renderRoleplaySlot
+          && item.runtimeSessionId === runtimeSessionId && !item.pending;
+        const pluginActions = pluginMessage && item.role === "assistant" && item.dshMessageId
+          ? renderRoleplaySlot("eleckoi.roleplay.message.actions", {
+            conversationId: item.conversationId, productMessageId: item.id, messageId: item.dshMessageId,
+          }) : null;
+        const pluginAfter = pluginMessage
+          ? renderRoleplaySlot("eleckoi.roleplay.message.after", {
+            conversationId: item.conversationId, productMessageId: item.id,
+            messageId: item.dshMessageId || null, role: item.role,
+          }) : null;
+        const renderMessageContent = pluginMessage ? renderRoleplayMessage : undefined;
+        const selectedForDelete = deleteFromIndex >= 0 && index >= deleteFromIndex;
+        const nextRole = messages[index + 1]?.role;
         const spacingAfter = nextRole
           ? layoutMode === "agent" && item.role === "user" && nextRole === "assistant"
             ? profile.reply_spacing
@@ -522,14 +611,10 @@ function VirtualizedMessageList({
           : 0;
         return (
           <div
-            key={virtualItem.key}
-            ref={virtualizer.measureElement}
-            className="message-virtual-row"
-            data-index={virtualItem.index}
-            style={{
-              paddingBottom: `${spacingAfter}px`,
-              transform: `translateY(${virtualItem.start}px)`,
-            }}
+            key={item.renderKey || item.id || `${item.role || "message"}-${item.created_at || index}`}
+            className="message-flow-row"
+            data-index={index}
+            style={{ paddingBottom: `${spacingAfter}px` }}
           >
             {deleteMode ? (
               <div className={`message-delete-selection-row layout-${layoutMode}${selectedForDelete ? " is-selected" : ""}`}>
@@ -537,6 +622,7 @@ function VirtualizedMessageList({
                   className="message-delete-checkbox"
                   type="checkbox"
                   checked={selectedForDelete}
+                  disabled={item.id === "opening"}
                   aria-label={`从这条消息开始删除${selectedForDelete ? "，已选中" : ""}`}
                   onChange={() => onSelectDeleteFrom(item.id)}
                 />
@@ -546,12 +632,15 @@ function VirtualizedMessageList({
                   name={item.role === "user" ? userName : assistantName}
                   layoutMode={layoutMode}
                   avatarShape={avatarShape}
-                  isLatestAssistant={virtualItem.index === latestAssistantIndex}
-                  floorNumber={messageFloorNumber(messages, virtualItem.index)}
+                  isLatestAssistant={index === latestAssistantIndex}
+                  floorNumber={messageFloorNumber(messages, index)}
                   showRoleplayTimestamp={showRoleplayTimestamp}
                   showRoleplayFloor={showRoleplayFloor}
                   onOpenProcess={onOpenProcess}
                   onSelectOpening={onSelectOpening}
+                  pluginActions={pluginActions}
+                  pluginAfter={pluginAfter}
+                  renderMessageContent={renderMessageContent}
                 />
               </div>
             ) : (
@@ -561,14 +650,17 @@ function VirtualizedMessageList({
                 name={item.role === "user" ? userName : assistantName}
                 layoutMode={layoutMode}
                 avatarShape={avatarShape}
-                isLatestAssistant={virtualItem.index === latestAssistantIndex}
-                floorNumber={messageFloorNumber(messages, virtualItem.index)}
+                isLatestAssistant={index === latestAssistantIndex}
+                floorNumber={messageFloorNumber(messages, index)}
                 showRoleplayTimestamp={showRoleplayTimestamp}
                 showRoleplayFloor={showRoleplayFloor}
                 onOpenProcess={onOpenProcess}
                 onEdit={item.id === "opening" ? onEditOpening : onEditMessage}
                 onSelectOpening={onSelectOpening}
                 onRegenerate={(message) => onRegenerate?.({ targetMessageId: message.turnId || message.id })}
+                pluginActions={pluginActions}
+                pluginAfter={pluginAfter}
+                renderMessageContent={renderMessageContent}
               />
             )}
           </div>

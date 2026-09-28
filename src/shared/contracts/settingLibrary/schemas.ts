@@ -15,8 +15,9 @@ export const settingLibraryPromptPositionSideSchema = z.enum([
   'before_setting_position',
   'after_setting_position'
 ])
-export const settingLibraryAgentReadStrategySchema = z.enum(['required', 'keyword', 'normal', 'variable_condition'])
-export const settingLibraryDynamicModeSchema = z.enum(['standard', 'ejs_controller', 'ejs_reference'])
+export const settingLibraryAgentReadStrategySchema = z.enum(['required', 'keyword', 'normal'])
+export const settingLibraryDynamicModeSchema = z.enum(['standard', 'ejs_reference'])
+export const settingLibraryContentModeSchema = z.enum(['plain_text', 'ejs'])
 export const settingLibraryKeywordConditionSchema = z.enum(['none', 'any', 'all', 'not_any'])
 export const settingLibraryEntryKindSchema = z.enum([
   'normal',
@@ -44,6 +45,7 @@ export const settingLibraryEntrySchema = z.object({
   agentSelectionHint: z.string(),
   agentReadStrategy: settingLibraryAgentReadStrategySchema,
   dynamicMode: settingLibraryDynamicModeSchema,
+  contentMode: settingLibraryContentModeSchema,
   keywords: z.array(z.string()),
   keywordScanDepth: z.number().int().min(0),
   conditionKeywords: z.array(z.string()),

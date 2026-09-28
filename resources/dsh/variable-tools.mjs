@@ -26,10 +26,10 @@ function outputDefinition() {
 function globTool() {
   return defineTool({
     name: 'eleckoi_glob_variables',
-    description: '按变量路径 Glob 查找变量。pattern 默认 **；返回真实 JSON Pointer 路径，不返回完整值。required_variables 是本回合必须逐项读取的必读变量。',
+    description: '使用 Glob 查找虚拟变量路径。每轮最终回复前至少调用一次；省略 pattern 和 path，以 ** 一次列出全部变量路径及当前 required_variables。已有完整路径就直接读取；仅需筛选已知变量组时传 path，它会递归搜索子组。同一轮变量结构未变化时不要重复相同搜索。返回真实 JSON Pointer 路径，不返回完整值或规则。required_variables 不受 pattern 或 path 影响，本回合必须逐项读取。',
     parameters: {
       pattern: { type: 'string', description: '变量路径 Glob，例如 **、角色/**、**/*好感*。' },
-      path: { type: 'string', description: '可选的精确变量组 JSON Pointer；留空表示全部变量。' },
+      path: { type: 'string', description: '可选的精确变量组 JSON Pointer；留空表示全部变量，指定后递归搜索该组下的变量。' },
     },
     output: outputDefinition(),
     async execute(args, exec) {
@@ -43,15 +43,14 @@ function globTool() {
       try { matcher = globRegex(pattern) } catch (error) { return failure('glob_error', errorMessage(error)) }
       const scoped = inScope(catalog, scope)
       const selected = scoped.filter((entry) => matcher.test(relativePath(entry.path, scope)))
-      const limit = 100
       return {
         status: selected.length ? 'ok' : 'no_matches',
         pattern,
         path: scope,
         required_variables: requiredVariables(catalog),
-        paths: selected.slice(0, limit).map((entry) => entry.path),
-        truncated: selected.length > limit,
-        omitted: Math.max(0, selected.length - limit),
+        paths: selected.map((entry) => entry.path),
+        truncated: false,
+        omitted: 0,
       }
     },
   })
@@ -120,15 +119,15 @@ function grepTool() {
 function readTool() {
   return defineTool({
     name: 'eleckoi_read_variables',
-    description: '读取 Glob 或 Grep 返回的变量路径，给出当前值、默认值、说明和完整更新规则。修改前应先读并遵守作者规则。',
+    description: '读取当前回合变量搜索结果中的完整路径，给出当前值、默认值、说明和完整更新规则。每轮先用变量 Glob 获取 required_variables 并读取这些必读变量；上轮读取不能代替本轮状态。修改前应先读并遵守作者规则。',
     parameters: {
-      paths: { type: 'array', items: { type: 'string' }, required: true, description: '1 到 16 个完整变量 JSON Pointer 路径。' },
+      paths: { type: 'array', items: { type: 'string' }, required: true, description: '一个或多个当前回合 Glob 或 Grep 已返回的完整变量 JSON Pointer 路径。' },
     },
     output: outputDefinition(),
     async execute(args, exec) {
       const bridgeFile = variableBridgeFor(exec)
       const paths = [...new Set(args.paths.filter((path) => typeof path === 'string' && path.startsWith('/')))]
-      if (!paths.length || paths.length > 16) return failure('invalid_arguments', '一次必须读取 1 到 16 个变量路径。')
+      if (!paths.length) return failure('invalid_arguments', '至少需要读取一个变量路径。')
       const bridge = readBridge(bridgeFile)
       const byPath = new Map(variableCatalog(bridge).map((entry) => [entry.path, entry]))
       const missing = paths.filter((path) => !byPath.has(path))

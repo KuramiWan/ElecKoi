@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   createCharacter as persistCreateCharacter,
   commitCharacterImports,
@@ -33,16 +33,63 @@ function activeCharacterOf(characterState) {
     || null;
 }
 
-export function usePersonaCharacters({ setStatus, setActiveSectionState }) {
+const EMPTY_CHARACTER_CATALOG = {
+  status: "loading",
+  collection: { active_character_id: "", groups: [], items: [] },
+  error: "",
+};
+const subscribeEmptyCatalog = () => () => {};
+const getEmptyCatalog = () => EMPTY_CHARACTER_CATALOG;
+const EMPTY_PERSONA_PROFILE = { status: "loading", profile: null, error: "" };
+const getEmptyProfile = () => EMPTY_PERSONA_PROFILE;
+
+export function usePersonaCharacters({ characterCatalog, personaModel, setStatus, setActiveSectionState, notify }) {
   const [persona, setPersona] = useState(emptyPersona);
-  const [characters, setCharacters] = useState({ active_character_id: "", groups: [], items: [] });
+  const [localCharacters, setLocalCharacters] = useState(EMPTY_CHARACTER_CATALOG.collection);
+  const catalog = useSyncExternalStore(
+    characterCatalog?.subscribe || subscribeEmptyCatalog,
+    characterCatalog?.getSnapshot || getEmptyCatalog,
+  );
+  const characters = characterCatalog ? catalog.collection : localCharacters;
+  const profileSnapshot = useSyncExternalStore(
+    personaModel?.subscribe || subscribeEmptyCatalog,
+    personaModel?.getSnapshot || getEmptyProfile,
+  );
   const [selectedCharacterId, setSelectedCharacterId] = useState("");
   const charactersRef = useRef(characters);
+  charactersRef.current = characters;
   const selectedCharacterIdRef = useRef("");
+  const notifyRef = useRef(notify);
+  notifyRef.current = notify;
+
+  useEffect(() => {
+    if (!characterCatalog || catalog.status !== "error" || !catalog.error) return;
+    setStatus(catalog.error);
+    notifyRef.current?.("error", catalog.error);
+  }, [catalog.error, catalog.status, characterCatalog, setStatus]);
+
+  useEffect(() => {
+    if (!personaModel || profileSnapshot.status !== "error" || !profileSnapshot.error) return;
+    setStatus(profileSnapshot.error);
+    notifyRef.current?.("error", profileSnapshot.error);
+  }, [personaModel, profileSnapshot.error, profileSnapshot.status, setStatus]);
+
+  useEffect(() => {
+    if (!personaModel || !profileSnapshot.profile) return;
+    const profile = profileSnapshot.profile;
+    setPersona((current) => ({
+      ...current,
+      user_name: profile.user_name,
+      user_avatar: profile.user_avatar,
+      user_square: profile.user_square,
+      user_portrait: profile.user_portrait,
+    }));
+  }, [personaModel, profileSnapshot.profile]);
 
   function setCharacterState(next) {
     charactersRef.current = next;
-    setCharacters(next);
+    if (characterCatalog) characterCatalog.adopt(next);
+    else setLocalCharacters(next);
   }
 
   function setSelectedCharacter(characterId) {
@@ -51,8 +98,7 @@ export function usePersonaCharacters({ setStatus, setActiveSectionState }) {
     setSelectedCharacterId(value);
   }
 
-  function applyCharacterCollection(saved) {
-    setCharacterState(saved);
+  function applyCharacterView(saved) {
     const active = activeCharacterOf(saved);
     const selected = saved.items.find((item) => item.id === selectedCharacterIdRef.current) || active;
     setSelectedCharacter(selected?.id || "");
@@ -70,15 +116,28 @@ export function usePersonaCharacters({ setStatus, setActiveSectionState }) {
     return active;
   }
 
+  function applyCharacterCollection(saved) {
+    setCharacterState(saved);
+    return applyCharacterView(saved);
+  }
+
+  useEffect(() => {
+    if (characterCatalog && catalog.status === "ready") applyCharacterView(catalog.collection);
+  }, [catalog.collection, catalog.status, characterCatalog]);
+
   async function loadPersona() {
-    const data = await getPersona();
-    const loaded = { ...emptyPersona, ...(data.persona || {}) };
+    const profile = personaModel
+      ? personaModel.getSnapshot().profile || await personaModel.refresh()
+      : (await getPersona()).persona;
+    const loaded = { ...emptyPersona, ...(profile || {}) };
     setPersona(loaded);
     return loaded;
   }
 
   async function loadCharacters() {
-    const data = await getCharacters();
+    const data = characterCatalog?.getSnapshot().status === "ready"
+      ? characterCatalog.getSnapshot().collection
+      : characterCatalog ? await characterCatalog.refresh() : await getCharacters();
     const items = data.items || [];
     const active = items.find((item) => item.id === data.active_character_id) || items[0] || null;
     const next = {
@@ -86,7 +145,8 @@ export function usePersonaCharacters({ setStatus, setActiveSectionState }) {
       groups: data.groups || [],
       items,
     };
-    applyCharacterCollection(next);
+    if (characterCatalog) applyCharacterView(next);
+    else applyCharacterCollection(next);
     return next;
   }
 
@@ -154,6 +214,7 @@ export function usePersonaCharacters({ setStatus, setActiveSectionState }) {
     };
     const saved = await savePersona(nextPersona);
     const updated = { ...emptyPersona, ...(saved.persona || nextPersona) };
+    personaModel?.adopt(updated);
     setPersona(updated);
     return updated;
   }

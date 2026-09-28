@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getUiPreferences, saveUiPreferences } from "../../settings/index.js";
-import { ExportIcon, ImportIcon, TrashIcon, XIcon } from "../../../ui/icons/index.jsx";
+import { HistoryExportIcon, HistoryImportIcon, TrashIcon, XIcon } from "../../../ui/icons/index.jsx";
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
-import { applyChatHistoryPolicy } from "../api/chatApi.js";
+import { applyChatHistoryPolicy, exportChatHistory, importChatHistory } from "../api/chatApi.js";
 
 function dateTitle(value) {
   if (!value) return "未知日期";
@@ -24,6 +24,9 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
   const [keyword, setKeyword] = useState("");
   const [saveMode, setSaveMode] = useState("all");
   const [confirmAction, setConfirmAction] = useState(null);
+  const [transferError, setTransferError] = useState("");
+  const [transferring, setTransferring] = useState(false);
+  const importInput = useRef(null);
   const currentSession = (sessions || []).find((item) => item.id === sessionId);
   const currentCharacterId = currentSession?.character_id || chatCharacter?.character_id || "";
   const characterName = currentSession?.character_name || chatCharacter?.assistant_name || chatCharacter?.character_name || "";
@@ -91,6 +94,49 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
     setConfirmAction({ type: "delete", item });
   }
 
+  async function exportHistory(item) {
+    if (transferring) return;
+    setTransferError("");
+    setTransferring(true);
+    try {
+      const { json } = await exportChatHistory(item.id);
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `eleckoi-chat-${item.id}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      setTransferError(error?.message || "导出聊天记录失败。");
+    } finally {
+      setTransferring(false);
+    }
+  }
+
+  async function importHistory(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || transferring) return;
+    setTransferError("");
+    if (!currentCharacterId) {
+      setTransferError("请先选择角色，再导入聊天记录。");
+      return;
+    }
+    setTransferring(true);
+    try {
+      const { conversationId } = await importChatHistory(currentCharacterId, await file.text());
+      await onHistoryPolicyChange?.();
+      await onLoadChat?.(conversationId);
+      onClose?.();
+    } catch (error) {
+      setTransferError(error?.message || "导入聊天记录失败。");
+    } finally {
+      setTransferring(false);
+    }
+  }
+
   async function confirmPendingAction() {
     const action = confirmAction;
     if (!action) return;
@@ -150,14 +196,14 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
             </button>
           </div>
           <div className="history-actions" aria-label="历史对话操作">
-            <button type="button" title="导入（待开发）" disabled>
-              <ImportIcon />
-            </button>
-            <button type="button" title="导出（待开发）" disabled>
-              <ExportIcon />
+            <input ref={importInput} type="file" accept=".json,application/json" hidden onChange={importHistory} />
+            <button type="button" title="导入聊天记录" aria-label="导入聊天记录" disabled={transferring} onClick={() => importInput.current?.click()}>
+              <HistoryImportIcon />
             </button>
           </div>
         </div>
+
+        {transferError ? <div className="history-transfer-error" role="alert">{transferError}</div> : null}
 
         <div className="history-list">
           {!filteredGroups.length ? (
@@ -191,6 +237,9 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
                         </p>
                         <span>{item.summary || item.title || "新对话"}</span>
                       </div>
+                    </button>
+                    <button className="history-item-export" type="button" title="导出这条记录" aria-label="导出这条记录" disabled={transferring} onClick={() => exportHistory(item)}>
+                      <HistoryExportIcon />
                     </button>
                     <button className="history-item-delete" type="button" title="删除这条记录" onClick={() => requestDeleteChat(item)}>
                       <TrashIcon />

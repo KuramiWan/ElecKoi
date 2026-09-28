@@ -115,7 +115,7 @@ describe('agent preset repository', () => {
       entries: [{
         id: 'prompt-1', title: '角色核心', iconId: '', kind: 'normal', groupId: '', content: '保持角色一致。',
         openingMessages: [], defaultOpeningMessageId: '', agentSelectionHint: '', agentReadStrategy: 'normal',
-        dynamicMode: 'standard', keywords: [], keywordScanDepth: 1,
+        dynamicMode: 'standard', contentMode: 'plain_text', keywords: [], keywordScanDepth: 1,
         conditionKeywords: [], keywordCondition: 'none', keywordUseRegex: false, keywordIgnoreCase: true,
         keywordWholeWord: false, keywordRecursionDepth: 0, triggerMode: 'always', enabled: true,
         position: 'insert_point_1', promptPositionId: '', insertRole: 'user', order: 1,

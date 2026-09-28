@@ -360,6 +360,7 @@ export class DshGenerationStatsProjector {
       this.state.breakdownNodes.push(node)
       return true
     }
+    if (event.surfaceOp === undefined) return false
 
     const start = event.surfaceOp.startSeq as number
     const end = event.surfaceOp.endSeq as number
@@ -396,7 +397,7 @@ export class DshGenerationStatsProjector {
   private refreshContextView(): void {
     const pressureTokens = this.state.contextPressure.pressureTokens
     const nodeTokens = this.state.breakdownNodes.reduce((total, node) => total + node.heuristicTokens, 0)
-    const lastSystem = this.state.breakdownNodes.findLast((node) => node.system && node.heuristicTokens > 0)
+    const lastSystem = [...this.state.breakdownNodes].reverse().find((node) => node.system && node.heuristicTokens > 0)
     const systemTokens = lastSystem?.heuristicTokens ?? this.state.legacyBreakdownSystemTokens
     const retainedSurfaceTokens = this.state.legacyBreakdownSurfaceTokens + nodeTokens
     this.state.contextBreakdown = {
@@ -410,6 +411,21 @@ export class DshGenerationStatsProjector {
       projectedTokens: Math.max(0, pressureTokens + this.state.surfaceTokens - this.state.sampledSurfaceTokens)
     }
   }
+}
+
+/** Rebuild the visible totals from the Session events that still exist on disk. */
+export function generationStatsFromSessionEvents(
+  events: readonly SessionEvent[],
+  sessionId: string
+): DshGenerationStatsProjector {
+  const projector = new DshGenerationStatsProjector()
+  for (const event of events) {
+    projector.project({
+      method: 'session.event',
+      params: { sessionId, event }
+    } as HarnessNotification, sessionId)
+  }
+  return projector
 }
 
 export function parseStoredGenerationStats(value: unknown): StoredDshGenerationStats | undefined {

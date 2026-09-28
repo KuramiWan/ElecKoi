@@ -1,8 +1,10 @@
-/** Composes every SDK-created Agent from its immutable ElecKoi Session snapshot. */
+/** Composes each ElecKoi Agent from its immutable Session snapshot. */
 
-import { createConversationSeed, installConversationContext } from './conversation-context.mjs'
+import { installConversationContext } from './conversation-context.mjs'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { installRequestConfig } from './request-config.mjs'
-import { inheritSessionSnapshot, readSessionSnapshot, removeSessionSnapshot } from './session-snapshot.mjs'
+import { commitSessionPreset, inheritSessionSnapshot, readSessionSnapshot, removeSessionSnapshot } from './session-snapshot.mjs'
 import { applyDisabledPolicy } from './tool-policy.mjs'
 
 export const name = 'eleckoi-agent-preset-bridge'
@@ -10,7 +12,97 @@ export const inject = ['agents', 'agentPresets']
 
 export function apply(ctx) {
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
+  const presetRoot = process.env.ELECKOI_PRESET_ROOT
   if (!snapshotRoot) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
+  if (!presetRoot) throw new Error('ELECKOI_PRESET_ROOT is required')
+  const registrations = new Map()
+  const sessionHandles = new Map()
+  const sessionLocks = new Map()
+  const withSessionLock = async (sessionId, action) => {
+    const previous = sessionLocks.get(sessionId) ?? Promise.resolve()
+    let release
+    const current = new Promise((resolve) => { release = resolve })
+    sessionLocks.set(sessionId, current)
+    await previous
+    try {
+      return await action()
+    } finally {
+      release()
+      if (sessionLocks.get(sessionId) === current) sessionLocks.delete(sessionId)
+    }
+  }
+  const disposeTracked = async (sessionId) => {
+    const handle = sessionHandles.get(sessionId)
+    if (!handle) {
+      if (ctx.agents.get(sessionId)) throw new Error(`DSH 会话 ${sessionId} 有未跟踪的写入句柄。`)
+      return false
+    }
+    await handle.dispose()
+    if (sessionHandles.get(sessionId) === handle) sessionHandles.delete(sessionId)
+    if (ctx.agents.get(sessionId)) throw new Error(`DSH 会话 ${sessionId} 的写入句柄未释放。`)
+    return true
+  }
+  ctx.provide('eleckoiSessionHandles', {
+    dispose: (sessionId) => withSessionLock(sessionId, () => disposeTracked(sessionId)),
+    withClosed: (sessionId, action) => withSessionLock(sessionId, async () => {
+      await disposeTracked(sessionId)
+      return action()
+    })
+  })
+  ctx.on('agent/disposed', ({ agent }) => {
+    if (sessionHandles.get(agent.id)?.agent === agent) sessionHandles.delete(agent.id)
+  })
+  const trackHandle = (handle) => {
+    sessionHandles.set(handle.agent.id, handle)
+    return handle
+  }
+  const registerPreset = (id) => {
+    if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+      throw new Error('ElecKoi Agent preset id is invalid')
+    }
+    const existing = registrations.get(id)
+    if (existing) return existing
+    const registration = Promise.resolve().then(() => {
+      const definition = JSON.parse(readFileSync(join(presetRoot, id, 'preset.json'), 'utf8'))
+      if (definition?.id !== id || !Array.isArray(definition.plugins)) {
+        throw new Error(`ElecKoi Agent preset ${id} has an invalid composition`)
+      }
+      return ctx.agentPresets.register(definition)
+    }).catch((error) => {
+      registrations.delete(id)
+      throw error
+    })
+    registrations.set(id, registration)
+    return registration
+  }
+  ctx.provide('eleckoiPresetRegistrar', {
+    async registerForSession(sessionId) {
+      const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
+      await registerPreset(snapshot.mountedPresetId)
+      return snapshot.mountedPresetId
+    },
+    async selectForSession(sessionId) {
+      return withSessionLock(sessionId, async () => {
+        const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
+        const requested = snapshot.pendingPresetId
+        if (!requested || requested === snapshot.mountedPresetId) return snapshot.mountedPresetId
+        const agent = ctx.agents.get(sessionId)
+        if (!agent) throw new Error(`DSH 会话 ${sessionId} 尚未激活，不能切换预设。`)
+        if (agent.status !== 'idle') throw new Error(`DSH 会话 ${sessionId} 正在生成，不能切换预设。`)
+        await registerPreset(requested)
+        try {
+          await ctx.agentPresets.recompose(agent.ctx, requested)
+          agent.session.append('agent-preset/selected', { agentPreset: requested })
+        } catch (error) {
+          await ctx.agentPresets.recompose(agent.ctx, snapshot.mountedPresetId).catch(() => undefined)
+          throw error
+        }
+        commitSessionPreset(snapshotRoot, sessionId, requested)
+        applyDisabledPolicy(agent.ctx, snapshot.disabledToolGroupIds)
+        return requested
+      })
+    }
+  })
   const originalCreate = ctx.agents.create
   const originalResume = ctx.agents.resume
   const wrappedCreate = function (options) {
@@ -25,11 +117,16 @@ export function apply(ctx) {
       ? inheritSessionSnapshot(snapshotRoot, sourceSessionId, targetSessionId)
       : readSessionSnapshot(snapshotRoot, sourceSessionId)
     const nextOptions = composeSessionOptions(ctx, options, snapshotRoot, targetSessionId, snapshot, child, false)
-    return rollbackInheritedSnapshot(
-      () => originalCreate.call(ctx.agents, nextOptions),
+    return withSessionLock(targetSessionId, () => rollbackInheritedSnapshot(
+      async () => {
+        const existing = sessionHandles.get(targetSessionId)
+        if (existing) return existing
+        await registerPreset(snapshot.mountedPresetId)
+        return trackHandle(await originalCreate.call(ctx.agents, nextOptions))
+      },
       snapshotRoot,
       child ? targetSessionId : undefined
-    )
+    ))
   }
   const wrappedResume = function (options) {
     const child = options.parentAgent !== undefined
@@ -45,21 +142,30 @@ export function apply(ctx) {
     const targetSessionId = child ? options.resumeSessionId : sourceSessionId
     if (!targetSessionId) throw new Error('ElecKoi subagent is missing its resumed Session id')
     if (child) snapshot = inheritSessionSnapshot(snapshotRoot, sourceSessionId, targetSessionId)
-    return rollbackInheritedSnapshot(
-      () => originalResume.call(
-        ctx.agents,
-        composeSessionOptions(ctx, options, snapshotRoot, targetSessionId, snapshot, child, true)
-      ),
+    return withSessionLock(targetSessionId, () => rollbackInheritedSnapshot(
+      async () => {
+        const existing = sessionHandles.get(targetSessionId)
+        if (existing) return existing
+        await registerPreset(snapshot.mountedPresetId)
+        return trackHandle(await originalResume.call(
+          ctx.agents,
+          composeSessionOptions(ctx, options, snapshotRoot, targetSessionId, snapshot, child, true)
+        ))
+      },
       snapshotRoot,
       child ? targetSessionId : undefined
-    )
+    ))
   }
 
   ctx.agents.create = wrappedCreate
   ctx.agents.resume = wrappedResume
-  return () => {
+  return async () => {
     if (ctx.agents.create === wrappedCreate) ctx.agents.create = originalCreate
     if (ctx.agents.resume === wrappedResume) ctx.agents.resume = originalResume
+    await Promise.allSettled([...registrations.values()].map(async (task) => {
+      const dispose = await task
+      await dispose()
+    }))
   }
 }
 
@@ -79,16 +185,12 @@ function composeSessionOptions(ctx, options, snapshotRoot, sourceSessionId, snap
   return {
     ...options,
     agentOptions: requestAgentOptions(options.agentOptions, model),
-    ...resuming || child || options.seed !== undefined
-      ? {}
-      : { seed: createConversationSeed(snapshot, model) },
     ...resuming || child ? {} : {
       meta: { ...(options.meta ?? {}), agentPreset: snapshot.mountedPresetId }
     },
     setup: async (agentCtx, agent) => {
-      // DSH 0.1.5 re-parents the Agent scope when a preset is mounted. Every
-      // ElecKoi-owned effect must therefore be registered before that bind;
-      // registering an effect afterwards correctly fails on the retired scope.
+      // Mounting a preset changes the Agent scope. Register product request
+      // configuration and context before joining the preset composition.
       installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, child)
       if (!child) installConversationContext(agentCtx, snapshotRoot, sourceSessionId)
       applyDisabledPolicy(agentCtx, snapshot.disabledToolGroupIds)

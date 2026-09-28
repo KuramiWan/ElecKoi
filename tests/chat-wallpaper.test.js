@@ -4,12 +4,18 @@ import {
   CUSTOM_CHAT_BACKGROUND,
   GLOBAL_CHAT_BACKGROUND,
   chatWallpaperMode,
+  normalizeNewCharacterBackground,
   resolveChatWallpaper,
 } from "../src/renderer/src/modules/appearance/preferences/chatWallpaper.js";
 
 const persona = { assistant_cover: "cover", assistant_square: "square", assistant_avatar: "avatar" };
 
 describe("chat wallpaper parity with Android", () => {
+  it("defaults new characters to the plain background unless artwork was explicitly chosen", () => {
+    expect(normalizeNewCharacterBackground(undefined)).toBe("app");
+    expect(normalizeNewCharacterBackground("app")).toBe("app");
+    expect(normalizeNewCharacterBackground("character")).toBe("character");
+  });
   it("uses character artwork for the blank new-character default", () => {
     const result = resolveChatWallpaper({ character: { chatBackground: "" }, persona });
     expect(result.mode).toBe("character");

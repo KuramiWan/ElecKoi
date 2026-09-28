@@ -67,7 +67,7 @@
   place-items: center;
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }

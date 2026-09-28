@@ -20,6 +20,7 @@
 .qq-shell.main-window-shell {
   grid-template-columns: var(--rail-column-width) var(--side-panel-width) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  background: var(--list);
 }
 
 .qq-shell[data-side-panel-dragging] {
@@ -46,7 +47,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   width: 100%;
-  background: var(--chat);
+  background: var(--list);
 }
 
 .client-titlebar.split-surface .title-spacer {
@@ -148,7 +149,7 @@
   width: 6px;
   height: 6px;
   flex: none;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: var(--blue);
   opacity: 0.72;
 }
@@ -192,7 +193,7 @@
   top: 7px;
   width: 12px;
   height: 1.35px;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: currentColor;
 }
 
@@ -215,7 +216,7 @@
   top: 7px;
   width: 12px;
   height: 1.45px;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: currentColor;
 }
 

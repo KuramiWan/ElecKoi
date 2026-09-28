@@ -86,7 +86,7 @@
 }
 
 .app-settings-sidebar nav button:hover {
-  background: color-mix(in srgb, var(--active) 72%, #fff);
+  background: var(--active);
 }
 
 .app-settings-sidebar nav button.active {
@@ -104,8 +104,10 @@
 .app-settings-content {
   min-width: 0;
   min-height: 0;
+  margin-inline-end: 24px;
   overflow-y: auto;
   padding: 44px clamp(28px, 5vw, 72px) 64px;
+  --dsh-scrollbar-width: 10px;
 }
 
 .app-settings-content > * {
@@ -157,14 +159,6 @@
   margin-bottom: 14px;
 }
 
-.composer-style-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 14px;
-}
-
 .reasoning-display-card {
   display: flex;
   align-items: center;
@@ -176,10 +170,6 @@
 .reasoning-display-card > strong {
   color: var(--text);
   font-size: 15px;
-}
-
-.appearance-mode-control.composer-style-control {
-  grid-template-columns: repeat(2, auto);
 }
 
 .appearance-mode-control.sidebar-artwork-control {
@@ -312,7 +302,7 @@
 .layout-choice-preview em {
   position: absolute;
   display: block;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: #d5d5d5;
 }
 
@@ -411,13 +401,13 @@
   width: 96px;
   height: 96px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
 }
 
 .profile-settings-avatar-button > .avatar {
   width: 96px;
   height: 96px;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   font-size: 30px;
   box-shadow: 0 5px 18px rgba(28, 39, 54, 0.1);
 }
@@ -431,7 +421,7 @@
   width: 28px;
   height: 28px;
   border: 3px solid #f7f7f7;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: var(--blue);
   color: #fff;
 }
@@ -715,7 +705,7 @@
   padding: 0;
   overflow: hidden;
   border: 0;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: transparent;
   cursor: pointer;
 }
@@ -726,7 +716,7 @@
 
 .chat-text-color-field input::-webkit-color-swatch {
   border: 0;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 14%, transparent);
 }
 
@@ -830,7 +820,7 @@
 }
 
 .chat-avatar-shape-sample.circle {
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
 }
 
 .chat-avatar-shape-sample.rounded_square {
@@ -888,7 +878,7 @@
   position: relative;
   width: 36px;
   height: 20px;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: color-mix(in srgb, var(--muted) 28%, transparent);
   transition: background-color 140ms ease;
 }
@@ -900,7 +890,7 @@
   left: 2px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: var(--surface-raised);
   box-shadow: 0 1px 3px var(--shadow-color);
   transition: transform 140ms ease;
@@ -993,9 +983,7 @@
   .theme-setting-card { grid-template-columns: 46px minmax(0, 1fr); }
   .appearance-mode-card { align-items: stretch; flex-direction: column; }
   .sidebar-artwork-card { align-items: stretch; flex-direction: column; }
-  .composer-style-card { align-items: stretch; flex-direction: column; }
   .appearance-mode-control { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .appearance-mode-control.composer-style-control { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .appearance-mode-control.sidebar-artwork-control { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .appearance-mode-control.reasoning-display-control { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .appearance-mode-control button { min-width: 0; }

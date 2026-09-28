@@ -104,7 +104,7 @@
 
 .character-manager-group:hover,
 .character-manager-group.active {
-  background: var(--control-bg-hover);
+  background: var(--active);
 }
 
 .character-manager-group em {
@@ -338,7 +338,7 @@
 
 .character-manager-scroll::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: color-mix(in srgb, var(--muted) 42%, transparent);
   background-clip: padding-box;
 }

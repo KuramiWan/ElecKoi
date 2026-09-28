@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { DshRuntime } from '@eleckoi/dsh-runtime'
+import { DshDesktopPluginHost, DshRuntime } from '@eleckoi/dsh-runtime'
 
 const root = await mkdtemp(join(tmpdir(), 'eleckoi-electron-dsh-'))
 const runtime = new DshRuntime({
@@ -11,6 +11,13 @@ const runtime = new DshRuntime({
   runtimeDataRoot: join(root, 'runtime'),
   executablePath: process.execPath
 })
+runtime.bindSessionHost(new DshDesktopPluginHost({
+  runtimeDataRoot: join(root, 'runtime'),
+  workspaceRoot: join(root, 'workspace'),
+  agentPatchPath: resolve('resources/dsh/desktop-agent.patch.yml'),
+  hostConfiguration: () => runtime.hostConfiguration(),
+  executablePath: process.execPath
+}))
 
 try {
   await runtime.verify()

@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "upstream": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
-    "commit": "fb2c4b9e698e30edb738bca4cf0618587db7d203",
-    "version": "0.1.5-rc.2"
+    "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+    "version": "0.1.7-rc.2"
   },
   "transport": "stdio-jsonrpc",
   "entrypoint": "@deepseek-ai/dsh/package.json",
@@ -19,10 +19,11 @@
     "./tool-policy.mjs"
   ],
   "plugins": [
-    "@deepseek-ai/dsh-agent-presets"
+    "@deepseek-ai/dsh-agent-preset-registry"
   ],
   "presetComposition": "agent-preset-template/agent.cordis.yml",
   "presetLocalPlugins": [
+    "./uploaded-file-tools.mjs",
     "./roleplay-plan-tool.mjs",
     "./setting-library-tools.mjs",
     "./variable-tools.mjs"
@@ -45,7 +46,7 @@
     "@deepseek-ai/dsh-tool-todo",
     "@deepseek-ai/dsh-tool-web",
     "@deepseek-ai/dsh-tool-workflow",
-    "@deepseek-ai/dsh-workflow-worker-thread"
+    "@deepseek-ai/dsh-workflow-ptc"
   ],
   "capabilities": {
     "streaming": true,

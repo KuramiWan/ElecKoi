@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
-import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
-import { projectDshTrajectory, readDshTrajectory } from '@eleckoi/dsh-runtime'
+import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+import { releasedV3SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
+import { projectDshTrajectory, readDshSessionLog, readDshTrajectory } from '@eleckoi/dsh-runtime'
 import { agentTrajectorySnapshotSchema } from '../src/shared/contracts/agent/trajectory'
 
 const temporaryDirectories: string[] = []
@@ -18,6 +19,74 @@ afterEach(() => {
 })
 
 describe('DSH trajectory projection', () => {
+  it('reads a valid V3 log when the current migration rejects its surface order', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-trajectory-v3-read-'))
+    temporaryDirectories.push(root)
+    const sessionId = 'historical-session'
+    const directory = join(root, 'project-a', sessionId)
+    mkdirSync(directory, { recursive: true })
+    const header = releasedV3SessionFormatCodec.encodeHeader({
+      version: 3, id: sessionId, createdAt: 1_000, cwd: 'D:/workspace',
+      isSeeded: false, delegationDepth: 0
+    }, 0)
+    const events = [
+      event(0, 'turn/start', { turn: 1 }, 1_001),
+      event(1, 'user/message', {
+        role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '问题' }]
+      }, 1_002, 'append'),
+      event(2, 'step/start', { turn: 1, step: 1 }, 1_003),
+      event(3, 'assistant/message', { turn: 1, step: 1, message: {
+        id: 'seeded-reply', role: 'assistant', source: { kind: 'model' },
+        content: [{ type: 'text', text: '已有回答' }]
+      } }, 1_004, 'append'),
+      event(4, 'step/end', { turn: 1, step: 1 }, 1_005),
+      event(5, 'turn/end', { turn: 1, reason: { kind: 'completed' } }, 1_006),
+      event(6, 'session/end-seed', {}, 1_007),
+      event(7, 'turn/start', { turn: 2 }, 1_008),
+      event(8, 'step/start', { turn: 2, step: 1 }, 1_009),
+      event(9, 'system/message', { turn: 2, step: 1, message: {
+        id: 'system', role: 'system', source: { kind: 'plugin', plugin: '@deepseek-ai/dsh-system-prompt' },
+        content: [{ type: 'text', text: '系统说明' }]
+      } }, 1_010, 'append'),
+      event(10, 'assistant/message', { turn: 2, step: 1, message: {
+        id: 'reply', role: 'assistant', source: { kind: 'model' },
+        content: [{ type: 'text', text: '回答' }]
+      } }, 1_011, 'append'),
+      event(11, 'step/end', { turn: 2, step: 1 }, 1_012),
+      event(12, 'turn/end', { turn: 2, reason: { kind: 'completed' } }, 1_013)
+    ]
+    const path = join(directory, 'session.v3.jsonl')
+    const source = `${[header, ...events.map((item) => releasedV3SessionFormatCodec.encodeEvent(item))]
+      .map((row) => JSON.stringify(row)).join('\n')}\n`
+    writeFileSync(path, source)
+
+    const migrated = createSessionFormatCatalogWithChildren([]).createRestore(header, {
+      recovery: 'strict', validation: 'transformed'
+    })
+    for (const item of events) migrated.decodeRow(releasedV3SessionFormatCodec.encodeEvent(item))
+    expect(() => migrated.finish()).toThrow(/protected first surface head/)
+    expect(readDshSessionLog(root, sessionId)?.events.map((item) => item.type)).toEqual(events.map((item) => item.type))
+    expect(readDshSessionLog(root, sessionId)?.header.version).toBe(3)
+    expect(readFileSync(path, 'utf8')).toBe(source)
+  })
+
+  it('reads a historical V3 parent with direct child evidence without changing either log', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-trajectory-v3-'))
+    temporaryDirectories.push(root)
+    const parentDirectory = join(root, 'project-a', 'parent')
+    const childDirectory = join(root, 'project-a', 'child')
+    mkdirSync(parentDirectory, { recursive: true })
+    mkdirSync(childDirectory, { recursive: true })
+    const base = { version: 3, createdAt: 1_000, cwd: 'D:/workspace', isSeeded: false, delegationDepth: 0 }
+    const parent = releasedV3SessionFormatCodec.encodeHeader({ ...base, id: 'parent' }, 0)
+    const child = releasedV3SessionFormatCodec.encodeHeader({
+      ...base, id: 'child', createdAt: 1_010, parentSession: 'parent', origin: 'subagent', delegationDepth: 1
+    }, 0)
+    writeFileSync(join(parentDirectory, 'session.v3.jsonl'), `${JSON.stringify(parent)}\n`)
+    writeFileSync(join(childDirectory, 'session.v3.jsonl'), `${JSON.stringify(child)}\n`)
+    expect(readDshTrajectory(root, 'parent')).toMatchObject({ runtimeThreadId: 'parent', totalRecords: 0 })
+  })
+
   it('keeps the raw event ledger separate while pairing calls with their results', () => {
     const result = projectDshTrajectory([
       event(0, 'turn/start', { turn: 1 }, 1_000),
@@ -34,7 +103,7 @@ describe('DSH trajectory projection', () => {
       }, 1_030),
       event(4, 'user/message', {
         content: [{ type: 'text', text: 'ELECKOI_REQUEST_PROJECTION_V1\n[{"content":"内部定义"}]' }],
-        source: { kind: 'plugin', plugin: 'eleckoi-request-projection' },
+        source: { kind: 'plugin:eleckoi-request-projection' },
         role: 'user'
       }, 1_035),
       event(5, 'request/header', {
@@ -108,32 +177,19 @@ describe('DSH trajectory projection', () => {
       }, 1_030),
       event(3, 'user/message', { content: [{ type: 'text', text: '问题' }], source: { kind: 'user' } }, 1_040, 'append'),
       event(4, 'tool/call', { turn: 1, step: 1, callId: 'call-a', name: 'read', arguments: '{}' }, 1_050),
-      event(5, 'tool/result', { turn: 1, step: 1, message: { source: { callId: 'call-a' }, content: [] } }, 1_060, 'append'),
-      event(6, 'assistant/message', { turn: 1, step: 1, message: { content: [{ type: 'text', text: '回答' }] } }, 1_070, 'append')
+      event(5, 'tool/result', { turn: 1, step: 1, message: {
+        id: 'tool-result-a', role: 'tool', toolCallId: 'call-a', source: { kind: 'tool', callId: 'call-a' },
+        content: [{ type: 'text', text: '文件内容' }]
+      } }, 1_060, 'append'),
+      event(6, 'assistant/message', { turn: 1, step: 1, message: {
+        id: 'assistant-a', role: 'assistant', source: { kind: 'model', provider: 'deepseek-official', model: 'deepseek-chat' },
+        content: [{ type: 'text', text: '回答' }]
+      } }, 1_070, 'append')
     ])
     writeFileSync(
       join(directory, `session.v${sessionFormatCatalog.currentVersion}.jsonl`),
       `${rows.map((row) => JSON.stringify(row)).join('\n')}\n{"partial":`
     )
-    const contextFile = join(root, 'eleckoi-request-context', `${runtimeThreadId}.jsonl`)
-    mkdirSync(join(root, 'eleckoi-request-context'), { recursive: true })
-    writeFileSync(contextFile, `${JSON.stringify({
-      requestSeq: 1,
-      turn: 1,
-      step: 1,
-      timeMillis: 1_020,
-      items: [{
-        order: 1,
-        messageId: 'message-user',
-        role: 'user',
-        kind: 'user',
-        title: '用户最新输入',
-        source: '本轮输入',
-        anchor: '',
-        content: '问题'
-      }]
-    })}\n`)
-
     const latest = readDshTrajectory(root, runtimeThreadId, { limit: 2 })
     expect(latest.records.map((record) => record.kind)).toEqual(['tool', 'assistant'])
     expect(latest).toMatchObject({ totalRecords: 3, hasMore: true, beforeIndex: 2 })
@@ -144,6 +200,15 @@ describe('DSH trajectory projection', () => {
     const older = readDshTrajectory(root, runtimeThreadId, { beforeIndex: latest.beforeIndex ?? undefined, limit: 2 })
     expect(older.records.map((record) => record.kind)).toEqual(['user'])
     expect(older).toMatchObject({ totalRecords: 3, hasMore: false, beforeIndex: 1 })
+
+    const staleContextFile = join(root, 'eleckoi-request-context', `${runtimeThreadId}.jsonl`)
+    mkdirSync(join(root, 'eleckoi-request-context'), { recursive: true })
+    writeFileSync(staleContextFile, `${JSON.stringify({
+      requestSeq: 1, turn: 1, step: 1, timeMillis: 999,
+      items: [{ order: 1, messageId: 'stale', role: 'user', kind: 'user', title: '旧请求', source: '', anchor: '', content: '已回退的正文' }]
+    })}\n`)
+    expect(readDshTrajectory(root, runtimeThreadId).records.flatMap((record) => record.requests)[0]?.context)
+      .toEqual([expect.objectContaining({ content: '问题' })])
   })
 
   it('keeps DSH session-global request numbers across turns, resumes and compactions', () => {
@@ -213,6 +278,108 @@ describe('DSH trajectory projection', () => {
       completedAtMillis: result.completedAtMillis
     })).not.toThrow()
     expect(JSON.stringify(result)).not.toContain('系统提示词')
+  })
+
+  it('shows only prior dialogue while retaining the current turn tool chain in request context', () => {
+    const result = projectDshTrajectory([
+      event(0, 'turn/start', { turn: 1 }, 1_000),
+      event(1, 'user/message', { id: 'user-1', role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: '上轮问题' }] }, 1_010, 'append'),
+      event(2, 'step/start', { turn: 1, step: 1 }, 1_020),
+      event(3, 'assistant/message', { turn: 1, step: 1, message: {
+        id: 'call-1', role: 'assistant', source: { kind: 'model' }, content: [
+          { type: 'reasoning', text: '上轮推理' },
+          { type: 'tool-call', id: 'tool-1', name: 'lookup', arguments: '{}' }
+        ]
+      } }, 1_030, 'append'),
+      event(4, 'tool/result', { turn: 1, step: 1, message: {
+        id: 'result-1', role: 'user', source: { kind: 'tool', callId: 'tool-1' },
+        content: [{ type: 'tool-result', toolCallId: 'tool-1', content: [{ type: 'text', text: '上轮工具结果' }] }]
+      } }, 1_040, 'append'),
+      event(5, 'step/end', { turn: 1, step: 1 }, 1_050),
+      event(6, 'step/start', { turn: 1, step: 2 }, 1_060),
+      event(7, 'assistant/message', { turn: 1, step: 2, message: {
+        id: 'reply-1', role: 'assistant', source: { kind: 'model' }, content: [
+          { type: 'reasoning', text: '上轮最终推理' },
+          { type: 'text', text: '<FINAL>上轮答复</FINAL>' }
+        ]
+      } }, 1_070, 'append'),
+      event(8, 'turn/end', { turn: 1 }, 1_080),
+      event(9, 'turn/start', { turn: 2 }, 1_090),
+      event(10, 'user/message', { id: 'user-2', role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: '本轮问题' }] }, 1_100, 'append'),
+      event(11, 'user/message', { id: 'runtime-2', role: 'user', source: { kind: 'plugin:runtime-context' },
+        content: [{ type: 'text', text: '本轮运行上下文' }] }, 1_110, 'append'),
+      event(12, 'step/start', { turn: 2, step: 1 }, 1_120),
+      event(13, 'assistant/message', { turn: 2, step: 1, message: {
+        id: 'call-2', role: 'assistant', source: { kind: 'model' }, content: [
+          { type: 'reasoning', text: '本轮推理' },
+          { type: 'tool-call', id: 'tool-2', name: 'lookup', arguments: '{}' }
+        ]
+      } }, 1_130, 'append'),
+      event(14, 'tool/result', { turn: 2, step: 1, message: {
+        id: 'result-2', role: 'user', source: { kind: 'tool', callId: 'tool-2' },
+        content: [{ type: 'tool-result', toolCallId: 'tool-2', content: [{ type: 'text', text: '本轮工具结果' }] }]
+      } }, 1_140, 'append'),
+      event(15, 'step/end', { turn: 2, step: 1 }, 1_150),
+      event(16, 'step/start', { turn: 2, step: 2 }, 1_160),
+      event(17, 'assistant/message', { turn: 2, step: 2, message: {
+        id: 'reply-2', role: 'assistant', source: { kind: 'model' },
+        content: [{ type: 'text', text: '<FINAL>本轮答复</FINAL>' }]
+      } }, 1_170, 'append')
+    ])
+    const requests = result.records.flatMap((record) => record.requests).filter((request) => request.turn === 2)
+
+    expect(requests).toHaveLength(2)
+    expect(requests[0]?.context.map((item) => item.content)).toEqual([
+      '上轮问题', '上轮答复', '本轮问题', '本轮运行上下文'
+    ])
+    expect(requests[1]?.context.map((item) => item.content)).toEqual([
+      '上轮问题', '上轮答复', '本轮问题', '本轮运行上下文',
+      expect.stringContaining('本轮推理'), '本轮工具结果'
+    ])
+    expect(JSON.stringify(requests)).not.toContain('上轮推理')
+    expect(JSON.stringify(requests)).not.toContain('上轮工具结果')
+    expect(JSON.stringify(requests)).not.toContain('上轮最终推理')
+  })
+
+  it('keeps the active compaction checkpoint in the reconstructed request context', () => {
+    const result = projectDshTrajectory([
+      event(0, 'turn/start', { turn: 1 }, 1_000),
+      event(1, 'user/message', { role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: '压缩前的问题' }] }, 1_010, 'append'),
+      event(2, 'assistant/message', { turn: 1, step: 1, message: {
+        role: 'assistant', source: { kind: 'model' },
+        content: [{ type: 'text', text: '<FINAL>压缩前的答复</FINAL>' }]
+      } }, 1_020, 'append'),
+      {
+        ...event(3, 'user/message', { role: 'user', source: { kind: 'compact-checkpoint' },
+          content: [{ type: 'text', text: '<compacted-summary>历史摘要</compacted-summary>' }] }, 1_030),
+        surfaceOp: { op: 'replace', startSeq: 1, endSeq: 2 }
+      },
+      event(4, 'user/message', { role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: '摘要后的问题' }] }, 1_040, 'append'),
+      event(5, 'assistant/message', { turn: 2, step: 1, message: {
+        role: 'assistant', source: { kind: 'model' },
+        content: [{ type: 'text', text: '<FINAL>摘要后的答复</FINAL>' }]
+      } }, 1_050, 'append'),
+      event(6, 'turn/start', { turn: 3 }, 1_060),
+      event(7, 'user/message', { role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: '当前问题' }] }, 1_070, 'append'),
+      event(8, 'step/start', { turn: 3, step: 1 }, 1_080),
+      event(9, 'assistant/message', { turn: 3, step: 1, message: {
+        role: 'assistant', source: { kind: 'model' },
+        content: [{ type: 'text', text: '<FINAL>当前答复</FINAL>' }]
+      } }, 1_090, 'append')
+    ])
+
+    const context = result.records.flatMap((record) => record.requests)
+      .find((request) => request.turn === 3)?.context
+    expect(context?.map((item) => item.content)).toEqual([
+      '<compacted-summary>历史摘要</compacted-summary>',
+      '摘要后的问题', '摘要后的答复', '当前问题'
+    ])
+    expect(JSON.stringify(context)).not.toContain('压缩前的问题')
   })
 
   it('does not project headerless constructor seed steps as model requests', () => {

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { CHAT_IMAGE_LIMITS } from "@shared/contracts/agent/imageLimits";
 
-const CHAT_IMAGE_LIMIT = 4;
-const CHAT_IMAGE_BYTES_LIMIT = 20 * 1024 * 1024;
 const CHAT_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const CHAT_IMAGE_EXTENSION_TYPES = new Map([
   ["png", "image/png"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"],
@@ -29,20 +28,20 @@ export function useChatInputImages({ modelConfig, isSending }) {
     const candidates = [...(files || [])];
     if (!candidates.length) return;
     if (isSending) throw new Error("正在生成，暂时无法添加图片。");
-    if (inputImagesRef.current.length + candidates.length > CHAT_IMAGE_LIMIT) {
-      throw new Error(`每条消息最多添加 ${CHAT_IMAGE_LIMIT} 张图片。`);
+    if (inputImagesRef.current.length + candidates.length > CHAT_IMAGE_LIMITS.maxImagesPerMessage) {
+      throw new Error(`每条消息最多添加 ${CHAT_IMAGE_LIMITS.maxImagesPerMessage} 张图片。`);
     }
     const validated = candidates.map((file) => {
       const mediaType = resolveImageMediaType(file);
       if (!mediaType) throw new Error("仅支持 PNG、JPEG、WebP 和 GIF 图片。");
       if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("图片内容为空。");
-      if (file.size > CHAT_IMAGE_BYTES_LIMIT) throw new Error("单张图片不能超过 20 MB。");
+      if (file.size > CHAT_IMAGE_LIMITS.maxImageBytes) throw new Error("单张图片不能超过 20 MB。");
       return { file, mediaType };
     });
     const candidateBytes = validated.reduce((total, image) => total + image.file.size, 0);
     const currentBytes = inputImagesRef.current.reduce((total, image) => total + image.bytes, 0);
-    if (currentBytes + candidateBytes > CHAT_IMAGE_BYTES_LIMIT) {
-      throw new Error("每条消息的图片总计不能超过 20 MB。");
+    if (currentBytes + candidateBytes > CHAT_IMAGE_LIMITS.maxMessageImageBytes) {
+      throw new Error("每条消息的图片总计不能超过 200 MB。");
     }
     const admitted = validated.map(({ file, mediaType }) => ({
       localId: globalThis.crypto?.randomUUID?.() || `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,

@@ -9,7 +9,6 @@ export const chatSessions = sqliteTable('chat_sessions', {
   characterId: text('characterId').notNull(),
   characterName: text('characterName').notNull(),
   characterAvatar: text('characterAvatar').notNull(),
-  historySummary: text('historySummary').notNull(),
   historyMessageCount: integer('historyMessageCount').notNull(),
   historyUserMessageCount: integer('historyUserMessageCount').notNull(),
   createdAt: text('createdAt').notNull(),
@@ -200,6 +199,7 @@ export const cleanupOperations = sqliteTable('cleanup_operations', {
 export const agentConversations = sqliteTable('agent_conversations', {
   id: text('id').notNull().primaryKey(),
   activeBranchId: text('activeBranchId').notNull(),
+  runtimeThreadId: text('runtimeThreadId').notNull().default(sql.raw("''")),
 })
 
 export const agentBranches = sqliteTable('agent_branches', {
@@ -225,6 +225,11 @@ export const agentTurns = sqliteTable('agent_turns', {
   variableStateJson: text('variableStateJson').notNull(),
 })
 
+export const agentPendingInputs = sqliteTable('agent_pending_inputs', {
+  turnId: text('turnId').notNull().primaryKey(),
+  draftJson: text('draftJson').notNull(),
+})
+
 export const agentResponses = sqliteTable('agent_responses', {
   id: text('id').notNull().primaryKey(),
   conversationId: text('conversationId').notNull(),
@@ -235,6 +240,8 @@ export const agentResponses = sqliteTable('agent_responses', {
   createdAt: text('createdAt').notNull(),
   variableStateJson: text('variableStateJson').notNull(),
   runtimeThreadId: text('runtimeThreadId').notNull(),
+  dshTurn: integer('dshTurn'),
+  storedRegexRulesJson: text('storedRegexRulesJson').notNull().default(sql.raw("'[]'")),
 })
 
 export const agentBranchTurns = sqliteTable('agent_branch_turns', {
@@ -243,16 +250,19 @@ export const agentBranchTurns = sqliteTable('agent_branch_turns', {
   turnId: text('turnId').notNull(),
 }, (table) => [primaryKey({ columns: [table.branchId, table.sequence] })])
 
-export const agentContentParts = sqliteTable('agent_content_parts', {
+export const agentOpenings = sqliteTable('agent_openings', {
+  conversationId: text('conversationId').notNull(),
+  turnId: text('turnId').notNull().primaryKey(),
+  content: text('content').notNull(),
+  payloadJson: text('payloadJson').notNull(),
+})
+
+export const agentSettingSnapshots = sqliteTable('agent_setting_snapshots', {
   conversationId: text('conversationId').notNull(),
   ownerType: text('ownerType').notNull(),
   ownerId: text('ownerId').notNull(),
-  partIndex: integer('partIndex').notNull(),
-  kind: text('kind').notNull(),
-  text: text('text').notNull(),
-  payloadJson: text('payloadJson').notNull(),
-  chunkIndex: integer('chunkIndex').notNull(),
-}, (table) => [primaryKey({ columns: [table.ownerType, table.ownerId, table.partIndex, table.chunkIndex] })])
+  stateJson: text('stateJson').notNull(),
+}, (table) => [primaryKey({ columns: [table.ownerType, table.ownerId] })])
 
 export const generationAttempts = sqliteTable('generation_attempts', {
   id: text('id').notNull().primaryKey(),
@@ -415,4 +425,4 @@ export const agentPresetVersionGroups = sqliteTable('agent_preset_version_groups
   payloadJson: text('payloadJson').notNull(),
 }, (table) => [primaryKey({ columns: [table.presetId, table.versionId, table.groupId] })])
 
-export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterTextContents, characterMeta, userProfile, modelConfigs, modelConfigMeta, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, webSearchSettings, cleanupOperations, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentResponses, agentBranchTurns, agentContentParts, generationAttempts, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, roleplayRichHeights, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups }
+export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterTextContents, characterMeta, userProfile, modelConfigs, modelConfigMeta, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, webSearchSettings, cleanupOperations, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentPendingInputs, agentResponses, agentBranchTurns, agentOpenings, agentSettingSnapshots, generationAttempts, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, roleplayRichHeights, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups }

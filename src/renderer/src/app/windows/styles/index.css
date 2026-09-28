@@ -4,6 +4,7 @@
 @import "streamdown/styles.css";
 
 @import "./tokens.css";
+@import "./dsh-theme-bridge.css";
 @import "./base.css";
 @import "../shell/styles/titlebar.css";
 @import "../shell/styles/client-shell.css";

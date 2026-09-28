@@ -19,7 +19,7 @@ import type { ConversationSeed } from './conversationSeed'
 import { seedConversationVariableStates } from './ConversationVariableStateStore'
 
 const emptyMetadata = (): ConversationMetadata => ({ characterId: '', characterName: '', characterAvatar: '', characterPersona: {} })
-const toConversation = (row: typeof chatSessions.$inferSelect, preview = row.historySummary): Conversation => ({ id: row.id, title: row.title, preview, createdAt: row.createdAt, updatedAt: row.updatedAt })
+const toConversation = (row: typeof chatSessions.$inferSelect, preview: string): Conversation => ({ id: row.id, title: row.title, preview, createdAt: row.createdAt, updatedAt: row.updatedAt })
 
 export interface ConversationDeleteCleanup {
   enqueue(conversationId: string): void
@@ -32,6 +32,7 @@ export interface ConversationDeleteGuard {
 
 export interface ConversationDeleteParticipant {
   prepareForDelete(conversationId: string): Promise<void>
+  commitDelete?(conversationId: string): Promise<void>
   finishDelete(conversationId: string): void
 }
 
@@ -40,6 +41,7 @@ export class ConversationRepository {
   private readonly deleteGuards = new Set<ConversationDeleteGuard>()
   private readonly deleteParticipants = new Set<ConversationDeleteParticipant>()
   private readonly pendingDeletes = new Map<string, Promise<void>>()
+  private previewReader: ((conversationId: string) => string | undefined) | undefined
 
   constructor(
     private readonly store: SqliteDatabase,
@@ -51,6 +53,12 @@ export class ConversationRepository {
   ) {}
 
   ensure(): Conversation { return this.list()[0]?.conversation ?? this.create({}).conversation }
+
+  attachPreviewReader(reader: (conversationId: string) => string | undefined): () => void {
+    if (this.previewReader) throw new Error('会话预览读取器已注册。')
+    this.previewReader = reader
+    return () => { if (this.previewReader === reader) this.previewReader = undefined }
+  }
 
   registerDeleteCleanup(cleanup: ConversationDeleteCleanup): () => void {
     this.deleteCleanups.add(cleanup)
@@ -87,10 +95,9 @@ export class ConversationRepository {
       database.insert(chatSessions).values({
         id, title: input.title?.trim() || '新对话', characterId: metadata.characterId,
         characterName: card?.name ?? metadata.characterName, characterAvatar: card?.avatar ?? metadata.characterAvatar,
-        historySummary: '',
         historyMessageCount: 0, historyUserMessageCount: 0, createdAt: now, updatedAt: now
       }).run()
-      database.insert(agentConversations).values({ id, activeBranchId: branchId }).run()
+      database.insert(agentConversations).values({ id, activeBranchId: branchId, runtimeThreadId: id }).run()
       database.insert(agentBranches).values({ id: branchId, conversationId: id }).run()
       database.insert(chatSessionCharacterSnapshots).values({ sessionId: id, personaJson: JSON.stringify(metadata.characterPersona) }).run()
       seedConversationVariableStates(id, variableStateJson, database)
@@ -133,12 +140,11 @@ export class ConversationRepository {
   }
 
   private preview(row: typeof chatSessions.$inferSelect): string {
-    if (row.historySummary.trim()) return row.historySummary
-    const parts = this.store.native.prepare(`SELECT p.text FROM agent_content_parts p
-      JOIN agent_turns t ON t.id=p.ownerId AND p.ownerType='turn'
-      WHERE p.conversationId=? AND t.kind='opening' AND p.kind='opening_text'
-      ORDER BY p.partIndex,p.chunkIndex`).all(row.id) as { text: string }[]
-    return parts.map((part) => part.text).join('').trim()
+    const latest = this.previewReader?.(row.id)
+    if (latest !== undefined) return Array.from(latest).slice(0, 240).join('')
+    const opening = this.store.native.prepare('SELECT content FROM agent_openings WHERE conversationId=?')
+      .get(row.id) as { content: string } | undefined
+    return opening?.content.trim() ?? ''
   }
 
   exists(id: string, db: ElecKoiDatabase = this.store.db): boolean {
@@ -181,7 +187,11 @@ export class ConversationRepository {
     try {
       for (const participant of participants) await participant.prepareForDelete(id)
       this.store.withWriteTx(() => this.deleteInTransaction(id))
-      this.flushCleanup()
+      try {
+        for (const participant of participants) await participant.commitDelete?.(id)
+      } finally {
+        this.flushCleanup()
+      }
     } finally {
       for (const participant of participants.reverse()) participant.finishDelete(id)
     }
@@ -231,10 +241,8 @@ export class ConversationRepository {
     return this.get(id, db)
   }
 
-  touch(id: string, preview?: string, db: ElecKoiDatabase = this.store.db): Conversation {
-    const changes: { updatedAt: string; historySummary?: string } = { updatedAt: new Date().toISOString() }
-    if (preview !== undefined) changes.historySummary = Array.from(preview).slice(0, 240).join('')
-    db.update(chatSessions).set(changes).where(eq(chatSessions.id, id)).run()
+  touch(id: string, _preview?: string, db: ElecKoiDatabase = this.store.db): Conversation {
+    db.update(chatSessions).set({ updatedAt: new Date().toISOString() }).where(eq(chatSessions.id, id)).run()
     return this.get(id, db)
   }
 
@@ -295,9 +303,7 @@ export class ConversationRepository {
         .from(chatSessions).where(eq(chatSessions.id, conversationId)).get()
       if (!session) throw new Error('找不到对应的聊天存档。')
       if (session.userMessages > 0) throw new Error('对话开始后不能再切换开场白。')
-      const row = this.store.native.prepare(`SELECT p.ownerId,p.payloadJson FROM agent_content_parts p
-        JOIN agent_turns t ON t.id=p.ownerId AND p.ownerType='turn'
-        WHERE p.conversationId=? AND t.kind='opening' AND p.kind='opening_text' AND p.partIndex=0 AND p.chunkIndex=0`)
+      const row = this.store.native.prepare('SELECT turnId AS ownerId,payloadJson FROM agent_openings WHERE conversationId=?')
         .get(conversationId) as { ownerId: string; payloadJson: string } | undefined
       if (!row) throw new Error('当前对话没有开场白。')
       const payload = JSON.parse(row.payloadJson || '{}') as { options?: OpeningMessageOption[]; selectedId?: string }
@@ -320,9 +326,7 @@ export class ConversationRepository {
         .from(chatSessions).where(eq(chatSessions.id, conversationId)).get()
       if (!session) throw new Error('找不到对应的聊天存档。')
       if (session.userMessages > 0) throw new Error('对话开始后不能修改开场白。')
-      const row = this.store.native.prepare(`SELECT p.ownerId,p.payloadJson FROM agent_content_parts p
-        JOIN agent_turns t ON t.id=p.ownerId AND p.ownerType='turn'
-        WHERE p.conversationId=? AND t.kind='opening' AND p.kind='opening_text' AND p.partIndex=0 AND p.chunkIndex=0`)
+      const row = this.store.native.prepare('SELECT turnId AS ownerId,payloadJson FROM agent_openings WHERE conversationId=?')
         .get(conversationId) as { ownerId: string; payloadJson: string } | undefined
       if (!row) throw new Error('当前对话没有开场白。')
       let payload: { options?: OpeningMessageOption[]; selectedId?: string } = {}
@@ -379,24 +383,9 @@ export class ConversationRepository {
   }
 
   private writeOpeningText(conversationId: string, ownerId: string, content: string, payloadJson: string): void {
-    this.store.native.prepare("DELETE FROM agent_content_parts WHERE conversationId=? AND ownerType='turn' AND ownerId=? AND kind='opening_text'").run(conversationId, ownerId)
-    const chunks = splitContent(content)
-    chunks.forEach((text, chunkIndex) => this.store.native.prepare(`INSERT INTO agent_content_parts
-      (conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex) VALUES (?,'turn',?,0,'opening_text',?,?,?)`)
-      .run(conversationId, ownerId, text, payloadJson, chunkIndex))
+    this.store.native.prepare(`INSERT INTO agent_openings(conversationId,turnId,content,payloadJson)
+      VALUES (?,?,?,?) ON CONFLICT(turnId) DO UPDATE SET content=excluded.content,payloadJson=excluded.payloadJson`)
+      .run(conversationId, ownerId, content, payloadJson)
   }
 
-}
-
-function splitContent(content: string): string[] {
-  const size = 64 * 1024
-  const chunks: string[] = []
-  let offset = 0
-  do {
-    let end = Math.min(offset + size, content.length)
-    if (end < content.length && /[\uD800-\uDBFF]/.test(content[end - 1] ?? '') && /[\uDC00-\uDFFF]/.test(content[end] ?? '')) end--
-    chunks.push(content.slice(offset, end))
-    offset = end
-  } while (offset < content.length)
-  return chunks
 }

@@ -1,17 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, CaretDown, CaretRight, Database, X } from "@phosphor-icons/react";
 import { getVariableTimeline, listenAgentFinishedEvent } from "../api/chatApi.js";
 
-export function VariableViewerDialog({ conversationId, onClose, onNotify }) {
+const EMPTY_TIMELINE = { id: "", status: "idle", timeline: null, error: "" };
+const subscribeEmptyTimeline = () => () => {};
+const getEmptyTimeline = () => EMPTY_TIMELINE;
+
+export function VariableViewerDialog({ conversationId, conversationModel, onClose, onNotify }) {
   const [timeline, setTimeline] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
+  const timelineSnapshot = useSyncExternalStore(
+    conversationModel?.subscribeTimeline || subscribeEmptyTimeline,
+    conversationModel?.getTimelineSnapshot || getEmptyTimeline,
+  );
 
   useEffect(() => {
+    if (conversationModel) {
+      let active = true;
+      conversationModel.openTimeline(conversationId).catch((cause) => {
+        if (active) onNotify?.("error", cause?.message || "变量时间线读取失败");
+      });
+      return () => {
+        active = false;
+        conversationModel.closeTimeline(conversationId);
+      };
+    }
     let active = true;
     async function load() {
       try {
@@ -39,7 +57,22 @@ export function VariableViewerDialog({ conversationId, onClose, onNotify }) {
       active = false;
       dispose?.();
     };
-  }, [conversationId, onNotify]);
+  }, [conversationId, conversationModel, onNotify]);
+
+  const visibleTimeline = conversationModel
+    ? timelineSnapshot.id === conversationId ? timelineSnapshot.timeline : null
+    : timeline;
+  const visibleLoading = conversationModel
+    ? timelineSnapshot.id !== conversationId || timelineSnapshot.status === "loading"
+    : loading;
+  const visibleError = conversationModel && timelineSnapshot.id === conversationId
+    ? timelineSnapshot.error : error;
+
+  useEffect(() => {
+    if (!conversationModel || !visibleTimeline) return;
+    setSelectedId((current) => visibleTimeline.floors.some((floor) => floor.id === current)
+      ? current : visibleTimeline.floors.at(-1)?.id || "");
+  }, [conversationModel, visibleTimeline]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -65,8 +98,8 @@ export function VariableViewerDialog({ conversationId, onClose, onNotify }) {
     return () => window.removeEventListener("keydown", handleDialogKeys);
   }, [onClose]);
 
-  const selectedFloor = timeline?.floors.find((floor) => floor.id === selectedId) || null;
-  const latestId = timeline?.floors.at(-1)?.id || "";
+  const selectedFloor = visibleTimeline?.floors.find((floor) => floor.id === selectedId) || null;
+  const latestId = visibleTimeline?.floors.at(-1)?.id || "";
 
   return createPortal(
     <div className="variable-viewer-backdrop" role="presentation" onMouseDown={onClose}>
@@ -85,13 +118,13 @@ export function VariableViewerDialog({ conversationId, onClose, onNotify }) {
         </header>
         <div className="variable-viewer-body">
           <TimelinePane
-            timeline={timeline}
-            loading={loading}
-            error={error}
+            timeline={visibleTimeline}
+            loading={visibleLoading}
+            error={visibleError}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
-          <SnapshotPane timeline={timeline} floor={selectedFloor} latestId={latestId} loading={loading} error={error} />
+          <SnapshotPane timeline={visibleTimeline} floor={selectedFloor} latestId={latestId} loading={visibleLoading} error={visibleError} />
         </div>
       </section>
     </div>,

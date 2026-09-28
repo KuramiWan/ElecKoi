@@ -1,8 +1,8 @@
 diff --git a/lib/index.js b/lib/index.js
-index 4ed780ee0705e97345de1adf4d7f79ad0b8ec5bd..a32e5885390cddfea8199a65b82349135f4315f7 100644
+index 4fa1c6c278dcca13fa91d6d3e3f6aa350febcfe7..2bcda045d473de5ca2c41f43aff207fff699b462 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -350,7 +350,7 @@ const AGENT_LOOP_REQUESTS = /* @__PURE__ */ new WeakSet();
+@@ -365,7 +365,7 @@ const AGENT_LOOP_REQUESTS = /* @__PURE__ */ new WeakSet();
  * @returns whether every field (including the `stop` list, element-wise) matches.
  */
  function callConfigEquals(a, b) {
@@ -24,12 +24,12 @@ index 006624d680cf8ad7eee9cdaee8b2d10f75562701..d1f22c05acbf4aee090b25aa60859924
      stop?: string[];
  }
 diff --git a/lib/types/types.d.ts b/lib/types/types.d.ts
-index f71a3e919091f47accf9c40e739db7cc2c4f5c7e..c6bb59d8496db568463c7447f67ba1047cbe9ee7 100644
+index 1620291b0849a0e68f86c311092e564058e059ba..74cf15a482815b573536a40626df0eac13ee3b1d 100644
 --- a/lib/types/types.d.ts
 +++ b/lib/types/types.d.ts
-@@ -422,6 +422,8 @@ export interface GenerateOptions {
-     /** Tool schemas (adapters map to the provider's `tools` field). */
-     tools?: ToolSchema[];
+@@ -509,6 +509,8 @@ export interface GenerateOptions {
+     /** Session-folded tool history used for route projection; omission sends complete declarations without tool updates. */
+     toolHistory?: ToolHistory;
      temperature?: number;
 +    /** Nucleus sampling probability. Omitted values are left to the provider. */
 +    topP?: number;

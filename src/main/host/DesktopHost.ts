@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import { agentPlugin } from '@main/modules/agent'
+import { agentPlugin, agentFileDraftsPlugin } from '@main/modules/agent'
 import { agentToolsPlugin } from '@main/modules/agentTools'
 import { authorSdkPlugin } from '@main/modules/authorSdk'
 import { characterTransferPlugin } from '@main/modules/characterTransfer'
@@ -44,6 +44,7 @@ export class DesktopHost {
   async mountInteractive(): Promise<void> {
     if (this.interactiveMounted) return
     if (!this.foundationMounted) throw new Error('Desktop foundation 尚未装载。')
+    await this.root.plugin(agentFileDraftsPlugin)
     await this.root.plugin(agentPlugin)
     await this.root.plugin(authorSdkPlugin)
     await this.root.plugin(mediaProtocolPlugin)

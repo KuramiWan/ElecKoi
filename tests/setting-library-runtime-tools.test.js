@@ -12,10 +12,12 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools({ extraEntries = [], history = [], variableState = {} } = {}) {
+async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-setting-library-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
+  const variableFile = join(directory, "variables.json");
+  if (liveVariableState) writeFileSync(variableFile, JSON.stringify({ enabled: true, state: variableState }));
   writeFileSync(file, JSON.stringify({
     enabled: true,
     library: {
@@ -40,6 +42,7 @@ async function tools({ extraEntries = [], history = [], variableState = {} } = {
   writeFileSync(join(snapshotRoot, `${sessionId}.json`), JSON.stringify({
     settingStateFile: file,
     settingLibraryEnabled: true,
+    ...(liveVariableState ? { variableStateFile: variableFile, variablesEnabled: true } : {}),
   }));
   process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
   const registered = [];
@@ -47,6 +50,7 @@ async function tools({ extraEntries = [], history = [], variableState = {} } = {
   const execution = { agent: { session: { id: sessionId } } };
   return {
     file,
+    variableFile,
     byName: new Map(registered.map((definition) => [definition.name, {
       ...definition,
       execute: (args) => definition.execute(args, execution),
@@ -65,6 +69,7 @@ function entry(overrides) {
     agentSelectionHint: "",
     agentReadStrategy: "normal",
     dynamicMode: "standard",
+    contentMode: "plain_text",
     triggerMode: "agent_tool",
     enabled: true,
     order: 1,
@@ -96,10 +101,10 @@ describe("DSH character setting-library tools", () => {
       const description = runtime.byName.get(name).description;
       expect(description).toContain("仅搜索不算读取");
       expect(description).toContain("即使固定必读项标记为 cached_reference");
-      expect(description).toContain("把其中所有 path 一次传入 paths");
+      expect(description).toContain("把本轮尚未读取或已失效的 path 一次传入 paths");
     }
 
-    const found = await runtime.byName.get("eleckoi_glob_setting_files").execute({ pattern: "**" });
+    const found = await runtime.byName.get("eleckoi_glob_setting_files").execute({});
     expect(found.files.map((file) => file.path)).toEqual(["世界/总览", "世界/城市/港口"]);
     expect(found.required_entries).toEqual([{
       path: "世界/总览",
@@ -109,6 +114,10 @@ describe("DSH character setting-library tools", () => {
       content_delivery: "cached_reference",
       cached_reference: "#S01",
     }]);
+
+    const scoped = await runtime.byName.get("eleckoi_glob_setting_files").execute({ path: "世界/城市", pattern: "**/不存在" });
+    expect(scoped.files).toEqual([]);
+    expect(scoped.required_entries).toEqual(found.required_entries);
 
     const searched = await runtime.byName.get("eleckoi_grep_setting_files").execute({
       pattern: "多雾",
@@ -137,6 +146,7 @@ describe("DSH character setting-library tools", () => {
     const glob = await runtime.byName.get("eleckoi_glob_setting_files").execute({ pattern: "**" });
     const grep = await runtime.byName.get("eleckoi_grep_setting_files").execute({ pattern: "城门" });
     expect(glob.required_entries.map((item) => item.cached_reference)).toEqual(["#S01", "#S02", undefined]);
+    expect(glob.required_entries.at(-1).content_delivery).toBe("tool_result");
     expect(grep.required_entries).toEqual(glob.required_entries);
 
     const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["世界/总览", "世界/城市/城规", "本轮天气"] });
@@ -151,7 +161,7 @@ describe("DSH character setting-library tools", () => {
 
   it("returns every matched setting and complete file content without artificial limits", async () => {
     const longContent = "长".repeat(130_001);
-    const bulkEntries = Array.from({ length: 1_101 }, (_, index) => entry({
+    const bulkEntries = Array.from({ length: 2_101 }, (_, index) => entry({
       id: `bulk-${index}`,
       title: `批量设定-${String(index).padStart(4, "0")}`,
       content: `无限搜索命中-${index}`,
@@ -165,13 +175,16 @@ describe("DSH character setting-library tools", () => {
     });
 
     const found = await runtime.byName.get("eleckoi_glob_setting_files").execute({ pattern: "**" });
-    expect(found.files).toHaveLength(1_104);
+    expect(found.files).toHaveLength(2_104);
     expect(found).not.toHaveProperty("truncated");
     expect(found).not.toHaveProperty("omitted");
 
     const searched = await runtime.byName.get("eleckoi_grep_setting_files").execute({ pattern: "无限搜索命中" });
-    expect(searched.matches).toHaveLength(1_101);
-    expect(searched).not.toHaveProperty("omitted");
+    expect(searched.matches).toHaveLength(100);
+    expect(searched.omitted).toBe(2_001);
+    const widerSearch = await runtime.byName.get("eleckoi_grep_setting_files").execute({ pattern: "无限搜索命中", limit: 2_101 });
+    expect(widerSearch.matches).toHaveLength(1_000);
+    expect(widerSearch.omitted).toBe(1_101);
 
     const paths = bulkEntries.slice(0, 17).map((item) => item.title).concat("超长正文");
     const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths });
@@ -286,15 +299,15 @@ describe("DSH character setting-library tools", () => {
           id: "chapter-reference",
           title: "章节素材",
           content: "第二章隐藏线索。",
-          agentReadStrategy: "variable_condition",
+          agentReadStrategy: "normal",
           dynamicMode: "ejs_reference",
         }),
         entry({
           id: "chapter-controller",
           title: "章节控制器",
           content: "<% if (getvar('剧情.章节') === 2) { %><%- await getwi(null, '章节素材') %>｜<%= Math.random() %><% } %>",
-          agentReadStrategy: "variable_condition",
-          dynamicMode: "ejs_controller",
+          agentReadStrategy: "normal",
+          contentMode: "ejs",
         }),
       ],
     });
@@ -310,8 +323,35 @@ describe("DSH character setting-library tools", () => {
 
     const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["章节控制器"] });
     expect(read.files[0].content).toMatch(/^第二章隐藏线索。｜0\./);
+    expect(read.files[0].resolved_references).toEqual([{ title: "章节素材" }]);
+    expect(JSON.stringify(read.files[0])).not.toContain("chapter-reference");
+    const referenceRead = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["章节素材"] });
+    expect(referenceRead.status).toBe("not_found");
     const reread = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["章节控制器"] });
     expect(reread.files[0].content).toBe(read.files[0].content);
+  });
+
+  it("refreshes the required list when a variable changes during the same turn", async () => {
+    const runtime = await tools({
+      variableState: { 剧情: { 章节: 1 } },
+      liveVariableState: true,
+      extraEntries: [entry({
+        id: "chapter-controller",
+        title: "章节控制器",
+        content: "<% if (getvar('剧情.章节') === 2) { %>第二章已开启。<% } %>",
+        agentReadStrategy: "normal",
+        contentMode: "ejs",
+      })],
+    });
+    const glob = runtime.byName.get("eleckoi_glob_setting_files");
+    const before = await glob.execute({});
+    expect(before.required_entries.map((item) => item.path)).toEqual(["世界/总览"]);
+
+    writeFileSync(runtime.variableFile, JSON.stringify({ enabled: true, state: { 剧情: { 章节: 2 } } }));
+    const after = await glob.execute({});
+    expect(after.required_entries.map((item) => item.path)).toEqual(["世界/总览", "章节控制器"]);
+    const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["章节控制器"] });
+    expect(read.files[0].content).toBe("第二章已开启。");
   });
 
   it("rejects invalid edits and unsafe paths without changing persisted state", async () => {

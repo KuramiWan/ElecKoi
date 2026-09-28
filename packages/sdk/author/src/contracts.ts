@@ -120,8 +120,9 @@ export interface AuthorSettingLibraryEntry {
   openingMessages: Array<{ id: string; title: string; content: string; initialVariableStateJson: string }>
   defaultOpeningMessageId: string
   agentSelectionHint: string
-  agentReadStrategy: 'required' | 'keyword' | 'normal' | 'variable_condition'
-  dynamicMode: 'standard' | 'ejs_controller' | 'ejs_reference'
+  agentReadStrategy: 'required' | 'keyword' | 'normal'
+  dynamicMode: 'standard' | 'ejs_reference'
+  contentMode: 'plain_text' | 'ejs'
   keywords: string[]
   keywordScanDepth: number
   conditionKeywords: string[]

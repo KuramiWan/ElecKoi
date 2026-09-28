@@ -10,6 +10,8 @@ import { AvatarPreviewDialog } from "./AvatarPreviewDialog.jsx";
 import { AgentPencilIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, MessagePencilIcon, MoreDotsIcon, RefreshMessageIcon, SpeakerIcon } from "../icons/elecKoiMessageIcons.jsx";
 import { AgentProcessIcon } from "../../modules/chat/components/AgentProcessIcon.jsx";
 import { ChatImageGallery } from "../../modules/chat/components/ChatImageGallery.jsx";
+import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
+import { revealChatFile } from "../../modules/chat/api/chatApi.js";
 import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
 import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
@@ -178,7 +180,7 @@ function MessagePresentation({ message, content, streaming }) {
     const currentRootIndex = rootIndex;
     rootIndex += 1;
     return <RichMessageFrame
-      key={`${part.id}:${part.document.contentKey}`}
+      key={part.id}
       message={message}
       document={part.document}
       rootIndex={currentRootIndex}
@@ -186,7 +188,7 @@ function MessagePresentation({ message, content, streaming }) {
   })}</div>;
 }
 
-function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onSelectOpening, onEdit, onRegenerate }) {
+function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onSelectOpening, onEdit, onRegenerate, pluginActions, pluginAfter, renderMessageContent }) {
   const { role, content, pending = false } = message;
   const displayContent = message.displayContent ?? content;
   const isUser = role === "user";
@@ -334,6 +336,7 @@ function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "role
             {roleplayTimestamp ? <time className="message-timestamp" dateTime={message.created_at ?? message.createdAt}>{roleplayTimestamp}</time> : null}
           </div> : <header className="message-author">{name || (isUser ? "你" : "助手")}</header>}
           {!pending && layoutMode !== "agent" ? <div className={`message-tools${expanded ? ' expanded' : ''}`} ref={toolsRef}>
+            {pluginActions}
             {expanded ? <div className="message-tools-expanded">
               {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
               <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || '')} aria-label="复制" title="复制"><CopyIcon /></button>
@@ -345,6 +348,8 @@ function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "role
           </div> : null}
         </div>
         {isUser ? <ChatImageGallery images={message.inputImageAttachments || []} conversationId={message.conversationId} agentMessage={layoutMode === "agent"} /> : null}
+        {isUser ? <ChatFileCards files={message.inputFileAttachments || []}
+          onOpen={(file) => revealChatFile(message.conversationId, file.attachmentId, file.name)} /> : null}
         {editing ? <div className="message-inline-editor"><textarea
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -365,8 +370,18 @@ function MessageBubbleComponent({ message = {}, avatar, name, layoutMode = "role
           <span className="agent-process-inline-label">{liveProcess.title}</span>
           <MessageChevronRightIcon size={14} />
         </button> : displayContent ? <div className="bubble markdown-message">
-          <MessagePresentation message={message} content={displayContent} streaming={pending} />
+          {renderMessageContent
+            ? renderMessageContent({
+              conversationId: message.conversationId,
+              productMessageId: message.id,
+              messageId: message.dshMessageId || null,
+              role: message.role,
+              content: displayContent,
+              streaming: pending,
+            }, <MessagePresentation message={message} content={displayContent} streaming={pending} />)
+            : <MessagePresentation message={message} content={displayContent} streaming={pending} />}
         </div> : null}
+        {pluginAfter}
         {layoutMode === "agent" && isUser && !pending && !editing ? <div className="agent-user-actions" aria-label="用户消息操作">
           <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || "")} aria-label="复制" title="复制" disabled={!displayContent}><CopyIcon /></button>
           <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!onEdit}><AgentPencilIcon /></button>

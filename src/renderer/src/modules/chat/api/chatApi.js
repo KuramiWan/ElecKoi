@@ -8,6 +8,8 @@ const streamRequestBySession = new Map();
 function mapMessage(message) {
   return {
     id: message.id,
+    runtimeSessionId: message.runtimeSessionId || '',
+    dshMessageId: message.dshMessageId || '',
     conversationId: message.conversationId,
     sequence: message.sequence,
     messageIndex: message.messageIndex,
@@ -20,6 +22,7 @@ function mapMessage(message) {
     pending: message.status === "streaming",
     process: message.process || [],
     inputImageAttachments: message.inputImageAttachments || [],
+    inputFileAttachments: message.inputFileAttachments || [],
     openingOptions: message.openingOptions || [],
     selectedOpeningId: message.selectedOpeningId || '',
   };
@@ -40,9 +43,14 @@ function mapConversation(conversation, metadata = conversation.metadata || {}) {
   };
 }
 
-function mapChat(details) {
+export function mapConversations(conversations) {
+  return conversations.map((item) => mapConversation(item, item.metadata));
+}
+
+export function mapChatDetails(details) {
   return {
     ...mapConversation(details.conversation, details.metadata),
+    runtimeSessionId: details.runtimeSessionId || '',
     messages: details.messages.map(mapMessage),
     messages_has_more: Boolean(details.hasMore),
     messages_before_sequence: details.beforeSequence ?? null,
@@ -55,23 +63,26 @@ function disposeAll(disposers) {
 
 export async function listChats() {
   const conversations = await desktopClient.request("query.conversations.list", {});
-  return { items: conversations.map((item) => mapConversation(item, item.metadata)) };
+  return { items: mapConversations(conversations) };
 }
 
-export async function getChat(sessionId) {
+export async function getChat(sessionId, { model } = {}) {
   const [details] = await Promise.all([
-    desktopClient.request("query.conversations.details", { conversationId: sessionId }),
+    model ? model.open(sessionId) : desktopClient.request("query.conversations.details", { conversationId: sessionId }),
     primeRichMessageHeightCache(sessionId),
   ]);
-  return { chat: mapChat(details) };
+  return details ? { chat: mapChatDetails(details) } : null;
 }
 
 export async function getChatMessages(sessionId, options = {}) {
-  const page = await desktopClient.request("query.conversations.messages", {
-    conversationId: sessionId,
-    ...(Number.isInteger(options.beforeSequence) ? { beforeSequence: options.beforeSequence } : {}),
-    ...(Number.isInteger(options.limit) ? { limit: options.limit } : {}),
-  });
+  const page = options.model
+    ? await options.model.pageOlder(sessionId, options.beforeSequence)
+    : await desktopClient.request("query.conversations.messages", {
+        conversationId: sessionId,
+        ...(Number.isInteger(options.beforeSequence) ? { beforeSequence: options.beforeSequence } : {}),
+        ...(Number.isInteger(options.limit) ? { limit: options.limit } : {}),
+      });
+  if (!page) return null;
   return {
     messages: page.messages.map(mapMessage),
     has_more: page.hasMore,
@@ -93,12 +104,20 @@ export async function createChat(title, role = {}) {
       characterPersona: role,
     },
   });
-  return { chat: mapChat(details) };
+  return { chat: mapChatDetails(details) };
 }
 
 export async function deleteChat(sessionId) {
   await desktopClient.request("command.conversations.delete", { conversationId: sessionId });
   return { ok: true };
+}
+
+export async function exportChatHistory(sessionId) {
+  return desktopClient.request("command.conversations.archive.export", { conversationId: sessionId });
+}
+
+export async function importChatHistory(characterId, json) {
+  return desktopClient.request("command.conversations.archive.import", { characterId, json });
 }
 
 export async function deleteChatMessagesFrom(sessionId, messageId) {
@@ -115,7 +134,7 @@ export async function selectChatOpening(sessionId, openingId) {
     conversationId: sessionId,
     openingId,
   });
-  return { chat: mapChat(details) };
+  return { chat: mapChatDetails(details) };
 }
 
 export async function updateChatOpening(sessionId, content) {
@@ -123,7 +142,7 @@ export async function updateChatOpening(sessionId, content) {
     conversationId: sessionId,
     content,
   });
-  return { chat: mapChat(details) };
+  return { chat: mapChatDetails(details) };
 }
 
 export async function applyChatHistoryPolicy() {
@@ -199,7 +218,7 @@ function waitForReply(sessionId, message, requestId = "", command = "command.age
     desktopClient.request(command, {
       conversationId: sessionId,
       requestId,
-      ...(command === "command.agent.start" ? { text: message, ...(commandPayload.images?.length ? { images: commandPayload.images } : {}) } : commandPayload),
+      ...(command === "command.agent.start" ? { text: message, ...(commandPayload.images?.length ? { images: commandPayload.images } : {}), ...(commandPayload.files?.length ? { files: commandPayload.files } : {}) } : commandPayload),
     }).then((accepted) => {
       if (settled) return;
       runId = accepted.runId;
@@ -215,13 +234,31 @@ function waitForReply(sessionId, message, requestId = "", command = "command.age
   });
 }
 
-export function sendChatMessage(payload, requestId = "") {
-  return waitForReply(payload.session_id, payload.message, requestId, "command.agent.start", { images: payload.images || [] });
+export async function sendChatMessage(payload, requestId = "", { model } = {}) {
+  if (model) {
+    const result = await model.run("command.agent.start", {
+      conversationId: payload.session_id,
+      requestId,
+      text: payload.message,
+      images: payload.images || [],
+      files: payload.files || [],
+    });
+    return { session_id: payload.session_id, chat: mapChatDetails(result.details), cancelled: result.cancelled };
+  }
+  return waitForReply(payload.session_id, payload.message, requestId, "command.agent.start", { images: payload.images || [], files: payload.files || [] });
 }
 
 export async function readChatImage(conversationId, attachmentId) {
   const image = await desktopClient.request("query.agent.image", { conversationId, attachmentId });
   return `data:${image.mediaType};base64,${image.data}`;
+}
+
+export function revealChatFile(conversationId, attachmentId, name) {
+  return desktopClient.request('command.agent.file.reveal', { conversationId, attachmentId, name });
+}
+
+export function discardChatFileDrafts(ids) {
+  return desktopClient.request('command.agent.files.discard', { ids });
 }
 
 export async function cancelChatStream(requestId) {
@@ -278,7 +315,16 @@ export function listenGenerationStatsEvent(handler) {
   return desktopClient.on("agent.generation.stats", handler);
 }
 
-export async function regenerateChatMessage(sessionId, payload = {}, requestId = "") {
+export async function regenerateChatMessage(sessionId, payload = {}, requestId = "", { model } = {}) {
+  if (model) {
+    const result = await model.run("command.agent.regenerate", {
+      conversationId: sessionId,
+      requestId,
+      targetMessageId: String(payload.target_message_id || ""),
+      replacementMessage: payload.replacement_message == null ? null : String(payload.replacement_message),
+    });
+    return { session_id: sessionId, chat: mapChatDetails(result.details), cancelled: result.cancelled };
+  }
   return waitForReply(sessionId, "", requestId, "command.agent.regenerate", {
     targetMessageId: String(payload.target_message_id || ""),
     replacementMessage: payload.replacement_message == null ? null : String(payload.replacement_message),

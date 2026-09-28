@@ -74,6 +74,7 @@ const deepSeekPiAiReasoningEfforts = {
 } as const
 const deepSeekProviderRoute = 'deepseek-official'
 const deepSeekApiKeyEnv = 'ELECKOI_DEEPSEEK_API_KEY'
+const standardDeepSeekApiKeyEnv = 'DEEPSEEK_API_KEY'
 
 export function describeDshModelCapabilities(identity: DshModelIdentity): DshModelCapabilities {
   if (usesOfficialDeepSeekRoute(identity)) {
@@ -115,10 +116,12 @@ export function createDshProviderCatalog(settingsList: readonly DshModelSettings
 
   const officialDeepSeek = uniqueSettings.filter(usesOfficialDeepSeekRoute)
   const piAiSettings = uniqueSettings.filter((settings) => !usesOfficialDeepSeekRoute(settings))
+  const directDeepSeekKeys = new Set(uniqueSettings.filter(isDirectDeepSeekEndpoint).map((settings) => settings.apiKey))
+  const directDeepSeekKey = directDeepSeekKeys.size === 1 ? [...directDeepSeekKeys][0] : undefined
   const providers: Record<string, DshProviderProfile> = {}
   const credentials: Record<string, string> = {}
   const bindings: Record<string, DshProviderBinding> = {}
-  const deepseek = createDeepSeekProfile(officialDeepSeek, credentials, bindings)
+  const deepseek = createDeepSeekProfile(officialDeepSeek, credentials, bindings, directDeepSeekKey)
 
   const connectionGroups = new Map<string, ConnectionGroup>()
   const nativeConnectionCounts = new Map<string, Set<string>>()
@@ -151,7 +154,10 @@ export function createDshProviderCatalog(settingsList: readonly DshModelSettings
       ? group.native!.provider
       : group.native?.provider ?? apiRouteName(group.settings[0]!.apiFormat)
     group.provider = uniqueProviderName(base, group.connectionKey, usedProviders, directNative)
-    group.apiKeyEnv = `ELECKOI_MODEL_KEY_${hash(group.connectionKey).toUpperCase()}`
+    group.apiKeyEnv = directDeepSeekKey !== undefined
+      && group.settings.every((settings) => isDirectDeepSeekEndpoint(settings) && settings.apiKey === directDeepSeekKey)
+      ? standardDeepSeekApiKeyEnv
+      : `ELECKOI_MODEL_KEY_${hash(group.connectionKey).toUpperCase()}`
     usedProviders.add(group.provider)
   }
 
@@ -183,7 +189,8 @@ export function resolveDshProviderBinding(
 function createDeepSeekProfile(
   settingsList: readonly DshModelSettings[],
   credentials: Record<string, string>,
-  bindings: Record<string, DshProviderBinding>
+  bindings: Record<string, DshProviderBinding>,
+  directDeepSeekKey: string | undefined
 ): DshDeepSeekProfile | undefined {
   if (settingsList.length === 0) return undefined
   const first = settingsList[0]!
@@ -192,7 +199,10 @@ function createDeepSeekProfile(
       throw new Error('DeepSeek 专用入口只能使用一套 API Key 和 Base URL。')
     }
   }
-  credentials[deepSeekApiKeyEnv] = first.apiKey
+  const apiKeyEnv = isDirectDeepSeekEndpoint(first) && first.apiKey === directDeepSeekKey
+    ? standardDeepSeekApiKeyEnv
+    : deepSeekApiKeyEnv
+  credentials[apiKeyEnv] = first.apiKey
   for (const settings of settingsList) {
     bindings[modelBindingKey(settings)] = compact({
       provider: deepSeekProviderRoute,
@@ -208,11 +218,13 @@ function createDeepSeekProfile(
       id: runtimeModelId(settings),
       contextWindow: settings.contextWindowOverride ?? settings.contextWindow,
       maxTokens: settings.maxTokens,
-      inputModalities: settings.supportsImageInput ? ['text', 'image'] : ['text']
+      inputModalities: settings.supportsImageInput
+        ? ['text', 'image'] as Array<'text' | 'image'>
+        : ['text'] as Array<'text' | 'image'>
     }))
   }
   return {
-    apiKeyEnv: deepSeekApiKeyEnv,
+    apiKeyEnv,
     baseURL: runtimeBaseUrl(first),
     defaultContextWindow: first.contextWindow,
     models: [...models.values()]
@@ -307,7 +319,9 @@ function providerProfile(
       baseURL: native?.model?.baseUrl ?? runtimeBaseUrl(first),
       defaultContextWindow: first.contextWindow,
       defaultMaxTokens: Math.min(32_768, first.contextWindow),
-      defaultInput: first.supportsImageInput ? ['text', 'image'] : ['text']
+      defaultInput: first.supportsImageInput
+        ? ['text', 'image'] as Array<'text' | 'image'>
+        : ['text'] as Array<'text' | 'image'>
     }),
     headers: nonEmptyRecord(first.customHeaders),
     models: settingsList.map((settings) => modelProfile(settings, findNativeRoute(settings)?.model, inheritsCatalog))
@@ -350,17 +364,21 @@ function materializedReasoningEfforts(model: CatalogModel): false | Record<strin
 }
 
 function usesOfficialDeepSeekRoute(identity: DshModelIdentity): boolean {
-  return isDedicatedDeepSeekProvider(identity) && identity.apiFormat === 'openai-completions'
+  return isDedicatedDeepSeekProvider(identity) && identity.apiFormat === 'anthropic-messages'
 }
 
 function isDedicatedDeepSeekProvider(identity: DshModelIdentity): boolean {
   return identity.provider === 'deepseek'
 }
 
+function isDirectDeepSeekEndpoint(identity: DshModelIdentity): boolean {
+  return isDedicatedDeepSeekProvider(identity) && normalizeUrl(identity.baseUrl) === 'https://api.deepseek.com'
+}
+
 function providerConnectionKey(settings: DshModelSettings, native: NativeRoute | undefined): string {
   return JSON.stringify({
     provider: native?.provider ?? 'custom',
-    apiKey: settings.apiKey,
+    configId: settings.configId || settings.apiKey,
     api: settings.apiFormat,
     baseUrl: normalizeUrl(runtimeBaseUrl(settings)) ?? runtimeBaseUrl(settings),
     headers: settings.customHeaders,
@@ -377,6 +395,9 @@ function runtimeModelId(identity: DshModelIdentity): string {
 
 function runtimeBaseUrl(identity: DshModelIdentity): string {
   const configured = identity.baseUrl.trim().replace(/\/+$/, '')
+  if (usesOfficialDeepSeekRoute(identity) && normalizeUrl(configured) === 'https://api.deepseek.com') {
+    return `${configured}/anthropic`
+  }
   if (identity.apiFormat !== 'google-generative-ai') return configured
   try {
     const url = new URL(configured)

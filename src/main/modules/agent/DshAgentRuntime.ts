@@ -1,6 +1,9 @@
-import { DshRuntime, describeDshModelCapabilities } from '@eleckoi/dsh-runtime'
+import { DshDesktopPluginHost, DshRuntime, describeDshModelCapabilities, exportDshSession, importDshSessions, readDshTranscript, resolveDshWebFrontendDirectory, type DshSessionArchive } from '@eleckoi/dsh-runtime'
+import { app } from 'electron'
+import { dirname, join } from 'node:path'
 import type { AppPaths } from '@main/platform/filesystem/AppPaths'
 import type { ModelRepository } from '@main/modules/models'
+import type { WebSearchSettingsRepository } from '@main/modules/agentTools'
 import type {
   AgentRunCallbacks,
   AgentRunInput,
@@ -11,16 +14,66 @@ import type { ChatImageMediaType, ChatUserImageAttachment, EncodedChatImageAttac
 
 export class DshAgentRuntime implements AgentRuntimePort {
   private readonly runtime: DshRuntime
+  private readonly pluginHost: DshDesktopPluginHost
+  private readonly sessionLogRoot: string
+  private readonly workspaceRoot: string
 
-  constructor(paths: AppPaths, models: Pick<ModelRepository, 'runtimeCatalog'>) {
+  constructor(
+    paths: AppPaths,
+    models: Pick<ModelRepository, 'runtimeCatalog'>,
+    webSearch: Pick<WebSearchSettingsRepository, 'runtimeSettings'>,
+    onPluginHostFailure?: (error: Error) => void
+  ) {
+    this.sessionLogRoot = join(paths.dshRuntime, 'sessions')
+    this.workspaceRoot = paths.workspace
     this.runtime = new DshRuntime({
       configPath: paths.resolveResource('dsh', 'cordis.yml'),
       workspaceRoot: paths.workspace,
       runtimeDataRoot: paths.dshRuntime,
       executablePath: process.execPath,
       presetTemplatePath: paths.resolveResource('dsh', 'agent-preset-template', 'agent.cordis.yml'),
-      modelCatalog: () => models.runtimeCatalog()
+      modelCatalog: () => models.runtimeCatalog(),
+      webSearchSettings: () => webSearch.runtimeSettings()
     })
+    const packageManager = app.isPackaged
+      ? {
+          entryPath: join(process.resourcesPath, 'dsh', 'pnpm', 'bin', 'pnpm.mjs'),
+          nodeBinPath: join(process.resourcesPath, 'dsh', 'node-bin')
+        }
+      : {
+          entryPath: join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.mjs'),
+          nodeBinPath: paths.resolveResource('dsh', 'node-bin')
+        }
+    this.pluginHost = new DshDesktopPluginHost({
+      runtimeDataRoot: paths.dshRuntime,
+      workspaceRoot: paths.workspace,
+      agentPatchPath: paths.resolveResource('dsh', 'desktop-agent.patch.yml'),
+      hostConfiguration: () => this.runtime.hostConfiguration(),
+      executablePath: process.execPath,
+      packageManager,
+      ...(onPluginHostFailure === undefined ? {} : { onFailure: onPluginHostFailure })
+    })
+    this.runtime.bindSessionHost(this.pluginHost)
+  }
+
+  startPluginHost() {
+    return this.pluginHost.start()
+  }
+
+  dshWebFrontendDirectory(): string {
+    return resolveDshWebFrontendDirectory()
+  }
+
+  transcript(runtimeThreadId: string) {
+    return readDshTranscript(this.sessionLogRoot, runtimeThreadId)
+  }
+
+  exportSession(runtimeThreadId: string): DshSessionArchive | null {
+    return exportDshSession(this.sessionLogRoot, runtimeThreadId)
+  }
+
+  importSessions(archives: readonly DshSessionArchive[], ids: ReadonlyMap<string, string>): Promise<void> {
+    return importDshSessions(this.sessionLogRoot, this.workspaceRoot, archives, ids)
   }
 
   run(input: AgentRunInput, callbacks: AgentRunCallbacks): Promise<AgentRunResult> {
@@ -38,7 +91,8 @@ export class DshAgentRuntime implements AgentRuntimePort {
       input.agentPreset,
       input.webSearch,
       input.subagentSettings,
-      input.generationStatsSeed
+      input.generationStatsSeed,
+      input.inputFiles
     )
   }
 
@@ -70,6 +124,14 @@ export class DshAgentRuntime implements AgentRuntimePort {
     this.runtime.removeImage(attachmentId)
   }
 
+  removeFile(reference: import('@shared/contracts/entities/chat').ChatUserFileAttachment, retainObject: boolean): void {
+    this.runtime.removeFile(reference, retainObject)
+  }
+
+  filePath(reference: import('@shared/contracts/entities/chat').ChatUserFileAttachment): string {
+    return this.runtime.filePath(reference)
+  }
+
   generationStats(conversationId: string, runtimeThreadId: string) {
     return this.runtime.generationStats(conversationId, runtimeThreadId)
   }
@@ -86,12 +148,28 @@ export class DshAgentRuntime implements AgentRuntimePort {
     return this.runtime.stop(conversationId)
   }
 
-  disposeConversation(conversationId: string, runtimeThreadIds?: readonly string[]): Promise<void> {
-    return this.runtime.disposeConversation(conversationId, runtimeThreadIds)
+  rewindConversation(conversationId: string, runtimeThreadId: string, fromTurn: number): Promise<'rewound' | 'unavailable'> {
+    return this.runtime.rewindConversation(conversationId, runtimeThreadId, fromTurn)
   }
 
-  close(): Promise<void> {
-    return this.runtime.close()
+  confirmRewind(conversationId: string): void {
+    this.runtime.confirmRewind(conversationId)
+  }
+
+  rollbackRewind(conversationId: string, runtimeThreadId: string): Promise<void> {
+    return this.runtime.rollbackRewind(conversationId, runtimeThreadId)
+  }
+
+  disposeConversation(
+    conversationId: string,
+    runtimeThreadIds?: readonly string[],
+    retainedRuntimeThreadIds?: readonly string[]
+  ): Promise<void> {
+    return this.runtime.disposeConversation(conversationId, runtimeThreadIds, retainedRuntimeThreadIds)
+  }
+
+  async close(): Promise<void> {
+    await this.runtime.close()
   }
 }
 

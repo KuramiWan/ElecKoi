@@ -19,7 +19,72 @@ afterEach(() => {
   }
 })
 
-describe('chat image attachment cleanup', () => {
+describe('chat attachment cleanup', () => {
+  it('queues the same uploaded file only once across repeated notifications', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'eleckoi-file-cleanup-'))
+    temporaryDirectories.push(directory)
+    const database = new SqliteDatabase(join(directory, 'eleckoi.sqlite3'))
+    database.open()
+    databases.push(database)
+    const cleanup = new AgentAttachmentCleanupRepository(
+      database,
+      { removeImage: vi.fn(), removeFile: vi.fn() },
+      new MessageRepository(database)
+    )
+    const file = { attachmentId: `sha256:${'d'.repeat(64)}`, name: 'draft.md', bytes: 5 }
+
+    cleanup.queueFiles([file, file])
+    cleanup.queueFiles([file])
+
+    expect(database.native.prepare("SELECT count(*) AS count FROM cleanup_operations WHERE kind='dsh_file_attachment'").get())
+      .toEqual({ count: 1 })
+  })
+
+  it('reclaims a staged upload with no message after restart', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'eleckoi-file-cleanup-'))
+    temporaryDirectories.push(directory)
+    const database = new SqliteDatabase(join(directory, 'eleckoi.sqlite3'))
+    database.open()
+    databases.push(database)
+    const messages = new MessageRepository(database)
+    const removeFile = vi.fn()
+    const file = { attachmentId: `sha256:${'e'.repeat(64)}`, name: 'draft.md', bytes: 5 }
+    const cleanup = new AgentAttachmentCleanupRepository(database, { removeImage: vi.fn(), removeFile }, messages)
+    cleanup.queueFiles([file])
+
+    const restartedCleanup = new AgentAttachmentCleanupRepository(database, { removeImage: vi.fn(), removeFile }, messages)
+    restartedCleanup.drain()
+
+    expect(removeFile).toHaveBeenCalledWith(file, false)
+  })
+
+  it('retains a shared file until its final chat is deleted', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'eleckoi-file-cleanup-'))
+    temporaryDirectories.push(directory)
+    const database = new SqliteDatabase(join(directory, 'eleckoi.sqlite3'))
+    database.open()
+    databases.push(database)
+    const conversations = new ConversationRepository(database)
+    const messages = new MessageRepository(database)
+    const removeFile = vi.fn()
+    const cleanup = new AgentAttachmentCleanupRepository(database, { removeImage: vi.fn(), removeFile }, messages)
+    conversations.registerDeleteCleanup(cleanup)
+    const first = conversations.create({}).conversation.id
+    const second = conversations.create({}).conversation.id
+    const file = { attachmentId: `sha256:${'f'.repeat(64)}`, name: 'notes.md', bytes: 5 }
+    messages.create(first, 'user', '', 'complete', undefined, '', [], [file])
+    messages.create(second, 'user', '', 'complete', undefined, '', [], [file])
+    cleanup.queueFiles([file])
+    cleanup.drain()
+    expect(removeFile).not.toHaveBeenCalled()
+
+    await conversations.delete(first)
+    expect(removeFile).not.toHaveBeenCalled()
+    await conversations.delete(second)
+    expect(removeFile).toHaveBeenCalledOnce()
+    expect(removeFile).toHaveBeenCalledWith(file, false)
+  })
+
   it('removes a prepared image that never became a message attachment', () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-image-cleanup-'))
     temporaryDirectories.push(directory)

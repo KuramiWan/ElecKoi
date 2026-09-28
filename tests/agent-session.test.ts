@@ -24,6 +24,7 @@ import type {
 interface Harness {
   coordinator: AgentSessionCoordinator
   conversations: ConversationRepository
+  messages: MessageRepository
   database: SqliteDatabase
   models: ModelRepository
   userSettings: UserSettingsStore
@@ -46,6 +47,33 @@ afterEach(() => {
 })
 
 describe('Agent session coordinator（Agent 会话协调器）', () => {
+  it('binds a reply to the DSH turn reported by its own session', async () => {
+    const harness = createHarness({
+      run: async (_input, callbacks) => {
+        callbacks.onTurnStarted?.(3)
+        callbacks.onFinal('回答')
+        return 'complete'
+      }
+    })
+
+    const accepted = await harness.coordinator.start(harness.conversationId, '提问')
+    await harness.terminal
+    expect(harness.database.native.prepare('SELECT dshTurn FROM agent_responses WHERE id=?').get(accepted.messageId))
+      .toEqual({ dshTurn: 3 })
+  })
+
+  it('does not send another message when an earlier completed reply has lost its Session log', () => {
+    const harness = createHarness({})
+    const user = harness.messages.create(harness.conversationId, 'user', '旧问题', 'complete')
+    const reply = harness.messages.create(harness.conversationId, 'assistant', '旧回答', 'complete', undefined, harness.conversationId)
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(reply.id)
+    harness.messages.attachTranscriptReader(() => undefined)
+
+    expect(() => harness.coordinator.start(harness.conversationId, '新问题'))
+      .toThrow('已有回复对应的 DSH 会话日志无法读取')
+    expect(harness.messages.list(harness.conversationId).map((message) => message.id)).toEqual([user.id, reply.id])
+  })
+
   it('persists the terminal message before announcing completion', async () => {
     const harness = createHarness({
       run: async (_input, callbacks) => {
@@ -60,7 +88,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     await harness.terminal
 
     expect(harness.events.filter((event) => event.name === 'agent.output.delta')).toHaveLength(2)
-    const createdMessages = new MessageRepository(harness.database).list(harness.conversationId)
+    const createdMessages = harness.messages.list(harness.conversationId)
     expect(harness.events.find((event) => event.name === 'messages.changed')).toEqual({
       name: 'messages.changed',
       payload: {
@@ -72,7 +100,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(harness.events.find((event) => event.name === 'agent.run.finished')).toMatchObject({
       payload: { message: { content: '你好', status: 'complete' } }
     })
-    expect(harness.terminalRecords).toEqual([{ status: 'completed', state: 'succeeded', text: '你好' }])
+    expect(harness.terminalRecords).toEqual([{ status: 'completed', state: 'succeeded' }])
     expect(harness.coordinator.inspect(harness.conversationId)).toEqual({
       active: false,
       conversationId: harness.conversationId
@@ -94,7 +122,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     })
 
     harness.coordinator.start(harness.conversationId, 'Unicode 测试')
-    expect(harness.database.native.prepare("SELECT text FROM agent_content_parts WHERE ownerType='response'").get()).toEqual({ text: '😀' })
+    expect(harness.messages.list(harness.conversationId).at(-1)?.content).toBe('😀')
     release()
     await harness.terminal
     expect(harness.events.find((event) => event.name === 'agent.run.finished')).toMatchObject({
@@ -117,7 +145,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(harness.events.find((event) => event.name === 'agent.run.finished')).toMatchObject({
       payload: { message: { status: 'cancelled' } }
     })
-    expect(harness.terminalRecords).toEqual([{ status: 'cancelled', state: 'cancelled', text: '' }])
+    expect(harness.terminalRecords).toEqual([{ status: 'cancelled', state: 'cancelled' }])
     finishRuntime?.('cancelled')
     await new Promise((resolve) => setTimeout(resolve, 0))
     harness.database.close()
@@ -193,7 +221,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     harness.database.close()
   })
 
-  it('opens the trajectory from the latest attempted runtime even when that reply was cancelled', () => {
+  it('opens the trajectory from the conversation Session even when a reply was cancelled', () => {
     const trajectory = vi.fn((conversationId: string, runtimeThreadId: string) => ({
       conversationId,
       runtimeThreadId,
@@ -205,16 +233,16 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       completedAtMillis: null
     }))
     const harness = createHarness({ trajectory })
-    const messages = new MessageRepository(harness.database)
+    const messages = harness.messages
     messages.create(harness.conversationId, 'user', '已完成的一轮', 'complete')
     messages.create(harness.conversationId, 'assistant', '旧回复', 'complete', undefined, 'thread-completed')
     messages.create(harness.conversationId, 'user', '后来取消的一轮', 'complete')
     messages.create(harness.conversationId, 'assistant', '', 'cancelled', undefined, 'thread-cancelled')
 
     expect(harness.coordinator.trajectory(harness.conversationId)).toMatchObject({
-      runtimeThreadId: 'thread-cancelled'
+      runtimeThreadId: harness.conversationId
     })
-    expect(trajectory).toHaveBeenCalledWith(harness.conversationId, 'thread-cancelled', undefined)
+    expect(trajectory).toHaveBeenCalledWith(harness.conversationId, harness.conversationId, undefined)
     expect(messages.latestCompletedRuntimeThreadId(harness.conversationId)).toBe('thread-completed')
   })
 
@@ -241,20 +269,18 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     harness.coordinator.start(harness.conversationId, '取消后重试')
     await expect(harness.coordinator.cancel(harness.conversationId)).resolves.toEqual({ cancelled: true })
     await harness.terminal
-    const messages = new MessageRepository(harness.database)
+    const messages = harness.messages
     const cancelled = messages.list(harness.conversationId)
     const user = cancelled.find((message) => message.role === 'user')
     expect(user?.id).toBeTruthy()
 
-    harness.coordinator.regenerate(harness.conversationId, user!.id)
-    await vi.waitFor(() => {
-      expect(harness.events.filter((event) => event.name === 'agent.run.finished')).toHaveLength(2)
-    })
-    expect(messages.list(harness.conversationId).map((message) => [message.role, message.content])).toEqual([
-      ['user', '取消后重试'],
-      ['assistant', '重新生成成功']
+    await expect(harness.coordinator.regenerate(harness.conversationId, user!.id))
+      .rejects.toThrow('无法安全回退当前 DSH 会话')
+    expect(messages.list(harness.conversationId).map((message) => [message.role, message.status])).toEqual([
+      ['user', 'complete'],
+      ['assistant', 'cancelled']
     ])
-    expect(runtimeThreadIds[1]).not.toBe(runtimeThreadIds[0])
+    expect(runtimeThreadIds).toHaveLength(1)
     harness.database.close()
   })
 
@@ -269,7 +295,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(harness.events.find((event) => event.name === 'agent.run.failed')).toMatchObject({
       payload: { code: 'RUNTIME_UNAVAILABLE', message: 'DSH unavailable' }
     })
-    expect(harness.terminalRecords).toEqual([{ status: 'error', state: 'failed', text: '' }])
+    expect(harness.terminalRecords).toEqual([{ status: 'error', state: 'failed' }])
     harness.database.close()
   })
 
@@ -301,7 +327,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(harness.events.find((event) => event.name === 'agent.run.finished')).toMatchObject({
       payload: { message: { content: '', status: 'cancelled' } }
     })
-    expect(harness.terminalRecords).toEqual([{ status: 'cancelled', state: 'cancelled', text: '' }])
+    expect(harness.terminalRecords).toEqual([{ status: 'cancelled', state: 'cancelled' }])
   })
 
   it('does not start the runtime when image preparation is cancelled', async () => {
@@ -353,7 +379,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(harness.events.find((event) => event.name === 'agent.run.failed')).toMatchObject({
       payload: { message: 'DSH completed the turn without assistant text' }
     })
-    expect(harness.terminalRecords).toEqual([{ status: 'error', state: 'failed', text: '' }])
+    expect(harness.terminalRecords).toEqual([{ status: 'error', state: 'failed' }])
   })
 
   it('persists process history on the assistant message for later playback', async () => {
@@ -381,7 +407,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
 
     const finished = harness.events.find((event) => event.name === 'agent.run.finished')
     expect(finished).toMatchObject({ payload: { message: { process: [processItem] } } })
-    expect(new MessageRepository(harness.database).list(harness.conversationId).at(-1)?.process).toEqual([processItem])
+    expect(harness.messages.list(harness.conversationId).at(-1)?.process).toEqual([processItem])
   })
 
   it('commits image attachments before the user turn and forwards durable references to DSH', async () => {
@@ -419,7 +445,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     await harness.terminal
 
     expect(runtimeInput?.inputImages).toEqual([image])
-    expect(new MessageRepository(harness.database).list(harness.conversationId)[0]).toMatchObject({
+    expect(harness.messages.list(harness.conversationId)[0]).toMatchObject({
       role: 'user', content: '', inputImageAttachments: [image]
     })
   })
@@ -439,15 +465,15 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(prepareCalls).toBe(0)
     expect(harness.database.native.prepare("SELECT COUNT(*) AS count FROM agent_turns WHERE kind='user'").get())
       .toEqual({ count: 0 })
-    expect(harness.database.native.prepare("SELECT COUNT(*) AS count FROM agent_content_parts WHERE kind='user_image'").get())
-      .toEqual({ count: 0 })
+    expect(harness.database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
+      .toBeUndefined()
   })
 
   it('rolls back messages and counters when creating the execution record fails', () => {
     const harness = createHarness({})
     harness.database.native.exec(`CREATE TEMP TRIGGER reject_attempt BEFORE INSERT ON generation_attempts BEGIN SELECT RAISE(ABORT, 'injected attempt failure'); END;`)
     expect(() => harness.coordinator.start(harness.conversationId, 'must roll back')).toThrow('injected attempt failure')
-    for (const table of ['agent_turns', 'agent_responses', 'agent_branch_turns', 'agent_content_parts', 'conversation_speakers', 'generation_attempts']) {
+    for (const table of ['agent_turns', 'agent_responses', 'agent_branch_turns', 'conversation_speakers', 'generation_attempts']) {
       expect(harness.database.native.prepare(`SELECT * FROM ${table}`).all()).toEqual([])
     }
     expect(harness.database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions').get()).toEqual({ historyMessageCount: 0, historyUserMessageCount: 0 })
@@ -590,7 +616,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       assistant_name: '备用角色名',
       description: '{{char}}认识{{user}}'
     }), harness.conversationId)
-    const messages = new MessageRepository(harness.database)
+    const messages = harness.messages
     messages.create(harness.conversationId, 'user', '{{user}}先开口', 'complete')
     messages.create(harness.conversationId, 'assistant', '{{char}}先回应', 'complete')
 
@@ -598,7 +624,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     await harness.terminal
 
     expect(runtimeInput).toMatchObject({
-      text: '请让测试角色回应测试用户',
+      text: '请让 {{ CHAR }} 回应 {{user}}',
       variableContext: {
         objects: [{ description: '测试角色的状态', updateRule: '测试用户观察时更新' }],
         variables: [{ description: '测试用户的好感度', updateRule: '测试角色回应时更新' }]
@@ -606,6 +632,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       conversationContext: {
         characterName: '测试角色',
         persona: {},
+        currentPromptText: '请让测试角色回应测试用户',
         history: [
           { role: 'user', content: '测试用户先开口' },
           { role: 'assistant', content: '测试角色先回应' }
@@ -616,7 +643,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       .toBe('请让 {{ CHAR }} 回应 {{user}}')
   })
 
-  it('uses the global agent preset and opens a new DSH segment only after it changes', async () => {
+  it('uses the global agent preset without changing the conversation Session id', async () => {
     const runtimeInputs: AgentRunInput[] = []
     let currentPreset = { id: 'preset-a', versionId: 'version-a', name: '预设 A' }
     const agentPresets = {
@@ -647,10 +674,9 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       { id: 'preset-a', versionId: 'version-a', name: '预设 A' },
       { id: 'preset-b', versionId: 'version-b', name: '预设 B' }
     ])
-    expect(runtimeInputs[0]?.runtimeThreadId).toMatch(/^preset_preset-a_version-a_/)
+    expect(runtimeInputs[0]?.runtimeThreadId).toBe(harness.conversationId)
     expect(runtimeInputs[1]?.runtimeThreadId).toBe(runtimeInputs[0]?.runtimeThreadId)
-    expect(runtimeInputs[2]?.runtimeThreadId).toMatch(/^preset_preset-b_version-b_/)
-    expect(runtimeInputs[2]?.runtimeThreadId).not.toBe(runtimeInputs[1]?.runtimeThreadId)
+    expect(runtimeInputs[2]?.runtimeThreadId).toBe(runtimeInputs[1]?.runtimeThreadId)
   })
 
   it('commits the completed turn variable state and response snapshot together', async () => {
@@ -681,7 +707,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(harness.database.native.prepare('SELECT variableStateJson FROM agent_responses WHERE conversationId=?').get(harness.conversationId)).toEqual({ variableStateJson: '{"好感度":2}' })
   })
 
-  it('stops and disposes the runtime before deleting a conversation', async () => {
+  it('stops the runtime before deleting a conversation and removes its logs after commit', async () => {
     let finishRuntime!: (result: AgentRunResult) => void
     const order: string[] = []
     const harness = createHarness({
@@ -693,7 +719,7 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       },
       disposeConversation: async () => {
         order.push('dispose')
-        expect(harness.conversations.exists(harness.conversationId)).toBe(true)
+        expect(harness.conversations.exists(harness.conversationId)).toBe(false)
       }
     })
     harness.conversations.registerDeleteParticipant(harness.coordinator)
@@ -711,18 +737,20 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     { label: 'edit and regeneration', replacement: '修改后的问题', reason: 'edited', expectedText: '修改后的问题' }
   ])('announces $label after the replacement messages are durable', async ({ replacement, reason, expectedText }) => {
     const harness = createHarness({
+      rewindConversation: async () => 'rewound',
       run: async (_input, callbacks) => {
         callbacks.onFinal('新的回复')
         return 'complete'
       }
     })
-    const messages = new MessageRepository(harness.database)
+    const messages = harness.messages
     const user = messages.create(harness.conversationId, 'user', '原始问题', 'complete')
-    const assistant = messages.create(harness.conversationId, 'assistant', '原始回复', 'complete', undefined, 'old-thread')
+    const assistant = messages.create(harness.conversationId, 'assistant', '原始回复', 'complete', undefined, harness.conversationId)
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(assistant.id)
 
-    const accepted = replacement === undefined
+    const accepted = await (replacement === undefined
       ? harness.coordinator.regenerate(harness.conversationId, assistant.id)
-      : harness.coordinator.regenerate(harness.conversationId, assistant.id, replacement)
+      : harness.coordinator.regenerate(harness.conversationId, assistant.id, replacement))
 
     expect(harness.events).toContainEqual({
       name: 'messages.changed',
@@ -736,51 +764,118 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     expect(messages.list(harness.conversationId).map((message) => message.content)).toEqual([expectedText, '新的回复'])
   })
 
-  it('seeds a fresh runtime from cumulative stats and the retained chat turn count', async () => {
-    const runtimeInputs: AgentRunInput[] = []
-    const previousStats = {
-      turns: 58, steps: 367, llmMs: 10_000, toolMs: 500, ttftMs: 200,
-      ttftSteps: 1, decodeMs: 300, decodeTokens: 40,
-      tokenUsage: { uncachedInputTokens: 300_000, outputTokens: 20_000, cacheReadTokens: 2_700_000, cacheWriteTokens: 0 },
-      contextPressure: { projectedTokens: 70_000, contextWindow: 1_000_000 },
-      contextBreakdown: { systemTokens: 100, toolsTokens: 200, messageTokens: 300 }
-    }
+  it('refuses regeneration when the saved reply has no safe DSH turn boundary', async () => {
+    const harness = createHarness({})
+    const user = harness.messages.create(harness.conversationId, 'user', '问题', 'complete')
+    const reply = harness.messages.create(harness.conversationId, 'assistant', '回答', 'complete', undefined, harness.conversationId)
+
+    await expect(harness.coordinator.regenerate(harness.conversationId, reply.id))
+      .rejects.toThrow('无法安全回退当前 DSH 会话')
+    expect(harness.messages.list(harness.conversationId).map((message) => message.id)).toEqual([user.id, reply.id])
+    expect(harness.messages.conversationRuntimeThreadId(harness.conversationId)).toBe(harness.conversationId)
+  })
+
+  it('regenerates a failed image input before DSH starts a turn in the same Session', async () => {
+    const image = { attachmentId: `sha256:${'e'.repeat(64)}`, mediaType: 'image/png' as const,
+      bytes: 68, width: 1, height: 1 }
+    const rewound: number[] = []
+    let runtimeInput: AgentRunInput | undefined
     const harness = createHarness({
-      generationStats: (_conversationId, threadId) => threadId === 'old-thread' ? previousStats : undefined,
+      rewindConversation: async (_conversationId, _sessionId, turn) => {
+        rewound.push(turn)
+        return 'rewound'
+      },
       run: async (input, callbacks) => {
-        runtimeInputs.push(input)
-        callbacks.onFinal('新的回复')
+        runtimeInput = input
+        callbacks.onFinal('图片回复')
         return 'complete'
       }
     })
-    const messages = new MessageRepository(harness.database)
-    messages.create(harness.conversationId, 'user', '保留的问题', 'complete')
-    messages.create(harness.conversationId, 'assistant', '保留的回复', 'complete', undefined, 'old-thread')
-    const replacedUser = messages.create(harness.conversationId, 'user', '需要重生成的问题', 'complete')
-    const replaced = messages.create(harness.conversationId, 'assistant', '旧回复', 'complete', undefined, 'old-thread')
-    messages.create(harness.conversationId, 'user', '会被删除的问题', 'complete')
-    messages.create(harness.conversationId, 'assistant', '会被删除的回复', 'complete', undefined, 'old-thread')
+    harness.models.save({
+      id: 'test-model', name: 'Test model', provider: 'deepseek', api_key: 'test-key',
+      base_url: 'https://api.deepseek.com', model: 'deepseek-chat',
+      model_options: [{ id: 'deepseek-chat', name: 'deepseek-chat', supportsImageInput: true }],
+      custom_headers: {}, supports_tools: null, enabled: true, image_settings: {}, api_format: 'responses'
+    })
+    const user = harness.messages.create(harness.conversationId, 'user', '', 'complete', undefined, '', [image])
+    const reply = harness.messages.create(harness.conversationId, 'assistant', '', 'streaming', undefined, harness.conversationId)
+    harness.messages.finish(reply.id, '', 'error')
+    const detach = harness.messages.attachTranscriptReader(() => [])
+    try {
+      await harness.coordinator.regenerate(harness.conversationId, reply.id)
+      await harness.terminal
+    } finally { detach() }
 
-    harness.coordinator.regenerate(harness.conversationId, replaced.id)
+    expect(rewound).toEqual([1])
+    expect(runtimeInput).toMatchObject({ runtimeThreadId: harness.conversationId, text: '', inputImages: [image] })
+    expect(harness.messages.list(harness.conversationId)).toEqual([
+      expect.objectContaining({ id: user.id, inputImageAttachments: [image] }),
+      expect.objectContaining({ content: '图片回复', status: 'complete' })
+    ])
+  })
+
+  it('regenerates a DSH-bound reply in the same Session and drops rolled-away statistics', async () => {
+    const rewound: Array<{ conversationId: string; sessionId: string; turn: number }> = []
+    const inputs: AgentRunInput[] = []
+    const harness = createHarness({
+      rewindConversation: async (conversationId, sessionId, turn) => {
+        rewound.push({ conversationId, sessionId, turn })
+        return 'rewound'
+      },
+      run: async (input, callbacks) => {
+        inputs.push(input)
+        callbacks.onFinal('新答案')
+        return 'complete'
+      }
+    })
+    const messages = harness.messages
+    messages.create(harness.conversationId, 'user', '问题一', 'complete')
+    messages.create(harness.conversationId, 'assistant', '答案一', 'complete', undefined, harness.conversationId)
+    const user = messages.create(harness.conversationId, 'user', '问题二', 'complete')
+    const oldReply = messages.create(harness.conversationId, 'assistant', '旧答案', 'complete', undefined, harness.conversationId)
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=2 WHERE id=?').run(oldReply.id)
+
+    await harness.coordinator.regenerate(harness.conversationId, oldReply.id)
     await harness.terminal
 
-    expect(runtimeInputs[0]?.generationStatsSeed).toEqual({
-      previous: previousStats,
-      previousRuntimeThreadId: 'old-thread',
-      retainedTurns: 2
-    })
-    expect(runtimeInputs[0]?.runtimeThreadId).not.toBe('old-thread')
-    expect(messages.list(harness.conversationId).map((message) => message.id)).toContain(replacedUser.id)
+    expect(rewound).toEqual([{ conversationId: harness.conversationId, sessionId: harness.conversationId, turn: 2 }])
+    expect(inputs[0]).toMatchObject({ runtimeThreadId: harness.conversationId, text: '问题二' })
+    expect(inputs[0]?.generationStatsSeed).toBeUndefined()
+    expect(inputs[0]?.discardRuntimeThreadIds).toEqual([])
+    expect(messages.list(harness.conversationId).map((message) => message.id)).toContain(user.id)
+    expect(messages.list(harness.conversationId).map((message) => message.content)).toEqual(['问题一', '答案一', '问题二', '新答案'])
+  })
 
-    harness.coordinator.start(harness.conversationId, '继续对话')
-    await vi.waitFor(() => expect(runtimeInputs).toHaveLength(2))
-    await vi.waitFor(() => expect(harness.coordinator.inspect(harness.conversationId).active).toBe(false))
-    expect(runtimeInputs[1]?.runtimeThreadId).toBe(runtimeInputs[0]?.runtimeThreadId)
-    expect(runtimeInputs[1]?.generationStatsSeed).toBeUndefined()
+  it('keeps the original messages when DSH cannot rewind the Session', async () => {
+    const run = vi.fn(defaultRun)
+    const harness = createHarness({ rewindConversation: async () => 'unavailable', run })
+    const user = harness.messages.create(harness.conversationId, 'user', '问题', 'complete')
+    const reply = harness.messages.create(harness.conversationId, 'assistant', '原回答', 'complete', undefined, harness.conversationId)
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(reply.id)
+
+    await expect(harness.coordinator.regenerate(harness.conversationId, reply.id))
+      .rejects.toThrow('无法安全回退当前 DSH 会话')
+    expect(harness.messages.list(harness.conversationId).map((message) => message.id)).toEqual([user.id, reply.id])
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('restores the DSH log if the message transaction fails after rewind', async () => {
+    const rollbackRewind = vi.fn(async () => undefined)
+    const harness = createHarness({ rewindConversation: async () => 'rewound', rollbackRewind })
+    const user = harness.messages.create(harness.conversationId, 'user', '问题', 'complete')
+    const reply = harness.messages.create(harness.conversationId, 'assistant', '原回答', 'complete', undefined, harness.conversationId)
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(reply.id)
+    harness.database.native.exec(`CREATE TRIGGER refuse_generation BEFORE INSERT ON generation_attempts
+      BEGIN SELECT RAISE(FAIL, 'generation unavailable'); END`)
+
+    await expect(harness.coordinator.regenerate(harness.conversationId, reply.id))
+      .rejects.toThrow('generation unavailable')
+    expect(rollbackRewind).toHaveBeenCalledWith(harness.conversationId, harness.conversationId)
+    expect(harness.messages.list(harness.conversationId).map((message) => message.id)).toEqual([user.id, reply.id])
   })
 
   it.each([
-    { label: 'image-only', text: '' },
+    { label: 'image-only' },
     { label: 'image and text', text: '这张图里是什么' }
   ])('regenerates a durable $label user turn with its image attachment', async ({ text }) => {
     const image = {
@@ -805,15 +900,15 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       model_options: [{ id: 'deepseek-chat', name: 'deepseek-chat', supportsImageInput: true }],
       custom_headers: {}, supports_tools: null, enabled: true, image_settings: {}, api_format: 'responses'
     })
-    const messages = new MessageRepository(harness.database)
-    const user = messages.create(harness.conversationId, 'user', text, 'complete', undefined, '', [image])
+    const messages = harness.messages
+    const user = messages.create(harness.conversationId, 'user', text ?? '', 'complete', undefined, '', [image])
 
-    harness.coordinator.regenerate(harness.conversationId, user.id)
+    await harness.coordinator.regenerate(harness.conversationId, user.id)
     await harness.terminal
 
-    expect(runtimeInput).toMatchObject({ text, inputImages: [image] })
+    expect(runtimeInput).toMatchObject({ text: text ?? '', inputImages: [image] })
     expect(messages.list(harness.conversationId)).toEqual([
-      expect.objectContaining({ id: user.id, role: 'user', content: text, inputImageAttachments: [image] }),
+      expect.objectContaining({ id: user.id, role: 'user', content: text ?? '', inputImageAttachments: [image] }),
       expect.objectContaining({ role: 'assistant', content: '识图回复', status: 'complete' })
     ])
   })
@@ -822,11 +917,12 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
     const disposed: Array<{ conversationId: string; threadIds: readonly string[] | undefined }> = []
     const discarded: string[][] = []
     const harness = createHarness({
+      rewindConversation: async () => 'rewound',
       disposeConversation: async (conversationId, threadIds) => {
         disposed.push({ conversationId, threadIds })
       }
     }, undefined, undefined, undefined, (attachmentIds) => discarded.push([...attachmentIds]))
-    const messages = new MessageRepository(harness.database)
+    const messages = harness.messages
     const image = {
       attachmentId: `sha256:${'e'.repeat(64)}`,
       mediaType: 'image/png' as const,
@@ -835,14 +931,15 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       height: 1
     }
     const user = messages.create(harness.conversationId, 'user', '带图消息', 'complete', undefined, '', [image])
-    const assistant = messages.create(harness.conversationId, 'assistant', '回复', 'complete', undefined, 'thread-delete')
+    const assistant = messages.create(harness.conversationId, 'assistant', '回复', 'complete', undefined, harness.conversationId)
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(assistant.id)
 
     const result = await harness.coordinator.deleteMessagesFrom(harness.conversationId, user.id)
 
     expect(result).toEqual({ ok: true, deletedMessageCount: 2, remainingMessageCount: 0 })
     expect(disposed).toEqual([{
       conversationId: harness.conversationId,
-      threadIds: ['thread-delete']
+      threadIds: []
     }])
     expect(discarded).toEqual([[image.attachmentId]])
     expect(messages.list(harness.conversationId)).toEqual([])
@@ -855,6 +952,128 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
         messageIds: [user.id, assistant.id]
       }
     })
+  })
+
+  it('deletes an interrupted reply after finding its unfinished DSH turn', async () => {
+    const rewound: number[] = []
+    const harness = createHarness({
+      rewindConversation: async (_conversationId, _sessionId, turn) => {
+        rewound.push(turn)
+        return 'rewound'
+      }
+    })
+    const user = harness.messages.create(harness.conversationId, 'user', '中断的输入', 'complete')
+    const reply = harness.messages.create(harness.conversationId, 'assistant', '半句回复', 'cancelled', undefined, harness.conversationId)
+    harness.messages.attachTranscriptReader(() => [{
+      turn: 1, completed: false, userSeq: 1, userText: '中断的输入', userImages: [], userFiles: [],
+      assistantText: '半句回复', process: []
+    }])
+
+    await harness.coordinator.deleteMessagesFrom(harness.conversationId, reply.id)
+
+    expect(rewound).toEqual([1])
+    expect(harness.messages.list(harness.conversationId).map((message) => message.id)).toEqual([user.id])
+  })
+
+  it('deletes an input interrupted before DSH started its turn', async () => {
+    const rewound: number[] = []
+    const harness = createHarness({
+      rewindConversation: async (_conversationId, _sessionId, turn) => {
+        rewound.push(turn)
+        return 'rewound'
+      }
+    })
+    const user = harness.messages.create(harness.conversationId, 'user', '刚发送', 'complete')
+    harness.messages.create(harness.conversationId, 'assistant', '', 'cancelled', undefined, harness.conversationId)
+    harness.messages.attachTranscriptReader(() => [])
+
+    await harness.coordinator.deleteMessagesFrom(harness.conversationId, user.id)
+
+    expect(rewound).toEqual([1])
+    expect(harness.messages.list(harness.conversationId)).toEqual([])
+  })
+
+  it('deletes an input cancelled before any DSH Session was created', async () => {
+    const harness = createHarness({ rewindConversation: async () => { throw new Error('不应回退不存在的日志') } })
+    const user = harness.messages.create(harness.conversationId, 'user', '刚发送', 'complete')
+    harness.messages.create(harness.conversationId, 'assistant', '', 'cancelled', undefined, harness.conversationId)
+    harness.messages.attachTranscriptReader(() => undefined)
+
+    await harness.coordinator.deleteMessagesFrom(harness.conversationId, user.id)
+
+    expect(harness.messages.list(harness.conversationId)).toEqual([])
+  })
+
+  it('keeps the opening and conversation when deleting the entire chat tail', async () => {
+    const harness = createHarness({ rewindConversation: async () => 'rewound' })
+    const { native } = harness.database
+    const branch = native.prepare('SELECT activeBranchId FROM agent_conversations WHERE id=?')
+      .get(harness.conversationId) as { activeBranchId: string }
+    native.prepare(`INSERT INTO conversation_speakers
+      (id,conversationId,sourceSpeakerId,kind,displayName,avatarAssetId)
+      VALUES ('opening-speaker',?,'assistant','assistant','角色','')`).run(harness.conversationId)
+    native.prepare(`INSERT INTO agent_turns
+      (id,conversationId,speakerId,kind,createdAt,variableStateJson)
+      VALUES ('opening-turn',?,'opening-speaker','opening','2026-01-01T00:00:00.000Z','{}')`)
+      .run(harness.conversationId)
+    native.prepare('INSERT INTO agent_branch_turns(branchId,sequence,turnId) VALUES (?,0,?)')
+      .run(branch.activeBranchId, 'opening-turn')
+    native.prepare(`INSERT INTO agent_openings(conversationId,turnId,content,payloadJson)
+      VALUES (?,'opening-turn','开场白','{}')`).run(harness.conversationId)
+    harness.messages.create(harness.conversationId, 'user', '你好', 'complete')
+    const reply = harness.messages.create(harness.conversationId, 'assistant', '你好。', 'complete', undefined, harness.conversationId)
+    native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(reply.id)
+
+    const deleted = await harness.coordinator.deleteMessagesFrom(harness.conversationId, 'opening')
+
+    expect(deleted).toEqual({ ok: true, deletedMessageCount: 2, remainingMessageCount: 1 })
+    expect(harness.messages.list(harness.conversationId)).toEqual([
+      expect.objectContaining({ id: 'opening', content: '开场白' })
+    ])
+    expect(harness.conversations.get(harness.conversationId).id).toBe(harness.conversationId)
+    expect(await harness.coordinator.deleteMessagesFrom(harness.conversationId, 'opening'))
+      .toEqual({ ok: true, deletedMessageCount: 0, remainingMessageCount: 1 })
+  })
+
+  it('deletes a user turn without changing its surviving DSH Session id', async () => {
+    const rewound: Array<{ sessionId: string; turn: number }> = []
+    const disposeConversation = vi.fn(async () => undefined)
+    const harness = createHarness({
+      rewindConversation: async (_conversationId, sessionId, turn) => {
+        rewound.push({ sessionId, turn })
+        return 'rewound'
+      },
+      disposeConversation
+    })
+    const messages = harness.messages
+    messages.create(harness.conversationId, 'user', '保留的问题', 'complete')
+    const retained = messages.create(harness.conversationId, 'assistant', '保留的回答', 'complete', undefined, harness.conversationId)
+    const removedUser = messages.create(harness.conversationId, 'user', '删除的问题', 'complete')
+    const removedReply = messages.create(harness.conversationId, 'assistant', '删除的回答', 'complete', undefined, harness.conversationId)
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=2 WHERE id=?').run(removedReply.id)
+
+    await harness.coordinator.deleteMessagesFrom(harness.conversationId, removedUser.id)
+
+    expect(rewound).toEqual([{ sessionId: harness.conversationId, turn: 2 }])
+    expect(disposeConversation).toHaveBeenCalledWith(harness.conversationId, [], [harness.conversationId])
+    expect(messages.latestRuntimeThreadId(harness.conversationId)).toBe(harness.conversationId)
+    expect(messages.list(harness.conversationId).map((message) => message.id)).toContain(retained.id)
+    expect(messages.list(harness.conversationId).map((message) => message.content)).toEqual(['保留的问题', '保留的回答'])
+  })
+
+  it('refuses to delete a tail from a different Session and preserves both replies', async () => {
+    const harness = createHarness({ rewindConversation: async () => 'rewound' })
+    const messages = harness.messages
+    messages.create(harness.conversationId, 'user', '第一轮', 'complete')
+    const retained = messages.create(harness.conversationId, 'assistant', '第一轮回复', 'complete', undefined, harness.conversationId)
+    const removedUser = messages.create(harness.conversationId, 'user', '第二轮', 'complete')
+    const removed = messages.create(harness.conversationId, 'assistant', '第二轮回复', 'complete', undefined, 'another-session')
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=2 WHERE id=?').run(removed.id)
+
+    await expect(harness.coordinator.deleteMessagesFrom(harness.conversationId, removedUser.id))
+      .rejects.toThrow('无法安全回退当前 DSH 会话')
+    expect(messages.list(harness.conversationId).map((message) => message.id))
+      .toEqual([expect.any(String), retained.id, removedUser.id, removed.id])
   })
 
   it('waits for image preparation and discards the detached image before deletion', async () => {
@@ -933,9 +1152,9 @@ function createHarness(
     broadcast: (name: string, payload: unknown) => {
       events.push({ name, payload })
       if (name === 'agent.run.finished' || name === 'agent.run.failed') {
-        terminalRecords.push(database.native.prepare(`SELECT r.status,a.state,p.text FROM agent_responses r
+        terminalRecords.push(database.native.prepare(`SELECT r.status,a.state FROM agent_responses r
           JOIN generation_attempts a ON a.ownerId=r.id AND a.conversationId=r.conversationId
-          JOIN agent_content_parts p ON p.ownerType='response' AND p.ownerId=r.id WHERE r.conversationId=?`).get(conversationId))
+          WHERE r.conversationId=?`).get(conversationId))
         resolveTerminal()
       }
     }
@@ -946,6 +1165,9 @@ function createHarness(
     run: overrides.run ?? defaultRun,
     ...(overrides.generationStats ? { generationStats: overrides.generationStats } : {}),
     ...(overrides.trajectory ? { trajectory: overrides.trajectory } : {}),
+    ...(overrides.rewindConversation ? { rewindConversation: overrides.rewindConversation } : {}),
+    ...(overrides.confirmRewind ? { confirmRewind: overrides.confirmRewind } : {}),
+    ...(overrides.rollbackRewind ? { rollbackRewind: overrides.rollbackRewind } : {}),
     cancel: overrides.cancel ?? (async () => true),
     disposeConversation: overrides.disposeConversation ?? (async () => undefined),
     close: overrides.close ?? (async () => undefined)
@@ -968,7 +1190,7 @@ function createHarness(
     personas: currentPersonas,
     discardPreparedImages
   })
-  return { coordinator, conversations, database, models, userSettings, conversationId, events, terminal, terminalRecords }
+  return { coordinator, conversations, messages, database, models, userSettings, conversationId, events, terminal, terminalRecords }
 }
 
 async function defaultRun(

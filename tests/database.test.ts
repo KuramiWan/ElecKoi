@@ -27,6 +27,7 @@ import { readEntry, writeEntry } from '../src/main/modules/settingLibraries/sett
 import { AgentPresetRepository } from '../src/main/modules/agentPresets/AgentPresetRepository'
 import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '../src/main/modules/agentTools'
 import { defaultRoleplayPlanSettings } from '../src/shared/contracts/presets/roleplayPlan'
+import { DEFAULT_HIDDEN_TOOL_TIMELINE_CONTENT } from '../src/shared/contracts/presets/builtIns'
 import { settingLibraryEntrySchema, settingLibraryPromptPositionSchema, settingLibraryStoredEntrySchema } from '../src/shared/contracts/settingLibrary/schemas'
 import { VariableConfigRepository } from '../src/main/modules/variables/VariableConfigRepository'
 import { VariableStateRepository } from '../src/main/modules/variables/VariableStateRepository'
@@ -60,6 +61,12 @@ function schemaObjects(db: Database.Database) {
   return db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'desktop_%' ORDER BY type,name").all()
 }
 
+const legacyContentSql = `
+  CREATE TABLE agent_content_parts (conversationId TEXT NOT NULL,ownerType TEXT NOT NULL,ownerId TEXT NOT NULL,partIndex INTEGER NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,payloadJson TEXT NOT NULL,chunkIndex INTEGER NOT NULL,PRIMARY KEY(ownerType,ownerId,partIndex,chunkIndex));
+  CREATE INDEX index_agent_content_parts_conversationId ON agent_content_parts(conversationId);
+  CREATE INDEX index_agent_content_parts_ownerType_ownerId ON agent_content_parts(ownerType,ownerId);
+`
+
 function insertSyntheticCharacter(database: Database.Database, id = 'synthetic-character'): void {
   database.prepare(`INSERT INTO characters(
     id,name,avatar,squareImage,coverImage,groupName,orderIndex,groupViewOrder,folder,
@@ -82,7 +89,9 @@ function registerDesktopV2(database: Database.Database): void {
 function legacyV1Database(path = ':memory:'): Database.Database {
   const database = new Database(path)
   database.exec(commonSchemaSql)
+  database.exec(legacyContentSql)
   database.exec(`
+    ALTER TABLE chat_sessions ADD COLUMN historySummary TEXT NOT NULL DEFAULT '';
     ALTER TABLE chat_sessions ADD COLUMN characterMode TEXT NOT NULL DEFAULT 'story';
     ALTER TABLE chat_sessions ADD COLUMN workspaceId TEXT NOT NULL DEFAULT '';
     ALTER TABLE chat_sessions ADD COLUMN permissionMode TEXT NOT NULL DEFAULT '';
@@ -146,7 +155,9 @@ function legacyV1Database(path = ':memory:'): Database.Database {
 function legacyV2Database(baseline = 'eleckoi-common-v1-2026-09-14-runtime-clean'): Database.Database {
   const database = new Database(':memory:')
   database.exec(commonSchemaSql)
+  database.exec(legacyContentSql)
   database.exec(`
+    ALTER TABLE chat_sessions ADD COLUMN historySummary TEXT NOT NULL DEFAULT '';
     ALTER TABLE chat_sessions ADD COLUMN characterMode TEXT NOT NULL DEFAULT 'story';
     ALTER TABLE characters ADD COLUMN characterMode TEXT NOT NULL DEFAULT 'story';
     ALTER TABLE agent_presets ADD COLUMN usageInstructions TEXT NOT NULL DEFAULT '';
@@ -164,6 +175,7 @@ function legacyV2Database(baseline = 'eleckoi-common-v1-2026-09-14-runtime-clean
 function currentV2Database(): Database.Database {
   const database = new Database(':memory:')
   database.exec(commonSchemaSql)
+  database.exec(legacyContentSql)
   database.exec(`
     CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
     CREATE TABLE desktop_preferences (key TEXT PRIMARY KEY, valueJson TEXT NOT NULL, updatedAt TEXT NOT NULL);
@@ -235,6 +247,24 @@ describe('shared SQLite baseline', () => {
     expect(() => settings.write('appearance.mode', 'sepia' as never)).toThrow()
   })
 
+  it('restores the selected conversation and per-character history after reopening', () => {
+    const { path, database, media } = harness()
+    const selection = {
+      active_conversation_id: 'conversation-b',
+      preferred_sessions: { 'character-a': 'conversation-b' }
+    }
+    const settings = new UserSettingsStore(database, media)
+    expect(settings.read('chat.selection')).toEqual({ active_conversation_id: '', preferred_sessions: {} })
+    settings.write('chat.selection', selection)
+
+    database.close()
+    connections.splice(connections.indexOf(database), 1)
+    const reopened = new SqliteDatabase(path)
+    reopened.open()
+    connections.push(reopened)
+    expect(new UserSettingsStore(reopened, media).read('chat.selection')).toEqual(selection)
+  }, 15000)
+
   it('keeps valid saved preferences when old JSON has extra fields', () => {
     const { database, media } = harness()
     const settings = new UserSettingsStore(database, media)
@@ -277,6 +307,120 @@ describe('shared SQLite baseline', () => {
     expect(commonSchemaSql).toBe(readFileSync('resources/database/eleckoi-common-schema-v1.sql', 'utf8').replaceAll('\r\n', '\n'))
   })
 
+  it('upgrades a v3 response ledger with its existing messages intact', () => {
+    const database = new Database(':memory:')
+    try {
+      database.exec(commonSchemaSql)
+      database.exec(legacyContentSql)
+      database.exec(`
+        CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
+        CREATE TABLE desktop_preferences (key TEXT PRIMARY KEY, valueJson TEXT NOT NULL, updatedAt TEXT NOT NULL);
+        INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
+        ALTER TABLE agent_responses DROP COLUMN dshTurn;
+        ALTER TABLE agent_responses DROP COLUMN storedRegexRulesJson;
+        DROP TABLE agent_openings;
+        DROP TABLE agent_setting_snapshots;
+        ALTER TABLE agent_conversations DROP COLUMN runtimeThreadId;
+        PRAGMA user_version = 3;
+      `)
+      database.prepare('INSERT INTO agent_conversations(id,activeBranchId) VALUES (?,?)').run('conversation', 'branch')
+      database.prepare('INSERT INTO agent_branches(id,conversationId) VALUES (?,?)').run('branch', 'conversation')
+      database.prepare('INSERT INTO conversation_speakers(id,conversationId,sourceSpeakerId,kind,displayName,avatarAssetId) VALUES (?,?,?,?,?,?)')
+        .run('speaker', 'conversation', 'user', 'user', '用户', '')
+      database.prepare('INSERT INTO agent_turns(id,conversationId,speakerId,kind,createdAt,variableStateJson) VALUES (?,?,?,?,?,?)')
+        .run('turn', 'conversation', 'speaker', 'user', 'created', '{}')
+      database.prepare('INSERT INTO agent_responses(id,conversationId,turnId,responseIndex,speakerId,status,createdAt,variableStateJson,runtimeThreadId) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run('reply', 'conversation', 'turn', 0, 'speaker', 'completed', 'created', '{}', 'existing-session')
+      database.prepare("INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex) VALUES (?,'response',?,0,'assistant_text',?,'',0)")
+        .run('conversation', 'reply', '现有回复')
+      database.prepare("INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex) VALUES (?,'response',?,1,'setting_library_state','',?,0)")
+        .run('conversation', 'reply', '["state"]')
+
+      installSchema(database)
+
+      expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+      expect(database.prepare('SELECT runtimeThreadId,dshTurn FROM agent_responses WHERE id=?').get('reply'))
+        .toEqual({ runtimeThreadId: 'existing-session', dshTurn: null })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_content_parts'").get())
+        .toBeUndefined()
+      expect(database.prepare("SELECT stateJson FROM agent_setting_snapshots WHERE ownerType='response' AND ownerId='reply'").get())
+        .toEqual({ stateJson: '["state"]' })
+      expect(database.pragma('foreign_key_check')).toEqual([])
+      expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally {
+      database.close()
+    }
+  })
+
+  it('migrates v3 opening text and EJS settings into v4', () => {
+    const database = new Database(':memory:')
+    try {
+      database.exec(commonSchemaSql)
+      database.exec(legacyContentSql)
+      database.exec(`
+        CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
+        CREATE TABLE desktop_preferences (key TEXT PRIMARY KEY, valueJson TEXT NOT NULL, updatedAt TEXT NOT NULL);
+        INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
+        DROP TABLE agent_openings;
+        DROP TABLE agent_setting_snapshots;
+        ALTER TABLE agent_conversations DROP COLUMN runtimeThreadId;
+        INSERT INTO agent_conversations(id,activeBranchId) VALUES ('conversation','branch');
+        INSERT INTO conversation_speakers(id,conversationId,sourceSpeakerId,kind,displayName,avatarAssetId)
+          VALUES ('speaker','conversation','assistant','assistant','角色','');
+        INSERT INTO agent_turns(id,conversationId,speakerId,kind,createdAt,variableStateJson)
+          VALUES ('opening','conversation','speaker','opening','created','{}');
+        INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex)
+          VALUES ('conversation','turn','opening',0,'opening_text','开场白','{"options":[]}',0);
+        PRAGMA user_version = 3;
+      `)
+      insertSyntheticCharacter(database)
+      database.prepare(`INSERT INTO setting_libraries(characterId,name,activeVersionId,listAllExpanded,expandedGroupIdsJson,promptPositionsJson,updatedAt)
+        VALUES ('synthetic-character','合成设定','saved',1,'[]','[]','now')`).run()
+      database.prepare(`INSERT INTO setting_entry_contents(characterId,entryId,revisionId,payloadJson)
+        VALUES ('synthetic-character','scene','revision-1',?)`).run(JSON.stringify({
+        id: 'scene', content: '<%= getvar("chapter") %>', agent_read_strategy: 'variable_condition',
+        dynamic_mode: 'ejs_controller', trigger_mode: 'agent_tool'
+      }))
+      database.prepare(`INSERT INTO agent_presets(
+        id,name,modelFamily,modelTagsJson,libraryGroupId,activeVersionId,authorName,
+        authorAvatarPath,sortIndex,expandedGroupIdsJson
+      ) VALUES ('synthetic-preset','合成预设','general','[]','','','', '',0,'[]')`).run()
+      const previousTimelineContent = DEFAULT_HIDDEN_TOOL_TIMELINE_CONTENT.replace(/^  reasoning_channel:.*\n/m, '')
+      database.prepare('INSERT INTO agent_preset_entries VALUES (?,?,0,?)').run(
+        'synthetic-preset', 'built-in-hidden-tool-timeline', JSON.stringify({
+          id: 'built-in-hidden-tool-timeline', kind: 'hidden_tool_timeline',
+          content: previousTimelineContent, promptPositionId: 'hidden-tool-timeline', position: 'insert_point_4'
+        })
+      )
+      database.prepare('INSERT INTO agent_preset_contents VALUES (?,?,?)').run(
+        'synthetic-preset', 'prompt_positions', JSON.stringify([{
+          id: 'hidden-tool-timeline', name: '隐藏工具时间线',
+          anchor: 'insert_point_4', side: 'before_setting_position', order: 1
+        }])
+      )
+      installSchema(database)
+      expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+      const setting = database.prepare("SELECT payloadJson FROM setting_entry_contents WHERE entryId='scene'").get() as { payloadJson: string }
+      expect(JSON.parse(setting.payloadJson)).toMatchObject({
+        content: '<%= getvar("chapter") %>', agent_read_strategy: 'normal',
+        dynamic_mode: 'standard', content_mode: 'ejs'
+      })
+      const hidden = database.prepare("SELECT payloadJson FROM agent_preset_entries WHERE entryId='built-in-hidden-tool-timeline'").get() as { payloadJson: string }
+      expect(JSON.parse(hidden.payloadJson)).toMatchObject({
+        content: DEFAULT_HIDDEN_TOOL_TIMELINE_CONTENT, position: 'insert_point_5'
+      })
+      const positions = database.prepare("SELECT content FROM agent_preset_contents WHERE kind='prompt_positions'").get() as { content: string }
+      expect(JSON.parse(positions.content)).toContainEqual(expect.objectContaining({
+        id: 'hidden-tool-timeline', anchor: 'insert_point_5', side: 'after_setting_position'
+      }))
+      expect(database.prepare('SELECT content,payloadJson FROM agent_openings WHERE turnId=?').get('opening'))
+        .toEqual({ content: '开场白', payloadJson: '{"options":[]}' })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_content_parts'").get())
+        .toBeUndefined()
+      expect(database.pragma('foreign_key_check')).toEqual([])
+    } finally { database.close() }
+  })
+
   it('preserves records after reopening and refuses an unrelated nonempty database', () => {
     const { database, path, conversations } = harness()
     const id = conversations.create({ title: '持久存档' }).conversation.id
@@ -291,6 +435,26 @@ describe('shared SQLite baseline', () => {
       expect(old.prepare('SELECT content FROM messages').get()).toEqual({ content: 'preserve' })
     } finally { old.close() }
     expect(path).toContain('eleckoi.sqlite3')
+  })
+
+  it('adds pending inputs in the v3 to v4 migration without changing conversations', () => {
+    const database = new Database(':memory:')
+    try {
+      installSchema(database)
+      database.exec(`
+        INSERT INTO chat_sessions(id,title,characterId,characterName,characterAvatar,historyMessageCount,historyUserMessageCount,createdAt,updatedAt)
+          VALUES ('chat-v3','Existing','','','',0,0,'created','updated');
+        DROP TABLE agent_pending_inputs;
+        PRAGMA user_version = 3;
+      `)
+      installSchema(database)
+      expect(database.pragma('user_version', { simple: true })).toBe(4)
+      expect(database.prepare('SELECT title FROM chat_sessions WHERE id=?').get('chat-v3')).toEqual({ title: 'Existing' })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name='agent_pending_inputs'").get())
+        .toEqual({ name: 'agent_pending_inputs' })
+      expect(database.pragma('foreign_key_check')).toEqual([])
+      expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally { database.close() }
   })
 
   it('migrates v1 through the complete chain atomically, preserves product data and removes only retired storage', () => {
@@ -328,9 +492,11 @@ describe('shared SQLite baseline', () => {
 
       expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(database.prepare('SELECT baseline FROM desktop_schema WHERE id = 1').get()).toEqual({ baseline: BASELINE_ID })
-      expect(database.prepare('SELECT title, historySummary FROM chat_sessions').get()).toEqual({ title: '保留会话', historySummary: '摘要' })
+      expect(database.prepare('SELECT title FROM chat_sessions').get()).toEqual({ title: '保留会话' })
+      expect((database.pragma('table_info(chat_sessions)') as Array<{ name: string }>).map((column) => column.name))
+        .not.toContain('historySummary')
       expect(database.prepare('SELECT displayName FROM conversation_speakers ORDER BY id').all()).toEqual([{ displayName: '角色' }, { displayName: '测试用户' }])
-      expect(database.prepare('SELECT text FROM agent_content_parts ORDER BY ownerType DESC').all()).toEqual([{ text: '用户正文' }, { text: '角色正文' }])
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_content_parts'").get()).toBeUndefined()
       expect(database.prepare('SELECT runtimeThreadId FROM agent_responses').get()).toEqual({ runtimeThreadId: 'dsh-session' })
       expect(database.prepare('SELECT id, conversationId, ownerId, state FROM generation_attempts').get()).toEqual({ id: 'attempt', conversationId: 'chat', ownerId: 'response', state: 'complete' })
       expect(database.prepare('SELECT valueJson FROM desktop_preferences WHERE key = ?').get('appearance.mode')).toEqual({ valueJson: '"dark"' })
@@ -369,8 +535,8 @@ describe('shared SQLite baseline', () => {
     try {
       firstStart.open()
       expect(firstStart.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(firstStart.native.prepare('SELECT title, historySummary FROM chat_sessions WHERE id = ?').get('chat-reopen'))
-        .toEqual({ title: '迁移后保留', historySummary: '历史摘要' })
+      expect(firstStart.native.prepare('SELECT title FROM chat_sessions WHERE id = ?').get('chat-reopen'))
+        .toEqual({ title: '迁移后保留' })
       expect(firstStart.native.prepare('SELECT valueJson FROM desktop_preferences WHERE key = ?').get('appearance.mode'))
         .toEqual({ valueJson: '"dark"' })
       firstStart.close()
@@ -513,6 +679,7 @@ describe('shared SQLite baseline', () => {
     let database = new Database(path)
     try {
       database.exec(commonSchemaSql)
+      database.exec(legacyContentSql)
       registerDesktopV2(database)
       insertSyntheticCharacter(database)
       database.prepare(`INSERT INTO setting_libraries(
@@ -537,9 +704,9 @@ describe('shared SQLite baseline', () => {
         .run('synthetic-character', 'setting-version', 'setting-entry', 'revision-1')
 
       database.prepare(`INSERT INTO chat_sessions(
-        id,title,characterId,characterName,characterAvatar,historySummary,historyMessageCount,
+        id,title,characterId,characterName,characterAvatar,historyMessageCount,
         historyUserMessageCount,createdAt,updatedAt
-      ) VALUES (?,'合成会话','synthetic-character','合成角色','','',0,0,?,?)`)
+      ) VALUES (?,'合成会话','synthetic-character','合成角色','',0,0,?,?)`)
         .run('synthetic-session', timestamp, timestamp)
       database.prepare('INSERT INTO conversation_setting_changes VALUES (?,?,?,?,?,?)').run(
         'synthetic-session', 'entry', 'conversation-entry', 'upsert', JSON.stringify(conversationEntry), timestamp
@@ -578,7 +745,7 @@ describe('shared SQLite baseline', () => {
       database.prepare('INSERT INTO agent_preset_version_contents VALUES (?,?,?,?)')
         .run('synthetic-preset', 'preset-version', 'tool_configuration', toolConfiguration)
 
-      database.prepare('INSERT INTO agent_conversations VALUES (?,?)').run('synthetic-session', '')
+      database.prepare('INSERT INTO agent_conversations VALUES (?,?,?)').run('synthetic-session', '', 'synthetic-session')
       const snapshot = JSON.stringify([{
         targetType: 'entry', targetId: 'snapshot-entry', operation: 'upsert',
         payloadJson: JSON.stringify(snapshotEntry), updatedAt: timestamp
@@ -594,7 +761,7 @@ describe('shared SQLite baseline', () => {
     const reopened = new SqliteDatabase(path)
     reopened.open()
     try {
-      expect(reopened.native.pragma('user_version', { simple: true })).toBe(3)
+      expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(reopened.native.prepare('SELECT baseline FROM desktop_schema WHERE id=1').get()).toEqual({ baseline: BASELINE_ID })
 
       const library = new SettingLibraryRepository(reopened).get('synthetic-character')
@@ -607,21 +774,21 @@ describe('shared SQLite baseline', () => {
       const preset = new AgentPresetRepository(reopened).get('synthetic-preset')
       expect(preset.entries.find((entry) => entry.id === 'preset-entry')?.position).toBe('insert_point_3')
       expect(preset.entries.find((entry) => entry.id === 'built-in-hidden-tool-timeline')).toMatchObject({
-        position: 'insert_point_4', promptPositionId: 'hidden-tool-timeline'
+        position: 'insert_point_5', promptPositionId: 'hidden-tool-timeline'
       })
       expect(preset.promptPositions).toContainEqual(expect.objectContaining({
         id: 'preset-position', anchor: 'insert_point_3', side: 'before_setting_position'
       }))
       expect(preset.promptPositions).toContainEqual(expect.objectContaining({
-        id: 'hidden-tool-timeline', anchor: 'insert_point_4', side: 'before_setting_position'
+        id: 'hidden-tool-timeline', anchor: 'insert_point_5', side: 'after_setting_position'
       }))
 
       const conversation = reopened.native.prepare(`SELECT payloadJson FROM conversation_setting_changes
         WHERE sessionId='synthetic-session' AND targetType='entry'`).get() as { payloadJson: string }
       expect(settingLibraryEntrySchema.parse(JSON.parse(conversation.payloadJson)).position).toBe('insert_point_3')
-      const snapshotRow = reopened.native.prepare(`SELECT payloadJson FROM agent_content_parts
-        WHERE kind='setting_library_state'`).get() as { payloadJson: string }
-      const snapshotValue = JSON.parse(snapshotRow.payloadJson) as Array<{ payloadJson: string }>
+      const snapshotRow = reopened.native.prepare(`SELECT stateJson FROM agent_setting_snapshots
+        WHERE ownerId='synthetic-owner'`).get() as { stateJson: string }
+      const snapshotValue = JSON.parse(snapshotRow.stateJson) as Array<{ payloadJson: string }>
       expect(settingLibraryEntrySchema.parse(JSON.parse(snapshotValue[0]!.payloadJson)).position).toBe('insert_point_4')
 
       const storedVersionEntry = reopened.native.prepare(`SELECT payloadJson FROM agent_preset_version_entries
@@ -655,6 +822,7 @@ describe('shared SQLite baseline', () => {
     let database = new Database(path)
     try {
       database.exec(commonSchemaSql)
+      database.exec(legacyContentSql)
       registerDesktopV2(database)
       insertSyntheticCharacter(database)
       database.prepare(`INSERT INTO setting_libraries(
@@ -733,6 +901,155 @@ describe('shared SQLite baseline', () => {
     expect(messages.list(a).slice(1).map((message) => message.responseIndex)).toEqual([0, 1])
     expect(() => messages.createResponse(b, user.turnId!, 'wrong', 'complete', { id: 'member', name: '', avatar: '', kind: 'card_character' })).toThrow('活动分支')
     expect(database.native.pragma('foreign_key_check')).toEqual([])
+  })
+
+  it('binds an active historical reply to its exact DSH turn without changing message text', () => {
+    const { conversations, messages, database } = harness()
+    const conversationId = conversations.create({}).conversation.id
+    messages.create(conversationId, 'user', '当前输入', 'complete')
+    const reply = messages.create(conversationId, 'assistant', '当前回复', 'complete', undefined, 'runtime-a')
+
+    expect(messages.unboundActiveResponses()).toEqual([{
+      conversationId, messageId: reply.id, runtimeThreadId: 'runtime-a'
+    }])
+    messages.bindHistoricalDshTurn(conversationId, reply.id, 'runtime-a', 3)
+    expect(messages.unboundActiveResponses()).toEqual([])
+    expect(database.native.prepare('SELECT dshTurn FROM agent_responses WHERE id=?').get(reply.id))
+      .toEqual({ dshTurn: 3 })
+    expect(messages.list(conversationId).map((message) => message.content)).toEqual(['当前输入', '当前回复'])
+  })
+
+  it('reads bound conversation text from the DSH turn after duplicate content is removed', () => {
+    const { conversations, messages } = harness()
+    const conversationId = conversations.create({}).conversation.id
+    const user = messages.create(conversationId, 'user', '当前输入', 'complete')
+    const reply = messages.create(conversationId, 'assistant', '当前回复', 'complete', undefined, 'runtime-a')
+    messages.bindHistoricalDshTurn(conversationId, reply.id, 'runtime-a', 3)
+    const calls: string[] = []
+    const detach = messages.attachTranscriptReader((runtimeThreadId) => {
+      calls.push(runtimeThreadId)
+      return [{ turn: 3, completed: true, userSeq: 1, userText: '当前输入', userImages: [{
+        attachmentId: 'sha256:synthetic', mediaType: 'image/png', bytes: 128, width: 16, height: 8
+      }], assistantText: '当前回复', process: [] }]
+    })
+    try {
+      expect(messages.list(conversationId).map((message) => message.content)).toEqual(['当前输入', '当前回复'])
+      expect(messages.get(conversationId, user.id).content).toBe('当前输入')
+      expect(messages.get(conversationId, user.id).inputImageAttachments?.[0]?.attachmentId).toBe('sha256:synthetic')
+      expect(messages.findInputImage(conversationId, 'sha256:synthetic').width).toBe(16)
+      expect(messages.listInputImageReferences()).toContainEqual({ conversationId, attachmentId: 'sha256:synthetic' })
+      expect(messages.get(conversationId, reply.id).content).toBe('当前回复')
+      expect(calls.every((id) => id === 'runtime-a')).toBe(true)
+    } finally {
+      detach()
+    }
+    expect(messages.get(conversationId, reply.id).content).toBe('当前回复')
+  })
+
+  it('removes a completed image reference from SQLite after the DSH log confirms it', () => {
+    const { conversations, messages, database } = harness()
+    const conversationId = conversations.create({}).conversation.id
+    const image = { attachmentId: 'sha256:synthetic-image', mediaType: 'image/png' as const,
+      bytes: 128, width: 16, height: 8 }
+    const user = messages.create(conversationId, 'user', '图片', 'complete', undefined, '', [image])
+    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, 'runtime-image')
+    messages.bindDshTurn(conversationId, reply.id, 'runtime-image', 1)
+    const detach = messages.attachTranscriptReader(() => [{
+      turn: 1, completed: true, userSeq: 1, userText: '图片', userImages: [image], assistantText: '收到', process: []
+    }])
+    try {
+      messages.finish(reply.id, '收到', 'complete')
+      expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
+        .toBeUndefined()
+      expect(messages.get(conversationId, reply.id).content).toBe('收到')
+      expect(messages.get(conversationId, user.id).inputImageAttachments).toEqual([image])
+      expect(messages.findInputImage(conversationId, image.attachmentId)).toEqual(image)
+      expect(database.native.prepare('SELECT turnId FROM agent_pending_inputs WHERE turnId=?').get(user.id))
+        .toBeUndefined()
+    } finally { detach() }
+  })
+
+  it('restores an uploaded file and image on a failed input after restarting', () => {
+    const { conversations, messages, database } = harness()
+    const conversationId = conversations.create({}).conversation.id
+    const image = { attachmentId: `sha256:${'a'.repeat(64)}`, mediaType: 'image/png' as const,
+      bytes: 128, width: 16, height: 8 }
+    const pendingFile = { attachmentId: 'draft:file', name: 'notes.txt', bytes: 12 }
+    const uploadedFile = { ...pendingFile, attachmentId: `sha256:${'b'.repeat(64)}` }
+    const user = messages.create(conversationId, 'user', '', 'complete', undefined, '', [image], [pendingFile])
+    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, conversationId)
+    messages.recordUploadedFile(reply.id, pendingFile.attachmentId, uploadedFile)
+    messages.finish(reply.id, '', 'error')
+
+    database.close()
+    database.open()
+    const restored = new MessageRepository(database)
+    expect(restored.get(conversationId, user.id)).toMatchObject({
+      content: '', inputImageAttachments: [image], inputFileAttachments: [uploadedFile]
+    })
+    expect(restored.listInputFileReferences()).toContainEqual({ conversationId, file: uploadedFile })
+    expect(restored.findInputFile(conversationId, uploadedFile.attachmentId, uploadedFile.name)).toEqual(uploadedFile)
+    expect(restored.findInputImage(conversationId, image.attachmentId)).toEqual(image)
+    restored.deleteFrom(conversationId, user.id)
+    expect(database.native.prepare('SELECT turnId FROM agent_pending_inputs WHERE turnId=?').get(user.id))
+      .toBeUndefined()
+  }, 20_000)
+
+  it('recovers a cancelled file message already recorded in the DSH Session after restart', () => {
+    const { conversations, messages, database } = harness()
+    const conversationId = conversations.create({}).conversation.id
+    const sessionId = 'runtime-synthetic'
+    for (let turn = 1; turn <= 2; turn += 1) {
+      messages.create(conversationId, 'user', `input-${turn}`, 'complete')
+      const reply = messages.create(conversationId, 'assistant', `reply-${turn}`, 'complete', undefined, sessionId)
+      messages.bindHistoricalDshTurn(conversationId, reply.id, sessionId, turn)
+    }
+    const user = messages.create(conversationId, 'user', '', 'complete')
+    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, sessionId)
+    messages.finish(reply.id, '', 'cancelled')
+    database.native.prepare('DELETE FROM agent_pending_inputs WHERE turnId=?').run(user.id)
+    database.close()
+    database.open()
+
+    const restored = new MessageRepository(database)
+    expect(restored.get(conversationId, user.id).inputFileAttachments).toBeUndefined()
+    const file = { attachmentId: `sha256:${'c'.repeat(64)}`, name: 'sample.txt', bytes: 12 }
+    const detach = restored.attachTranscriptReader(() => [1, 2, 3].map((turn) => ({
+      turn, startSeq: turn * 10, userSeq: turn * 10 + 1, userMessageId: `user-${turn}`,
+      userText: turn === 3 ? '' : `input-${turn}`, userImages: [], userFiles: turn === 3 ? [file] : [],
+      assistantSeq: turn === 3 ? null : turn * 10 + 2,
+      assistantMessageId: turn === 3 ? null : `assistant-${turn}`,
+      assistantText: turn === 3 ? '' : `reply-${turn}`, process: [], completed: true
+    })))
+    try {
+      restored.reconcileUnboundActiveResponses(sessionId)
+      expect(database.native.prepare('SELECT dshTurn FROM agent_responses WHERE id=?').get(reply.id))
+        .toEqual({ dshTurn: 3 })
+      expect(restored.get(conversationId, user.id).inputFileAttachments).toEqual([file])
+      expect(restored.listInputFileReferences()).toContainEqual({ conversationId, file })
+    } finally { detach() }
+  }, 20_000)
+
+  it('projects a completed reply through its saved display rule without keeping another text copy', () => {
+    const { conversations, messages, database } = harness()
+    const conversationId = conversations.create({}).conversation.id
+    const user = messages.create(conversationId, 'user', '问题', 'complete')
+    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, 'runtime-regex')
+    messages.bindDshTurn(conversationId, reply.id, 'runtime-regex', 1)
+    const detach = messages.attachTranscriptReader(() => [{
+      turn: 1, completed: true, userSeq: 1, userText: '问题', userImages: [], assistantText: '原文', process: []
+    }])
+    try {
+      messages.finish(reply.id, '显示文本', 'complete', undefined, undefined, [{
+        id: 'display-rule', name: 'display', pattern: '原文', replacement: '显示文本',
+        targets: ['AiOutput'], enabled: true, displayOnly: false, promptOnly: false,
+        runOnEdit: false, order: 0
+      }])
+      expect(messages.get(conversationId, user.id).content).toBe('问题')
+      expect(messages.get(conversationId, reply.id).content).toBe('显示文本')
+      expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
+        .toBeUndefined()
+    } finally { detach() }
   })
 
   it('pages turns without gaps or repeated messages', () => {
@@ -857,7 +1174,7 @@ describe('shared SQLite baseline', () => {
     const entry = {
       id: 'capital', title: '王都', iconId: '', kind: 'normal' as const, groupId: group.id, content: '群山之间的城市。',
       openingMessages: [], defaultOpeningMessageId: '', agentSelectionHint: '', agentReadStrategy: 'normal' as const,
-      dynamicMode: 'standard' as const, keywords: [], keywordScanDepth: 1,
+      dynamicMode: 'standard' as const, contentMode: 'plain_text' as const, keywords: [], keywordScanDepth: 1,
       conditionKeywords: [], keywordCondition: 'none' as const, keywordUseRegex: false, keywordIgnoreCase: true,
       keywordWholeWord: false, keywordRecursionDepth: 0, triggerMode: 'always' as const, enabled: true,
       position: 'insert_point_3' as const, promptPositionId: '', insertRole: 'user' as const, order: 1,
@@ -877,7 +1194,7 @@ describe('shared SQLite baseline', () => {
       id: 'reference-capital',
       title: '王都资料',
       content: '供 EJS 控制器读取。',
-      agentReadStrategy: 'variable_condition' as const,
+      agentReadStrategy: 'normal' as const,
       dynamicMode: 'ejs_reference' as const,
       triggerMode: 'agent_tool' as const,
       enabled: true,
@@ -906,7 +1223,7 @@ describe('shared SQLite baseline', () => {
     expect(repository.primaryOpening('card-a')).toBe('主开场')
     expect(saved.entries).toContainEqual(expect.objectContaining({
       id: 'reference-capital',
-      agentReadStrategy: 'variable_condition',
+      agentReadStrategy: 'normal',
       dynamicMode: 'ejs_reference',
       triggerMode: 'agent_tool'
     }))
@@ -925,7 +1242,7 @@ describe('shared SQLite baseline', () => {
       id: 'identity', title: '身份', iconId: '', kind: 'normal' as const, groupId: '',
       content: '你是{{char}}，我是{{user}}', openingMessages: [], defaultOpeningMessageId: '',
       agentSelectionHint: '', agentReadStrategy: 'required' as const,
-      dynamicMode: 'standard' as const, keywords: [], keywordScanDepth: 1,
+      dynamicMode: 'standard' as const, contentMode: 'plain_text' as const, keywords: [], keywordScanDepth: 1,
       conditionKeywords: [], keywordCondition: 'none' as const, keywordUseRegex: false,
       keywordIgnoreCase: true, keywordWholeWord: false, keywordRecursionDepth: 0,
       triggerMode: 'agent_tool' as const, enabled: true, position: 'insert_point_1' as const,
@@ -995,7 +1312,7 @@ describe('shared SQLite baseline', () => {
     const entry = {
       id: 'agent-memory', title: '对话记忆', iconId: '', kind: 'normal' as const, groupId: '',
       content: '母设定', openingMessages: [], defaultOpeningMessageId: '', agentSelectionHint: '需要时读取',
-      agentReadStrategy: 'normal' as const, dynamicMode: 'standard' as const,
+      agentReadStrategy: 'normal' as const, dynamicMode: 'standard' as const, contentMode: 'plain_text' as const,
       keywords: [], keywordScanDepth: 1, conditionKeywords: [], keywordCondition: 'none' as const,
       keywordUseRegex: false, keywordIgnoreCase: true, keywordWholeWord: false, keywordRecursionDepth: 0,
       triggerMode: 'agent_tool' as const, enabled: true, position: null, promptPositionId: '',
@@ -1121,8 +1438,9 @@ describe('shared SQLite baseline', () => {
       .toContainEqual(expect.objectContaining({ id: 'backup', content: '备用开场' }))
 
     messages.create(conversationId, 'user', '开始聊天', 'complete')
+    conversations.attachPreviewReader((id) => messages.latestPreview(id))
     conversations.touch(conversationId, '最近的真实消息')
-    expect(conversations.get(conversationId).preview).toBe('最近的真实消息')
+    expect(conversations.get(conversationId).preview).toBe('开始聊天')
     expect(() => conversations.selectOpening(conversationId, 'primary')).toThrow('对话开始后不能再切换开场白')
     expect(() => conversations.updateOpening(conversationId, '不能再改')).toThrow('对话开始后不能修改开场白')
 
@@ -1131,8 +1449,8 @@ describe('shared SQLite baseline', () => {
     expect(messages.list(conversationId)).toEqual([])
     expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
       .get(conversationId)).toEqual({ stateJson: '{"好感":2}' })
-    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount,historySummary FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 0, historyUserMessageCount: 0, historySummary: '' })
+    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions WHERE id=?')
+      .get(conversationId)).toEqual({ historyMessageCount: 0, historyUserMessageCount: 0 })
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
@@ -1151,7 +1469,7 @@ describe('shared SQLite baseline', () => {
     const prepared = messages.prepareRegeneration(conversationId, secondAssistant.id)
     expect(prepared).toMatchObject({ turnId: secondUser.turnId, text: '第二轮原文' })
     expect(prepared.runtimeThreadId).not.toBe('runtime-b')
-    expect(prepared.obsoleteRuntimeThreadIds).toEqual(['runtime-a', 'runtime-b'])
+    expect(prepared.obsoleteRuntimeThreadIds).toEqual(['runtime-b'])
     expect(messages.list(conversationId).map((message) => message.content)).toEqual(['第一轮', '第一轮回复', '第二轮原文'])
     expect(messages.list(conversationId).map((message) => message.messageIndex)).toEqual([0, 1, 2])
     expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
@@ -1223,7 +1541,8 @@ describe('shared SQLite baseline', () => {
       deletedMessageCount: 2,
       remainingMessageCount: 2,
       deletedAttachmentIds: [image.attachmentId],
-      obsoleteRuntimeThreadIds: ['runtime-a', 'runtime-b'],
+      obsoleteRuntimeThreadIds: ['runtime-b'],
+      retainedRuntimeThreadIds: ['runtime-a', conversationId],
       rollbackSettingLibraryStateJson: settingBeforeSecond
     })
     settings.restoreConversationRuntimeState(conversationId, deleted.rollbackSettingLibraryStateJson!)
@@ -1232,13 +1551,13 @@ describe('shared SQLite baseline', () => {
       .get(conversationId)).toEqual({ stateJson: '{"betweenRounds":3}' })
     expect(settings.snapshotConversationRuntimeState(conversationId)).toBe(settingBeforeSecond)
     expect(database.native.prepare('SELECT * FROM generation_attempts WHERE conversationId=?').all(conversationId)).toEqual([])
-    expect(database.native.prepare("SELECT * FROM agent_content_parts WHERE ownerId IN (?,?)")
-      .all(secondUser.id, secondAssistant.id)).toEqual([])
+    expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
+      .toBeUndefined()
     expect(heights.list(conversationId)).toEqual([])
     expect(database.native.prepare('SELECT DISTINCT runtimeThreadId FROM agent_responses WHERE conversationId=?')
-      .all(conversationId)).toEqual([{ runtimeThreadId: '' }])
-    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount,historySummary FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 2, historyUserMessageCount: 1, historySummary: '第一轮回复' })
+      .all(conversationId)).toEqual([{ runtimeThreadId: 'runtime-a' }])
+    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions WHERE id=?')
+      .get(conversationId)).toEqual({ historyMessageCount: 2, historyUserMessageCount: 1 })
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
@@ -1292,7 +1611,7 @@ describe('shared SQLite baseline', () => {
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
-  it('checkpoints only changed chunks and recovers interrupted executions without losing the prefix', async () => {
+  it('keeps streaming text in memory and recovers interrupted execution metadata', async () => {
     const { conversations, messages, database } = harness()
     const id = conversations.create({}).conversation.id
     messages.create(id, 'user', 'input', 'complete')
@@ -1302,15 +1621,14 @@ describe('shared SQLite baseline', () => {
     generations.start('run-a', id, reply.id)
     const prefix = 'x'.repeat(64 * 1024 - 1) + '😀' + 'y'.repeat(100)
     messages.appendCheckpoint(reply.id, prefix)
-    database.native.exec(`CREATE TEMP TABLE chunk_writes(chunk INTEGER); CREATE TEMP TRIGGER watch_parts AFTER UPDATE ON agent_content_parts BEGIN INSERT INTO chunk_writes VALUES(new.chunkIndex); END;`)
     messages.appendCheckpoint(reply.id, 'tail')
-    expect(database.native.prepare('SELECT chunk FROM chunk_writes').all()).toEqual([{ chunk: 1 }])
+    expect(messages.list(id).at(-1)?.content).toBe(prefix + 'tail')
     await expect(conversations.delete(id)).rejects.toThrow('先停止')
     database.close(); database.open()
-    expect(messages.list(id).at(-1)).toMatchObject({ content: prefix + 'tail', status: 'error' })
+    expect(new MessageRepository(database).list(id).at(-1)).toMatchObject({ content: '', status: 'error' })
     expect(database.native.prepare("SELECT state FROM generation_attempts WHERE id='run-a'").get()).toEqual({ state: 'failed' })
     await conversations.delete(id)
-    expect(database.native.prepare('SELECT * FROM agent_content_parts').all()).toEqual([])
+    expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get()).toBeUndefined()
   })
 
   it('removes a card and its chats while preserving another card and shared configuration', () => {
@@ -1420,7 +1738,8 @@ describe('shared SQLite baseline', () => {
     restored.open()
     const restoredConversations = new ConversationRepository(restored)
     expect(restoredConversations.getMetadata(id).characterId).toBe('card-a')
-    expect(new MessageRepository(restored).list(id)[0]?.content).toBe('backup source')
+    expect(new MessageRepository(restored).list(id)[0]?.id).toBeTruthy()
+    expect(restored.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get()).toBeUndefined()
     expect(restored.native.pragma('foreign_key_check')).toEqual([])
     expect(restored.native.pragma('integrity_check', { simple: true })).toBe('ok')
     await expect(database.backupTo(destination)).rejects.toThrow('新的文件')

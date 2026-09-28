@@ -8,7 +8,7 @@ export const SettingTreeActionsContext = createContext(null);
 
 function entryIcon(data) {
   if (data.entryKind === "opening") return ChatCircleDots;
-  if (data.dynamicMode === "ejs_controller") return Code;
+  if (data.contentMode === "ejs") return Code;
   if (data.dynamicMode === "ejs_reference") return LinkSimple;
   return null;
 }
@@ -31,28 +31,24 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
       onContextMenu={(event) => actions.openContextMenu(event, data)}
     >
       <div className="setting-library-tree-row-content">
-        <span className="setting-library-tree-chevron">
-          {data.nodeKind === "group" ? (
-            <button
-              type="button"
-              className="setting-library-tree-expander"
-              aria-label={isExpanded ? "折叠文件夹" : "展开文件夹"}
-              aria-expanded={isExpanded}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (item.isExpanded()) item.collapse();
-                else item.expand();
-              }}
-            >
-              <DshTriangleRightIcon className={isExpanded ? "is-expanded" : ""} />
-            </button>
-          ) : null}
-        </span>
         {data.nodeKind === "group" ? (
-          <span className="setting-library-tree-folder" aria-hidden="true">
-            {isExpanded ? <DshFolderOpenIcon /> : <DshFolderClosedIcon />}
-          </span>
-        ) : <span className={`setting-library-tree-entry-icon${data.dynamicMode === "ejs_controller" ? " is-controller" : ""}${data.dynamicMode === "ejs_reference" ? " is-reference" : ""}`} aria-hidden="true">
+          <button
+            type="button"
+            className="setting-library-tree-expander"
+            aria-label={isExpanded ? "折叠文件夹" : "展开文件夹"}
+            aria-expanded={isExpanded}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (item.isExpanded()) item.collapse();
+              else item.expand();
+            }}
+          >
+            <span className="setting-library-tree-folder" aria-hidden="true">
+              {isExpanded ? <DshFolderOpenIcon /> : <DshFolderClosedIcon />}
+            </span>
+            <DshTriangleRightIcon className={`setting-library-tree-arrow${isExpanded ? " is-expanded" : ""}`} />
+          </button>
+        ) : <span className={`setting-library-tree-entry-icon${data.contentMode === "ejs" ? " is-controller" : ""}${data.dynamicMode === "ejs_reference" ? " is-reference" : ""}`} aria-hidden="true">
           {Icon ? <Icon weight="regular" /> : <SettingEntryGlyph iconId={data.iconId} weight="regular" />}
         </span>}
         <span className="setting-library-tree-label">{data.label}</span>

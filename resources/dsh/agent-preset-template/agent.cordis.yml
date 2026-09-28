@@ -1,10 +1,13 @@
 # ElecKoi agent preset Agent plane. A runtime copy is materialized for every
-# product preset and mounted through @deepseek-ai/dsh-agent-presets.
+# product preset and mounted through the DSH Agent preset registry.
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
   config:
     maxBytes: 65536
+
+- id: uploaded-file-tools
+  name: __ELECKOI_UPLOADED_FILE_TOOLS_PLUGIN__
 
 # ELECKOI:variables:BEGIN
 - id: variable-tools
@@ -83,8 +86,8 @@ __ELECKOI_SUBAGENT_OPTIONS__
   isolate:
     workflowEngine: true
   config:
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+    - id: workflow-ptc
+      name: '@deepseek-ai/dsh-workflow-ptc'
       config:
         provider: spawn
 

@@ -2,19 +2,17 @@ import {
   APP_DEFAULT_CHAT_BACKGROUND,
   CUSTOM_CHAT_BACKGROUND,
   GLOBAL_CHAT_BACKGROUND,
+  DEFAULT_NEW_CHARACTER_BACKGROUND,
+  normalizeNewCharacterBackground,
 } from "@shared/contracts/characters/chatBackground";
 
 export {
   APP_DEFAULT_CHAT_BACKGROUND,
   CUSTOM_CHAT_BACKGROUND,
   GLOBAL_CHAT_BACKGROUND,
+  DEFAULT_NEW_CHARACTER_BACKGROUND,
+  normalizeNewCharacterBackground,
 };
-
-export const DEFAULT_NEW_CHARACTER_BACKGROUND = "character";
-
-export function normalizeNewCharacterBackground(value) {
-  return value === "app" ? "app" : DEFAULT_NEW_CHARACTER_BACKGROUND;
-}
 
 export const CHAT_WALLPAPER_DEFAULTS = Object.freeze({
   opacity: 0.72,

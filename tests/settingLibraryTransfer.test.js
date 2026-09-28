@@ -112,12 +112,13 @@ describe("setting-library versions and transfer", () => {
       2: { comment: "普通设定", content: "普通正文", constant: true },
     } }), "sillytavern");
     expect(parsed.entries.find((item) => item.title === "章节控制器")).toMatchObject({
-      dynamicMode: "ejs_controller",
-      agentReadStrategy: "variable_condition",
+      dynamicMode: "standard",
+      agentReadStrategy: "normal",
+      contentMode: "ejs",
     });
     expect(parsed.entries.find((item) => item.title === "第一章")).toMatchObject({
       dynamicMode: "ejs_reference",
-      agentReadStrategy: "variable_condition",
+      agentReadStrategy: "normal",
       enabled: true,
     });
     expect(parsed.entries.find((item) => item.title === "普通设定")?.dynamicMode).toBe("standard");

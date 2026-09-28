@@ -85,7 +85,7 @@
   z-index: -1;
   width: min(440px, 60%);
   height: 34px;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: color-mix(in srgb, var(--shadow-color) 32%, transparent);
   filter: blur(22px);
   opacity: 0.48;

@@ -1,20 +1,74 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentConversationHistoryItem } from '@shared/contracts/agent/runtime'
-import type { AgentProcessItem, ChatMessage, ChatUserImageAttachment, MessageRole, MessageStatus } from '@shared/contracts/entities/chat'
+import type { AgentProcessItem, ChatMessage, ChatUserFileAttachment, ChatUserImageAttachment, MessageRole, MessageStatus } from '@shared/contracts/entities/chat'
+import { regexRuleSchema, type RegexRule } from '@shared/contracts/regex/schemas'
+import { transformWithRegexRules } from '@shared/foundation/regex/RegexRuleProcessor'
 import { type ElecKoiDatabase, SqliteDatabase } from '@main/platform/sqlite/SqliteDatabase'
 import {
   readCurrentConversationVariableState,
   writeCurrentConversationVariableState
 } from './ConversationVariableStateStore'
 
-const chunkCharacters = 64 * 1024
 interface LedgerMessage { id: string; ownerId: string; ownerType: 'turn' | 'response'; turnId: string; speakerId: string; sequence: number; responseIndex: number; role: MessageRole; status: string; createdAt: string; variableStateJson: string }
 interface Speaker { id: string; name: string; avatar: string; kind: string }
+interface DraftMessage { content: string; images: ChatUserImageAttachment[]; files: ChatUserFileAttachment[]; process: AgentProcessItem[] }
+interface RuntimeTranscriptTurn {
+  turn: number
+  completed: boolean
+  userSeq: number | null
+  userMessageId?: string | null
+  userText: string
+  userImages: ChatUserImageAttachment[]
+  userFiles?: ChatUserFileAttachment[]
+  assistantText: string
+  assistantMessageId?: string | null
+  process: AgentProcessItem[]
+}
 const toStoredStatus = (status: MessageStatus) => status === 'complete' ? 'completed' : status === 'streaming' ? 'pending' : status
 const toMessageStatus = (status: string): MessageStatus => status === 'completed' ? 'complete' : status === 'pending' ? 'streaming' : status === 'cancelled' ? 'cancelled' : 'error'
 
 export class MessageRepository {
+  private transcriptReader: ((runtimeThreadId: string) => readonly RuntimeTranscriptTurn[] | undefined) | undefined
+  private readonly drafts = new Map<string, DraftMessage>()
+
   constructor(private readonly store: SqliteDatabase) {}
+
+  captureDrafts(messageIds: readonly string[]): Map<string, DraftMessage | undefined> {
+    return new Map(messageIds.map((id) => [id, this.drafts.get(id) ?? this.readPendingInput(id)]))
+  }
+
+  restoreDrafts(snapshot: ReadonlyMap<string, DraftMessage | undefined>, addedMessageId?: string): void {
+    if (addedMessageId) this.drafts.delete(addedMessageId)
+    for (const [id, draft] of snapshot) {
+      if (draft) this.drafts.set(id, draft)
+      else this.drafts.delete(id)
+    }
+  }
+
+  attachTranscriptReader(reader: (runtimeThreadId: string) => readonly RuntimeTranscriptTurn[] | undefined): () => void {
+    if (this.transcriptReader) throw new Error('聊天日志读取器已注册。')
+    this.transcriptReader = reader
+    return () => { if (this.transcriptReader === reader) this.transcriptReader = undefined }
+  }
+
+  assertReadableHistory(conversationId: string): void {
+    if (!this.transcriptReader) return
+    const bindings = this.store.native.prepare(`SELECT r.runtimeThreadId,r.dshTurn
+      FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId
+      JOIN agent_conversations c ON c.id=r.conversationId AND c.activeBranchId=p.branchId
+      WHERE c.id=? AND r.status='completed' AND r.runtimeThreadId<>''`)
+      .all(conversationId) as Array<{ runtimeThreadId: string; dshTurn: number | null }>
+    const transcripts = new Map<string, readonly RuntimeTranscriptTurn[] | undefined>()
+    for (const binding of bindings) {
+      if (!transcripts.has(binding.runtimeThreadId)) {
+        transcripts.set(binding.runtimeThreadId, this.transcriptReader(binding.runtimeThreadId))
+      }
+      if (binding.dshTurn === null || !transcripts.get(binding.runtimeThreadId)
+        ?.some((turn) => turn.turn === binding.dshTurn)) {
+        throw new Error('已有回复对应的 DSH 会话日志无法读取；本次发送已取消，原聊天记录未修改。')
+      }
+    }
+  }
 
   page(conversationId: string, beforeSequence?: number, limit = 50) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('每页轮次数必须在 1 到 200 之间。')
@@ -43,8 +97,9 @@ export class MessageRepository {
         WHERE p.branchId=c.activeBranchId AND p.sequence<?) AS count
       FROM agent_conversations c WHERE c.id=?`
     ).get(firstSequence, firstSequence, conversationId) as { count: number }
+    const transcripts = new Map<string, readonly RuntimeTranscriptTurn[] | undefined>()
     return {
-      messages: rows.map((row, index) => ({ ...this.project(conversationId, row), messageIndex: preceding.count + index })),
+      messages: rows.map((row, index) => ({ ...this.project(conversationId, row, transcripts), messageIndex: preceding.count + index })),
       hasMore,
       beforeSequence: firstSequence
     }
@@ -63,6 +118,10 @@ export class MessageRepository {
     } while (true)
   }
 
+  latestPreview(conversationId: string): string | undefined {
+    return this.page(conversationId, undefined, 1).messages.at(-1)?.content
+  }
+
   create(
     conversationId: string,
     role: MessageRole,
@@ -70,7 +129,8 @@ export class MessageRepository {
     status: MessageStatus,
     _db?: ElecKoiDatabase,
     runtimeThreadId = '',
-    inputImageAttachments: ChatUserImageAttachment[] = []
+    inputImageAttachments: ChatUserImageAttachment[] = [],
+    inputFileAttachments: ChatUserFileAttachment[] = []
   ): ChatMessage {
     return this.store.withWriteTx(() => {
       const conversation = this.store.native.prepare('SELECT activeBranchId FROM agent_conversations WHERE id = ?').get(conversationId) as { activeBranchId: string } | undefined
@@ -89,13 +149,15 @@ export class MessageRepository {
       const variableStateJson = readCurrentConversationVariableState(conversationId, this.store.db)
       this.store.native.prepare(`INSERT INTO agent_turns(id,conversationId,speakerId,kind,createdAt,variableStateJson) VALUES (?,?,?,'user',?,?)`).run(id, conversationId, speakerId, now, variableStateJson)
       this.store.native.prepare('INSERT INTO agent_branch_turns(branchId,sequence,turnId) VALUES (?,?,?)').run(conversation.activeBranchId, sequence, id)
-      this.writeContent(conversationId, 'turn', id, 'user_text', content)
-      this.writeInputImages(conversationId, id, inputImageAttachments)
+      const draft = { content, images: inputImageAttachments, files: inputFileAttachments, process: [] }
+      this.writePendingInput(id, draft)
+      this.drafts.set(id, draft)
       this.publish(conversationId, 1, 1)
       return {
         id, conversationId, turnId: id, speakerId, sequence, role, content,
         variableStateJson, status: 'complete', createdAt: now,
-        ...(inputImageAttachments.length ? { inputImageAttachments } : {})
+        ...(inputImageAttachments.length ? { inputImageAttachments } : {}),
+        ...(inputFileAttachments.length ? { inputFileAttachments } : {})
       }
     })
   }
@@ -112,7 +174,7 @@ export class MessageRepository {
       const variableStateJson = readCurrentConversationVariableState(conversationId, this.store.db)
       this.store.native.prepare(`INSERT INTO agent_responses(id,conversationId,turnId,responseIndex,speakerId,status,createdAt,variableStateJson,runtimeThreadId)
         VALUES (?,?,?,?,?,?,?,?,?)`).run(id, conversationId, turnId, responseIndex, speakerId, toStoredStatus(status), now, variableStateJson, runtimeThreadId)
-      this.writeContent(conversationId, 'response', id, 'assistant_text', content)
+      this.drafts.set(id, { content, images: [], files: [], process: [] })
       this.publish(conversationId, 1, 0)
       return { id, conversationId, turnId, speakerId, sequence: turn.sequence, responseIndex, role: 'assistant', content, variableStateJson, status, createdAt: now }
     })
@@ -120,13 +182,10 @@ export class MessageRepository {
 
   appendCheckpoint(messageId: string, delta: string): void {
     if (delta.length === 0) return
-    this.store.withWriteTx(() => {
-      const response = this.response(messageId)
-      if (response.status !== 'pending') return
-      if (this.appendContent(response.conversationId, 'response', response.id, 'assistant_text', delta)) {
-        this.publish(response.conversationId)
-      }
-    })
+    const response = this.response(messageId)
+    if (response.status !== 'pending') return
+    const draft = this.drafts.get(messageId)
+    if (draft) draft.content += delta
   }
 
   requirePendingResponse(conversationId: string, messageId: string): string {
@@ -137,14 +196,167 @@ export class MessageRepository {
     return response.id
   }
 
-  listInputImageReferences(): Array<{ conversationId: string; attachmentId: string }> {
-    const rows = this.store.native.prepare(
-      "SELECT conversationId,payloadJson FROM agent_content_parts WHERE kind='user_image'"
-    ).all() as { conversationId: string; payloadJson: string }[]
-    return rows.flatMap((row) => {
-      const image = parseInputImage(row.payloadJson)
-      return image ? [{ conversationId: row.conversationId, attachmentId: image.attachmentId }] : []
+  bindDshTurn(conversationId: string, messageId: string, runtimeThreadId: string, turn: number): void {
+    if (!Number.isSafeInteger(turn) || turn < 1) throw new Error('DSH 回合编号无效。')
+    const response = this.store.native.prepare(`SELECT dshTurn FROM agent_responses
+      WHERE conversationId=? AND id=? AND runtimeThreadId=? AND status='pending'`)
+      .get(conversationId, messageId, runtimeThreadId) as { dshTurn: number | null } | undefined
+    if (!response) throw new Error('DSH 回合与当前回复不匹配。')
+    if (response.dshTurn !== null && response.dshTurn !== turn) {
+      throw new Error('同一回复收到了不同的 DSH 回合编号。')
+    }
+    this.store.native.prepare(`UPDATE agent_responses SET dshTurn=?
+      WHERE conversationId=? AND id=? AND runtimeThreadId=?`).run(turn, conversationId, messageId, runtimeThreadId)
+  }
+
+  unboundActiveResponses(): Array<{
+    conversationId: string
+    messageId: string
+    runtimeThreadId: string
+  }> {
+    return this.store.native.prepare(`SELECT r.id AS messageId,r.conversationId,r.runtimeThreadId
+      FROM agent_responses r
+      JOIN agent_branch_turns p ON p.turnId=r.turnId
+      JOIN agent_conversations c ON c.id=r.conversationId AND c.activeBranchId=p.branchId
+      WHERE r.status IN ('completed','cancelled','error') AND r.dshTurn IS NULL AND r.runtimeThreadId<>''
+      ORDER BY r.conversationId,p.sequence,r.responseIndex`)
+      .all() as Array<{ messageId: string; conversationId: string; runtimeThreadId: string }>
+  }
+
+  bindHistoricalDshTurn(conversationId: string, messageId: string, runtimeThreadId: string, turn: number): void {
+    if (!Number.isSafeInteger(turn) || turn < 1) throw new Error('DSH 回合编号无效。')
+    const updated = this.store.native.prepare(`UPDATE agent_responses SET dshTurn=?
+      WHERE conversationId=? AND id=? AND runtimeThreadId=? AND status='completed' AND dshTurn IS NULL`)
+      .run(turn, conversationId, messageId, runtimeThreadId)
+    if (updated.changes !== 1) throw new Error('历史回复的 DSH 回合绑定已发生变化。')
+  }
+
+  /** Bind interrupted replies only when the complete active ledger and Session turns agree. */
+  reconcileUnboundActiveResponses(runtimeThreadId: string): void {
+    const transcript = this.transcriptReader?.(runtimeThreadId)
+    if (!transcript) return
+    const rows = this.store.native.prepare(`SELECT r.id,r.status,r.dshTurn FROM agent_responses r
+      JOIN agent_branch_turns p ON p.turnId=r.turnId
+      JOIN agent_conversations c ON c.id=r.conversationId AND c.activeBranchId=p.branchId
+      WHERE r.runtimeThreadId=? ORDER BY p.sequence,r.responseIndex`)
+      .all(runtimeThreadId) as Array<{ id: string; status: string; dshTurn: number | null }>
+    if (!rows.some((row) => row.dshTurn === null) || rows.some((row) => row.status === 'pending')) return
+    const turns = [...transcript].sort((left, right) => left.turn - right.turn)
+    if (rows.length !== turns.length || new Set(turns.map((turn) => turn.turn)).size !== turns.length
+      || rows.some((row, index) => row.dshTurn !== null && row.dshTurn !== turns[index]?.turn)
+      || rows.some((row, index) => row.status === 'completed' && !turns[index]?.completed)) return
+    this.store.withWriteTx(() => {
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index]
+        const turn = turns[index]
+        if (!row || !turn || row.dshTurn !== null) continue
+        this.store.native.prepare('UPDATE agent_responses SET dshTurn=? WHERE id=? AND dshTurn IS NULL')
+          .run(turn.turn, row.id)
+      }
+      for (let index = 0; index < rows.length; index += 1) {
+        if (turns[index] && turns[index]!.userSeq !== null) {
+          this.store.native.prepare('DELETE FROM agent_pending_inputs WHERE turnId=(SELECT turnId FROM agent_responses WHERE id=?)')
+            .run(rows[index]!.id)
+        }
+      }
     })
+  }
+
+  /** A cancelled reply without a turn may still have a queued prompt in the Session. */
+  unstartedDeletionTurn(runtimeThreadId: string, removedResponseIds: readonly string[]): number | null | undefined {
+    if (!this.transcriptReader) return undefined
+    const removed = new Set(removedResponseIds)
+    const rows = this.store.native.prepare(`SELECT id,status,dshTurn FROM agent_responses
+      WHERE runtimeThreadId=? ORDER BY dshTurn`)
+      .all(runtimeThreadId) as Array<{ id: string; status: string; dshTurn: number | null }>
+    if (rows.some((row) => removed.has(row.id) && row.dshTurn === null
+      && row.status !== 'cancelled' && row.status !== 'error')) return undefined
+    const transcript = this.transcriptReader(runtimeThreadId)
+    const boundRows = rows.filter((row) => row.dshTurn !== null)
+    if (!transcript) return boundRows.length === 0 ? null : undefined
+    const bindingByTurn = new Map(boundRows.map((row) => [row.dshTurn, row]))
+    const orderedTurns = [...transcript].sort((left, right) => left.turn - right.turn)
+    const logTurns = new Set(orderedTurns.map((turn) => turn.turn))
+    if (bindingByTurn.size !== boundRows.length || logTurns.size !== orderedTurns.length
+      || orderedTurns.some((turn) => !bindingByTurn.has(turn.turn))
+      || boundRows.some((row) => !logTurns.has(row.dshTurn!))) return undefined
+    const firstRemoved = orderedTurns.findIndex((turn) => removed.has(bindingByTurn.get(turn.turn)!.id))
+    if (firstRemoved >= 0 && orderedTurns.slice(firstRemoved)
+      .some((turn) => !removed.has(bindingByTurn.get(turn.turn)!.id))) return undefined
+    if (firstRemoved >= 0) {
+      if (firstRemoved > 0 && !orderedTurns[firstRemoved - 1]?.completed) return undefined
+      return orderedTurns[firstRemoved]!.turn
+    }
+    const last = orderedTurns.at(-1)
+    return last && !last.completed ? undefined : (last?.turn ?? 0) + 1
+  }
+
+  listInputImageReferences(): Array<{ conversationId: string; attachmentId: string }> {
+    const references: Array<{ conversationId: string; attachmentId: string }> = []
+    const pending = this.store.native.prepare(`SELECT t.id,t.conversationId FROM agent_turns t
+      JOIN agent_branch_turns p ON p.turnId=t.id JOIN agent_conversations c ON c.id=t.conversationId AND c.activeBranchId=p.branchId`)
+      .all() as Array<{ id: string; conversationId: string }>
+    for (const row of pending) {
+      for (const image of (this.drafts.get(row.id) ?? this.readPendingInput(row.id))?.images ?? []) {
+        references.push({ conversationId: row.conversationId, attachmentId: image.attachmentId })
+      }
+    }
+    const bindings = this.store.native.prepare(`SELECT DISTINCT r.conversationId,r.runtimeThreadId,r.dshTurn
+      FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId
+      JOIN agent_conversations c ON c.id=r.conversationId AND c.activeBranchId=p.branchId
+      WHERE r.runtimeThreadId<>'' AND r.dshTurn IS NOT NULL`)
+      .all() as Array<{ conversationId: string; runtimeThreadId: string; dshTurn: number }>
+    const transcripts = new Map<string, readonly RuntimeTranscriptTurn[] | undefined>()
+    for (const binding of bindings) {
+      if (!transcripts.has(binding.runtimeThreadId)) {
+        transcripts.set(binding.runtimeThreadId, this.transcriptReader?.(binding.runtimeThreadId))
+      }
+      const turn = transcripts.get(binding.runtimeThreadId)?.find((item) => item.turn === binding.dshTurn)
+      for (const image of turn?.userImages ?? []) {
+        references.push({ conversationId: binding.conversationId, attachmentId: image.attachmentId })
+      }
+    }
+    return [...new Map(references.map((item) => [`${item.conversationId}\u0000${item.attachmentId}`, item])).values()]
+  }
+
+  listInputFileReferences(): Array<{ conversationId: string; file: ChatUserFileAttachment }> {
+    const references: Array<{ conversationId: string; file: ChatUserFileAttachment }> = []
+    const pending = this.store.native.prepare(`SELECT t.id,t.conversationId FROM agent_turns t
+      JOIN agent_branch_turns p ON p.turnId=t.id JOIN agent_conversations c ON c.id=t.conversationId AND c.activeBranchId=p.branchId`)
+      .all() as Array<{ id: string; conversationId: string }>
+    for (const row of pending) for (const file of (this.drafts.get(row.id) ?? this.readPendingInput(row.id))?.files ?? []) {
+      references.push({ conversationId: row.conversationId, file })
+    }
+    const bindings = this.store.native.prepare(`SELECT DISTINCT r.conversationId,r.runtimeThreadId,r.dshTurn
+      FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId
+      JOIN agent_conversations c ON c.id=r.conversationId AND c.activeBranchId=p.branchId
+      WHERE r.runtimeThreadId<>'' AND r.dshTurn IS NOT NULL`)
+      .all() as Array<{ conversationId: string; runtimeThreadId: string; dshTurn: number }>
+    const transcripts = new Map<string, readonly RuntimeTranscriptTurn[] | undefined>()
+    for (const binding of bindings) {
+      if (!transcripts.has(binding.runtimeThreadId)) transcripts.set(binding.runtimeThreadId, this.transcriptReader?.(binding.runtimeThreadId))
+      const turn = transcripts.get(binding.runtimeThreadId)?.find((item) => item.turn === binding.dshTurn)
+      for (const file of turn?.userFiles ?? []) references.push({ conversationId: binding.conversationId, file })
+    }
+    return [...new Map(references.map((item) => [`${item.conversationId}\u0000${item.file.attachmentId}\u0000${item.file.name}`, item])).values()]
+  }
+
+  findInputFile(conversationId: string, attachmentId: string, name: string): ChatUserFileAttachment {
+    const reference = this.listInputFileReferences().find((row) => row.conversationId === conversationId
+      && row.file.attachmentId === attachmentId && row.file.name === name
+      && /^sha256:[a-f0-9]{64}$/.test(row.file.attachmentId))
+    if (!reference) throw new Error('文件不在当前聊天记录中。')
+    return reference.file
+  }
+
+  recordUploadedFile(responseId: string, draftId: string, file: ChatUserFileAttachment): void {
+    const response = this.store.native.prepare('SELECT turnId FROM agent_responses WHERE id=?')
+      .get(responseId) as { turnId: string } | undefined
+    const draft = response ? this.drafts.get(response.turnId) ?? this.readPendingInput(response.turnId) : undefined
+    if (!draft) return
+    const next = { ...draft, files: draft.files.map((current) => current.attachmentId === draftId ? file : current) }
+    this.store.withWriteTx(() => this.writePendingInput(response!.turnId, next))
+    this.drafts.set(response!.turnId, next)
   }
 
   get(conversationId: string, messageId: string): ChatMessage {
@@ -168,12 +380,26 @@ export class MessageRepository {
   }
 
   findInputImage(conversationId: string, attachmentId: string): ChatUserImageAttachment {
-    const rows = this.store.native.prepare(`SELECT payloadJson FROM agent_content_parts
-      WHERE conversationId=? AND ownerType='turn' AND kind='user_image' ORDER BY ownerId,partIndex`)
-      .all(conversationId) as { payloadJson: string }[]
-    for (const row of rows) {
-      const image = parseInputImage(row.payloadJson)
-      if (image?.attachmentId === attachmentId) return image
+    const bindings = this.store.native.prepare(`SELECT DISTINCT r.runtimeThreadId,r.dshTurn
+      FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId
+      JOIN agent_conversations c ON c.id=r.conversationId AND c.activeBranchId=p.branchId
+      WHERE r.conversationId=? AND r.runtimeThreadId<>'' AND r.dshTurn IS NOT NULL`)
+      .all(conversationId) as Array<{ runtimeThreadId: string; dshTurn: number }>
+    const transcripts = new Map<string, readonly RuntimeTranscriptTurn[] | undefined>()
+    for (const binding of bindings) {
+      if (!transcripts.has(binding.runtimeThreadId)) {
+        transcripts.set(binding.runtimeThreadId, this.transcriptReader?.(binding.runtimeThreadId))
+      }
+      const image = transcripts.get(binding.runtimeThreadId)?.find((item) => item.turn === binding.dshTurn)
+        ?.userImages.find((item) => item.attachmentId === attachmentId)
+      if (image) return image
+    }
+    const pending = this.store.native.prepare(`SELECT t.id FROM agent_turns t
+      JOIN agent_branch_turns p ON p.turnId=t.id JOIN agent_conversations c ON c.id=t.conversationId AND c.activeBranchId=p.branchId
+      WHERE t.conversationId=?`).all(conversationId) as Array<{ id: string }>
+    for (const row of pending) {
+      const image = (this.drafts.get(row.id) ?? this.readPendingInput(row.id))?.images.find((item) => item.attachmentId === attachmentId)
+      if (image) return image
     }
     throw new Error('找不到这张聊天图片。')
   }
@@ -200,6 +426,32 @@ export class MessageRepository {
     return row?.runtimeThreadId || undefined
   }
 
+  conversationRuntimeThreadId(conversationId: string): string {
+    const row = this.store.native.prepare('SELECT runtimeThreadId FROM agent_conversations WHERE id=?')
+      .get(conversationId) as { runtimeThreadId: string } | undefined
+    if (!row?.runtimeThreadId) throw new Error('聊天存档缺少 DSH 会话编号。')
+    return row.runtimeThreadId
+  }
+
+  runtimeThreadIdsForArchive(conversationId: string): string[] {
+    const ids = this.store.native.prepare(`
+      SELECT runtimeThreadId AS id FROM agent_conversations WHERE id=?
+      UNION SELECT runtimeThreadId AS id FROM agent_responses WHERE conversationId=? AND runtimeThreadId<>''
+    `).all(conversationId, conversationId) as Array<{ id: string }>
+    return ids.map((row) => row.id).filter(Boolean)
+  }
+
+  runtimeThreadIdsForDeletion(conversationId: string): string[] {
+    const ids = this.store.native.prepare(`
+      SELECT runtimeThreadId AS id FROM agent_conversations WHERE id=?
+      UNION SELECT runtimeThreadId AS id FROM agent_responses WHERE conversationId=? AND runtimeThreadId<>''
+    `).all(conversationId, conversationId) as Array<{ id: string }>
+    return ids.map((row) => row.id).filter((id) => id && !(this.store.native.prepare(`
+      SELECT 1 FROM agent_conversations WHERE id<>? AND runtimeThreadId=?
+      UNION SELECT 1 FROM agent_responses WHERE conversationId<>? AND runtimeThreadId=? LIMIT 1
+    `).get(conversationId, id, conversationId, id)))
+  }
+
   latestRuntimeThreadId(conversationId: string): string | undefined {
     const row = this.store.native.prepare(`SELECT r.runtimeThreadId
       FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId
@@ -209,16 +461,63 @@ export class MessageRepository {
     return row?.runtimeThreadId || undefined
   }
 
+  /** The first persisted DSH turn for a user input and all of its replies. */
+  regenerationDshBoundary(conversationId: string, targetMessageId: string): { runtimeThreadId: string; turn: number } | undefined {
+    const row = this.store.native.prepare(`SELECT r.runtimeThreadId,r.dshTurn AS turn
+      FROM agent_conversations c
+      JOIN agent_branch_turns p ON p.branchId=c.activeBranchId
+      JOIN agent_turns t ON t.id=p.turnId AND t.conversationId=c.id
+      JOIN agent_responses r ON r.turnId=t.id AND r.conversationId=c.id
+      WHERE c.id=? AND (t.id=? OR t.id=(SELECT turnId FROM agent_responses WHERE id=? AND conversationId=?))
+        AND r.runtimeThreadId<>'' AND r.dshTurn IS NOT NULL
+      ORDER BY r.dshTurn ASC LIMIT 1`)
+      .get(conversationId, targetMessageId, targetMessageId, conversationId) as { runtimeThreadId: string; turn: number } | undefined
+    return row && Number.isSafeInteger(row.turn) && row.turn > 0 ? row : undefined
+  }
+
+  /** The selected reply's turn, or the first reply to a selected user input. */
+  deletionDshBoundary(conversationId: string, targetMessageId: string): { runtimeThreadId: string; turn: number } | undefined {
+    const row = this.store.native.prepare(`SELECT r.runtimeThreadId,r.dshTurn AS turn
+      FROM agent_conversations c
+      JOIN agent_branch_turns p ON p.branchId=c.activeBranchId
+      JOIN agent_turns t ON t.id=p.turnId AND t.conversationId=c.id
+      JOIN agent_responses r ON r.turnId=t.id AND r.conversationId=c.id
+      WHERE c.id=? AND (r.id=? OR (t.id=? AND NOT EXISTS (
+        SELECT 1 FROM agent_responses WHERE id=? AND conversationId=?
+      ))) AND r.runtimeThreadId<>'' AND r.dshTurn IS NOT NULL
+      ORDER BY r.dshTurn ASC LIMIT 1`)
+      .get(conversationId, targetMessageId, targetMessageId, targetMessageId, conversationId) as { runtimeThreadId: string; turn: number } | undefined
+    return row && Number.isSafeInteger(row.turn) && row.turn > 0 ? row : undefined
+  }
+
+  canRetainRuntimeThread(conversationId: string, runtimeThreadId: string): boolean {
+    const row = this.store.native.prepare(`SELECT COUNT(*) AS count FROM agent_responses r
+      JOIN agent_branch_turns p ON p.turnId=r.turnId
+      JOIN agent_conversations c ON c.activeBranchId=p.branchId
+      WHERE c.id=? AND r.runtimeThreadId<>'' AND r.runtimeThreadId<>?`)
+      .get(conversationId, runtimeThreadId) as { count: number }
+    return row.count === 0
+  }
+
+  canRewindRuntimeThread(runtimeThreadId: string, fromTurn: number, removedResponseIds: readonly string[]): boolean {
+    const removed = new Set(removedResponseIds)
+    const referenced = this.store.native.prepare(`
+      SELECT id FROM agent_responses WHERE runtimeThreadId=? AND dshTurn>=?
+    `).all(runtimeThreadId, fromTurn) as Array<{ id: string }>
+    return referenced.every((row) => removed.has(row.id))
+  }
+
   /**
    * Deletes one public message and every message after it on the active branch.
    * This deliberately follows the conversation's causal order: retaining later
    * replies after removing their input would leave Agent state and variables invalid.
    */
-  deleteFrom(conversationId: string, targetMessageId: string): {
+  deleteFrom(conversationId: string, targetMessageId: string, sourceDeletedAttachmentIds: readonly string[] = []): {
     deletedMessageCount: number
     remainingMessageCount: number
     deletedAttachmentIds: string[]
     obsoleteRuntimeThreadIds: string[]
+    retainedRuntimeThreadIds: string[]
     deletedResponseIds: string[]
     deletedMessageIds: string[]
     rollbackSettingLibraryStateJson?: string | undefined
@@ -272,10 +571,9 @@ export class MessageRepository {
           ? { ownerType: 'response', ownerId: previousResponse.id }
           : { ownerType: 'turn', ownerId: targetTurn.id }
       const rollbackSettingLibraryStateJson = rollbackSettingLibraryOwner
-        ? (this.store.native.prepare(`SELECT payloadJson FROM agent_content_parts
-            WHERE conversationId=? AND ownerType=? AND ownerId=? AND kind='setting_library_state'
-            ORDER BY partIndex DESC LIMIT 1`)
-          .get(conversationId, rollbackSettingLibraryOwner.ownerType, rollbackSettingLibraryOwner.ownerId) as { payloadJson: string } | undefined)?.payloadJson
+        ? (this.store.native.prepare(`SELECT stateJson FROM agent_setting_snapshots
+            WHERE conversationId=? AND ownerType=? AND ownerId=?`)
+          .get(conversationId, rollbackSettingLibraryOwner.ownerType, rollbackSettingLibraryOwner.ownerId) as { stateJson: string } | undefined)?.stateJson
         : '[]'
 
       const turns = this.store.native.prepare(`
@@ -309,15 +607,9 @@ export class MessageRepository {
         ...turnIds.map((id) => ({ ownerType: 'turn', ownerId: id })),
         ...responseIds.map((id) => ({ ownerType: 'response', ownerId: id }))
       ]
-      const deletedAttachmentIds = deletedOwners.flatMap(({ ownerType, ownerId }) => (
-        this.store.native.prepare(`SELECT payloadJson FROM agent_content_parts
-          WHERE conversationId=? AND ownerType=? AND ownerId=? AND kind='user_image'`)
-          .all(conversationId, ownerType, ownerId) as { payloadJson: string }[]
-      ).flatMap((row) => {
-        const image = parseInputImage(row.payloadJson)
-        return image ? [image.attachmentId] : []
-      }))
-      const obsoleteRuntimeThreadIds = (this.store.native.prepare(`
+      const deletedAttachmentIds = deletedOwners.flatMap(({ ownerId }) =>
+        (this.drafts.get(ownerId) ?? this.readPendingInput(ownerId))?.images.map((image) => image.attachmentId) ?? [])
+      const previousRuntimeThreadIds = (this.store.native.prepare(`
         SELECT DISTINCT runtimeThreadId FROM agent_responses
         WHERE conversationId=? AND runtimeThreadId<>'' ORDER BY runtimeThreadId
       `).all(conversationId) as { runtimeThreadId: string }[]).map((row) => row.runtimeThreadId)
@@ -327,17 +619,25 @@ export class MessageRepository {
           .run(conversationId, id)
       }
       for (const { ownerType, ownerId } of deletedOwners) {
-        this.store.native.prepare('DELETE FROM agent_content_parts WHERE conversationId=? AND ownerType=? AND ownerId=?')
+        this.drafts.delete(ownerId)
+        this.store.native.prepare('DELETE FROM agent_setting_snapshots WHERE conversationId=? AND ownerType=? AND ownerId=?')
           .run(conversationId, ownerType, ownerId)
       }
       for (const id of responseIds) this.store.native.prepare('DELETE FROM agent_responses WHERE id=? AND conversationId=?').run(id, conversationId)
       for (const id of turnIds) this.store.native.prepare('DELETE FROM agent_branch_turns WHERE branchId=? AND turnId=?').run(branch.branchId, id)
       for (const id of turnIds) this.store.native.prepare('DELETE FROM agent_turns WHERE id=? AND conversationId=?').run(id, conversationId)
 
-      // A DSH session contains the full prior conversation. Even if its latest
-      // response was retained, it must not be resumed after history is truncated.
-      this.store.native.prepare("UPDATE agent_responses SET runtimeThreadId='' WHERE conversationId=?")
-        .run(conversationId)
+      const retainedRuntimeThreadIds = (this.store.native.prepare(`
+        SELECT DISTINCT runtimeThreadId FROM agent_responses
+        WHERE conversationId=? AND runtimeThreadId<>'' ORDER BY runtimeThreadId
+      `).all(conversationId) as { runtimeThreadId: string }[]).map((row) => row.runtimeThreadId)
+      const stableRuntimeThreadId = this.conversationRuntimeThreadId(conversationId)
+      if (!retainedRuntimeThreadIds.includes(stableRuntimeThreadId)) retainedRuntimeThreadIds.push(stableRuntimeThreadId)
+      const globallyReferenced = new Set((this.store.native.prepare(`
+        SELECT DISTINCT runtimeThreadId FROM agent_responses WHERE runtimeThreadId<>''
+      `).all() as { runtimeThreadId: string }[]).map((row) => row.runtimeThreadId))
+      const obsoleteRuntimeThreadIds = previousRuntimeThreadIds.filter((id) =>
+        !globallyReferenced.has(id) && !retainedRuntimeThreadIds.includes(id))
       this.store.native.prepare(`DELETE FROM conversation_speakers WHERE conversationId=?
         AND id NOT IN (SELECT speakerId FROM agent_turns WHERE conversationId=?)
         AND id NOT IN (SELECT speakerId FROM agent_responses WHERE conversationId=?)`)
@@ -345,16 +645,14 @@ export class MessageRepository {
 
       const remainingMessages = this.list(conversationId)
       const remainingUserCount = remainingMessages.filter((item) => item.role === 'user').length
-      const latest = remainingMessages.at(-1)
       writeCurrentConversationVariableState(
         conversationId,
         rollbackVariableStateJson,
         this.store.db
       )
       this.store.native.prepare(`UPDATE chat_sessions SET
-        historySummary=?,historyMessageCount=?,historyUserMessageCount=?,updatedAt=? WHERE id=?`)
+        historyMessageCount=?,historyUserMessageCount=?,updatedAt=? WHERE id=?`)
         .run(
-          Array.from(latest?.content ?? '').slice(0, 240).join(''),
           remainingMessages.length,
           remainingUserCount,
           new Date().toISOString(),
@@ -364,8 +662,9 @@ export class MessageRepository {
       return {
         deletedMessageCount: deletedPublicMessageIds.length,
         remainingMessageCount: remainingMessages.length,
-        deletedAttachmentIds: [...new Set(deletedAttachmentIds)],
+        deletedAttachmentIds: [...new Set([...deletedAttachmentIds, ...sourceDeletedAttachmentIds])],
         obsoleteRuntimeThreadIds,
+        retainedRuntimeThreadIds,
         deletedResponseIds: responseIds,
         deletedMessageIds: deletedPublicMessageIds,
         rollbackSettingLibraryStateJson
@@ -392,24 +691,23 @@ export class MessageRepository {
         throw new Error('设定状态快照不是合法 JSON。', { cause: error })
       }
       if (!Array.isArray(value)) throw new Error('设定状态快照格式不正确。')
-      this.store.native.prepare(`DELETE FROM agent_content_parts
-        WHERE conversationId=? AND ownerType=? AND ownerId=? AND kind='setting_library_state'`)
-        .run(conversationId, owner.ownerType, owner.ownerId)
-      const partIndex = (this.store.native.prepare(`SELECT COALESCE(MAX(partIndex),0)+1 AS next
-        FROM agent_content_parts WHERE ownerType=? AND ownerId=?`)
-        .get(owner.ownerType, owner.ownerId) as { next: number }).next
-      this.store.native.prepare(`INSERT INTO agent_content_parts(
-        conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex
-      ) VALUES (?,?,?,?,'setting_library_state','',?,0)`)
-        .run(conversationId, owner.ownerType, owner.ownerId, partIndex, JSON.stringify(value))
+      this.store.native.prepare(`INSERT INTO agent_setting_snapshots(conversationId,ownerType,ownerId,stateJson)
+        VALUES (?,?,?,?) ON CONFLICT(ownerType,ownerId) DO UPDATE SET stateJson=excluded.stateJson`)
+        .run(conversationId, owner.ownerType, owner.ownerId, JSON.stringify(value))
     })
   }
 
   /** Truncate the active branch at a user turn for Android-style edit/regenerate. */
-  prepareRegeneration(conversationId: string, targetMessageId: string, replacement?: string): {
+  prepareRegeneration(
+    conversationId: string,
+    targetMessageId: string,
+    replacement?: string,
+    sourceInput?: Pick<ChatMessage, 'content' | 'inputImageAttachments' | 'inputFileAttachments'>
+  ): {
     turnId: string
     text: string
     inputImages: ChatUserImageAttachment[]
+    inputFiles: ChatUserFileAttachment[]
     runtimeThreadId: string
     obsoleteRuntimeThreadIds: string[]
     retainedTurns: number
@@ -427,19 +725,15 @@ export class MessageRepository {
       const turnId = target.responseTurnId || target.turnId
       const user = this.store.native.prepare('SELECT id FROM agent_turns WHERE id=?').get(turnId) as { id: string } | undefined
       if (!user) throw new Error('找不到需要重新生成的用户输入。')
-      let text = this.store.native.prepare("SELECT COALESCE(group_concat(text, ''), '') AS content FROM agent_content_parts WHERE conversationId=? AND ownerType='turn' AND ownerId=? AND kind='user_text' ORDER BY chunkIndex").get(conversationId, turnId) as { content: string }
-      const inputImages = (this.store.native.prepare("SELECT payloadJson FROM agent_content_parts WHERE conversationId=? AND ownerType='turn' AND ownerId=? AND kind='user_image' ORDER BY partIndex")
-        .all(conversationId, turnId) as { payloadJson: string }[])
-        .flatMap((row) => {
-          const image = parseInputImage(row.payloadJson)
-          return image ? [image] : []
-        })
-      const nextText = replacement === undefined ? text.content : replacement.trim()
-      if (!nextText && inputImages.length === 0) throw new Error('用户输入不能为空。')
+      const currentInput = sourceInput ?? this.get(conversationId, turnId)
+      const inputImages = currentInput.inputImageAttachments ?? []
+      const inputFiles = currentInput.inputFileAttachments ?? []
+      const nextText = replacement === undefined ? currentInput.content : replacement.trim()
+      if (!nextText && inputImages.length === 0 && inputFiles.length === 0) throw new Error('用户输入不能为空。')
 
       const branch = this.store.native.prepare('SELECT activeBranchId AS branchId FROM agent_conversations WHERE id=?').get(conversationId) as { branchId: string } | undefined
       if (!branch) throw new Error('找不到当前对话分支。')
-      const obsoleteRuntimeThreadIds = (this.store.native.prepare(`SELECT DISTINCT r.runtimeThreadId
+      const previousRuntimeThreadIds = (this.store.native.prepare(`SELECT DISTINCT r.runtimeThreadId
         FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId
         WHERE p.branchId=? AND r.runtimeThreadId<>'' ORDER BY r.runtimeThreadId`).all(branch.branchId) as { runtimeThreadId: string }[])
         .map((row) => row.runtimeThreadId)
@@ -449,12 +743,25 @@ export class MessageRepository {
         ? this.store.native.prepare(`SELECT id FROM agent_responses WHERE conversationId=? AND turnId IN (${tailIds.map(() => '?').join(',')})`).all(conversationId, ...tailIds) as { id: string }[]
         : []
       this.store.native.prepare('DELETE FROM agent_branch_turns WHERE branchId=? AND sequence>?').run(branch.branchId, target.sequence)
-      for (const row of responseIds) this.store.native.prepare("DELETE FROM agent_content_parts WHERE conversationId=? AND ownerType='response' AND ownerId=?").run(conversationId, row.id)
-      for (const row of tailIds) this.store.native.prepare("DELETE FROM agent_content_parts WHERE conversationId=? AND ownerType='turn' AND ownerId=? AND kind<>'opening_text'").run(conversationId, row)
+      for (const row of responseIds) {
+        this.drafts.delete(row.id)
+        this.store.native.prepare("DELETE FROM agent_setting_snapshots WHERE conversationId=? AND ownerType='response' AND ownerId=?").run(conversationId, row.id)
+      }
+      for (const row of tailIds) {
+        this.drafts.delete(row)
+        this.store.native.prepare("DELETE FROM agent_setting_snapshots WHERE conversationId=? AND ownerType='turn' AND ownerId=?").run(conversationId, row)
+      }
       if (responseIds.length) this.store.native.prepare(`DELETE FROM agent_responses WHERE id IN (${responseIds.map(() => '?').join(',')})`).run(...responseIds.map((row) => row.id))
       for (const row of tailIds.filter((id) => id !== turnId)) this.store.native.prepare('DELETE FROM agent_turns WHERE id=?').run(row)
-      this.writeContent(conversationId, 'turn', turnId, 'user_text', nextText)
-      this.writeInputImages(conversationId, turnId, inputImages)
+      const referencedRuntimeThreadIds = new Set((this.store.native.prepare(`
+        SELECT DISTINCT runtimeThreadId FROM agent_responses WHERE runtimeThreadId<>''
+      `).all() as { runtimeThreadId: string }[]).map((row) => row.runtimeThreadId))
+      const stableRuntimeThreadId = this.conversationRuntimeThreadId(conversationId)
+      const obsoleteRuntimeThreadIds = previousRuntimeThreadIds.filter((id) =>
+        !referencedRuntimeThreadIds.has(id) && id !== stableRuntimeThreadId)
+      const draft = { content: nextText, images: inputImages, files: inputFiles, process: [] }
+      this.writePendingInput(turnId, draft)
+      this.drafts.set(turnId, draft)
       const retained = this.store.native.prepare('SELECT COUNT(*) AS count FROM agent_branch_turns WHERE branchId=?').get(branch.branchId) as { count: number }
       const retainedResponses = this.store.native.prepare('SELECT COUNT(*) AS count FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId WHERE p.branchId=?').get(branch.branchId) as { count: number }
       const users = this.store.native.prepare("SELECT COUNT(*) AS count FROM agent_branch_turns p JOIN agent_turns t ON t.id=p.turnId WHERE p.branchId=? AND t.kind='user'").get(branch.branchId) as { count: number }
@@ -464,34 +771,25 @@ export class MessageRepository {
       if (state?.variableStateJson) {
         writeCurrentConversationVariableState(conversationId, state.variableStateJson, this.store.db)
       }
-      return { turnId, text: nextText, inputImages, runtimeThreadId: randomUUID(), obsoleteRuntimeThreadIds, retainedTurns: users.count }
+      return {
+        turnId, text: nextText, inputImages, inputFiles,
+        runtimeThreadId: stableRuntimeThreadId,
+        obsoleteRuntimeThreadIds,
+        retainedTurns: users.count
+      }
     })
   }
 
   upsertProcessItem(messageId: string, item: AgentProcessItem): void {
-    this.store.withWriteTx(() => {
-      const response = this.response(messageId)
-      const rows = this.store.native.prepare(`SELECT partIndex,payloadJson FROM agent_content_parts
-        WHERE conversationId=? AND ownerType='response' AND ownerId=? AND kind='agent_process' AND chunkIndex=0
-        ORDER BY partIndex`).all(response.conversationId, response.id) as { partIndex: number; payloadJson: string }[]
-      const existing = rows.find((row) => {
-        try { return (JSON.parse(row.payloadJson) as { id?: string }).id === item.id } catch { return false }
-      })
-      if (existing) {
-        this.store.native.prepare(`UPDATE agent_content_parts SET payloadJson=?
-          WHERE conversationId=? AND ownerType='response' AND ownerId=? AND partIndex=? AND chunkIndex=0`)
-          .run(JSON.stringify(item), response.conversationId, response.id, existing.partIndex)
-      } else {
-        const partIndex = Math.max(0, ...rows.map((row) => row.partIndex)) + 1
-        this.store.native.prepare(`INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex)
-          VALUES (?,'response',?,?,'agent_process','',?,0)`)
-          .run(response.conversationId, response.id, partIndex, JSON.stringify(item))
-      }
-      this.publish(response.conversationId)
-    })
+    const response = this.response(messageId)
+    const draft = this.drafts.get(response.id)
+    if (!draft) return
+    const index = draft.process.findIndex((entry) => entry.id === item.id)
+    if (index < 0) draft.process.push(item)
+    else draft.process[index] = item
   }
 
-  finish(messageId: string, content: string, status: MessageStatus, _db?: ElecKoiDatabase, variableStateJson?: string): ChatMessage {
+  finish(messageId: string, content: string, status: MessageStatus, _db?: ElecKoiDatabase, variableStateJson?: string, storedRegexRules: RegexRule[] = []): ChatMessage {
     return this.store.withWriteTx(() => {
       const response = this.response(messageId)
       const path = this.store.native.prepare(`SELECT p.sequence FROM agent_branch_turns p
@@ -502,14 +800,23 @@ export class MessageRepository {
         speakerId: response.speakerId, sequence: path.sequence, responseIndex: response.responseIndex,
         role: 'assistant', status: response.status, createdAt: response.createdAt, variableStateJson: response.variableStateJson
       })
-      this.writeContent(response.conversationId, 'response', response.id, 'assistant_text', content)
+      const draft = this.drafts.get(response.id)
+      if (draft) draft.content = content
+      this.store.native.prepare('UPDATE agent_responses SET storedRegexRulesJson=? WHERE id=?')
+        .run(JSON.stringify(storedRegexRules), response.id)
       if (variableStateJson === undefined) {
         this.store.native.prepare('UPDATE agent_responses SET status=? WHERE id=?').run(toStoredStatus(status), response.id)
       } else {
         this.store.native.prepare('UPDATE agent_responses SET status=?,variableStateJson=? WHERE id=?')
           .run(toStoredStatus(status), variableStateJson, response.id)
       }
-      this.settleProcessItems(response.conversationId, response.id, status)
+      if (draft) draft.process = draft.process.map((item) => item.status === 'running'
+        ? { ...item, status: status === 'cancelled' ? 'cancelled' : status === 'error' ? 'error' : 'complete', completedAtMillis: Date.now() }
+        : item)
+      if (response.dshTurn !== null && this.transcriptReader?.(response.runtimeThreadId)
+        ?.some((turn) => turn.turn === response.dshTurn && turn.userSeq !== null)) {
+        this.store.native.prepare('DELETE FROM agent_pending_inputs WHERE turnId=?').run(response.turnId)
+      }
       this.publish(response.conversationId)
       return this.project(response.conversationId, {
         id: messageId, ownerId: response.id, ownerType: 'response', turnId: response.turnId,
@@ -522,7 +829,7 @@ export class MessageRepository {
 
   private response(messageId: string) {
     // Desktop message identities are the response primary key, never a scan of all source-message IDs.
-    const response = this.store.native.prepare('SELECT * FROM agent_responses WHERE id=?').get(messageId) as { id: string; conversationId: string; turnId: string; speakerId: string; status: string; responseIndex: number; createdAt: string; variableStateJson: string } | undefined
+    const response = this.store.native.prepare('SELECT * FROM agent_responses WHERE id=?').get(messageId) as { id: string; conversationId: string; turnId: string; speakerId: string; status: string; responseIndex: number; createdAt: string; variableStateJson: string; runtimeThreadId: string; dshTurn: number | null } | undefined
     if (!response) throw new Error('找不到正在生成的回复。')
     return response
   }
@@ -535,66 +842,23 @@ export class MessageRepository {
     return id
   }
 
-  private writeContent(conversationId: string, ownerType: string, ownerId: string, kind: string, content: string): boolean {
-    const rows = this.store.native.prepare('SELECT chunkIndex,text FROM agent_content_parts WHERE conversationId=? AND ownerType=? AND ownerId=? AND partIndex=0 ORDER BY chunkIndex').all(conversationId, ownerType, ownerId) as { chunkIndex: number; text: string }[]
-    let offset = 0, chunkIndex = 0, changed = false
-    do {
-      let end = Math.min(offset + chunkCharacters, content.length)
-      if (end < content.length && /[\uD800-\uDBFF]/.test(content[end - 1] ?? '') && /[\uDC00-\uDFFF]/.test(content[end] ?? '')) end--
-      const text = content.slice(offset, end)
-      if (rows[chunkIndex]?.text !== text) {
-        this.store.native.prepare(`INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex) VALUES (?,?,?,0,?,?,'',?)
-          ON CONFLICT(ownerType,ownerId,partIndex,chunkIndex) DO UPDATE SET text=excluded.text`).run(conversationId, ownerType, ownerId, kind, text, chunkIndex)
-        changed = true
-      }
-      offset = end
-      chunkIndex++
-    } while (offset < content.length)
-    if (rows.length > chunkIndex) {
-      this.store.native.prepare('DELETE FROM agent_content_parts WHERE conversationId=? AND ownerType=? AND ownerId=? AND partIndex=0 AND chunkIndex>=?').run(conversationId, ownerType, ownerId, chunkIndex)
-      changed = true
+  private readPendingInput(turnId: string): DraftMessage | undefined {
+    const row = this.store.native.prepare('SELECT draftJson FROM agent_pending_inputs WHERE turnId=?')
+      .get(turnId) as { draftJson: string } | undefined
+    if (!row) return undefined
+    const value: unknown = JSON.parse(row.draftJson)
+    if (!value || typeof value !== 'object' || !('content' in value) || typeof value.content !== 'string'
+      || !('images' in value) || !Array.isArray(value.images)
+      || !('files' in value) || !Array.isArray(value.files)) {
+      throw new Error('待提交的用户输入记录无效。')
     }
-    return changed
+    return { content: value.content, images: value.images, files: value.files, process: [] }
   }
 
-  private writeInputImages(conversationId: string, turnId: string, images: ChatUserImageAttachment[]): void {
-    this.store.native.prepare("DELETE FROM agent_content_parts WHERE conversationId=? AND ownerType='turn' AND ownerId=? AND kind='user_image'")
-      .run(conversationId, turnId)
-    const insert = this.store.native.prepare(`INSERT INTO agent_content_parts(
-      conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex
-    ) VALUES (?,'turn',?,?,'user_image','',?,0)`)
-    images.forEach((image, index) => insert.run(conversationId, turnId, index + 1, JSON.stringify(image)))
-  }
-
-  private appendContent(conversationId: string, ownerType: string, ownerId: string, kind: string, delta: string): boolean {
-    const last = this.store.native.prepare(`SELECT chunkIndex,text FROM agent_content_parts
-      WHERE conversationId=? AND ownerType=? AND ownerId=? AND partIndex=0
-      ORDER BY chunkIndex DESC LIMIT 1`).get(conversationId, ownerType, ownerId) as { chunkIndex: number; text: string } | undefined
-    let offset = 0
-    let chunkIndex = last?.chunkIndex ?? 0
-
-    if (last !== undefined && last.text.length < chunkCharacters) {
-      const available = chunkCharacters - last.text.length
-      const end = safeChunkEnd(delta, offset, Math.min(offset + available, delta.length))
-      if (end > offset) {
-        this.store.native.prepare(`UPDATE agent_content_parts SET text=?
-          WHERE conversationId=? AND ownerType=? AND ownerId=? AND partIndex=0 AND chunkIndex=?`)
-          .run(last.text + delta.slice(offset, end), conversationId, ownerType, ownerId, chunkIndex)
-        offset = end
-      }
-      if (offset < delta.length) chunkIndex += 1
-    } else if (last !== undefined) {
-      chunkIndex += 1
-    }
-
-    while (offset < delta.length) {
-      const end = safeChunkEnd(delta, offset, Math.min(offset + chunkCharacters, delta.length))
-      this.store.native.prepare(`INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex)
-        VALUES (?,?,?,0,?,?,'',?)`).run(conversationId, ownerType, ownerId, kind, delta.slice(offset, end), chunkIndex)
-      offset = end
-      chunkIndex += 1
-    }
-    return true
+  private writePendingInput(turnId: string, draft: DraftMessage): void {
+    this.store.native.prepare(`INSERT INTO agent_pending_inputs(turnId,draftJson) VALUES (?,?)
+      ON CONFLICT(turnId) DO UPDATE SET draftJson=excluded.draftJson`)
+      .run(turnId, JSON.stringify({ content: draft.content, images: draft.images, files: draft.files }))
   }
 
   private publish(conversationId: string, messages = 0, users = 0): void {
@@ -602,24 +866,61 @@ export class MessageRepository {
       .run(messages, users, new Date().toISOString(), conversationId)
   }
 
-  private project(conversationId: string, row: LedgerMessage): ChatMessage {
+  private project(
+    conversationId: string,
+    row: LedgerMessage,
+    transcripts = new Map<string, readonly RuntimeTranscriptTurn[] | undefined>()
+  ): ChatMessage {
     const speaker = this.store.native.prepare('SELECT displayName,avatarAssetId FROM conversation_speakers WHERE id=? AND conversationId=?').get(row.speakerId, conversationId) as { displayName: string; avatarAssetId: string } | undefined
-    const content = this.store.native.prepare("SELECT text FROM agent_content_parts WHERE conversationId=? AND ownerType=? AND ownerId=? AND kind IN ('user_text','assistant_text','opening_text','system_text') ORDER BY partIndex,chunkIndex").all(conversationId, row.ownerType, row.ownerId) as { text: string }[]
-    const processRows = this.store.native.prepare("SELECT payloadJson FROM agent_content_parts WHERE conversationId=? AND ownerType=? AND ownerId=? AND kind='agent_process' ORDER BY partIndex,chunkIndex").all(conversationId, row.ownerType, row.ownerId) as { payloadJson: string }[]
-    const process = processRows.flatMap((part) => {
-      try { return [JSON.parse(part.payloadJson) as AgentProcessItem] } catch { return [] }
-    })
-    const inputImageAttachments = (this.store.native.prepare("SELECT payloadJson FROM agent_content_parts WHERE conversationId=? AND ownerType=? AND ownerId=? AND kind='user_image' ORDER BY partIndex")
-      .all(conversationId, row.ownerType, row.ownerId) as { payloadJson: string }[])
-      .flatMap((part) => {
-        const image = parseInputImage(part.payloadJson)
-        return image ? [image] : []
-      })
+    const draft = this.drafts.get(row.ownerId) ?? (row.role === 'user' ? this.readPendingInput(row.ownerId) : undefined)
+    const openingContent = row.id === 'opening'
+      ? (this.store.native.prepare('SELECT content FROM agent_openings WHERE conversationId=? AND turnId=?')
+        .get(conversationId, row.ownerId) as { content: string } | undefined)?.content
+      : undefined
+    let process = draft?.process ?? []
+    let messageContent = openingContent ?? draft?.content ?? ''
+    let transcript: RuntimeTranscriptTurn | undefined
+    let runtimeSessionId = ''
+    if (row.id !== 'opening') {
+      const binding = row.ownerType === 'response'
+        ? this.store.native.prepare(`SELECT runtimeThreadId,dshTurn,storedRegexRulesJson FROM agent_responses
+            WHERE conversationId=? AND id=? AND dshTurn IS NOT NULL`)
+          .get(conversationId, row.ownerId) as { runtimeThreadId: string; dshTurn: number; storedRegexRulesJson: string } | undefined
+        : row.role === 'user'
+          ? this.store.native.prepare(`SELECT runtimeThreadId,dshTurn,storedRegexRulesJson FROM agent_responses
+              WHERE conversationId=? AND turnId=? AND dshTurn IS NOT NULL
+              ORDER BY responseIndex DESC LIMIT 1`)
+            .get(conversationId, row.turnId) as { runtimeThreadId: string; dshTurn: number; storedRegexRulesJson: string } | undefined
+          : undefined
+      if (binding) {
+        runtimeSessionId = binding.runtimeThreadId
+        if (!transcripts.has(binding.runtimeThreadId)) {
+          transcripts.set(binding.runtimeThreadId, this.transcriptReader?.(binding.runtimeThreadId))
+        }
+        transcript = transcripts.get(binding.runtimeThreadId)?.find((item) => item.turn === binding.dshTurn)
+        if (!transcript && row.status === 'completed' && !draft) throw new Error('当前消息对应的 DSH 会话日志无法读取。')
+        if (transcript) {
+          messageContent = row.role === 'user' ? (transcript.userSeq !== null ? transcript.userText : draft?.content ?? '') : transcript.assistantText
+            ? transformWithRegexRules(
+            transcript.assistantText,
+            parseStoredRegexRules(binding.storedRegexRulesJson),
+            'AiOutput'
+          ) : draft?.content ?? ''
+          if (row.ownerType === 'response') process = transcript.process.length ? transcript.process : process
+        }
+      }
+    }
+    const inputImageAttachments = row.role === 'user'
+      ? transcript?.userSeq !== null && transcript !== undefined ? transcript.userImages : draft?.images ?? []
+      : []
+    const inputFileAttachments = row.role === 'user'
+      ? transcript?.userSeq !== null && transcript !== undefined ? transcript.userFiles ?? [] : draft?.files ?? []
+      : []
     const openingSelectable = row.id === 'opening' && !(this.store.native.prepare(
       'SELECT historyUserMessageCount FROM chat_sessions WHERE id=?'
     ).get(conversationId) as { historyUserMessageCount: number } | undefined)?.historyUserMessageCount
     const opening = openingSelectable
-      ? this.store.native.prepare("SELECT payloadJson FROM agent_content_parts WHERE conversationId=? AND ownerType='turn' AND ownerId=? AND kind='opening_text' ORDER BY partIndex LIMIT 1").get(conversationId, row.ownerId) as { payloadJson: string } | undefined
+      ? this.store.native.prepare('SELECT payloadJson FROM agent_openings WHERE conversationId=? AND turnId=?').get(conversationId, row.ownerId) as { payloadJson: string } | undefined
       : undefined
     let openingData: { options?: ChatMessage['openingOptions']; selectedId?: string } = {}
     if (opening?.payloadJson) {
@@ -628,50 +929,22 @@ export class MessageRepository {
     return { id: row.id, conversationId, turnId: row.turnId, speakerId: row.speakerId, sequence: row.sequence,
       speakerName: speaker?.displayName ?? '', speakerAvatar: speaker?.avatarAssetId ?? '',
       ...(row.responseIndex >= 0 ? { responseIndex: row.responseIndex } : {}), role: row.role,
-      content: content.map((part) => part.text).join(''), variableStateJson: row.variableStateJson ?? '{}',
+      content: messageContent, variableStateJson: row.variableStateJson ?? '{}',
       status: toMessageStatus(row.status), createdAt: row.createdAt,
+      ...(runtimeSessionId ? { runtimeSessionId } : {}),
+      ...(row.ownerType === 'response' && transcript?.assistantMessageId
+        ? { dshMessageId: transcript.assistantMessageId }
+        : row.role === 'user' && transcript?.userMessageId
+          ? { dshMessageId: transcript.userMessageId } : {}),
       ...(process.length ? { process } : {}),
       ...(inputImageAttachments.length ? { inputImageAttachments } : {}),
+      ...(inputFileAttachments.length ? { inputFileAttachments } : {}),
       ...(openingData.options?.length ? { openingOptions: openingData.options, selectedOpeningId: openingData.selectedId ?? '' } : {}) }
   }
 
-  private settleProcessItems(conversationId: string, responseId: string, responseStatus: MessageStatus): void {
-    const rows = this.store.native.prepare(`SELECT partIndex,payloadJson FROM agent_content_parts
-      WHERE conversationId=? AND ownerType='response' AND ownerId=? AND kind='agent_process' AND chunkIndex=0`)
-      .all(conversationId, responseId) as { partIndex: number; payloadJson: string }[]
-    const completedAtMillis = Date.now()
-    const status: AgentProcessItem['status'] = responseStatus === 'cancelled'
-      ? 'cancelled'
-      : responseStatus === 'error' ? 'error' : 'complete'
-    for (const row of rows) {
-      let item: AgentProcessItem
-      try { item = JSON.parse(row.payloadJson) as AgentProcessItem } catch { continue }
-      if (item.status !== 'running') continue
-      this.store.native.prepare(`UPDATE agent_content_parts SET payloadJson=?
-        WHERE conversationId=? AND ownerType='response' AND ownerId=? AND partIndex=? AND chunkIndex=0`)
-        .run(JSON.stringify({ ...item, status, completedAtMillis }), conversationId, responseId, row.partIndex)
-    }
-  }
 }
 
-function safeChunkEnd(content: string, offset: number, preferredEnd: number): number {
-  if (preferredEnd >= content.length) return content.length
-  if (/[\uD800-\uDBFF]/.test(content[preferredEnd - 1] ?? '') && /[\uDC00-\uDFFF]/.test(content[preferredEnd] ?? '')) {
-    return Math.max(offset, preferredEnd - 1)
-  }
-  return preferredEnd
-}
-
-function parseInputImage(raw: string): ChatUserImageAttachment | undefined {
-  try {
-    const value = JSON.parse(raw) as Partial<ChatUserImageAttachment>
-    if (!value || typeof value.attachmentId !== 'string' || !value.attachmentId
-      || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(String(value.mediaType))
-      || typeof value.bytes !== 'number' || !Number.isSafeInteger(value.bytes) || value.bytes <= 0
-      || typeof value.width !== 'number' || !Number.isSafeInteger(value.width) || value.width <= 0
-      || typeof value.height !== 'number' || !Number.isSafeInteger(value.height) || value.height <= 0) return undefined
-    return value as ChatUserImageAttachment
-  } catch {
-    return undefined
-  }
+function parseStoredRegexRules(raw: string): RegexRule[] {
+  try { return regexRuleSchema.array().parse(JSON.parse(raw)) }
+  catch (error) { throw new Error('聊天消息的正则快照无法读取。', { cause: error }) }
 }

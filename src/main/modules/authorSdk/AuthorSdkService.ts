@@ -175,7 +175,7 @@ function publicImageAttachment(conversationId: string, attachment: NonNullable<C
 
 function sendImages(value: unknown) {
   if (value === undefined) return []
-  if (!Array.isArray(value) || value.length > 4) throw new AuthorApiError('INVALID_PARAMS', '每条消息最多发送 4 张图片')
+  if (!Array.isArray(value) || value.length > 20) throw new AuthorApiError('INVALID_PARAMS', '每条消息最多发送 20 张图片')
   const supported = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
   return value.map((item) => {
     const input = jsonObject(item, '消息附件格式不正确')

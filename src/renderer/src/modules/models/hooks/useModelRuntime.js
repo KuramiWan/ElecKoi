@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   deleteModelConfig as persistDeleteModelConfig,
   deleteModelProvider as persistDeleteModelProvider,
@@ -9,7 +9,7 @@ import {
 import { emptyConfig } from "../../../utils/constants/defaults.js";
 import { modelOptionsKey } from "../model/modelProviderCatalog.js";
 
-export function useModelRuntime({ setStatus }) {
+export function useModelRuntime({ modelCatalog, setStatus }) {
   const [modelConfig, setModelConfig] = useState(emptyConfig);
   const [modelConfigs, setModelConfigs] = useState([]);
   const [modelOptionsByKey, setModelOptionsByKey] = useState({});
@@ -40,14 +40,30 @@ export function useModelRuntime({ setStatus }) {
     return { config, configs };
   }
 
-  function applyModelMeta(data) {
-    if (!data?.configs) return;
-    applyModelConfigPayload(data);
-  }
+  useEffect(() => {
+    const update = () => {
+      const snapshot = modelCatalog.getSnapshot();
+      if (snapshot.status === "ready") {
+        const configs = snapshot.configs.map((item) => ({ ...emptyConfig, ...item }));
+        setModelConfigs(configs);
+        setModelConfig((current) => ({
+          ...emptyConfig,
+          ...(configs.find((item) => item.id === current.id) || configs[0] || {}),
+        }));
+        cachePersistedOptions(configs, true);
+      } else if (snapshot.status === "error") {
+        setStatus(snapshot.error);
+      }
+    };
+    const stop = modelCatalog.subscribe(update);
+    update();
+    return stop;
+  }, [modelCatalog, setStatus]);
 
   async function saveModelConfig(nextConfig) {
     const payload = { ...emptyConfig, ...nextConfig };
     const saved = await persistModelConfig(payload);
+    modelCatalog.adopt(saved.configs);
     const { config: updated } = applyModelConfigPayload(saved);
     setStatus("模型配置已保存");
     return updated;
@@ -55,6 +71,7 @@ export function useModelRuntime({ setStatus }) {
 
   async function deleteModelConfig(configId) {
     const saved = await persistDeleteModelConfig(configId);
+    modelCatalog.adopt(saved.configs);
     const { config: updated } = applyModelConfigPayload(saved);
     setStatus("已删除模型配置");
     return updated;
@@ -74,6 +91,7 @@ export function useModelRuntime({ setStatus }) {
 
   async function deleteModelProvider(providerId, selectedConfigId = "") {
     const saved = await persistDeleteModelProvider(providerId, selectedConfigId);
+    modelCatalog.adopt(saved.configs);
     const { config: updated } = applyModelConfigPayload(saved);
     setStatus("已删除模型入口");
     return updated;
@@ -94,7 +112,6 @@ export function useModelRuntime({ setStatus }) {
     modelConfig,
     modelConfigs,
     modelOptionsByKey,
-    applyModelMeta,
     saveModelConfig,
     deleteModelConfig,
     deleteModelProvider,

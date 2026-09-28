@@ -30,6 +30,7 @@ function details(ctx: Context, projector: MessageDisplayProjector, conversationI
   return {
     conversation: ctx.conversations.get(conversationId),
     metadata: ctx.conversations.getMetadata(conversationId),
+    runtimeSessionId: ctx.messages.conversationRuntimeThreadId(conversationId),
     ...page,
     messages: presentMessages(ctx, projector, conversationId, page.messages)
   }

@@ -8,14 +8,14 @@ import type { UserSettingsStore } from '@main/modules/settings'
 import type { VariableStateRepository } from '@main/modules/variables'
 import type { SqliteDatabase } from '@main/platform/sqlite/SqliteDatabase'
 import type { AgentState } from '@shared/contracts/agent/events'
-import type { AgentRunInput, AgentRuntimePort } from '@shared/contracts/agent/runtime'
-import type { ChatUserImageAttachment, EncodedChatImageAttachment } from '@shared/contracts/entities/chat'
+import type { AgentInputFile, AgentRunInput, AgentRuntimePort } from '@shared/contracts/agent/runtime'
+import type { ChatUserFileAttachment, ChatUserImageAttachment, EncodedChatImageAttachment } from '@shared/contracts/entities/chat'
 import { DESKTOP_ERROR_CODES } from '@shared/contracts/gateway/DesktopError'
 import { errorMessage } from '@shared/foundation/errorMessage'
 import type { GenerationRepository } from './GenerationRepository'
 import type { SettingLibraryRepository } from '@main/modules/settingLibraries'
 import type { RegexRuleRepository } from '@main/modules/regexRules'
-import { transformCollectionSurface } from '@shared/foundation/regex/RegexRuleProcessor'
+import { rulesForSurface, transformCollectionSurface } from '@shared/foundation/regex/RegexRuleProcessor'
 import type { AgentPresetRepository } from '@main/modules/agentPresets'
 import type { WebSearchSettingsRepository } from '@main/modules/agentTools'
 import { mergeAgentPresetAndCharacterLibraries } from '@main/modules/agentPresets'
@@ -76,13 +76,20 @@ export interface AgentSessionDependencies {
   webSearchSettings?: WebSearchSettingsRepository | undefined
   regexRules?: RegexRuleRepository | undefined
   discardPreparedImages?: ((attachmentIds: readonly string[]) => void) | undefined
+  resolveInputFiles?: ((ids: readonly string[]) => AgentInputFile[]) | undefined
+  discardInputFiles?: ((ids: readonly string[]) => void) | undefined
+  discardFileReferences?: ((refs: readonly ChatUserFileAttachment[]) => void) | undefined
+  queueFileReferences?: ((refs: readonly ChatUserFileAttachment[]) => void) | undefined
+  drainFileReferences?: (() => void) | undefined
+  enqueueAttachmentsBeforeDelete?: ((conversationId: string) => void) | undefined
 }
 
 export class AgentSessionCoordinator {
   private readonly activeRuns = new Map<string, ActiveRun>()
+  private readonly settlingRuns = new Map<string, Promise<void>>()
   private readonly preparingRuns = new Map<string, PreparingRun>()
   private readonly deletingConversations = new Set<string>()
-  private readonly freshRuntimeConversations = new Set<string>()
+  private readonly deletionRuntimeThreadIds = new Map<string, string[]>()
 
   constructor(private readonly dependencies: AgentSessionDependencies) {}
 
@@ -90,11 +97,13 @@ export class AgentSessionCoordinator {
     conversationId: string,
     text: string,
     images: EncodedChatImageAttachment[] = [],
-    requestId: string = randomUUID()
+    requestId: string = randomUUID(),
+    fileIds: string[] = []
   ) {
     const trimmed = text.trim()
-    if (trimmed.length === 0 && images.length === 0) throw new Error('消息或图片不能同时为空。')
+    if (trimmed.length === 0 && images.length === 0 && fileIds.length === 0) throw new Error('消息、图片和文件不能同时为空。')
     this.assertCanStart(conversationId)
+    const inputFiles = this.dependencies.resolveInputFiles?.(fileIds) ?? []
     const runId = randomUUID()
 
     const settings = this.dependencies.models.resolve(this.dependencies.userSettings.read('models.active'), '')
@@ -104,7 +113,7 @@ export class AgentSessionCoordinator {
       ? this.dependencies.regexRules.transform(metadata.characterId, trimmed, 'UserInput', 'Stored')
       : trimmed
     if (images.length === 0) {
-      return this.startPrepared(conversationId, storedText, settings, [], runId, requestId)
+      return this.startPrepared(conversationId, storedText, settings, [], inputFiles, runId, requestId)
     }
     if (!this.dependencies.runtime.prepareImages) throw new Error('图片运行时尚未就绪。')
     const preparing: PreparingRun = { runId, requestId, cancelled: false, done: Promise.resolve() }
@@ -117,7 +126,7 @@ export class AgentSessionCoordinator {
         }
         this.preparingRuns.delete(conversationId)
         try {
-          return this.startPrepared(conversationId, storedText, settings, prepared, runId, requestId)
+          return this.startPrepared(conversationId, storedText, settings, prepared, inputFiles, runId, requestId)
         } catch (error) {
           this.discardPreparedImages(prepared)
           throw error
@@ -142,29 +151,28 @@ export class AgentSessionCoordinator {
     storedText: string,
     settings: ReturnType<ModelRepository['resolve']>,
     inputImages: ChatUserImageAttachment[],
+    inputFiles: AgentInputFile[],
     runId: string,
     requestId: string
   ) {
     this.assertCanStart(conversationId)
+    this.dependencies.messages.assertReadableHistory(conversationId)
     const agentPreset = this.dependencies.agentPresets?.runtimeSelection()
     const subagentSelection = this.dependencies.agentPresets?.subagentModelSelection()
     const subagentSettings = subagentSelection
       ? this.dependencies.models.resolveExact(subagentSelection.configId, subagentSelection.model, '')
       : undefined
-    const forceFreshRuntime = this.freshRuntimeConversations.delete(conversationId)
-    const runtimeThreadId = runtimeThreadForPreset(
-      forceFreshRuntime ? undefined : this.dependencies.messages.latestCompletedRuntimeThreadId(conversationId),
-      agentPreset
-    )
+    const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
     const createdMessages = this.dependencies.database.withWriteTx((database) => {
       const settingState = this.dependencies.settingLibraries?.snapshotConversationRuntimeState(conversationId, database)
-      const user = this.dependencies.messages.create(conversationId, 'user', storedText, 'complete', database, '', inputImages)
+      const user = this.dependencies.messages.create(conversationId, 'user', storedText, 'complete', database, '', inputImages,
+        inputFiles.map((file) => ({ attachmentId: file.id, name: file.name, bytes: file.bytes })))
       if (settingState !== undefined) {
         this.dependencies.messages.writeSettingLibraryStateSnapshot(conversationId, user.id, settingState)
       }
       const assistant = this.dependencies.messages.create(conversationId, 'assistant', '', 'streaming', database, runtimeThreadId)
       this.dependencies.generations.start(runId, conversationId, assistant.id)
-      const preview = storedText || '图片'
+      const preview = storedText || (inputImages.length ? '图片' : '文件')
       this.dependencies.conversations.titleFromFirstMessage(conversationId, preview, database)
       this.dependencies.conversations.touch(conversationId, preview, database)
       return { user, assistant }
@@ -189,51 +197,103 @@ export class AgentSessionCoordinator {
     }
     this.activeRuns.set(conversationId, active)
     this.emitMessagesChanged(conversationId, 'sent', [createdMessages.user.id, createdMessages.assistant.id])
-    active.done = this.execute(active, storedText, settings, inputImages)
+    active.done = this.execute(active, storedText, settings, inputImages, inputFiles)
     void active.done
     return { accepted: true as const, conversationId, runId, messageId: createdMessages.assistant.id }
   }
 
-  regenerate(
+  async regenerate(
     conversationId: string,
     targetMessageId: string,
     replacementMessage?: string,
     requestId: string = randomUUID()
   ) {
     this.assertCanStart(conversationId)
-    const previousRuntimeThreadId = this.dependencies.messages.latestCompletedRuntimeThreadId(conversationId)
-    const previousGenerationStats = previousRuntimeThreadId
-      ? this.dependencies.runtime.generationStats?.(conversationId, previousRuntimeThreadId)
-      : undefined
     const settings = this.dependencies.models.resolve(this.dependencies.userSettings.read('models.active'), '')
     const metadata = this.dependencies.conversations.getMetadata(conversationId)
     const storedReplacement = replacementMessage && metadata.characterId && this.dependencies.regexRules
       ? this.dependencies.regexRules.transform(metadata.characterId, replacementMessage, 'UserInput', 'Stored')
       : replacementMessage
-    const prepared = this.dependencies.messages.prepareRegeneration(conversationId, targetMessageId, storedReplacement)
-    if (prepared.inputImages.length > 0 && !settings.supportsImageInput) throw new Error('当前模型未声明图片输入能力。')
-    const runId = randomUUID()
+    if (storedReplacement !== undefined && !storedReplacement.trim()) throw new Error('用户输入不能为空。')
+    const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
+    this.dependencies.messages.reconcileUnboundActiveResponses(runtimeThreadId)
+    const targetMessage = this.dependencies.messages.get(conversationId, targetMessageId)
+    const sourceInput = targetMessage.role === 'user'
+      ? targetMessage
+      : this.dependencies.messages.get(conversationId, targetMessage.turnId ?? '')
+    const visibleMessages = this.dependencies.messages.list(conversationId)
+    if (!settings.supportsImageInput && (sourceInput.inputImageAttachments?.length ?? 0) > 0) {
+      throw new Error('当前模型未声明图片输入能力。')
+    }
     const agentPreset = this.dependencies.agentPresets?.runtimeSelection()
     const subagentSelection = this.dependencies.agentPresets?.subagentModelSelection()
     const subagentSettings = subagentSelection
       ? this.dependencies.models.resolveExact(subagentSelection.configId, subagentSelection.model, '')
       : undefined
-    const forceFreshRuntime = this.freshRuntimeConversations.delete(conversationId)
-    const runtimeThreadId = runtimeThreadForPreset(
-      forceFreshRuntime ? undefined : prepared.runtimeThreadId,
-      agentPreset
-    )
-    const assistantMessage = this.dependencies.messages.create(conversationId, 'assistant', '', 'streaming', undefined, runtimeThreadId)
-    this.dependencies.generations.start(runId, conversationId, assistantMessage.id)
+    const persistedBoundary = this.dependencies.messages.regenerationDshBoundary(conversationId, targetMessageId)
+    const sourceIndex = visibleMessages.findIndex((message) => message.id === sourceInput.id)
+    const discardedFiles = visibleMessages.slice(sourceIndex + 1)
+      .flatMap((message) => message.inputFileAttachments ?? [])
+    const removedResponses = visibleMessages.slice(sourceIndex)
+      .filter((message) => message.role === 'assistant')
+    if (sourceIndex < 0) throw new Error('找不到需要重新生成的用户输入。')
+    const responseBindings = removedResponses.map((message) =>
+      this.dependencies.messages.deletionDshBoundary(conversationId, message.id))
+    const hasUnboundResponse = responseBindings.some((binding) => !binding)
+    const unstartedTurn = hasUnboundResponse
+      ? this.dependencies.messages.unstartedDeletionTurn(runtimeThreadId, removedResponses.map((message) => message.id))
+      : undefined
+    const boundary = persistedBoundary ?? (typeof unstartedTurn === 'number'
+      ? { runtimeThreadId, turn: unstartedTurn } : undefined)
+    if (removedResponses.length > 0 && ((hasUnboundResponse && unstartedTurn === undefined)
+      || (!boundary && unstartedTurn !== null)
+      || (boundary !== undefined && (boundary.runtimeThreadId !== runtimeThreadId
+        || !this.dependencies.runtime.rewindConversation
+        || !this.dependencies.messages.canRewindRuntimeThread(
+          runtimeThreadId, boundary.turn, removedResponses.map((message) => message.id)
+        )))
+      || responseBindings.some((binding) => binding !== undefined
+        && (binding.runtimeThreadId !== runtimeThreadId || (boundary !== undefined && binding.turn < boundary.turn))))) {
+      throw new Error('无法安全回退当前 DSH 会话；原聊天记录未修改。')
+    }
+    this.deletingConversations.add(conversationId)
+    let rewound = false
+    let prepared: ReturnType<MessageRepository['prepareRegeneration']>
+    let assistantMessage: ReturnType<MessageRepository['create']>
+    let createdResponseId: string | undefined
+    const drafts = this.dependencies.messages.captureDrafts(visibleMessages.slice(sourceIndex).map((message) => message.id))
+    const runId = randomUUID()
+    try {
+      if (boundary) {
+        if (await this.dependencies.runtime.rewindConversation!(conversationId, runtimeThreadId, boundary.turn) !== 'rewound') {
+          throw new Error('无法安全回退当前 DSH 会话；原聊天记录未修改。')
+        }
+        rewound = true
+      }
+      const committed = this.dependencies.database.withWriteTx(() => {
+        const next = this.dependencies.messages.prepareRegeneration(
+          conversationId, targetMessageId, storedReplacement, sourceInput
+        )
+        const response = this.dependencies.messages.create(conversationId, 'assistant', '', 'streaming', undefined, runtimeThreadId)
+        createdResponseId = response.id
+        this.dependencies.generations.start(runId, conversationId, response.id)
+        return { next, response }
+      })
+      prepared = committed.next
+      assistantMessage = committed.response
+    } catch (error) {
+      this.dependencies.messages.restoreDrafts(drafts, createdResponseId)
+      if (rewound) await this.dependencies.runtime.rollbackRewind?.(conversationId, runtimeThreadId)
+      throw error
+    } finally {
+      this.deletingConversations.delete(conversationId)
+    }
+    if (rewound) this.dependencies.runtime.confirmRewind?.(conversationId)
+    this.dependencies.discardFileReferences?.(discardedFiles)
     const active: ActiveRun = {
       conversationId, runId, requestId, messageId: assistantMessage.id, cancelled: false, terminalCommitted: false, accumulated: '', sequence: 0,
       done: Promise.resolve(), checkpointAt: 0, checkpointLength: 0, runtimeThreadId,
       discardRuntimeThreadIds: prepared.obsoleteRuntimeThreadIds,
-      generationStatsSeed: {
-        previous: previousGenerationStats,
-        previousRuntimeThreadId,
-        retainedTurns: prepared.retainedTurns
-      },
       agentPreset,
       subagentSettings
     }
@@ -243,7 +303,8 @@ export class AgentSessionCoordinator {
       replacementMessage === undefined ? 'regenerated' : 'edited',
       [prepared.turnId, assistantMessage.id]
     )
-    active.done = this.execute(active, prepared.text, settings, prepared.inputImages)
+    active.done = this.execute(active, prepared.text, settings, prepared.inputImages,
+      prepared.inputFiles.map((reference) => ({ id: reference.attachmentId, path: '', name: reference.name, bytes: reference.bytes, reference })))
     void active.done
     return { accepted: true as const, conversationId, runId, messageId: assistantMessage.id }
   }
@@ -263,9 +324,12 @@ export class AgentSessionCoordinator {
     if (active === undefined) return { cancelled: false }
     if (!matchesExpectedRun(active, expected)) return { cancelled: false }
     active.cancelled = true
-    this.freshRuntimeConversations.add(conversationId)
     this.emitState(conversationId, 'stopping')
     const runtimeCancellation = this.dependencies.runtime.cancel(conversationId)
+    this.settlingRuns.set(conversationId, active.done)
+    void active.done.finally(() => {
+      if (this.settlingRuns.get(conversationId) === active.done) this.settlingRuns.delete(conversationId)
+    }).catch(() => undefined)
     this.finishCancelled(active)
     void runtimeCancellation.catch((error) => {
       this.dependencies.logger?.error({ err: error, conversationId }, 'Agent 后台取消失败')
@@ -281,7 +345,13 @@ export class AgentSessionCoordinator {
       await preparing.done
     }
     if (this.activeRuns.has(conversationId)) await this.cancel(conversationId)
-    await this.dependencies.runtime.disposeConversation(conversationId)
+    await this.settlingRuns.get(conversationId)
+    this.deletionRuntimeThreadIds.set(conversationId, this.dependencies.messages.runtimeThreadIdsForDeletion(conversationId))
+    this.dependencies.enqueueAttachmentsBeforeDelete?.(conversationId)
+  }
+
+  async commitDelete(conversationId: string): Promise<void> {
+    await this.dependencies.runtime.disposeConversation(conversationId, this.deletionRuntimeThreadIds.get(conversationId) ?? [])
   }
 
   async deleteMessagesFrom(conversationId: string, targetMessageId: string) {
@@ -292,21 +362,93 @@ export class AgentSessionCoordinator {
         await this.cancel(conversationId)
         await preparing.done
       }
-      if (this.activeRuns.has(conversationId)) await this.cancel(conversationId)
-      const deleted = this.dependencies.database.withWriteTx((database) => {
-        const result = this.dependencies.messages.deleteFrom(conversationId, targetMessageId)
-        this.dependencies.generations.deleteForMessages(conversationId, result.deletedResponseIds)
-        if (result.rollbackSettingLibraryStateJson !== undefined) {
-          this.dependencies.settingLibraries?.restoreConversationRuntimeState(
-            conversationId,
-            result.rollbackSettingLibraryStateJson,
-            database
-          )
+      const active = this.activeRuns.get(conversationId)
+      if (active) {
+        await this.cancel(conversationId)
+        await active.done
+      }
+      await this.settlingRuns.get(conversationId)
+      if (targetMessageId === 'opening') {
+        const visibleMessages = this.dependencies.messages.list(conversationId)
+        if (!visibleMessages.some((message) => message.id === 'opening')) {
+          this.dependencies.messages.get(conversationId, targetMessageId)
         }
-        return result
-      })
-      await this.dependencies.runtime.disposeConversation(conversationId, deleted.obsoleteRuntimeThreadIds)
+        const firstConversationMessage = visibleMessages
+          .find((message) => message.id !== 'opening')
+        if (!firstConversationMessage) {
+          return { ok: true as const, deletedMessageCount: 0, remainingMessageCount: visibleMessages.length }
+        }
+        targetMessageId = firstConversationMessage.id
+      }
+      this.dependencies.messages.get(conversationId, targetMessageId)
+      const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
+      this.dependencies.messages.reconcileUnboundActiveResponses(runtimeThreadId)
+      const visibleMessages = this.dependencies.messages.list(conversationId)
+      const targetIndex = visibleMessages.findIndex((message) => message.id === targetMessageId)
+      const deletedAttachmentIds = targetIndex < 0 ? [] : visibleMessages.slice(targetIndex)
+        .flatMap((message) => message.inputImageAttachments?.map((image) => image.attachmentId) ?? [])
+      const deletedFiles = targetIndex < 0 ? [] : visibleMessages.slice(targetIndex)
+        .flatMap((message) => message.inputFileAttachments ?? [])
+      const removedResponses = visibleMessages.slice(targetIndex)
+        .filter((message) => message.role === 'assistant')
+      const responseBindings = removedResponses.map((message) =>
+        this.dependencies.messages.deletionDshBoundary(conversationId, message.id))
+      const hasUnboundResponse = responseBindings.some((binding) => !binding)
+      const unstartedTurn = hasUnboundResponse
+        ? this.dependencies.messages.unstartedDeletionTurn(runtimeThreadId, removedResponses.map((message) => message.id))
+        : undefined
+      const persistedBoundary = this.dependencies.messages.deletionDshBoundary(conversationId, targetMessageId)
+        ?? (removedResponses[0]
+          ? this.dependencies.messages.deletionDshBoundary(conversationId, removedResponses[0].id)
+          : undefined)
+      const boundary = hasUnboundResponse && typeof unstartedTurn === 'number'
+        ? { runtimeThreadId, turn: unstartedTurn }
+        : persistedBoundary
+      if (targetIndex < 0) throw new Error('找不到要删除的聊天消息。')
+      if (removedResponses.length > 0 && ((hasUnboundResponse && unstartedTurn === undefined)
+        || (!boundary && unstartedTurn !== null)
+        || (boundary !== undefined && (boundary.runtimeThreadId !== runtimeThreadId
+          || !this.dependencies.runtime.rewindConversation
+          || !this.dependencies.messages.canRewindRuntimeThread(
+            runtimeThreadId, boundary.turn, removedResponses.map((message) => message.id)
+          )))
+        || responseBindings.some((binding) => binding !== undefined
+          && (binding.runtimeThreadId !== runtimeThreadId || (boundary !== undefined && binding.turn < boundary.turn))))) {
+        throw new Error('无法安全回退当前 DSH 会话；原聊天记录未修改。')
+      }
+      let rewound = false
+      let deleted: ReturnType<MessageRepository['deleteFrom']>
+      const drafts = this.dependencies.messages.captureDrafts(visibleMessages.slice(targetIndex).map((message) => message.id))
+      try {
+        if (boundary) {
+          if (await this.dependencies.runtime.rewindConversation!(conversationId, runtimeThreadId, boundary.turn) !== 'rewound') {
+            throw new Error('无法安全回退当前 DSH 会话；原聊天记录未修改。')
+          }
+          rewound = true
+        }
+        deleted = this.dependencies.database.withWriteTx((database) => {
+          const result = this.dependencies.messages.deleteFrom(conversationId, targetMessageId, deletedAttachmentIds)
+          this.dependencies.generations.deleteForMessages(conversationId, result.deletedResponseIds)
+          if (result.rollbackSettingLibraryStateJson !== undefined) {
+            this.dependencies.settingLibraries?.restoreConversationRuntimeState(
+              conversationId,
+              result.rollbackSettingLibraryStateJson,
+              database
+            )
+          }
+          return result
+        })
+      } catch (error) {
+        this.dependencies.messages.restoreDrafts(drafts)
+        if (rewound) await this.dependencies.runtime.rollbackRewind?.(conversationId, runtimeThreadId)
+        throw error
+      }
+      if (rewound) this.dependencies.runtime.confirmRewind?.(conversationId)
+      await this.dependencies.runtime.disposeConversation(
+        conversationId, deleted.obsoleteRuntimeThreadIds, deleted.retainedRuntimeThreadIds
+      )
       this.dependencies.discardPreparedImages?.(deleted.deletedAttachmentIds)
+      this.dependencies.discardFileReferences?.(deletedFiles)
       this.dependencies.gateway.broadcast('records.changed', { module: 'conversations' })
       this.emitMessagesChanged(conversationId, 'deleted', deleted.deletedMessageIds)
       this.emitState(conversationId, 'idle')
@@ -322,6 +464,7 @@ export class AgentSessionCoordinator {
 
   finishDelete(conversationId: string): void {
     this.deletingConversations.delete(conversationId)
+    this.deletionRuntimeThreadIds.delete(conversationId)
   }
 
   inspect(conversationId: string) {
@@ -331,6 +474,7 @@ export class AgentSessionCoordinator {
       active: true as const,
       conversationId,
       runId: active.runId,
+      requestId: active.requestId,
       messageId: active.messageId,
       accumulated: active.accumulated,
       sequence: active.sequence
@@ -347,7 +491,7 @@ export class AgentSessionCoordinator {
   }
 
   generationStats(conversationId: string) {
-    const runtimeThreadId = this.dependencies.messages.latestCompletedRuntimeThreadId(conversationId)
+    const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
     return {
       conversationId,
       stats: runtimeThreadId && this.dependencies.runtime.generationStats
@@ -359,7 +503,7 @@ export class AgentSessionCoordinator {
   trajectory(conversationId: string, options?: { beforeIndex?: number | undefined; limit?: number | undefined }) {
     this.dependencies.conversations.get(conversationId)
     const runtimeThreadId = this.activeRuns.get(conversationId)?.runtimeThreadId
-      ?? this.dependencies.messages.latestRuntimeThreadId(conversationId)
+      ?? this.dependencies.messages.conversationRuntimeThreadId(conversationId)
     if (!runtimeThreadId || !this.dependencies.runtime.trajectory) {
       return {
         conversationId,
@@ -382,7 +526,6 @@ export class AgentSessionCoordinator {
     await Promise.all(conversationIds.map((id) => this.dependencies.runtime.cancel(id)))
     await Promise.all([...this.activeRuns.values()].map((active) => active.done))
     this.deletingConversations.clear()
-    this.freshRuntimeConversations.clear()
   }
 
   private assertCanStart(conversationId: string): void {
@@ -400,7 +543,8 @@ export class AgentSessionCoordinator {
     active: ActiveRun,
     text: string,
     settings: ReturnType<ModelRepository['resolve']>,
-    inputImages: ChatUserImageAttachment[] = []
+    inputImages: ChatUserImageAttachment[] = [],
+    inputFiles: AgentInputFile[] = []
   ): Promise<void> {
     this.emitState(active.conversationId, 'starting', '正在启动 DSH')
     const metadata = this.dependencies.conversations.getMetadata(active.conversationId)
@@ -456,17 +600,20 @@ export class AgentSessionCoordinator {
       characterName: metadata.characterName,
       persona: {},
       history,
+      currentPromptText: promptText,
       ...(settingLibrary ? { settingLibrary } : {})
     }
     let finalContent = ''
     let finalVariableState = ''
     let finalSettingLibraryState = ''
+    const uploadedFiles: ChatUserFileAttachment[] = []
     try {
       const result = await this.dependencies.runtime.run({
         conversationId: active.conversationId,
         runId: active.runId,
-        text: promptText,
+        text,
         inputImages,
+        inputFiles,
         settings,
         subagentSettings: active.subagentSettings,
         variableContext,
@@ -478,6 +625,17 @@ export class AgentSessionCoordinator {
         webSearch: this.dependencies.webSearchSettings?.runtimeSettings(),
         agentPreset: active.agentPreset
       }, {
+        onFileUploaded: (draftId, file) => {
+          uploadedFiles.push(file)
+          if (this.isCurrent(active)) this.dependencies.messages.recordUploadedFile(active.messageId, draftId, file)
+          this.dependencies.queueFileReferences?.([file])
+        },
+        onTurnStarted: (turn) => {
+          if (!this.isCurrent(active)) return
+          this.dependencies.messages.bindDshTurn(
+            active.conversationId, active.messageId, active.runtimeThreadId, turn
+          )
+        },
         onDelta: (delta) => {
           if (!this.isCurrent(active)) return
           active.accumulated += delta
@@ -558,7 +716,10 @@ export class AgentSessionCoordinator {
             database
           )
         }
-        const finished = this.dependencies.messages.finish(active.messageId, content, status, database, committedVariableState)
+        const finished = this.dependencies.messages.finish(
+          active.messageId, content, status, database, committedVariableState,
+          regexRules ? rulesForSurface(regexRules, 'AiOutput', 'Stored') : []
+        )
         if (this.dependencies.settingLibraries) {
           this.dependencies.messages.writeSettingLibraryStateSnapshot(
             active.conversationId,
@@ -600,7 +761,9 @@ export class AgentSessionCoordinator {
           active.messageId,
           errorContent,
           'error',
-          database
+          database,
+          undefined,
+          regexRules ? rulesForSurface(regexRules, 'AiOutput', 'Stored') : []
         )
         this.dependencies.conversations.touch(active.conversationId, errorContent, database)
         this.dependencies.generations.finish(active.runId, 'error')
@@ -615,6 +778,8 @@ export class AgentSessionCoordinator {
       })
       this.emitState(active.conversationId, 'error', messageText)
     } finally {
+      if (uploadedFiles.length) this.dependencies.drainFileReferences?.()
+      this.dependencies.discardInputFiles?.(inputFiles.filter((file) => !file.reference).map((file) => file.id))
       if (this.activeRuns.get(active.conversationId) === active) {
         this.activeRuns.delete(active.conversationId)
       }
@@ -637,7 +802,10 @@ export class AgentSessionCoordinator {
       ? transformCollectionSurface(active.accumulated, regexRules, 'AiOutput', 'Stored')
       : active.accumulated
     const message = this.dependencies.database.withWriteTx((database) => {
-      const finished = this.dependencies.messages.finish(active.messageId, content, 'cancelled', database)
+      const finished = this.dependencies.messages.finish(
+        active.messageId, content, 'cancelled', database, undefined,
+        regexRules ? rulesForSurface(regexRules, 'AiOutput', 'Stored') : []
+      )
       this.dependencies.generations.finish(active.runId, 'cancelled')
       this.dependencies.conversations.touch(active.conversationId, content, database)
       return finished
@@ -666,15 +834,6 @@ export class AgentSessionCoordinator {
   }
 }
 
-function runtimeThreadForPreset(
-  currentRuntimeThreadId: string | undefined,
-  preset: AgentRunInput['agentPreset']
-): string {
-  if (!preset) return currentRuntimeThreadId ?? randomUUID()
-  const prefix = `preset_${safeRuntimeSegmentPart(preset.id)}_${safeRuntimeSegmentPart(preset.versionId)}_`
-  return currentRuntimeThreadId?.startsWith(prefix) ? currentRuntimeThreadId : `${prefix}${randomUUID()}`
-}
-
 function matchesExpectedRun(
   run: Pick<ActiveRun, 'runId' | 'requestId'> | Pick<PreparingRun, 'runId' | 'requestId'>,
   expected?: ExpectedRunIdentity
@@ -682,10 +841,6 @@ function matchesExpectedRun(
   if (!expected) return true
   if (run.requestId !== expected.requestId) return false
   return expected.runId === undefined || run.runId === expected.runId
-}
-
-function safeRuntimeSegmentPart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9-]/g, '-').slice(0, 72) || 'default'
 }
 
 function trailingCompleteCharacterIndex(content: string): number {

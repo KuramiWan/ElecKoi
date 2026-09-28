@@ -6,6 +6,11 @@ export const activeModelSelectionSchema = z.object({
   model: z.string()
 })
 
+export const chatSelectionSchema = z.object({
+  active_conversation_id: z.string(),
+  preferred_sessions: z.record(z.string(), z.string())
+})
+
 export const appearanceModeSchema = z.enum(['light', 'dark', 'system'])
 export const resolvedAppearanceModeSchema = z.enum(['light', 'dark'])
 export const sidebarCharacterArtworkSchema = z.enum(['avatar', 'cover'])
@@ -53,6 +58,7 @@ export const chatLayoutProfileSchema = z.object({
   reply_spacing: z.number().min(0).max(32),
   turn_spacing: z.number().min(0).max(32),
   message_font_size: z.number().min(9).max(20),
+  message_font_weight: z.number().min(400).max(600).default(400),
   line_height_multiplier: z.number().min(0.8).max(1.6),
   letter_spacing: z.number().min(-1).max(4),
   paragraph_spacing: z.number().min(0).max(24)
@@ -98,6 +104,7 @@ export const DEFAULT_CHAT_DISPLAY_PREFERENCES: ChatDisplayPreferences = {
       reply_spacing: 16,
       turn_spacing: 16,
       message_font_size: 16,
+      message_font_weight: 400,
       line_height_multiplier: 1,
       letter_spacing: 0,
       paragraph_spacing: 6
@@ -113,6 +120,7 @@ export const DEFAULT_CHAT_DISPLAY_PREFERENCES: ChatDisplayPreferences = {
       reply_spacing: 15,
       turn_spacing: 15,
       message_font_size: 16,
+      message_font_weight: 400,
       line_height_multiplier: 1.1,
       letter_spacing: 0,
       paragraph_spacing: 6
@@ -128,6 +136,7 @@ export const DEFAULT_CHAT_DISPLAY_PREFERENCES: ChatDisplayPreferences = {
       reply_spacing: 4,
       turn_spacing: 10,
       message_font_size: 15,
+      message_font_weight: 400,
       line_height_multiplier: 1,
       letter_spacing: 0,
       paragraph_spacing: 10
@@ -139,6 +148,7 @@ export const settingKeySchema = z.enum([
   'appearance.mode',
   'appearance.ui',
   'chat.display',
+  'chat.selection',
   'locale.current',
   'models.active'
 ])
@@ -147,6 +157,7 @@ export const settingSchemas = {
   'appearance.mode': appearanceModeSchema,
   'appearance.ui': appearanceUiPreferencesSchema,
   'chat.display': chatDisplayPreferencesSchema,
+  'chat.selection': chatSelectionSchema,
   'locale.current': z.string(),
   'models.active': activeModelSelectionSchema
 } as const

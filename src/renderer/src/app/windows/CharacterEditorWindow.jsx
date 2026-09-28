@@ -9,7 +9,6 @@ import {
 import logoIcon from "../../assets/eleckoi-app-icon.png";
 import {
   CharacterBasicInfoPanel,
-  getCharacters,
   updateCharacter,
 } from "../../modules/persona/index.js";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
@@ -41,7 +40,7 @@ function editableCharacterSnapshot(character) {
   });
 }
 
-export function CharacterEditorWindow() {
+export function CharacterEditorWindow({ characterCatalog, characterConfiguration }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const characterId = params.get("character") || "";
   const [character, setCharacter] = useState(null);
@@ -84,7 +83,7 @@ export function CharacterEditorWindow() {
   useEffect(() => {
     let active = true;
 
-    getCharacters()
+    characterCatalog.refresh()
       .then((collection) => {
         if (!active) return;
         collectionRef.current = collection;
@@ -101,7 +100,7 @@ export function CharacterEditorWindow() {
     return () => {
       active = false;
     };
-  }, [characterId]);
+  }, [characterCatalog, characterId]);
 
   function updateBasicInfo(patch) {
     if (saving) return;
@@ -141,6 +140,7 @@ export function CharacterEditorWindow() {
     setBasicSaveNotice("");
     try {
       const saved = await updateCharacter(submittedCharacter);
+      characterCatalog.adopt(saved);
       const savedCharacter = saved.items.find((item) => item.id === submittedCharacter.id) || submittedCharacter;
       collectionRef.current = saved;
       setPersistedCharacter(savedCharacter);
@@ -304,6 +304,7 @@ export function CharacterEditorWindow() {
               <SettingLibraryPanel
                 ref={settingLibraryRef}
                 characterId={character.id}
+                settingLibraries={characterConfiguration.settingLibraries}
                 onDirtyChange={setLoreDirty}
               />
             ) : null
@@ -312,6 +313,7 @@ export function CharacterEditorWindow() {
               <VariableConfigPanel
                 ref={variableConfigRef}
                 characterId={character.id}
+                variables={characterConfiguration.variables}
                 onDirtyChange={setVariablesDirty}
               />
             ) : null
@@ -320,6 +322,7 @@ export function CharacterEditorWindow() {
               <RegexRulesPanel
                 ref={regexRulesRef}
                 characterId={character.id}
+                regexRules={characterConfiguration.regexRules}
                 onDirtyChange={setRegexDirty}
               />
             ) : null
@@ -328,6 +331,7 @@ export function CharacterEditorWindow() {
               <DynamicSettingsPanel
                 ref={dynamicSettingsRef}
                 characterId={character.id}
+                settingLibraries={characterConfiguration.settingLibraries}
                 onDirtyChange={setDynamicDirty}
               />
             ) : null

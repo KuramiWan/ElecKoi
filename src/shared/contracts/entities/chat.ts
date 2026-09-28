@@ -13,6 +13,12 @@ export interface ChatUserImageAttachment {
   originalDimensions?: { width: number; height: number } | undefined
 }
 
+export interface ChatUserFileAttachment {
+  attachmentId: string
+  name: string
+  bytes: number
+}
+
 /** Renderer-to-Main upload shape. Base64 exists only at this Gateway boundary. */
 export interface EncodedChatImageAttachment {
   mediaType: ChatImageMediaType
@@ -76,8 +82,11 @@ export interface ChatMessage {
   sequence?: number
   messageIndex?: number
   responseIndex?: number
+  runtimeSessionId?: string
+  dshMessageId?: string
   process?: AgentProcessItem[]
   inputImageAttachments?: ChatUserImageAttachment[]
+  inputFileAttachments?: ChatUserFileAttachment[]
   openingOptions?: OpeningMessageOption[]
   selectedOpeningId?: string
 }
@@ -85,6 +94,7 @@ export interface ChatMessage {
 export interface ChatDetails {
   conversation: Conversation
   metadata: ConversationMetadata
+  runtimeSessionId: string
   messages: ChatMessage[]
 }
 

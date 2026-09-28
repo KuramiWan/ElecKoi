@@ -10,7 +10,8 @@ function transientMessage(message) {
 function sameOptimisticUserMessage(current, incoming) {
   if (current?.role !== "user" || incoming?.role !== "user") return false;
   if (String(current.content || "") !== String(incoming.content || "")) return false;
-  return (current.inputImageAttachments || []).length === (incoming.inputImageAttachments || []).length;
+  return (current.inputImageAttachments || []).length === (incoming.inputImageAttachments || []).length
+    && (current.inputFileAttachments || []).length === (incoming.inputFileAttachments || []).length;
 }
 
 function preserveAttachmentRenderKeys(current = [], incoming = []) {

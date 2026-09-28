@@ -11,14 +11,15 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools() {
+async function tools({ extraCount = 0 } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-variable-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
+  const extraNames = Array.from({ length: extraCount }, (_, index) => `指标${index}`);
   writeFileSync(file, JSON.stringify({
     enabled: true,
     config: {
-      initialState: { 状态: { 好感度: 0, 称呼: "陌生人" } },
+      initialState: { 状态: { 好感度: 0, 称呼: "陌生人", ...Object.fromEntries(extraNames.map((name) => [name, 0])) } },
       schemaCode: "const Schema = z.object({ 状态: z.object({ 好感度: z.number().max(100), 称呼: z.string() }) })",
       objects: [
         { id: "status", name: "状态", parentId: "", enabled: true, description: "角色状态", updateRule: "仅在剧情明确变化时更新", dynamicKey: false },
@@ -26,6 +27,7 @@ async function tools() {
       variables: [
         { id: "affinity", title: "好感度", objectId: "status", enabled: true, type: "number", defaultValue: "0", description: "当前好感", updateRule: "按互动结果小幅增减", readMode: "required" },
         { id: "address", title: "称呼", objectId: "status", enabled: true, type: "string", defaultValue: "陌生人", description: "当前称呼", updateRule: "关系变化后更新", readMode: "on_demand" },
+        ...extraNames.map((name, index) => ({ id: `extra-${index}`, title: name, objectId: "status", enabled: true, type: "number", defaultValue: "0", description: "测试指标", updateRule: "按规则更新", readMode: "on_demand" })),
       ],
     },
     state: { 状态: { 好感度: 10, 称呼: "朋友" } },
@@ -66,6 +68,22 @@ describe("DSH character variable tools", () => {
     });
     expect(grep).toMatchObject({ status: "ok", output_mode: "count" });
     expect(grep.matches.length).toBeGreaterThan(0);
+  });
+
+  it("lists every variable with the default Glob and reads more than 16 paths together", async () => {
+    const runtime = await tools({ extraCount: 120 });
+    const glob = runtime.byName.get("eleckoi_glob_variables");
+    const found = await glob.execute({});
+    expect(found.paths).toHaveLength(123);
+    expect(found.required_variables.map((item) => item.path)).toEqual(["/状态/好感度"]);
+
+    const scoped = await glob.execute({ path: "/状态", pattern: "**/不存在" });
+    expect(scoped.paths).toEqual([]);
+    expect(scoped.required_variables.map((item) => item.path)).toEqual(["/状态/好感度"]);
+
+    const read = await runtime.byName.get("eleckoi_read_variables").execute({ paths: found.paths.slice(0, 20) });
+    expect(read.variables).toHaveLength(20);
+    expect(read.variables.map((item) => item.path)).toEqual(found.paths.slice(0, 20));
   });
 
   it("commits valid patches to the bridge and rejects Zod-invalid changes atomically", async () => {

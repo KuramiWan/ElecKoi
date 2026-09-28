@@ -371,7 +371,7 @@
   left: 5.5px;
   width: 5px;
   height: 5px;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: var(--soft-text);
   box-shadow: 0 0 0 2px var(--chat), 0 0 0 3px transparent;
   content: "";
@@ -461,7 +461,7 @@
 .trajectory-status {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: var(--soft-text);
 }
 
@@ -498,7 +498,7 @@
 .trajectory-request-heading-dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: var(--blue);
 }
 

@@ -87,7 +87,7 @@ export function SettingLibraryInspector({
     <aside className="setting-library-inspector" aria-label="设定编辑器">
       <header className="setting-library-inspector-header">
         <div>
-          {selected.kind === "entry" && !FIXED_ENTRY_IDS.has(selected.value.id) && !["ejs_controller", "ejs_reference"].includes(selected.value.dynamicMode)
+          {selected.kind === "entry" && !FIXED_ENTRY_IDS.has(selected.value.id) && selected.value.contentMode !== "ejs" && selected.value.dynamicMode !== "ejs_reference"
             ? <SettingEntryGlyph iconId={selected.value.iconId} size={19} aria-hidden="true" />
             : selected.kind === "group" ? <DshFolderClosedIcon size={19} aria-hidden="true" /> : <SelectedIcon size={19} aria-hidden="true" />}
           <strong>{selected.kind === "group" ? "文件夹" : selected.value.dynamicMode === "ejs_reference" ? "EJS引用设定" : selected.value.title}</strong>

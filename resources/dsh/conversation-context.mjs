@@ -1,7 +1,6 @@
-import { createAssistantMessage, createSystemMessage, createUserMessage, freezeMessage, isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
+import { createSystemMessage, freezeMessage, isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { createHash } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
 
@@ -10,81 +9,14 @@ export const projectionPlugin = 'eleckoi-request-projection'
 
 const PROJECTION_VERSION = 1
 const PROJECTION_PREFIX = `ELECKOI_REQUEST_PROJECTION_V${PROJECTION_VERSION}\n`
-const recordedRequestSnapshots = new Set()
-const knownRequestContextDefinitions = new Map()
-
-/**
- * Seed a newly-created DSH Session from ElecKoi's authoritative active branch.
- * The current user input is deliberately absent: the SDK records it through
- * session/prompt, so it must never be copied into the seed.
- */
-export function createConversationSeed(snapshot, modelSelection) {
-  const history = Array.isArray(snapshot?.conversationContext?.history)
-    ? snapshot.conversationContext.history
-    : []
-  const events = []
-  let sequence = 0
-  let turn = 0
-  let openTurn = false
-
-  const append = (type, data, surface = false) => {
-    events.push({
-      type,
-      seq: sequence,
-      time: Date.now() + sequence,
-      data,
-      ...(surface ? { surfaceOp: 'append' } : {})
-    })
-    sequence += 1
-  }
-  const beginTurn = () => {
-    turn += 1
-    append('turn/start', { turn })
-    openTurn = true
-  }
-  const endTurn = () => {
-    if (!openTurn) return
-    append('turn/end', { turn, reason: { kind: 'completed' } })
-    openTurn = false
-  }
-
-  for (const item of history) {
-    if (!item || (item.role !== 'user' && item.role !== 'assistant')) continue
-    const text = String(item.content ?? '')
-    if (!text.trim()) continue
-    if (item.role === 'user') {
-      endTurn()
-      beginTurn()
-      append('user/message', createUserMessage({
-        content: [{ type: 'text', text }],
-        source: { kind: 'user' }
-      }), true)
-      continue
-    }
-    if (!openTurn) beginTurn()
-    append('step/start', { turn, step: 1 })
-    append('assistant/message', {
-      turn,
-      step: 1,
-      stream: [],
-      message: createAssistantMessage({
-        content: [{ type: 'text', text }],
-        source: {
-          provider: modelSelection.provider,
-          model: modelSelection.model
-        }
-      })
-    }, true)
-    append('step/end', { turn, step: 1 })
-    endTurn()
-  }
-  endTurn()
-  return events
-}
 
 /** Install product-owned prompt contributions for every root turn. */
 export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId) {
-  const read = () => readSessionSnapshot(snapshotRoot, sourceSessionId)
+  const read = () => {
+    const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
+    const conversationContext = JSON.parse(readFileSync(snapshot.contextFile, 'utf8'))
+    return { ...snapshot, conversationContext }
+  }
   const disposeStepProjection = agentCtx.on('agent/pre-step', async ({ agent, signal }, next) => {
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted) return decision
@@ -103,13 +35,23 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
     const plan = requestProjectionPlan(snapshot.conversationContext)
     ensureProjectionEnvelope(session, plan)
     const productMessages = projectProductHistory(session.deriveMessages(), snapshot.conversationContext)
-    const messages = projectRequestMessages(productMessages, plan)
+    const messages = projectRequestMessages(
+      projectCurrentUserPrompt(productMessages, snapshot.conversationContext), plan
+    )
     const instructions = sessionInstructions(snapshot)
     if (instructions) {
-      const id = `eleckoi-system-${createHash('sha256').update(instructions).digest('hex')}`
-      messages.unshift(freezeMessage({ ...createSystemMessage(instructions, name), id }))
+      const systemIndex = messages.findLastIndex((message) => message?.role === 'system')
+      if (systemIndex >= 0) {
+        const system = messages[systemIndex]
+        messages[systemIndex] = freezeMessage({
+          ...system,
+          content: [...system.content, { type: 'text', text: `\n\n${instructions}` }]
+        })
+      } else {
+        const id = `eleckoi-system-${createHash('sha256').update(instructions).digest('hex')}`
+        messages.unshift(freezeMessage({ ...createSystemMessage(instructions, name), id }))
+      }
     }
-    recordRequestContextSnapshot(snapshot.requestContextFile, session, messages, plan)
     return agentCtx.llm.stream({
       ...options,
       messages
@@ -191,82 +133,7 @@ export function projectionPlanFromMessages(messages) {
 
 export function isProjectionEnvelope(message) {
   return message?.role === 'user'
-    && message?.source?.kind === 'plugin'
-    && message?.source?.plugin === projectionPlugin
-}
-
-/** Persist an author-readable snapshot of the exact messages sent by one loop request. */
-export function recordRequestContextSnapshot(file, session, messages, plan = []) {
-  if (typeof file !== 'string' || !file) return
-  const boundary = session.snapshotEvents().findLast((event) => event?.type === 'step/start')
-  const turn = boundary?.data?.turn
-  const step = boundary?.data?.step
-  const requestSeq = boundary?.seq
-  if (!Number.isSafeInteger(turn) || turn < 1
-    || !Number.isSafeInteger(step) || step < 1
-    || !Number.isSafeInteger(requestSeq) || requestSeq < 0) return
-  const key = `${file}\0${requestSeq}`
-  if (recordedRequestSnapshots.has(key)) return
-  const items = requestContextItems(messages, plan)
-  const definitions = requestContextDefinitionKeys(file)
-  const pendingDefinitions = new Set()
-  const rows = []
-  const itemRefs = items.map((item) => {
-    const key = requestContextDefinitionKey(item)
-    if (!definitions.has(key) && !pendingDefinitions.has(key)) {
-      pendingDefinitions.add(key)
-      rows.push({ type: 'definition', key, ...item, order: undefined })
-    }
-    return { order: item.order, key }
-  })
-  rows.push({
-    type: 'request',
-    version: 1,
-    requestSeq,
-    turn,
-    step,
-    timeMillis: Number.isSafeInteger(boundary.time) && boundary.time >= 0 ? boundary.time : Date.now(),
-    items: itemRefs
-  })
-  try {
-    mkdirSync(dirname(file), { recursive: true })
-    appendFileSync(file, `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`, 'utf8')
-    for (const definitionKey of pendingDefinitions) definitions.add(definitionKey)
-    recordedRequestSnapshots.add(key)
-  } catch (error) {
-    process.emitWarning(`ElecKoi could not persist request context: ${error instanceof Error ? error.message : String(error)}`)
-  }
-}
-
-function requestContextDefinitionKeys(file) {
-  const existing = knownRequestContextDefinitions.get(file)
-  if (existing) return existing
-  const keys = new Set()
-  if (existsSync(file)) {
-    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-      if (!line.trim()) continue
-      try {
-        const value = JSON.parse(line)
-        if (value?.type === 'definition' && typeof value.key === 'string') keys.add(value.key)
-      } catch {
-        continue
-      }
-    }
-  }
-  knownRequestContextDefinitions.set(file, keys)
-  return keys
-}
-
-function requestContextDefinitionKey(item) {
-  return createHash('sha256').update([
-    item.messageId,
-    item.role,
-    item.kind,
-    item.title,
-    item.source,
-    item.anchor,
-    item.content
-  ].join('\0')).digest('hex')
+    && message?.source?.kind === `plugin:${projectionPlugin}`
 }
 
 export function requestContextItems(messages, plan = []) {
@@ -309,7 +176,7 @@ export function requestContextItems(messages, plan = []) {
 function requestContextKind(message, source) {
   if (message?.role === 'system') return 'system'
   if (source.kind === 'tool' || message?.content?.some((block) => block?.type === 'tool-result')) return 'tool'
-  if (source.plugin === 'eleckoi-product-history') return 'history'
+  if (source.kind === 'plugin:eleckoi-product-history') return 'history'
   if (source.kind === 'user') return 'user'
   if (message?.role === 'assistant') return 'assistant'
   return 'context'
@@ -320,7 +187,7 @@ function requestContextTitle(message, source, latestUser) {
   if (source.kind === 'tool' || message?.content?.some((block) => block?.type === 'tool-result')) return '工具结果'
   if (message?.content?.some((block) => block?.type === 'tool-call')) return '助手工具调用'
   if (source.kind === 'user') return latestUser ? '用户最新输入' : '用户消息'
-  if (source.plugin === 'eleckoi-product-history') return message?.role === 'assistant' ? '历史助手消息' : '历史用户消息'
+  if (source.kind === 'plugin:eleckoi-product-history') return message?.role === 'assistant' ? '历史助手消息' : '历史用户消息'
   if (source.kind === 'model' || message?.role === 'assistant') return '助手消息'
   return source.sections?.[0]?.name || '上下文'
 }
@@ -328,9 +195,9 @@ function requestContextTitle(message, source, latestUser) {
 function requestContextSource(source, latestUser) {
   if (source.kind === 'user') return latestUser ? '本轮输入' : '聊天记录'
   if (source.kind === 'tool') return source.callId ? `工具结果 · ${source.callId}` : '工具结果'
-  if (source.plugin === 'eleckoi-product-history') return '聊天记录'
+  if (source.kind === 'plugin:eleckoi-product-history') return '聊天记录'
   if (source.kind === 'model') return [source.provider, source.model].filter(Boolean).join(' · ') || '模型'
-  if (source.kind === 'plugin') return source.plugin || '插件上下文'
+  if (source.kind?.startsWith('plugin:')) return source.kind.slice('plugin:'.length)
   return source.kind || ''
 }
 
@@ -402,8 +269,7 @@ function projectionEnvelope(plan) {
     role: 'user',
     content: [{ type: 'text', text: `${PROJECTION_PREFIX}${JSON.stringify(plan)}` }],
     source: {
-      kind: 'plugin',
-      plugin: projectionPlugin,
+      kind: `plugin:${projectionPlugin}`,
       form: 'snapshot',
       sections: plan.map((entry) => ({ name: entry.traceTitle || entry.id, text: entry.content }))
     }
@@ -447,8 +313,7 @@ function projectionMessage(entry) {
     source: entry.role === 'assistant'
       ? { kind: 'model', provider: 'eleckoi', model: 'prompt-projection' }
       : {
-          kind: 'plugin',
-          plugin: name,
+          kind: `plugin:${name}`,
           form: 'snapshot',
           sections: [{ name: entry.traceTitle || entry.id || name, text: entry.content }]
         }
@@ -478,6 +343,29 @@ export function projectProductHistory(messages, context) {
   ]
 }
 
+/** Apply prompt transformations to the provider request while keeping the DSH user event unchanged. */
+export function projectCurrentUserPrompt(messages, context) {
+  const prompt = context?.currentPromptText
+  if (typeof prompt !== 'string') return messages
+  const index = messages.findLastIndex(isDirectUserMessage)
+  if (index < 0) return messages
+  const message = messages[index]
+  const content = []
+  let inserted = false
+  for (const part of message.content ?? []) {
+    if (part?.type !== 'text') {
+      content.push(part)
+    } else if (!inserted) {
+      content.push({ type: 'text', text: prompt })
+      inserted = true
+    }
+  }
+  if (!inserted) content.unshift({ type: 'text', text: prompt })
+  return messages.map((item, position) => position === index
+    ? freezeMessage({ ...message, content })
+    : item)
+}
+
 function productHistoryMessage(item, index) {
   if (!item || (item.role !== 'user' && item.role !== 'assistant')) return null
   const value = String(item.content ?? '')
@@ -486,7 +374,7 @@ function productHistoryMessage(item, index) {
     id: `eleckoi-product-history-${index}`,
     role: item.role,
     content: [{ type: 'text', text: value }],
-    source: { kind: 'plugin', plugin: 'eleckoi-product-history' }
+    source: { kind: 'plugin:eleckoi-product-history' }
   }
 }
 

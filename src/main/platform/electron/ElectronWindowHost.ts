@@ -46,8 +46,13 @@ export class ElectronWindowHost {
       if (scopedKey && this.keyedWindows.get(scopedKey) === window) this.keyedWindows.delete(scopedKey)
       if (blueprint.closesHostOnClose) this.close()
     })
-    blueprint.afterCreate?.(window)
-    await blueprint.load(window, payload)
+    try {
+      blueprint.afterCreate?.(window)
+      await blueprint.load(window, payload)
+    } catch (error) {
+      if (!window.isDestroyed()) window.destroy()
+      throw error
+    }
     return window
   }
 

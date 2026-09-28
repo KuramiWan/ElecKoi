@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Copy, MagnifyingGlass, PencilSimple, Plus, Scissors, SlidersHorizontal, Trash } from "@phosphor-icons/react";
-import { getVariableConfig, saveVariableConfig, saveVariableConfigViewState } from "../api/variableConfigApi.js";
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
 import {
   convertVariableToObject,
@@ -32,7 +31,7 @@ function destinationParent(config, selected) {
   return "";
 }
 
-export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ characterId, onDirtyChange }, ref) {
+export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ characterId, variables, onDirtyChange }, ref) {
   const [config, setConfig] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [selectedKey, setSelectedKey] = useState("");
@@ -67,8 +66,15 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
   useEffect(() => {
     let active = true;
     setError("");
-    getVariableConfig(characterId).then((loaded) => {
-      if (!active) return;
+    configRef.current = null;
+    persistedRef.current = null;
+    setConfig(null);
+    setPersisted(null);
+    setSelectedKey("");
+    setManagerOpen(false);
+    const adopt = (loaded) => {
+      if (!active || savePromiseRef.current || (configRef.current && persistedRef.current
+        && JSON.stringify(configRef.current) !== JSON.stringify(persistedRef.current))) return;
       const prepared = ensureInitializationObject(loaded);
       configRef.current = prepared;
       persistedRef.current = prepared;
@@ -76,11 +82,17 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
       setConfig(prepared);
       setPersisted(prepared);
       setExpandedIds(prepared.expandedObjectIds);
-      setSelectedKey("");
-      setManagerOpen(false);
-    }).catch((cause) => active && setError(cause?.message || "读取变量配置失败"));
-    return () => { active = false; };
-  }, [characterId]);
+    };
+    const stop = variables.subscribe((kind, id, snapshot) => {
+      if (kind === "configuration" && id === characterId && snapshot.status === "ready") adopt(snapshot.value);
+    });
+    const cached = variables.getSnapshot(characterId);
+    if (cached.status === "ready") adopt(cached.value);
+    void variables.read(characterId).catch((cause) => {
+      if (active) setError(cause?.message || "读取变量配置失败");
+    });
+    return () => { active = false; stop(); };
+  }, [characterId, variables]);
 
   function changeConfig(nextOrUpdater, generateState = true) {
     setError("");
@@ -102,7 +114,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
       setError("");
       try {
         const snapshot = syncActiveVersion({ ...configRef.current, expandedObjectIds: expandedRef.current });
-        const saved = ensureInitializationObject(await saveVariableConfig(characterId, snapshot));
+        const saved = ensureInitializationObject(await variables.save(characterId, snapshot));
         configRef.current = saved;
         persistedRef.current = saved;
         setConfig(saved);
@@ -215,7 +227,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     persistedRef.current = applyViewState(persistedRef.current);
     setConfig((current) => applyViewState(current));
     setPersisted((current) => applyViewState(current));
-    void saveVariableConfigViewState(characterId, next).catch(() => {});
+    void variables.saveViewState(characterId, next).catch(() => {});
   }
 
   function openContextMenu(event, node) {

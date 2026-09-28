@@ -251,7 +251,7 @@
   width: 30px;
   height: 17px;
   background: color-mix(in srgb, var(--text) 15%, transparent);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   transition: background-color 120ms ease;
 }
 
@@ -263,7 +263,7 @@
   width: 13px;
   height: 13px;
   background: #fff;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   box-shadow: 0 1px 3px color-mix(in srgb, #000 28%, transparent);
   content: "";
   transition: transform 120ms ease;

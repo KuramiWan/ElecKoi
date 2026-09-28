@@ -252,7 +252,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
         library={library}
         allowCustomPromptPositions
         nameInputRef={nameInputRef}
-        SelectedIcon={selected.kind === 'group' ? DshFolderClosedIcon : selectedValue.dynamicMode === 'ejs_controller' ? Code : selectedValue.dynamicMode === 'ejs_reference' ? LinkSimple : FileText}
+        SelectedIcon={selected.kind === 'group' ? DshFolderClosedIcon : selectedValue.contentMode === 'ejs' ? Code : selectedValue.dynamicMode === 'ejs_reference' ? LinkSimple : FileText}
         onClose={() => setSelected(null)}
         onUpdateGroup={(patch) => onChange({ ...preset, groups: preset.groups.map((group) => group.id === selected.id ? { ...group, ...patch } : group) })}
         onDeleteGroup={() => deleteGroup(selected.id)}

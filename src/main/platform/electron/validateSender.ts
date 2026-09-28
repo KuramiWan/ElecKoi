@@ -25,8 +25,49 @@ export function isAllowedExternalUrl(url: string): boolean {
   }
 }
 
-export function assertTrustedRenderer(sender: WebContents): void {
-  if (!isAppRendererUrl(sender.getURL())) {
+export function isDshAppUrl(url: string): boolean {
+  try {
+    const candidate = new URL(url)
+    return candidate.protocol === 'dsh-app:' && candidate.hostname === 'app'
+      && candidate.username === '' && candidate.password === '' && candidate.port === ''
+  } catch {
+    return false
+  }
+}
+
+export function isDshChildUrl(url: string): boolean {
+  try {
+    const candidate = new URL(url)
+    if (!isDshAppUrl(url) || candidate.pathname !== '/' || candidate.hash) return false
+    const view = candidate.searchParams.get('view')
+    if (view === 'character-editor' || view === 'chat') {
+      const key = view === 'chat' ? 'chat' : 'character'
+      return candidate.searchParams.size === 2 && Boolean(candidate.searchParams.get(key))
+    }
+    return (view === 'creator-studio' || view === 'character-manager' || view === 'preset-manager')
+      && candidate.searchParams.size === 1
+  } catch {
+    return false
+  }
+}
+
+export function assertTrustedRenderer(sender: WebContents, frameUrl: string, isMainFrame: boolean): void {
+  if (!isMainFrame || frameUrl !== sender.getURL()
+    || (!isAppRendererUrl(frameUrl) && !isDshAppUrl(frameUrl))) {
     throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi 页面进程的调用。')
+  }
+}
+
+export function assertTrustedDshClientBoot(
+  sender: WebContents,
+  frameUrl: string,
+  isMainFrame: boolean,
+  trustedWindowSenders: readonly WebContents[]
+): void {
+  if (!trustedWindowSenders.includes(sender) || !isMainFrame || frameUrl !== sender.getURL()
+    || !isDshAppUrl(frameUrl)
+    || (new URL(frameUrl).pathname !== '/')
+    || (new URL(frameUrl).search !== '' && !isDshChildUrl(frameUrl))) {
+    throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi DSH 页面进程的启动请求。')
   }
 }

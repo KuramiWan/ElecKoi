@@ -2,18 +2,21 @@
 
 export const name = 'eleckoi-tool-policy'
 export const inject = ['tools']
+const activeRestrictions = new WeakMap()
 
 export function apply(ctx) {
   return undefined
 }
 
 export function applyDisabledPolicy(agentCtx, disabledGroupIds = []) {
+  activeRestrictions.get(agentCtx)?.()
+  activeRestrictions.delete(agentCtx)
   const disabled = new Set(disabledGroupIds)
   if (disabled.size === 0) return
   const deniedNames = agentCtx.tools.schemas()
     .filter((declaration) => !isEssential(declaration) && disabled.has(classify(declaration)))
     .map((declaration) => declaration.name)
-  if (deniedNames.length > 0) agentCtx.tools.restrict({ deny: deniedNames })
+  if (deniedNames.length > 0) activeRestrictions.set(agentCtx, agentCtx.tools.restrict({ deny: deniedNames }))
 }
 
 export function filterDeclarations(tools, disabledGroupIds) {
@@ -48,7 +51,9 @@ export function classify(declaration) {
 
 function isEssential(declaration) {
   const toolName = declarationName(declaration)
-  return toolName === 'eleckoi_capability_probe' || toolName.startsWith('eleckoi_internal_')
+  return toolName === 'eleckoi_capability_probe'
+    || toolName === 'eleckoi_read_uploaded_file'
+    || toolName.startsWith('eleckoi_internal_')
 }
 
 function declarationName(declaration) {
