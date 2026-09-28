@@ -24,18 +24,21 @@
 ## 应用截图
 
 <p align="center">
-  <img src="docs/screenshots/eleckoi-windows-chat-dark.png" alt="电子爱 Windows 版角色对话界面" width="960">
+  <img src="docs/screenshots/eleckoi-windows-chat.png" alt="电子爱 Windows 版角色对话界面" width="960">
   <br><sub>电子爱 Windows 版角色对话界面</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/eleckoi-windows-plugins.png" alt="电子爱 Windows 版插件管理界面" width="960">
+  <br><sub>电子爱 Windows 版插件管理界面</sub>
 </p>
 
 ## 接下来的开发目标
 
 > 这里只展示未来要完成的任务，不代表当前已经实现的功能。
 
-- [ ] 兼容提示词模板和前端角色卡的启动流程，让角色卡点击开始后能够按模板向 AI 发起首轮对话。
-- [ ] 完善前端 API 文档与示例，支持 Agent 自动设计前端样式并自动载入角色卡。
+- [ ] 完善角色作品的前端扩展 API，为创作 Agent 和角色卡提供更丰富的界面、交互与玩法能力。
 - [ ] 完善 DSH 插件管理与 MCP 接入，提供统一的配置、权限和运行状态管理。
-- [ ] 适配更多模型厂商的官方 API。
 - [ ] 持续完善 Windows 与 Android 客户端，逐步对齐跨平台的角色创作与演绎体验。
 - [ ] 完善生图能力，扩展模型接入、参数控制、编辑和连续创作流程。
 
