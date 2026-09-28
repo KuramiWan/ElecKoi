@@ -18,6 +18,7 @@ const probe = `
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
     const { pathToFileURL } = await import('node:url')
+    const unpacked = ${JSON.stringify(unpacked)}
     const appAsar = ${JSON.stringify(appAsar)}
     const mainSource = await readFile(join(appAsar, 'out', 'main', 'main.js'), 'utf8')
     const externalUpdaterDependencies = ['electron-updater', 'builder-util-runtime', 'debug', 'sax']
@@ -90,6 +91,14 @@ const probe = `
       runtimeDataRoot: join(root, 'runtime'),
       executablePath: process.execPath
     })
+    runtime.bindSessionHost(new DshDesktopPluginHost({
+      runtimeDataRoot: join(root, 'runtime'),
+      workspaceRoot: join(root, 'workspace'),
+      agentPatchPath: join(appAsar, 'resources', 'dsh', 'desktop-agent.patch.yml'),
+      hostConfiguration: () => runtime.hostConfiguration(),
+      executablePath: process.execPath,
+      packageManager: { entryPath: packageManagerPath, nodeBinPath }
+    }))
     let server
     try {
       await runtime.verify()
