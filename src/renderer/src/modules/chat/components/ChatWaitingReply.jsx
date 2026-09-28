@@ -1,31 +1,43 @@
 import { useEffect, useState } from "react";
+import { RunningWhaleTail } from "./RunningWhaleTail.jsx";
 
-export function ChatWaitingReply() {
-  const [startedAt] = useState(() => Date.now());
-  const [elapsedMs, setElapsedMs] = useState(0);
+export function ChatWaitingReply({ startTime }) {
+  const [startedAt] = useState(() => startTime ?? Date.now());
+  const [now, setNow] = useState(Date.now);
 
   useEffect(() => {
-    const tick = () => setElapsedMs(Math.max(0, Date.now() - startedAt));
-    tick();
-    const timer = window.setInterval(tick, 1000);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [startedAt]);
+  }, []);
 
+  const duration = formatLiveRunDuration(Math.max(1000, now - startedAt));
   return (
-    <div className="chat-waiting-reply" role="status" aria-live="polite">
-      <span className="chat-waiting-shimmer">Deep diving...</span>
-      {elapsedMs >= 15_000 ? (
-        <span className="chat-waiting-clock" aria-hidden="true">
-          {formatRunDuration(elapsedMs)}
-        </span>
-      ) : null}
+    <div className="chat-waiting-reply" data-chat-running>
+      <span className="chat-waiting-announcement" role="status" aria-live="polite" aria-atomic="true">深度求索中</span>
+      <span className="chat-waiting-content" aria-hidden="true">
+        <RunningWhaleTail />
+        <RunningTextShimmer>深度求索中，用时 {duration}...</RunningTextShimmer>
+      </span>
     </div>
   );
 }
 
-function formatRunDuration(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return minutes > 0 ? `${minutes}分${String(seconds).padStart(2, "0")}秒` : `${seconds}秒`;
+function RunningTextShimmer({ children }) {
+  return <span className="chat-waiting-shimmer">
+    <span className="chat-waiting-shimmer-text">{children}</span>
+    <span className="chat-waiting-shimmer-decoration" aria-hidden="true">
+      <span className="chat-waiting-shimmer-sweep">
+        <span className="chat-waiting-shimmer-highlight">{children}</span>
+      </span>
+    </span>
+  </span>;
+}
+
+export function formatLiveRunDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const seconds = String(totalSeconds % 60);
+  if (hours > 0) return `${hours}小时${String(minutes).padStart(2, "0")}分${seconds}秒`;
+  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
 }

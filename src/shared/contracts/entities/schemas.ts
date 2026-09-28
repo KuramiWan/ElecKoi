@@ -85,6 +85,15 @@ export const messageSchema = z.object({
   runtimeSessionId: z.string().optional(),
   dshMessageId: z.string().optional(),
   process: z.array(agentProcessItemSchema).optional(),
+  turnUsage: z.object({
+    uncachedInputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative(),
+    cacheReadTokens: z.number().int().nonnegative().optional(),
+    cacheWriteTokens: z.number().int().nonnegative().optional(),
+    reasoningTokens: z.number().int().nonnegative().optional(),
+    routes: z.array(z.object({ provider: z.string(), model: z.string() })).readonly().optional()
+  }).optional(),
   inputImageAttachments: z.array(chatUserImageAttachmentSchema).optional(),
   inputFileAttachments: z.array(chatUserFileAttachmentSchema).optional(),
   openingOptions: z.array(openingMessageOptionSchema).optional(),

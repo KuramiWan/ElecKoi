@@ -87,7 +87,7 @@ function GaugeIcon() {
   return <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M3.1 14.4a7.5 7.5 0 1 1 13.8 0M10 11.6l3.2-4" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" /><circle cx="10" cy="12" r="1.2" fill="currentColor" /></svg>;
 }
 
-function DatabaseIcon() {
+export function DatabaseIcon() {
   return <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><ellipse cx="10" cy="4.3" rx="6.5" ry="2.5" stroke="currentColor" strokeWidth="1.25" /><path d="M3.5 4.3v10.8c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6V4.3M3.5 9.7c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6" stroke="currentColor" strokeWidth="1.25" /></svg>;
 }
 

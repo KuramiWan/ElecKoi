@@ -11,6 +11,7 @@ import { AgentPencilIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, Messag
 import { AgentProcessIcon } from "../../modules/chat/components/AgentProcessIcon.jsx";
 import { ChatImageGallery } from "../../modules/chat/components/ChatImageGallery.jsx";
 import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
+import { TurnUsage } from "../../modules/chat/components/TurnUsage.jsx";
 import { revealChatFile } from "../../modules/chat/api/chatApi.js";
 import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
 import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
@@ -338,6 +339,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
             {pluginActions}
             {expanded ? <div className="message-tools-expanded">
               {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
+              {!isUser ? <TurnUsage usage={message.turnUsage} compact /> : null}
               <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || '')} aria-label="复制" title="复制"><CopyIcon /></button>
               {!isUser && message.id !== 'opening' ? <button type="button" onClick={() => onRegenerate?.(message)} aria-label="重新生成" title="重新生成"><RefreshMessageIcon /></button> : null}
               <button type="button" onClick={speak} aria-label="朗读" title="朗读"><SpeakerIcon /></button>
@@ -392,6 +394,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
             {message.id !== "opening" ? <button type="button" onClick={() => onRegenerate?.(message)} aria-label="重新生成" title="重新生成" disabled={!onRegenerate}><RefreshMessageIcon /></button> : null}
             {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
             <button type="button" onClick={speak} aria-label="朗读" title="朗读" disabled={!displayContent}><SpeakerIcon /></button>
+            <TurnUsage usage={message.turnUsage} compact />
             <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!onEdit}><AgentPencilIcon /></button>
           </div>
         </div> : null}

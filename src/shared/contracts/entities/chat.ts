@@ -19,6 +19,16 @@ export interface ChatUserFileAttachment {
   bytes: number
 }
 
+export interface ChatTurnTokenUsage {
+  uncachedInputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
+  routes?: readonly { provider: string; model: string }[]
+}
+
 /** Renderer-to-Main upload shape. Base64 exists only at this Gateway boundary. */
 export interface EncodedChatImageAttachment {
   mediaType: ChatImageMediaType
@@ -85,6 +95,7 @@ export interface ChatMessage {
   runtimeSessionId?: string
   dshMessageId?: string
   process?: AgentProcessItem[]
+  turnUsage?: ChatTurnTokenUsage
   inputImageAttachments?: ChatUserImageAttachment[]
   inputFileAttachments?: ChatUserFileAttachment[]
   openingOptions?: OpeningMessageOption[]

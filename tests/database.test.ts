@@ -1498,6 +1498,38 @@ describe('shared SQLite baseline', () => {
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
+  it('reprojects per-turn usage after regeneration and removes it with a deleted reply', () => {
+    const { conversations, messages, database } = harness()
+    const conversationId = conversations.create({}).conversation.id
+    const user = messages.create(conversationId, 'user', '问题', 'complete')
+    const oldReply = messages.create(conversationId, 'assistant', '旧回复', 'complete', undefined, 'runtime-usage')
+    database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(oldReply.id)
+    let replyText = '旧回复'
+    let totalTokens = 120
+    const detach = messages.attachTranscriptReader(() => [{
+      turn: 1, completed: true, userSeq: 1, userText: '问题', userImages: [],
+      assistantText: replyText, process: [],
+      turnUsage: { uncachedInputTokens: totalTokens - 20, outputTokens: 20, totalTokens }
+    }])
+    try {
+      expect(messages.list(conversationId).find((message) => message.id === oldReply.id)?.turnUsage?.totalTokens).toBe(120)
+
+      messages.prepareRegeneration(conversationId, oldReply.id)
+      expect(messages.list(conversationId).map((message) => message.id)).toEqual([user.id])
+
+      const newReply = messages.create(conversationId, 'assistant', '新回复', 'complete', undefined, 'runtime-usage')
+      expect(messages.list(conversationId).find((message) => message.id === newReply.id)?.turnUsage).toBeUndefined()
+      database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(newReply.id)
+      replyText = '新回复'
+      totalTokens = 240
+      expect(messages.list(conversationId).find((message) => message.id === newReply.id)?.turnUsage?.totalTokens).toBe(240)
+
+      messages.deleteFrom(conversationId, newReply.id)
+      expect(messages.list(conversationId).map((message) => message.id)).toEqual([user.id])
+      expect(messages.list(conversationId).some((message) => message.turnUsage)).toBe(false)
+    } finally { detach() }
+  })
+
   it('deletes a message tail together with process, attempts, media caches and rewinds native state', () => {
     const { conversations, messages, database } = harness()
     const conversationId = conversations.create({}).conversation.id

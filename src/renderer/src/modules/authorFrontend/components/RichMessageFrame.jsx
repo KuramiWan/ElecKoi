@@ -5,10 +5,7 @@ import { subscribeAuthorConversationEvents } from '../model/authorConversationEv
 import { routeAuthorHostInputRequest } from '../model/authorHostInput.js';
 import { routeAuthorAudioRequest, subscribeAuthorAudioEvents } from '../model/authorAudioHost.js';
 import { prepareAuthorRuntimeLibraries } from '../model/authorRuntimeLibraries.js';
-import {
-  normalizeRichMessageViewportWidth,
-} from '../model/richMessageHeightCache.js';
-import { rememberRichMessageHeight } from '../model/richMessageHeights.js';
+import { normalizeRichMessageViewportWidth } from '../model/richMessageHeightCache.js';
 
 const minimumHeight = 1;
 
@@ -18,17 +15,9 @@ function createChannel() {
 
 export function RichMessageFrame({ message, document, rootIndex = 0 }) {
   const frameRef = useRef(null);
-  const lastSavedRef = useRef('');
   const viewportWidthRef = useRef(0);
-  const heightRef = useRef(minimumHeight);
-  const identity = useMemo(() => ({
-    conversationId: message.conversationId,
-    messageId: message.id,
-    contentRevision: document.contentKey,
-    rootIndex,
-  }), [document.contentKey, message.conversationId, message.id, rootIndex]);
   const [height, setHeight] = useState(minimumHeight);
-  const channel = useMemo(createChannel, [message.id, rootIndex]);
+  const channel = useMemo(createChannel, [message.id, document.contentKey, rootIndex]);
   const runtimeLibraries = useMemo(prepareAuthorRuntimeLibraries, []);
   const source = useMemo(
     () => buildRichMessageHtml(document, channel, runtimeLibraries),
@@ -38,6 +27,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
   useLayoutEffect(() => {
     const frame = frameRef.current;
     if (!frame) return undefined;
+    viewportWidthRef.current = 0;
     const applyViewportWidth = () => {
       const viewportWidthPx = normalizeRichMessageViewportWidth(frame.clientWidth || 1);
       if (viewportWidthRef.current === viewportWidthPx) return;
@@ -45,15 +35,18 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
       // A document that uses 100vh must be measured from a collapsed viewport.
       // Reusing its previous iframe height turns that height into a permanent
       // minimum and leaves false blank space below otherwise shorter content.
-      heightRef.current = minimumHeight;
       setHeight(minimumHeight);
     };
     applyViewportWidth();
-    if (typeof ResizeObserver !== 'function') return undefined;
-    const observer = new ResizeObserver(applyViewportWidth);
-    observer.observe(frame);
-    return () => observer.disconnect();
-  }, [identity]);
+    const observer = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(applyViewportWidth)
+      : null;
+    observer?.observe(frame);
+    return () => {
+      observer?.disconnect();
+      viewportWidthRef.current = 0;
+    };
+  }, [channel]);
 
   useEffect(() => {
     const publish = ({ name, payload }) => {
@@ -76,21 +69,11 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
       if (event.source !== frameWindow || !data) return;
       if (data.channel !== channel) return;
       if (data.type === 'eleckoi:rich-height') {
-        const viewportWidthPx = normalizeRichMessageViewportWidth(
-          frameRef.current?.clientWidth || data.viewportWidth || 1,
-        );
-        viewportWidthRef.current = viewportWidthPx;
         const measuredHeight = Math.ceil(Number(data.height));
         const next = Number.isFinite(measuredHeight)
           ? Math.max(minimumHeight, measuredHeight)
           : minimumHeight;
-        heightRef.current = next;
         setHeight(next);
-        const saveKey = `${identity.contentRevision}:${viewportWidthPx}:${next}`;
-        if (lastSavedRef.current !== saveKey) {
-          lastSavedRef.current = saveKey;
-          rememberRichMessageHeight({ ...identity, viewportWidthPx, heightPx: next });
-        }
         return;
       }
       if (data.type !== 'eleckoi:author-request' || typeof data.request !== 'string') return;
@@ -145,7 +128,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [channel, identity, message.conversationId, message.id]);
+  }, [channel, message.conversationId, message.id]);
 
   return (
     <iframe

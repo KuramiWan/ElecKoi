@@ -1,8 +1,6 @@
-diff --git a/lib/index.js b/lib/index.js
-index 4fa1c6c278dcca13fa91d6d3e3f6aa350febcfe7..2bcda045d473de5ca2c41f43aff207fff699b462 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -365,7 +365,7 @@ const AGENT_LOOP_REQUESTS = /* @__PURE__ */ new WeakSet();
+@@ -365,7 +365,7 @@
  * @returns whether every field (including the `stop` list, element-wise) matches.
  */
  function callConfigEquals(a, b) {
@@ -11,11 +9,9 @@ index 4fa1c6c278dcca13fa91d6d3e3f6aa350febcfe7..2bcda045d473de5ca2c41f43aff207ff
  	if (a.stop === void 0 || b.stop === void 0) return a.stop === b.stop;
  	return a.stop.length === b.stop.length && a.stop.every((s, i) => s === b.stop?.[i]);
  }
-diff --git a/lib/types/call-config.d.ts b/lib/types/call-config.d.ts
-index 006624d680cf8ad7eee9cdaee8b2d10f75562701..d1f22c05acbf4aee090b25aa6085992409b509c8 100644
 --- a/lib/types/call-config.d.ts
 +++ b/lib/types/call-config.d.ts
-@@ -18,6 +18,7 @@ export interface LlmCallConfig {
+@@ -18,6 +18,7 @@
      model: string;
      reasoningEffort?: ReasoningEffortId;
      temperature?: number;
@@ -23,11 +19,9 @@ index 006624d680cf8ad7eee9cdaee8b2d10f75562701..d1f22c05acbf4aee090b25aa60859924
      maxTokens?: number;
      stop?: string[];
  }
-diff --git a/lib/types/types.d.ts b/lib/types/types.d.ts
-index 1620291b0849a0e68f86c311092e564058e059ba..74cf15a482815b573536a40626df0eac13ee3b1d 100644
 --- a/lib/types/types.d.ts
 +++ b/lib/types/types.d.ts
-@@ -509,6 +509,8 @@ export interface GenerateOptions {
+@@ -509,6 +509,8 @@
      /** Session-folded tool history used for route projection; omission sends complete declarations without tool updates. */
      toolHistory?: ToolHistory;
      temperature?: number;

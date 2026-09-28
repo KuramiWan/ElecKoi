@@ -23,6 +23,7 @@ interface RuntimeTranscriptTurn {
   assistantText: string
   assistantMessageId?: string | null
   process: AgentProcessItem[]
+  turnUsage?: ChatMessage['turnUsage']
 }
 const toStoredStatus = (status: MessageStatus) => status === 'complete' ? 'completed' : status === 'streaming' ? 'pending' : status
 const toMessageStatus = (status: string): MessageStatus => status === 'completed' ? 'complete' : status === 'pending' ? 'streaming' : status === 'cancelled' ? 'cancelled' : 'error'
@@ -937,6 +938,7 @@ export class MessageRepository {
         : row.role === 'user' && transcript?.userMessageId
           ? { dshMessageId: transcript.userMessageId } : {}),
       ...(process.length ? { process } : {}),
+      ...(row.ownerType === 'response' && transcript?.turnUsage ? { turnUsage: transcript.turnUsage } : {}),
       ...(inputImageAttachments.length ? { inputImageAttachments } : {}),
       ...(inputFileAttachments.length ? { inputFileAttachments } : {}),
       ...(openingData.options?.length ? { openingOptions: openingData.options, selectedOpeningId: openingData.selectedId ?? '' } : {}) }

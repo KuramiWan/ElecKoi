@@ -207,6 +207,8 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     selectChatModel: chatSessions.selectChatModel,
     sessions: chatSessions.sessions,
     sessionId: chatSessions.sessionId,
+    isSwitchingChat: chatSessions.isSwitchingChat,
+    conversationTransitionRevision: chatSessions.conversationTransitionRevision,
     runtimeSessionId: chatSessions.runtimeSessionId,
     messages: chatSessions.messages,
     input: chatSessions.input,

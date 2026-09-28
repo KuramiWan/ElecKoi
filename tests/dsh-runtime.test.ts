@@ -121,12 +121,17 @@ describe('packaged DSH runtime composition', () => {
       executablePath: process.execPath
     })
     const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+    const largeImage = Buffer.concat([pixel, Buffer.alloc(4 * 1024 * 1024)])
 
     try {
-      const [stored] = await runtime.prepareImages([{
+      const [stored, largeStored] = await runtime.prepareImages([{
         mediaType: 'image/png',
         data: pixel.toString('base64'),
         name: 'pixel.png'
+      }, {
+        mediaType: 'image/png',
+        data: largeImage.toString('base64'),
+        name: 'large.png'
       }])
 
       expect(stored).toMatchObject({
@@ -137,6 +142,12 @@ describe('packaged DSH runtime composition', () => {
       })
       await expect(runtime.readImage(stored!)).resolves.toMatchObject({
         data: expect.any(String)
+      })
+      expect(largeStored).toMatchObject({
+        attachmentId: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+        width: 1,
+        height: 1,
+        name: 'large.png'
       })
     } finally {
       await runtime.close()

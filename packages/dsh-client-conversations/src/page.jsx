@@ -26,6 +26,8 @@ export function MessagesPage() {
       renderRoleplay={renderRoleplay}
       hasActiveChat={Boolean(chat.sessionId || chat.chatCharacter?.character_id)}
       conversationId={chat.sessionId}
+      isSwitchingChat={chat.isSwitchingChat}
+      conversationTransitionRevision={chat.conversationTransitionRevision}
       runtimeSessionId={chat.runtimeSessionId}
       conversationModel={conversations}
       hasCharacters={Boolean(chat.characters?.items?.length)}
