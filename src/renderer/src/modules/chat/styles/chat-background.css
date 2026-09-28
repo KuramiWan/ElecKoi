@@ -28,6 +28,11 @@
   left: 0;
 }
 
+.qq-shell.main-window-shell .chat-shell-backdrop {
+  top: 40px;
+  border-radius: var(--main-panel-corner-radius) 0 0 0;
+}
+
 .qq-shell.has-chat-wallpaper > .main-panel-shell,
 .qq-shell.has-chat-wallpaper > .client-titlebar,
 .qq-shell.has-chat-wallpaper > .chat-window-body {
@@ -42,7 +47,7 @@
 }
 
 .qq-shell.has-chat-wallpaper .main-panel-shell > .client-titlebar {
-  background: transparent;
+  background: var(--list);
 }
 
 .qq-chat-window-shell.has-chat-wallpaper .client-titlebar {
@@ -80,29 +85,6 @@
 
 .qq-shell.has-chat-wallpaper .window-controls button {
   color: var(--chat-wallpaper-content-fg);
-}
-
-/* Match Android's wallpaper-aware material: the image remains visible through the pane. */
-.qq-shell.has-chat-wallpaper .composer.composer-style-glass .composer-card {
-  border-color: rgba(17, 17, 17, 0.14);
-  background: rgba(255, 255, 255, 0.30);
-  box-shadow:
-    0 14px 38px rgba(0, 0, 0, 0.18),
-    0 2px 8px rgba(0, 0, 0, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.62),
-    inset 1px 0 0 rgba(255, 255, 255, 0.24);
-  -webkit-backdrop-filter: blur(3px) saturate(1.32);
-  backdrop-filter: blur(3px) saturate(1.32);
-}
-
-:root[data-theme="dark"] .qq-shell.has-chat-wallpaper .composer.composer-style-glass .composer-card {
-  border-color: rgba(255, 255, 255, 0.20);
-  background: rgba(29, 29, 37, 0.40);
-  box-shadow:
-    0 14px 38px rgba(0, 0, 0, 0.30),
-    0 2px 8px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.48),
-    inset 1px 0 0 rgba(255, 255, 255, 0.14);
 }
 
 .chat-background-backdrop {
@@ -331,7 +313,7 @@
   height: 32px;
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: rgba(255, 255, 255, 0.72);
   color: #4b4d51;
 }

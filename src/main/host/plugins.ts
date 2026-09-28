@@ -4,6 +4,7 @@ import { AppPaths } from '@main/platform/filesystem/AppPaths'
 import { createAppLog } from '@main/platform/logging/AppLog'
 import { credentialCipher } from '@main/platform/electron/CredentialCipher'
 import { ElectronDirectoryPicker } from '@main/platform/electron/ElectronDirectoryPicker'
+import { ElectronFileOpener } from '@main/platform/electron/ElectronFileOpener'
 import { ConversationFiles } from '@main/platform/filesystem/ConversationFiles'
 import { LocalMediaStore } from '@main/platform/filesystem/LocalMediaStore'
 import { join } from 'node:path'
@@ -12,7 +13,7 @@ import './desktopContext'
 
 export const platformPlugin = {
   name: 'eleckoi-platform',
-  provide: ['appPaths', 'appLog', 'credentialCipher', 'conversationFiles', 'mediaAssets', 'directoryPicker'],
+  provide: ['appPaths', 'appLog', 'credentialCipher', 'conversationFiles', 'mediaAssets', 'directoryPicker', 'fileOpener'],
   apply(ctx: Context) {
     ctx.provide('appPaths', new AppPaths())
     ctx.provide('appLog', createAppLog())
@@ -20,6 +21,7 @@ export const platformPlugin = {
     ctx.provide('conversationFiles', new ConversationFiles([ctx.appPaths.workspace, join(ctx.appPaths.dshRuntime, 'sessions')]))
     ctx.provide('mediaAssets', new LocalMediaStore(ctx.appPaths.media))
     ctx.provide('directoryPicker', new ElectronDirectoryPicker())
+    ctx.provide('fileOpener', new ElectronFileOpener())
   }
 } satisfies Plugin.Object
 

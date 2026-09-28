@@ -1,8 +1,16 @@
-import { CommunityNavIcon, MessageNavIcon, ModelNavIcon, PersonNavIcon, PresetNavIcon, SettingsIcon } from "../../../../ui/icons/index.jsx";
+import { CommunityNavIcon, MessageNavIcon, ModelNavIcon, PersonNavIcon, PluginNavIcon, PresetNavIcon, SettingsIcon } from "../../../../ui/icons/index.jsx";
 import { Avatar } from "../../../../ui/ui/Avatar.jsx";
 import logoIcon from "../../../../assets/eleckoi-app-icon.png";
 
-function RailIconButton({ label, active, onClick, icon: Icon }) {
+const PRODUCT_ICONS = {
+  messages: MessageNavIcon,
+  character: PersonNavIcon,
+  presets: PresetNavIcon,
+  model: ModelNavIcon,
+  community: CommunityNavIcon,
+};
+
+function RailIconButton({ label, active, onClick, icon: Icon, productIcon }) {
   function handleClick() {
     Promise.resolve(onClick?.()).catch((error) => {
       console.error(`Rail action failed: ${label}`, error);
@@ -11,7 +19,7 @@ function RailIconButton({ label, active, onClick, icon: Icon }) {
 
   return (
     <button
-      className={`rail-nav-button ${active ? "active" : ""}`}
+      className={`rail-nav-button is-${productIcon ? "product" : "plugin"}-icon ${active ? "active" : ""}`}
       type="button"
       title={label}
       aria-label={label}
@@ -62,16 +70,22 @@ function RailSettingsButton({ active, onOpenSettings }) {
   );
 }
 
-export function SidebarRail({ activeSection, profileActive, onSectionChange, persona, onOpenCommunity, onOpenProfile, onOpenSettings }) {
+export function SidebarRail({ activeSection, navigationItems = [], profileActive, onSectionChange, onNavigationAction, persona, onOpenProfile, onOpenSettings }) {
+  const renderItem = ({ id, label, action }) => (
+    <RailIconButton
+      key={id}
+      label={label}
+      active={!action && activeSection === id}
+      onClick={() => action ? onNavigationAction?.(id) : onSectionChange(id)}
+      icon={PRODUCT_ICONS[id] || PluginNavIcon}
+      productIcon={Boolean(PRODUCT_ICONS[id])}
+    />
+  );
   return (
     <aside className="qq-rail" aria-label="侧边功能栏">
       <img className="rail-brand-logo" src={logoIcon} alt="" aria-hidden="true" draggable="false" />
       <div className="rail-nav-group">
-        <RailIconButton label="消息" active={activeSection === "messages"} onClick={() => onSectionChange("messages")} icon={MessageNavIcon} />
-        <RailIconButton label="角色列表" active={activeSection === "character"} onClick={() => onSectionChange("character")} icon={PersonNavIcon} />
-        <RailIconButton label="预设" active={activeSection === "presets"} onClick={() => onSectionChange("presets")} icon={PresetNavIcon} />
-        <RailIconButton label="社区" active={false} onClick={onOpenCommunity} icon={CommunityNavIcon} />
-        <RailIconButton label="模型配置" active={activeSection === "model"} onClick={() => onSectionChange("model")} icon={ModelNavIcon} />
+        {navigationItems.map(renderItem)}
       </div>
       <div className="rail-bottom-zone">
         <RailProfileButton persona={persona} active={profileActive} onOpenProfile={onOpenProfile} />

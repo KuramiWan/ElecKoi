@@ -187,7 +187,6 @@ const exclusiveSqlTableOwners = new Map([
   ['agent_branch_turns', 'conversations'],
   ['agent_turns', 'conversations'],
   ['agent_responses', 'conversations'],
-  ['agent_content_parts', 'conversations'],
   ['conversation_speakers', 'conversations'],
   ['roleplay_rich_heights', 'conversations'],
   ['generation_attempts', 'agent'],
@@ -303,9 +302,12 @@ for (const file of sourceFiles('src')) {
     failures.push(`${relative(root, file)} 绕过了 Agent 模块的 DSH Runtime Adapter。`)
   }
 }
-for (const file of sourceFiles('packages/dsh-runtime')) {
+const dshRuntimeExports = JSON.parse(readFileSync(join(root, 'packages/dsh-runtime/package.json'), 'utf8')).exports
+for (const file of sourceFiles('packages/dsh-runtime/src')) {
   const content = readFileSync(file, 'utf8')
-  if (/packages[\\/]dsh-runtime[\\/]src|@eleckoi\/dsh-runtime\//.test(content)) {
+  const invalidSubpath = [...content.matchAll(/@eleckoi\/dsh-runtime\/([\w-]+)/g)]
+    .some(([, name]) => !Object.hasOwn(dshRuntimeExports, `./${name}`))
+  if (/packages[\\/]dsh-runtime[\\/]src/.test(content) || invalidSubpath) {
     failures.push(`${relative(root, file)} 绕过了 @eleckoi/dsh-runtime 的公开入口。`)
   }
 }

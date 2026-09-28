@@ -64,6 +64,7 @@ const empty = z.object({})
 const conversationDetails = z.object({
   conversation: conversationSchema,
   metadata: conversationMetadataSchema,
+  runtimeSessionId: z.string(),
   messages: z.array(messageSchema),
   hasMore: z.boolean(),
   beforeSequence: z.number().int().nullable()
@@ -108,6 +109,14 @@ export const requestContracts = {
   'command.conversations.delete': defineRoute(
     z.object({ conversationId: z.string().min(1) }),
     z.object({ ok: z.literal(true) })
+  ),
+  'command.conversations.archive.export': defineRoute(
+    z.object({ conversationId: z.string().min(1) }),
+    z.object({ json: z.string() })
+  ),
+  'command.conversations.archive.import': defineRoute(
+    z.object({ characterId: z.string().min(1), json: z.string().min(1).max(100_000_000) }),
+    z.object({ conversationId: z.string().min(1) })
   ),
   'command.conversations.messages.delete_from': defineRoute(
     z.object({ conversationId: z.string().min(1), messageId: z.string().min(1) }),
@@ -351,9 +360,10 @@ export const requestContracts = {
       conversationId: z.string().min(1),
       requestId: z.string().min(1),
       text: z.string(),
-      images: z.array(encodedChatImageAttachmentSchema).max(4).optional()
-    }).refine((input) => input.text.trim().length > 0 || Boolean(input.images?.length), {
-      message: '消息或图片不能同时为空。'
+      images: z.array(encodedChatImageAttachmentSchema).max(20).optional(),
+      files: z.array(z.string().uuid()).optional()
+    }).refine((input) => input.text.trim().length > 0 || Boolean(input.images?.length) || Boolean(input.files?.length), {
+      message: '消息、图片和文件不能同时为空。'
     }),
     z.object({
       accepted: z.literal(true),
@@ -361,6 +371,22 @@ export const requestContracts = {
       runId: z.string(),
       messageId: z.string()
     })
+  ),
+  'command.agent.files.begin': defineRoute(
+    z.object({ name: z.string().min(1).max(255), bytes: z.number().int().nonnegative() }),
+    z.object({ id: z.string().uuid() })
+  ),
+  'command.agent.files.chunk': defineRoute(
+    z.object({ id: z.string().uuid(), offset: z.number().int().nonnegative(), data: z.string().min(1).max(350_000) }),
+    z.object({ written: z.number().int().nonnegative() })
+  ),
+  'command.agent.files.finish': defineRoute(
+    z.object({ id: z.string().uuid() }),
+    z.object({ id: z.string().uuid(), name: z.string(), bytes: z.number().int().nonnegative() })
+  ),
+  'command.agent.files.discard': defineRoute(
+    z.object({ ids: z.array(z.string().uuid()) }),
+    z.object({ ok: z.literal(true) })
   ),
   'command.agent.cancel': defineRoute(
     z.object({
@@ -387,6 +413,7 @@ export const requestContracts = {
         active: z.literal(true),
         conversationId: z.string(),
         runId: z.string(),
+        requestId: z.string(),
         messageId: z.string(),
         accumulated: z.string(),
         sequence: z.number().int().nonnegative()
@@ -409,6 +436,10 @@ export const requestContracts = {
     z.object({ conversationId: z.string().min(1), attachmentId: z.string().min(1) }),
     z.object({ mediaType: chatImageMediaTypeSchema, data: z.string().min(1) })
   ),
+  'command.agent.file.reveal': defineRoute(
+    z.object({ conversationId: z.string().min(1), attachmentId: z.string().min(1), name: z.string().min(1) }),
+    z.object({ ok: z.literal(true) })
+  ),
   'query.updates.status': defineRoute(empty, updateStatusSchema),
   'command.updates.check': defineRoute(empty, updateStatusSchema),
   'command.updates.download': defineRoute(empty, updateStatusSchema),
@@ -420,6 +451,7 @@ export const requestContracts = {
 } as const
 
 export const eventContracts = {
+  'plugins.host.failed': z.object({ message: z.string() }),
   'records.changed': z.object({ module: z.enum(['conversations', 'personas', 'models', 'settingLibraries', 'variables', 'regexRules', 'agentPresets', 'agentTools']) }),
   'settings.changed': z.object({ key: z.string(), value: z.unknown() }),
   'messages.changed': z.object({

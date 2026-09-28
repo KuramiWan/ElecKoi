@@ -54,6 +54,12 @@ export const chatUserImageAttachmentSchema = z.object({
   }).optional()
 })
 
+export const chatUserFileAttachmentSchema = z.object({
+  attachmentId: z.string().min(1),
+  name: z.string().min(1).max(255),
+  bytes: z.number().int().nonnegative()
+})
+
 export const encodedChatImageAttachmentSchema = z.object({
   mediaType: chatImageMediaTypeSchema,
   data: z.string().min(1).max(28 * 1024 * 1024),
@@ -76,8 +82,11 @@ export const messageSchema = z.object({
   sequence: z.number().int().optional(),
   messageIndex: z.number().int().nonnegative().optional(),
   responseIndex: z.number().int().nonnegative().optional(),
+  runtimeSessionId: z.string().optional(),
+  dshMessageId: z.string().optional(),
   process: z.array(agentProcessItemSchema).optional(),
   inputImageAttachments: z.array(chatUserImageAttachmentSchema).optional(),
+  inputFileAttachments: z.array(chatUserFileAttachmentSchema).optional(),
   openingOptions: z.array(openingMessageOptionSchema).optional(),
   selectedOpeningId: z.string().optional()
 })

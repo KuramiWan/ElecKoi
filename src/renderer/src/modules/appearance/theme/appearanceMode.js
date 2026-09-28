@@ -17,6 +17,15 @@ export function resolveAppearanceMode(mode) {
 }
 
 export function applyAppearanceMode(mode) {
+  if (globalThis.__ELECKOI_DSH_PLATFORM__) {
+    const root = document.documentElement;
+    const source = root.dataset.dsThemeSource;
+    const resolved = document.body.hasAttribute("data-ds-dark-theme") ? "dark" : "light";
+    root.dataset.appearanceMode = source === "system" ? "system" : resolved;
+    root.dataset.theme = resolved;
+    return { mode: root.dataset.appearanceMode, resolved };
+  }
+
   const normalized = normalizeAppearanceMode(mode);
   const resolved = resolveAppearanceMode(normalized);
   const root = document.documentElement;
@@ -29,6 +38,13 @@ export function applyAppearanceMode(mode) {
 }
 
 export async function initializeAppearanceMode() {
+  if (globalThis.__ELECKOI_DSH_PLATFORM__) {
+    const update = () => applyAppearanceMode();
+    window.addEventListener("eleckoi:dsh-theme:state", update);
+    update();
+    return () => window.removeEventListener("eleckoi:dsh-theme:state", update);
+  }
+
   let mode = DEFAULT_APPEARANCE_MODE;
   const media = window.matchMedia?.("(prefers-color-scheme: dark)");
 

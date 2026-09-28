@@ -337,7 +337,7 @@ button.model-group-row:hover {
 .model-identity-fallback {
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: var(--active);
   color: var(--muted);
   font-size: 10px;
@@ -640,7 +640,7 @@ button.model-group-row:hover {
   width: 18px;
   height: 18px;
   border: 1.5px solid var(--line-strong);
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
 }
 
 .model-connection-test-steps li.pending > div > span {
@@ -770,7 +770,7 @@ button.model-group-row:hover {
   min-height: 24px;
   padding: 0 9px;
   border: 1px solid color-mix(in srgb, var(--blue) 14%, #e5e5e5);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: color-mix(in srgb, var(--active) 12%, #fff);
   color: #555;
   font-size: 12px;
@@ -965,6 +965,44 @@ button.model-group-row:hover {
   background: #fff;
   color: #151515;
   font-size: 14px;
+}
+
+.model-api-key-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.model-api-key-control {
+  position: relative;
+}
+
+.model-api-key-control input {
+  padding-right: 48px;
+}
+
+.model-api-key-control button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+}
+
+.model-api-key-control button:hover,
+.model-api-key-control button:focus-visible {
+  color: var(--blue);
+}
+
+.model-api-key-control button svg {
+  width: 19px;
+  height: 19px;
 }
 
 .model-api-format-control {
@@ -1236,7 +1274,7 @@ button.model-group-row:hover {
   height: 16px;
   border: 2px solid #d6d6d6;
   border-top-color: var(--blue);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   animation: model-test-spin 0.78s linear infinite;
 }
 
@@ -1245,7 +1283,7 @@ button.model-group-row:hover {
   display: block;
   width: 18px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: #20b15a;
 }
 

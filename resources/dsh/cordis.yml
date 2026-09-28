@@ -116,14 +116,14 @@
   disabled: true
 - id: tool-web
   disabled: true
+- id: session-title-llm
+  disabled: true
 
 - insert:
-    - id: agent-presets
-      name: '@deepseek-ai/dsh-agent-presets'
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
-        default: !!js process.env.ELECKOI_AGENT_PRESET ?? 'agent-preset-standard'
-        includeShippedRoot: false
-        includeUserRoot: true
+        default: eleckoi-default
 
     - id: agent-preset-bridge
       name: './agent-preset-bridge.mjs'

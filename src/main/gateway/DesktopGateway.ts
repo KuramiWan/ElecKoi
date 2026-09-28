@@ -32,7 +32,7 @@ export class DesktopGateway {
     if (this.started) return
     ipcMain.handle(DESKTOP_REQUEST_CHANNEL, async (event, envelope: GatewayRequestEnvelope) => {
       try {
-        assertTrustedRenderer(event.sender)
+        assertTrustedRenderer(event.sender, event.senderFrame?.url ?? '', event.senderFrame === event.sender.mainFrame)
         const window = BrowserWindow.fromWebContents(event.sender)
         const output = await this.dispatch(envelope, {
           senderId: event.sender.id,

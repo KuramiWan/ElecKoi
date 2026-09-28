@@ -62,13 +62,13 @@
   margin: 0 12px 14px;
   border: 1px solid var(--line-strong);
   border-radius: 11px;
-  background: color-mix(in srgb, var(--active) 22%, var(--surface-raised));
+  background: var(--sidebar-primary-action-bg);
   color: var(--text);
   font-size: 15px;
 }
 
 .character-manager-entry:hover {
-  background: color-mix(in srgb, var(--active) 32%, var(--surface-raised));
+  background: var(--sidebar-primary-action-hover);
 }
 
 .character-list-tabs {
@@ -79,7 +79,7 @@
   margin: 0 12px 10px;
   padding: 5px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--active) 42%, var(--control-bg));
+  background: var(--surface-subtle);
 }
 
 .character-list-tabs button {
@@ -93,13 +93,13 @@
 }
 
 .character-list-tabs button:hover {
-  color: var(--blue);
+  color: var(--text);
 }
 
 .character-list-tabs button.active {
-  background: color-mix(in srgb, var(--bubble-bg) 36%, var(--surface-raised));
-  color: var(--blue);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 10%, transparent);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .character-manager-entry svg,
@@ -467,7 +467,7 @@ button.character-group-row:hover {
   width: 18px;
   height: 18px;
   border: 1.5px solid #b7b7b7;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   transition: border-color 0.14s ease, background 0.14s ease, transform 0.14s ease;

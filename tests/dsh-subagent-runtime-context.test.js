@@ -10,17 +10,20 @@ const directories = []
 
 afterEach(() => {
   delete process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
+  delete process.env.ELECKOI_PRESET_ROOT
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
 describe('DSH subagent runtime context inheritance', () => {
   it('gives created, nested, and resumed children the parent setting library and variables', async () => {
     const fixture = runtimeFixture()
-    const originalCreate = vi.fn(async (options) => options)
-    const originalResume = vi.fn(async (options) => options)
+    const originalCreate = vi.fn(async (options) => ({ agent: { id: options.sessionId }, dispose: vi.fn() }))
+    const originalResume = vi.fn(async (options) => ({ agent: { id: options.resumeSessionId }, dispose: vi.fn() }))
     const ctx = {
+      provide: vi.fn(),
+      on: vi.fn(() => () => undefined),
       agents: { create: originalCreate, resume: originalResume },
-      agentPresets: { mount: vi.fn() }
+      agentPresets: { mount: vi.fn(), register: vi.fn(async () => async () => undefined) }
     }
     const dispose = applyAgentPresetBridge(ctx)
 
@@ -58,18 +61,20 @@ describe('DSH subagent runtime context inheritance', () => {
 
     expect(originalCreate).toHaveBeenCalledTimes(2)
     expect(originalResume).toHaveBeenCalledTimes(1)
-    dispose()
+    await dispose()
   })
 
   it('removes the inherited snapshot when child creation fails', async () => {
     const fixture = runtimeFixture()
     const failure = new Error('child setup failed')
     const ctx = {
+      provide: vi.fn(),
+      on: vi.fn(() => () => undefined),
       agents: {
         create: vi.fn(async () => { throw failure }),
         resume: vi.fn()
       },
-      agentPresets: { mount: vi.fn() }
+      agentPresets: { mount: vi.fn(), register: vi.fn(async () => async () => undefined) }
     }
     applyAgentPresetBridge(ctx)
 
@@ -93,7 +98,11 @@ function runtimeFixture() {
   const settingStateFile = join(directory, 'setting-state.json')
   const variableStateFile = join(directory, 'variable-state.json')
   process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot
+  const presetRoot = join(directory, 'generated-presets')
+  process.env.ELECKOI_PRESET_ROOT = presetRoot
   mkdirSync(snapshotRoot)
+  mkdirSync(join(presetRoot, 'preset-a'), { recursive: true })
+  writeFileSync(join(presetRoot, 'preset-a', 'preset.json'), JSON.stringify({ id: 'preset-a', plugins: [] }))
 
   writeFileSync(settingStateFile, JSON.stringify({
     enabled: true,

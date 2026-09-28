@@ -15,7 +15,6 @@ import {
 } from "@phosphor-icons/react";
 import { ExportIcon, ImportIcon } from "../../../ui/icons/index.jsx";
 import { getCharacters } from "../../persona/index.js";
-import { getSettingLibrary } from "../api/settingLibraryApi.js";
 import {
   createLibraryVersion,
   deleteActiveLibraryVersion,
@@ -217,7 +216,7 @@ async function saveJsonFile(json, suggestedName) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function SettingLibraryManager({ characterId, library, onChange, onClose, onError }) {
+export function SettingLibraryManager({ characterId, settingLibraries, library, onChange, onClose, onError }) {
   const [page, setPage] = useState("home");
   const [dialog, setDialog] = useState("");
   const [notice, setNotice] = useState("");
@@ -245,7 +244,7 @@ export function SettingLibraryManager({ characterId, library, onChange, onClose,
     getCharacters().then(async (collection) => {
       const others = await Promise.all((collection.items || []).filter((item) => item.id !== characterId).map(async (item) => {
         try {
-          const otherLibrary = await getSettingLibrary(item.id);
+          const otherLibrary = await settingLibraries.readUntracked(item.id);
           return { id: item.id, name: item.name || item.persona?.assistant_name || "未命名角色", versions: otherLibrary.versions };
         } catch {
           return null;
@@ -259,7 +258,7 @@ export function SettingLibraryManager({ characterId, library, onChange, onClose,
       ]);
     }).catch((cause) => alive && onError(cause?.message || "读取导入来源失败")).finally(() => alive && setLoadingSources(false));
     return () => { alive = false; };
-  }, [page, characterId]);
+  }, [page, characterId, settingLibraries]);
 
   useEffect(() => {
     function handleEscape(event) {

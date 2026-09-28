@@ -79,7 +79,7 @@
 .variable-floor-rail::before { content: ''; position: absolute; top: -10px; bottom: -10px; left: 50%; width: 1px; background: color-mix(in srgb, var(--muted) 38%, transparent); }
 .variable-floor:first-child .variable-floor-rail::before { top: 50%; }
 .variable-floor:last-child .variable-floor-rail::before { bottom: 50%; }
-.variable-floor-rail i { position: relative; width: 9px; height: 9px; border: 2px solid var(--surface-subtle); border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 34%, transparent); }
+.variable-floor-rail i { position: relative; width: 9px; height: 9px; border: 2px solid var(--surface-subtle); border-radius: 50%; corner-shape: round; background: var(--blue); box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 34%, transparent); }
 .variable-floor.active .variable-floor-rail i { border-color: color-mix(in srgb, var(--blue) 12%, var(--surface-raised)); }
 .variable-floor-copy { display: grid; min-width: 0; gap: 4px; }
 .variable-floor-heading { display: flex; align-items: center; min-width: 0; gap: 8px; }
@@ -119,7 +119,7 @@
 .variable-viewer-tree-row.is-container .variable-viewer-tree-key { font-weight: 600; }
 .variable-viewer-tree-value { position: relative; min-width: 0; padding: 4px 0; overflow-wrap: anywhere; font-size: 14px; line-height: 20px; }
 .variable-viewer-tree-node.is-changed > .variable-viewer-tree-row.is-scalar .variable-viewer-tree-value { width: fit-content; padding: 4px 6px; border-radius: 5px; background: color-mix(in srgb, var(--blue) 11%, transparent); }
-.variable-viewer-tree-node.is-changed > .variable-viewer-tree-row.is-scalar .variable-viewer-tree-value::before { content: ''; position: absolute; top: 11px; left: -10px; width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+.variable-viewer-tree-node.is-changed > .variable-viewer-tree-row.is-scalar .variable-viewer-tree-value::before { content: ''; position: absolute; top: 11px; left: -10px; width: 5px; height: 5px; border-radius: 50%; corner-shape: round; background: var(--blue); }
 
 .variable-viewer-empty { margin: 0; padding: 24px 14px; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .variable-viewer-empty.is-error,

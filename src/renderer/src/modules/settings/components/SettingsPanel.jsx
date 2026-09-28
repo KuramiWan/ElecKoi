@@ -7,7 +7,6 @@ import {
   Eye,
   Info,
   Palette,
-  PaintBrush,
   SlidersHorizontal,
   TextT,
   UserCircle,
@@ -45,14 +44,9 @@ const sidebarArtworkModes = [
   { id: "avatar", label: "头像" },
 ];
 
-const composerStyles = [
-  { id: "glass", label: "玻璃态", description: "透出壁纸并增加模糊和高光边缘" },
-  { id: "standard", label: "原版", description: "使用 DSH 基线的纯色输入框" },
-];
-
 const chatLayouts = [
   { id: "roleplay", label: "角色扮演", disabled: false },
-  { id: "agent", label: "Agent", disabled: true },
+  { id: "agent", label: "Agent", disabled: false },
   { id: "social", label: "社交软件", disabled: true },
 ];
 
@@ -113,8 +107,6 @@ function ChatDisplaySettings({
   persona,
   chatDisplay,
   onChatDisplayChange,
-  composerStyle,
-  onComposerStyleChange,
 }) {
   const preferences = chatDisplay || DEFAULT_CHAT_DISPLAY_PREFERENCES;
   const { layout, profile } = resolveChatDisplayProfile(preferences);
@@ -201,25 +193,6 @@ function ChatDisplaySettings({
         </section>
 
         <div className="chat-settings-inline-grid">
-          <section className="chat-settings-group composer-style-card">
-            <div className="setting-row-copy setting-row-title"><PaintBrush /><strong>输入框材质</strong></div>
-            <div className="appearance-mode-control composer-style-control" role="radiogroup" aria-label="输入框材质">
-              {composerStyles.map((style) => (
-                <button
-                  key={style.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={composerStyle === style.id}
-                  className={composerStyle === style.id ? "active" : ""}
-                  title={style.description}
-                  onClick={() => onComposerStyleChange(style.id)}
-                >
-                  {style.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
           <section className="chat-settings-group reasoning-display-card">
             <div className="setting-row-copy setting-row-title"><SlidersHorizontal /><strong>思维链显示</strong></div>
             <div className="appearance-mode-control reasoning-display-control" role="radiogroup" aria-label="思维链显示">
@@ -340,6 +313,7 @@ function ChatDisplaySettings({
           <div className="setting-row-copy setting-row-title"><TextT /><strong>正文文字</strong></div>
           <div className="chat-display-tuners">
             {slider("字号", "message_font_size", 9, 20, 0.5)}
+            {slider("字重", "message_font_weight", 400, 600, 100, "")}
             {slider("行距", "line_height_multiplier", 0.8, 1.6, 0.05, "×")}
             {slider("字距", "letter_spacing", -1, 4, 0.5)}
             {slider("段距", "paragraph_spacing", 0, 24)}
@@ -471,20 +445,28 @@ export function SettingsPanel({
   onChatDisplayChange,
   appearanceMode,
   onAppearanceModeChange,
-  composerStyle,
-  onComposerStyleChange,
   sidebarCharacterArtwork,
   onSidebarCharacterArtworkChange,
   appUpdates,
+  settingsSections = [],
+  renderSettingsSection,
+  onClosePluginSection,
   renderLayout,
 }) {
-  const page = activePage;
+  const requestedPluginSection = activePage.startsWith("dsh:")
+    ? settingsSections.find((section) => `dsh:${section.id}` === activePage) || settingsSections[0]
+    : null;
+  const page = requestedPluginSection ? `dsh:${requestedPluginSection.id}` : activePage;
+  const navigationPages = [
+    ...pages,
+    ...settingsSections.map((section) => ({ id: `dsh:${section.id}`, label: section.label, icon: SlidersHorizontal })),
+  ];
 
   const sidePanel = (
     <aside className="app-settings-sidebar">
       <header><h2>设置</h2></header>
       <nav aria-label="设置分类">
-        {pages.map((item) => {
+        {navigationPages.map((item) => {
           const Icon = item.icon;
           return (
             <button key={item.id} type="button" className={page === item.id ? "active" : ""} onClick={() => onPageChange(item.id)}>
@@ -506,12 +488,14 @@ export function SettingsPanel({
           persona={persona}
           chatDisplay={chatDisplay}
           onChatDisplayChange={onChatDisplayChange}
-          composerStyle={composerStyle}
-          onComposerStyleChange={onComposerStyleChange}
         />
       ) : page === "about" ? (
         <AboutSettings updates={appUpdates} />
-      ) : (
+      ) : requestedPluginSection ? (
+        <div className="dsh-settings-section">
+          {renderSettingsSection?.(requestedPluginSection, onClosePluginSection)}
+        </div>
+      ) : page === "theme" ? (
         <>
           <header className="app-settings-heading">
             <h1>主题风格</h1>
@@ -563,7 +547,7 @@ export function SettingsPanel({
             <button className="settings-secondary-button" type="button" disabled title="超级调色盘正在开发中">开发中</button>
           </div>
         </>
-      )}
+      ) : null}
     </section>
   );
 

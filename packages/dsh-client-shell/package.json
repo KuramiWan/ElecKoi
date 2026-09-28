@@ -1,0 +1,28 @@
+{
+  "name": "@eleckoi/dsh-client-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@eleckoi/dsh-client-characters",
+        "@eleckoi/dsh-client-character-configuration",
+        "@eleckoi/dsh-client-conversations",
+        "@eleckoi/dsh-client-models",
+        "@eleckoi/dsh-client-persona",
+        "@eleckoi/dsh-client-presets",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
+    }
+  }
+}

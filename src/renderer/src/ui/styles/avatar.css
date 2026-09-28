@@ -8,6 +8,7 @@
   flex: none;
   overflow: hidden;
   border-radius: 999px;
+  corner-shape: round;
   background: #fff;
   color: #6a6a6a;
   font-size: 17px;

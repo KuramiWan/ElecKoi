@@ -295,22 +295,32 @@ function GlobResult({ result }) {
   const displayed = unique([...result.required, ...result.paths]);
   const detailsByPath = new Map(result.pathDetails.map((entry) => [entry?.path, entry]));
   const requiredByPath = new Map(result.requiredEntries.map((entry) => [entry?.path || entry, entry]));
+  const requiredPaths = new Set(result.required);
+  const fixedRequired = result.settingLibrary ? result.required.filter((path) =>
+    (requiredByPath.get(path) || detailsByPath.get(path))?.read_strategy === 'required') : [];
+  const turnRequired = result.settingLibrary ? result.required.length - fixedRequired.length : 0;
   return <section className="agent-process-result-section">
     <h4>结果</h4>
     <div className="agent-process-result-meta">
       <strong>{result.required.length ? `返回目录 · ${displayed.length} 项` : `匹配结果 · ${result.paths.length} 项`}</strong>
       {result.omitted ? <span>另有 {result.omitted} 项未显示</span> : null}
-      <p><b>匹配 {result.paths.length}</b>{result.required.length ? <em> · 必读 {result.required.length}</em> : null}</p>
+      <p><b>匹配 {result.paths.length}</b>{result.settingLibrary ? <>
+        {fixedRequired.length ? <em> · 固定必读 {fixedRequired.length}</em> : null}
+        {turnRequired ? <em className="is-conditional"> · 本轮须读 {turnRequired}</em> : null}
+      </> : result.required.length ? <em> · 必读 {result.required.length}</em> : null}</p>
       <p>范围：{result.scope}{result.pattern ? ` · 路径模式：${result.pattern}` : ''}</p>
     </div>
     <div className="agent-process-result-list">
       {displayed.length ? displayed.map((path) => {
         const metadata = detailsByPath.get(path) || requiredByPath.get(path) || {};
         const strategy = metadata.read_strategy || metadata.read_mode || metadata.readStrategy;
+        const requirement = result.settingLibrary && requiredPaths.has(path)
+          ? strategy === 'required' ? 'fixed' : 'turn' : '';
         return <div className="agent-process-result-row" key={path}>
           <AgentProcessIcon name="description" size={19} />
           <span><strong>{displayName(path)}</strong>{parentPath(path) ? <small>{parentPath(path)}</small> : null}</span>
-          {strategy ? <em className={`strategy-${strategy}`}>{strategyLabel(strategy)}</em> : null}
+          {requirement ? <em className={requirement === 'fixed' ? 'strategy-required' : 'strategy-keyword'}>{requirement === 'fixed' ? '固定必读' : '本轮须读'}</em>
+            : strategy ? <em className={`strategy-${strategy}`}>{strategyLabel(strategy)}</em> : null}
         </div>;
       }) : <p className="agent-process-empty">没有匹配路径</p>}
     </div>
@@ -330,7 +340,7 @@ function SettingCard({ entry }) {
     <div className="agent-process-card-body">
       <div className="agent-process-card-title"><strong>{entry.title}</strong>{entry.truncated ? <em className="is-error">已截断</em> : null}{entry.readStrategy ? <em className={`strategy-${entry.readStrategy}`}>{strategyLabel(entry.readStrategy)}</em> : null}</div>
       <p className="agent-process-card-path">{entry.groupPath || parentPath(entry.path) || '根目录'}</p>
-      {entry.references.length ? <p className="agent-process-card-note is-keyword">本回合引用：{entry.references.map((reference) => reference?.title || displayName(reference?.path || '')).filter(Boolean).join('、')}</p> : null}
+      {entry.references.length ? <p className="agent-process-card-note is-keyword">本回合引用：{entry.references.map((reference) => reference?.title).filter(Boolean).join('、')}</p> : null}
       {entry.selectionHint ? <p className="agent-process-card-note">作者注释：{entry.selectionHint}</p> : null}
       <div className={`agent-process-card-content${expanded ? '' : ' is-clamped'}`}>{entry.content || '没有正文内容'}</div>
     </div>
@@ -397,7 +407,7 @@ function sameJson(left, right) { try { return JSON.stringify(parseValue(left)) =
 function unique(values) { return [...new Set(values.filter(Boolean))]; }
 function displayName(path) { return typeof path === 'string' ? path.split('/').filter(Boolean).pop() || path : ''; }
 function parentPath(path) { const clean = typeof path === 'string' ? path.replace(/^\/+|\/+$/g, '') : ''; return clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : ''; }
-function strategyLabel(value) { return value === 'required' ? '必读' : value === 'normal' || value === 'on_demand' ? '按需' : value === 'keyword' ? '关键词' : value === 'variable_condition' ? '已触发' : value; }
+function strategyLabel(value) { return value === 'required' ? '必读' : value === 'normal' || value === 'on_demand' ? '选读' : value === 'keyword' ? '关键词' : value; }
 function operationLabel(value) { return ({ replace: '替换', add: '新增', remove: '删除', delta: '增减', write_file: '写入', edit_file: '编辑', move_file: '移动', delete_file: '删除' })[value] || value; }
 function statusLabel(value) { return ({ pending: '待处理', in_progress: '进行中', complete: '已完成', completed: '已完成', failed: '失败' })[value] || value; }
 function durationText(items) {

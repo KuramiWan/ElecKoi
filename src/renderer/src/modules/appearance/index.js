@@ -38,4 +38,3 @@ export {
   normalizeNewCharacterBackground,
   resolveChatWallpaper,
 } from "./preferences/chatWallpaper.js";
-export { DEFAULT_COMPOSER_STYLE, normalizeComposerStyle } from "./preferences/composerStyle.js";

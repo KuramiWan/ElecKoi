@@ -89,6 +89,21 @@ describe('ElectronWindowHost keyed child windows', () => {
     expect(electronMocks.BrowserWindow.instances).toHaveLength(2)
   })
 
+  it('discards a failed window load so the next open can retry', async () => {
+    const windows = new ElectronWindowHost()
+    const load = vi.fn().mockRejectedValueOnce(new Error('plugin Host unavailable')).mockResolvedValue(undefined)
+    windows.define('plugins', { singleton: true, options: () => ({}), load })
+
+    await expect(windows.open('plugins')).rejects.toThrow('plugin Host unavailable')
+    const first = electronMocks.BrowserWindow.instances[0]!
+    expect(first.destroy).toHaveBeenCalledOnce()
+    expect(windows.all()).toEqual([])
+
+    const second = await windows.open('plugins')
+    expect(second).not.toBe(first)
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
   it('destroys every dependent window when the application root closes', async () => {
     const windows = new ElectronWindowHost()
     windows.define('main', {

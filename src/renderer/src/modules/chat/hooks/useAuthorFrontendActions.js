@@ -26,6 +26,8 @@ export function useAuthorFrontendActions({
   setStatus,
   setMessages,
   reconcileChatMessages,
+  replaceChatMessages,
+  conversations,
   setChatCharacter,
   normalizeLatestChatCharacter,
   refreshSessionsOnly,
@@ -45,32 +47,43 @@ export function useAuthorFrontendActions({
   sendMessageRef.current = sendMessage;
 
   useEffect(() => {
-    const refreshActiveChat = async (targetSessionId) => {
+    const refreshActiveChat = async (targetSessionId, resetWindow = false) => {
       if (!targetSessionId || targetSessionId !== sessionId) return;
       const data = await getChat(targetSessionId);
-      reconcileChatMessages(data.chat);
+      if (resetWindow) {
+        replaceChatMessages(data.chat);
+        conversations?.invalidateDetails(targetSessionId);
+      } else {
+        reconcileChatMessages(data.chat);
+      }
       setChatCharacter(normalizeLatestChatCharacter(data.chat));
       await refreshSessionsOnly({ keepSection: true });
     };
     const onAuthorAction = (event) => {
       const detail = event.detail || {};
       if (detail.conversationId !== sessionId) return;
+      const resetWindow = [
+        'openings.select',
+        'messages.deleteFrom',
+        'messages.regenerate',
+        'messages.editAndRegenerate',
+      ].includes(detail.method);
       if ([
         'chat.send',
         'messages.deleteFrom',
         'messages.regenerate',
         'messages.editAndRegenerate',
       ].includes(detail.method) && detail.result?.runId) {
-        runsRef.current.set(detail.result.runId, detail.result.messageId || '');
+        runsRef.current.set(detail.result.runId, resetWindow);
         setIsSending(true);
-        requestScrollToEnd('smooth');
+        requestScrollToEnd('auto');
       }
       if (['chat.create', 'chat.open', 'chat.delete'].includes(detail.method) && detail.result?.chat?.id) {
         loadChat(detail.result.chat.id).then(() => refreshSessionsOnly({ keepSection: true }))
           .catch((error) => setStatus(publicError(error, '切换聊天失败')));
         return;
       }
-      refreshActiveChat(detail.conversationId).catch((error) => setStatus(publicError(error, '刷新聊天失败')));
+      refreshActiveChat(detail.conversationId, resetWindow).catch((error) => setStatus(publicError(error, '刷新聊天失败')));
     };
     const updateExternalMessage = (event, update) => {
       if (event.conversationId !== sessionId || !runsRef.current.has(event.runId)) return;
@@ -116,17 +129,21 @@ export function useAuthorFrontendActions({
       process: upsertProcess(message.process, event.item),
     })));
     const disposeFinished = listenAgentFinishedEvent((event) => {
-      if (!runsRef.current.delete(event.runId)) return;
+      if (!runsRef.current.has(event.runId)) return;
+      const resetWindow = runsRef.current.get(event.runId);
+      runsRef.current.delete(event.runId);
       if (event.conversationId === sessionId) setIsSending(false);
-      refreshActiveChat(event.conversationId).catch((error) => setStatus(publicError(error, '刷新聊天失败')));
+      refreshActiveChat(event.conversationId, resetWindow).catch((error) => setStatus(publicError(error, '刷新聊天失败')));
     });
     const disposeFailed = listenAgentFailedEvent((event) => {
-      if (!runsRef.current.delete(event.runId)) return;
+      if (!runsRef.current.has(event.runId)) return;
+      const resetWindow = runsRef.current.get(event.runId);
+      runsRef.current.delete(event.runId);
       if (event.conversationId === sessionId) {
         setIsSending(false);
         setStatus(event.message || '生成失败');
       }
-      refreshActiveChat(event.conversationId).catch(() => {});
+      refreshActiveChat(event.conversationId, resetWindow).catch(() => {});
     });
     return () => {
       window.removeEventListener('eleckoi:author-action', onAuthorAction);

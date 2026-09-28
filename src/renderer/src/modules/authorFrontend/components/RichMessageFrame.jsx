@@ -20,6 +20,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
   const frameRef = useRef(null);
   const lastSavedRef = useRef('');
   const viewportWidthRef = useRef(0);
+  const heightRef = useRef(minimumHeight);
   const identity = useMemo(() => ({
     conversationId: message.conversationId,
     messageId: message.id,
@@ -27,7 +28,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
     rootIndex,
   }), [document.contentKey, message.conversationId, message.id, rootIndex]);
   const [height, setHeight] = useState(minimumHeight);
-  const channel = useMemo(createChannel, [document.contentKey, message.id]);
+  const channel = useMemo(createChannel, [message.id, rootIndex]);
   const runtimeLibraries = useMemo(prepareAuthorRuntimeLibraries, []);
   const source = useMemo(
     () => buildRichMessageHtml(document, channel, runtimeLibraries),
@@ -44,6 +45,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
       // A document that uses 100vh must be measured from a collapsed viewport.
       // Reusing its previous iframe height turns that height into a permanent
       // minimum and leaves false blank space below otherwise shorter content.
+      heightRef.current = minimumHeight;
       setHeight(minimumHeight);
     };
     applyViewportWidth();
@@ -82,8 +84,9 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
         const next = Number.isFinite(measuredHeight)
           ? Math.max(minimumHeight, measuredHeight)
           : minimumHeight;
+        heightRef.current = next;
         setHeight(next);
-        const saveKey = `${viewportWidthPx}:${next}`;
+        const saveKey = `${identity.contentRevision}:${viewportWidthPx}:${next}`;
         if (lastSavedRef.current !== saveKey) {
           lastSavedRef.current = saveKey;
           rememberRichMessageHeight({ ...identity, viewportWidthPx, heightPx: next });

@@ -39,4 +39,20 @@ describe("Character editor window launcher", () => {
 
     expect(open).not.toHaveBeenCalled();
   });
+
+  it("opens from the DSH client document without leaving the shared client runtime", () => {
+    const open = vi.fn(() => null);
+    vi.stubGlobal("window", {
+      location: { href: "dsh-app://app/" },
+      open,
+    });
+
+    openCharacterEditorWindow("character-1");
+
+    expect(open).toHaveBeenCalledWith(
+      "dsh-app://app/?view=character-editor&character=character-1",
+      "character-editor-character-1",
+      "width=1520,height=1120",
+    );
+  });
 });

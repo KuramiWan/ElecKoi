@@ -119,6 +119,7 @@ describe('agent process detail presentation', () => {
     expect(details.target).toBe('“**” · 2 项');
     expect(details.specialized).toMatchObject({
       type: 'glob',
+      settingLibrary: true,
       paths: ['人物/外貌与性格', '世界/当前地点'],
       required: ['世界/当前地点'],
     });

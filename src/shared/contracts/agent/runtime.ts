@@ -1,5 +1,5 @@
 import type { RuntimeModelSettings } from '../entities/model'
-import type { AgentProcessItem, ChatImageMediaType, ChatUserImageAttachment, EncodedChatImageAttachment } from '../entities/chat'
+import type { AgentProcessItem, ChatImageMediaType, ChatUserFileAttachment, ChatUserImageAttachment, EncodedChatImageAttachment } from '../entities/chat'
 import type { VariableItemConfig, VariableObjectConfig } from '../variables/schemas'
 import type { SettingLibraryEntry, SettingLibraryGroup, SettingLibraryPromptPosition } from '../settingLibrary/schemas'
 import type { AgentGenerationStats } from './generationStats'
@@ -35,6 +35,7 @@ export interface AgentConversationContext {
   characterName: string
   persona: Record<string, unknown>
   history: AgentConversationHistoryItem[]
+  currentPromptText?: string
   settingLibrary?: AgentSettingLibraryRuntimeContext
 }
 
@@ -43,6 +44,7 @@ export interface AgentRunInput {
   runId: string
   text: string
   inputImages?: ChatUserImageAttachment[] | undefined
+  inputFiles?: AgentInputFile[] | undefined
   settings: RuntimeModelSettings
   subagentSettings?: RuntimeModelSettings | undefined
   variableContext?: AgentVariableRuntimeContext | undefined
@@ -69,9 +71,19 @@ export interface AgentRunInput {
   } | undefined
 }
 
+export interface AgentInputFile {
+  id: string
+  path: string
+  name: string
+  bytes: number
+  reference?: ChatUserFileAttachment | undefined
+}
+
 export interface AgentRunCallbacks {
   onDelta(delta: string): void
   onFinal(content: string): void
+  onFileUploaded?(draftId: string, file: ChatUserFileAttachment): void
+  onTurnStarted?(turn: number): void
   onGenerationStats?(stats: AgentGenerationStats): void
   onVariableState?(stateJson: string): void
   onSettingLibraryState?(stateJson: string): void
@@ -91,6 +103,13 @@ export interface AgentRuntimePort {
     options?: { beforeIndex?: number | undefined; limit?: number | undefined }
   ): AgentTrajectorySnapshot
   cancel(conversationId: string): Promise<boolean>
-  disposeConversation(conversationId: string, runtimeThreadIds?: readonly string[]): Promise<void>
+  rewindConversation?(conversationId: string, runtimeThreadId: string, fromTurn: number): Promise<'rewound' | 'unavailable'>
+  confirmRewind?(conversationId: string): void
+  rollbackRewind?(conversationId: string, runtimeThreadId: string): Promise<void>
+  disposeConversation(
+    conversationId: string,
+    runtimeThreadIds?: readonly string[],
+    retainedRuntimeThreadIds?: readonly string[]
+  ): Promise<void>
   close(): Promise<void>
 }

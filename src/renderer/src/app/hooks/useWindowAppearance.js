@@ -10,7 +10,6 @@ import {
   listenAppearanceModeChanged,
   listenChatDisplayChanged,
   normalizeAppearanceMode,
-  normalizeComposerStyle,
   normalizeGlobalChatWallpaper,
   normalizeNewCharacterBackground,
   normalizeSidebarCharacterArtwork,
@@ -28,7 +27,6 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
   const [appearanceMode, setAppearanceMode] = useState("light");
   const [sidebarCharacterArtwork, setSidebarCharacterArtwork] = useState(DEFAULT_SIDEBAR_CHARACTER_ARTWORK);
   const [chatDisplay, setChatDisplay] = useState(DEFAULT_CHAT_DISPLAY_PREFERENCES);
-  const [composerStyle, setComposerStyle] = useState("glass");
   const [globalChatWallpaper, setGlobalChatWallpaper] = useState(() => normalizeGlobalChatWallpaper());
   const [newCharacterBackground, setNewCharacterBackground] = useState(DEFAULT_NEW_CHARACTER_BACKGROUND);
   const confirmedChatDisplayRef = useRef(DEFAULT_CHAT_DISPLAY_PREFERENCES);
@@ -42,9 +40,6 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     applyAppearanceTheme(null);
     const updatePreferences = (preferences) => {
       if (!active) return;
-      if (Object.hasOwn(preferences || {}, "composer_style")) {
-        setComposerStyle(normalizeComposerStyle(preferences?.composer_style));
-      }
       if (Object.hasOwn(preferences || {}, "global_chat_wallpaper")) {
         setGlobalChatWallpaper(normalizeGlobalChatWallpaper(preferences?.global_chat_wallpaper));
       }
@@ -67,6 +62,18 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
   }, []);
 
   useEffect(() => {
+    if (globalThis.__ELECKOI_DSH_PLATFORM__) {
+      const updateMode = (event) => {
+        const preference = event?.detail?.preference || document.documentElement.dataset.dsThemeSource;
+        const scheme = event?.detail?.scheme || (document.body.hasAttribute("data-ds-dark-theme") ? "dark" : "light");
+        setAppearanceMode(["light", "dark", "system"].includes(preference) ? preference : scheme);
+        applyAppearanceMode();
+      };
+      window.addEventListener("eleckoi:dsh-theme:state", updateMode);
+      updateMode();
+      return () => window.removeEventListener("eleckoi:dsh-theme:state", updateMode);
+    }
+
     let active = true;
     let dispose = () => {};
     const updateMode = (mode) => {
@@ -109,6 +116,18 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
   async function changeAppearanceMode(mode) {
     const previousMode = appearanceMode;
     const nextMode = normalizeAppearanceMode(mode);
+    if (globalThis.__ELECKOI_DSH_PLATFORM__) {
+      const detail = { mode: nextMode, applied: false, error: "" };
+      window.dispatchEvent(new CustomEvent("eleckoi:dsh-theme:set", { detail }));
+      if (!detail.applied) {
+        notify("error", detail.error || "外观模式切换失败。");
+        return;
+      }
+      setAppearanceMode(nextMode);
+      applyAppearanceMode();
+      return;
+    }
+
     setAppearanceMode(nextMode);
     applyAppearanceMode(nextMode);
     try {
@@ -143,19 +162,6 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
         notify("error", error?.message || "聊天显示设置保存失败。");
       }
     }, 250);
-  }
-
-  async function changeComposerStyle(style) {
-    const previousStyle = composerStyle;
-    const nextStyle = normalizeComposerStyle(style);
-    setComposerStyle(nextStyle);
-    try {
-      await saveUiPreferences({ composer_style: nextStyle });
-      notify("success", nextStyle === "glass" ? "已启用玻璃态输入框。" : "已恢复原版输入框。");
-    } catch (error) {
-      setComposerStyle(previousStyle);
-      notify("error", error?.message || "输入框样式保存失败。");
-    }
   }
 
   async function changeSidebarCharacterArtwork(mode) {
@@ -197,12 +203,10 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     appearanceMode,
     sidebarCharacterArtwork,
     chatDisplay,
-    composerStyle,
     globalChatWallpaper,
     newCharacterBackground,
     changeAppearanceMode,
     changeChatDisplay,
-    changeComposerStyle,
     changeSidebarCharacterArtwork,
     saveGlobalChatWallpaper,
     saveNewCharacterBackground,

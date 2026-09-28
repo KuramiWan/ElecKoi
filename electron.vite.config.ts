@@ -41,6 +41,9 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
+    server: {
+      cors: { origin: 'dsh-app://app' }
+    },
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),

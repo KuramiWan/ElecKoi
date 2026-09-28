@@ -12,7 +12,7 @@ const THEME_VARIABLES = [
   "--title-fg", "--title-logo-filter", "--shell-backdrop", "--rail", "--rail-fg", "--list",
   "--chat", "--active", "--blue", "--blue-hover", "--control-bg", "--control-bg-hover",
   "--bubble-bg", "--bubble-fg", "--bubble-fg-shadow", "--bubble-blue", "--bubble-white",
-  "--glass-bg", "--glass-bg-strong", "--glass-border", "--chat-header-fg",
+  "--glass-border", "--chat-header-fg",
   "--chat-header-fg-shadow", "--composer-icon-fg", "--composer-icon-shadow",
 ];
 
@@ -21,8 +21,7 @@ const DEFAULT_THEME = {
   railFg: "#252525", list: "#f0f3f6", chat: "#ffffff", active: "rgba(38, 49, 72, 0.06)",
   blue: "#13a8ff", blueHover: "#079cf0", controlBg: "#ebebeb", controlBgHover: "#e2e2e2",
   bubbleBg: "#ffffff", bubbleFg: "#181818", bubbleFgShadow: "rgba(255, 255, 255, 0.18)",
-  bubbleBlue: "#cdeeff", bubbleWhite: "#ffffff", glassBg: "rgba(255, 255, 255, 0.56)",
-  glassBgStrong: "rgba(255, 255, 255, 0.72)", glassBorder: "rgba(255, 255, 255, 0.62)",
+  bubbleBlue: "#cdeeff", bubbleWhite: "#ffffff", glassBorder: "rgba(255, 255, 255, 0.62)",
   chatHeaderFg: "#111111", chatHeaderFgShadow: "rgba(255, 255, 255, 0.22)",
   composerIconFg: "#111111", composerIconShadow: "rgba(255, 255, 255, 0.22)",
 };
@@ -276,7 +275,7 @@ function buildTheme(seed, polarity) {
     searchBg: role("surfaceContainerHighest"), tabbarBg: role("surfaceContainerHigh"),
     chatBg: role("surfaceContainer"), messageBg: role("surfaceContainerHighest"), messageFg: onSurface,
     userBg: role("secondaryContainer"), userFg: role("onSecondaryContainer"),
-    composerBg: role("surfaceContainerHigh"), accent: role("primary"), accentFg: role("onPrimary"),
+    accent: role("primary"), accentFg: role("onPrimary"),
   };
   theme.text = ensureContrast(theme.text, theme.pinned, 4.5);
   theme.muted = ensureContrast(theme.muted, theme.pinned, 4);
@@ -312,8 +311,7 @@ export function applyAppearanceTheme(theme) {
     "--blue-hover": colors.blueHover, "--control-bg": colors.controlBg, "--control-bg-hover": colors.controlBgHover,
     "--bubble-bg": colors.bubbleBg, "--bubble-fg": colors.bubbleFg,
     "--bubble-fg-shadow": colors.bubbleFgShadow, "--bubble-blue": colors.bubbleBlue,
-    "--bubble-white": colors.bubbleWhite, "--glass-bg": colors.glassBg,
-    "--glass-bg-strong": colors.glassBgStrong, "--glass-border": colors.glassBorder,
+    "--bubble-white": colors.bubbleWhite, "--glass-border": colors.glassBorder,
     "--chat-header-fg": colors.chatHeaderFg, "--chat-header-fg-shadow": colors.chatHeaderFgShadow,
     "--composer-icon-fg": colors.composerIconFg, "--composer-icon-shadow": colors.composerIconShadow,
   };
@@ -338,8 +336,6 @@ export async function createAppearanceThemeFromImageSource(dataUrl, source = {})
     bubbleBg: generated.messageBg, bubbleFg: generated.messageFg,
     bubbleFgShadow: generated.isDark ? "rgba(0, 0, 0, 0.28)" : "rgba(255, 255, 255, 0.18)",
     bubbleBlue: generated.userBg, bubbleWhite: generated.messageBg,
-    glassBg: rgba(generated.composerBg, generated.isDark ? 0.74 : 0.66),
-    glassBgStrong: rgba(generated.composerBg, generated.isDark ? 0.86 : 0.78),
     glassBorder: rgba(generated.line, generated.isDark ? 0.46 : 0.58),
     chatHeaderFg: generated.text,
     chatHeaderFgShadow: generated.isDark ? "rgba(0, 0, 0, 0.3)" : "rgba(255, 255, 255, 0.32)",

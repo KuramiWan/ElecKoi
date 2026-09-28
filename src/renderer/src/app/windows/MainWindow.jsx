@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChatBackgroundModal, ChatPanel, ChatWallpaperLayer, ConversationList, HistoryModal } from "../../modules/chat/index.js";
-import { SettingsPanel } from "../../modules/settings/index.js";
-import { ModelConfigPanel } from "../../modules/models/index.js";
-import { CharacterListPanel, CharacterProfilePanel, openCharacterEditorWindow } from "../../modules/persona/index.js";
-import { PresetListPanel, PresetProvider, PresetWorkspace } from "../../modules/presets/index.js";
+import { ChatBackgroundModal, ChatWallpaperLayer, HistoryModal } from "../../modules/chat/index.js";
 import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
@@ -12,17 +8,20 @@ import { UnsavedChangesDialog } from "../../ui/ui/UnsavedChangesDialog.jsx";
 import { SidebarRail } from "./shell/components/SidebarRail.jsx";
 import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
 import { SidePanelShell } from "./shell/components/SidePanelShell.jsx";
+import { PluginCenterSurface, PluginListPanel } from "./shell/components/PluginCenter.jsx";
+import { productMainPages } from "./ProductMainPages.jsx";
 import { SidePanelResizeHandle } from "./shell/components/SidePanelResizeHandle.jsx";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { useSidePanelLayout } from "./shell/hooks/useSidePanelLayout.js";
 import { AppUpdateController, useAppUpdates } from "../../modules/updates/index.js";
+import { desktopClient } from "../../bridge/desktopClient.ts";
 
-export function MainWindow() {
-  const chat = useChatClient();
+export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderRoleplay }) {
+  const chat = useChatClient({ conversations, characters, models, persona, navigation });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const sidePanelLayout = useSidePanelLayout();
   const appUpdates = useAppUpdates();
-  const isCharacterSection = chat.activeSection === "character";
+  const isPluginPanel = Boolean(navigation && !productMainPages[chat.activeSection] && chat.activeSection !== "plugins");
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState("chat");
@@ -36,6 +35,10 @@ export function MainWindow() {
   useEffect(() => {
     document.title = "ElecKoi";
   }, []);
+
+  useEffect(() => desktopClient.on("plugins.host.failed", ({ message }) => {
+    chat.notify("error", message);
+  }), [chat.notify]);
 
   const changeActiveSection = useCallback((section) => {
     if (chat.activeSection === "presets" && section !== "presets" && presetNavigationGuardRef.current) {
@@ -86,17 +89,6 @@ export function MainWindow() {
     chat.loadChat(chatId);
   }
 
-  const characterPanel = (
-    <CharacterProfilePanel
-      characters={chat.characters}
-      selectedCharacterId={chat.selectedCharacterId}
-      onSelectCharacter={chat.selectCharacter}
-      onStartConversation={chat.openCharacterChat}
-      onEditCharacter={openCharacterEditorWindow}
-      onCreateFirstCharacter={() => chat.createCharacter()}
-    />
-  );
-
   function renderWindowLayout({ sidePanel, mainPanel, overlays = null }) {
     return (
       <>
@@ -104,9 +96,12 @@ export function MainWindow() {
           <div className="navigation-rail-title" data-tauri-drag-region />
           <SidebarRail
             activeSection={chat.activeSection}
+            navigationItems={navigation?.items}
             profileActive={chat.activeSection === "settings" && settingsPage === "profile"}
             onSectionChange={changeActiveSection}
-            onOpenCommunity={() => setCommunityOpen(true)}
+            onNavigationAction={(id) => {
+              if (id === "community") setCommunityOpen(true);
+            }}
             persona={chat.persona}
             onOpenProfile={() => {
               setSettingsPage("profile");
@@ -119,14 +114,14 @@ export function MainWindow() {
           />
         </section>
 
-        <SidePanelShell collapsed={sidePanelLayout.sidePanelCollapsed} onCollapse={sidePanelLayout.collapseSidePanel}>
+        <SidePanelShell collapsed={sidePanelLayout.sidePanelCollapsed || isPluginPanel} onCollapse={sidePanelLayout.collapseSidePanel}>
           {sidePanel}
         </SidePanelShell>
 
         <section className="main-panel-shell" aria-label="主功能界面">
           <TitleBar
             splitSurface
-            sidePanelCollapsed={sidePanelLayout.sidePanelCollapsed}
+            sidePanelCollapsed={sidePanelLayout.sidePanelCollapsed && !isPluginPanel}
             onToggleSidePanel={sidePanelLayout.expandSidePanel}
           />
           <div className="main-panel-content">{mainPanel}</div>
@@ -136,156 +131,60 @@ export function MainWindow() {
     );
   }
 
-  let windowLayout;
-  if (chat.activeSection === "settings") {
-    windowLayout = (
-      <SettingsPanel
-        activePage={settingsPage}
-        onPageChange={setSettingsPage}
-        persona={chat.persona}
-        onUpdateUserProfile={chat.updateUserProfile}
-        chatDisplay={appearance.chatDisplay}
-        onChatDisplayChange={appearance.changeChatDisplay}
-        appearanceMode={appearance.appearanceMode}
-        onAppearanceModeChange={appearance.changeAppearanceMode}
-        composerStyle={appearance.composerStyle}
-        onComposerStyleChange={appearance.changeComposerStyle}
-        sidebarCharacterArtwork={appearance.sidebarCharacterArtwork}
-        onSidebarCharacterArtworkChange={appearance.changeSidebarCharacterArtwork}
-        appUpdates={appUpdates}
-        renderLayout={renderWindowLayout}
-      />
-    );
-  } else if (chat.activeSection === "model") {
-    windowLayout = (
-      <ModelConfigPanel
-        ref={modelConfigPanelRef}
-        config={chat.modelConfig}
-        configs={chat.modelConfigs}
-        providers={chat.meta?.providers || []}
-        modelOptionsByKey={chat.modelOptionsByKey}
-        onSave={chat.saveModelConfig}
-        onDeleteConfig={chat.deleteModelConfig}
-        onDeleteProvider={chat.deleteModelProvider}
-        onFetchModels={chat.loadModelOptions}
-        onProbeModels={chat.probeModelOptions}
-        onTestConnection={chat.testModelConnection}
-        onNotify={chat.notify}
-        onDirtyChange={setModelConfigDirty}
-        renderLayout={renderWindowLayout}
-      />
-    );
-  } else if (chat.activeSection === "presets") {
-    windowLayout = (
-      <PresetProvider navigationGuardRef={presetNavigationGuardRef}>
-        {renderWindowLayout({
-          sidePanel: <PresetListPanel />,
-          mainPanel: <PresetWorkspace
-            modelConfigs={chat.chatModelConfigs}
-            modelOptionsByKey={chat.modelOptionsByKey}
-            onLoadModels={chat.loadModelOptions}
-            onSaveModelConfig={chat.saveModelConfig}
-            onNotify={chat.notify}
-            requestedTab={presetRequestedTab}
-            onRequestedTabHandled={() => setPresetRequestedTab("")}
-          />,
-        })}
-      </PresetProvider>
-    );
-  } else {
-    const sidePanel = isCharacterSection ? (
-      <CharacterListPanel
-        characters={chat.characters}
-        activeCharacterId={chat.selectedCharacterId || chat.characters.active_character_id}
-        artworkMode={appearance.sidebarCharacterArtwork}
-        onSelectCharacter={chat.selectCharacter}
-        onOpenCharacterChat={chat.openCharacterChat}
-        onSaveCharacterGroups={chat.saveCharacterGroups}
-        onImportPreparedCharacters={chat.importPreparedCharacters}
-        onCreateCharacter={chat.createCharacter}
-        onDeleteCharacters={chat.deleteCharacterIds}
-      />
-    ) : (
-      <ConversationList
-        keyword={chat.keyword}
-        setKeyword={chat.setKeyword}
-        sessions={chat.filteredSessions}
-        sessionId={chat.sessionId}
-        pinnedIds={chat.pinnedIds}
-        characters={chat.characters}
-        artworkMode={appearance.sidebarCharacterArtwork}
-        onLoadChat={selectConversation}
-        onOpenCharacterChat={chat.openCharacterChat}
-        onGoCharacterSettings={() => chat.setActiveSection("character")}
-        onTogglePinChat={chat.togglePinChat}
-        onOpenChatWindow={chat.openChatWindow}
-        onHideChat={chat.hideChatEntry}
-      />
-    );
-    const mainPanel = isCharacterSection ? (
-      characterPanel
-    ) : (
-      <ChatPanel
-        hasActiveChat={Boolean(chat.sessionId || chat.chatCharacter?.character_id)}
-        conversationId={chat.sessionId}
-        hasCharacters={Boolean(chat.characters?.items?.length)}
-        currentTitle={chat.currentTitle}
-        persona={chat.chatPersona}
-        messages={chat.messages}
-        input={chat.input}
-        setInput={chat.setInput}
-        inputImages={chat.inputImages}
-        onAddImages={chat.addInputImages}
-        onRemoveImage={chat.removeInputImage}
-        isSending={chat.isSending}
-        modelConfigs={chat.chatModelConfigs}
-        selectedModelConfigId={chat.selectedChatModelConfigId}
-        selectedModel={chat.selectedChatModel}
-        modelOptionsByKey={chat.modelOptionsByKey}
-        onLoadModelOptions={chat.loadModelOptions}
-        onSelectModel={chat.selectChatModel}
-        onSaveModelConfig={chat.saveModelConfig}
-        onNotify={chat.notify}
-        onSend={chat.sendMessage}
-        onStop={chat.stopSend}
-        onCreateChat={chat.createChat}
-        onOpenHistory={chat.openHistory}
-        onOpenChatBackground={() => setChatBackgroundOpen(true)}
-        onOpenPresetTools={() => {
-          setPresetRequestedTab("tools");
-          changeActiveSection("presets");
-        }}
-        onRegenerate={chat.regenerateReply}
-        onDeleteMessages={chat.deleteMessagesFrom}
-         onEditMessage={(message, replacementMessage) => chat.regenerateReply({
-          targetMessageId: message.turnId || message.id,
-          replacementMessage,
-         })}
-         onEditOpening={chat.editOpening}
-        onSelectOpening={chat.selectOpening}
-        onGoCharacterSettings={() => chat.setActiveSection("character")}
-        scrollRef={chat.scrollRef}
-        scrollRequest={chat.scrollRequest}
-        hasOlderMessages={chat.hasOlderMessages}
-        isLoadingOlderMessages={chat.isLoadingOlderMessages}
-        onLoadOlderMessages={chat.loadOlderMessages}
-        chatDisplay={appearance.chatDisplay}
-        composerStyle={appearance.composerStyle}
-      />
-    );
-    windowLayout = renderWindowLayout({ sidePanel, mainPanel });
-  }
+  const pageView = {
+    chat,
+    appearance,
+    appUpdates,
+    conversations,
+    presets,
+    settingsSections,
+    renderSettingsSection,
+    renderRoleplay,
+    settingsPage,
+    setSettingsPage,
+    modelConfigPanelRef,
+    setModelConfigDirty,
+    presetNavigationGuardRef,
+    presetRequestedTab,
+    setPresetRequestedTab,
+    changeActiveSection,
+    renderLayout: renderWindowLayout,
+    selectConversation,
+    openChatBackground: () => setChatBackgroundOpen(true),
+    openPresetTools: () => {
+      setPresetRequestedTab("tools");
+      changeActiveSection("presets");
+    },
+    openCharacterSection: () => chat.setActiveSection("character"),
+  };
 
+  let windowLayout;
+  if (chat.activeSection === "plugins") {
+    windowLayout = renderWindowLayout({
+      sidePanel: <PluginListPanel onNotify={chat.notify} />,
+      mainPanel: <PluginCenterSurface>{navigation?.renderPanel("plugins")}</PluginCenterSurface>,
+    });
+  } else if (isPluginPanel) {
+    windowLayout = renderWindowLayout({
+      sidePanel: null,
+      mainPanel: navigation.renderPanel(chat.activeSection),
+    });
+  } else if (navigation) {
+    windowLayout = navigation.renderPanel(chat.activeSection, { productMainPages, view: pageView });
+  } else {
+    const Page = productMainPages[chat.activeSection] || productMainPages.messages;
+    windowLayout = <Page view={pageView} />;
+  }
   return (
     <main
       ref={sidePanelLayout.shellRef}
-      className={`qq-shell main-window-shell section-${chat.activeSection}${showChatWallpaper ? " has-chat-wallpaper" : ""}${sidePanelLayout.sidePanelCollapsed ? " side-panel-collapsed" : ""}`}
-      style={sidePanelLayout.shellStyle}
+      className={`qq-shell main-window-shell section-${isPluginPanel ? "plugin" : chat.activeSection}${showChatWallpaper ? " has-chat-wallpaper" : ""}${sidePanelLayout.sidePanelCollapsed || isPluginPanel ? " side-panel-collapsed" : ""}`}
+      style={isPluginPanel ? { ...sidePanelLayout.shellStyle, "--side-panel-width": "0px" } : sidePanelLayout.shellStyle}
       data-side-panel-dragging={sidePanelLayout.sidePanelDragging || undefined}
     >
       {showChatWallpaper ? <ChatWallpaperLayer wallpaper={chatWallpaper} /> : null}
       {windowLayout}
-      {!sidePanelLayout.sidePanelCollapsed ? (
+      {!sidePanelLayout.sidePanelCollapsed && !isPluginPanel ? (
         <SidePanelResizeHandle
           onStart={sidePanelLayout.startSidePanelResize}
           onDrag={sidePanelLayout.resizeSidePanel}

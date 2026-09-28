@@ -11,7 +11,16 @@ async function bootstrap() {
     initRendererAssets(),
     initializeAppearanceMode(),
   ]);
-  createRoot(document.getElementById("root")).render(<App />);
+  const container = document.getElementById("eleckoi-root") || document.getElementById("root");
+  if (!container) throw new Error("ElecKoi 页面容器不存在");
+  globalThis.__ELECKOI_UNMOUNT__?.();
+  const root = createRoot(container);
+  globalThis.__ELECKOI_UNMOUNT__ = () => {
+    root.unmount();
+    delete globalThis.__ELECKOI_UNMOUNT__;
+  };
+  root.render(<App />);
 }
 
-bootstrap();
+globalThis.__ELECKOI_MOUNT__ = bootstrap;
+void bootstrap();

@@ -1,4 +1,5 @@
 export { conversationsPlugin } from './conversationsPlugin'
+export { ConversationArchiveRepository } from './ConversationArchiveRepository'
 export { ConversationRepository } from './ConversationRepository'
 export type { ConversationDeleteCleanup, ConversationDeleteGuard } from './ConversationRepository'
 export { MessageRepository } from './MessageRepository'

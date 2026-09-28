@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { listenRecordsChanged } from "../../bridge/recordEvents.js";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
 import {
   CharacterManager,
   commitCharacterImports,
   deleteCharacters,
   exportCharacterFiles,
-  getCharacters,
-  getPersona,
   saveCharacterGroups,
 } from "../../modules/persona/index.js";
 import { showCurrentWindow } from "../services/windowControls.js";
@@ -24,7 +21,7 @@ function normalizeCharacters(collection) {
   };
 }
 
-export function CharacterManagerWindow() {
+export function CharacterManagerWindow({ characterCatalog, personaModel }) {
   const [characters, setCharacters] = useState(EMPTY_CHARACTERS);
   const [persona, setPersona] = useState(EMPTY_PERSONA);
   const [loaded, setLoaded] = useState(false);
@@ -32,41 +29,59 @@ export function CharacterManagerWindow() {
 
   const refresh = useCallback(async () => {
     try {
-      const [nextCharacters, personaResult] = await Promise.all([getCharacters(), getPersona()]);
+      const [nextCharacters, nextPersona] = await Promise.all([characterCatalog.refresh(), personaModel.refresh()]);
       setCharacters(normalizeCharacters(nextCharacters));
-      setPersona(personaResult.persona || EMPTY_PERSONA);
+      setPersona(nextPersona || EMPTY_PERSONA);
       setLoadError("");
     } catch (cause) {
       setLoadError(cause instanceof Error ? cause.message : "读取角色卡失败。");
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [characterCatalog, personaModel]);
 
   useEffect(() => {
     applyAppearanceTheme(null);
     document.title = "角色卡管理器 - ElecKoi";
     showCurrentWindow().catch(() => {});
+    const updateCharacters = () => {
+      const snapshot = characterCatalog.getSnapshot();
+      if (snapshot.status === "ready") {
+        setCharacters(normalizeCharacters(snapshot.collection));
+        setLoaded(true);
+        setLoadError("");
+      } else if (snapshot.status === "error") setLoadError(snapshot.error);
+    };
+    const updatePersona = () => {
+      const snapshot = personaModel.getSnapshot();
+      if (snapshot.status === "ready") setPersona(snapshot.profile || EMPTY_PERSONA);
+      else if (snapshot.status === "error") setLoadError(snapshot.error);
+    };
+    const stopCharacters = characterCatalog.subscribe(updateCharacters);
+    const stopPersona = personaModel.subscribe(updatePersona);
+    updateCharacters();
+    updatePersona();
     void refresh();
-    return listenRecordsChanged((event) => {
-      if (event.module === "personas") void refresh();
-    });
-  }, [refresh]);
+    return () => { stopCharacters(); stopPersona(); };
+  }, [characterCatalog, personaModel, refresh]);
 
   async function persistGroups(groups, assignments = []) {
     const saved = await saveCharacterGroups(groups, assignments);
+    characterCatalog.adopt(saved);
     setCharacters(normalizeCharacters(saved));
     return saved;
   }
 
   async function removeCharacters(characterIds) {
     const saved = await deleteCharacters(characterIds);
+    characterCatalog.adopt(saved);
     setCharacters(normalizeCharacters(saved));
     return saved;
   }
 
   async function importCharacters(token) {
     const result = await commitCharacterImports(token);
+    characterCatalog.adopt(result.collection);
     setCharacters(normalizeCharacters(result.collection));
     return result;
   }

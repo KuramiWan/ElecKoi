@@ -36,7 +36,7 @@ describe('DSH request configuration', () => {
     const projection = {
       id: 'eleckoi-request-projection:v1',
       role: 'user',
-      source: { kind: 'plugin', plugin: 'eleckoi-request-projection' },
+      source: { kind: 'plugin:eleckoi-request-projection' },
       content: [{ type: 'text', text: 'ELECKOI_REQUEST_PROJECTION_V1\n[]' }],
     };
     const upstream = { id: 'upstream', role: 'user', content: [{ type: 'text', text: 'DSH 默认英文压缩模板' }] };

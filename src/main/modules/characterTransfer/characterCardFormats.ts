@@ -174,13 +174,13 @@ function convertWorldBookEntries(worldBook: JsonObject | undefined, timestamp: s
     if (isEjsController(content)) return {
       ...emptyEntry(id, timestamp), title, groupId: 'tavern-world-book', content,
       agentSelectionHint: '酒馆 EJS 动态控制器，渲染结果为 Agent 必读',
-      agentReadStrategy: 'variable_condition', dynamicMode: 'ejs_controller', triggerMode: 'agent_tool',
+      agentReadStrategy: 'normal', dynamicMode: 'standard', contentMode: 'ejs', triggerMode: 'agent_tool',
       enabled: enabledFrom(item), order: index + 1, treeViewOrder: index + 1
     }
     if (materialIds.has(id)) return {
       ...emptyEntry(id, timestamp), title, groupId: 'tavern-world-book', content,
       agentSelectionHint: '供 EJS 控制器通过 getwi 读取的 EJS引用设定',
-      agentReadStrategy: 'variable_condition', dynamicMode: 'ejs_reference', triggerMode: 'agent_tool',
+      agentReadStrategy: 'normal', dynamicMode: 'ejs_reference', triggerMode: 'agent_tool',
       enabled: true, order: index + 1, treeViewOrder: index + 1
     }
     const constant = boolean(item.constant)

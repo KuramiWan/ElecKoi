@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ChatBackgroundModal, ChatPanel, ChatWallpaperLayer, HistoryModal } from "../../modules/chat/index.js";
+import { ChatBackgroundModal, ChatWallpaperLayer, HistoryModal } from "../../modules/chat/index.js";
+import { RoleplayPanel } from "./RoleplayPanel.jsx";
 import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { AppToast } from "../../ui/ui/AppToast.jsx";
 import { showCurrentWindow } from "../services/windowControls.js";
@@ -11,8 +12,8 @@ const CHAT_WINDOW_STYLE = {
   "--side-panel-width": "0px",
 };
 
-export function ChatWindow() {
-  const chat = useChatClient();
+export function ChatWindow({ conversations, characters, models, persona, renderRoleplay }) {
+  const chat = useChatClient({ conversations, characters, models, persona });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
 
@@ -38,9 +39,11 @@ export function ChatWindow() {
       {showChatWallpaper ? <ChatWallpaperLayer wallpaper={chatWallpaper} /> : null}
       <TitleBar />
       <section className="chat-window-body">
-        <ChatPanel
+        <RoleplayPanel
+          renderRoleplay={renderRoleplay}
           hasActiveChat={Boolean(chat.sessionId || chat.chatCharacter?.character_id)}
           conversationId={chat.sessionId}
+          runtimeSessionId={chat.runtimeSessionId}
           hasCharacters={Boolean(chat.characters?.items?.length)}
           currentTitle={chat.currentTitle}
           characterId={chat.chatCharacter?.character_id || ""}
@@ -49,8 +52,13 @@ export function ChatWindow() {
           input={chat.input}
           setInput={chat.setInput}
           inputImages={chat.inputImages}
+          inputFiles={chat.inputFiles}
+          filesUploading={chat.filesUploading}
+          fileUploadProgress={chat.fileUploadProgress}
           onAddImages={chat.addInputImages}
+          onAddFiles={chat.addInputFiles}
           onRemoveImage={chat.removeInputImage}
+          onRemoveFile={chat.removeInputFile}
           isSending={chat.isSending}
           modelConfigs={chat.chatModelConfigs}
           selectedModelConfigId={chat.selectedChatModelConfigId}
@@ -82,7 +90,6 @@ export function ChatWindow() {
           isLoadingOlderMessages={chat.isLoadingOlderMessages}
           onLoadOlderMessages={chat.loadOlderMessages}
           chatDisplay={appearance.chatDisplay}
-          composerStyle={appearance.composerStyle}
         />
       </section>
       <HistoryModal

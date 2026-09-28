@@ -45,9 +45,11 @@ const TRIGGER_MODES = [
 
 const READ_STRATEGIES = [
   { value: "required", label: "必读" },
-  { value: "keyword", label: "关键词" },
-  { value: "normal", label: "按需" },
-  { value: "variable_condition", label: "变量条件" },
+  { value: "normal", label: "选读" },
+];
+const CONTENT_MODES = [
+  { value: "plain_text", label: "纯文字" },
+  { value: "ejs", label: "EJS" },
 ];
 
 const ICON_OPTIONS = [
@@ -228,7 +230,7 @@ function AgentDirectoryPreview({ currentEntryId, entries, groups }) {
         {items.length ? items.map(({ entry, path }) => (
           <div className={entry.id === currentEntryId ? "is-current" : ""} key={entry.id}>
             <span>{path.join(" / ")}</span>
-            <em>{READ_STRATEGIES.find((option) => option.value === entry.agentReadStrategy)?.label}</em>
+            <em>{entry.agentReadStrategy === "required" ? "必读" : entry.agentReadStrategy === "keyword" ? "关键词" : entry.contentMode === "ejs" ? "EJS条件" : "选读"}</em>
           </div>
         )) : <p>还没有可供 Agent 读取的条目</p>}
       </div>
@@ -286,20 +288,20 @@ function KeywordRules({ entry, onChange }) {
 
 function TriggerSection({ entry, entries, groups, onChange }) {
   function setStrategy(agentReadStrategy) {
-    onChange({
-      ...entry,
-      agentReadStrategy,
-      dynamicMode: agentReadStrategy === "variable_condition" ? "ejs_controller" : "standard",
-    });
+    if (agentReadStrategy === "normal" && entry.agentReadStrategy === "keyword") return;
+    onChange({ ...entry, agentReadStrategy,
+      contentMode: agentReadStrategy === "required" ? "plain_text" : entry.contentMode });
   }
   return (
     <div className="setting-library-entry-section">
-      <SegmentedField label="触发方式" value={entry.triggerMode || "always"} options={TRIGGER_MODES} onChange={(triggerMode) => onChange({ ...entry, triggerMode })} />
+      <SegmentedField label="触发方式" value={entry.triggerMode || "always"} options={TRIGGER_MODES} onChange={(triggerMode) => onChange({ ...entry, triggerMode,
+        contentMode: triggerMode === "agent_tool" ? entry.contentMode : "plain_text" })} />
       {entry.triggerMode === "agent_tool" ? (
         <>
-          <SegmentedField label="读取策略" value={entry.agentReadStrategy} options={READ_STRATEGIES} onChange={setStrategy} />
+          <SegmentedField label="读取策略" value={entry.agentReadStrategy === "required" ? "required" : "normal"} options={READ_STRATEGIES} onChange={setStrategy} />
+          {entry.agentReadStrategy !== "required" ? <SwitchRow title="关键词命中" description={entry.agentReadStrategy === "keyword" ? "命中后列为本轮必读" : "关闭时由 AI 选读"} checked={entry.agentReadStrategy === "keyword"} onChange={(enabled) => onChange({ ...entry, agentReadStrategy: enabled ? "keyword" : "normal" })} /> : null}
           {entry.agentReadStrategy === "keyword" ? <KeywordRules entry={entry} onChange={onChange} /> : null}
-          {entry.agentReadStrategy === "normal" ? (
+          {entry.agentReadStrategy === "normal" && entry.contentMode === "plain_text" ? (
             <label className="setting-library-field-card setting-library-text-field">
               <span>注释（AI 读目录时靠它判断）</span>
               <textarea value={entry.agentSelectionHint} maxLength={200} placeholder="写给 AI 看的一句话" onChange={(event) => onChange({ ...entry, agentSelectionHint: event.target.value })} />
@@ -321,8 +323,9 @@ export function referencedEjsTitles(code) {
 }
 
 function ContentSection({ entry, entries, onChange, onOpenEntry }) {
-  const label = entry.dynamicMode === "ejs_controller" ? "EJS 代码" : "设定正文";
-  const references = entry.dynamicMode === "ejs_controller"
+  const ejs = entry.triggerMode === "agent_tool" && entry.agentReadStrategy !== "required" && entry.contentMode === "ejs";
+  const label = "设定正文";
+  const references = ejs
     ? entries
       .filter((candidate) => candidate.dynamicMode === "ejs_reference" && referencedEjsTitles(entry.content).has(candidate.title))
       .sort((left, right) => left.treeViewOrder - right.treeViewOrder)
@@ -332,9 +335,15 @@ function ContentSection({ entry, entries, onChange, onOpenEntry }) {
       <MarkdownTextareaField
         label={label}
         value={entry.content}
-        placeholder={entry.dynamicMode === "ejs_controller" ? "使用 <% … %> 编写判断；可通过 getvar 读取变量、getwi 读取已开启的 EJS引用设定" : "写入世界观、人物背景、地点规则、隐藏信息等"}
-        preview={entry.dynamicMode !== "ejs_controller"}
+        placeholder={ejs ? "填写 EJS 模板" : "填写设定正文"}
+        preview={!ejs}
         onChange={(content) => onChange({ ...entry, content })}
+        labelAction={entry.triggerMode === "agent_tool" && entry.agentReadStrategy !== "required" ? (
+          <div className="setting-library-content-mode" role="radiogroup" aria-label="正文格式">
+            {CONTENT_MODES.map((mode) => <button key={mode.value} type="button" role="radio" aria-checked={(ejs ? "ejs" : "plain_text") === mode.value}
+              onClick={() => onChange({ ...entry, contentMode: mode.value })}>{mode.label}</button>)}
+          </div>
+        ) : null}
       />
       {references.length ? (
         <section className="setting-library-reference-list">
@@ -465,14 +474,14 @@ export function SettingLibraryEntryEditor({ entry, entries, groups, promptPositi
   const activeSection = editorSections.some((item) => item.id === section) ? section : editorSections[0].id;
   const activeSectionIndex = editorSections.findIndex((item) => item.id === activeSection);
   return (
-    <div ref={editorRef} className="setting-library-normal-entry-editor">
+    <div ref={editorRef} className={`setting-library-normal-entry-editor${activeSection === "content" ? " is-content-editor" : ""}${activeSection === "trigger" ? " is-trigger-editor" : ""}`}>
       <nav className="setting-library-entry-tabs" aria-label="设定编辑区域">
         {editorSections.map((item, index) => {
           const completed = index < activeSectionIndex;
           return <Fragment key={item.id}>
             <button type="button" className={completed ? "is-complete" : undefined} aria-current={activeSection === item.id ? "step" : undefined} onClick={() => setSection(item.id)}>
               <span className="setting-library-entry-tab-node">{completed ? <Check size={12} weight="bold" /> : index + 1}</span>
-              <span className="setting-library-entry-tab-label">{item.id === "content" && entry.dynamicMode === "ejs_controller" ? "EJS 代码" : item.label}</span>
+              <span className="setting-library-entry-tab-label">{item.label}</span>
             </button>
             {index < editorSections.length - 1 ? <i className={`setting-library-entry-tab-connector${completed ? " is-complete" : ""}`} aria-hidden="true" /> : null}
           </Fragment>;

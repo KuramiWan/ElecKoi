@@ -44,11 +44,27 @@ export interface DshImageAttachmentRef {
   originalDimensions?: { width: number; height: number } | undefined
 }
 
+export interface DshFileAttachmentRef {
+  attachmentId: string
+  name: string
+  bytes: number
+}
+
+export interface DshInputFile {
+  id: string
+  path: string
+  name: string
+  bytes: number
+  reference?: DshFileAttachmentRef | undefined
+}
+
 import type { DshGenerationStats } from './generationStats'
 
 export interface DshStreamCallbacks {
   onDelta(delta: string): void
   onFinal(content: string): void
+  onFileUploaded?(draftId: string, file: DshFileAttachmentRef): void
+  onTurnStarted?(turn: number): void
   onGenerationStats?(stats: DshGenerationStats): void
   onVariableState?(stateJson: string): void
   onSettingLibraryState?(stateJson: string): void
@@ -81,6 +97,7 @@ export interface DshConversationContext {
   characterName: string
   persona: Record<string, unknown>
   history: DshConversationHistoryItem[]
+  currentPromptText?: string
   settingLibrary?: DshSettingLibraryRuntimeContext
 }
 
@@ -154,4 +171,5 @@ export interface DshRuntimeOptions {
   presetTemplatePath: string
   /** All enabled chat models registered when the one long-lived DSH process boots. */
   modelCatalog?: (() => readonly DshModelSettings[]) | undefined
+  webSearchSettings?: (() => DshWebSearchSettings) | undefined
 }

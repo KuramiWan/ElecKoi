@@ -16,13 +16,6 @@ import {
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { UnsavedChangesDialog } from "../../../ui/ui/UnsavedChangesDialog.jsx";
 import { DshFolderClosedIcon, DshFolderOpenIcon, DshTriangleRightIcon } from "../../../ui/icons/dshTreeIcons.jsx";
-import { listenRecordsChanged } from "../../../bridge/recordEvents.js";
-import {
-  getConversationSettingLibraries,
-  resetConversationSettingLibrary,
-  saveConversationSettingLibrary,
-  saveConversationSettingVersion,
-} from "../api/settingLibraryApi.js";
 import { createEntryDraft, createGroupDraft, createId } from "../model/settingLibraryEditing.js";
 import { descendants, findSelected, nodeKey } from "../model/settingLibraryTree.js";
 import { DynamicSettingsNameDialog } from "./DynamicSettingsDialogs.jsx";
@@ -113,13 +106,13 @@ function visibleTreeRows(library, expandedIds, query) {
 }
 
 function EntryIcon({ entry }) {
-  if (entry.dynamicMode === "ejs_controller") return <Code size={17} aria-hidden="true" />;
+  if (entry.contentMode === "ejs") return <Code size={17} aria-hidden="true" />;
   if (entry.dynamicMode === "ejs_reference") return <LinkSimple size={17} aria-hidden="true" />;
   if (entry.kind !== "normal") return <FileText size={17} aria-hidden="true" />;
   return <SettingEntryGlyph iconId={entry.iconId} size={17} aria-hidden="true" />;
 }
 
-export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ characterId, onDirtyChange }, ref) {
+export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ characterId, settingLibraries, onDirtyChange }, ref) {
   const [items, setItems] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [library, setLibrary] = useState(null);
@@ -172,47 +165,45 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     let active = true;
     setLoading(true);
     setError("");
-    getConversationSettingLibraries(characterId)
-      .then((loaded) => {
-        if (!active) return;
-        setItems(loaded);
+    selectedSessionIdRef.current = "";
+    libraryRef.current = null;
+    persistedRef.current = null;
+    setSelectedSessionId("");
+    setLibrary(null);
+    setPersisted(null);
+    void settingLibraries.readConversations(characterId).catch((cause) => {
+      if (!active) return;
+      setError(cause?.message || "读取动态设定失败");
+      setLoading(false);
+    });
+    return () => { active = false; };
+  }, [characterId, settingLibraries]);
+
+  useEffect(() => {
+    return settingLibraries.subscribe((kind, id, snapshot) => {
+      if (kind !== "conversations" || id !== characterId || snapshot.status !== "ready"
+        || dirtyRef.current || savingRef.current) return;
+      const loaded = snapshot.value;
+      setLoading(false);
+      setItems(loaded);
+      const sessionId = selectedSessionIdRef.current;
+      if (!sessionId) return;
+      const next = loaded.find((item) => item.sessionId === sessionId) || null;
+      if (!next) {
+        selectedSessionIdRef.current = "";
         setSelectedSessionId("");
         setLibrary(null);
         setPersisted(null);
-      })
-      .catch((cause) => active && setError(cause?.message || "读取动态设定失败"))
-      .finally(() => active && setLoading(false));
-    return () => { active = false; };
-  }, [characterId]);
-
-  useEffect(() => {
-    let active = true;
-    return listenRecordsChanged((event) => {
-      if (event.module !== "settingLibraries" || dirtyRef.current || savingRef.current) return;
-      getConversationSettingLibraries(characterId)
-        .then((loaded) => {
-          if (!active || dirtyRef.current || savingRef.current) return;
-          setItems(loaded);
-          const sessionId = selectedSessionIdRef.current;
-          if (!sessionId) return;
-          const next = loaded.find((item) => item.sessionId === sessionId) || null;
-          if (!next) {
-            selectedSessionIdRef.current = "";
-            setSelectedSessionId("");
-            setLibrary(null);
-            setPersisted(null);
-            libraryRef.current = null;
-            persistedRef.current = null;
-            return;
-          }
-          setLibrary(next.library);
-          setPersisted(next.library);
-          libraryRef.current = next.library;
-          persistedRef.current = next.library;
-        })
-        .catch(() => {});
+        libraryRef.current = null;
+        persistedRef.current = null;
+        return;
+      }
+      setLibrary(next.library);
+      setPersisted(next.library);
+      libraryRef.current = next.library;
+      persistedRef.current = next.library;
     });
-  }, [characterId]);
+  }, [characterId, settingLibraries]);
 
   useEffect(() => {
     if (notice !== "saved") return undefined;
@@ -244,7 +235,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   }
 
   async function refreshItems(preferredSessionId = "") {
-    const loaded = await getConversationSettingLibraries(characterId);
+    const loaded = await settingLibraries.readConversations(characterId);
     setItems(loaded);
     const next = loaded.find((item) => item.sessionId === preferredSessionId) || null;
     if (!next) {
@@ -269,7 +260,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     setError("");
     setNotice("");
     try {
-      await saveConversationSettingLibrary(characterId, selectedSessionId, libraryRef.current);
+      await settingLibraries.saveConversation(characterId, selectedSessionId, libraryRef.current);
       await refreshItems(selectedSessionId);
       setNotice("saved");
       return true;
@@ -371,7 +362,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     setSaving(true);
     setError("");
     try {
-      await resetConversationSettingLibrary(characterId, selectedSessionId);
+      await settingLibraries.resetConversation(characterId, selectedSessionId);
       await refreshItems();
     } catch (cause) {
       setError(cause?.message || "清空动态设定失败");
@@ -390,7 +381,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       savingRef.current = true;
       setSaving(true);
       setError("");
-      await saveConversationSettingVersion(characterId, sessionId, name);
+      await settingLibraries.saveConversationVersion(characterId, sessionId, name);
       setNameDialog(null);
       setNotice("saved");
     } catch (cause) {
@@ -489,7 +480,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                   role="treeitem"
                   aria-selected={selectedKey === key}
                   aria-expanded={row.kind === "group" ? Boolean(expanded) : undefined}
-                  className="dynamic-settings-tree-row"
+                  className={`dynamic-settings-tree-row${row.kind === "group" ? " is-folder" : ""}`}
                   style={{ paddingLeft: `${12 + row.level * 18}px` }}
                   key={key}
                   onClick={() => {
@@ -503,12 +494,12 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                     }
                   }}
                 >
-                  <span className="dynamic-settings-tree-chevron">
-                    {row.kind === "group" ? <DshTriangleRightIcon className={expanded ? "is-expanded" : ""} /> : null}
-                  </span>
                   <span className="dynamic-settings-tree-icon" aria-hidden="true">
                     {row.kind === "group"
-                      ? (expanded ? <DshFolderOpenIcon /> : <DshFolderClosedIcon />)
+                      ? <>
+                          <span className="dynamic-settings-tree-folder">{expanded ? <DshFolderOpenIcon /> : <DshFolderClosedIcon />}</span>
+                          <DshTriangleRightIcon className={`dynamic-settings-tree-arrow${expanded ? " is-expanded" : ""}`} />
+                        </>
                       : <EntryIcon entry={row.value} />}
                   </span>
                   <span>{row.kind === "group" ? row.value.name : row.value.title || "未命名设定"}</span>

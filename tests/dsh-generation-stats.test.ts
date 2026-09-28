@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DshGenerationStatsProjector,
   emptyStoredGenerationStats,
+  generationStatsFromSessionEvents,
   parseStoredGenerationStats,
   regenerationGenerationStats
 } from '@eleckoi/dsh-runtime'
@@ -17,6 +18,36 @@ function sessionEvent(seq: number, type: string, data: Record<string, unknown>, 
 }
 
 describe('DSH generation statistics projection', () => {
+  it('recomputes generation and context totals from the surviving Session events', () => {
+    const events = [
+      sessionEvent(1, 'request/context', { contextWindow: 1_000 }, 100),
+      sessionEvent(2, 'user/message', {
+        role: 'user', content: [{ type: 'text', text: '第一轮' }]
+      }, 110, 'append'),
+      sessionEvent(3, 'step/start', { turn: 1, step: 1 }, 120),
+      sessionEvent(4, 'assistant/message', {
+        turn: 1, step: 1, usage: { inputTokens: 100, outputTokens: 10 },
+        message: { role: 'assistant', content: [{ type: 'text', text: '旧答案一' }] }
+      }, 180, 'append'),
+      sessionEvent(5, 'step/end', { turn: 1, step: 1 }, 190),
+      sessionEvent(6, 'turn/start', { turn: 2 }, 200),
+      sessionEvent(7, 'user/message', {
+        role: 'user', content: [{ type: 'text', text: '第二轮' }]
+      }, 210, 'append'),
+      sessionEvent(8, 'step/start', { turn: 2, step: 1 }, 220),
+      sessionEvent(9, 'assistant/message', {
+        turn: 2, step: 1, usage: { inputTokens: 200, outputTokens: 20 },
+        message: { role: 'assistant', content: [{ type: 'text', text: '旧答案二' }] }
+      }, 300, 'append'),
+      sessionEvent(10, 'step/end', { turn: 2, step: 1 }, 310)
+    ].map((notification) => (notification as { params: { event: unknown } }).params.event)
+    const before = generationStatsFromSessionEvents(events as never, 'session-a').snapshot()
+    const after = generationStatsFromSessionEvents(events.slice(0, 5) as never, 'session-a').snapshot()
+    expect(before).toMatchObject({ turns: 2, steps: 2, llmMs: 140, tokenUsage: { outputTokens: 30 } })
+    expect(after).toMatchObject({ turns: 1, steps: 1, llmMs: 60, tokenUsage: { outputTokens: 10 } })
+    expect(after.contextBreakdown.messageTokens).toBeLessThan(before.contextBreakdown.messageTokens)
+  })
+
   it('counts a new reply from durable attempt and compact message streams', () => {
     const projector = new DshGenerationStatsProjector()
     projector.project(sessionEvent(1, 'step/start', { turn: 1, step: 1 }, 1_000), 'session-a')
@@ -173,7 +204,7 @@ describe('DSH generation statistics projection', () => {
     projector.project(sessionEvent(2, 'user/message', {
       role: 'user',
       content: [{ type: 'text', text: '12345678' }],
-      source: { kind: 'plugin', plugin: 'eleckoi-conversation-context' }
+      source: { kind: 'plugin:eleckoi-conversation-context' }
     }, 110, 'append'), 'session-a')
     const stats = projector.project(sessionEvent(3, 'request/header', {
       header: { config: { provider: 'test', model: 'test' }, tools: [{ name: 'tool-a' }] }

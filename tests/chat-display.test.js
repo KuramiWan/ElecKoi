@@ -25,6 +25,7 @@ describe("chat display preferences", () => {
       reply_spacing: 4,
       turn_spacing: 10,
       message_font_size: 15,
+      message_font_weight: 400,
       paragraph_spacing: 10,
     });
     expect(DEFAULT_CHAT_DISPLAY_PREFERENCES.profiles.agent).toMatchObject({
@@ -50,6 +51,7 @@ describe("chat display preferences", () => {
     expect(css["--chat-avatar-width"]).toBe("65px");
     expect(Number.parseFloat(css["--chat-avatar-height"])).toBeCloseTo(86.667, 3);
     expect(css["--chat-font-size"]).toBe("15px");
+    expect(css["--chat-font-weight"]).toBe(400);
     expect(Number.parseFloat(css["--chat-line-height"])).toBeCloseTo(23, 5);
     expect(css["--chat-reply-gap"]).toBe("4px");
     expect(css["--chat-turn-gap"]).toBe("10px");
@@ -78,6 +80,13 @@ describe("chat display preferences", () => {
       roleplay_timestamps_enabled: true,
       roleplay_message_floors_enabled: true,
     });
+  });
+
+  it("defaults older saved chat profiles to normal text weight", () => {
+    const saved = structuredClone(DEFAULT_CHAT_DISPLAY_PREFERENCES);
+    for (const profile of Object.values(saved.profiles)) delete profile.message_font_weight;
+    const parsed = chatDisplayPreferencesSchema.parse(saved);
+    expect(Object.values(parsed.profiles).map((profile) => profile.message_font_weight)).toEqual([400, 400, 400]);
   });
 
   it("keeps message floors stable across paged history and pending replies", () => {

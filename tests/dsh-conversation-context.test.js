@@ -1,22 +1,19 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createUserMessage, markAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import {
-  createConversationSeed,
   installConversationContext,
+  projectCurrentUserPrompt,
   projectRequestMessages,
   projectProductHistory,
   projectionPlanFromMessages,
-  recordRequestContextSnapshot,
   requestContextItems,
   requestProjectionPlan,
   renderRuntimeContext,
   settingInjections
 } from '../resources/dsh/conversation-context.mjs'
-
-const model = { provider: 'moonshotai-cn', model: 'kimi-k3' }
 
 function text(message) {
   return message.content.filter((part) => part.type === 'text').map((part) => part.text).join('')
@@ -30,32 +27,6 @@ function context(entries, promptPositions = []) {
 }
 
 describe('DSH conversation context', () => {
-  it('creates a balanced seed from product history without the current prompt', () => {
-    const seed = createConversationSeed({
-      conversationContext: {
-        history: [
-          { role: 'assistant', content: '开场' },
-          { role: 'user', content: '上一问' },
-          { role: 'assistant', content: '上一答' }
-        ]
-      }
-    }, model)
-
-    expect(seed.map((event) => event.seq)).toEqual(seed.map((_, index) => index))
-    expect(seed.filter((event) => event.type === 'turn/start')).toHaveLength(2)
-    expect(seed.filter((event) => event.type === 'turn/end')).toHaveLength(2)
-    expect(seed.filter((event) => event.type === 'step/start')).toHaveLength(2)
-    expect(seed.filter((event) => event.type === 'step/end')).toHaveLength(2)
-    expect(seed.filter((event) => event.type === 'user/message').map((event) => text(event.data))).toEqual(['上一问'])
-    expect(seed.filter((event) => event.type === 'assistant/message').map((event) => text(event.data.message))).toEqual(['开场', '上一答'])
-    expect(seed.filter((event) => event.type === 'assistant/message').every((event) => Array.isArray(event.data.stream))).toBe(true)
-    expect(JSON.stringify(seed)).not.toContain('最新用户输入')
-    expect(seed.filter((event) => event.type === 'assistant/message')[0].data.message.source).toEqual({
-      kind: 'model',
-      ...model
-    })
-  })
-
   it('projects fixed and custom positions with their selected user/assistant identities', () => {
     const plan = requestProjectionPlan(context([
       setting('point-1', '第一插入点', 'insert_point_1', 1),
@@ -67,7 +38,7 @@ describe('DSH conversation context', () => {
       { ...setting('point-5', '工具流程后', 'insert_point_5', 1), insertRole: 'assistant' }
     ], [{ id: 'custom-before-2', name: '二号位前扩展', anchor: 'insert_point_2', side: 'before_setting_position', order: 1 }]))
     const messages = [
-      message('system', '系统指令', { kind: 'plugin', plugin: 'system' }),
+      message('system', '系统指令', { kind: 'plugin:system' }),
       message('user', '历史用户', { kind: 'user' }),
       message('assistant', '历史回复', { kind: 'model', provider: 'test', model: 'test' }),
       message('user', '最新用户输入', { kind: 'user' }),
@@ -111,37 +82,11 @@ describe('DSH conversation context', () => {
     ])
   })
 
-  it('records one readable context snapshot for each DSH request boundary', () => {
-    const root = mkdtempSync(join(tmpdir(), 'eleckoi-request-context-'))
-    const file = join(root, 'contexts', 'thread.jsonl')
-    const session = {
-      snapshotEvents: () => [{ seq: 7, type: 'step/start', time: 1_234, data: { turn: 2, step: 3 } }]
-    }
-    const messages = [message('user', '当前问题', { kind: 'user' })]
-
-    recordRequestContextSnapshot(file, session, messages, [])
-    recordRequestContextSnapshot(file, session, messages, [])
-
-    const rows = readFileSync(file, 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line))
-    expect(rows.filter((row) => row.type === 'definition')).toEqual([
-      expect.objectContaining({ title: '用户最新输入', content: '当前问题' })
-    ])
-    expect(rows.filter((row) => row.type === 'request')).toEqual([expect.objectContaining({
-      requestSeq: 7,
-      turn: 2,
-      step: 3,
-      timeMillis: 1_234,
-      items: [expect.objectContaining({ order: 1, key: expect.any(String) })]
-    })])
-    rmSync(root, { recursive: true, force: true })
-  })
-
   it('registers a durable projection definition instead of a flattened runtime context', async () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-conversation-context-'))
     const sessionId = 'session-context-test'
-    writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({
-      model: { systemPrompt: '' },
-      conversationContext: {
+    const contextFile = join(root, 'conversation-context.json')
+    writeFileSync(contextFile, JSON.stringify({
         history: [{ role: 'assistant', content: '不应重复写入本轮批次' }],
         settingLibrary: {
           entries: [
@@ -150,8 +95,8 @@ describe('DSH conversation context', () => {
           ],
           promptPositions: []
         }
-      }
     }))
+    writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({ model: { systemPrompt: '' }, contextFile }))
     const handlers = new Map()
     const disposers = []
     const agentCtx = {
@@ -177,7 +122,7 @@ describe('DSH conversation context', () => {
       ['insert_point_1', '固定背景'],
       ['insert_point_5', '<roleplay_output_protocol>必须使用 FINAL</roleplay_output_protocol>']
     ])
-    expect(decision.messages.at(-1).source.plugin).toBe('eleckoi-request-projection')
+    expect(decision.messages.at(-1).source.kind).toBe('plugin:eleckoi-request-projection')
     dispose()
     expect(disposers.every((item) => item.mock.calls.length === 1)).toBe(true)
     rmSync(root, { recursive: true, force: true })
@@ -219,23 +164,22 @@ describe('DSH conversation context', () => {
     ])
     expect(JSON.stringify(projected)).not.toContain('call-google-1')
     expect(JSON.stringify(projected)).not.toContain('google-response')
-    expect(projected[1].source).toEqual({ kind: 'plugin', plugin: 'eleckoi-product-history' })
+    expect(projected[1].source).toEqual({ kind: 'plugin:eleckoi-product-history' })
   })
 
   it('sends only product user and assistant history on the next turn request', () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-product-history-request-'))
     const sessionId = 'session-product-history-request'
     const requestContextFile = join(root, 'request-context.jsonl')
-    writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({
-      model: { systemPrompt: '' },
-      requestContextFile,
-      conversationContext: {
+    const contextFile = join(root, 'conversation-context.json')
+    writeFileSync(contextFile, JSON.stringify({
+        currentPromptText: '当前问题（已处理）',
         history: [
           { role: 'user', content: '上一问' },
           { role: 'assistant', content: '上一答' }
         ]
-      }
     }))
+    writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({ model: { systemPrompt: '' }, contextFile }))
     const nativeMessages = [
       message('assistant', '上一轮思考', { kind: 'model', provider: 'test', model: 'test' }),
       {
@@ -283,21 +227,62 @@ describe('DSH conversation context', () => {
     expect(result.messages.map((item) => [item.role, text(item)])).toEqual([
       ['user', '上一问'],
       ['assistant', '上一答'],
-      ['user', '当前问题']
+      ['user', '当前问题（已处理）']
     ])
+    expect(text(nativeMessages.at(-1))).toBe('当前问题')
     expect(JSON.stringify(result.messages)).not.toContain('上一轮思考')
     expect(JSON.stringify(result.messages)).not.toContain('call-1')
     expect(JSON.stringify(result.messages)).not.toContain('旧工具结果')
     expect(streamed).toHaveBeenCalledOnce()
+    expect(existsSync(requestContextFile)).toBe(false)
+
+    nativeMessages.push(
+      {
+        id: 'current-tool-call', role: 'assistant',
+        content: [{ type: 'tool-call', id: 'call-2', name: 'lookup', arguments: '{}' }],
+        source: { kind: 'model', provider: 'test', model: 'test' }
+      },
+      {
+        id: 'current-tool-result', role: 'user',
+        content: [{ type: 'tool-result', toolCallId: 'call-2', content: [{ type: 'text', text: '本轮工具结果' }] }],
+        source: { kind: 'tool', callId: 'call-2' }
+      }
+    )
+    const continuation = listeners.get('llm/stream')(options, vi.fn())
+    expect(continuation.messages.map((item) => [item.role, text(item)])).toEqual([
+      ['user', '上一问'],
+      ['assistant', '上一答'],
+      ['user', '当前问题（已处理）'],
+      ['assistant', ''],
+      ['user', '']
+    ])
+    expect(JSON.stringify(continuation.messages)).toContain('本轮工具结果')
+    expect(JSON.stringify(continuation.messages)).not.toContain('旧工具结果')
+    expect(JSON.stringify(continuation.messages)).not.toContain('上一轮思考')
 
     dispose()
     rmSync(root, { recursive: true, force: true })
   })
 
+  it('changes only the provider-facing latest user text and retains its image blocks', () => {
+    const image = { type: 'image', mediaType: 'image/png', data: 'aW1hZ2U=' }
+    const previous = message('user', '上一轮', { kind: 'user' })
+    const current = createUserMessage({
+      content: [{ type: 'text', text: '原文' }, image],
+      source: { kind: 'user' }
+    })
+    const projected = projectCurrentUserPrompt([previous, current], { currentPromptText: '模型提示词' })
+
+    expect(projected[0]).toBe(previous)
+    expect(text(projected[1])).toBe('模型提示词')
+    expect(projected[1].content[1]).toEqual(image)
+    expect(text(current)).toBe('原文')
+  })
+
   it('preserves a matching compaction checkpoint and replaces its native tail', () => {
     const checkpoint = createUserMessage({
       content: [{ type: 'text', text: '<compacted-summary>较早历史摘要</compacted-summary>' }],
-      source: { kind: 'plugin', plugin: 'compaction' }
+      source: { kind: 'compact-checkpoint' }
     })
     const projected = projectProductHistory([
       checkpoint,

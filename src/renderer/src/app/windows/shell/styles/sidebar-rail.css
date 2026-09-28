@@ -28,6 +28,17 @@
   display: grid;
   gap: 18px;
   justify-items: center;
+  align-content: start;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.rail-nav-group::-webkit-scrollbar {
+  display: none;
 }
 
 .rail-profile-zone {
@@ -44,6 +55,7 @@
   gap: 12px;
   width: 100%;
   margin-top: auto;
+  flex: none;
 }
 
 .rail-user-trigger {
@@ -56,6 +68,7 @@
   padding: 2px;
   border: 1px solid transparent;
   border-radius: 999px;
+  corner-shape: round;
   background:
     linear-gradient(var(--rail), var(--rail)) padding-box,
     linear-gradient(145deg, #ffffff 0%, #f7fdff 34%, #dff6ff 64%, #ffffff 100%) border-box;
@@ -179,7 +192,7 @@
   transform: scale(0.94);
 }
 
-.rail-nav-button svg {
+.rail-nav-button.is-product-icon svg {
   width: 25px;
   height: 25px;
   fill: none;
@@ -188,6 +201,20 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+}
+
+.rail-nav-button.is-plugin-icon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.rail-nav-button .plugin-nav-icon {
+  width: 25px;
+  height: 25px;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: none;
 }
 
 .rail-nav-button .nav-fill {

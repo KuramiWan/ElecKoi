@@ -1,8 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { MagnifyingGlass, Plus, SlidersHorizontal } from "@phosphor-icons/react";
-import { listenRecordsChanged } from "../../../bridge/recordEvents.js";
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
-import { exportRegexRules, getRegexRules, importRegexRules, saveRegexRules } from "../api/regexRulesApi.js";
 import {
   REGEX_SCOPES,
   createRegexRule,
@@ -26,7 +24,7 @@ function downloadJson(fileName, json) {
   URL.revokeObjectURL(url);
 }
 
-export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId, onDirtyChange }, ref) {
+export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId, regexRules, onDirtyChange }, ref) {
   const [collection, setCollection] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [selectedId, setSelectedId] = useState("");
@@ -71,10 +69,9 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       setError("");
       setNotice("");
     }
-    async function loadLatest(resetView = false) {
-      const loaded = await getRegexRules(characterId);
-      if (!active) return;
-      if (dirtyRef.current || savingRef.current) {
+    function acceptLatest(loaded, resetView = false) {
+      if (savingRef.current) return;
+      if (dirtyRef.current) {
         const baseline = persistedRef.current;
         const changed = !baseline
           || baseline.revision !== loaded.revision
@@ -89,17 +86,25 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       applyLoaded(loaded, resetView);
     }
     setError("");
-    void loadLatest(true).catch((cause) => active && setError(cause?.message || "读取正则配置失败"));
-    const stopListening = listenRecordsChanged((event) => {
-      if (event.module !== "agentPresets" && event.module !== "regexRules") return;
-      if (savingRef.current) return;
-      void loadLatest().catch((cause) => active && setError(cause?.message || "同步正则配置失败"));
+    dirtyRef.current = false;
+    savingRef.current = false;
+    collectionRef.current = null;
+    persistedRef.current = null;
+    setCollection(null);
+    setPersisted(null);
+    const stopListening = regexRules.subscribe((kind, id, snapshot) => {
+      if (!active || kind !== "configuration" || id !== characterId) return;
+      if (snapshot.status === "ready") acceptLatest(snapshot.value, !collectionRef.current);
+      if (snapshot.status === "error") setError(snapshot.error || "同步正则配置失败");
     });
+    const cached = regexRules.getSnapshot(characterId);
+    if (cached.status === "ready") acceptLatest(cached.value, true);
+    void regexRules.read(characterId).catch((cause) => active && setError(cause?.message || "读取正则配置失败"));
     return () => {
       active = false;
       stopListening();
     };
-  }, [characterId]);
+  }, [characterId, regexRules]);
 
   function changeCollection(nextOrUpdater) {
     setError("");
@@ -119,7 +124,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       setSaving(true);
       setError("");
       try {
-        const saved = await saveRegexRules(characterId, collectionRef.current);
+        const saved = await regexRules.save(characterId, collectionRef.current);
         collectionRef.current = saved;
         persistedRef.current = saved;
         pendingLatestRef.current = null;
@@ -200,7 +205,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
     setError("");
     try {
       const documents = await Promise.all(files.map(async (file) => ({ displayName: file.name, json: await file.text() })));
-      const result = await importRegexRules(characterId, collectionRef.current, importScopeRef.current, documents);
+      const result = await regexRules.import(characterId, collectionRef.current, importScopeRef.current, documents);
       collectionRef.current = result.collection;
       persistedRef.current = result.collection;
       setCollection(result.collection);
@@ -217,7 +222,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
 
   async function handleExport(ruleIds) {
     try {
-      const result = await exportRegexRules(characterId, ruleIds);
+      const result = await regexRules.export(characterId, ruleIds);
       downloadJson(result.fileName, result.json);
     } catch (cause) {
       setError(cause?.message || "导出正则失败");
@@ -258,6 +263,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
         <RegexRuleInspector
           scope={selected.scope}
           rule={selected.rule}
+          onTest={(text, rule, target) => regexRules.test(text, rule, target)}
           onChange={changeSelected}
           onMoveScope={moveSelectedScope}
           onClose={() => setSelectedId("")}

@@ -10,6 +10,19 @@ export function readSessionSnapshot(root, sessionId) {
   return value
 }
 
+export function commitSessionPreset(root, sessionId, mountedPresetId) {
+  const snapshot = readSessionSnapshot(root, sessionId)
+  const { pendingPresetId: _pending, ...rest } = snapshot
+  const path = snapshotPath(root, sessionId)
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
+  try {
+    writeFileSync(temporary, `${JSON.stringify({ ...rest, mountedPresetId }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+    renameSync(temporary, path)
+  } finally {
+    rmSync(temporary, { force: true })
+  }
+}
+
 /**
  * Materialize the immutable request/tool authority inherited by one in-process
  * child before DSH publishes the child Session or starts its first model step.

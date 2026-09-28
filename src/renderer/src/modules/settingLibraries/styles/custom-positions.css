@@ -19,7 +19,7 @@
 .setting-position-guide-track { display: grid; grid-template-rows: 1fr 12px 1fr; place-items: center; width: 28px; }
 .setting-position-guide-track i { width: 1px; height: 100%; background: transparent; }
 .setting-position-guide-track i.is-connected { background: var(--line-strong); }
-.setting-position-guide-track b { box-sizing: border-box; width: 10px; height: 10px; border: 2px solid color-mix(in srgb, var(--muted) 54%, transparent); border-radius: 50%; background: var(--chat); }
+.setting-position-guide-track b { box-sizing: border-box; width: 10px; height: 10px; border: 2px solid color-mix(in srgb, var(--muted) 54%, transparent); border-radius: 50%; corner-shape: round; background: var(--chat); }
 .setting-position-guide-row.is-custom .setting-position-guide-track b { width: 11px; height: 11px; border-color: var(--blue); background: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent); }
 .setting-position-guide-row.is-selected .setting-position-guide-track b { box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 18%, transparent); }
 .setting-position-fixed-card { display: flex; align-items: center; gap: 10px; min-width: 0; margin: 5px 0; padding: 0 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: color-mix(in srgb, var(--list) 46%, var(--chat)); }
@@ -30,7 +30,7 @@
 .setting-position-drag-handle:active { cursor: grabbing; }
 .setting-position-guide-main { display: flex; align-items: center; min-width: 0; gap: 8px; padding: 0 4px; text-align: left; color: var(--text); }
 .setting-position-guide-main strong { overflow: hidden; font-size: 14px; font-weight: 580; text-overflow: ellipsis; white-space: nowrap; }
-.setting-position-guide-main span { flex: none; padding: 2px 7px; border-radius: 999px; color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); font-size: 11px; }
+.setting-position-guide-main span { flex: none; padding: 2px 7px; border-radius: 999px; corner-shape: round; color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); font-size: 11px; }
 
 .setting-position-more { position: relative; align-self: center; }
 .setting-position-more summary { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; color: var(--muted); cursor: pointer; list-style: none; }
@@ -55,7 +55,7 @@
 .setting-position-button.is-primary:hover { background: var(--blue-hover); }
 .setting-library-placement-heading .setting-library-position-manage { display: inline-flex; align-items: center; gap: 6px; height: 30px; margin: 0; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 7px; color: var(--text); background: var(--surface-raised); font-size: 12px; font-weight: 400; }
 .setting-position-guide::-webkit-scrollbar { width: 8px; }
-.setting-position-guide::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--muted) 42%, transparent); background-clip: content-box; }
+.setting-position-guide::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; corner-shape: round; background: color-mix(in srgb, var(--muted) 42%, transparent); background-clip: content-box; }
 .setting-position-guide::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 
 @media (prefers-reduced-motion: reduce) {

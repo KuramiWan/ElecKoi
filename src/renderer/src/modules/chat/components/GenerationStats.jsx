@@ -337,7 +337,7 @@ export function formatTokens(value) {
 
 export function formatDuration(milliseconds) {
   const seconds = milliseconds / 1000;
-  if (seconds < 60) return `${Math.round(seconds * 10) / 10}秒`;
+  if (seconds < 60) return `${seconds > 0 ? Math.max(0.1, Math.round(seconds * 10) / 10) : 0}秒`;
   const whole = Math.round(seconds);
   return `${Math.floor(whole / 60)}分${whole % 60}秒`;
 }

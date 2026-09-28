@@ -3,10 +3,51 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { DshRuntime } from '@eleckoi/dsh-runtime'
+import { DshDesktopPluginHost, DshRuntime, type DshRuntimeOptions } from '@eleckoi/dsh-runtime'
 import { describe, expect, it, vi } from 'vitest'
 
+function createHostedRuntime(options: DshRuntimeOptions): DshRuntime {
+  const runtime = new DshRuntime(options)
+  runtime.bindSessionHost(new DshDesktopPluginHost({
+    runtimeDataRoot: options.runtimeDataRoot,
+    workspaceRoot: options.workspaceRoot,
+    agentPatchPath: resolve('resources/dsh/desktop-agent.patch.yml'),
+    hostConfiguration: () => runtime.hostConfiguration(),
+    executablePath: options.executablePath
+  }))
+  return runtime
+}
+
 describe('packaged DSH runtime composition', () => {
+  it('removes abandoned conversation text bridges and old request caches on startup', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-bridge-cleanup-'))
+    const runtimeDataRoot = join(root, 'runtime')
+    const conversationRoot = join(runtimeDataRoot, 'sessions', 'conversation-a')
+    const snapshotRoot = join(runtimeDataRoot, 'session-snapshots')
+    await mkdir(join(conversationRoot, 'eleckoi-request-context'), { recursive: true })
+    await mkdir(snapshotRoot, { recursive: true })
+    await writeFile(join(conversationRoot, 'eleckoi-conversation-context.json'), '{"history":[{"content":"old text"}]}')
+    await writeFile(join(conversationRoot, 'eleckoi-setting-library-state.json'), '{"history":[{"content":"old text"}]}')
+    await writeFile(join(conversationRoot, 'eleckoi-request-context', 'thread-a.jsonl'), '{"content":"old text"}\n')
+    await writeFile(join(snapshotRoot, 'thread-a.json'), JSON.stringify({ runtimeThreadId: 'thread-a', conversationContext: { history: ['old text'] } }))
+    const runtime = new DshRuntime({
+      configPath: join(root, 'unused.yml'), workspaceRoot: join(root, 'workspace'),
+      runtimeDataRoot, executablePath: 'unused', presetTemplatePath: join(root, 'unused-preset.yml')
+    })
+    try {
+      for (const name of ['eleckoi-conversation-context.json', 'eleckoi-setting-library-state.json']) {
+        await expect(readFile(join(conversationRoot, name), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+      }
+      await expect(readFile(join(conversationRoot, 'eleckoi-request-context', 'thread-a.jsonl'), 'utf8'))
+        .rejects.toMatchObject({ code: 'ENOENT' })
+      expect(JSON.parse(await readFile(join(snapshotRoot, 'thread-a.json'), 'utf8')))
+        .toEqual({ runtimeThreadId: 'thread-a' })
+    } finally {
+      await runtime.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 20_000)
+
   it('surfaces the provider failure recorded by a failed turn/end event', async () => {
     const server = createServer(async (request, response) => {
       for await (const _chunk of request) {
@@ -27,7 +68,7 @@ describe('packaged DSH runtime composition', () => {
     if (address === null || typeof address === 'string') throw new Error('Local test server did not expose a TCP port')
 
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-provider-error-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -36,14 +77,16 @@ describe('packaged DSH runtime composition', () => {
     })
 
     try {
+      // The desktop host can boot before the first model is configured.
+      await (runtime as unknown as { sessionHost: DshDesktopPluginHost }).sessionHost.start()
       await expect(runtime.stream('conversation-provider-error', '你好', {
         configId: 'provider-error',
-        provider: 'custom',
+        provider: 'deepseek',
         apiKey: 'test-key',
         baseUrl: `http://127.0.0.1:${address.port}`,
         model: 'provider-error-model',
         systemPrompt: '',
-        apiFormat: 'openai-completions',
+        apiFormat: 'openai-responses',
         customHeaders: {},
         contextWindow: 128_000,
         supportsImageInput: false
@@ -61,7 +104,7 @@ describe('packaged DSH runtime composition', () => {
 
   it('normalizes and persists submitted images with the complete DSH policy', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-image-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -94,7 +137,7 @@ describe('packaged DSH runtime composition', () => {
 
   it('detaches a cancelled run before the runtime acknowledgement returns', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-cancel-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -102,22 +145,22 @@ describe('packaged DSH runtime composition', () => {
       executablePath: process.execPath
     })
     let acknowledge!: (value: object) => void
-    const request = vi.fn(() => new Promise<object>((resolveRequest) => { acknowledge = resolveRequest }))
+    const cancel = vi.fn(() => new Promise<object>((resolveRequest) => { acknowledge = resolveRequest }))
     const active = { cancelled: false, runtimeThreadId: 'thread-a' }
     const internals = runtime as unknown as {
-      harness: { client: { request: typeof request }; close(): Promise<void> } | undefined
+      sessionHost: { cancel: typeof cancel; close(): Promise<void> } | undefined
       activeRuns: Map<string, typeof active>
       cancellationTasks: Map<string, Promise<void>>
       waitForCancellationBarrier(conversationId: string): Promise<void>
     }
-    internals.harness = { client: { request }, close: async () => undefined }
+    internals.sessionHost = { cancel, close: async () => undefined }
     internals.activeRuns.set('conversation-a', active)
 
     try {
       const cancellation = runtime.stop('conversation-a')
       expect(active.cancelled).toBe(true)
       expect(internals.activeRuns.has('conversation-a')).toBe(false)
-      expect(request).toHaveBeenCalledWith('session/cancel', { sessionId: 'thread-a' })
+      expect(cancel).toHaveBeenCalledWith('thread-a')
       let barrierSettled = false
       const barrier = internals.waitForCancellationBarrier('conversation-a').then(() => { barrierSettled = true })
       await Promise.resolve()
@@ -135,27 +178,27 @@ describe('packaged DSH runtime composition', () => {
 
   it('cancels a run that is still starting without contacting an unstarted session', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-starting-cancel-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
       runtimeDataRoot: join(root, 'runtime'),
       executablePath: process.execPath
     })
-    const request = vi.fn(async () => ({}))
+    const cancel = vi.fn(async () => true)
     const starting = { cancelled: false, runtimeThreadId: 'thread-starting' }
     const internals = runtime as unknown as {
-      harness: { client: { request: typeof request }; close(): Promise<void> } | undefined
+      sessionHost: { cancel: typeof cancel; close(): Promise<void> } | undefined
       startingRuns: Map<string, typeof starting>
     }
-    internals.harness = { client: { request }, close: async () => undefined }
+    internals.sessionHost = { cancel, close: async () => undefined }
     internals.startingRuns.set('conversation-a', starting)
 
     try {
       await expect(runtime.stop('conversation-a')).resolves.toBe(true)
       expect(starting.cancelled).toBe(true)
       expect(internals.startingRuns.has('conversation-a')).toBe(false)
-      expect(request).not.toHaveBeenCalled()
+      expect(cancel).not.toHaveBeenCalled()
     } finally {
       await runtime.close()
       await rm(root, { recursive: true, force: true })
@@ -164,7 +207,7 @@ describe('packaged DSH runtime composition', () => {
 
   it('uses DSH balanced retention when no absolute compaction threshold is configured', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-default-compaction-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -182,14 +225,14 @@ describe('packaged DSH runtime composition', () => {
         id: 'agent-preset-standard', versionId: 'test-default-v1', name: '测试预设', roleplayPlan: { steps: [] }
       })
       const composition = await readFile(
-        join(root, 'runtime', 'home', '.agent-presets', mountedPresetId, 'agent.cordis.yml'),
+        join(root, 'runtime', 'generated-presets', mountedPresetId, 'preset.json'),
         'utf8'
       )
 
-      expect(composition).toContain('thresholdRatio: 0.8')
-      expect(composition).toContain('retainTokens: 0')
+      expect(composition).toContain('"thresholdRatio": 0.8')
+      expect(composition).toContain('"retainTokens": 0')
       expect(composition).not.toContain('retainRatio')
-      expect(composition).not.toMatch(/name:\s*['"]@deepseek-ai\//)
+      expect(composition).not.toMatch(/"name":\s*"@deepseek-ai\//)
       const normalizedComposition = composition.replaceAll('\\\\', '/').replaceAll('\\', '/')
       expect(normalizedComposition).toMatch(/dsh-agent-instructions\/lib\/index\.js/)
       expect(normalizedComposition).toMatch(/dsh-compaction-basic\/lib\/index\.js/)
@@ -203,7 +246,7 @@ describe('packaged DSH runtime composition', () => {
 
   it('materializes an absolute compaction threshold without a conflicting fixed retention ratio', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-compaction-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -239,12 +282,12 @@ describe('packaged DSH runtime composition', () => {
         }
       )
       const composition = await readFile(
-        join(root, 'runtime', 'home', '.agent-presets', mountedPresetId, 'agent.cordis.yml'),
+        join(root, 'runtime', 'generated-presets', mountedPresetId, 'preset.json'),
         'utf8'
       )
 
-      expect(composition).toContain('thresholdRatio: 0.2')
-      expect(composition).toContain('retainTokens: 0')
+      expect(composition).toContain('"thresholdRatio": 0.2')
+      expect(composition).toContain('"retainTokens": 0')
       expect(composition).not.toContain('retainRatio: 0.16')
     } finally {
       await runtime.close()
@@ -254,22 +297,22 @@ describe('packaged DSH runtime composition', () => {
 
   it('disposes one conversation session and clears its in-memory trajectory state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-dispose-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
       runtimeDataRoot: join(root, 'runtime'),
       executablePath: process.execPath
     })
-    const request = vi.fn(async () => ({}))
+    const dispose = vi.fn(async () => true)
     const internals = runtime as unknown as {
-      harness: { client: { request: typeof request }; close(): Promise<void> } | undefined
+      sessionHost: { dispose: typeof dispose; close(): Promise<void> } | undefined
       conversationSessions: Map<string, string>
       activeRuns: Map<string, { cancelled: boolean }>
       trajectoryEvents: Map<string, unknown[]>
       generationStatsProjectors: Map<string, unknown>
     }
-    internals.harness = { client: { request }, close: async () => undefined }
+    internals.sessionHost = { dispose, close: async () => undefined }
     internals.conversationSessions.set('target', 'thread-a')
     internals.trajectoryEvents.set('target\u0000thread-a', [{}])
     internals.trajectoryEvents.set('other\u0000thread-b', [{}])
@@ -285,7 +328,7 @@ describe('packaged DSH runtime composition', () => {
     try {
       await runtime.disposeConversation('target')
 
-      expect(request).toHaveBeenCalledWith('session/dispose', { sessionId: 'thread-a' })
+      expect(dispose).toHaveBeenCalledWith('thread-a')
       expect(internals.conversationSessions.has('target')).toBe(false)
       expect(internals.activeRuns.has('target')).toBe(false)
       expect([...internals.trajectoryEvents.keys()]).toEqual(['other\u0000thread-b'])
@@ -300,7 +343,7 @@ describe('packaged DSH runtime composition', () => {
 
   it('boots the real Cordis plugin tree and completes the JSON-RPC handshake', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-runtime-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -316,7 +359,7 @@ describe('packaged DSH runtime composition', () => {
     }
   }, 30_000)
 
-  it('streams a real Agent reply through the packaged runtime and a local DeepSeek endpoint', async () => {
+  it('streams a real Agent reply through the packaged runtime and a local DeepSeek Chat Completions endpoint', async () => {
     const requests: Array<{ authorization: string | undefined; body: Record<string, unknown> }> = []
     const server = createServer(async (request, response) => {
       let rawBody = ''
@@ -329,16 +372,14 @@ describe('packaged DSH runtime composition', () => {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache'
       })
-      const base = {
-        id: 'chatcmpl-local-test',
-        object: 'chat.completion.chunk',
-        created: 1,
-        model: 'deepseek-chat'
-      }
-      response.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] })}\n\n`)
-      response.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { content: '本地 Agent 回复' }, finish_reason: null }] })}\n\n`)
-      response.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 } })}\n\n`)
-      response.end('data: [DONE]\n\n')
+      const base = { id: 'chatcmpl-local-test', object: 'chat.completion.chunk', created: 1, model: 'deepseek-chat' }
+      for (const choice of [
+        { delta: { role: 'assistant', content: '' }, finish_reason: null },
+        { delta: { content: '本地 Agent 回复' }, finish_reason: null },
+        { delta: {}, finish_reason: 'stop' }
+      ]) response.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, ...choice }] })}\n\n`)
+      response.write('data: [DONE]\n\n')
+      response.end()
     })
     server.listen(0, '127.0.0.1')
     await once(server, 'listening')
@@ -346,7 +387,7 @@ describe('packaged DSH runtime composition', () => {
     if (address === null || typeof address === 'string') throw new Error('Local test server did not expose a TCP port')
 
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-conversation-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -428,17 +469,15 @@ describe('packaged DSH runtime composition', () => {
       expect(requests).toHaveLength(1)
       expect(requests[0]?.authorization).toBe('Bearer local-test-key')
       expect(requests[0]?.body).toMatchObject({ model: 'deepseek-chat', stream: true, temperature: 0.65 })
-      expect(requests[0]?.body.messages).toEqual(expect.arrayContaining([
-        expect.objectContaining({ role: 'system', content: expect.stringContaining('{{getvar::好感度}}') })
-      ]))
+      expect(JSON.stringify(requests[0]?.body.messages)).toContain('{{getvar::好感度}}')
       const dialogue = (requests[0]?.body.messages as Array<{ role?: string; content?: unknown }>)
         .filter((message) => message.role === 'user' || message.role === 'assistant')
-      expect(dialogue.slice(0, 4).map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'user'])
+      expect(dialogue.slice(0, 3).map((message) => message.role)).toEqual(['user', 'assistant', 'user'])
       expect(JSON.stringify(dialogue[0]?.content)).toContain('ELECKOI_CACHE_CONTEXT_SENTINEL')
       expect(JSON.stringify(dialogue[1]?.content)).toContain('你好啊')
       expect(JSON.stringify(dialogue[2]?.content)).toContain('你好')
       expect(JSON.stringify(dialogue[3]?.content)).toContain('ELECKOI_HIDDEN_TIMELINE_SENTINEL')
-      expect(dialogue.filter((message) => message.role === 'user' && message.content === '你好')).toHaveLength(1)
+      expect(dialogue.filter((message) => message.role === 'user' && JSON.stringify(message.content).includes('你好'))).toHaveLength(1)
       expect(JSON.stringify(requests[0]?.body.messages)).toContain('ELECKOI_CACHE_CONTEXT_SENTINEL')
       expect(JSON.stringify(requests[0]?.body.messages)).toContain('ELECKOI_HIDDEN_TIMELINE_SENTINEL')
       expect(JSON.stringify(dialogue)).not.toContain('prior transcript')
@@ -506,14 +545,12 @@ describe('packaged DSH runtime composition', () => {
       const persistedSessionRoot = join(root, 'runtime', 'sessions')
       expect((await readdir(persistedSessionRoot, { recursive: true })).some((entry) => entry.split(/[\\/]/).at(-1) === 'runtime-thread-a')).toBe(true)
       const persistedRoot = join(persistedSessionRoot, 'conversation-local-test')
-      const settingBridge = JSON.parse(await readFile(join(persistedRoot, 'eleckoi-setting-library-state.json'), 'utf8'))
-      expect(settingBridge.history).toEqual([
-        { role: 'assistant', content: '你好啊', speakerName: '角色 A' },
-        { role: 'user', content: '你好' },
-        { role: 'assistant', content: '本地 Agent 回复', speakerName: '角色 A' },
-        { role: 'user', content: '第二轮问题' }
-      ])
-      expect(settingBridge.variableState).toEqual({})
+      await expect(readFile(join(persistedRoot, 'eleckoi-setting-library-state.json'), 'utf8'))
+        .rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(readFile(join(persistedRoot, 'eleckoi-conversation-context.json'), 'utf8'))
+        .rejects.toMatchObject({ code: 'ENOENT' })
+      expect(JSON.parse(await readFile(join(root, 'runtime', 'session-snapshots', 'runtime-thread-a.json'), 'utf8')))
+        .not.toHaveProperty('conversationContext')
 
       await expect(runtime.stream('conversation-local-test', '第三轮问题', {
         configId: 'local-test-config',
@@ -592,7 +629,7 @@ describe('packaged DSH runtime composition', () => {
       const previousStats = runtime.generationStats('conversation-local-test', 'runtime-thread-a')
       expect(previousStats?.turns).toBe(3)
       await expect(runtime.stream('conversation-local-test', '你好', {
-        configId: 'local-main',
+        configId: 'local-test-config',
         provider: 'deepseek',
         apiKey: 'local-test-key',
         baseUrl: `http://127.0.0.1:${address.port}`,
@@ -628,12 +665,12 @@ describe('packaged DSH runtime composition', () => {
       expect(JSON.stringify(regenerationDialogue[0]?.content)).toContain('你好啊')
       expect(JSON.stringify(regenerationDialogue[1]?.content)).toContain('你好')
       expect(JSON.stringify(regenerationDialogue)).not.toContain('本地 Agent 回复')
-      expect(regenerationDialogue.filter((message) => message.role === 'user' && message.content === '你好')).toHaveLength(1)
+      expect(regenerationDialogue.filter((message) => message.role === 'user' && JSON.stringify(message.content).includes('你好'))).toHaveLength(1)
       const persistedAfterRegeneration = await readdir(persistedSessionRoot, { recursive: true })
       expect(persistedAfterRegeneration.some((entry) => entry.split(/[\\/]/).at(-1) === 'runtime-thread-a')).toBe(false)
       expect(persistedAfterRegeneration.some((entry) => entry.split(/[\\/]/).at(-1) === 'runtime-thread-b')).toBe(true)
       await expect(runtime.stream('conversation-local-test', '继续对话', {
-        configId: 'local-main',
+        configId: 'local-test-config',
         provider: 'deepseek',
         apiKey: 'local-test-key',
         baseUrl: `http://127.0.0.1:${address.port}`,
@@ -667,7 +704,7 @@ describe('packaged DSH runtime composition', () => {
       expect(storedStats.stepTotalsByTurn).toEqual({ '1': 1, '2': 2 })
       const beforeSecondRegeneration = runtime.generationStats('conversation-local-test', 'runtime-thread-b')
       await expect(runtime.stream('conversation-local-test', '继续对话', {
-        configId: 'local-main',
+        configId: 'local-test-config',
         provider: 'deepseek',
         apiKey: 'local-test-key',
         baseUrl: `http://127.0.0.1:${address.port}`,
@@ -739,7 +776,7 @@ describe('packaged DSH runtime composition', () => {
       contextWindow: 128_000, temperature: 0.8, supportsImageInput: false
     }
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-multisession-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'), runtimeDataRoot: join(root, 'runtime'),
@@ -754,8 +791,9 @@ describe('packaged DSH runtime composition', () => {
         runtime.stream('conversation-a', '问题 A', modelA, callbacks, undefined, contextA, 'session-a'),
         runtime.stream('conversation-b', '问题 B', modelB, callbacks, undefined, contextB, 'session-b')
       ])
-      const internals = runtime as unknown as { harness: { client: { child?: { kill(): boolean; once(event: string, listener: () => void): void } } } }
-      const firstHarness = internals.harness
+      const internals = runtime as unknown as { sessionHost: { child?: { kill(): boolean; once(event: string, listener: () => void): void } } }
+      const firstHost = internals.sessionHost
+      const firstChild = firstHost.child
       expect(requests).toHaveLength(2)
       const a = requests.find((item) => item.body.model === 'model-a')
       const b = requests.find((item) => item.body.model === 'model-b')
@@ -770,18 +808,157 @@ describe('packaged DSH runtime composition', () => {
       expect(JSON.stringify(b?.body.messages)).not.toContain('仅 A 历史')
 
       await runtime.stream('conversation-a', '问题 A2', modelA, callbacks, undefined, contextA, 'session-a')
-      expect(internals.harness).toBe(firstHarness)
+      expect(internals.sessionHost).toBe(firstHost)
+      expect(firstHost.child).toBe(firstChild)
 
-      const child = (firstHarness.client as unknown as { child: { kill(): boolean; once(event: string, listener: () => void): void } }).child
+      const child = firstChild!
       const exited = new Promise<void>((resolveExit) => child.once('exit', resolveExit))
       child.kill()
       await exited
       await runtime.stream('conversation-b', '问题 B2', modelB, callbacks, undefined, contextB, 'session-b')
-      expect(internals.harness).not.toBe(firstHarness)
+      expect(firstHost.child).not.toBe(firstChild)
       const recovered = requests.at(-1)
       expect(recovered?.body.model).toBe('model-b')
       expect(JSON.stringify(recovered?.body.messages)).toContain('问题 B')
       expect(JSON.stringify(recovered?.body.messages)).not.toContain('问题 A')
+    } finally {
+      await runtime.close()
+      server.close()
+      await once(server, 'close')
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('resumes the same DSH Session after physically regenerating a turn', async () => {
+    const requests: Array<Record<string, unknown>> = []
+    const authorizationHeaders: Array<string | undefined> = []
+    const server = createServer(async (request, response) => {
+      let raw = ''
+      for await (const chunk of request) raw += chunk.toString()
+      requests.push(JSON.parse(raw) as Record<string, unknown>)
+      authorizationHeaders.push(request.headers.authorization)
+      const answer = `回复${requests.length}`
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      const base = { id: `chatcmpl-${requests.length}`, object: 'chat.completion.chunk', created: 1, model: 'deepseek-chat' }
+      for (const choice of [
+        { delta: { role: 'assistant', content: '' }, finish_reason: null },
+        { delta: { content: answer }, finish_reason: null },
+        { delta: {}, finish_reason: 'stop' }
+      ]) response.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, ...choice }] })}\n\n`)
+      response.end('data: [DONE]\n\n')
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('Local test server did not expose a TCP port')
+    const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-rewind-live-'))
+    const settings = {
+      configId: 'rewind-model', provider: 'deepseek', apiKey: 'local-key',
+      baseUrl: `http://127.0.0.1:${address.port}`, model: 'deepseek-chat',
+      systemPrompt: '', apiFormat: 'openai-completions' as const,
+      customHeaders: {}, contextWindow: 128_000, supportsImageInput: false
+    }
+    let catalogSettings = settings
+    const runtimeOptions = {
+      configPath: resolve('resources/dsh/cordis.yml'),
+      presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
+      workspaceRoot: join(root, 'workspace'), runtimeDataRoot: join(root, 'runtime'),
+      executablePath: process.execPath, modelCatalog: () => [catalogSettings]
+    }
+    const runtime = createHostedRuntime(runtimeOptions)
+    let restarted: ReturnType<typeof createHostedRuntime> | undefined
+    const callbacks = { onDelta: () => undefined, onFinal: () => undefined }
+    const context = (history: Array<{ role: 'user' | 'assistant'; content: string }>) => ({
+      characterId: 'card-a', characterName: '角色 A', persona: {}, history
+    })
+    try {
+      await runtime.stream('conversation-a', '问题一', settings, callbacks, undefined, context([]), 'session-a')
+      const secondSettings = { ...settings, apiKey: 'local-key-2' }
+      catalogSettings = secondSettings
+      await runtime.stream('conversation-a', '问题二', secondSettings, callbacks, undefined, context([
+        { role: 'user', content: '问题一' }, { role: 'assistant', content: '回复1' }
+      ]), 'session-a', { disabledGroupIds: ['builtin:web'] })
+      expect(runtime.generationStats('conversation-a', 'session-a')).toMatchObject({ turns: 2 })
+      await runtime.close()
+      restarted = createHostedRuntime(runtimeOptions)
+      await expect(restarted.rewindConversation('conversation-a', 'session-a', 2)).resolves.toBe('rewound')
+      expect(restarted.generationStats('conversation-a', 'session-a')).toMatchObject({ turns: 1 })
+      const thirdSettings = { ...settings, apiKey: 'local-key-3', autoCompactTokenLimit: 64_000 }
+      catalogSettings = thirdSettings
+      await restarted.stream('conversation-a', '问题二', thirdSettings, callbacks, undefined, context([
+        { role: 'user', content: '问题一' }, { role: 'assistant', content: '回复1' }
+      ]), 'session-a')
+      expect(requests).toHaveLength(3)
+      expect(authorizationHeaders).toEqual(['Bearer local-key', 'Bearer local-key-2', 'Bearer local-key-3'])
+      expect(JSON.stringify(requests[2]?.messages)).not.toContain('回复2')
+      expect(restarted.generationStats('conversation-a', 'session-a')).toMatchObject({ turns: 2 })
+      expect(restarted.trajectory('conversation-a', 'session-a').records.some((record) => record.output.includes('回复2'))).toBe(false)
+    } finally {
+      await restarted?.close()
+      await runtime.close()
+      server.close()
+      await once(server, 'close')
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 45_000)
+
+  it('runs the dedicated DeepSeek Messages route through its native endpoint', async () => {
+    const requests: Array<{ path: string | undefined; apiKey: string | undefined; body: Record<string, unknown> }> = []
+    const server = createServer(async (request, response) => {
+      let rawBody = ''
+      for await (const chunk of request) rawBody += chunk.toString()
+      requests.push({
+        path: request.url,
+        apiKey: request.headers['x-api-key'] as string | undefined,
+        body: JSON.parse(rawBody) as Record<string, unknown>
+      })
+      response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
+      for (const event of [
+        { type: 'message_start', message: { id: 'msg-deepseek', model: 'deepseek-chat', usage: { input_tokens: 8, output_tokens: 0 } } },
+        { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '专用入口回复' } },
+        { type: 'content_block_stop', index: 0 },
+        { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } },
+        { type: 'message_stop' }
+      ]) response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+      response.end()
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const address = server.address()
+    if (address === null || typeof address === 'string') throw new Error('Local test server did not expose a TCP port')
+    const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-deepseek-messages-'))
+    const runtime = createHostedRuntime({
+      configPath: resolve('resources/dsh/cordis.yml'),
+      presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
+      workspaceRoot: join(root, 'workspace'),
+      runtimeDataRoot: join(root, 'runtime'),
+      executablePath: process.execPath
+    })
+    const finals: string[] = []
+    try {
+      await expect(runtime.stream('conversation-deepseek-messages', '你好', {
+        configId: 'deepseek-messages',
+        provider: 'deepseek',
+        apiKey: 'local-deepseek-key',
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        model: 'deepseek-chat',
+        systemPrompt: '只返回测试文本。',
+        apiFormat: 'anthropic-messages',
+        customHeaders: {},
+        contextWindow: 128_000,
+        supportsImageInput: false
+      }, {
+        onDelta: () => undefined,
+        onFinal: (content) => finals.push(content)
+      })).resolves.toBe('complete')
+      expect(finals).toEqual(['专用入口回复'])
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({
+        path: '/v1/messages',
+        apiKey: 'local-deepseek-key',
+        body: { model: 'deepseek-chat', stream: true }
+      })
     } finally {
       await runtime.close()
       server.close()
@@ -852,7 +1029,7 @@ describe('packaged DSH runtime composition', () => {
     if (address === null || typeof address === 'string') throw new Error('Local test server did not expose a TCP port')
 
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-anthropic-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),
@@ -970,7 +1147,7 @@ describe('packaged DSH runtime composition', () => {
     if (address === null || typeof address === 'string') throw new Error('Local test server did not expose a TCP port')
 
     const root = await mkdtemp(join(tmpdir(), 'eleckoi-dsh-subagent-'))
-    const runtime = new DshRuntime({
+    const runtime = createHostedRuntime({
       configPath: resolve('resources/dsh/cordis.yml'),
       presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
       workspaceRoot: join(root, 'workspace'),

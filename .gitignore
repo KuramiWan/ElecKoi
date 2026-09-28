@@ -34,6 +34,7 @@ resources/native/
 coverage/
 playwright-report/
 test-results/
+.tmp-boot-diagnostics/
 *.tsbuildinfo
 
 # Local maintenance and review material

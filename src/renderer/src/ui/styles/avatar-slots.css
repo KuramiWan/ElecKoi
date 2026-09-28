@@ -179,7 +179,7 @@
 }
 
 .avatar-manager-preview-button.is-circle .avatar-manager-result-avatar {
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
 }
 
 .avatar-manager-preview-button.is-square .avatar-manager-result-avatar {

@@ -19,9 +19,11 @@ describe('DSH character tool policy', () => {
       { type: 'function', function: { name: 'eleckoi_read_variables' } },
       { type: 'function', function: { name: 'eleckoi_read_setting_files' } },
       { type: 'function', function: { name: 'future_tool' } },
+      { type: 'function', function: { name: 'eleckoi_read_uploaded_file' } },
       { type: 'function', function: { name: 'eleckoi_internal_probe' } }
     ], new Set(['builtin:variables', 'builtin:other']))).toEqual([
       { type: 'function', function: { name: 'eleckoi_read_setting_files' } },
+      { type: 'function', function: { name: 'eleckoi_read_uploaded_file' } },
       { type: 'function', function: { name: 'eleckoi_internal_probe' } }
     ])
   })

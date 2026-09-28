@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowsInSimple, ArrowsOutSimple, Eye, PencilSimple } from "@phosphor-icons/react";
 
-export function MarkdownTextareaField({ label, value, placeholder, onChange, preview = true }) {
+export function MarkdownTextareaField({ label, value, placeholder, onChange, preview = true, labelAction = null }) {
   const inputId = useId();
   const editorRef = useRef(null);
   const [immersive, setImmersive] = useState(false);
@@ -74,7 +74,10 @@ export function MarkdownTextareaField({ label, value, placeholder, onChange, pre
       <div className="setting-library-content-field">
         <div className="setting-library-content-heading">
           <label htmlFor={inputId}>{label}</label>
-          <button type="button" onClick={() => setImmersive(true)}><ArrowsOutSimple size={14} />沉浸编辑</button>
+          <div className="setting-library-content-actions">
+            {labelAction}
+            <button type="button" onClick={() => setImmersive(true)}><ArrowsOutSimple size={14} />沉浸编辑</button>
+          </div>
         </div>
         <textarea id={inputId} value={value} placeholder={placeholder} spellCheck={false} onChange={(event) => onChange(event.target.value)} />
       </div>

@@ -30,6 +30,7 @@ describe('chat message send cancellation', () => {
       event: { preventDefault: vi.fn() },
       input: '测试停止',
       inputImagesRef: { current: [{ localId: 'image-1', mediaType: 'image/png', bytes: 12, name: 'test.png' }] },
+      inputFilesRef: { current: [] },
       isSending: false,
       modelConfig: { id: 'model-1', model: 'test-model' },
       modelSupportsImages: true,
@@ -45,6 +46,7 @@ describe('chat message send cancellation', () => {
       refreshSessionsOnly: vi.fn(),
       setInput: vi.fn(),
       clearInputImages: vi.fn(),
+      clearInputFiles: vi.fn(),
       setMessages,
       updatePendingReply: vi.fn(),
       requestScrollToEnd: vi.fn(),
@@ -76,6 +78,7 @@ describe('chat message send cancellation', () => {
       event: { preventDefault: vi.fn() },
       input: '测试取消回填',
       inputImagesRef: { current: [] },
+      inputFilesRef: { current: [] },
       isSending: false,
       modelConfig: { id: 'model-1', model: 'test-model' },
       modelSupportsImages: false,
@@ -91,6 +94,7 @@ describe('chat message send cancellation', () => {
       refreshSessionsOnly: vi.fn(),
       setInput: vi.fn(),
       clearInputImages: vi.fn(),
+      clearInputFiles: vi.fn(),
       setMessages: vi.fn(),
       updatePendingReply: vi.fn(),
       requestScrollToEnd: vi.fn(),
@@ -116,11 +120,11 @@ describe('chat message send cancellation', () => {
     const reconcileChatMessages = vi.fn()
 
     const sending = runChatMessageSend({
-      event: { preventDefault: vi.fn() }, input: '旧请求', inputImagesRef: { current: [] }, isSending: false,
+      event: { preventDefault: vi.fn() }, input: '旧请求', inputImagesRef: { current: [] }, inputFilesRef: { current: [] }, isSending: false,
       modelConfig: { id: 'model-1', model: 'test-model' }, modelSupportsImages: false, setStatus: vi.fn(),
       requestRef, setIsSending: vi.fn(), sessionId: 'conversation-1', chatCharacter: { character_id: 'character-1' },
       setSessionId: vi.fn(), replaceChatMessages: vi.fn(), setChatCharacter: vi.fn(), normalizeLatestChatCharacter: vi.fn(),
-      refreshSessionsOnly: vi.fn(), setInput: vi.fn(), clearInputImages: vi.fn(), setMessages: vi.fn(),
+      refreshSessionsOnly: vi.fn(), setInput: vi.fn(), clearInputImages: vi.fn(), clearInputFiles: vi.fn(), setMessages: vi.fn(),
       updatePendingReply: vi.fn(), requestScrollToEnd: vi.fn(), reconcileChatMessages, commitPendingError: vi.fn()
     })
 
@@ -148,6 +152,7 @@ describe('chat message send cancellation', () => {
       event: { preventDefault: vi.fn() },
       input: '看看图片',
       inputImagesRef: { current: [{ localId: 'image-1', mediaType: 'image/png', bytes: 12, name: 'test.png', file: {} }] },
+      inputFilesRef: { current: [] },
       isSending: false,
       modelConfig: { id: 'model-1', model: 'test-model' },
       modelSupportsImages: true,
@@ -163,6 +168,7 @@ describe('chat message send cancellation', () => {
       refreshSessionsOnly: vi.fn(),
       setInput: vi.fn(),
       clearInputImages: vi.fn(),
+      clearInputFiles: vi.fn(),
       setMessages: vi.fn(),
       updatePendingReply: vi.fn(),
       requestScrollToEnd: vi.fn(),

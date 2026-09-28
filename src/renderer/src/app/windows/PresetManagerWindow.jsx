@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listenRecordsChanged } from "../../bridge/recordEvents.js";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
 import {
   downloadPresetFile,
   exportPreset,
   fileBase64,
-  getPresetCatalog,
   importPreset,
   PresetImportDialog,
   PresetManager,
@@ -15,7 +13,7 @@ import { TitleBar } from "./shell/components/TitleBar.jsx";
 
 const ALL_PRESETS = "全部预设";
 
-export function PresetManagerWindow() {
+export function PresetManagerWindow({ presetCatalog }) {
   const [catalog, setCatalog] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(ALL_PRESETS);
   const [selectedPresetId, setSelectedPresetId] = useState("");
@@ -26,32 +24,40 @@ export function PresetManagerWindow() {
   const importInputRef = useRef(null);
   const importSourceRef = useRef("");
 
+  const acceptCatalog = useCallback((next, preferredId = "") => {
+    setCatalog(next);
+    setSelectedPresetId((current) => {
+      const requested = preferredId || current || next.activePresetId;
+      return next.presets.some((preset) => preset.id === requested) ? requested : next.presets[0]?.id || "";
+    });
+    setSelectedGroup((current) => current === ALL_PRESETS || next.groups.some((group) => group.id === current) ? current : ALL_PRESETS);
+    setLoadError("");
+    return next;
+  }, []);
+
   const refresh = useCallback(async (preferredId = "") => {
     try {
-      const next = await getPresetCatalog();
-      setCatalog(next);
-      setSelectedPresetId((current) => {
-        const requested = preferredId || current || next.activePresetId;
-        return next.presets.some((preset) => preset.id === requested) ? requested : next.presets[0]?.id || "";
-      });
-      setSelectedGroup((current) => current === ALL_PRESETS || next.groups.some((group) => group.id === current) ? current : ALL_PRESETS);
-      setLoadError("");
-      return next;
+      return acceptCatalog(await presetCatalog.refresh(), preferredId);
     } catch (cause) {
       setLoadError(cause instanceof Error ? cause.message : "读取预设失败。");
       return null;
     }
-  }, []);
+  }, [acceptCatalog, presetCatalog]);
 
   useEffect(() => {
     applyAppearanceTheme(null);
     document.title = "预设管理器 - ElecKoi";
     showCurrentWindow().catch(() => {});
+    const update = () => {
+      const snapshot = presetCatalog.getSnapshot();
+      if (snapshot.status === "ready") acceptCatalog(snapshot.catalog);
+      else if (snapshot.status === "error") setLoadError(snapshot.error);
+    };
+    const stop = presetCatalog.subscribe(update);
+    update();
     void refresh();
-    return listenRecordsChanged((event) => {
-      if (event.module === "agentPresets") void refresh();
-    });
-  }, [refresh]);
+    return stop;
+  }, [acceptCatalog, presetCatalog, refresh]);
 
   function beginImport() {
     setImportError("");

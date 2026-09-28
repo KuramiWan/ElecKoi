@@ -41,7 +41,7 @@
   width: 6px;
   height: 6px;
   background: var(--blue);
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   content: "";
 }
 
@@ -119,7 +119,7 @@
   padding: 0 8px;
   color: var(--blue);
   background: color-mix(in srgb, var(--blue) 9%, transparent);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   font-size: 11px;
   white-space: nowrap;
 }
@@ -199,7 +199,7 @@
   width: 100%;
   height: 2px;
   background: var(--blue);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   content: "";
 }
 
@@ -222,7 +222,7 @@
 .preset-workspace-body::-webkit-scrollbar-thumb {
   min-height: 44px;
   border: 3px solid transparent;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: color-mix(in srgb, var(--muted) 35%, transparent);
   background-clip: content-box;
 }
@@ -544,7 +544,7 @@
   height: 18px;
   padding: 0;
   background: color-mix(in srgb, var(--text) 18%, transparent);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
 }
 
 .preset-regex-enabled i {
@@ -554,7 +554,7 @@
   width: 14px;
   height: 14px;
   background: #fff;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
   transition: transform 120ms ease;
 }
@@ -578,7 +578,7 @@
   width: 36px;
   height: 21px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: color-mix(in srgb, var(--muted) 32%, transparent);
 }
 
@@ -588,7 +588,7 @@
   left: 2px;
   width: 17px;
   height: 17px;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
 }
@@ -1104,7 +1104,7 @@
   height: 18px;
   background: var(--surface-raised);
   border: 1px solid var(--line-strong);
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
 }
 
 .preset-manager-card.is-delete-selected .preset-manager-card-check {

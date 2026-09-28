@@ -72,10 +72,6 @@ export function getModelMeta() {
   return Promise.resolve({ defaults: { language: "zh-CN" }, providers: PROVIDERS });
 }
 
-export function getModelConfig() {
-  return desktopClient.request("query.models.list", {}).then((configs) => modelPayload(configs, configs[0]?.id));
-}
-
 export function saveModelConfig(config) {
   const next = normalizeModelConfig(config);
   return desktopClient.request("command.models.save", next).then((configs) => modelPayload(configs, next.id));

@@ -85,6 +85,8 @@ describe('generation statistics display', () => {
     });
     expect(formatTokens(18_700)).toBe('18.7K');
     expect(formatDuration(162_000)).toBe('2分42秒');
+    expect(formatDuration(43)).toBe('0.1秒');
+    expect(formatDuration(51)).toBe('0.1秒');
   });
 
   it('keeps heuristic categories separate from the provider context total', () => {

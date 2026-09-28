@@ -29,6 +29,7 @@ LRESULT HitTestResizeFrameAt(HWND hwnd, POINT cursor) {
       native_resize_width > inner_resize_size
           ? native_resize_width
           : inner_resize_size;
+  const int right_resize_width = MulDiv(6, static_cast<int>(dpi), 96);
   const int bottom_resize_height =
       native_resize_height > inner_resize_size
           ? native_resize_height
@@ -36,7 +37,7 @@ LRESULT HitTestResizeFrameAt(HWND hwnd, POINT cursor) {
   const bool left = cursor.x >= window_rect.left &&
                     cursor.x < window_rect.left + resize_width;
   const bool right = cursor.x < window_rect.right &&
-                     cursor.x >= window_rect.right - resize_width;
+                     cursor.x >= window_rect.right - right_resize_width;
   const bool top = cursor.y >= window_rect.top &&
                    cursor.y < window_rect.top + native_resize_height;
   const bool bottom = cursor.y < window_rect.bottom &&
@@ -243,19 +244,20 @@ void LayoutResizeOverlays(HWND root) {
   const int width = client.right - client.left;
   const int height = client.bottom - client.top;
   const int edge = MulDiv(12, static_cast<int>(GetDpiForWindow(root)), 96);
-  if (width <= edge * 2 || height <= edge * 2) return;
+  const int right_edge = MulDiv(6, static_cast<int>(GetDpiForWindow(root)), 96);
+  if (width <= edge + right_edge || height <= edge * 2) return;
 
   PositionResizeOverlay(root, HTTOPLEFT, 0, 0, edge, edge);
-  PositionResizeOverlay(root, HTTOPRIGHT, width - edge, 0, edge, edge);
+  PositionResizeOverlay(root, HTTOPRIGHT, width - right_edge, 0, right_edge, edge);
   PositionResizeOverlay(root, HTBOTTOMLEFT, 0, height - edge, edge, edge);
   PositionResizeOverlay(
-      root, HTBOTTOMRIGHT, width - edge, height - edge, edge, edge);
-  PositionResizeOverlay(root, HTTOP, edge, 0, width - edge * 2, edge);
+      root, HTBOTTOMRIGHT, width - right_edge, height - edge, right_edge, edge);
+  PositionResizeOverlay(root, HTTOP, edge, 0, width - edge - right_edge, edge);
   PositionResizeOverlay(
-      root, HTBOTTOM, edge, height - edge, width - edge * 2, edge);
+      root, HTBOTTOM, edge, height - edge, width - edge - right_edge, edge);
   PositionResizeOverlay(root, HTLEFT, 0, edge, edge, height - edge * 2);
   PositionResizeOverlay(
-      root, HTRIGHT, width - edge, edge, edge, height - edge * 2);
+      root, HTRIGHT, width - right_edge, edge, right_edge, height - edge * 2);
 }
 
 LRESULT CALLBACK ElecKoiFrameSubclassProc(

@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChatSessions } from "../../modules/chat/index.js";
-import { getModelConfig, getModelMeta, useModelRuntime } from "../../modules/models/index.js";
+import { getModelMeta, useModelRuntime } from "../../modules/models/index.js";
 import { usePersonaCharacters } from "../../modules/persona/index.js";
 import { listenRecordsChanged } from "../../bridge/recordEvents.js";
 
-export function useChatClient() {
-  const [activeSection, setActiveSectionState] = useState("messages");
+export function useChatClient({ conversations, characters: characterCatalog, models: modelCatalog, persona: personaModel, navigation } = {}) {
+  const [localActiveSection, setLocalActiveSection] = useState("messages");
+  const activeSection = navigation ? navigation.selectedPanelId || "messages" : localActiveSection;
+  const setActiveSectionState = useCallback((section) => {
+    if (navigation) navigation.selectPanel(section);
+    else setLocalActiveSection(section);
+  }, [navigation]);
   const [meta, setMeta] = useState(null);
   const [status, setStatus] = useState("就绪");
   const [notice, setNotice] = useState(null);
@@ -25,14 +30,13 @@ export function useChatClient() {
     modelConfig,
     modelConfigs,
     modelOptionsByKey,
-    applyModelMeta,
     saveModelConfig,
     deleteModelConfig,
     deleteModelProvider,
     loadModelOptions,
     probeModelOptions,
     testConnection,
-  } = useModelRuntime({ setStatus });
+  } = useModelRuntime({ modelCatalog, setStatus });
   const language = meta?.defaults?.language || "zh-CN";
   const chatModelConfigs = useMemo(
     () =>
@@ -60,8 +64,9 @@ export function useChatClient() {
     createCharacter,
     deleteCharacterIds: deletePersonaCharacterIds,
     updateUserProfile,
-  } = usePersonaCharacters({ setStatus, setActiveSectionState });
+  } = usePersonaCharacters({ characterCatalog, personaModel, setStatus, setActiveSectionState, notify });
   const chatSessions = useChatSessions({
+    conversations,
     persona,
     characters,
     modelConfigs: chatModelConfigs,
@@ -163,9 +168,8 @@ export function useChatClient() {
   }
 
   async function loadMeta() {
-    const [data, modelData] = await Promise.all([getModelMeta(), getModelConfig()]);
+    const [data] = await Promise.all([getModelMeta(), modelCatalog.refresh()]);
     setMeta(data);
-    applyModelMeta(modelData);
   }
 
   useEffect(() => {
@@ -182,7 +186,7 @@ export function useChatClient() {
 
   useEffect(() => {
     return listenRecordsChanged((event) => {
-      if (event.module !== "personas" && event.module !== "settingLibraries") return;
+      if (characterCatalog || (event.module !== "personas" && event.module !== "settingLibraries")) return;
       loadCharacters().catch((error) => setStatus(error.message));
     });
   }, []);
@@ -203,12 +207,18 @@ export function useChatClient() {
     selectChatModel: chatSessions.selectChatModel,
     sessions: chatSessions.sessions,
     sessionId: chatSessions.sessionId,
+    runtimeSessionId: chatSessions.runtimeSessionId,
     messages: chatSessions.messages,
     input: chatSessions.input,
     setInput: chatSessions.setInput,
     inputImages: chatSessions.inputImages,
+    inputFiles: chatSessions.inputFiles,
+    filesUploading: chatSessions.filesUploading,
+    fileUploadProgress: chatSessions.fileUploadProgress,
     addInputImages: chatSessions.addInputImages,
+    addInputFiles: chatSessions.addInputFiles,
     removeInputImage: chatSessions.removeInputImage,
+    removeInputFile: chatSessions.removeInputFile,
     keyword: chatSessions.keyword,
     setKeyword: chatSessions.setKeyword,
     isSending: chatSessions.isSending,

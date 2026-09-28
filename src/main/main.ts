@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, dialog } from 'electron'
+import { app, dialog, protocol } from 'electron'
 import { DesktopHost } from '@main/host/DesktopHost'
 import { StartupProfileStore } from '@main/host/startup/StartupProfileStore'
 import { configureElectron, configureRuntimeUserData } from '@main/host/startup/configureElectron'
@@ -8,6 +8,17 @@ import { registerLocalMediaScheme } from '@main/platform/electron/mediaProtocol'
 
 const logger = getBootstrapLogger()
 registerLocalMediaScheme()
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'dsh-app',
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+    stream: true,
+    codeCache: true
+  }
+}])
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 configureRuntimeUserData()
 const startupProfiles = new StartupProfileStore()

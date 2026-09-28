@@ -67,6 +67,7 @@ export function chatDisplayCssVariables(layout, profile) {
     "--chat-reply-gap": `${clamp(profile.reply_spacing, 0, 32)}px`,
     "--chat-turn-gap": `${clamp(profile.turn_spacing, 0, 32)}px`,
     "--chat-font-size": `${fontSize}px`,
+    "--chat-font-weight": clamp(profile.message_font_weight ?? 400, 400, 600),
     "--chat-line-height": `${fontSize * baseLineHeightRatio * clamp(profile.line_height_multiplier, 0.8, 1.6)}px`,
     "--chat-letter-spacing": `${clamp(profile.letter_spacing, -1, 4)}px`,
     "--chat-paragraph-gap": `${clamp(profile.paragraph_spacing, 0, 24)}px`,

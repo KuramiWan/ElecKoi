@@ -154,6 +154,7 @@ function specializedResult(toolName, result, args) {
       : [...arrayOf(result.required_variables).map((entry) => entry?.path || entry), ...arrayOf(result.required_paths)]);
     return {
       type: 'glob',
+      settingLibrary: toolName === SETTING_GLOB,
       scope: stringValue(result.scope || result.path || args?.path) || '全部',
       pattern: stringValue(result.pattern || args?.pattern) || '**',
       paths,

@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { DshNewChatIcon, DshRefreshIcon, DshSendIcon, DshStopIcon } from "../../../ui/icons/dshComposerIcons.jsx";
 import { ChatHistoryIcon, MenuIcon, PictureFrameIcon, PlugIcon } from "../../../ui/icons/openSourceIcons.jsx";
 import { TrashIcon } from "../../../ui/icons/index.jsx";
-import { Database } from "@phosphor-icons/react";
+import { Database, Paperclip } from "@phosphor-icons/react";
 import { ChatModelPicker } from "./ChatModelPicker.jsx";
 import { ChatImageGallery } from "./ChatImageGallery.jsx";
+import { ChatFileCards } from "./ChatFileCards.jsx";
 import { GenerationStatsLine } from "./GenerationStats.jsx";
 
 export function ChatComposer({
@@ -13,6 +14,11 @@ export function ChatComposer({
   inputImages = [],
   onAddImages,
   onRemoveImage,
+  inputFiles = [],
+  onAddFiles,
+  onRemoveFile,
+  filesUploading = false,
+  fileUploadProgress = null,
   isSending,
   modelConfigs,
   selectedModelConfigId,
@@ -32,13 +38,15 @@ export function ChatComposer({
   canDeleteMessages = false,
   onRegenerate,
   regenerateTargetMessageId,
-  composerStyle = "glass",
   generationStats,
   showGenerationStats = true,
+  conversationId,
+  renderRoleplaySlot,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const imageInputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -67,9 +75,9 @@ export function ChatComposer({
   }
 
   return (
-    <form className={`composer composer-style-${composerStyle}`} onSubmit={submit}>
+    <form className="composer" onSubmit={submit}>
       <div className="composer-stack">
-        <div className="composer-card">
+        <div className="composer-card" data-composer-card>
         <input
           ref={imageInputRef}
           className="composer-image-input"
@@ -83,7 +91,19 @@ export function ChatComposer({
             onAddImages?.(files);
           }}
         />
+        <input ref={fileInputRef} className="composer-image-input" type="file" multiple disabled={isSending || filesUploading}
+          onChange={(event) => {
+            const files = [...(event.target.files || [])];
+            event.target.value = "";
+            Promise.resolve(onAddFiles?.(files)).catch((error) => onNotify?.("error", error?.message || "文件添加失败"));
+          }} />
         <ChatImageGallery images={inputImages} compact onRemove={onRemoveImage} />
+        <ChatFileCards files={inputFiles} compact onRemove={onRemoveFile} />
+        {fileUploadProgress ? <div className="chat-file-upload-progress" role="status">
+          <Paperclip size={18} aria-hidden="true" />
+          <span>{fileUploadProgress.name}</span>
+          <small>{fileUploadProgress.percent}%</small>
+        </div> : null}
         <textarea
           rows={1}
           value={input}
@@ -94,7 +114,9 @@ export function ChatComposer({
           onPaste={(event) => {
             const files = clipboardFiles(event.clipboardData);
             if (!files.length) return;
-            onAddImages?.(files);
+            onAddImages?.(files.filter((file) => file.type.startsWith('image/')));
+            Promise.resolve(onAddFiles?.(files.filter((file) => !file.type.startsWith('image/'))))
+              .catch((error) => onNotify?.("error", error?.message || "文件添加失败"));
             if (!event.clipboardData.getData("text/plain")) event.preventDefault();
           }}
           placeholder="输入消息"
@@ -102,13 +124,15 @@ export function ChatComposer({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              if (!isSending && (input.trim() || inputImages.length)) submit(event);
+              if (!isSending && !filesUploading && (input.trim() || inputImages.length || inputFiles.length)) submit(event);
             }
           }}
         />
+        {renderRoleplaySlot?.("eleckoi.roleplay.input.overlay", { conversationId, input, setInput, isSending })}
 
         <div className="composer-row">
           <div className="composer-tools">
+            {renderRoleplaySlot?.("eleckoi.roleplay.input.left", { conversationId, input, setInput, isSending })}
             <div className="composer-more-anchor" ref={menuRef}>
               <button
                 className={`composer-add composer-more-trigger ${menuOpen ? "active" : ""}`}
@@ -123,6 +147,10 @@ export function ChatComposer({
               </button>
               {menuOpen ? (
                 <div className="composer-more-menu" role="menu" aria-label="对话工具">
+                  <button type="button" role="menuitem" disabled={isSending || filesUploading}
+                    onClick={() => runMenuAction(() => fileInputRef.current?.click())}>
+                    <Paperclip size={18} /><span>文件</span>
+                  </button>
                   <button
                     type="button"
                     role="menuitem"
@@ -173,6 +201,7 @@ export function ChatComposer({
           </div>
 
           <div className="composer-trailing">
+            {renderRoleplaySlot?.("eleckoi.roleplay.input.right", { conversationId, input, setInput, isSending })}
             <ChatModelPicker
               configs={modelConfigs}
               selectedConfigId={selectedModelConfigId}
@@ -188,7 +217,7 @@ export function ChatComposer({
                 <DshStopIcon />
               </button>
             ) : (
-              <button className="send-button" type="submit" disabled={!input.trim() && !inputImages.length} aria-label="发送消息" title="发送消息">
+              <button className="send-button" type="submit" disabled={filesUploading || (!input.trim() && !inputImages.length && !inputFiles.length)} aria-label="发送消息" title="发送消息">
                 <DshSendIcon />
               </button>
             )}

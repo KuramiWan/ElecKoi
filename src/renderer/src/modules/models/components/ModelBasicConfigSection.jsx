@@ -1,3 +1,5 @@
+import { useEffect, useId, useState } from "react";
+import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { ChevronRightIcon, DownloadIcon, PlugIcon, PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
 import { configVersionName } from "../model/modelProviderCatalog.js";
 
@@ -9,6 +11,8 @@ const API_FORMATS = [
 ];
 
 export function ModelBasicConfigSection({ editor }) {
+  const [showApiKey, setShowApiKey] = useState(false);
+  const apiKeyInputId = useId();
   const {
     form,
     activeProvider,
@@ -48,6 +52,8 @@ export function ModelBasicConfigSection({ editor }) {
     testConnection,
     updateField,
   } = editor;
+
+  useEffect(() => setShowApiKey(false), [selectedConfigId, activeProvider.id]);
 
   return (
     <section className="model-form-section">
@@ -129,10 +135,15 @@ export function ModelBasicConfigSection({ editor }) {
         </label>
       </div>
       <div className="model-form-single-row">
-        <label>
-          <span>API Key</span>
-          <input type="password" autoComplete="off" value={form.api_key || ""} onChange={(event) => updateField("api_key", event.target.value)} placeholder={activeProvider.apiKeyPlaceholder} />
-        </label>
+        <div className="model-api-key-field">
+          <label htmlFor={apiKeyInputId}><span>API Key</span></label>
+          <div className="model-api-key-control">
+            <input id={apiKeyInputId} type={showApiKey ? "text" : "password"} autoComplete="off" value={form.api_key || ""} onChange={(event) => updateField("api_key", event.target.value)} placeholder={activeProvider.apiKeyPlaceholder} />
+            <button type="button" aria-label={showApiKey ? "隐藏 API Key" : "显示 API Key"} aria-pressed={showApiKey} onClick={() => setShowApiKey((current) => !current)}>
+              {showApiKey ? <EyeSlash aria-hidden="true" /> : <Eye aria-hidden="true" />}
+            </button>
+          </div>
+        </div>
       </div>
       {isImageProvider ? (
         <div className="model-form-single-row">

@@ -7,7 +7,7 @@ import { requiredSettingCache } from './required-setting-cache.mjs'
 export const name = 'eleckoi-setting-library-tools'
 export const inject = ['tools']
 
-const requiredEntriesReadInstruction = '搜索结果的 required_entries 是本回合必读清单（固定必读及关键词、EJS/变量触发项），与 files/matches 是否命中无关。若非空，回复用户前必须调用 eleckoi_read_setting_files，把其中所有 path 一次传入 paths；仅搜索不算读取。即使固定必读项标记为 cached_reference、正文已在前置缓存设定区，也必须读取，用工具回执的编号和标题核对前置正文。'
+const requiredEntriesReadInstruction = '搜索结果的 required_entries 是本回合必读清单（固定必读及关键词、EJS 条件触发项），不受 pattern、path 或 files/matches 是否命中影响。若非空，回复用户前必须调用 eleckoi_read_setting_files，把本轮尚未读取或已失效的 path 一次传入 paths；已读取且正文未变化的条目无需重复读取，仅搜索不算读取。即使固定必读项标记为 cached_reference、正文已在前置缓存设定区，也必须读取，用工具回执的编号和标题核对前置正文。'
 
 export function apply(ctx) {
   return [
@@ -21,15 +21,15 @@ export function apply(ctx) {
 function globTool() {
   return defineTool({
     name: 'eleckoi_glob_setting_files',
-    description: `按 Glob 查找当前对话可读取的虚拟设定文件。路径使用 / 分隔且不带 .md 后缀。${requiredEntriesReadInstruction}`,
+    description: `按 Glob 查找当前对话可读取的虚拟设定文件。需要本轮必读清单时，省略 pattern 和 path，以 ** 一次列出全部当前可读路径及 required_entries。已有完整路径就直接读取；仅需筛选已知目录时传 path，它会递归搜索子目录。同一轮目录和条件未变化时不要重复相同搜索，变化后可重新搜索。返回完整路径、标题和作者注释，不返回正文。路径使用 / 分隔且不带 .md 后缀。${requiredEntriesReadInstruction}`,
     parameters: {
       pattern: { type: 'string', description: '路径 Glob，例如 **、世界/**、**/*角色*。' },
-      path: { type: 'string', description: '可选的精确目录路径；留空表示整个设定库。' }
+      path: { type: 'string', description: '可选的精确目录路径；留空表示整个设定库，指定后递归搜索该目录下的条目。' }
     },
     output: output(),
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
-      const catalog = await runtimeCatalogOf(readBridge(bridgeFile), bridgeFile)
+      const catalog = await runtimeCatalogOf(readBridge(bridgeFile, exec), bridgeFile)
       const scope = normalizePath(args.path || '', true)
       if (scope === null || !directoryExists(catalog, scope)) return fail('invalid_path', 'path 必须是当前虚拟设定库中真实存在的目录。')
       let matcher
@@ -54,13 +54,14 @@ function grepTool() {
       path: { type: 'string', description: '可选目录路径。' },
       glob: { type: 'string', description: '可选路径 Glob。' },
       output_mode: { type: 'string', enum: ['files_with_matches', 'content', 'count'] },
-      ignore_case: { type: 'boolean' }
+      ignore_case: { type: 'boolean' },
+      limit: { type: 'integer', description: '最多返回 1000 项，默认 100 项；只限制 Grep。' }
     },
     output: output(),
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
       if (!String(args.pattern || '')) return fail('invalid_arguments', 'pattern 不能为空。')
-      const catalog = await runtimeCatalogOf(readBridge(bridgeFile), bridgeFile)
+      const catalog = await runtimeCatalogOf(readBridge(bridgeFile, exec), bridgeFile)
       const scope = normalizePath(args.path || '', true)
       if (scope === null || !directoryExists(catalog, scope)) return fail('invalid_path', 'path 必须是当前虚拟设定库中真实存在的目录。')
       let expression, pathMatcher
@@ -79,7 +80,13 @@ function grepTool() {
         else if (mode === 'count') matches.push({ ...summary(entry, catalog), count: hit.length })
         else matches.push(summary(entry, catalog))
       }
-      return { status: matches.length ? 'ok' : 'no_matches', required_entries: requiredFiles(catalog), matches }
+      const limit = Math.max(1, Math.min(1_000, Number.isInteger(args.limit) ? args.limit : 100))
+      return {
+        status: matches.length ? 'ok' : 'no_matches',
+        required_entries: requiredFiles(catalog),
+        matches: matches.slice(0, limit),
+        omitted: Math.max(0, matches.length - limit)
+      }
     }
   })
 }
@@ -87,14 +94,14 @@ function grepTool() {
 function readTool() {
   return defineTool({
     name: 'eleckoi_read_setting_files',
-    description: '读取 Glob 或 Grep 已返回的虚拟设定文件。路径没有 .md 后缀；不得猜测路径。固定必读正文已在本轮缓存设定区，读取仅返回编号与标题；动态和按需条目返回正文。',
-    parameters: { paths: { type: 'array', items: { type: 'string' }, required: true, description: '一个或多个完整虚拟设定文件路径。' } },
+    description: '按完整路径读取当前可用的虚拟设定文件；已知准确路径时无需重新搜索。路径没有 .md 后缀；不得猜测未知路径。固定必读正文已在本轮缓存设定区，读取仅返回编号与标题；本轮须读和选读条目返回正文。',
+    parameters: { paths: { type: 'array', items: { type: 'string' }, required: true, description: '一个或多个当前可用的完整虚拟设定文件路径。' } },
     output: output(),
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
       const paths = [...new Set((args.paths || []).map((path) => normalizePath(path, false)).filter(Boolean))]
       if (!paths.length) return fail('invalid_arguments', '至少需要读取一个文件。')
-      const catalog = await runtimeCatalogOf(readBridge(bridgeFile), bridgeFile)
+      const catalog = await runtimeCatalogOf(readBridge(bridgeFile, exec), bridgeFile)
       const byPath = new Map(catalog.entries.map((entry) => [entry.path, entry]))
       const missing = paths.filter((path) => !byPath.has(path))
       if (missing.length) return { ...fail('not_found', '存在当前虚拟设定库没有的路径，请重新使用 Glob 或 Grep。'), paths: missing }
@@ -103,6 +110,7 @@ function readTool() {
         const cached = cachedReference(entry, catalog)
         return { ...summary(entry, catalog), group_path: entry.groupPath, selection_hint: entry.selectionHint,
           read_strategy: entry.readStrategy, content_delivery: cached ? 'cached_reference' : 'tool_result',
+          resolved_references: (entry.resolvedReferences || []).map((reference) => ({ title: reference.title })),
           ...(cached ? { cached_reference: cached.reference } : {}), content: cached ? cached.receipt : entry.content }
       }) }
     }
@@ -127,7 +135,7 @@ function patchTool() {
     output: output(),
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
-      const bridge = readBridge(bridgeFile)
+      const bridge = readBridge(bridgeFile, exec)
       const original = structuredClone(bridge.library)
       try {
         const result = applyOperation(bridge.library, args)
@@ -263,7 +271,9 @@ function catalogOf(library) {
   }
   const readable = entries.filter((entry) => !isFixedEntry(entry) && entry.enabled && entry.triggerMode === 'agent_tool' && (String(entry.content || '').trim() || entry.dynamicMode === 'ejs_reference')).map((raw) => {
     const path = [groupPath(raw.groupId), safeSegment(raw.title || '未命名设定')].filter(Boolean).join('/')
-    return { raw, path, groupPath: groupPath(raw.groupId), content: String(raw.content || ''), selectionHint: String(raw.agentSelectionHint || ''), readStrategy: raw.agentReadStrategy || 'normal' }
+    return { raw, path, groupPath: groupPath(raw.groupId), content: String(raw.content || ''),
+      selectionHint: raw.agentReadStrategy === 'normal' && raw.contentMode === 'plain_text' ? String(raw.agentSelectionHint || '') : '',
+      readStrategy: raw.agentReadStrategy || 'normal' }
   })
   return { entries: readable, groups, byGroup, byPath: new Map(readable.map((entry) => [entry.path, entry])), groupPath }
 }
@@ -284,25 +294,16 @@ async function runtimeCatalogOf(bridge, bridgeFile) {
   const variableState = objectValue(bridge.variableState)
 
   let entries = catalog.entries
+    .filter((entry) => entry.raw.dynamicMode !== 'ejs_reference')
     .filter((entry) => entry.readStrategy !== 'keyword' || keywordMatches.has(entry.raw.id))
     .map((entry) => keywordMatches.has(entry.raw.id) ? { ...entry, promotedToRequiredThisTurn: true } : entry)
-
-  entries = entries
-    .filter((entry) => {
-      if (entry.readStrategy !== 'variable_condition') return true
-      if (entry.raw.dynamicMode === 'ejs_controller') return true
-      return false
-    })
-    .map((entry) => entry.readStrategy === 'variable_condition' && entry.raw.dynamicMode === 'ejs_controller'
-      ? { ...entry, promotedToRequiredThisTurn: true }
-      : entry)
-
-  const ejsCandidates = catalog.entries.filter((entry) => entry.readStrategy === 'variable_condition')
+  const ejsCandidates = catalog.entries.filter((entry) => entry.raw.dynamicMode === 'ejs_reference')
   const messages = runtimeMessages(bridge.history)
   entries = (await Promise.all(entries.map(async (entry) => {
-    if (entry.raw.dynamicMode !== 'ejs_controller') return entry
+    if (entry.raw.contentMode !== 'ejs' || entry.readStrategy === 'required') return entry
     const rendered = await renderEjsController(entry, ejsCandidates, variableState, messages)
-    return { ...entry, content: rendered.content, resolvedReferences: rendered.references }
+    return { ...entry, content: rendered.content, resolvedReferences: rendered.references,
+      promotedToRequiredThisTurn: true }
   }))).filter((entry) => entry.content.trim())
 
   const resolution = {
@@ -310,7 +311,7 @@ async function runtimeCatalogOf(bridge, bridgeFile) {
     visibleEntryIds: entries.map((entry) => entry.raw.id),
     promotedEntryIds: entries.filter((entry) => entry.promotedToRequiredThisTurn === true).map((entry) => entry.raw.id),
     renderedContents: Object.fromEntries(entries
-      .filter((entry) => entry.raw.dynamicMode === 'ejs_controller')
+      .filter((entry) => entry.raw.contentMode === 'ejs')
       .map((entry) => [entry.raw.id, entry.content])),
     resolvedReferences: Object.fromEntries(entries
       .filter((entry) => entry.resolvedReferences?.length)
@@ -623,9 +624,18 @@ function requireEntry(library, path) {
   return entry
 }
 
-function readBridge(bridgeFile) {
+function readBridge(bridgeFile, exec) {
   const bridge = JSON.parse(readFileSync(bridgeFile, 'utf8'))
   if (!bridge?.enabled || !bridge.library) throw new Error('设定库运行时尚未准备好。')
+  const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
+  if (snapshot.variablesEnabled && snapshot.variableStateFile) {
+    const variableBridge = JSON.parse(readFileSync(snapshot.variableStateFile, 'utf8'))
+    const currentState = objectValue(variableBridge.state)
+    if (JSON.stringify(bridge.variableState) !== JSON.stringify(currentState)) {
+      bridge.variableState = currentState
+      delete bridge.runtimeResolution
+    }
+  }
   return bridge
 }
 function writeBridge(bridgeFile, value) { writeFileSync(bridgeFile, JSON.stringify(value, null, 2), 'utf8') }

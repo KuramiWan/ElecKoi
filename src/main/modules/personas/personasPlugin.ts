@@ -1,5 +1,5 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
-import { APP_DEFAULT_CHAT_BACKGROUND } from '@shared/contracts/characters/chatBackground'
+import { APP_DEFAULT_CHAT_BACKGROUND, normalizeNewCharacterBackground } from '@shared/contracts/characters/chatBackground'
 import { CharacterRepository } from './CharacterRepository'
 import { PersonaRepository } from './PersonaRepository'
 
@@ -12,7 +12,7 @@ export const personasPlugin = {
       ctx.database,
       ctx.conversations,
       ctx.mediaAssets,
-      () => ctx.userSettings.read('appearance.ui').new_character_background === 'app'
+      () => normalizeNewCharacterBackground(ctx.userSettings.read('appearance.ui').new_character_background) === 'app'
         ? APP_DEFAULT_CHAT_BACKGROUND
         : ''
     )

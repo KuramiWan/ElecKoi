@@ -23,15 +23,22 @@ export function sortSessionsByPinned(displaySessions, pinnedIds) {
   });
 }
 
-export function collapseSessionsByCharacter(sortedSessions, sessionId) {
+export function collapseSessionsByCharacter(sortedSessions, sessionId, preferredSessions = new Map()) {
   const byCharacter = new Map();
   for (const item of sortedSessions) {
     const key = item.character_id || item.character_name || item.id;
-    if (!byCharacter.has(key) || item.id === sessionId) {
+    if (!byCharacter.has(key) || item.id === sessionId || item.id === preferredSessions.get(key)) {
       byCharacter.set(key, item);
     }
   }
   return [...byCharacter.values()];
+}
+
+export function selectSessionForCharacter(sessions, characterId, preferredId = "") {
+  const matching = (sessions || []).filter((item) => item.character_id === characterId);
+  return matching.find((item) => item.id === preferredId)
+    || matching.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))[0]
+    || null;
 }
 
 export function normalizeConversationEntryIds(ids) {
