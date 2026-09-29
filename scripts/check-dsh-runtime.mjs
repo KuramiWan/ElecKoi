@@ -8,6 +8,7 @@ const require = createRequire(resolve(root, 'package.json'))
 const desktop = readJson('package.json')
 const runtime = readJson('packages/dsh-runtime/package.json')
 const manifest = readJson('resources/dsh/runtime-manifest.json')
+const builderConfig = readFileSync(resolve(root, 'electron-builder.yml'), 'utf8')
 const config = readFileSync(resolve(root, 'resources/dsh', manifest.composition), 'utf8')
 const presetConfig = readFileSync(resolve(root, 'resources/dsh', manifest.presetComposition), 'utf8')
 const sdkServerSource = readFileSync(require.resolve('@deepseek-ai/dsh-sdk-jsonrpc-server'), 'utf8')
@@ -16,6 +17,12 @@ if (manifest.schemaVersion !== 1) throw new Error('DSH runtime manifest schemaVe
 if (manifest.transport !== 'stdio-jsonrpc') throw new Error('DSH Runtime 必须使用 stdio JSON-RPC transport。')
 if (!/^[0-9a-f]{40}$/.test(manifest.upstream.commit)) {
   throw new Error('DSH upstream commit 必须固定为完整的 40 位 Git commit。')
+}
+if (!builderConfig.includes("- '!node_modules/pnpm/**/*'")) {
+  throw new Error('electron-builder 必须排除 app.asar 内重复的 pnpm Runtime。')
+}
+if (!/^\s*- from: node_modules\/pnpm\s*$[\s\S]*?^\s*to: dsh\/pnpm\s*$/m.test(builderConfig)) {
+  throw new Error('electron-builder 必须把唯一的 pnpm Runtime 发布到 resources/dsh/pnpm。')
 }
 
 const configuredPlugins = [...new Set(
