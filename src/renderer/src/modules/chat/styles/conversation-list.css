@@ -4,6 +4,13 @@
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  /* 侧栏内容经 DSH 插槽渲染，外面套着多层 display:contents 锚点（v0.2.1 起是
+     sidebar.workspaces → eleckoi.conversation.list 两层），`.side-panel-content > *`
+     这类直接子代规则够不到面板。和 character-list-panel / plugin-list-panel 一样，
+     面板自己声明有界高度，`.conversation-scroll` 才能内部滚动。 */
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
   border-right: 0;
   background: var(--list);
   contain: layout paint;
