@@ -348,12 +348,14 @@ function ContentSection({ entry, entries, onChange, onOpenEntry }) {
       {references.length ? (
         <section className="setting-library-reference-list">
           <div className="setting-library-reference-heading"><LinkSimple size={16} aria-hidden="true" /><strong>EJS引用设定（{references.length}）</strong></div>
-          {references.map((reference) => <button type="button" key={reference.id} onClick={() => onOpenEntry(reference.id)}>
-            <LinkSimple size={17} aria-hidden="true" />
-            <span>{reference.title}</span>
-            <small>{reference.enabled ? "已开启" : "已关闭"}</small>
-            <CaretRight size={15} aria-hidden="true" />
-          </button>)}
+          <div className="setting-library-reference-items">
+            {references.map((reference) => <button type="button" key={reference.id} onClick={() => onOpenEntry(reference.id)}>
+              <LinkSimple size={17} aria-hidden="true" />
+              <span>{reference.title}</span>
+              <small>{reference.enabled ? "已开启" : "已关闭"}</small>
+              <CaretRight size={15} aria-hidden="true" />
+            </button>)}
+          </div>
         </section>
       ) : null}
     </div>

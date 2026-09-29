@@ -509,6 +509,10 @@
   --dsh-scrollbar-width: 8px;
 }
 
+.setting-library-inspector-body:has(> .setting-library-normal-entry-editor.is-content-editor > .setting-library-entry-section.has-references) {
+  overflow: hidden;
+}
+
 .setting-library-normal-entry-editor,
 .setting-library-entry-section {
   display: grid;
@@ -525,6 +529,11 @@
 .setting-library-normal-entry-editor.is-content-editor {
   grid-template-rows: auto minmax(0, 1fr);
   align-content: stretch;
+}
+
+.setting-library-normal-entry-editor.is-content-editor:has(> .setting-library-entry-section.has-references) {
+  height: 100%;
+  min-height: 0;
 }
 
 .setting-library-entry-section {
@@ -544,8 +553,9 @@
 }
 
 .setting-library-entry-section.is-content-section.has-references {
-  grid-template-rows: auto auto;
-  align-content: start;
+  grid-template-rows: minmax(0, 3fr) minmax(160px, 2fr);
+  align-content: stretch;
+  overflow: hidden;
 }
 
 .setting-library-entry-tabs {
@@ -1011,10 +1021,21 @@
 
 .setting-library-reference-list {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
+  min-height: 0;
   padding: 0;
   overflow: hidden;
   font-size: 12px;
+}
+
+.setting-library-reference-items {
+  display: grid;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .setting-library-reference-heading {
@@ -1417,6 +1438,10 @@
 .setting-library-entry-section.is-content-section .setting-library-content-field textarea {
   height: 100%;
   min-height: 420px;
+}
+
+.setting-library-entry-section.is-content-section.has-references .setting-library-content-field textarea {
+  min-height: 0;
 }
 
 .immersive-markdown-editor {
