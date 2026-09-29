@@ -55,6 +55,16 @@ const probe = `
       throw new Error('Build-time browser package leaked into app.asar: ' + dependency)
     }
     process.stdout.write('Packaged browser dependency boundary check passed.\\n')
+    try {
+      await access(join(appAsar, 'node_modules', 'pnpm'))
+      throw new Error('pnpm leaked into app.asar; the packaged runtime must use resources/dsh/pnpm only.')
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        process.stdout.write('Packaged pnpm duplication check passed.\\n')
+      } else {
+        throw error
+      }
+    }
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-shell', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-conversations', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'src', 'client.js'))
