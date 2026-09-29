@@ -14,16 +14,6 @@
   --dsh-scrollbar-width: 10px;
 }
 
-.plugin-center-surface::before {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: var(--plugin-panel-corner-radius);
-  height: var(--plugin-panel-corner-radius);
-  background: var(--list);
-  content: "";
-}
-
 .plugin-list-panel .plugin-list-row {
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 10px;
