@@ -130,7 +130,7 @@ export function ModelBasicConfigSection({ editor }) {
       </div> : null}
       <div className="model-form-single-row">
         <label>
-          <span>反代地址</span>
+          <span>API 地址</span>
           <input value={form.base_url || ""} onChange={(event) => updateField("base_url", event.target.value)} placeholder={activeProvider.baseUrlPlaceholder} />
         </label>
       </div>
