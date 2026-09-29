@@ -1192,7 +1192,19 @@ button.model-group-row:hover {
   display: block;
 }
 
-.model-picker-menu button {
+.model-picker-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 34px;
+}
+
+.model-picker-option:hover,
+.model-picker-option.active {
+  background: color-mix(in srgb, var(--blue) 10%, #fff);
+}
+
+.model-picker-option-select {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1204,9 +1216,24 @@ button.model-group-row:hover {
   text-align: left;
 }
 
-.model-picker-menu button:hover,
-.model-picker-menu button.active {
-  background: color-mix(in srgb, var(--blue) 10%, #fff);
+.model-picker-option-delete {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border-radius: 7px;
+  color: #8a8a8a;
+}
+
+.model-picker-option-delete:hover {
+  background: #fff0f0;
+  color: #c93434;
+}
+
+.model-picker-option-delete svg {
+  width: 15px;
+  height: 15px;
 }
 
 .model-picker-menu b,

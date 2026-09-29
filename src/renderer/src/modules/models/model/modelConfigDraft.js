@@ -31,6 +31,24 @@ export function mergeModelOptions(form, scopedOptions) {
     : items;
 }
 
+export function removeUserAddedModel(form, modelId, visibleOptions = []) {
+  const id = String(modelId || "").trim();
+  const storedOption = (form.model_options || []).find((item) => item.id === id);
+  if (!id || storedOption?.isUserAdded !== true) return form;
+
+  const remainingOptions = (form.model_options || []).filter((item) => item.id !== id);
+  if (String(form.model || "").trim() !== id) {
+    return { ...form, model_options: remainingOptions };
+  }
+
+  const fallback = visibleOptions.find((item) => String(item?.id || item?.name || "").trim() !== id);
+  const fallbackId = String(fallback?.id || fallback?.name || "").trim();
+  const modelOptions = fallbackId && !remainingOptions.some((item) => item.id === fallbackId)
+    ? [...remainingOptions, { ...fallback, id: fallbackId, name: fallback.name || fallbackId }]
+    : remainingOptions;
+  return { ...form, model: fallbackId, model_options: modelOptions };
+}
+
 export function modelParameterState(form, activeProviderId) {
   const activeModelOption = (form.model_options || []).find((item) => item.id === form.model) || null;
   const automaticContextWindow = activeProviderId === "deepseek" && (!form.base_url || form.base_url.includes("api.deepseek.com"))

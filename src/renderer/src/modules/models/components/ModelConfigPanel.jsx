@@ -16,6 +16,7 @@ import {
   modelParameterState,
   normalizedConfigs,
   providerVersions,
+  removeUserAddedModel,
 } from "../model/modelConfigDraft.js";
 import { useModelConnectionTest } from "../hooks/useModelConnectionTest.js";
 import { useModelProviderDeletion } from "../hooks/useModelProviderDeletion.js";
@@ -160,6 +161,10 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     ? localModelOptions.items
     : modelOptionsByKey[currentModelOptionsKey] || form.model_options || [];
   const modelItems = useMemo(() => mergeModelOptions(form, scopedModelOptions), [form, scopedModelOptions]);
+  const removableModelIds = useMemo(
+    () => new Set((form.model_options || []).filter((item) => item.isUserAdded === true).map((item) => item.id)),
+    [form.model_options],
+  );
   const { activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError } = useMemo(
     () => modelParameterState(form, activeProviderId),
     [activeProviderId, form],
@@ -272,6 +277,22 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     setModelMenuOpen(false);
     setManualModelOpen(false);
     setManualModelName("");
+  }
+
+  function deleteModel(modelId) {
+    const id = String(modelId || "").trim();
+    const current = formRef.current;
+    const next = removeUserAddedModel(current, id, modelItems);
+    if (next === current) return;
+
+    const visibleItems = modelItems.filter((item) => item.id !== id);
+    setConnectionTest({ status: "idle", message: "" });
+    setLocalModelOptions({ key: modelOptionsKey(next), items: visibleItems });
+    isDirtyRef.current = true;
+    setIsDirty(true);
+    formRef.current = next;
+    setForm(next);
+    showNotice("success", `已删除模型 ${id}`);
   }
 
   function addManualModel() {
@@ -557,7 +578,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       selectedVersionName, providerVersionItems, selectedConfigId, selectConfigId, createConfigPlaceholder,
       willClearCurrentConfig, confirmDeleteConfig, setConfirmDeleteConfig, canDeleteCurrent, currentVersionConfig,
       setDeleteTargetConfig, deleteTargetVersionName, deleting, deleteCurrentConfig, modelPickerRef, manualModelRef, modelMenuOpen,
-      setModelMenuOpen, modelItems, selectModel, loadingModels, fetchModels, manualModelOpen, setManualModelOpen,
+      setModelMenuOpen, modelItems, removableModelIds, selectModel, deleteModel, loadingModels, fetchModels, manualModelOpen, setManualModelOpen,
       manualModelName, setManualModelName, addManualModel, connectionTest, testingConnection, testConnection, updateField,
     }}
     parameterEditor={{

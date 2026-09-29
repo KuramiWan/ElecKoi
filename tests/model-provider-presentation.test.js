@@ -9,7 +9,7 @@ import {
   detectModelIconId,
   modelIdentityMeta,
 } from "../src/renderer/src/modules/models/model/modelIdentity.js";
-import { imageSettingsError } from "../src/renderer/src/modules/models/model/modelConfigDraft.js";
+import { imageSettingsError, removeUserAddedModel } from "../src/renderer/src/modules/models/model/modelConfigDraft.js";
 
 describe("model provider presentation", () => {
   it("keeps optional providers out of the library until they are active or configured", () => {
@@ -86,6 +86,30 @@ describe("model provider presentation", () => {
       .toBe("宽高都需要是 16 的倍数。");
     expect(imageSettingsError({ ...novelAi, image_settings: { ...novelAi.image_settings, steps: 51 } }))
       .toBe("步数需要在 1 到 50 之间。");
+  });
+
+  it("removes a manually added model and selects the next available model", () => {
+    const form = {
+      model: "temporary-model",
+      model_options: [
+        { id: "deepseek-flash", name: "DeepSeek Flash" },
+        { id: "temporary-model", name: "temporary-model", isUserAdded: true },
+      ],
+    };
+
+    expect(removeUserAddedModel(form, "temporary-model", form.model_options)).toEqual({
+      model: "deepseek-flash",
+      model_options: [{ id: "deepseek-flash", name: "DeepSeek Flash" }],
+    });
+  });
+
+  it("keeps provider models protected from manual deletion", () => {
+    const form = {
+      model: "deepseek-flash",
+      model_options: [{ id: "deepseek-flash", name: "DeepSeek Flash" }],
+    };
+
+    expect(removeUserAddedModel(form, "deepseek-flash", form.model_options)).toBe(form);
   });
 
   it.each([
