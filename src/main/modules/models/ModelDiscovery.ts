@@ -267,7 +267,7 @@ async function postJson(
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('工具调用测试返回的不是 JSON 对象。')
     return payload as Record<string, unknown>
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('工具调用测试超时，请检查反代或稍后重试。')
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('工具调用测试超时，请检查 API 地址或稍后重试。')
     if (error instanceof SyntaxError) throw new Error('工具调用测试返回的不是有效 JSON。')
     throw error
   } finally {
