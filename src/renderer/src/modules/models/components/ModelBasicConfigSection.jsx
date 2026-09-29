@@ -39,7 +39,9 @@ export function ModelBasicConfigSection({ editor }) {
     modelMenuOpen,
     setModelMenuOpen,
     modelItems,
+    removableModelIds,
     selectModel,
+    deleteModel,
     loadingModels,
     fetchModels,
     manualModelOpen,
@@ -163,10 +165,25 @@ export function ModelBasicConfigSection({ editor }) {
               <button type="button" title="展开模型列表" onClick={() => setModelMenuOpen((current) => !current)}><ChevronRightIcon /></button>
               <div className={`model-picker-menu ${modelMenuOpen ? "open" : ""}`}>
                 {modelItems.length ? modelItems.map((item) => (
-                  <button key={item.id} type="button" className={item.id === form.model ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => selectModel(item.id)}>
-                    <b>{item.id}</b>
-                    {item.name !== item.id ? <span>{item.name}</span> : null}
-                  </button>
+                  <div key={item.id} className={`model-picker-option ${item.id === form.model ? "active" : ""}`}>
+                    <button className="model-picker-option-select" type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => selectModel(item.id)}>
+                      <b>{item.id}</b>
+                      {item.name !== item.id ? <span>{item.name}</span> : null}
+                    </button>
+                    {removableModelIds.has(item.id) ? (
+                      <button
+                        className="model-picker-option-delete"
+                        type="button"
+                        title={`删除模型 ${item.id}`}
+                        aria-label={`删除模型 ${item.id}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          deleteModel(item.id);
+                        }}
+                      ><TrashIcon /></button>
+                    ) : null}
+                  </div>
                 )) : <div className="model-picker-empty">读取模型后会显示在这里</div>}
               </div>
             </div>

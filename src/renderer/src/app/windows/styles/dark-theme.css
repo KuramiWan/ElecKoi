@@ -140,8 +140,8 @@
   .character-group-context-menu button:hover,
   .model-version-menu button:hover,
   .model-version-menu button.active,
-  .model-picker-menu button:hover,
-  .model-picker-menu button.active,
+  .model-picker-option:hover,
+  .model-picker-option.active,
   .model-header-row button:hover,
   .history-titlebar button:hover,
   .history-item:hover,
@@ -150,6 +150,15 @@
   .history-confirm button:hover
 ) {
   background: var(--control-bg-hover);
+}
+
+:root[data-theme="dark"] .model-picker-option-delete {
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .model-picker-option-delete:hover {
+  background: color-mix(in srgb, #ef6464 16%, transparent);
+  color: #ff8b8b;
 }
 
 :root[data-theme="dark"] .dsh-search-field {
