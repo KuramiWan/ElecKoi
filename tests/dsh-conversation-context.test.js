@@ -200,6 +200,7 @@ describe('DSH conversation context', () => {
     const session = {
       surface: { nodes: [] },
       eventAt: vi.fn(),
+      append: vi.fn(() => ({ seq: 10 })),
       deriveMessages: () => nativeMessages,
       snapshotEvents: () => [{ seq: 9, type: 'step/start', time: 2_345, data: { turn: 2, step: 1 } }]
     }
@@ -229,6 +230,15 @@ describe('DSH conversation context', () => {
       ['assistant', '上一答'],
       ['user', '当前问题（已处理）']
     ])
+    expect(session.append).toHaveBeenCalledWith(
+      'user/message',
+      expect.objectContaining({
+        content: [expect.objectContaining({
+          text: expect.stringContaining('"history":[{"role":"user","content":"上一问"}')
+        })]
+      }),
+      { surfaceOp: 'append' }
+    )
     expect(text(nativeMessages.at(-1))).toBe('当前问题')
     expect(JSON.stringify(result.messages)).not.toContain('上一轮思考')
     expect(JSON.stringify(result.messages)).not.toContain('call-1')

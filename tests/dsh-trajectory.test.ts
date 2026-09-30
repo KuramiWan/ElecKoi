@@ -95,17 +95,20 @@ describe('DSH trajectory projection', () => {
         content: [{ type: 'text', text: '你好' }],
         source: { kind: 'user' },
         role: 'user'
-      }, 1_020),
+      }, 1_020, 'append'),
       event(3, 'user/message', {
         content: [{ type: 'text', text: '工作区说明' }],
         source: { kind: 'agent-instructions' },
         role: 'user'
-      }, 1_030),
+      }, 1_030, 'append'),
       event(4, 'user/message', {
-        content: [{ type: 'text', text: 'ELECKOI_REQUEST_PROJECTION_V1\n[{"content":"内部定义"}]' }],
+        content: [{
+          type: 'text',
+          text: 'ELECKOI_REQUEST_PROJECTION_V2\n{"plan":[{"content":"内部定义"}],"history":[{"role":"user","content":"被回退后保留的问题"}]}'
+        }],
         source: { kind: 'plugin:eleckoi-request-projection' },
         role: 'user'
-      }, 1_035),
+      }, 1_035, 'append'),
       event(5, 'request/header', {
         header: { system: '系统提示词', config: { provider: 'deepseek-official', model: 'deepseek-chat' } },
         reason: 'initial'
@@ -148,6 +151,12 @@ describe('DSH trajectory projection', () => {
       output: '我来查看',
       requests: [{ number: 1, seq: 1, provider: 'deepseek-official', model: 'deepseek-chat' }]
     })
+    expect(result.records[2]?.requests[0]?.context).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'user', kind: 'history', title: '历史用户消息', content: '被回退后保留的问题'
+      }),
+      expect.objectContaining({ role: 'user', kind: 'user', title: '用户最新输入', content: '你好' })
+    ]))
     expect(result.records[3]).toMatchObject({
       title: 'read',
       input: '{\n  "path": "README.md"\n}',
@@ -157,7 +166,7 @@ describe('DSH trajectory projection', () => {
     })
     expect(JSON.parse(result.records[3]?.rawJson ?? '[]')).toHaveLength(2)
     expect(JSON.stringify(result)).not.toContain('系统提示词')
-    expect(JSON.stringify(result)).not.toContain('ELECKOI_REQUEST_PROJECTION_V1')
+    expect(JSON.stringify(result)).not.toContain('ELECKOI_REQUEST_PROJECTION_V2')
     expect(JSON.stringify(result)).not.toContain('内部定义')
     expect(result).toMatchObject({ startedAtMillis: 990, completedAtMillis: 1_270 })
   })

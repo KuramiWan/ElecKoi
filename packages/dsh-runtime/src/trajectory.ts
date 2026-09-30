@@ -263,7 +263,8 @@ function contextItemsFromSurface(surface: readonly NormalizedEvent[]): DshReques
     if (event.type !== 'user/message') return false
     return record(record(event.data).source).kind === `plugin:${REQUEST_PROJECTION_PLUGIN}`
   })
-  const plan = projectionPlanFromEnvelope(envelope)
+  const projection = projectionSnapshotFromEnvelope(envelope)
+  const plan = projection.plan
   const visible = surface.filter((event) => event !== envelope)
     .map((event) => ({ event, item: contextItemFromEvent(event) }))
     .filter((entry): entry is { event: NormalizedEvent; item: DshRequestContextItem } => entry.item !== undefined)
@@ -276,10 +277,23 @@ function contextItemsFromSurface(surface: readonly NormalizedEvent[]): DshReques
   const currentUser = lastIndexWhere(dialogue, ({ item }) => item.kind === 'user')
   const projectedDialogue = currentUser < 0
     ? dialogue.map(({ item }) => item)
-    : [
+    : projection.history === undefined ? [
         ...historicalDialogueItems(dialogue.slice(0, currentUser)),
         ...dialogue.slice(currentUser).map(({ item }) => item)
       ]
+      : [
+          ...projection.history.map((item, index): DshRequestContextItem => ({
+            order: 0,
+            messageId: `eleckoi-product-history-${index}`,
+            role: item.role,
+            kind: 'history',
+            title: item.role === 'assistant' ? '历史助手消息' : '历史用户消息',
+            source: '聊天记录',
+            anchor: '',
+            content: item.content
+          })),
+          ...dialogue.slice(currentUser).map(({ item }) => item)
+        ]
   const latestUser = lastIndexWhere(projectedDialogue, (item) => item.kind === 'user')
   const at = (anchor: string) => plan.filter((item) => item.anchor === anchor)
   const ordered = latestUser < 0
@@ -338,15 +352,20 @@ function lastIndexWhere<T>(items: readonly T[], predicate: (item: T) => boolean)
   return -1
 }
 
-function projectionPlanFromEnvelope(envelope: NormalizedEvent | undefined): DshRequestContextItem[] {
-  if (!envelope) return []
+function projectionSnapshotFromEnvelope(envelope: NormalizedEvent | undefined): {
+  plan: DshRequestContextItem[]
+  history?: Array<{ role: 'user' | 'assistant'; content: string }> | undefined
+} {
+  if (!envelope) return { plan: [] }
   const raw = contentText(envelope.data.content)
-  const prefix = 'ELECKOI_REQUEST_PROJECTION_V1\n'
-  if (!raw.startsWith(prefix)) return []
+  const v2Prefix = 'ELECKOI_REQUEST_PROJECTION_V2\n'
+  const v1Prefix = 'ELECKOI_REQUEST_PROJECTION_V1\n'
+  const prefix = raw.startsWith(v2Prefix) ? v2Prefix : raw.startsWith(v1Prefix) ? v1Prefix : undefined
+  if (!prefix) return { plan: [] }
   let value: unknown
-  try { value = JSON.parse(raw.slice(prefix.length)) } catch { return [] }
-  if (!Array.isArray(value)) return []
-  return value.flatMap((entry, index) => {
+  try { value = JSON.parse(raw.slice(prefix.length)) } catch { return { plan: [] } }
+  const entries = Array.isArray(value) ? value : isRecord(value) && Array.isArray(value.plan) ? value.plan : []
+  const plan = entries.flatMap((entry, index) => {
     if (!isRecord(entry) || typeof entry.content !== 'string' || !entry.content) return []
     const role: DshRequestContextRole = entry.role === 'system' || entry.role === 'assistant' ? entry.role : 'user'
     return [{
@@ -360,6 +379,15 @@ function projectionPlanFromEnvelope(envelope: NormalizedEvent | undefined): DshR
       content: entry.content
     }]
   })
+  if (Array.isArray(value)) return { plan }
+  const history = isRecord(value) && Array.isArray(value.history)
+    ? value.history.flatMap((entry) => isRecord(entry)
+      && (entry.role === 'user' || entry.role === 'assistant')
+      && typeof entry.content === 'string' && entry.content.trim()
+      ? [{ role: entry.role, content: entry.content }]
+      : [])
+    : []
+  return { plan, history }
 }
 
 function contextItemFromEvent(event: NormalizedEvent): DshRequestContextItem | undefined {
