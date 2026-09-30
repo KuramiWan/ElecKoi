@@ -54,12 +54,17 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build and verify all Electron processes
-        run: |
-          pnpm build
-          pnpm rebuild:electron
-          pnpm check:electron-sqlite
-          pnpm check:electron-dsh
+      - name: Build all Electron processes
+        run: pnpm build
+
+      - name: Rebuild Electron native dependencies
+        run: pnpm rebuild:electron
+
+      - name: Verify Electron SQLite runtime
+        run: pnpm check:electron-sqlite
+
+      - name: Verify Electron DSH runtime
+        run: pnpm check:electron-dsh
 
       - name: Package Windows installer and update metadata
         env:

@@ -32,7 +32,8 @@ const outputs = new Map([
 for (const [path, content] of outputs) {
   const file = resolve(root, path)
   if (process.argv.includes('--check')) {
-    if (readFileSync(file, 'utf8') !== content) throw new Error(`Stale generated database mapping: ${path}`)
+    const current = readFileSync(file, 'utf8').replaceAll('\r\n', '\n')
+    if (current !== content) throw new Error(`Stale generated database mapping: ${path}`)
   } else writeFileSync(file, content)
 }
 const viewCount = [...source.matchAll(/^CREATE VIEW\s+/gm)].length
