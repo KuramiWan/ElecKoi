@@ -1006,6 +1006,49 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
       .toEqual({ turnId: user.id })
   })
 
+  it('sends a retained user input as history after deleting only its assistant reply', async () => {
+    let didRewind = false
+    let runtimeInput: AgentRunInput | undefined
+    const harness = createHarness({
+      rewindConversation: async () => {
+        didRewind = true
+        return 'rewound'
+      },
+      run: async (input, callbacks) => {
+        runtimeInput = input
+        callbacks.onTurnStarted?.(1)
+        callbacks.onFinal('新回答')
+        return 'complete'
+      }
+    })
+    const user = harness.messages.create(harness.conversationId, 'user', '你好啊', 'complete')
+    const reply = harness.messages.create(
+      harness.conversationId, 'assistant', '旧回答', 'complete', undefined, harness.conversationId
+    )
+    harness.database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(reply.id)
+    harness.messages.attachTranscriptReader(() => didRewind ? [] : [{
+      turn: 1, completed: true, userSeq: 1, userText: '你好啊', userImages: [], userFiles: [],
+      assistantText: '旧回答', process: []
+    }])
+
+    await harness.coordinator.deleteMessagesFrom(harness.conversationId, reply.id)
+    await harness.coordinator.start(harness.conversationId, '你好')
+    await harness.terminal
+
+    expect(runtimeInput).toMatchObject({
+      text: '你好',
+      conversationContext: {
+        currentPromptText: '你好',
+        history: [{ role: 'user', content: '你好啊', speakerName: '你' }]
+      }
+    })
+    expect(harness.messages.list(harness.conversationId)).toEqual([
+      expect.objectContaining({ id: user.id, role: 'user', content: '你好啊' }),
+      expect.objectContaining({ role: 'user', content: '你好' }),
+      expect.objectContaining({ role: 'assistant', content: '新回答' })
+    ])
+  })
+
   it('deletes an input interrupted before DSH started its turn', async () => {
     const rewound: number[] = []
     const harness = createHarness({

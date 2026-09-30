@@ -7,8 +7,9 @@ import { requiredSettingCache } from './required-setting-cache.mjs'
 export const name = 'eleckoi-conversation-context'
 export const projectionPlugin = 'eleckoi-request-projection'
 
-const PROJECTION_VERSION = 1
+const PROJECTION_VERSION = 2
 const PROJECTION_PREFIX = `ELECKOI_REQUEST_PROJECTION_V${PROJECTION_VERSION}\n`
+const LEGACY_PROJECTION_PREFIX = 'ELECKOI_REQUEST_PROJECTION_V1\n'
 
 /** Install product-owned prompt contributions for every root turn. */
 export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId) {
@@ -20,11 +21,12 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
   const disposeStepProjection = agentCtx.on('agent/pre-step', async ({ agent, signal }, next) => {
     const decision = await next()
     if (decision.kind === 'reject' || signal.aborted) return decision
-    const plan = requestProjectionPlan(read().conversationContext)
-    if (plan.length === 0 || activeProjectionEnvelope(agent.session)) return decision
+    const snapshot = requestProjectionSnapshot(read().conversationContext)
+    if ((snapshot.plan.length === 0 && snapshot.history.length === 0)
+      || activeProjectionEnvelope(agent.session)) return decision
     return {
       ...decision,
-      messages: [...decision.messages, projectionEnvelope(plan)]
+      messages: [...decision.messages, projectionEnvelope(snapshot)]
     }
   })
   const disposeRequestProjection = agentCtx.on('llm/stream', (options, next) => {
@@ -32,11 +34,11 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
     const session = agentCtx.sessions.get(options.sessionId)
     if (!session) return next()
     const snapshot = read()
-    const plan = requestProjectionPlan(snapshot.conversationContext)
-    ensureProjectionEnvelope(session, plan)
+    const projection = requestProjectionSnapshot(snapshot.conversationContext)
+    ensureProjectionEnvelope(session, projection)
     const productMessages = projectProductHistory(session.deriveMessages(), snapshot.conversationContext)
     const messages = projectRequestMessages(
-      projectCurrentUserPrompt(productMessages, snapshot.conversationContext), plan
+      projectCurrentUserPrompt(productMessages, snapshot.conversationContext), projection.plan
     )
     const instructions = sessionInstructions(snapshot)
     if (instructions) {
@@ -89,6 +91,17 @@ export function requestProjectionPlan(context) {
     }))
 }
 
+/** Persist the product history that is authoritative for this provider request. */
+export function requestProjectionSnapshot(context) {
+  return {
+    plan: requestProjectionPlan(context),
+    history: (Array.isArray(context?.history) ? context.history : [])
+      .flatMap((item) => isProductHistoryEntry(item)
+        ? [{ role: item.role, content: item.content }]
+        : [])
+  }
+}
+
 /**
  * Rebuild the exact provider-facing message order for one model request.
  * The projection envelope itself stays durable in the DSH log but never reaches
@@ -128,7 +141,7 @@ export function projectRequestMessages(messages, plan = projectionPlanFromMessag
 export function projectionPlanFromMessages(messages) {
   const envelope = messages.findLast(isProjectionEnvelope)
   if (!envelope) return undefined
-  return decodeProjectionEnvelope(envelope)
+  return decodeProjectionEnvelope(envelope).plan
 }
 
 export function isProjectionEnvelope(message) {
@@ -249,11 +262,11 @@ function activeProjectionEnvelope(session) {
   }
 }
 
-function ensureProjectionEnvelope(session, plan) {
+function ensureProjectionEnvelope(session, snapshot) {
   const current = activeProjectionEnvelope(session)
-  const next = projectionEnvelope(plan)
+  const next = projectionEnvelope(snapshot)
   if (current && messageText(current.data) === messageText(next)) return current
-  if (!current && plan.length === 0) return undefined
+  if (!current && snapshot.plan.length === 0 && snapshot.history.length === 0) return undefined
   if (!current) {
     return session.append('user/message', next, { surfaceOp: 'append' })
   }
@@ -263,27 +276,35 @@ function ensureProjectionEnvelope(session, plan) {
   })
 }
 
-function projectionEnvelope(plan) {
+function projectionEnvelope(snapshot) {
   return freezeMessage({
     id: `${projectionPlugin}:v${PROJECTION_VERSION}`,
     role: 'user',
-    content: [{ type: 'text', text: `${PROJECTION_PREFIX}${JSON.stringify(plan)}` }],
+    content: [{ type: 'text', text: `${PROJECTION_PREFIX}${JSON.stringify(snapshot)}` }],
     source: {
       kind: `plugin:${projectionPlugin}`,
       form: 'snapshot',
-      sections: plan.map((entry) => ({ name: entry.traceTitle || entry.id, text: entry.content }))
+      sections: snapshot.plan.map((entry) => ({ name: entry.traceTitle || entry.id, text: entry.content }))
     }
   })
 }
 
 function decodeProjectionEnvelope(message) {
   const text = messageText(message)
-  if (!text.startsWith(PROJECTION_PREFIX)) return []
+  const prefix = text.startsWith(PROJECTION_PREFIX)
+    ? PROJECTION_PREFIX
+    : text.startsWith(LEGACY_PROJECTION_PREFIX) ? LEGACY_PROJECTION_PREFIX : undefined
+  if (!prefix) return { plan: [], history: [] }
   try {
-    const value = JSON.parse(text.slice(PROJECTION_PREFIX.length))
-    return Array.isArray(value) ? value.filter(isProjectionEntry) : []
+    const value = JSON.parse(text.slice(prefix.length))
+    if (Array.isArray(value)) return { plan: value.filter(isProjectionEntry), history: [] }
+    if (!value || typeof value !== 'object') return { plan: [], history: [] }
+    return {
+      plan: Array.isArray(value.plan) ? value.plan.filter(isProjectionEntry) : [],
+      history: Array.isArray(value.history) ? value.history.filter(isProductHistoryEntry) : []
+    }
   } catch {
-    return []
+    return { plan: [], history: [] }
   }
 }
 
@@ -341,6 +362,13 @@ export function projectProductHistory(messages, context) {
     ...authoritative,
     ...messages.slice(currentUserIndex)
   ]
+}
+
+function isProductHistoryEntry(value) {
+  return value && typeof value === 'object'
+    && (value.role === 'user' || value.role === 'assistant')
+    && typeof value.content === 'string'
+    && value.content.trim().length > 0
 }
 
 /** Apply prompt transformations to the provider request while keeping the DSH user event unchanged. */

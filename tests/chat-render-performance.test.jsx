@@ -32,6 +32,41 @@ afterEach(() => {
 })
 
 describe('chat rendering performance', () => {
+  it('runs the conversation entrance animation only once per mounted conversation', async () => {
+    vi.useFakeTimers()
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const props = {
+      conversationId: 'chat-enter', entering: true, scrollElement: null,
+      scrollRequest: { revision: 0, behavior: 'auto' },
+      onFollowingTailChange: vi.fn(), returnToBottomRef: { current: null },
+      layoutMode: 'roleplay', profile: { reply_spacing: 10, turn_spacing: 10 },
+      avatarShape: 'portrait', userAvatar: '', assistantAvatar: '',
+      userPinImage: '', assistantPinImage: '', userName: '用户', assistantName: '角色',
+      showRoleplayTimestamp: false, showRoleplayFloor: false,
+      onOpenProcess: vi.fn(), onEditMessage: vi.fn(), onEditOpening: vi.fn(),
+      onSelectOpening: vi.fn(), onRegenerate: vi.fn(), deleteMode: false,
+      deleteFromMessageId: '', onSelectDeleteFrom: vi.fn(), runtimeSessionId: '',
+    }
+
+    try {
+      await act(async () => root.render(<MessageList {...props} messages={[
+        { id: 'message-1', role: 'assistant', content: '消息', conversationId: 'chat-enter' },
+      ]} />))
+      const messageFlow = container.querySelector('.message-flow')
+      const messageRow = container.querySelector('.message-flow-row')
+      expect(messageFlow?.classList.contains('is-conversation-entering')).toBe(true)
+
+      await act(async () => { vi.advanceTimersByTime(220) })
+
+      expect(messageFlow?.classList.contains('is-conversation-entering')).toBe(false)
+      expect(container.querySelector('.message-flow-row')).toBe(messageRow)
+    } finally {
+      await act(async () => root.unmount())
+    }
+  })
+
   it('keeps settled DSH message rows mounted while a pending reply changes', async () => {
     const container = document.createElement('div')
     document.body.append(container)

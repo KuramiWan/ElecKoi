@@ -650,6 +650,7 @@ export function MessageList({
   renderRoleplaySlot,
   renderRoleplayMessage,
 }) {
+  const [isEntering, setIsEntering] = useState(Boolean(entering));
   const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant" && !message.pending);
   const restoredConversationRef = useRef("");
   const scrollRevisionRef = useRef(scrollRequest.revision);
@@ -670,6 +671,16 @@ export function MessageList({
   const deleteFromIndex = deleteMode
     ? messages.findIndex((message) => message.id === deleteFromMessageId)
     : -1;
+
+  useEffect(() => {
+    if (!entering) {
+      setIsEntering(false);
+      return undefined;
+    }
+    setIsEntering(true);
+    const timer = window.setTimeout(() => setIsEntering(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [conversationId, entering]);
 
   useLayoutEffect(() => {
     if (!scrollElement || !conversationId || messages.length === 0
@@ -704,7 +715,12 @@ export function MessageList({
   }, [beginHistoryPaging, pagingControlRef]);
 
   return (
-    <div className={`message-flow${entering ? " is-conversation-entering" : ""}`}>
+    <div
+      className={`message-flow${isEntering ? " is-conversation-entering" : ""}`}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) setIsEntering(false);
+      }}
+    >
       {messages.map((item, index) => {
         const rowKey = item.renderKey || item.id || `${item.role || "message"}-${item.created_at || index}`;
         const selectedForDelete = deleteFromIndex >= 0 && index >= deleteFromIndex;
