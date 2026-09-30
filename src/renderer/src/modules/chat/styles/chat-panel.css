@@ -1,9 +1,7 @@
 
 .chat-panel {
-  --chat-reading-width: 780px;
   --chat-scroll-horizontal-padding: 24px;
   --chat-window-resize-edge-inset: 6px;
-  --chat-message-inline-inset: 30px;
   --chat-roleplay-side-rail: calc(
     var(--chat-horizontal-padding, 10px)
     + var(--chat-avatar-width, 65px)
@@ -11,7 +9,7 @@
   );
   position: relative;
   display: grid;
-  grid-template-rows: 53px minmax(0, 1fr) auto;
+  grid-template-rows: 76px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -26,6 +24,24 @@
 .chat-panel > * {
   position: relative;
   z-index: 1;
+}
+
+.chat-conversation-body {
+  --dsh-chat-content-width: var(
+    --dsh-chat-user-width,
+    clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px)
+  );
+  --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
+  --dsh-composer-side-clearance: 16px;
+  --dsh-composer-dock-inset: 8px;
+  --chat-reading-width: var(--dsh-chat-content-width);
+  --chat-composer-card-max-width: var(--dsh-composer-card-max-width);
+  --chat-composer-side-clearance: var(--dsh-composer-side-clearance);
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .chat-panel-empty-state {
@@ -86,16 +102,108 @@
 .chat-header {
   position: relative;
   z-index: 3;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-rows: minmax(30px, auto) auto;
+  align-content: end;
   min-width: 0;
-  padding: 0 24px;
+  min-height: 76px;
+  padding: 10px 28px 0 20px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3, var(--line));
+  background: transparent;
+}
+
+.chat-header-title-row {
+  container-type: inline-size;
+  display: flex;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+}
+
+.chat-header-title-cluster {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chat-header-preset {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  height: 22px;
+  padding: 0 2px 0 0;
+  overflow: hidden;
+  border-radius: var(--dsw-radius-xs, 4px);
+  background: var(--dsw-alias-fill-tsp-secondary, transparent);
+  color: var(--dsw-alias-label-tertiary, var(--soft-text));
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.chat-header-preset-icon {
+  flex: none;
+  opacity: 0.7;
+}
+
+.chat-header-preset span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container (max-width: 540px) {
+  .chat-header-preset {
+    display: none;
+  }
+}
+
+.chat-header-tabs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 36px;
+  margin-top: 10px;
+  padding-left: 8px;
+}
+
+.chat-header-tabs button {
+  position: relative;
+  padding: 0 0 9px;
   border: 0;
   background: transparent;
+  color: var(--dsw-alias-label-tertiary, var(--soft-text));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.chat-header-tabs button::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+  content: "";
+}
+
+.chat-header-tabs button[aria-selected="true"] {
+  color: var(--dsw-alias-state-business-primary, var(--blue));
+}
+
+.chat-header-tabs button[aria-selected="true"]::after {
+  background: var(--dsw-alias-state-business-primary, var(--blue));
 }
 
 .chat-header-actions {
   position: relative;
+  top: 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -164,8 +272,9 @@
   min-width: 0;
   overflow: hidden;
   color: var(--chat-header-fg);
-  font-size: 21px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -277,7 +386,7 @@
 }
 
 .message-delete-selection-row.layout-agent {
-  width: min(calc(var(--chat-reading-width) + 30px), 100%);
+  width: min(calc(var(--chat-composer-card-max-width) + 30px), 100%);
   margin: 0 auto;
 }
 
@@ -401,7 +510,7 @@
   column-gap: var(--chat-avatar-gap, 8px);
   row-gap: 0;
   box-sizing: border-box;
-  width: min(var(--chat-reading-width), 100%);
+  width: min(var(--chat-composer-card-max-width), 100%);
   margin-right: auto;
   margin-left: auto;
   padding-right: var(--chat-horizontal-padding, 16px);
@@ -1522,7 +1631,7 @@
 .message-roleplay.theirs .bubble {
   max-width: none;
   min-height: 0;
-  padding: 0 var(--chat-message-inline-inset) 0 0;
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1553,40 +1662,32 @@
   text-decoration: underline;
 }
 
-.markdown-message q {
-  color: var(--chat-quote-color, #f2a65a);
-}
-
-.markdown-message q::before,
-.markdown-message q::after {
-  content: "";
-}
-
-.markdown-message q em,
-.markdown-message q i {
-  color: inherit;
-}
-
 .markdown-message > :last-child {
   margin-bottom: 0;
 }
 
-.markdown-message .eleckoi-streamdown > :not([hidden]) ~ :not([hidden]) {
-  margin-block-start: 0;
-}
-
-.markdown-message .eleckoi-streamdown > :first-child,
-.markdown-message .eleckoi-streamdown > :first-child > :first-child {
+.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :first-child,
+.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :first-child > :first-child {
   margin-top: 0;
 }
 
-.markdown-message .eleckoi-streamdown > :last-child,
-.markdown-message .eleckoi-streamdown > :last-child > :last-child {
+.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :last-child,
+.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :last-child > :last-child {
   margin-bottom: 0;
+}
+
+/* Keep the official DSH code toolbar inside its code card while the whole
+   ElecKoi transcript scrolls. The upstream compact variant uses this same
+   static toolbar mode; a sticky toolbar can otherwise detach from the card
+   when its nearest scrollport is the complete message area. */
+.markdown-message .md-code-block > :has(> [data-code-block-banner]) {
+  position: static;
+  z-index: auto;
 }
 
 .markdown-message p {
   margin: 0 0 var(--chat-paragraph-gap, 8px);
+  white-space: pre-wrap;
 }
 
 .markdown-message ul,
@@ -1609,30 +1710,6 @@
   border-left: 3px solid var(--chat-quote-color, #f2a65a);
 }
 
-/* Streamdown ships a framed code-block shell around its highlighted <pre>.
-   ElecKoi already owns the code-block surface, so keep exactly one frame. */
-.markdown-message .eleckoi-streamdown [data-streamdown="code-block"] {
-  gap: 0;
-  margin: 16px 0;
-  padding: 0;
-  border: 0;
-  border-radius: 12px;
-  background: var(--markdown-code-block-bg);
-}
-
-.markdown-message .eleckoi-streamdown [data-streamdown="code-block-header"] {
-  display: none;
-}
-
-.markdown-message .eleckoi-streamdown [data-streamdown="code-block-body"] {
-  max-width: 100%;
-  padding: 0;
-  overflow-x: auto;
-  border: 0;
-  border-radius: 12px;
-  background: var(--markdown-code-block-bg);
-}
-
 .markdown-message pre {
   max-width: 100%;
   margin: 16px 0;
@@ -1646,14 +1723,6 @@
   font-weight: 500;
   line-height: var(--chat-font-size, 15px);
   white-space: pre-wrap;
-}
-
-.markdown-message .eleckoi-streamdown [data-streamdown="code-block-body"] pre {
-  max-width: none;
-  margin: 0;
-  overflow: visible;
-  border-radius: inherit;
-  background: var(--markdown-code-block-bg) !important;
 }
 
 .markdown-message pre::-webkit-scrollbar {
@@ -1759,7 +1828,7 @@
 .composer-stack {
   display: grid;
   width: 100%;
-  max-width: var(--chat-reading-width);
+  max-width: var(--chat-composer-card-max-width);
   min-width: 0;
 }
 
@@ -2025,19 +2094,34 @@
 }
 
 .chat-panel.layout-roleplay .composer {
-  padding-right: calc(
-    var(--chat-scroll-horizontal-padding)
-    + var(--chat-roleplay-side-rail)
-  );
-  padding-left: calc(
-    var(--chat-scroll-horizontal-padding)
-    + var(--chat-roleplay-side-rail)
-  );
+  padding-right: var(--chat-composer-side-clearance);
+  padding-left: var(--chat-composer-side-clearance);
 }
 
 .chat-composer-region {
+  position: relative;
+  z-index: 7;
   display: grid;
   min-width: 0;
+}
+
+.chat-panel.view-trajectory .chat-composer-region {
+  position: absolute;
+  z-index: 7;
+  right: var(--dsh-scrollbar-width, 8px);
+  bottom: 0;
+  left: 0;
+  padding-top: 36px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dsw-alias-bg-base, var(--chat)) 0%, transparent) 0,
+    var(--dsw-alias-bg-base, var(--chat)) 36px
+  );
+  pointer-events: none;
+}
+
+.chat-panel.view-trajectory .chat-composer-region > * {
+  pointer-events: auto;
 }
 
 .chat-to-bottom-slot {
@@ -2049,15 +2133,11 @@
   display: flex;
   justify-content: flex-end;
   height: 0;
-  padding-right: max(36px, calc((100% - var(--chat-reading-width)) / 2 + 16px));
-  pointer-events: none;
-}
-
-.chat-panel.layout-roleplay .chat-to-bottom-slot {
   padding-right: max(
-    calc(var(--chat-scroll-horizontal-padding) + var(--chat-roleplay-side-rail) + 16px),
-    calc((100% - var(--chat-reading-width)) / 2 + 16px)
+    calc(var(--chat-composer-side-clearance) + 16px),
+    calc((100% - var(--chat-reading-width)) / 2)
   );
+  pointer-events: none;
 }
 
 .chat-to-bottom {
@@ -2232,17 +2312,38 @@
 }
 
 .chat-running-icon {
+  position: relative;
   display: inline-flex;
   flex: none;
   width: 14px;
   height: 14px;
+  contain: strict;
+  overflow: hidden;
 }
 
-.chat-running-whale-still { display: none; }
+.chat-running-whale-animated {
+  display: none;
+  position: absolute;
+  inset: 0;
+}
+
+.chat-running-whale-still { display: initial; }
+
+@supports (mask-mode: alpha) and (mask-image: url('')) {
+  @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+    .chat-running-whale-animated {
+      display: block;
+      background: currentColor;
+      mask: url('../assets/running-whale@2x.png') center / 100% 100% no-repeat;
+      mask-mode: alpha;
+      will-change: transform;
+    }
+
+    .chat-running-whale-still { display: none; }
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-running-whale-animated { display: none; }
-  .chat-running-whale-still { display: initial; }
   .chat-waiting-shimmer-decoration { display: none; }
   .chat-waiting-shimmer-sweep,
   .chat-waiting-shimmer-highlight { animation: none; }
@@ -2256,7 +2357,7 @@
   gap: 12px;
   box-sizing: border-box;
   width: 100%;
-  max-width: var(--chat-reading-width);
+  max-width: var(--chat-composer-card-max-width);
   padding-top: 8px;
   overflow: visible;
   border: 0;
@@ -2538,12 +2639,8 @@ button.chat-file-card:hover { border-color: var(--blue); }
   }
 
   .chat-panel.layout-roleplay .composer {
-    padding-right: 20px;
-    padding-left: 20px;
-  }
-
-  .chat-panel.layout-roleplay .chat-to-bottom-slot {
-    padding-right: max(36px, calc((100% - var(--chat-reading-width)) / 2 + 16px));
+    padding-right: var(--chat-composer-side-clearance);
+    padding-left: var(--chat-composer-side-clearance);
   }
 
   .chat-panel.layout-roleplay .chat-waiting-reply {

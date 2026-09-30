@@ -5,7 +5,6 @@ import { ConversationCleanupRepository } from './ConversationCleanupRepository'
 import { resolveConversationSeed } from './conversationSeed'
 import type { ChatMessage } from '@shared/contracts/entities/chat'
 import { MessageDisplayProjector } from './MessageDisplayProjector'
-import { RichMessageHeightRepository } from './RichMessageHeightRepository'
 import { buildVariableViewerTimeline } from '@shared/foundation/variables/viewerTimeline'
 import {
   characterCardMacroValues,
@@ -79,7 +78,6 @@ export const conversationsPlugin = {
       )
     )
     const messages = new MessageRepository(ctx.database)
-    const richMessageHeights = new RichMessageHeightRepository(ctx.database)
     const projector = new MessageDisplayProjector(ctx.messageDisplayCompatibility)
     ctx.provide('conversations', conversations)
     ctx.provide('messages', messages)
@@ -133,14 +131,6 @@ export const conversationsPlugin = {
           initialStateJson,
           currentStateJson
         )
-      }),
-      ctx.desktopGateway.register('query.conversations.rich_heights', ({ conversationId }) => {
-        conversations.get(conversationId)
-        return richMessageHeights.list(conversationId)
-      }),
-      ctx.desktopGateway.register('command.conversations.rich_height.save', (input) => {
-        conversations.get(input.conversationId)
-        return richMessageHeights.save(input)
       }),
       ctx.desktopGateway.register('command.conversations.create', async (input) => {
         const created = await conversations.createWithSession(input)

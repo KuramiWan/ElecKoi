@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tavily 联网搜索",
+    "description": "在角色对话中使用已配置的 Tavily 账号搜索网页。"
+  }
+}

@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, nativeTheme, protocol, screen, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, screen, session, shell, type BrowserWindowConstructorOptions, type OpenDialogOptions } from 'electron'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { AppearanceMode } from '@shared/contracts/settings/schemas'
 import { assertTrustedDshClientBoot, isAllowedExternalUrl, isAppRendererUrl, isDshAppUrl, isDshChildUrl } from './validateSender'
@@ -9,10 +9,16 @@ import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, 
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
-  inject: ['appPaths', 'appLog', 'desktopGateway', 'agentSessions', 'pluginHost', 'userSettings'],
+  inject: ['appPaths', 'appLog', 'desktopGateway', 'agentSessions', 'pluginHost', 'userSettings', 'creatorProjects'],
   provide: 'electronWindows',
   async apply(ctx: Context) {
-    let appearanceMode = ctx.userSettings.read('appearance.mode')
+    const appPaths = ctx.appPaths
+    const appLog = ctx.appLog
+    const desktopGateway = ctx.desktopGateway
+    const pluginHost = ctx.pluginHost
+    const userSettings = ctx.userSettings
+    const creatorProjects = ctx.creatorProjects
+    let appearanceMode = userSettings.read('appearance.mode')
     nativeTheme.themeSource = 'system'
 
     const windows = new ElectronWindowHost()
@@ -22,12 +28,12 @@ export const mainWindowPlugin = {
     windows.define('main', {
       singleton: true,
       closesHostOnClose: true,
-      options: () => windowOptions(ctx, false),
+      options: () => windowOptions(appPaths, false),
       load: (window) => window.loadURL(`${DSH_CLIENT_ORIGIN}/`),
       afterCreate: (window) => {
         mainWindow = window
         window.once('closed', () => { if (mainWindow === window) mainWindow = undefined })
-        configureMainWindow(ctx, windows, window)
+        configureMainWindow(appPaths, appLog, windows, window)
       }
     })
     windows.define('child', {
@@ -36,7 +42,7 @@ export const mainWindowPlugin = {
         const frameName = (payload as { frameName?: unknown })?.frameName
         return typeof frameName === 'string' ? frameName : ''
       },
-      options: (payload) => windowOptions(ctx, true, payload),
+      options: (payload) => windowOptions(appPaths, true, payload),
       load: async (window, payload) => {
         const url = (payload as { url?: unknown })?.url
         if (typeof url !== 'string' || (!isAppRendererUrl(url) && !isDshChildUrl(url))) {
@@ -45,17 +51,17 @@ export const mainWindowPlugin = {
         await window.loadURL(url)
       },
       afterCreate: (window) => {
-        configureWindowsAppDetails(ctx, window)
+        configureWindowsAppDetails(appPaths, window)
         installWindowsNativeFrame(window)
         window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
         window.webContents.on('console-message', ({ level, message }) => {
-          if (level === 'error') ctx.appLog.error({ message }, 'ElecKoi child window console error')
+          if (level === 'error') appLog.error({ message }, 'ElecKoi child window console error')
         })
         window.webContents.on('did-fail-load', (_event, code, description, url) => {
-          ctx.appLog.error({ code, description, url }, 'ElecKoi child window failed to load')
+          appLog.error({ code, description, url }, 'ElecKoi child window failed to load')
         })
         window.once('ready-to-show', () => window.show())
-        configureWindowNavigation(ctx, windows, window, true)
+        configureWindowNavigation(appLog, windows, window, true)
       }
     })
     let pluginHostReady: { url: string; injections: readonly unknown[]; cookie: string } | undefined
@@ -65,17 +71,17 @@ export const mainWindowPlugin = {
       const url = new URL(request.url)
       if (url.hostname !== 'app') return new Response(null, { status: 404 })
       if (url.pathname.startsWith('/eleckoi/assets/')) return serveElecKoiClientAsset(request, rendererDirectory)
-      if (isDshClientAsset(url.pathname)) return serveDshClientAsset(request, ctx.pluginHost.frontendDirectory())
+      if (isDshClientAsset(url.pathname)) return serveDshClientAsset(request, pluginHost.frontendDirectory())
       const ready = pluginHostReady
       if (ready === undefined) return new Response(null, { status: 503 })
       try {
         const response = await forwardDshClientRequest(request, ready.url, ready.cookie)
         if (!response.ok && url.pathname.startsWith('/plugins/')) {
-          ctx.appLog.error({ status: response.status, pathname: url.pathname }, 'DSH client plugin asset failed')
+          appLog.error({ status: response.status, pathname: url.pathname }, 'DSH client plugin asset failed')
         }
         return response
       } catch (error) {
-        ctx.appLog.error({ error, pathname: url.pathname }, 'DSH client request failed')
+        appLog.error({ error, pathname: url.pathname }, 'DSH client request failed')
         return new Response(null, { status: 502 })
       }
     })
@@ -104,8 +110,8 @@ export const mainWindowPlugin = {
         windows.all().map(window => window.webContents)
       )
       if (typeof message !== 'string') throw new Error('DSH 插件页面错误格式不正确。')
-      ctx.appLog.error({ message }, 'DSH plugin client boot failed')
-      ctx.desktopGateway.broadcast('plugins.host.failed', { message: `插件页面加载失败：${message}` })
+      appLog.error({ message }, 'DSH plugin client boot failed')
+      desktopGateway.broadcast('plugins.host.failed', { message: `插件页面加载失败：${message}` })
     })
     const syncNativeTheme = (event: Electron.IpcMainEvent, source: unknown) => {
       const mainContents = mainWindow?.webContents
@@ -129,7 +135,7 @@ export const mainWindowPlugin = {
     app.on('activate', focusMainWindow)
     app.on('second-instance', focusMainWindow)
 
-    const unregisterControl = ctx.desktopGateway.register(
+    const unregisterControl = desktopGateway.register(
       'command.window.control',
       ({ action }, request) => {
         const target = request.windowId === undefined ? undefined : BrowserWindow.fromId(request.windowId)
@@ -144,8 +150,34 @@ export const mainWindowPlugin = {
         return { ok: true as const }
       }
     )
+    const unregisterCreatorProjectDirectory = desktopGateway.register(
+      'command.creator_studio.projects.select_directory',
+      async (_input, request) => {
+        const target = request.windowId === undefined ? undefined : BrowserWindow.fromId(request.windowId)
+        const options: OpenDialogOptions = {
+          title: '选择创作项目保存位置',
+          buttonLabel: '选择文件夹',
+          properties: ['openDirectory', 'createDirectory']
+        }
+        const result = target != null && !target.isDestroyed()
+          ? await dialog.showOpenDialog(target, options)
+          : await dialog.showOpenDialog(options)
+        return { directory: result.canceled ? null : result.filePaths[0] ?? null }
+      }
+    )
+
+    const unregisterOpenCreatorProjectLocation = desktopGateway.register(
+      'command.creator_studio.projects.open_location',
+      async ({ projectId }) => {
+        const project = creatorProjects.require(projectId)
+        const error = await shell.openPath(project.rootPath)
+        if (error) throw new Error(error)
+        return { ok: true as const }
+      }
+    )
+
     const publishAppearanceMode = () => {
-      ctx.desktopGateway.broadcast('settings.changed', {
+      desktopGateway.broadcast('settings.changed', {
         key: 'appearance.mode',
         value: appearanceMode
       })
@@ -155,10 +187,10 @@ export const mainWindowPlugin = {
     }
     nativeTheme.on('updated', handleNativeThemeUpdated)
 
-    const unregisterAppearanceMode = ctx.desktopGateway.register(
+    const unregisterAppearanceMode = desktopGateway.register(
       'command.appearance.set_mode',
       ({ mode }) => {
-        appearanceMode = ctx.userSettings.write('appearance.mode', mode)
+        appearanceMode = userSettings.write('appearance.mode', mode)
         nativeTheme.themeSource = appearanceMode
         publishAppearanceMode()
         return {
@@ -168,7 +200,7 @@ export const mainWindowPlugin = {
       }
     )
 
-    const ready = await ctx.pluginHost.start()
+    const ready = await pluginHost.start()
     pluginHostReady = { ...ready, cookie: await authenticateDshClientHost(ready.url) }
     await windows.open('main')
     return () => {
@@ -178,6 +210,8 @@ export const mainWindowPlugin = {
       ipcMain.removeListener('eleckoi:dsh-native-theme', syncNativeTheme)
       session.defaultSession.webRequest.onBeforeSendHeaders(null)
       protocol.unhandle('dsh-app')
+      unregisterCreatorProjectDirectory()
+      unregisterOpenCreatorProjectLocation()
       unregisterAppearanceMode()
       nativeTheme.removeListener('updated', handleNativeThemeUpdated)
       app.removeListener('activate', focusMainWindow)
@@ -187,7 +221,7 @@ export const mainWindowPlugin = {
   }
 } satisfies Plugin.Object
 
-function windowOptions(ctx: Context, child: boolean, payload?: unknown): BrowserWindowConstructorOptions {
+function windowOptions(appPaths: Context['appPaths'], child: boolean, payload?: unknown): BrowserWindowConstructorOptions {
   const size = child ? initialChildWindowSize(payload) : initialWindowSize()
   return {
     title: child ? 'ElecKoi' : 'ElecKoi',
@@ -200,7 +234,7 @@ function windowOptions(ctx: Context, child: boolean, payload?: unknown): Browser
       ? { titleBarStyle: 'hidden' as const }
       : { frame: false }),
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#13131a' : '#ffffff',
-    icon: ctx.appPaths.resolveResource('icons', 'eleckoi-app-icon.png'),
+    icon: appPaths.resolveResource('icons', 'eleckoi-app-icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
@@ -215,15 +249,15 @@ function resolveAppearanceMode(mode: AppearanceMode): 'light' | 'dark' {
   return mode
 }
 
-function configureMainWindow(ctx: Context, windows: ElectronWindowHost, window: BrowserWindow): void {
-  configureWindowsAppDetails(ctx, window)
+function configureMainWindow(appPaths: Context['appPaths'], appLog: Context['appLog'], windows: ElectronWindowHost, window: BrowserWindow): void {
+  configureWindowsAppDetails(appPaths, window)
   installWindowsNativeFrame(window)
   window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
   window.once('ready-to-show', () => window.show())
-  configureWindowNavigation(ctx, windows, window, true)
+  configureWindowNavigation(appLog, windows, window, true)
 }
 
-function configureWindowNavigation(ctx: Context, windows: ElectronWindowHost, window: BrowserWindow, allowDshClient = false): void {
+function configureWindowNavigation(appLog: Context['appLog'], windows: ElectronWindowHost, window: BrowserWindow, allowDshClient = false): void {
   window.webContents.on('will-navigate', (event, url) => {
     if (!isAppRendererUrl(url) && !(allowDshClient && isDshAppUrl(url))) event.preventDefault()
   })
@@ -231,15 +265,15 @@ function configureWindowNavigation(ctx: Context, windows: ElectronWindowHost, wi
     if (isAppRendererUrl(url) || isDshChildUrl(url)) void windows.open('child', { url, frameName })
     else if (isAllowedExternalUrl(url)) {
       void shell.openExternal(url).catch((error: unknown) => {
-        ctx.appLog.warn({ error, url }, 'Failed to open external URL')
+        appLog.warn({ error, url }, 'Failed to open external URL')
       })
     }
-    else ctx.appLog.warn({ url }, 'Blocked external window request')
+    else appLog.warn({ url }, 'Blocked external window request')
     return { action: 'deny' }
   })
 }
 
-function configureWindowsAppDetails(ctx: Context, window: BrowserWindow): void {
+function configureWindowsAppDetails(appPaths: Context['appPaths'], window: BrowserWindow): void {
   if (process.platform !== 'win32') return
 
   const executable = `"${process.execPath}"`
@@ -250,7 +284,7 @@ function configureWindowsAppDetails(ctx: Context, window: BrowserWindow): void {
   window.setAppDetails({
     appId: 'com.eleckoi.desktop',
     appIconPath: process.defaultApp
-      ? ctx.appPaths.resolveResource('icons', 'eleckoi-app-icon.ico')
+      ? appPaths.resolveResource('icons', 'eleckoi-app-icon.ico')
       : process.execPath,
     appIconIndex: 0,
     relaunchCommand,

@@ -5,7 +5,6 @@ import { subscribeAuthorConversationEvents } from '../model/authorConversationEv
 import { routeAuthorHostInputRequest } from '../model/authorHostInput.js';
 import { routeAuthorAudioRequest, subscribeAuthorAudioEvents } from '../model/authorAudioHost.js';
 import { prepareAuthorRuntimeLibraries } from '../model/authorRuntimeLibraries.js';
-import { normalizeRichMessageViewportWidth } from '../model/richMessageHeightCache.js';
 
 const minimumHeight = 1;
 
@@ -29,7 +28,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
     if (!frame) return undefined;
     viewportWidthRef.current = 0;
     const applyViewportWidth = () => {
-      const viewportWidthPx = normalizeRichMessageViewportWidth(frame.clientWidth || 1);
+      const viewportWidthPx = Math.max(1, Math.round(frame.clientWidth || 1));
       if (viewportWidthRef.current === viewportWidthPx) return;
       viewportWidthRef.current = viewportWidthPx;
       // A document that uses 100vh must be measured from a collapsed viewport.
@@ -73,7 +72,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
         const next = Number.isFinite(measuredHeight)
           ? Math.max(minimumHeight, measuredHeight)
           : minimumHeight;
-        setHeight(next);
+        setHeight((current) => current === next ? current : next);
         return;
       }
       if (data.type !== 'eleckoi:author-request' || typeof data.request !== 'string') return;

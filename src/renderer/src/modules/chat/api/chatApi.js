@@ -308,6 +308,11 @@ export async function getGenerationStats(conversationId) {
   return result.stats;
 }
 
+export async function getActivePresetName() {
+  const catalog = await desktopClient.request("query.agent_presets.catalog", {});
+  return catalog.presets.find((preset) => preset.id === catalog.activePresetId)?.name || "";
+}
+
 export function getTrajectory(conversationId, options = {}) {
   return desktopClient.request("query.agent.trajectory", {
     conversationId,

@@ -2,11 +2,15 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
+import { initProfile, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { DshDesktopPluginHost } from '@eleckoi/dsh-runtime'
 
 const require = createRequire(import.meta.url)
 const root = mkdtempSync(join(tmpdir(), 'eleckoi-dsh-desktop-'))
-const host = new DshDesktopPluginHost({
+const profilePath = join(root, 'home', 'profiles', 'desktop')
+const tavilyBundle = '@eleckoi/dsh-web-search-tavily'
+initProfile(profilePath, [...PROFILE_TEMPLATES.web.bundles, '@eleckoi/dsh-client-roleplay'])
+const hostOptions = {
   runtimeDataRoot: root,
   workspaceRoot: join(root, 'workspace'),
   agentPatchPath: join(process.cwd(), 'resources', 'dsh', 'desktop-agent.patch.yml'),
@@ -16,10 +20,16 @@ const host = new DshDesktopPluginHost({
     entryPath: join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.mjs'),
     nodeBinPath: join(process.cwd(), 'resources', 'dsh', 'node-bin')
   }
-})
+}
+const host = new DshDesktopPluginHost(hostOptions)
+let reopened
 
 try {
   const ready = await host.start()
+  const profile = readProfileManifest('dsh', profilePath)
+  if (!profile.dsh?.profile?.bundles?.includes(tavilyBundle)) {
+    throw new Error('ElecKoi Tavily bundle is missing from the desktop DSH profile')
+  }
   const onboarding = ready.injections.find(row =>
     typeof row === 'object' && row !== null && row.kind === 'global' && row.name === '__DSH_MODELS_ONBOARDING__'
   )
@@ -65,8 +75,16 @@ try {
   if (!response.ok) throw new Error(`DSH plugin Host returned HTTP ${response.status}`)
   const document = await response.text()
   if (!document.includes('<html')) throw new Error('DSH client boot document was not served')
+  await host.close()
+  writeProfileBundles(profilePath, profile, profile.dsh.profile.bundles.filter(name => name !== tavilyBundle))
+  reopened = new DshDesktopPluginHost(hostOptions)
+  await reopened.start()
+  if (readProfileManifest('dsh', profilePath).dsh?.profile?.bundles?.includes(tavilyBundle)) {
+    throw new Error('ElecKoi re-enabled the Tavily bundle after the user disabled it')
+  }
   process.stdout.write('DSH desktop plugin Host, client boot and onboarding configuration are available.\n')
 } finally {
+  await reopened?.close()
   await host.close()
   const absolute = resolve(root)
   if (!absolute.startsWith(resolve(tmpdir()) + sep) || !basename(absolute).startsWith('eleckoi-dsh-desktop-')) {

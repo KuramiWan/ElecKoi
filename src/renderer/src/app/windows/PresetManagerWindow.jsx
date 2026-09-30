@@ -13,7 +13,7 @@ import { TitleBar } from "./shell/components/TitleBar.jsx";
 
 const ALL_PRESETS = "全部预设";
 
-export function PresetManagerWindow({ presetCatalog }) {
+export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   const [catalog, setCatalog] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(ALL_PRESETS);
   const [selectedPresetId, setSelectedPresetId] = useState("");
@@ -105,6 +105,31 @@ export function PresetManagerWindow({ presetCatalog }) {
     downloadPresetFile(await exportPreset(selectedPresetId, format));
   }
 
+  const managerOwner = {
+    catalog,
+    selectedGroup,
+    selectedPresetId,
+    importing,
+    importError,
+    onSelectGroup: setSelectedGroup,
+    onSelectPreset: setSelectedPresetId,
+    onRefresh: refresh,
+    onImport: beginImport,
+    onExport: downloadPreset,
+  };
+  const managerFallback = catalog ? <PresetManager
+    catalog={catalog}
+    selectedGroup={selectedGroup}
+    selectedPresetId={selectedPresetId}
+    onSelectGroup={setSelectedGroup}
+    onSelectPreset={setSelectedPresetId}
+    onRefresh={refresh}
+    onImport={beginImport}
+    onExport={downloadPreset}
+    importing={importing}
+    importError={importError}
+  /> : null;
+
   return (
     <main className="qq-shell management-window-shell">
       <TitleBar splitSurface />
@@ -115,18 +140,7 @@ export function PresetManagerWindow({ presetCatalog }) {
             <button type="button" onClick={() => void refresh()}>重试</button>
           </div>
         ) : (
-          <PresetManager
-            catalog={catalog}
-            selectedGroup={selectedGroup}
-            selectedPresetId={selectedPresetId}
-            onSelectGroup={setSelectedGroup}
-            onSelectPreset={setSelectedPresetId}
-            onRefresh={refresh}
-            onImport={beginImport}
-            onExport={downloadPreset}
-            importing={importing}
-            importError={importError}
-          />
+          renderPresetManager?.(managerOwner, managerFallback) ?? managerFallback
         )}
       </section>
       <input ref={importInputRef} type="file" accept="image/png,application/json,.png,.json" hidden onChange={handleImport} />

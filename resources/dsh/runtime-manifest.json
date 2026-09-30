@@ -2,12 +2,22 @@
   "schemaVersion": 1,
   "upstream": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
-    "commit": "4878cdabd87d4041bdaff61d04c966883b9fd07a",
-    "version": "0.2.0-rc.1"
+    "commit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+    "version": "0.2.0-rc.2"
   },
-  "transport": "stdio-jsonrpc",
+  "transport": "authenticated-web-host",
   "entrypoint": "@deepseek-ai/dsh/package.json",
   "composition": "cordis.yml",
+  "compositionRole": "sdk-compatibility",
+  "desktopProfile": {
+    "name": "desktop",
+    "base": "web",
+    "agentPatch": "desktop-agent.patch.yml",
+    "bundles": [
+      "@eleckoi/dsh-client-roleplay",
+      "@eleckoi/dsh-web-search-tavily"
+    ]
+  },
   "localPlugins": [
     "./agent-preset-bridge.mjs",
     "./tavily-web-search.mjs"

@@ -16,8 +16,10 @@ window.__ModuleLoader__.load({
         this.timelineListeners = new Set()
         this.timelineGeneration = 0
         this.streamSnapshot = { id: '', status: 'idle', runId: '', requestId: '', messageId: '', sequence: 0, content: '', process: [], error: '' }
+        this.streamState = this.streamSnapshot
         this.streamListeners = new Set()
         this.streamGeneration = 0
+        this.streamFrame = undefined
         this.pendingRun = null
         this.preferredSessions = new Map()
         this.generation = 0
@@ -80,9 +82,33 @@ window.__ModuleLoader__.load({
         for (const listener of this.timelineListeners) listener()
       }
 
-      publishStream(next) {
-        this.streamSnapshot = next
+      publishStream(next, publication = 'immediate') {
+        this.streamState = next
+        if (publication === 'animation-frame' && typeof requestAnimationFrame === 'function') {
+          if (this.streamFrame !== undefined) return
+          this.streamFrame = requestAnimationFrame(() => {
+            this.streamFrame = requestAnimationFrame(() => {
+              this.streamFrame = requestAnimationFrame(() => {
+                this.streamFrame = undefined
+                this.flushStream()
+              })
+            })
+          })
+          return
+        }
+        this.cancelStreamFrame()
+        this.flushStream()
+      }
+
+      flushStream() {
+        if (this.streamSnapshot === this.streamState) return
+        this.streamSnapshot = this.streamState
         for (const listener of this.streamListeners) listener()
+      }
+
+      cancelStreamFrame() {
+        if (this.streamFrame !== undefined && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.streamFrame)
+        this.streamFrame = undefined
       }
 
       start() {
@@ -128,7 +154,7 @@ window.__ModuleLoader__.load({
         void this.refresh().catch(() => {})
         if (this.detailsSnapshot.id) void this.refreshDetails().catch(() => {})
         if (this.timelineSnapshot.id) void this.refreshTimeline().catch(() => {})
-        if (this.streamSnapshot.id) void this.refreshStream().catch(() => {})
+        if (this.streamState.id) void this.refreshStream().catch(() => {})
       }
 
       async refresh() {
@@ -167,7 +193,7 @@ window.__ModuleLoader__.load({
       }
 
       async refreshStream() {
-        const id = this.streamSnapshot.id
+        const id = this.streamState.id
         if (this.disposed || !id) return null
         const generation = ++this.streamGeneration
         const result = await this.bridge.request('query.agent.inspect', { conversationId: id })
@@ -176,8 +202,8 @@ window.__ModuleLoader__.load({
         if (!inspected || inspected.conversationId !== id || typeof inspected.active !== 'boolean') {
           throw new Error('实时回复返回的数据格式不正确。')
         }
-        if (this.disposed || generation !== this.streamGeneration || this.streamSnapshot.id !== id) return null
-        const current = this.streamSnapshot
+        if (this.disposed || generation !== this.streamGeneration || this.streamState.id !== id) return null
+        const current = this.streamState
         if (!inspected.active) {
           this.publishStream({ ...current, status: 'idle' })
           return null
@@ -197,8 +223,8 @@ window.__ModuleLoader__.load({
       }
 
       acceptDelta(event) {
-        if (this.disposed || !event || event.conversationId !== this.streamSnapshot.id || !event.runId) return
-        const current = this.streamSnapshot
+        if (this.disposed || !event || event.conversationId !== this.streamState.id || !event.runId) return
+        const current = this.streamState
         const sameRun = current.runId === event.runId
         if (sameRun && current.status !== 'running') return
         const previous = sameRun ? current : {
@@ -208,16 +234,16 @@ window.__ModuleLoader__.load({
         if (!sameRun) this.streamGeneration += 1
         if (!Number.isInteger(event.sequence) || event.sequence <= previous.sequence) return
         if (event.sequence !== previous.sequence + 1) {
-          this.publishStream(previous)
+          this.publishStream(previous, 'animation-frame')
           void this.refreshStream().catch(() => {})
           return
         }
-        this.publishStream({ ...previous, status: 'running', sequence: event.sequence, content: previous.content + event.delta })
+        this.publishStream({ ...previous, status: 'running', sequence: event.sequence, content: previous.content + event.delta }, 'animation-frame')
       }
 
       acceptProcess(event) {
-        if (this.disposed || !event || event.conversationId !== this.streamSnapshot.id || !event.runId) return
-        const current = this.streamSnapshot
+        if (this.disposed || !event || event.conversationId !== this.streamState.id || !event.runId) return
+        const current = this.streamState
         const sameRun = current.runId === event.runId
         if (sameRun && current.status !== 'running') return
         if (!sameRun) this.streamGeneration += 1
@@ -231,13 +257,13 @@ window.__ModuleLoader__.load({
           if (index < 0) process.push(event.item)
           else process[index] = event.item
         }
-        this.publishStream({ ...previous, status: 'running', process })
+        this.publishStream({ ...previous, status: 'running', process }, 'animation-frame')
         if (!sameRun) void this.refreshStream().catch(() => {})
       }
 
       settleStream(event) {
-        if (this.disposed || !event || event.conversationId !== this.streamSnapshot.id) return
-        const current = this.streamSnapshot
+        if (this.disposed || !event || event.conversationId !== this.streamState.id) return
+        const current = this.streamState
         if (current.runId && current.runId !== event.runId) return
         this.streamGeneration += 1
         this.publishStream({
@@ -250,11 +276,11 @@ window.__ModuleLoader__.load({
       }
 
       async cancelStream(expectedRunId) {
-        let current = this.streamSnapshot
+        let current = this.streamState
         if (this.disposed || current.status !== 'running' || !current.runId || current.runId !== expectedRunId) return false
         if (!current.requestId) {
           await this.refreshStream()
-          current = this.streamSnapshot
+          current = this.streamState
           if (current.status !== 'running' || current.runId !== expectedRunId || !current.requestId) return false
         }
         const result = await this.bridge.request('command.agent.cancel', {
@@ -467,6 +493,7 @@ window.__ModuleLoader__.load({
         this.generation += 1
         this.detailGeneration += 1
         this.timelineGeneration += 1
+        this.cancelStreamFrame()
         this.stopEvents()
         this.listeners.clear()
         this.detailsListeners.clear()

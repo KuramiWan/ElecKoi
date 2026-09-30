@@ -22,6 +22,7 @@ import type { AuthorSdkService } from '@main/modules/authorSdk'
 import type { AgentPresetRepository } from '@main/modules/agentPresets'
 import type { WebSearchSettingsRepository } from '@main/modules/agentTools'
 import type { UpdateService } from '@main/modules/updates'
+import type { CreatorProjectRepository } from '@main/modules/creatorStudio'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -57,6 +58,7 @@ declare module '@deepseek-ai/cordis' {
     webSearchSettings: WebSearchSettingsRepository
     electronWindows: ElectronWindowHost
     updates: UpdateService
+    creatorProjects: CreatorProjectRepository
   }
 }
 

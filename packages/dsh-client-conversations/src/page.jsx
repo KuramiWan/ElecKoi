@@ -5,23 +5,25 @@ export { MessageNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/i
 
 export function MessagesPage() {
   const view = useMainPageView();
-  const { chat, appearance, conversations, renderRoleplay, renderLayout, selectConversation, openChatBackground, openPresetTools, openCharacterSection } = view;
+  const { chat, appearance, conversations, renderRoleplay, renderConversationList, renderLayout, selectConversation, openChatBackground, openPresetTools, openCharacterSection } = view;
+  const listOwner = {
+    keyword: chat.keyword,
+    setKeyword: chat.setKeyword,
+    sessions: chat.filteredSessions,
+    sessionId: chat.sessionId,
+    pinnedIds: chat.pinnedIds,
+    characters: chat.characters,
+    artworkMode: appearance.sidebarCharacterArtwork,
+    onLoadChat: selectConversation,
+    onOpenCharacterChat: chat.openCharacterChat,
+    onGoCharacterSettings: openCharacterSection,
+    onTogglePinChat: chat.togglePinChat,
+    onOpenChatWindow: chat.openChatWindow,
+    onHideChat: chat.hideChatEntry,
+  };
+  const listFallback = <ConversationList {...listOwner} />;
   return renderLayout({
-    sidePanel: <ConversationList
-      keyword={chat.keyword}
-      setKeyword={chat.setKeyword}
-      sessions={chat.filteredSessions}
-      sessionId={chat.sessionId}
-      pinnedIds={chat.pinnedIds}
-      characters={chat.characters}
-      artworkMode={appearance.sidebarCharacterArtwork}
-      onLoadChat={selectConversation}
-      onOpenCharacterChat={chat.openCharacterChat}
-      onGoCharacterSettings={openCharacterSection}
-      onTogglePinChat={chat.togglePinChat}
-      onOpenChatWindow={chat.openChatWindow}
-      onHideChat={chat.hideChatEntry}
-    />,
+    sidePanel: renderConversationList?.(listOwner, listFallback) ?? listFallback,
     mainPanel: <RoleplayPanel
       renderRoleplay={renderRoleplay}
       hasActiveChat={Boolean(chat.sessionId || chat.chatCharacter?.character_id)}

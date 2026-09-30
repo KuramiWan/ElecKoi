@@ -2,9 +2,8 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faChevronLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import remarkBreaks from "remark-breaks";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Streamdown } from "streamdown";
 import { Avatar } from "../ui/Avatar.jsx";
 import { AvatarPreviewDialog } from "./AvatarPreviewDialog.jsx";
 import { AgentPencilIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, MessagePencilIcon, MoreDotsIcon, RefreshMessageIcon, SpeakerIcon } from "../icons/elecKoiMessageIcons.jsx";
@@ -18,83 +17,14 @@ import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
 import { normalizeMarkdownForRendering } from "./normalizeMarkdownForRendering.js";
 
-const markdownComponents = {
+const fallbackMarkdownComponents = {
   a({ children, href, node: _node, ...props }) {
-    return (
-      <a href={href} target="_blank" rel="noreferrer" {...props}>
-        {children}
-      </a>
-    );
+    return <a href={href} target="_blank" rel="noreferrer" {...props}>{children}</a>;
   },
   table({ children, node: _node, ...props }) {
-    return (
-      <div className="message-table-scroll">
-        <table {...props}>{children}</table>
-      </div>
-    );
+    return <div className="message-table-scroll"><table {...props}>{children}</table></div>;
   },
 };
-
-const DIALOGUE_QUOTE_PATTERN = /("[^"\n]*?")|(“[^”\n]*?”)|(«[^»\n]*?»)|(「[^」\n]*?」)|(『[^』\n]*?』)|(＂[^＂\n]*?＂)/g;
-
-function quoteTextNodes(value) {
-  const children = [];
-  let cursor = 0;
-  for (const match of value.matchAll(DIALOGUE_QUOTE_PATTERN)) {
-    const index = match.index ?? 0;
-    if (index > cursor) children.push({ type: "text", value: value.slice(cursor, index) });
-    children.push({
-      type: "eleckoiQuote",
-      data: { hName: "q" },
-      children: [{ type: "text", value: match[0] }],
-    });
-    cursor = index + match[0].length;
-  }
-  if (cursor === 0) return null;
-  if (cursor < value.length) children.push({ type: "text", value: value.slice(cursor) });
-  return children;
-}
-
-function wrapUnderlineNodes(node) {
-  if (!Array.isArray(node?.children)) return;
-  for (let index = 0; index < node.children.length; index += 1) {
-    const opening = node.children[index];
-    if (opening?.type !== "html" || !/^<u\s*>$/i.test(opening.value || "")) continue;
-    const closingIndex = node.children.findIndex((candidate, candidateIndex) => (
-      candidateIndex > index
-      && candidate?.type === "html"
-      && /^<\/u\s*>$/i.test(candidate.value || "")
-    ));
-    if (closingIndex < 0) continue;
-    node.children.splice(index, closingIndex - index + 1, {
-      type: "eleckoiUnderline",
-      data: { hName: "ins" },
-      children: node.children.slice(index + 1, closingIndex),
-    });
-  }
-}
-
-export function remarkDialogueQuotes() {
-  return (tree) => {
-    const visitChildren = (node) => {
-      if (!Array.isArray(node?.children)) return;
-      wrapUnderlineNodes(node);
-      for (let index = 0; index < node.children.length; index += 1) {
-        const child = node.children[index];
-        if (child?.type === "text") {
-          const replacement = quoteTextNodes(child.value || "");
-          if (replacement) {
-            node.children.splice(index, 1, ...replacement);
-            index += replacement.length - 1;
-          }
-        } else {
-          visitChildren(child);
-        }
-      }
-    };
-    visitChildren(tree);
-  };
-}
 
 const OPENING_SWIPE_DURATION = 125;
 const timestampFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -148,36 +78,38 @@ function MarkdownMessage({ content, streaming }) {
     [content],
   );
   return (
-    <Streamdown
-      className="eleckoi-streamdown"
-      mode={streaming ? "streaming" : "static"}
-      parseIncompleteMarkdown={streaming}
-      isAnimating={false}
-      controls={false}
-      lineNumbers={false}
-      codeBlockMaxHeight="none"
-      linkSafety={{ enabled: false }}
-      skipHtml
-      remarkPlugins={[remarkGfm, remarkBreaks, remarkDialogueQuotes]}
-      components={markdownComponents}
-    >
-      {renderContent}
-    </Streamdown>
+    <div className="eleckoi-markdown-fallback" data-streaming={streaming || undefined}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={fallbackMarkdownComponents} skipHtml>
+        {renderContent}
+      </ReactMarkdown>
+    </div>
   );
 }
 
-function MessagePresentation({ message, content, streaming }) {
+function MessagePresentation({ message, content, streaming, renderMessageContent }) {
   const presentation = useMemo(
-    () => message.role === "assistant"
-      ? detectRichMessagePresentation(content || "", streaming)
+    () => message.role === "assistant" && !streaming
+      ? detectRichMessagePresentation(content || "", false)
       : null,
     [content, message.role, streaming],
   );
-  if (message.role !== "assistant") return <MarkdownMessage content={content} streaming={streaming} />;
-  if (!presentation) return <MarkdownMessage content={content} streaming={streaming} />;
+  const renderMarkdown = (source, key) => {
+    const fallback = <MarkdownMessage key={key} content={source} streaming={streaming} />;
+    if (!renderMessageContent) return fallback;
+    return renderMessageContent({
+      conversationId: message.conversationId,
+      productMessageId: message.id,
+      messageId: message.dshMessageId || null,
+      role: message.role,
+      content: source,
+      streaming,
+    }, fallback);
+  };
+  if (message.role !== "assistant") return renderMarkdown(content, "message");
+  if (!presentation) return renderMarkdown(content, "message");
   let rootIndex = 0;
   return <div className="rich-message-presentation">{presentation.parts.map((part) => {
-    if (part.kind !== "rich") return <MarkdownMessage key={part.id} content={part.source} streaming={streaming} />;
+    if (part.kind !== "rich") return renderMarkdown(part.source, part.id);
     const currentRootIndex = rootIndex;
     rootIndex += 1;
     return <RichMessageFrame
@@ -371,16 +303,12 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
           <span className="agent-process-inline-label">{liveProcess.title}</span>
           <MessageChevronRightIcon size={14} />
         </button> : displayContent ? <div className="bubble markdown-message">
-          {renderMessageContent
-            ? renderMessageContent({
-              conversationId: message.conversationId,
-              productMessageId: message.id,
-              messageId: message.dshMessageId || null,
-              role: message.role,
-              content: displayContent,
-              streaming: pending,
-            }, <MessagePresentation message={message} content={displayContent} streaming={pending} />)
-            : <MessagePresentation message={message} content={displayContent} streaming={pending} />}
+          <MessagePresentation
+            message={message}
+            content={displayContent}
+            streaming={pending}
+            renderMessageContent={renderMessageContent}
+          />
         </div> : null}
         {pluginAfter}
         {layoutMode === "agent" && isUser && !pending && !editing ? <div className="agent-user-actions" aria-label="用户消息操作">

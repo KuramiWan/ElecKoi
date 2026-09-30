@@ -59,6 +59,10 @@ import {
   agentPresetSchema
 } from '../presets/schemas'
 import { updateInstallResultSchema, updateStatusSchema } from '../updates/schemas'
+import {
+  creatorProjectCollectionSchema,
+  creatorProjectModeSchema
+} from '../creatorStudio/schemas'
 
 const empty = z.object({})
 const conversationDetails = z.object({
@@ -70,15 +74,6 @@ const conversationDetails = z.object({
   beforeSequence: z.number().int().nullable()
 })
 const conversationSummary = conversationSchema.extend({ metadata: conversationMetadataSchema })
-const roleplayRichHeightSchema = z.object({
-  conversationId: z.string().min(1),
-  messageId: z.string().min(1),
-  contentRevision: z.string().min(1),
-  rootIndex: z.number().int().min(0).max(1_024),
-  viewportWidthPx: z.number().int().min(1).max(16_384),
-  heightPx: z.number().int().min(1).max(100_000),
-  measuredAtEpochMs: z.number().int().nonnegative()
-})
 
 export const requestContracts = {
   'query.conversations.messages': defineRoute(z.object({
@@ -93,14 +88,6 @@ export const requestContracts = {
   'query.conversations.variable_timeline': defineRoute(
     z.object({ conversationId: z.string().min(1) }),
     variableViewerTimelineSchema
-  ),
-  'query.conversations.rich_heights': defineRoute(
-    z.object({ conversationId: z.string().min(1) }),
-    z.array(roleplayRichHeightSchema)
-  ),
-  'command.conversations.rich_height.save': defineRoute(
-    roleplayRichHeightSchema.omit({ measuredAtEpochMs: true }),
-    roleplayRichHeightSchema
   ),
   'command.conversations.create': defineRoute(z.object({
     title: z.string().optional(),
@@ -448,6 +435,28 @@ export const requestContracts = {
   'command.updates.check': defineRoute(empty, updateStatusSchema),
   'command.updates.download': defineRoute(empty, updateStatusSchema),
   'command.updates.install': defineRoute(empty, updateInstallResultSchema),
+  'query.creator_studio.projects.list': defineRoute(empty, creatorProjectCollectionSchema),
+  'command.creator_studio.projects.select_directory': defineRoute(
+    empty,
+    z.object({ directory: z.string().nullable() })
+  ),
+  'command.creator_studio.projects.create': defineRoute(
+    z.object({
+      name: z.string().trim().min(1).max(80),
+      mode: creatorProjectModeSchema,
+      parentDirectory: z.string().trim().min(1).max(4_096),
+      sourceCharacterId: z.string().optional()
+    }),
+    creatorProjectCollectionSchema
+  ),
+  'command.creator_studio.projects.delete': defineRoute(
+    z.object({ projectId: z.string().min(1) }),
+    creatorProjectCollectionSchema
+  ),
+  'command.creator_studio.projects.open_location': defineRoute(
+    z.object({ projectId: z.string().min(1) }),
+    z.object({ ok: z.literal(true) })
+  ),
   'command.window.control': defineRoute(
     z.object({ action: z.enum(['minimize', 'maximize', 'close']) }),
     z.object({ ok: z.literal(true) })
@@ -456,7 +465,7 @@ export const requestContracts = {
 
 export const eventContracts = {
   'plugins.host.failed': z.object({ message: z.string() }),
-  'records.changed': z.object({ module: z.enum(['conversations', 'personas', 'models', 'settingLibraries', 'variables', 'regexRules', 'agentPresets', 'agentTools']) }),
+  'records.changed': z.object({ module: z.enum(['conversations', 'personas', 'models', 'settingLibraries', 'variables', 'regexRules', 'agentPresets', 'agentTools', 'creatorStudio']) }),
   'settings.changed': z.object({ key: z.string(), value: z.unknown() }),
   'messages.changed': z.object({
     conversationId: z.string().min(1),

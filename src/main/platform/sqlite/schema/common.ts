@@ -339,16 +339,6 @@ export const conversationSettingChanges = sqliteTable('conversation_setting_chan
   updatedAt: text('updatedAt').notNull(),
 }, (table) => [primaryKey({ columns: [table.sessionId, table.targetType, table.targetId] })])
 
-export const roleplayRichHeights = sqliteTable('roleplay_rich_heights', {
-  sessionId: text('sessionId').notNull(),
-  messageId: text('messageId').notNull(),
-  contentRevision: text('contentRevision').notNull(),
-  rootIndex: integer('rootIndex').notNull(),
-  viewportWidthPx: integer('viewportWidthPx').notNull(),
-  heightPx: integer('heightPx').notNull(),
-  measuredAtEpochMs: integer('measuredAtEpochMs').notNull(),
-}, (table) => [primaryKey({ columns: [table.sessionId, table.messageId, table.contentRevision, table.rootIndex, table.viewportWidthPx] })])
-
 export const agentPresetState = sqliteTable('agent_preset_state', {
   singletonId: integer('singletonId').notNull().primaryKey(),
   activePresetId: text('activePresetId').notNull(),
@@ -425,4 +415,4 @@ export const agentPresetVersionGroups = sqliteTable('agent_preset_version_groups
   payloadJson: text('payloadJson').notNull(),
 }, (table) => [primaryKey({ columns: [table.presetId, table.versionId, table.groupId] })])
 
-export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterTextContents, characterMeta, userProfile, modelConfigs, modelConfigMeta, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, webSearchSettings, cleanupOperations, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentPendingInputs, agentResponses, agentBranchTurns, agentOpenings, agentSettingSnapshots, generationAttempts, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, roleplayRichHeights, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups }
+export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterTextContents, characterMeta, userProfile, modelConfigs, modelConfigMeta, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, webSearchSettings, cleanupOperations, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentPendingInputs, agentResponses, agentBranchTurns, agentOpenings, agentSettingSnapshots, generationAttempts, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups }

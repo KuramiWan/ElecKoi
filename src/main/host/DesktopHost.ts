@@ -5,6 +5,7 @@ import { authorSdkPlugin } from '@main/modules/authorSdk'
 import { characterTransferPlugin } from '@main/modules/characterTransfer'
 import { compatibilityPlugin } from '@main/modules/compatibility'
 import { conversationsPlugin } from '@main/modules/conversations'
+import { creatorStudioPlugin } from '@main/modules/creatorStudio'
 import { modelsPlugin } from '@main/modules/models'
 import { personasPlugin } from '@main/modules/personas'
 import { settingsPlugin } from '@main/modules/settings'
@@ -36,6 +37,7 @@ export class DesktopHost {
     await this.root.plugin(conversationsPlugin)
     await this.root.plugin(settingsPlugin)
     await this.root.plugin(personasPlugin)
+    await this.root.plugin(creatorStudioPlugin)
     await this.root.plugin(characterTransferPlugin)
     await this.root.plugin(modelsPlugin)
     this.foundationMounted = true

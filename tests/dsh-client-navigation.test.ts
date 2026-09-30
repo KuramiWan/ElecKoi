@@ -7,6 +7,12 @@ const packages = [
   'dsh-client-presets', 'dsh-client-models'
 ]
 
+const uiPrimitives = {
+  PluginArtworkDefault: 'PluginArtworkDefault',
+  StateDot: 'StateDot',
+  Tag: 'Tag',
+}
+
 describe('ElecKoi DSH client navigation', () => {
   it('lets each feature plugin register its page and navigation entry', () => {
     let root: any
@@ -42,6 +48,7 @@ describe('ElecKoi DSH client navigation', () => {
           createElement: (component: any, props: any, ...children: any[]) => ({ component, props, children })
         }
         if (name === 'react-dom') return {}
+        if (name === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
         throw new Error(`Unexpected module ${name}`)
       })
       let effectCount = 0
@@ -57,7 +64,7 @@ describe('ElecKoi DSH client navigation', () => {
     expect(root.children.main).toEqual({ kind: 'keyed', scope: 'root' })
     const panels = slots.entriesOfSlot('main').map(entry => entry.options.key)
     const railItems = slots.entriesOfSlot('sidebar.panellist').map(entry => entry.options.id)
-    expect(railItems).toEqual(['community', 'messages', 'character', 'presets', 'model'])
+    expect(railItems).toEqual(['creatorStudio', 'community', 'messages', 'character', 'presets', 'model'])
     expect(panels).toEqual(['settings', 'messages', 'character', 'presets', 'model'])
 
     for (const id of panels) {
@@ -83,10 +90,15 @@ describe('ElecKoi DSH client navigation', () => {
     let sidebarOptions: any
     const slotCalls: Array<{ name: string; owner: any }> = []
     const footerEntries = [{ options: { name: 'sidebar.footer.action', id: 'example' } }]
+    const settingsEntries = [
+      { options: { name: 'settings.section', id: 'plugins', order: 15, label: '内置插件' } },
+      { options: { name: 'settings.section', id: 'web-search', order: 20, label: '网页搜索' } },
+    ]
     const slots = {
       subscribe: () => () => {},
       getVersion: () => 1,
-      entriesOfSlot: (name: string) => name === 'sidebar.footer.action' ? footerEntries : [],
+      entriesOfSlot: (name: string) => name === 'sidebar.footer.action' ? footerEntries
+        : name === 'settings.section' ? settingsEntries : [],
       provideRoot: () => () => {},
       register: (options: any, component: any) => {
         if (options.name === 'root') {
@@ -119,6 +131,7 @@ describe('ElecKoi DSH client navigation', () => {
     })
     const plugin = registration.factory((name: string) => {
       if (name === 'react') return React
+      if (name === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
       throw new Error(`Unexpected module ${name}`)
     })
     let effectCount = 0
@@ -159,5 +172,9 @@ describe('ElecKoi DSH client navigation', () => {
     })).toEqual({ slot: 'sidebar.footer.action' })
     expect(childCalls).toEqual([{ name: 'sidebar.footer.action', owner: { wide: true } }])
     expect(rootOptions.children['eleckoi.sidebar.footer.action']).toBeUndefined()
+    expect(render().settingsSections).toEqual([
+      { id: 'plugins', order: 15, label: '内置插件' },
+      { id: 'web-search', order: 20, label: '网页搜索' },
+    ])
   })
 })

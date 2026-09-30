@@ -1,191 +1,72 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { MagnifyingGlass } from "@phosphor-icons/react";
-import { DshChevronRightIcon, DshCloseIcon } from "../../../ui/icons/dshComposerIcons.jsx";
-import { getTrajectory } from "../api/chatApi.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  TrajectoryView as OfficialTrajectoryView,
+  zh,
+} from "@eleckoi/dsh-client-trajectory/client";
+import { getTrajectory, readChatImage } from "../api/chatApi.js";
 
 const pageSize = 400;
-const toolContextCollapseCharacters = 320;
-const toolContextCollapseLines = 8;
-const contextCollapseCharacters = 3_000;
-const contextCollapseLines = 40;
-const contextPreviewCharacters = 620;
-const contextPreviewLines = 7;
-const lanes = [
-  { id: "input", label: "输入", kinds: new Set(["system", "user", "context"]) },
-  { id: "model", label: "模型", kinds: new Set(["assistant", "compaction"]) },
-  { id: "tools", label: "工具", kinds: new Set(["tool"]) },
-];
+const emptySnapshot = Object.freeze({
+  systemPrompts: Object.freeze([]),
+  eventNodes: Object.freeze([]),
+  eventLocations: new Map(),
+  requests: Object.freeze([]),
+  callSchemas: new Map(),
+  partial: null,
+  runningCalls: Object.freeze([]),
+});
 
-const kindLabels = {
-  system: "系统",
-  user: "用户",
-  context: "上下文",
-  assistant: "助手",
-  tool: "工具",
-  compaction: "压缩",
-};
-
-const statusLabels = {
-  running: "运行中",
-  complete: "已完成",
-  error: "失败",
-  cancelled: "已取消",
-};
-
-export function TrajectoryDialog({ conversationId, isSending, onClose }) {
+export function TrajectoryView({
+  conversationId,
+  isSending,
+  refreshRevision = 0,
+  renderSlot,
+}) {
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState("");
-  const [selectedId, setSelectedId] = useState("");
-  const [selectedRequestSeq, setSelectedRequestSeq] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [actualDuration, setActualDuration] = useState(false);
-  const [collapsedTurns, setCollapsedTurns] = useState(() => new Set());
-  const [callsCollapsed, setCallsCollapsed] = useState(false);
-  const [detailTab, setDetailTab] = useState("summary");
-  const dialogRef = useRef(null);
-  const ledgerRef = useRef(null);
-  const initialScrollPendingRef = useRef(true);
-  const followLatestRef = useRef(true);
-  const onCloseRef = useRef(onClose);
+  const [stringWrapping, setStringWrapping] = useState(true);
+  const latestRequestRef = useRef(0);
+  const loadingOlderRef = useRef(false);
 
   useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
+    latestRequestRef.current += 1;
+    loadingOlderRef.current = false;
     setSnapshot(null);
-    setSelectedId("");
-    setSelectedRequestSeq(null);
     setError("");
     setLoading(true);
-    initialScrollPendingRef.current = true;
-    followLatestRef.current = true;
-  }, [conversationId]);
+    setLoadingOlder(false);
+    setActualDuration(false);
+  }, [conversationId, refreshRevision]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const loadLatest = useCallback(async () => {
+    const request = ++latestRequestRef.current;
     try {
       const next = await getTrajectory(conversationId, { limit: pageSize });
+      if (request !== latestRequestRef.current) return;
       setSnapshot((current) => mergeLatest(current, next));
       setError("");
     } catch (loadError) {
+      if (request !== latestRequestRef.current) return;
       setError(loadError instanceof Error ? loadError.message : "轨迹读取失败");
     } finally {
-      setLoading(false);
+      if (request === latestRequestRef.current) setLoading(false);
     }
   }, [conversationId]);
 
   useEffect(() => {
-    let active = true;
-    const load = async () => {
-      try {
-        const next = await getTrajectory(conversationId, { limit: pageSize });
-        if (!active) return;
-        setSnapshot((current) => mergeLatest(current, next));
-        setError("");
-      } catch (loadError) {
-        if (active) setError(loadError instanceof Error ? loadError.message : "轨迹读取失败");
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-    setLoading(true);
-    void load();
-    const timer = isSending ? window.setInterval(load, 900) : undefined;
+    void loadLatest();
+    const timer = isSending ? window.setInterval(loadLatest, 900) : undefined;
     return () => {
-      active = false;
       if (timer !== undefined) window.clearInterval(timer);
     };
-  }, [conversationId, isSending]);
+  }, [isSending, loadLatest, refreshRevision]);
 
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const focusTimer = window.setTimeout(() => dialogRef.current?.focus(), 0);
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = focusableElements(dialogRef.current);
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.clearTimeout(focusTimer);
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus instanceof HTMLElement) previousFocus.focus();
-    };
-  }, []);
-
-  const records = snapshot?.records || [];
-  useLayoutEffect(() => {
-    const ledger = ledgerRef.current;
-    if (!ledger || records.length === 0) return;
-    if (!initialScrollPendingRef.current && !followLatestRef.current) return;
-    ledger.scrollTop = ledger.scrollHeight;
-    initialScrollPendingRef.current = false;
-    followLatestRef.current = true;
-  }, [conversationId, records.length]);
-
-  useEffect(() => {
-    if (selectedId && !records.some((record) => record.id === selectedId)) setSelectedId("");
-    if (selectedRequestSeq !== null
-      && !records.some((record) => record.requests.some((request) => request.seq === selectedRequestSeq))) {
-      setSelectedRequestSeq(null);
-    }
-  }, [records, selectedId, selectedRequestSeq]);
-
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
-  const matchedRecords = useMemo(() => records.filter((record) => {
-    if (!normalizedQuery) return true;
-    return [record.title, record.preview, record.source, record.type]
-      .some((value) => String(value || "").toLocaleLowerCase().includes(normalizedQuery));
-  }), [normalizedQuery, records]);
-  const displayedRecords = callsCollapsed && !normalizedQuery
-    ? matchedRecords.filter((record) => record.kind !== "tool")
-    : matchedRecords;
-  const turnGroups = useMemo(() => groupByTurn(displayedRecords), [displayedRecords]);
-  const collapsibleTurns = turnGroups.map((group) => group.key);
-  const allTurnsCollapsed = collapsibleTurns.length > 0
-    && collapsibleTurns.every((key) => collapsedTurns.has(key));
-  const selectedRecord = records.find((record) => record.id === selectedId) || null;
-  const selectedRequest = records
-    .flatMap((record) => record.requests)
-    .find((request) => request.seq === selectedRequestSeq) || null;
-  const inspectorOpen = selectedRecord !== null || selectedRequest !== null;
-
-  const toggleAllTurns = () => {
-    setCollapsedTurns(() => allTurnsCollapsed ? new Set() : new Set(collapsibleTurns));
-  };
-
-  const toggleTurn = (key) => {
-    setCollapsedTurns((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const loadOlder = async () => {
-    if (!snapshot?.hasMore || snapshot.beforeIndex === null || loadingOlder) return;
+  const loadOlder = useCallback(async () => {
+    if (!snapshot?.hasMore || snapshot.beforeIndex === null || loadingOlderRef.current) return false;
+    loadingOlderRef.current = true;
     setLoadingOlder(true);
     try {
       const older = await getTrajectory(conversationId, {
@@ -194,416 +75,435 @@ export function TrajectoryDialog({ conversationId, isSending, onClose }) {
       });
       setSnapshot((current) => mergeOlder(current, older));
       setError("");
+      return true;
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "更早的轨迹读取失败");
+      return false;
     } finally {
+      loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
-  };
+  }, [conversationId, snapshot?.beforeIndex, snapshot?.hasMore]);
 
-  return createPortal(
-    <div className="trajectory-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        ref={dialogRef}
-        className="trajectory-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="trajectory-title"
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="trajectory-titlebar">
-          <h2 id="trajectory-title">轨迹</h2>
-          <span className="trajectory-count" aria-live="polite">
-            {snapshot?.runtimeThreadId ? `${snapshot.totalRecords} 条事件` : ""}
-          </span>
-          <button type="button" onClick={onClose} aria-label="关闭轨迹">
-            <DshCloseIcon />
-          </button>
-        </header>
-
-        <div className="trajectory-toolbar" role="toolbar" aria-label="轨迹显示选项">
-          <div className="trajectory-toolbar-actions">
-            <button
-              type="button"
-              aria-pressed={actualDuration}
-              title={actualDuration ? "使用等宽时间块" : "按实际耗时显示"}
-              onClick={() => setActualDuration((value) => !value)}
-            >
-              <span aria-hidden="true">◷</span>耗时
-            </button>
-            <button
-              type="button"
-              aria-pressed={allTurnsCollapsed}
-              title={allTurnsCollapsed ? "展开所有轮次" : "折叠所有轮次"}
-              onClick={toggleAllTurns}
-            >
-              <span aria-hidden="true">{allTurnsCollapsed ? "⊞" : "⊟"}</span>轮次
-            </button>
-            <button
-              type="button"
-              aria-pressed={callsCollapsed}
-              title={callsCollapsed ? "展开工具调用" : "折叠工具调用"}
-              onClick={() => setCallsCollapsed((value) => !value)}
-            >
-              <span aria-hidden="true">{callsCollapsed ? "⊞" : "⊟"}</span>调用
-            </button>
-          </div>
-          <label className="trajectory-search">
-            <MagnifyingGlass size={14} aria-hidden="true" />
-            <input
-              type="search"
-              value={searchQuery}
-              placeholder="搜索"
-              aria-label="搜索轨迹"
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
-            />
-          </label>
-        </div>
-
-        <TrajectoryOverview
-          records={records}
-          selectedId={selectedId}
-          actualDuration={actualDuration}
-          onSelect={(recordId) => {
-            setSelectedRequestSeq(null);
-            setSelectedId(recordId);
-            setDetailTab("summary");
-          }}
-        />
-
-        <div className={`trajectory-content${inspectorOpen ? " has-inspector" : ""}${selectedRequest && detailTab === "context" ? " has-context-inspector" : ""}`}>
-          <main
-            ref={ledgerRef}
-            className="trajectory-ledger"
-            aria-label="轨迹事件"
-            onScroll={(event) => {
-              const ledger = event.currentTarget;
-              followLatestRef.current = ledger.scrollHeight - ledger.clientHeight - ledger.scrollTop <= 48;
-            }}
-          >
-            {snapshot?.hasMore ? (
-              <button className="trajectory-load-older" type="button" disabled={loadingOlder} onClick={loadOlder}>
-                {loadingOlder ? "正在加载…" : "加载更早记录"}
-              </button>
-            ) : null}
-            {loading && !snapshot ? <TrajectoryState text="正在读取轨迹…" /> : null}
-            {!loading && error && !snapshot ? <TrajectoryState text={error} action="重试" onAction={refresh} /> : null}
-            {!loading && snapshot && !snapshot.runtimeThreadId ? <TrajectoryState text="这个对话还没有 DSH 轨迹" /> : null}
-            {!loading && snapshot?.runtimeThreadId && !records.length ? <TrajectoryState text="当前会话还没有可显示的事件" /> : null}
-            {records.length && !displayedRecords.length ? <TrajectoryState text="没有匹配的事件" /> : null}
-            {turnGroups.map((group) => {
-              const collapsed = collapsedTurns.has(group.key);
-              return <section className="trajectory-turn" key={group.key}>
-                <button
-                  className="trajectory-turn-header"
-                  type="button"
-                  aria-expanded={!collapsed}
-                  onClick={() => toggleTurn(group.key)}
-                >
-                  <span className="trajectory-turn-toggle" aria-hidden="true">
-                    <DshChevronRightIcon className={collapsed ? "" : "is-expanded"} />
-                  </span>
-                  <strong>{group.label}</strong>
-                  <small>{group.records.length}</small>
-                </button>
-                {!collapsed ? <div className="trajectory-records">
-                  {group.records.map((record) => <TrajectoryRow
-                    key={record.id}
-                    record={record}
-                    selected={record.id === selectedId}
-                    selectedRequestSeq={selectedRequestSeq}
-                    onSelect={() => {
-                      setSelectedRequestSeq(null);
-                      setSelectedId(record.id);
-                      setDetailTab("summary");
-                    }}
-                    onSelectRequest={(request) => {
-                      setSelectedId("");
-                      setSelectedRequestSeq(request.seq);
-                      setDetailTab("context");
-                    }}
-                  />)}
-                </div> : null}
-              </section>;
-            })}
-            {error && snapshot ? <p className="trajectory-inline-error" role="status">{error}</p> : null}
-          </main>
-          {inspectorOpen ? <TrajectoryInspector
-            record={selectedRecord}
-            request={selectedRequest}
-            tab={detailTab}
-            onTabChange={setDetailTab}
-            onClose={() => {
-              setSelectedId("");
-              setSelectedRequestSeq(null);
-            }}
-          /> : null}
-        </div>
-      </section>
-    </div>,
-    document.body,
+  const officialSnapshot = useMemo(
+    () => snapshot ? toOfficialSnapshot(snapshot.records) : emptySnapshot,
+    [snapshot],
   );
-}
+  const sessionSnapshot = useMemo(() => ({
+    openState: loading && snapshot === null ? "loading" : "ready",
+    loadingOlder,
+    hasMore: Boolean(snapshot?.hasMore),
+  }), [loading, loadingOlder, snapshot]);
+  const useSession = useCallback(
+    (selector) => selector(sessionSnapshot),
+    [sessionSnapshot],
+  );
+  const useTrajectory = useCallback(
+    (selector) => selector(officialSnapshot),
+    [officialSnapshot],
+  );
+  const useDuration = useCallback(
+    (selector) => selector(actualDuration),
+    [actualDuration],
+  );
+  const loadImage = useCallback(
+    (attachment) => readChatImage(conversationId, attachment.attachmentId),
+    [conversationId],
+  );
+  const stringWrappingPreference = useMemo(() => ({
+    getDefault: () => stringWrapping,
+    setDefault: setStringWrapping,
+  }), [stringWrapping]);
+  const renderTrajectorySlot = useCallback((name, owner) => {
+    if (name !== "conversation.trajectory.images" || !renderSlot) return null;
+    return renderSlot("eleckoi.roleplay.trajectory.images", owner);
+  }, [renderSlot]);
 
-function TrajectoryOverview({ records, selectedId, actualDuration, onSelect }) {
-  const positions = useMemo(() => timelinePositions(records, actualDuration), [actualDuration, records]);
-  return <div className="trajectory-overview" aria-label="轨迹时间概览">
-    {lanes.map((lane) => <div className="trajectory-lane" key={lane.id}>
-      <span>{lane.label}</span>
-      <div>
-        {positions.filter(({ record }) => lane.kinds.has(record.kind)).map(({ record, left, width }) => (
-          <button
-            type="button"
-            key={record.id}
-            className={`kind-${record.kind}${record.id === selectedId ? " is-selected" : ""}`}
-            style={{ "--trajectory-left": `${left}%`, "--trajectory-width": `${width}%` }}
-            title={`${record.title}${record.durationMillis === null ? "" : ` · ${formatDuration(record.durationMillis)}`}`}
-            aria-label={`查看 ${record.title}`}
-            onClick={() => onSelect(record.id)}
-          />
-        ))}
-      </div>
-    </div>)}
-  </div>;
-}
-
-function TrajectoryRow({ record, selected, selectedRequestSeq, onSelect, onSelectRequest }) {
-  return <div
-    role="button"
-    tabIndex={0}
-    className={`trajectory-record${selected ? " is-selected" : ""}`}
-    aria-current={selected ? "true" : undefined}
-    onClick={onSelect}
-    onKeyDown={(event) => {
-      if (event.target !== event.currentTarget) return;
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      onSelect();
-    }}
-  >
-    {record.requests.map((request, requestIndex) => <button
-      type="button"
-      key={request.seq}
-      className={`trajectory-request-point${request.seq === selectedRequestSeq ? " is-selected" : ""}`}
-      style={{ "--trajectory-request-offset": `${requestIndex * 9}px` }}
-      data-label={`Request #${request.number}`}
-      data-status={request.status}
-      aria-label={`查看 Request #${request.number}`}
-      aria-pressed={request.seq === selectedRequestSeq}
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelectRequest(request);
-      }}
-    />)}
-    <span className="trajectory-record-seq">{record.index}</span>
-    <span className={`trajectory-kind kind-${record.kind}`}>{kindLabels[record.kind] || record.kind}</span>
-    <span className="trajectory-record-copy">
-      <strong>{record.title}</strong>
-      {record.preview ? <small>{record.preview}</small> : null}
-    </span>
-    <span className={`trajectory-status status-${record.status}`} title={statusLabels[record.status]} />
-    <span className="trajectory-record-duration">{formatDuration(record.durationMillis)}</span>
-  </div>;
-}
-
-function TrajectoryInspector({ record, request, tab, onTabChange, onClose }) {
-  const tabs = request
-    ? [
-        ["summary", "摘要"],
-        ["context", "上下文"],
-        ["preview", "预览"],
-        ["raw", "原始"],
-        ["source", "来源"],
-      ]
-    : [
-        ["summary", "摘要"],
-        ["preview", "预览"],
-        ["raw", "原始"],
-        ["source", "来源"],
-      ];
-  return <aside className="trajectory-inspector" aria-label="事件详情">
-    <div className="trajectory-inspector-heading">
-      {request ? <>
-        <span className="trajectory-request-heading-dot" aria-hidden="true" />
-        <strong>Request #{request.number}</strong>
-        <small>{request.turn === null ? "请求" : `轮次 ${request.turn}`}</small>
-      </> : <>
-        <span className={`trajectory-kind kind-${record.kind}`}>{kindLabels[record.kind] || record.kind}</span>
-        <strong>{record.title}</strong>
-        <small>#{record.index}</small>
-      </>}
-      <button type="button" className="trajectory-inspector-close" aria-label="关闭事件详情" onClick={onClose}>
-        <DshCloseIcon />
-      </button>
-    </div>
-      <div className="trajectory-tabs" role="tablist" aria-label="详情视图">
-        {tabs.map(([id, label]) => <button
-          type="button"
-          role="tab"
-          key={id}
-          aria-selected={tab === id}
-          onClick={() => onTabChange(id)}
-        >{label}</button>)}
-      </div>
-      <div className="trajectory-inspector-body">
-        {tab === "summary" && request ? <dl className="trajectory-summary">
-          <DetailTerm label="状态" value={statusLabels[request.status] || request.status} />
-          <DetailTerm label="提供方" value={request.provider || "—"} />
-          <DetailTerm label="模型" value={request.model || "—"} />
-          <DetailTerm label="轮次" value={request.turn === null ? "—" : String(request.turn)} />
-          <DetailTerm label="步骤" value={request.step === null ? "—" : String(request.step)} />
-          <DetailTerm label="时间" value={formatTime(request.timeMillis)} />
-          <DetailTerm label="耗时" value={formatDuration(request.durationMillis)} />
-        </dl> : null}
-        {tab === "summary" && record ? <dl className="trajectory-summary">
-          <DetailTerm label="事件" value={record.type} />
-          <DetailTerm label="状态" value={statusLabels[record.status] || record.status} />
-          <DetailTerm label="轮次" value={record.turn === null ? "—" : String(record.turn)} />
-          <DetailTerm label="步骤" value={record.step === null ? "—" : String(record.step)} />
-          <DetailTerm label="时间" value={formatTime(record.timeMillis)} />
-          <DetailTerm label="耗时" value={formatDuration(record.durationMillis)} />
-        </dl> : null}
-        {tab === "context" && request ? <RequestContextPanel key={request.seq} items={request.context || []} /> : null}
-        {tab === "preview" ? <InspectorPre value={request?.detail || record?.output || record?.input || record?.preview || record?.detail} /> : null}
-        {tab === "raw" ? <InspectorPre value={request?.rawJson || record?.rawJson} /> : null}
-        {tab === "source" ? <>
-          <section className="trajectory-source"><h3>来源</h3><p>{request?.reason || record?.source || "—"}</p></section>
-          <section className="trajectory-source"><h3>事件详情</h3><InspectorPre value={request?.detail || record?.detail} /></section>
-        </> : null}
-      </div>
-  </aside>;
-}
-
-function RequestContextPanel({ items }) {
-  const [expandedItems, setExpandedItems] = useState(() => new Set());
-  if (!items.length) return <p className="trajectory-no-value">这个请求没有可读取的上下文快照</p>;
-  return <ol className="trajectory-request-context">
-    {items.map((item, index) => {
-      const itemKey = `${item.messageId || "message"}-${item.order || index}`;
-      const longContent = shouldCollapseRequestContext(item);
-      const expanded = expandedItems.has(itemKey);
-      const content = longContent && !expanded ? requestContextPreview(item.content) : item.content;
-      return <li key={itemKey}>
-        <header>
-          <span className="trajectory-context-order">{item.order || index + 1}</span>
-          <span className={`trajectory-context-role role-${item.role}`}>{contextRoleLabel(item.role)}</span>
-          <strong>{item.title || contextRoleLabel(item.role)}</strong>
-          {item.source ? <small>{item.source}</small> : null}
-        </header>
-        <div className={`trajectory-context-content${longContent && expanded ? " is-expanded" : ""}`}>{content}</div>
-        {longContent ? <button
-          type="button"
-          className="trajectory-context-expand"
-          aria-expanded={expanded}
-          onClick={() => setExpandedItems((current) => {
-            const next = new Set(current);
-            if (next.has(itemKey)) next.delete(itemKey);
-            else next.add(itemKey);
-            return next;
-          })}
-        >
-          <span>{expanded ? "收起全文" : "展开全文"}</span>
-          <small>{formatContextSize(item.content)}</small>
-        </button> : null}
-      </li>;
-    })}
-  </ol>;
-}
-
-function shouldCollapseRequestContext(item) {
-  const content = typeof item.content === "string" ? item.content : "";
-  const lineCount = contextLineCount(content);
-  if (item.kind === "tool") {
-    return content.length > toolContextCollapseCharacters || lineCount > toolContextCollapseLines;
+  if (!loading && error && !snapshot) {
+    return <TrajectoryState text={error} action="重试" onAction={loadLatest} />;
   }
-  return content.length > contextCollapseCharacters || lineCount > contextCollapseLines;
-}
-
-function requestContextPreview(content) {
-  const source = String(content);
-  const allLines = source.split(/\r?\n/);
-  let preview = allLines.slice(0, contextPreviewLines).join("\n").trimEnd();
-  let truncated = allLines.length > contextPreviewLines;
-  if (preview.length > contextPreviewCharacters) {
-    preview = preview.slice(0, contextPreviewCharacters).trimEnd();
-    truncated = true;
+  if (!loading && snapshot && !snapshot.runtimeThreadId) {
+    return <TrajectoryState text="这个对话还没有 DSH 轨迹" />;
   }
-  return truncated ? `${preview}\n…` : preview;
-}
-
-function formatContextSize(content) {
-  const value = String(content);
-  return `${new Intl.NumberFormat("zh-CN").format(value.length)} 字符 · ${contextLineCount(value)} 行`;
-}
-
-function contextLineCount(content) {
-  return String(content).split(/\r?\n/).length;
-}
-
-function contextRoleLabel(role) {
-  if (role === "system") return "系统";
-  if (role === "assistant") return "AI";
-  return "用户";
-}
-
-function DetailTerm({ label, value }) {
-  return <div><dt>{label}</dt><dd>{value}</dd></div>;
-}
-
-function InspectorPre({ value }) {
-  return value ? <pre>{value}</pre> : <p className="trajectory-no-value">没有可预览的内容</p>;
-}
-
-function TrajectoryState({ text, action, onAction }) {
-  return <div className="trajectory-state" role="status">
-    <p>{text}</p>
-    {action ? <button type="button" onClick={onAction}>{action}</button> : null}
-  </div>;
-}
-
-function timelinePositions(records, actualDuration) {
-  if (!records.length) return [];
-  if (!actualDuration) {
-    const width = 100 / records.length;
-    return records.map((record, index) => ({
-      record,
-      left: index * width,
-      width: Math.max(width - 0.2, 0.7),
-    }));
+  if (!loading && snapshot?.runtimeThreadId && snapshot.records.length === 0) {
+    return <TrajectoryState text="当前会话还没有可显示的事件" />;
   }
-  const timed = records.filter((record) => record.timeMillis !== null);
-  if (!timed.length) return timelinePositions(records, false);
-  const start = Math.min(...timed.map((record) => record.timeMillis));
-  const end = Math.max(...timed.map((record) => record.timeMillis + Math.max(record.durationMillis || 0, 4)));
-  const span = Math.max(end - start, 1);
-  return records.map((record, index) => {
-    if (record.timeMillis === null) {
-      const width = 100 / records.length;
-      return { record, left: index * width, width: Math.max(width - 0.2, 0.7) };
-    }
-    return {
-      record,
-      left: ((record.timeMillis - start) / span) * 100,
-      width: Math.max((Math.max(record.durationMillis || 0, 4) / span) * 100, 0.7),
-    };
-  });
+
+  return <section className="trajectory-host" aria-label="轨迹">
+    <OfficialTrajectoryView
+      useSession={useSession}
+      useTrajectory={useTrajectory}
+      useDuration={useDuration}
+      loadOlder={loadOlder}
+      loadImage={loadImage}
+      setActualDuration={setActualDuration}
+      viewRequest={null}
+      completeViewRequest={noop}
+      renderSlot={renderTrajectorySlot}
+      t={translateTrajectory}
+      jsonStringWrapping={stringWrappingPreference}
+    />
+    {error && snapshot ? <p className="trajectory-inline-error" role="status">{error}</p> : null}
+  </section>;
 }
 
-function groupByTurn(records) {
-  const groups = new Map();
+function toOfficialSnapshot(records) {
+  const eventNodes = [];
+  const systemPrompts = [];
+  const requests = requestViews(records);
+  const toolProjection = projectTools(records);
+  let hasSystemPrompt = false;
+
   for (const record of records) {
-    const key = record.turn === null ? "setup" : `turn:${record.turn}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        key,
-        label: record.turn === null ? "会话准备" : `轮次 ${record.turn}`,
-        records: [],
+    if (record.kind === "system") {
+      systemPrompts.push({
+        seq: record.seq,
+        time: timestamp(record.timeMillis),
+        turn: positiveInteger(record.turn) || 1,
+        step: nonnegativeInteger(record.step) ?? 0,
+        text: record.input || record.output || record.preview,
+        update: hasSystemPrompt,
+      });
+      hasSystemPrompt = true;
+      continue;
+    }
+    if (record.kind === "user" || record.kind === "context") {
+      eventNodes.push(inputNode(record));
+      continue;
+    }
+    if (record.kind === "assistant") {
+      const node = assistantNode(record);
+      if (node) eventNodes.push(node);
+    }
+  }
+  eventNodes.push(...toolProjection.eventNodes);
+  eventNodes.sort((left, right) => left.seq - right.seq);
+
+  return {
+    systemPrompts,
+    eventNodes,
+    eventLocations: new Map(),
+    requests,
+    callSchemas: callSchemas(records),
+    partial: null,
+    runningCalls: toolProjection.runningCalls,
+  };
+}
+
+function inputNode(record) {
+  const message = messageDetail(record.detail);
+  const content = contentBlocks(message.content, record.input);
+  const source = object(message.source);
+  if (record.kind === "user") {
+    return {
+      kind: "user",
+      seq: record.seq,
+      time: timestamp(record.timeMillis),
+      content,
+      source: Object.keys(source).length ? source : { kind: "user" },
+    };
+  }
+  return {
+    kind: "context",
+    seq: record.seq,
+    time: timestamp(record.timeMillis),
+    content,
+    source: Object.keys(source).length ? source : { kind: record.source || "context" },
+    producer: {
+      role: record.source === "recall" ? "recall" : "inject",
+      label: record.title || record.source || null,
+    },
+    form: knownContextForm(source.form),
+  };
+}
+
+function assistantNode(record) {
+  const turn = positiveInteger(record.turn);
+  const step = positiveInteger(record.step);
+  if (!turn || !step) return null;
+  const detail = object(parseJson(record.detail));
+  const message = object(detail.message || detail);
+  const request = record.requests.find((item) => item.purpose === "assistant") || record.requests[0];
+  const provider = request?.provider || stringValue(object(message.source).provider);
+  const model = request?.model || stringValue(object(message.source).model);
+  const blocks = array(message.content).map(assistantBlock).filter(Boolean);
+  const fallback = record.output || record.preview;
+  if (blocks.length === 0 && fallback) blocks.push({ kind: "text", text: fallback });
+  const timing = assistantTiming(request, record);
+  return {
+    kind: "assistant",
+    seq: record.seq,
+    ...(stringValue(message.id) ? { messageId: stringValue(message.id) } : {}),
+    time: timestamp(record.timeMillis),
+    turn,
+    step,
+    blocks,
+    ...(request?.usage ? { usage: officialUsage(request.usage) } : {}),
+    ...(provider && model ? { providerMetadata: { provider, model } } : {}),
+    ...(request?.requestConfig ? {
+      requestConfig: officialRequestConfig(request.requestConfig, provider, model),
+    } : {}),
+    ...(timing ? { timing } : {}),
+    ...(record.status === "cancelled" ? { interrupted: true } : {}),
+  };
+}
+
+function assistantBlock(value) {
+  const block = object(value);
+  const type = stringValue(block.type);
+  if (type === "text" || type === "reasoning") {
+    return { kind: type, text: stringValue(block.text) };
+  }
+  if (type === "image" && validImageAttachment(block.attachment)) {
+    return { kind: "image", attachment: block.attachment };
+  }
+  if (type === "tool-call") {
+    return {
+      kind: "tool-call",
+      callId: stringValue(block.id || block.toolCallId),
+      name: stringValue(block.name),
+      argsRaw: typeof block.arguments === "string"
+        ? block.arguments
+        : stringifyValue(block.arguments),
+    };
+  }
+  return { kind: "other", block: value };
+}
+
+function requestViews(records) {
+  const bySeq = new Map();
+  const compactionBySeq = new Map(
+    records.filter((record) => record.kind === "compaction")
+      .flatMap((record) => record.requests.map((request) => [request.seq, record])),
+  );
+  for (const record of records) {
+    for (const request of record.requests) {
+      if (bySeq.has(request.seq)) continue;
+      const startedAt = timestamp(request.startedAt ?? request.timeMillis);
+      const completedAt = request.status === "running"
+        ? null
+        : nullableTimestamp(request.completedAt)
+          ?? (Number.isFinite(request.durationMillis) ? startedAt + request.durationMillis : null);
+      const common = {
+        startSeq: request.seq,
+        startedAt,
+        completedAt,
+        status: request.status === "cancelled" ? "error" : request.status,
+        ...(request.provider && request.model ? {
+          providerMetadata: { provider: request.provider, model: request.model },
+        } : {}),
+        ...(request.requestConfig ? {
+          requestConfig: officialRequestConfig(
+            request.requestConfig,
+            request.provider,
+            request.model,
+          ),
+        } : {}),
+        ...(request.usage ? { usage: officialUsage(request.usage) } : {}),
+        ...(Number.isFinite(request.resultSeq) ? { resultSeq: request.resultSeq } : {}),
+        context: request.context || [],
+      };
+      if (request.purpose === "assistant") {
+        const turn = positiveInteger(request.turn);
+        const step = positiveInteger(request.step);
+        if (!turn || !step) continue;
+        bySeq.set(request.seq, { ...common, purpose: "assistant", turn, step });
+        continue;
+      }
+      const compaction = compactionBySeq.get(request.seq);
+      const summary = contentBlocks([], compaction?.output || "");
+      bySeq.set(request.seq, {
+        ...common,
+        purpose: "compaction",
+        turn: positiveInteger(request.turn),
+        step: 0,
+        ...(summary.length ? { summary, rawOutput: summary } : {}),
+        ...(Number.isFinite(request.resultSeq) ? { replacementSeq: request.resultSeq } : {}),
       });
     }
-    groups.get(key).records.push(record);
   }
-  return [...groups.values()];
+  return [...bySeq.values()].sort((left, right) => left.startSeq - right.startSeq);
+}
+
+function projectTools(records) {
+  const blocks = new Map();
+  for (const record of records) {
+    if (record.kind !== "tool") continue;
+    const detail = object(parseJson(record.detail));
+    const result = object(detail.result);
+    const data = Object.keys(result).length ? result : detail;
+    const parentCallId = stringValue(data.parentCallId || data.rootCallId);
+    const callId = record.source || stringValue(data.callId || data.subCallId);
+    if (!callId) continue;
+    const argsRaw = record.input || stringifyValue(data.arguments || detail.call || {});
+    const common = {
+      callId,
+      ...(parentCallId ? { parentCallId } : {}),
+      name: record.title || stringValue(data.name) || "tool",
+      turn: positiveInteger(record.turn) || 0,
+      step: positiveInteger(record.step) || 0,
+      time: timestamp(record.timeMillis),
+      subCalls: [],
+    };
+    if (record.status === "running") {
+      blocks.set(callId, { phase: "start", ...common, argsRaw });
+      continue;
+    }
+    const resultEvent = lastRawEvent(record.rawJson);
+    const resultMessage = object(object(resultEvent?.data).message);
+    const messageContent = array(resultMessage.content);
+    const resultBlock = object(messageContent.find((block) => object(block).type === "tool-result"));
+    const content = contentBlocks(resultBlock.content || resultMessage.content || data.content, record.output);
+    const error = officialToolError(data.error);
+    blocks.set(callId, {
+      kind: "tool-result",
+      seq: nonnegativeInteger(resultEvent?.seq) ?? record.seq,
+      time: timestamp(resultEvent?.time ?? completedTime(record)),
+      callId,
+      ...(parentCallId ? { parentCallId } : {}),
+      call: { name: common.name, argsRaw },
+      callTime: common.time,
+      content,
+      isError: record.status === "error",
+      ...(error ? { error } : {}),
+      ...(data.meta === undefined ? {} : { meta: data.meta }),
+      subCalls: [],
+    });
+  }
+
+  const project = (block, path = new Set()) => {
+    if (path.has(block.callId)) return { ...block, subCalls: [] };
+    const nextPath = new Set(path);
+    nextPath.add(block.callId);
+    const children = [...blocks.values()]
+      .filter((candidate) => candidate.parentCallId === block.callId)
+      .sort((left, right) => left.time - right.time)
+      .map((child) => project(child, nextPath));
+    return { ...block, subCalls: children };
+  };
+  const roots = [...blocks.values()]
+    .filter((block) => !block.parentCallId || !blocks.has(block.parentCallId))
+    .sort((left, right) => left.time - right.time)
+    .map((block) => project(block));
+  return {
+    eventNodes: roots.filter((block) => block.kind === "tool-result"),
+    runningCalls: roots.filter((block) => block.phase === "start"),
+  };
+}
+
+function officialToolError(value) {
+  const error = object(value);
+  const code = stringValue(error.code);
+  if (!code) return null;
+  return {
+    name: stringValue(error.name) || "Error",
+    code,
+    ...(stringValue(error.reason) ? { reason: stringValue(error.reason) } : {}),
+  };
+}
+
+function callSchemas(records) {
+  const result = new Map();
+  for (const record of records) {
+    if (record.kind !== "tool" || !record.source) continue;
+    const schemas = record.requests.flatMap((request) => array(request.requestConfig?.tools));
+    const schema = schemas.find((candidate) => {
+      const item = object(candidate);
+      return item.name === record.title || object(item.function).name === record.title;
+    });
+    if (schema !== undefined) result.set(record.source, normalizeToolSchema(schema));
+  }
+  return result;
+}
+
+function normalizeToolSchema(value) {
+  const schema = object(value);
+  const nested = object(schema.function);
+  const source = Object.keys(nested).length ? nested : schema;
+  return {
+    name: stringValue(source.name),
+    description: stringValue(source.description),
+    parameters: object(source.parameters),
+    ...(source.deferLoading === true ? { deferLoading: true } : {}),
+  };
+}
+
+function officialRequestConfig(value, provider, model) {
+  const config = object(value);
+  return {
+    ...config,
+    provider: stringValue(config.provider) || provider || "",
+    model: stringValue(config.model) || model || "",
+  };
+}
+
+function officialUsage(value) {
+  return {
+    ...(Number.isFinite(value.input) ? { inputTokens: value.input } : {}),
+    ...(Number.isFinite(value.cacheRead) ? { cacheReadTokens: value.cacheRead } : {}),
+    ...(Number.isFinite(value.cacheWrite) ? { cacheWriteTokens: value.cacheWrite } : {}),
+    ...(Number.isFinite(value.output) ? { outputTokens: value.output } : {}),
+    ...(Number.isFinite(value.reasoning) ? { reasoningTokens: value.reasoning } : {}),
+  };
+}
+
+function assistantTiming(request, record) {
+  if (!Number.isFinite(request?.startedAt) || !Number.isFinite(request?.completedAt)) return null;
+  return {
+    stepStartTime: request.startedAt,
+    firstTokenTime: Number.isFinite(request.firstTokenTime) ? request.firstTokenTime : null,
+    completedTime: request.completedAt ?? timestamp(record.timeMillis),
+  };
+}
+
+function contentBlocks(value, fallback) {
+  const blocks = array(value).filter((block) => typeof block === "object" && block !== null);
+  if (blocks.length) return blocks;
+  return fallback ? [{ type: "text", text: fallback }] : [];
+}
+
+function messageDetail(value) {
+  const detail = object(parseJson(value));
+  return object(detail.message || detail);
+}
+
+function knownContextForm(value) {
+  return ["instructions", "catalog", "snapshot", "notice", "relay", "recall"].includes(value)
+    ? value
+    : null;
+}
+
+function validImageAttachment(value) {
+  const attachment = object(value);
+  return typeof attachment.attachmentId === "string"
+    && typeof attachment.mediaType === "string"
+    && Number.isFinite(attachment.bytes)
+    && Number.isFinite(attachment.width)
+    && Number.isFinite(attachment.height);
+}
+
+function lastRawEvent(value) {
+  const raw = parseJson(value);
+  const events = Array.isArray(raw) ? raw : [raw];
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = object(events[index]);
+    if (event.type === "tool/result" || event.type === "tool/code-dispatch") return event;
+  }
+  return null;
+}
+
+function completedTime(record) {
+  return Number.isFinite(record.timeMillis) && Number.isFinite(record.durationMillis)
+    ? record.timeMillis + record.durationMillis
+    : record.timeMillis;
+}
+
+function translateTrajectory(key, values = {}) {
+  let text = zh[key] || key;
+  for (const [name, value] of Object.entries(values)) {
+    text = text.replaceAll(`{${name}}`, String(value));
+  }
+  return text;
 }
 
 function mergeLatest(current, next) {
@@ -633,27 +533,61 @@ function mergeRecords(first, second) {
     .sort((left, right) => left.index - right.index);
 }
 
-function formatDuration(value) {
-  if (!Number.isFinite(value)) return "—";
-  if (value < 1_000) return `${value} ms`;
-  if (value < 60_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)} s`;
-  const minutes = Math.floor(value / 60_000);
-  const seconds = Math.round((value % 60_000) / 1_000);
-  return `${minutes}m ${seconds}s`;
+function timestamp(value) {
+  return Number.isFinite(value) ? value : 0;
 }
 
-function formatTime(value) {
-  if (!Number.isFinite(value)) return "—";
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    fractionalSecondDigits: 3,
-  }).format(new Date(value));
+function nullableTimestamp(value) {
+  return Number.isFinite(value) ? value : null;
 }
 
-function focusableElements(root) {
-  if (!root) return [];
-  return [...root.querySelectorAll("button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])")]
-    .filter((element) => element instanceof HTMLElement && !element.hidden);
+function positiveInteger(value) {
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function nonnegativeInteger(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function object(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+}
+
+function array(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringValue(value) {
+  return typeof value === "string" ? value : "";
+}
+
+function parseJson(value) {
+  if (typeof value !== "string" || value === "") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function stringifyValue(value) {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? "";
+  } catch {
+    return String(value ?? "");
+  }
+}
+
+function noop() {}
+
+function emptyRenderSlot() {
+  return null;
+}
+
+function TrajectoryState({ text, action, onAction }) {
+  return <div className="trajectory-state" role="status">
+    <p>{text}</p>
+    {action ? <button type="button" onClick={onAction}>{action}</button> : null}
+  </div>;
 }

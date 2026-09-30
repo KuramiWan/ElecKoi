@@ -20,6 +20,28 @@ beforeEach(() => {
 })
 
 describe('chat message send cancellation', () => {
+  it('shows a visible error when no usable chat model is configured', async () => {
+    const setStatus = vi.fn()
+    const notify = vi.fn()
+
+    await runChatMessageSend({
+      event: { preventDefault: vi.fn() },
+      input: '你好',
+      inputImagesRef: { current: [] },
+      inputFilesRef: { current: [] },
+      isSending: false,
+      modelConfig: null,
+      setStatus,
+      notify,
+    })
+
+    const message = '未配置可用的对话模型，请先前往“模型配置”添加模型和 API 密钥。'
+    expect(setStatus).toHaveBeenCalledWith(message)
+    expect(notify).toHaveBeenCalledWith('error', message)
+    expect(api.createChat).not.toHaveBeenCalled()
+    expect(api.sendChatMessage).not.toHaveBeenCalled()
+  })
+
   it('never dispatches a request that was stopped while local preparation was pending', async () => {
     let finishEncoding
     images.encodeImageDraft.mockImplementation(() => new Promise((resolve) => { finishEncoding = resolve }))

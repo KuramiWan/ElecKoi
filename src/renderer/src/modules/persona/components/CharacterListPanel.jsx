@@ -8,6 +8,7 @@ import { DeleteCharacterDialog } from "./DeleteCharacterDialog.jsx";
 import { ALL_CHARACTERS, characterGroup, characterName } from "./characterUtils.js";
 import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
 import { SidebarCreateButton } from "../../../ui/ui/SidebarCreateButton.jsx";
+import { useSidebarListScroll } from "../../../ui/hooks/useSidebarListScroll.js";
 import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from "../../settings/index.js";
 import { openCharacterManagerWindow } from "../window/openCharacterManagerWindow.js";
 
@@ -27,6 +28,7 @@ export function CharacterListPanel({ characters, activeCharacterId, artworkMode,
   const [deletingCharacter, setDeletingCharacter] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const characterMenuRef = useRef(null);
+  const scrollRef = useSidebarListScroll();
   const [draggingGroup, setDraggingGroup] = useState("");
   const [dragOverGroup, setDragOverGroup] = useState("");
 
@@ -221,7 +223,7 @@ export function CharacterListPanel({ characters, activeCharacterId, artworkMode,
         </button>
       </div>
 
-      <div className="character-list-scroll">
+      <div ref={scrollRef} className="character-list-scroll">
         {listTab === "characters" && collapseStateReady ? (
           <CharacterGroupList
             groups={groups}

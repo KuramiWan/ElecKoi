@@ -94,7 +94,7 @@ describe('packaged DSH runtime composition', () => {
       await runtime.createSession({
         conversationId: 'conversation-provider-error',
         runtimeThreadId: 'conversation-provider-error',
-        settings
+        settings: { ...settings, apiKey: '' }
       })
       const blank = readDshSessionLog(join(root, 'runtime', 'sessions'), 'conversation-provider-error')
       expect(blank?.header.id).toBe('conversation-provider-error')

@@ -47,6 +47,20 @@ afterEach(() => {
 })
 
 describe('Agent session coordinator（Agent 会话协调器）', () => {
+  it('creates a blank DSH Session without requiring an API key', async () => {
+    const createSession = vi.fn(async () => undefined)
+    const harness = createHarness({ createSession })
+    harness.models.save({ id: 'test-model', api_key: '' })
+
+    await expect(harness.coordinator.createSession(harness.conversationId)).resolves.toBeUndefined()
+    expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: harness.conversationId,
+      runtimeThreadId: harness.conversationId,
+      settings: expect.objectContaining({ model: 'deepseek-chat', apiKey: '' })
+    }))
+    expect(() => harness.coordinator.start(harness.conversationId, '现在才需要模型')).toThrow('API Key')
+  })
+
   it('binds a reply to the DSH turn reported by its own session', async () => {
     const harness = createHarness({
       run: async (_input, callbacks) => {
@@ -956,23 +970,40 @@ describe('Agent session coordinator（Agent 会话协调器）', () => {
 
   it('deletes an interrupted reply after finding its unfinished DSH turn', async () => {
     const rewound: number[] = []
+    let didRewind = false
     const harness = createHarness({
       rewindConversation: async (_conversationId, _sessionId, turn) => {
         rewound.push(turn)
+        didRewind = true
         return 'rewound'
       }
     })
-    const user = harness.messages.create(harness.conversationId, 'user', '中断的输入', 'complete')
+    const image = {
+      attachmentId: `sha256:${'c'.repeat(64)}`,
+      mediaType: 'image/png' as const,
+      bytes: 10,
+      width: 1,
+      height: 1
+    }
+    const user = harness.messages.create(harness.conversationId, 'user', '中断的输入', 'complete', undefined, '', [image])
     const reply = harness.messages.create(harness.conversationId, 'assistant', '半句回复', 'cancelled', undefined, harness.conversationId)
-    harness.messages.attachTranscriptReader(() => [{
-      turn: 1, completed: false, userSeq: 1, userText: '中断的输入', userImages: [], userFiles: [],
+    harness.messages.attachTranscriptReader(() => didRewind ? [] : [{
+      turn: 1, completed: false, userSeq: 1, userText: '中断的输入', userImages: [image], userFiles: [],
       assistantText: '半句回复', process: []
     }])
 
     await harness.coordinator.deleteMessagesFrom(harness.conversationId, reply.id)
 
     expect(rewound).toEqual([1])
-    expect(harness.messages.list(harness.conversationId).map((message) => message.id)).toEqual([user.id])
+    expect(harness.messages.list(harness.conversationId)).toEqual([
+      expect.objectContaining({
+        id: user.id,
+        content: '中断的输入',
+        inputImageAttachments: [image]
+      })
+    ])
+    expect(harness.database.native.prepare('SELECT turnId FROM agent_pending_inputs WHERE turnId=?').get(user.id))
+      .toEqual({ turnId: user.id })
   })
 
   it('deletes an input interrupted before DSH started its turn', async () => {
@@ -1160,6 +1191,7 @@ function createHarness(
     }
   } as unknown as DesktopGateway
   const runtime: AgentRuntimePort = {
+    ...(overrides.createSession ? { createSession: overrides.createSession } : {}),
     ...(overrides.prepareImages ? { prepareImages: overrides.prepareImages } : {}),
     ...(overrides.readImage ? { readImage: overrides.readImage } : {}),
     run: overrides.run ?? defaultRun,

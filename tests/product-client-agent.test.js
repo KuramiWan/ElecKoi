@@ -124,7 +124,6 @@ describe('Renderer Agent request tracking', () => {
         conversation: { id: 'conversation-1', title: '测试', preview: '', createdAt: '', updatedAt: '' },
         metadata: {}, messages: [], hasMore: false, beforeSequence: null
       }
-      if (name === 'query.conversations.rich_heights') return []
       throw new Error(`Unexpected request: ${name}`)
     })
     const desktopClient = {

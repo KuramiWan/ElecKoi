@@ -47,6 +47,54 @@ export function useAuthorFrontendActions({
   sendMessageRef.current = sendMessage;
 
   useEffect(() => {
+    let streamFrame = null;
+    const queuedStreamUpdates = new Map();
+    const cancelStreamFrame = () => {
+      if (streamFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(streamFrame);
+      streamFrame = null;
+    };
+    const flushStreamUpdates = () => {
+      cancelStreamFrame();
+      if (queuedStreamUpdates.size === 0) return;
+      const updates = new Map(queuedStreamUpdates);
+      queuedStreamUpdates.clear();
+      setMessages((items) => items.map((message) => {
+        const update = updates.get(message.id);
+        if (!update) return message;
+        let process = message.process;
+        for (const item of update.process) process = upsertProcess(process, item);
+        return {
+          ...message,
+          ...(update.delta ? { pending: true, content: `${message.content || ''}${update.delta}` } : {}),
+          ...(update.process.length ? { process } : {}),
+        };
+      }));
+    };
+    const scheduleStreamFlush = () => {
+      if (streamFrame !== null) return;
+      if (typeof requestAnimationFrame !== 'function') {
+        flushStreamUpdates();
+        return;
+      }
+      let frames = 3;
+      const tick = () => {
+        frames -= 1;
+        if (frames > 0) {
+          streamFrame = requestAnimationFrame(tick);
+          return;
+        }
+        streamFrame = null;
+        flushStreamUpdates();
+      };
+      streamFrame = requestAnimationFrame(tick);
+    };
+    const queueExternalMessage = (event, update) => {
+      if (event.conversationId !== sessionId || !runsRef.current.has(event.runId)) return;
+      const queued = queuedStreamUpdates.get(event.messageId) || { delta: '', process: [] };
+      update(queued);
+      queuedStreamUpdates.set(event.messageId, queued);
+      scheduleStreamFlush();
+    };
     const refreshActiveChat = async (targetSessionId, resetWindow = false) => {
       if (!targetSessionId || targetSessionId !== sessionId) return;
       const data = await getChat(targetSessionId);
@@ -85,10 +133,6 @@ export function useAuthorFrontendActions({
       }
       refreshActiveChat(detail.conversationId, resetWindow).catch((error) => setStatus(publicError(error, '刷新聊天失败')));
     };
-    const updateExternalMessage = (event, update) => {
-      if (event.conversationId !== sessionId || !runsRef.current.has(event.runId)) return;
-      setMessages((items) => items.map((message) => message.id === event.messageId ? update(message) : message));
-    };
     const onAuthorInputRequest = (event) => {
       const detail = event.detail || {};
       if (detail.conversationId !== sessionId || typeof detail.claim !== 'function') return;
@@ -119,17 +163,15 @@ export function useAuthorFrontendActions({
     };
     window.addEventListener('eleckoi:author-action', onAuthorAction);
     window.addEventListener('eleckoi:author-input-request', onAuthorInputRequest);
-    const disposeDelta = listenAgentOutputEvent((event) => updateExternalMessage(event, (message) => ({
-      ...message,
-      pending: true,
-      content: `${message.content || ''}${event.delta}`,
-    })));
-    const disposeProcess = listenAgentProcessEvent((event) => updateExternalMessage(event, (message) => ({
-      ...message,
-      process: upsertProcess(message.process, event.item),
-    })));
+    const disposeDelta = listenAgentOutputEvent((event) => queueExternalMessage(event, (queued) => {
+      queued.delta += event.delta || '';
+    }));
+    const disposeProcess = listenAgentProcessEvent((event) => queueExternalMessage(event, (queued) => {
+      if (event.item) queued.process.push(event.item);
+    }));
     const disposeFinished = listenAgentFinishedEvent((event) => {
       if (!runsRef.current.has(event.runId)) return;
+      flushStreamUpdates();
       const resetWindow = runsRef.current.get(event.runId);
       runsRef.current.delete(event.runId);
       if (event.conversationId === sessionId) setIsSending(false);
@@ -137,6 +179,7 @@ export function useAuthorFrontendActions({
     });
     const disposeFailed = listenAgentFailedEvent((event) => {
       if (!runsRef.current.has(event.runId)) return;
+      flushStreamUpdates();
       const resetWindow = runsRef.current.get(event.runId);
       runsRef.current.delete(event.runId);
       if (event.conversationId === sessionId) {
@@ -152,6 +195,8 @@ export function useAuthorFrontendActions({
       disposeProcess();
       disposeFinished();
       disposeFailed();
+      cancelStreamFrame();
+      queuedStreamUpdates.clear();
     };
   }, [sessionId]);
 }

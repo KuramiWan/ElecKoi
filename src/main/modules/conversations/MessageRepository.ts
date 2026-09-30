@@ -46,6 +46,19 @@ export class MessageRepository {
     }
   }
 
+  preservePendingUserInput(message: Pick<ChatMessage,
+    'id' | 'role' | 'content' | 'inputImageAttachments' | 'inputFileAttachments'>): void {
+    if (message.role !== 'user') throw new Error('只能保留用户输入。')
+    const draft: DraftMessage = {
+      content: message.content,
+      images: message.inputImageAttachments ?? [],
+      files: message.inputFileAttachments ?? [],
+      process: []
+    }
+    this.writePendingInput(message.id, draft)
+    this.drafts.set(message.id, draft)
+  }
+
   attachTranscriptReader(reader: (runtimeThreadId: string) => readonly RuntimeTranscriptTurn[] | undefined): () => void {
     if (this.transcriptReader) throw new Error('聊天日志读取器已注册。')
     this.transcriptReader = reader
@@ -615,10 +628,6 @@ export class MessageRepository {
         WHERE conversationId=? AND runtimeThreadId<>'' ORDER BY runtimeThreadId
       `).all(conversationId) as { runtimeThreadId: string }[]).map((row) => row.runtimeThreadId)
 
-      for (const id of deletedPublicMessageIds) {
-        this.store.native.prepare('DELETE FROM roleplay_rich_heights WHERE sessionId=? AND messageId=?')
-          .run(conversationId, id)
-      }
       for (const { ownerType, ownerId } of deletedOwners) {
         this.drafts.delete(ownerId)
         this.store.native.prepare('DELETE FROM agent_setting_snapshots WHERE conversationId=? AND ownerType=? AND ownerId=?')

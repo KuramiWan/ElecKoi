@@ -68,6 +68,16 @@ export function PluginNavIcon() {
   </svg>;
 }
 
+export function CreatorStudioNavIcon() {
+  return (
+    <svg className="creator-studio-nav" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11.7 3.1c.55 3.15 2.05 4.65 5.2 5.2-3.15.55-4.65 2.05-5.2 5.2-.55-3.15-2.05-4.65-5.2-5.2 3.15-.55 4.65-2.05 5.2-5.2Z" />
+      <path d="M18.1 13.1c.3 1.8 1.2 2.7 3 3-1.8.3-2.7 1.2-3 3-.3-1.8-1.2-2.7-3-3 1.8-.3 2.7-1.2 3-3Z" />
+      <path d="M5.2 14.5c.22 1.3.88 1.96 2.18 2.18-1.3.22-1.96.88-2.18 2.18-.22-1.3-.88-1.96-2.18-2.18 1.3-.22 1.96-.88 2.18-2.18Z" />
+    </svg>
+  );
+}
+
 export function CommunityNavIcon() {
   return (
     <svg className="community-nav-group" viewBox="0 0 24 24" aria-hidden="true">

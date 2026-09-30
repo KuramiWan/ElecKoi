@@ -1,18 +1,19 @@
 import { ChatComposer } from "./ChatComposer.jsx";
 import { ChatWaitingReply } from "./ChatWaitingReply.jsx";
+import { ConversationWidthControls } from "./ConversationWidthControls.tsx";
+import conversationWidthCss from "./ConversationWidthControls.module.css";
 import { ChatDropOverlay } from "./ChatDropOverlay.jsx";
 import { PinnedAvatar } from "./PinnedAvatar.jsx";
 import { AgentProcessDialog } from "./AgentProcessDialog.jsx";
-import { TrajectoryDialog } from "./TrajectoryDialog.jsx";
 import { VariableViewerDialog } from "./VariableViewerDialog.jsx";
 import { AgentToolsDialog } from "./AgentToolsDialog.jsx";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
-import { DshNewChatIcon, DshToBottomIcon } from "../../../ui/icons/dshComposerIcons.jsx";
-import { Path, SlidersHorizontal } from "@phosphor-icons/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getGenerationStats, listenGenerationStatsEvent } from "../api/chatApi.js";
+import { DshAgentPresetIcon, DshNewChatIcon, DshToBottomIcon } from "../../../ui/icons/dshComposerIcons.jsx";
+import { SlidersHorizontal } from "@phosphor-icons/react";
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { getActivePresetName, getGenerationStats, listenGenerationStatsEvent } from "../api/chatApi.js";
 import {
   chatDisplayCssVariables,
   chatTextColorCssVariables,
@@ -23,6 +24,12 @@ import {
 } from "../../appearance/index.js";
 import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.js";
 import { ContextMeter, retainVisibleGenerationStats } from "./GenerationStats.jsx";
+import { useChatTailReading } from "../hooks/useChatTailReading.js";
+import { useChatHistoryAnchor } from "../hooks/useChatHistoryAnchor.js";
+
+const TrajectoryView = lazy(() => import("./TrajectoryDialog.jsx").then((module) => ({
+  default: module.TrajectoryView,
+})));
 
 export function ChatPanel({
   hasActiveChat,
@@ -78,7 +85,9 @@ export function ChatPanel({
   const [messageAreaHovered, setMessageAreaHovered] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [processMessage, setProcessMessage] = useState(null);
-  const [trajectoryOpen, setTrajectoryOpen] = useState(false);
+  const [activeView, setActiveView] = useState("chat");
+  const [activePresetName, setActivePresetName] = useState("");
+  const [trajectoryRevision, setTrajectoryRevision] = useState(0);
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [imageDragActive, setImageDragActive] = useState(false);
@@ -93,11 +102,40 @@ export function ChatPanel({
   const [deletingMessages, setDeletingMessages] = useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [pinnedAvatar, setPinnedAvatar] = useState(null);
+  const [conversationBody, setConversationBody] = useState(null);
   const chatPanelRef = useRef(null);
+  const composerRegionRef = useRef(null);
   const returnToBottomRef = useRef(null);
+  const historyPagingRef = useRef(null);
   const headerMenuRef = useRef(null);
   const imageDragDepthRef = useRef(0);
   const previousMessageScrollTopRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const panel = chatPanelRef.current;
+    const composerRegion = composerRegionRef.current;
+    if (!panel || !composerRegion || typeof ResizeObserver === "undefined") return undefined;
+    const updateComposerHeight = () => {
+      panel.style.setProperty("--dsh-composer-height", `${composerRegion.offsetHeight}px`);
+    };
+    const observer = new ResizeObserver(updateComposerHeight);
+    observer.observe(composerRegion);
+    observer.observe(panel);
+    updateComposerHeight();
+    return () => {
+      observer.disconnect();
+      panel.style.removeProperty("--dsh-composer-height");
+    };
+  }, []);
+  const displayedMessages = useMemo(() => messages.filter((item) => !(
+    item.role === "assistant" && !String(item.content || "").trim() && !(item.process || []).length
+  )), [messages]);
+  const regenerateFrom = useCallback(async (message) => {
+    generationStatsRequestRef.current += 1;
+    const result = await onRegenerate?.(message);
+    if (result !== false) setTrajectoryRevision((revision) => revision + 1);
+    return result;
+  }, [onRegenerate]);
   const bindMessageScrollElement = useCallback((element) => {
     scrollRef.current = element;
     setMessageScrollElement(element);
@@ -108,6 +146,28 @@ export function ChatPanel({
   }, [scrollRequest.revision]);
 
   useEffect(() => setFollowingTail(true), [conversationId]);
+
+  useEffect(() => {
+    setActiveView("chat");
+  }, [conversationId]);
+
+  useEffect(() => {
+    let active = true;
+    const load = () => getActivePresetName()
+      .then((name) => {
+        if (!active) return;
+        setActivePresetName(name);
+      })
+      .catch(() => {
+        if (active) setActivePresetName("");
+      });
+    void load();
+    window.addEventListener("focus", load);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", load);
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     setDeleteMode(false);
@@ -267,9 +327,6 @@ export function ChatPanel({
   const userAvatar = resolveChatAvatar(persona, "user", avatarShape);
   const assistantAvatar = resolveChatAvatar(persona, "assistant", avatarShape);
   const regenerateTargetMessageId = findLatestRegenerateTargetMessageId(messages);
-  const displayedMessages = messages.filter((item) => !(
-    item.role === "assistant" && !String(item.content || "").trim() && !(item.process || []).length
-  ));
   const pendingStartedAt = messages.findLast((message) => message.role === "assistant" && message.pending)?.created_at;
   const parsedStartedAt = pendingStartedAt ? Date.parse(pendingStartedAt) : NaN;
 
@@ -302,6 +359,7 @@ export function ChatPanel({
     setDeletingMessages(true);
     const deleted = await onDeleteMessages?.(deleteFromMessageId);
     if (deleted !== false) {
+      setTrajectoryRevision((revision) => revision + 1);
       const request = ++generationStatsRequestRef.current;
       setGenerationStats(null);
       if (conversationId) {
@@ -318,11 +376,6 @@ export function ChatPanel({
       setDeleteConfirmationOpen(false);
     }
     setDeletingMessages(false);
-  }
-
-  function regenerateFrom(message) {
-    generationStatsRequestRef.current += 1;
-    return onRegenerate?.(message);
   }
 
   const deleteFromIndex = displayedMessages.findIndex((message) => message.id === deleteFromMessageId);
@@ -351,59 +404,73 @@ export function ChatPanel({
   return (
     <section
       ref={chatPanelRef}
-      className={`chat-panel layout-${layoutMode}${profile?.assistant_bubble_enabled ? " assistant-bubble-enabled" : ""}${deleteMode ? " message-delete-mode" : ""}`}
+      className={`chat-panel layout-${layoutMode} view-${activeView}${profile?.assistant_bubble_enabled ? " assistant-bubble-enabled" : ""}${deleteMode ? " message-delete-mode" : ""}`}
       style={displayStyle}
     >
       <header className="chat-header">
-        <h1>{currentTitle}</h1>
-        <div className="chat-header-actions" ref={headerMenuRef}>
-          <button className="chat-header-action" type="button" aria-label="查看轨迹" title="查看轨迹" onClick={() => {
-            setHeaderMenuOpen(false);
-            setTrajectoryOpen(true);
-          }}>
-            <Path size={20} weight="bold" />
-          </button>
-          <button className="chat-header-action" type="button" aria-label="对话操作" title="对话操作" aria-haspopup="menu" aria-expanded={headerMenuOpen} onClick={() => setHeaderMenuOpen((value) => !value)}>
-            <SlidersHorizontal size={20} weight="bold" />
-          </button>
-          <button className="chat-header-action chat-header-new" type="button" aria-label="新建对话" title="新建对话" onClick={onCreateChat}>
-            <DshNewChatIcon size={20} />
-          </button>
-          {headerMenuOpen ? (
-            <div
-              className="chat-header-menu"
-              role="menu"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={openChatBackground}
+        <div className="chat-header-title-row">
+          <div className="chat-header-title-cluster">
+            <h1>{currentTitle}</h1>
+            {activePresetName ? <span className="chat-header-preset" title={activePresetName}>
+              <DshAgentPresetIcon size={14} className="chat-header-preset-icon" />
+              <span>{activePresetName}</span>
+            </span> : null}
+          </div>
+          <div className="chat-header-actions" ref={headerMenuRef}>
+            <button className="chat-header-action" type="button" aria-label="对话操作" title="对话操作" aria-haspopup="menu" aria-expanded={headerMenuOpen} onClick={() => setHeaderMenuOpen((value) => !value)}>
+              <SlidersHorizontal size={20} weight="bold" />
+            </button>
+            <button className="chat-header-action chat-header-new" type="button" aria-label="新建对话" title="新建对话" onClick={onCreateChat}>
+              <DshNewChatIcon size={20} />
+            </button>
+            {headerMenuOpen ? (
+              <div
+                className="chat-header-menu"
+                role="menu"
+                onClick={(event) => event.stopPropagation()}
               >
-                自定义背景
-              </button>
-            </div>
-          ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={openChatBackground}
+                >
+                  自定义背景
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="chat-header-tabs" role="tablist" aria-label="对话视图">
+          <button type="button" role="tab" aria-selected={activeView === "chat"} onClick={() => setActiveView("chat")}>对话</button>
+          <button type="button" role="tab" aria-selected={activeView === "trajectory"} onClick={() => {
+            setHeaderMenuOpen(false);
+            setDeleteMode(false);
+            setDeleteFromMessageId("");
+            setActiveView("trajectory");
+          }}>轨迹</button>
         </div>
       </header>
 
-      <div
-        className={`message-area layout-${layoutMode} ${messageAreaHovered ? "scrollbar-visible" : ""}`}
-        ref={bindMessageScrollElement}
-        onPointerEnter={() => setMessageAreaHovered(true)}
-        onPointerLeave={() => setMessageAreaHovered(false)}
-        onScroll={(event) => {
-          const previousScrollTop = previousMessageScrollTopRef.current;
-          const scrollTop = event.currentTarget.scrollTop;
-          previousMessageScrollTopRef.current = scrollTop;
-          const movedUp = previousScrollTop !== null && scrollTop < previousScrollTop;
-          if (movedUp && scrollTop <= 240 && hasOlderMessages && !isLoadingOlderMessages) {
-            onLoadOlderMessages?.();
-          }
-        }}
-        aria-busy={isSwitchingChat || isLoadingOlderMessages || undefined}
-      >
-        {isSwitchingChat ? null : <MessageList
+      <div className={`chat-conversation-body ${conversationWidthCss.root}`} ref={setConversationBody}>
+        {activeView === "chat" ? <div
+          className={`message-area layout-${layoutMode} ${messageAreaHovered ? "scrollbar-visible" : ""}`}
+          ref={bindMessageScrollElement}
+          data-conversation-scroll=""
+          onPointerEnter={() => setMessageAreaHovered(true)}
+          onPointerLeave={() => setMessageAreaHovered(false)}
+          onScroll={(event) => {
+            const previousScrollTop = previousMessageScrollTopRef.current;
+            const scrollTop = event.currentTarget.scrollTop;
+            previousMessageScrollTopRef.current = scrollTop;
+            const movedUp = previousScrollTop !== null && scrollTop < previousScrollTop;
+            if (movedUp && scrollTop <= 240 && hasOlderMessages && !isLoadingOlderMessages) {
+              historyPagingRef.current?.();
+              onLoadOlderMessages?.();
+            }
+          }}
+          aria-busy={isSwitchingChat || isLoadingOlderMessages || undefined}
+        >
+          {isSwitchingChat ? null : <MessageList
           key={`${conversationId}:${conversationTransitionRevision}`}
           conversationId={conversationId}
           entering={conversationTransitionRevision > 0}
@@ -412,6 +479,7 @@ export function ChatPanel({
           scrollRequest={scrollRequest}
           onFollowingTailChange={setFollowingTail}
           returnToBottomRef={returnToBottomRef}
+          historyPagingRef={historyPagingRef}
           layoutMode={layoutMode}
           profile={profile}
           avatarShape={avatarShape}
@@ -435,13 +503,19 @@ export function ChatPanel({
           runtimeSessionId={runtimeSessionId}
           renderRoleplaySlot={renderRoleplaySlot}
           renderRoleplayMessage={renderRoleplayMessage}
-        />}
-      </div>
+          />}
+        </div> : <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
+          <TrajectoryView
+            key={`${conversationId}:${trajectoryRevision}`}
+            conversationId={conversationId}
+            isSending={isSending}
+            refreshRevision={trajectoryRevision}
+            renderSlot={renderRoleplaySlot}
+          />
+        </Suspense>}
 
-      {pinnedAvatar ? <PinnedAvatar src={pinnedAvatar.src} name={pinnedAvatar.name} containerRef={chatPanelRef} onClose={() => setPinnedAvatar(null)} /> : null}
-
-      <div className="chat-composer-region">
-        {!followingTail ? (
+      <div className="chat-composer-region" ref={composerRegionRef}>
+        {activeView === "chat" && !followingTail ? (
           <div className="chat-to-bottom-slot">
             <button type="button" className="chat-to-bottom" aria-label="回到底部" onClick={() => returnToBottomRef.current?.()}><DshToBottomIcon /></button>
           </div>
@@ -502,6 +576,12 @@ export function ChatPanel({
           {chatDisplay?.generation_stats_enabled !== false ? <ContextMeter stats={generationStats} /> : null}
         </div>
       </div>
+        <ConversationWidthControls
+          container={conversationBody}
+          phase={activeView === "chat" ? "active" : "hero"}
+        />
+      </div>
+      {activeView === "chat" && pinnedAvatar ? <PinnedAvatar src={pinnedAvatar.src} name={pinnedAvatar.name} containerRef={chatPanelRef} onClose={() => setPinnedAvatar(null)} /> : null}
       {imageDragActive ? <ChatDropOverlay disabled={isSending} /> : null}
       {processMessage ? (
         <AgentProcessDialog
@@ -513,11 +593,6 @@ export function ChatPanel({
           onClose={() => setProcessMessage(null)}
         />
       ) : null}
-      {trajectoryOpen ? <TrajectoryDialog
-        conversationId={conversationId}
-        isSending={isSending}
-        onClose={() => setTrajectoryOpen(false)}
-      /> : null}
       {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
       {toolsOpen ? <AgentToolsDialog
         modelConfigs={modelConfigs}
@@ -542,7 +617,7 @@ export function ChatPanel({
   );
 }
 
-function MessageList({
+export function MessageList({
   conversationId,
   entering,
   messages,
@@ -550,6 +625,7 @@ function MessageList({
   scrollRequest,
   onFollowingTailChange,
   returnToBottomRef,
+  historyPagingRef,
   layoutMode,
   profile,
   avatarShape,
@@ -575,10 +651,22 @@ function MessageList({
   renderRoleplayMessage,
 }) {
   const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant" && !message.pending);
-  const followingRef = useRef(true);
   const restoredConversationRef = useRef("");
   const scrollRevisionRef = useRef(scrollRequest.revision);
-  const readerGestureRef = useRef(false);
+  const localHistoryPagingRef = useRef(null);
+  const pagingControlRef = historyPagingRef || localHistoryPagingRef;
+  const followTail = useChatTailReading({
+    scrollElement,
+    onFollowingTailChange,
+  });
+  const beginHistoryPaging = useChatHistoryAnchor({
+    conversationId,
+    messages,
+    scrollElement,
+  });
+  const regenerateMessage = useCallback((message) => onRegenerate?.({
+    targetMessageId: message.turnId || message.id,
+  }), [onRegenerate]);
   const deleteFromIndex = deleteMode
     ? messages.findIndex((message) => message.id === deleteFromMessageId)
     : -1;
@@ -588,102 +676,37 @@ function MessageList({
       || restoredConversationRef.current === conversationId) return;
     restoredConversationRef.current = conversationId;
     scrollRevisionRef.current = scrollRequest.revision;
-    followingRef.current = true;
-    onFollowingTailChange(true);
-    scrollElement.scrollTop = scrollElement.scrollHeight;
-  }, [conversationId, messages.length, onFollowingTailChange, scrollElement, scrollRequest.revision]);
+    followTail();
+  }, [conversationId, followTail, messages.length, scrollElement, scrollRequest.revision]);
 
   useLayoutEffect(() => {
     if (!scrollElement || scrollRevisionRef.current === scrollRequest.revision) return;
     scrollRevisionRef.current = scrollRequest.revision;
-    followingRef.current = true;
-    onFollowingTailChange(true);
-    scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: scrollRequest.behavior || "auto" });
-  }, [onFollowingTailChange, scrollElement, scrollRequest.behavior, scrollRequest.revision]);
-
-  useLayoutEffect(() => {
-    if (!scrollElement) return undefined;
-    const flow = scrollElement.querySelector('.message-flow');
-    if (!flow) return undefined;
-    const follow = () => {
-      const gap = scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
-      if (gap <= 25) {
-        followingRef.current = true;
-        onFollowingTailChange(true);
-      } else if (followingRef.current) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
-      }
-    };
-    const observe = typeof ResizeObserver === 'function' ? new ResizeObserver(follow) : null;
-    observe?.observe(flow);
-    const onScroll = () => {
-      const gap = scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop;
-      if (gap <= 25) {
-        followingRef.current = true;
-        onFollowingTailChange(true);
-      } else if (readerGestureRef.current) {
-        followingRef.current = false;
-        onFollowingTailChange(false);
-      }
-    };
-    const onWheel = (event) => {
-      if (event.deltaY < 0 && scrollElement.scrollHeight - scrollElement.clientHeight > 25) {
-        followingRef.current = false;
-        onFollowingTailChange(false);
-      }
-    };
-    const onPointerDown = () => { readerGestureRef.current = true; };
-    const onPointerUp = () => { readerGestureRef.current = false; };
-    const onKeyDown = (event) => {
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key) && scrollElement.scrollHeight - scrollElement.clientHeight > 25) {
-        followingRef.current = false;
-        onFollowingTailChange(false);
-      }
-    };
-    scrollElement.addEventListener('scroll', onScroll, { passive: true });
-    scrollElement.addEventListener('wheel', onWheel, { passive: true });
-    scrollElement.addEventListener('pointerdown', onPointerDown, { passive: true });
-    window.addEventListener('pointerup', onPointerUp);
-    scrollElement.addEventListener('keydown', onKeyDown);
-    follow();
-    return () => {
-      observe?.disconnect();
-      scrollElement.removeEventListener('scroll', onScroll);
-      scrollElement.removeEventListener('wheel', onWheel);
-      scrollElement.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointerup', onPointerUp);
-      scrollElement.removeEventListener('keydown', onKeyDown);
-    };
-  }, [onFollowingTailChange, scrollElement]);
+    followTail();
+  }, [followTail, scrollElement, scrollRequest.revision]);
 
   useLayoutEffect(() => {
     if (!scrollElement) return undefined;
     const returnToBottom = () => {
-      followingRef.current = true;
-      onFollowingTailChange(true);
-      scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior: "instant" });
+      followTail();
     };
     returnToBottomRef.current = returnToBottom;
     return () => {
       if (returnToBottomRef.current === returnToBottom) returnToBottomRef.current = null;
     };
-  }, [onFollowingTailChange, returnToBottomRef, scrollElement]);
+  }, [followTail, returnToBottomRef, scrollElement]);
+
+  useLayoutEffect(() => {
+    pagingControlRef.current = beginHistoryPaging;
+    return () => {
+      if (pagingControlRef.current === beginHistoryPaging) pagingControlRef.current = null;
+    };
+  }, [beginHistoryPaging, pagingControlRef]);
 
   return (
     <div className={`message-flow${entering ? " is-conversation-entering" : ""}`}>
       {messages.map((item, index) => {
-        const pluginMessage = !deleteMode && renderRoleplaySlot
-          && item.runtimeSessionId === runtimeSessionId && !item.pending;
-        const pluginActions = pluginMessage && item.role === "assistant" && item.dshMessageId
-          ? renderRoleplaySlot("eleckoi.roleplay.message.actions", {
-            conversationId: item.conversationId, productMessageId: item.id, messageId: item.dshMessageId,
-          }) : null;
-        const pluginAfter = pluginMessage
-          ? renderRoleplaySlot("eleckoi.roleplay.message.after", {
-            conversationId: item.conversationId, productMessageId: item.id,
-            messageId: item.dshMessageId || null, role: item.role,
-          }) : null;
-        const renderMessageContent = pluginMessage ? renderRoleplayMessage : undefined;
+        const rowKey = item.renderKey || item.id || `${item.role || "message"}-${item.created_at || index}`;
         const selectedForDelete = deleteFromIndex >= 0 && index >= deleteFromIndex;
         const nextRole = messages[index + 1]?.role;
         const spacingAfter = nextRole
@@ -691,67 +714,126 @@ function MessageList({
             ? profile.reply_spacing
             : profile.turn_spacing
           : 0;
-        return (
-          <div
-            key={item.renderKey || item.id || `${item.role || "message"}-${item.created_at || index}`}
-            className="message-flow-row"
-            data-index={index}
-            style={{ paddingBottom: `${spacingAfter}px` }}
-          >
-            {deleteMode ? (
-              <div className={`message-delete-selection-row layout-${layoutMode}${selectedForDelete ? " is-selected" : ""}`}>
-                <input
-                  className="message-delete-checkbox"
-                  type="checkbox"
-                  checked={selectedForDelete}
-                  disabled={item.id === "opening"}
-                  aria-label={`从这条消息开始删除${selectedForDelete ? "，已选中" : ""}`}
-                  onChange={() => onSelectDeleteFrom(item.id)}
-                />
-                <MessageBubble
-                  message={item}
-                  avatar={item.role === "user" ? userAvatar : assistantAvatar}
-                  pinSrc={item.role === "user" ? userPinImage : assistantPinImage}
-                  name={item.role === "user" ? userName : assistantName}
-                  layoutMode={layoutMode}
-                  avatarShape={avatarShape}
-                  isLatestAssistant={index === latestAssistantIndex}
-                  floorNumber={messageFloorNumber(messages, index)}
-                  showRoleplayTimestamp={showRoleplayTimestamp}
-                  showRoleplayFloor={showRoleplayFloor}
-                  onOpenProcess={onOpenProcess}
-                  onPinAvatar={onPinAvatar}
-                  onSelectOpening={onSelectOpening}
-                  pluginActions={pluginActions}
-                  pluginAfter={pluginAfter}
-                  renderMessageContent={renderMessageContent}
-                />
-              </div>
-            ) : (
-              <MessageBubble
-                message={item}
-                avatar={item.role === "user" ? userAvatar : assistantAvatar}
-                pinSrc={item.role === "user" ? userPinImage : assistantPinImage}
-                name={item.role === "user" ? userName : assistantName}
-                layoutMode={layoutMode}
-                avatarShape={avatarShape}
-                isLatestAssistant={index === latestAssistantIndex}
-                floorNumber={messageFloorNumber(messages, index)}
-                showRoleplayTimestamp={showRoleplayTimestamp}
-                showRoleplayFloor={showRoleplayFloor}
-                onOpenProcess={onOpenProcess}
-                onPinAvatar={onPinAvatar}
-                onEdit={item.id === "opening" ? onEditOpening : onEditMessage}
-                onSelectOpening={onSelectOpening}
-                onRegenerate={(message) => onRegenerate?.({ targetMessageId: message.turnId || message.id })}
-                pluginActions={pluginActions}
-                pluginAfter={pluginAfter}
-                renderMessageContent={renderMessageContent}
-              />
-            )}
-          </div>
-        );
+        return <MessageRow
+          key={rowKey}
+          item={item}
+          anchorKey={String(rowKey)}
+          index={index}
+          spacingAfter={spacingAfter}
+          selectedForDelete={selectedForDelete}
+          deleteMode={deleteMode}
+          layoutMode={layoutMode}
+          avatarShape={avatarShape}
+          userAvatar={userAvatar}
+          assistantAvatar={assistantAvatar}
+          userPinImage={userPinImage}
+          assistantPinImage={assistantPinImage}
+          userName={userName}
+          assistantName={assistantName}
+          isLatestAssistant={index === latestAssistantIndex}
+          floorNumber={messageFloorNumber(messages, index)}
+          showRoleplayTimestamp={showRoleplayTimestamp}
+          showRoleplayFloor={showRoleplayFloor}
+          onOpenProcess={onOpenProcess}
+          onPinAvatar={onPinAvatar}
+          onEditMessage={onEditMessage}
+          onEditOpening={onEditOpening}
+          onSelectOpening={onSelectOpening}
+          onRegenerate={regenerateMessage}
+          onSelectDeleteFrom={onSelectDeleteFrom}
+          runtimeSessionId={runtimeSessionId}
+          renderRoleplaySlot={renderRoleplaySlot}
+          renderRoleplayMessage={renderRoleplayMessage}
+        />;
       })}
     </div>
   );
 }
+
+const MessageRow = memo(function MessageRow({
+  item,
+  anchorKey,
+  index,
+  spacingAfter,
+  selectedForDelete,
+  deleteMode,
+  layoutMode,
+  avatarShape,
+  userAvatar,
+  assistantAvatar,
+  userPinImage,
+  assistantPinImage,
+  userName,
+  assistantName,
+  isLatestAssistant,
+  floorNumber,
+  showRoleplayTimestamp,
+  showRoleplayFloor,
+  onOpenProcess,
+  onPinAvatar,
+  onEditMessage,
+  onEditOpening,
+  onSelectOpening,
+  onRegenerate,
+  onSelectDeleteFrom,
+  runtimeSessionId,
+  renderRoleplaySlot,
+  renderRoleplayMessage,
+}) {
+  const pluginScopeActive = !deleteMode && item.runtimeSessionId === runtimeSessionId;
+  const pluginMessage = pluginScopeActive && renderRoleplaySlot && !item.pending;
+  const pluginActions = pluginMessage && item.role === "assistant" && item.dshMessageId
+    ? renderRoleplaySlot("eleckoi.roleplay.message.actions", {
+      conversationId: item.conversationId, productMessageId: item.id, messageId: item.dshMessageId,
+    }) : null;
+  const pluginAfter = pluginMessage
+    ? renderRoleplaySlot("eleckoi.roleplay.message.after", {
+      conversationId: item.conversationId, productMessageId: item.id,
+      messageId: item.dshMessageId || null, role: item.role,
+    }) : null;
+  const renderMessageContent = pluginScopeActive ? renderRoleplayMessage : undefined;
+  const bubble = <MessageBubble
+    message={item}
+    avatar={item.role === "user" ? userAvatar : assistantAvatar}
+    pinSrc={item.role === "user" ? userPinImage : assistantPinImage}
+    name={item.role === "user" ? userName : assistantName}
+    layoutMode={layoutMode}
+    avatarShape={avatarShape}
+    isLatestAssistant={isLatestAssistant}
+    floorNumber={floorNumber}
+    showRoleplayTimestamp={showRoleplayTimestamp}
+    showRoleplayFloor={showRoleplayFloor}
+    onOpenProcess={onOpenProcess}
+    onPinAvatar={onPinAvatar}
+    onEdit={deleteMode ? undefined : item.id === "opening" ? onEditOpening : onEditMessage}
+    onSelectOpening={onSelectOpening}
+    onRegenerate={deleteMode ? undefined : onRegenerate}
+    pluginActions={pluginActions}
+    pluginAfter={pluginAfter}
+    renderMessageContent={renderMessageContent}
+  />;
+
+  return (
+    <div
+      className="message-flow-row"
+      data-index={index}
+      data-chat-anchor-key={anchorKey}
+      data-chat-paging-anchor="true"
+      style={{ paddingBottom: `${spacingAfter}px` }}
+    >
+      {deleteMode ? (
+        <div className={`message-delete-selection-row layout-${layoutMode}${selectedForDelete ? " is-selected" : ""}`}>
+          <input
+            className="message-delete-checkbox"
+            type="checkbox"
+            checked={selectedForDelete}
+            disabled={item.id === "opening"}
+            aria-label={`从这条消息开始删除${selectedForDelete ? "，已选中" : ""}`}
+            onChange={() => onSelectDeleteFrom(item.id)}
+          />
+          {bubble}
+        </div>
+      ) : bubble}
+    </div>
+  );
+});

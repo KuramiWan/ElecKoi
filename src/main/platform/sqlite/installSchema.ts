@@ -8,13 +8,14 @@ import {
 } from './migrations/0002RuntimeClean'
 import { migration0003 } from './migrations/0003SettingPlacements'
 import { migration0004 } from './migrations/0004DshTurnBinding'
+import { migration0005 } from './migrations/0005RemoveRichMessageHeights'
 import { commonSchemaSql } from './migrations/commonSchemaSql'
 
 export const BASELINE_ID = 'eleckoi-common'
-export const CURRENT_SCHEMA_VERSION = 4
+export const CURRENT_SCHEMA_VERSION = 5
 const PRE_RELEASE_V2_SCHEMA_VERSION = 2
 const PRE_RELEASE_V2_BASELINES = [BASELINE_ID, 'eleckoi-common-v1-2026-09-14-runtime-clean'] as const
-const migrations = [migration0002, migration0003, migration0004] as const
+const migrations = [migration0002, migration0003, migration0004, migration0005] as const
 const desktopSql = `
   CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
   CREATE TABLE desktop_preferences (key TEXT PRIMARY KEY, valueJson TEXT NOT NULL, updatedAt TEXT NOT NULL);

@@ -1,7 +1,6 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
-@import "streamdown/styles.css";
 
 @import "./tokens.css";
 @import "./dsh-theme-bridge.css";
@@ -29,6 +28,8 @@
 @import "../../../modules/agentTools/styles/subagent-model-select.css";
 @import "../../../modules/agentTools/styles/roleplay-plan-editor.css";
 @import "../../../modules/updates/styles/app-update.css";
+@import "../../../modules/creatorStudio/styles/creator-studio-shell.css";
+@import "../../../modules/creatorStudio/styles/creator-studio-canvas.css";
 @import "../../../modules/chat/styles/chat-panel.css";
 @import "../../../modules/chat/styles/trajectory.css";
 @import "../../../modules/chat/styles/variable-viewer.css";
@@ -46,5 +47,3 @@
 @import "../../../ui/styles/tuner-slider.css";
 @import "./responsive.css";
 @import "./dark-theme.css";
-
-@source "../../../../../../node_modules/streamdown/dist/*.js";

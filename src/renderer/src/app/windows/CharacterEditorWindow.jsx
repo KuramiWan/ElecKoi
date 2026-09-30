@@ -40,7 +40,7 @@ function editableCharacterSnapshot(character) {
   });
 }
 
-export function CharacterEditorWindow({ characterCatalog, characterConfiguration }) {
+export function CharacterEditorWindow({ characterCatalog, characterConfiguration, renderCharacterEditorSection }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const characterId = params.get("character") || "";
   const [character, setCharacter] = useState(null);
@@ -123,15 +123,15 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     setBasicSaveNotice("discarded");
   }
 
-  async function saveBasicInfo() {
-    if (!character || !collectionRef.current || saving) return false;
+  async function saveBasicInfo(candidate = character) {
+    if (!candidate || !collectionRef.current || saving) return false;
 
-    const normalizedName = (character.persona?.assistant_name || character.name || "").trim() || "未命名角色";
+    const normalizedName = (candidate.persona?.assistant_name || candidate.name || "").trim() || "未命名角色";
     const submittedCharacter = {
-      ...character,
+      ...candidate,
       name: normalizedName,
       persona: {
-        ...(character.persona || {}),
+        ...(candidate.persona || {}),
         assistant_name: normalizedName,
       },
     };
@@ -254,6 +254,80 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [dirty]);
 
+  let editorContent = null;
+  if (character) {
+    if (activeSection === "card") {
+      const fallback = <CharacterBasicInfoPanel
+        character={character}
+        dirty={basicDirty}
+        saving={saving}
+        error={saveError}
+        saveNotice={basicSaveNotice}
+        onChange={updateBasicInfo}
+        onCancel={cancelChanges}
+        onSave={saveBasicInfo}
+      />;
+      const owner = {
+        characterId: character.id, character, dirty: basicDirty, saving,
+        error: saveError, saveNotice: basicSaveNotice,
+        onChange: updateBasicInfo, onCancel: cancelChanges, onSave: saveBasicInfo,
+      };
+      editorContent = renderCharacterEditorSection?.("card", owner, fallback) ?? fallback;
+    } else if (activeSection === "lore") {
+      const fallback = <SettingLibraryPanel
+        ref={settingLibraryRef}
+        characterId={character.id}
+        settingLibraries={characterConfiguration.settingLibraries}
+        onDirtyChange={setLoreDirty}
+      />;
+      editorContent = renderCharacterEditorSection?.("lore", {
+        characterId: character.id, dirty: loreDirty, saving,
+        configuration: characterConfiguration.settingLibraries,
+        onDirtyChange: setLoreDirty,
+        setController: (controller) => { settingLibraryRef.current = controller; },
+      }, fallback) ?? fallback;
+    } else if (activeSection === "variables") {
+      const fallback = <VariableConfigPanel
+        ref={variableConfigRef}
+        characterId={character.id}
+        variables={characterConfiguration.variables}
+        onDirtyChange={setVariablesDirty}
+      />;
+      editorContent = renderCharacterEditorSection?.("variables", {
+        characterId: character.id, dirty: variablesDirty, saving,
+        configuration: characterConfiguration.variables,
+        onDirtyChange: setVariablesDirty,
+        setController: (controller) => { variableConfigRef.current = controller; },
+      }, fallback) ?? fallback;
+    } else if (activeSection === "regex") {
+      const fallback = <RegexRulesPanel
+        ref={regexRulesRef}
+        characterId={character.id}
+        regexRules={characterConfiguration.regexRules}
+        onDirtyChange={setRegexDirty}
+      />;
+      editorContent = renderCharacterEditorSection?.("regex", {
+        characterId: character.id, dirty: regexDirty, saving,
+        configuration: characterConfiguration.regexRules,
+        onDirtyChange: setRegexDirty,
+        setController: (controller) => { regexRulesRef.current = controller; },
+      }, fallback) ?? fallback;
+    } else if (activeSection === "dynamic") {
+      const fallback = <DynamicSettingsPanel
+        ref={dynamicSettingsRef}
+        characterId={character.id}
+        settingLibraries={characterConfiguration.settingLibraries}
+        onDirtyChange={setDynamicDirty}
+      />;
+      editorContent = renderCharacterEditorSection?.("dynamic", {
+        characterId: character.id, dirty: dynamicDirty, saving,
+        configuration: characterConfiguration.settingLibraries,
+        onDirtyChange: setDynamicDirty,
+        setController: (controller) => { dynamicSettingsRef.current = controller; },
+      }, fallback) ?? fallback;
+    }
+  }
+
   return (
     <main className="qq-shell qq-character-editor-window-shell">
       <aside className="character-editor-side-panel">
@@ -284,60 +358,9 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
           className={`character-editor-workspace${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
           aria-label={activeLabel}
         >
-          {loaded && !character ? (
-            <p className="character-editor-missing">角色不存在</p>
-          ) : activeSection === "card" ? (
-            character ? (
-              <CharacterBasicInfoPanel
-                character={character}
-                dirty={basicDirty}
-                saving={saving}
-                error={saveError}
-                saveNotice={basicSaveNotice}
-                onChange={updateBasicInfo}
-                onCancel={cancelChanges}
-                onSave={saveBasicInfo}
-              />
-            ) : null
-          ) : activeSection === "lore" ? (
-            character ? (
-              <SettingLibraryPanel
-                ref={settingLibraryRef}
-                characterId={character.id}
-                settingLibraries={characterConfiguration.settingLibraries}
-                onDirtyChange={setLoreDirty}
-              />
-            ) : null
-          ) : activeSection === "variables" ? (
-            character ? (
-              <VariableConfigPanel
-                ref={variableConfigRef}
-                characterId={character.id}
-                variables={characterConfiguration.variables}
-                onDirtyChange={setVariablesDirty}
-              />
-            ) : null
-          ) : activeSection === "regex" ? (
-            character ? (
-              <RegexRulesPanel
-                ref={regexRulesRef}
-                characterId={character.id}
-                regexRules={characterConfiguration.regexRules}
-                onDirtyChange={setRegexDirty}
-              />
-            ) : null
-          ) : activeSection === "dynamic" ? (
-            character ? (
-              <DynamicSettingsPanel
-                ref={dynamicSettingsRef}
-                characterId={character.id}
-                settingLibraries={characterConfiguration.settingLibraries}
-                onDirtyChange={setDynamicDirty}
-              />
-            ) : null
-          ) : (
-            <h1 id="character-editor-section-title">{activeLabel}</h1>
-          )}
+          {loaded && !character
+            ? <p className="character-editor-missing">角色不存在</p>
+            : editorContent || <h1 id="character-editor-section-title">{activeLabel}</h1>}
         </section>
       </section>
       <UnsavedChangesDialog

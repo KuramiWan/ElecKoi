@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/index.js",
     "./client": "./src/client.js",
+    "./slots": {
+      "types": "./src/slots.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "dsh": {

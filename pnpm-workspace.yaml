@@ -3,3 +3,21 @@ packages:
   - packages/*
   - packages/sdk/*
   - packages/compatibility/*
+
+overrides:
+  '@earendil-works/pi-ai': 0.87.1
+
+onlyBuiltDependencies:
+  - '@deepseek-ai/dsh-subprocess-local'
+  - electron
+  - esbuild
+  - better-sqlite3
+  - koffi
+  - node-pty
+  - sharp
+
+patchedDependencies:
+  '@earendil-works/pi-ai': patches/@earendil-works__pi-ai.patch
+  '@deepseek-ai/dsh-llm@0.2.0-rc.2': patches/@deepseek-ai__dsh-llm@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2': patches/@deepseek-ai__dsh-llm-pi-ai@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-sdk-jsonrpc-server@0.2.0-rc.2': patches/@deepseek-ai__dsh-sdk-jsonrpc-server@0.2.0-rc.2.patch

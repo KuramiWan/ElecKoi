@@ -103,7 +103,3 @@
   disabled: true
 - id: session-title-llm
   disabled: true
-
-- insert:
-    - id: web-search-tavily
-      name: ./tavily-web-search.mjs

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.js",
     "./client": "./src/client.js",
+    "./host/*": "./src/host/*",
     "./slots": {
       "types": "./src/slots.d.ts"
     },
@@ -16,7 +17,11 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-primitives"]
     }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2"
   }
 }
