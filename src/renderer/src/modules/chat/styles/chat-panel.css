@@ -1662,6 +1662,18 @@
   text-decoration: underline;
 }
 
+.markdown-message::highlight(eleckoi-roleplay-underline),
+.markdown-message *::highlight(eleckoi-roleplay-underline) {
+  color: var(--chat-underline-color, currentColor);
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+}
+
+.markdown-message::highlight(eleckoi-roleplay-quote),
+.markdown-message *::highlight(eleckoi-roleplay-quote) {
+  color: var(--chat-quote-color, #f2a65a);
+}
+
 .markdown-message > :last-child {
   margin-bottom: 0;
 }

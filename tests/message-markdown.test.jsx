@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MessageBubble } from "../src/renderer/src/ui/messages/MessageBubble.jsx";
+import { prepareMarkdownTextTones } from "../src/renderer/src/ui/messages/markdownTextTones.js";
 
 globalThis.React = React;
 
@@ -146,6 +147,20 @@ describe("message markdown presentation", () => {
     expect(html).toContain("<em>斜体</em>");
     expect(html).toContain("<p><em>斜体</em> 下划线</p>");
     expect(html).not.toContain("<u>");
+  });
+
+  it("keeps ElecKoi text-tone markup around the official Markdown renderer", () => {
+    expect(prepareMarkdownTextTones("*斜体* <u>下划线</u> “引号”")).toEqual({
+      markdown: "*斜体* 下划线 “引号”",
+      underlineTexts: ["下划线"],
+    });
+    expect(prepareMarkdownTextTones("`<u>代码</u>`\n```html\n<u>代码块</u>\n```")).toEqual({
+      markdown: "`<u>代码</u>`\n```html\n<u>代码块</u>\n```",
+      underlineTexts: [],
+    });
+    const styles = readFileSync(resolve("src/renderer/src/modules/chat/styles/chat-panel.css"), "utf8");
+    expect(styles).toContain("::highlight(eleckoi-roleplay-underline)");
+    expect(styles).toContain("::highlight(eleckoi-roleplay-quote)");
   });
 
   it("places opening navigation on the message edges with the counter below the next control", () => {

@@ -1,0 +1,213 @@
+const DIALOGUE_QUOTE_PATTERN = /("[^"\n]*?")|(“[^”\n]*?”)|(«[^»\n]*?»)|(「[^」\n]*?」)|(『[^』\n]*?』)|(＂[^＂\n]*?＂)/g;
+const FENCE_PATTERN = /^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)$/;
+const UNDERLINE_TAG_PATTERN = /^<(\/?)u\s*>/i;
+const HIGHLIGHT_NAMES = Object.freeze({
+  quote: "eleckoi-roleplay-quote",
+  underline: "eleckoi-roleplay-underline",
+});
+const highlightOwners = new Map();
+
+function sourceLines(markdown) {
+  const lines = [];
+  const pattern = /([^\r\n]*)(\r\n|\r|\n|$)/g;
+  for (let match = pattern.exec(markdown); match && (match[0] || match.index < markdown.length); match = pattern.exec(markdown)) {
+    lines.push({ text: match[1], start: match.index });
+    if (!match[2]) break;
+  }
+  return lines;
+}
+
+function underlinePairs(markdown) {
+  const pairs = [];
+  let pending = null;
+  let fenceCharacter = "";
+  let fenceLength = 0;
+
+  for (const line of sourceLines(markdown)) {
+    const fence = FENCE_PATTERN.exec(line.text);
+    if (fenceCharacter) {
+      if (fence && fence[1][0] === fenceCharacter && fence[1].length >= fenceLength && !fence[2].trim()) {
+        fenceCharacter = "";
+        fenceLength = 0;
+      }
+      continue;
+    }
+    if (fence) {
+      fenceCharacter = fence[1][0];
+      fenceLength = fence[1].length;
+      continue;
+    }
+
+    for (let cursor = 0; cursor < line.text.length;) {
+      if (line.text[cursor] === "`") {
+        let runLength = 1;
+        while (line.text[cursor + runLength] === "`") runLength += 1;
+        const marker = "`".repeat(runLength);
+        const closing = line.text.indexOf(marker, cursor + runLength);
+        cursor = closing < 0 ? cursor + runLength : closing + runLength;
+        continue;
+      }
+
+      const tag = UNDERLINE_TAG_PATTERN.exec(line.text.slice(cursor));
+      if (!tag) {
+        cursor += 1;
+        continue;
+      }
+      const start = line.start + cursor;
+      const end = start + tag[0].length;
+      if (tag[1]) {
+        if (pending) {
+          pairs.push({ ...pending, closeStart: start, closeEnd: end });
+          pending = null;
+        }
+      } else if (!pending) {
+        pending = { openStart: start, openEnd: end };
+      }
+      cursor += tag[0].length;
+    }
+  }
+  return pairs;
+}
+
+function visibleNeedle(markdown) {
+  return markdown
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/(`+)([\s\S]*?)\1/g, "$2")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\\([\\`*{}\[\]()#+\-.!_>~|])/g, "$1")
+    .replace(/(\*\*|__)([^\r\n]+?)\1/g, "$2")
+    .replace(/([*_])([^\r\n]+?)\1/g, "$2")
+    .replace(/~~([^\r\n]+?)~~/g, "$1")
+    .trim();
+}
+
+export function prepareMarkdownTextTones(markdown) {
+  const source = String(markdown || "");
+  const pairs = underlinePairs(source);
+  if (!pairs.length) return { markdown: source, underlineTexts: [] };
+
+  const underlineTexts = pairs
+    .map((pair) => visibleNeedle(source.slice(pair.openEnd, pair.closeStart)))
+    .filter(Boolean);
+  const removals = pairs
+    .flatMap((pair) => [[pair.openStart, pair.openEnd], [pair.closeStart, pair.closeEnd]])
+    .sort((left, right) => right[0] - left[0]);
+  let rendered = source;
+  for (const [start, end] of removals) rendered = rendered.slice(0, start) + rendered.slice(end);
+  return { markdown: rendered, underlineTexts };
+}
+
+function textNodes(root, includeCode) {
+  const nodes = [];
+  const walker = root.ownerDocument.createTreeWalker(root, 4);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (!parent || parent.closest("button, [aria-hidden='true']")) continue;
+    if (!includeCode && parent.closest("pre, code")) continue;
+    nodes.push(node);
+  }
+  return nodes;
+}
+
+function pointAt(nodes, offset) {
+  let cursor = 0;
+  for (const node of nodes) {
+    const next = cursor + node.data.length;
+    if (offset <= next) return { node, offset: Math.max(0, offset - cursor) };
+    cursor = next;
+  }
+  const last = nodes.at(-1);
+  return last ? { node: last, offset: last.data.length } : null;
+}
+
+function normalizedText(raw) {
+  let value = "";
+  const offsets = [];
+  let whitespace = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    if (/\s/.test(raw[index])) {
+      if (!whitespace) {
+        value += " ";
+        offsets.push(index);
+        whitespace = true;
+      }
+      continue;
+    }
+    whitespace = false;
+    value += raw[index];
+    offsets.push(index);
+  }
+  return { value, offsets };
+}
+
+function underlineRanges(root, needles) {
+  const nodes = textNodes(root, true);
+  const raw = nodes.map((node) => node.data).join("");
+  const searchable = normalizedText(raw);
+  const ranges = [];
+  let cursor = 0;
+  for (const needle of needles) {
+    const normalizedNeedle = needle.replace(/\s+/g, " ").trim();
+    if (!normalizedNeedle) continue;
+    const index = searchable.value.indexOf(normalizedNeedle, cursor);
+    if (index < 0) continue;
+    const rawStart = searchable.offsets[index];
+    const rawEnd = searchable.offsets[index + normalizedNeedle.length - 1] + 1;
+    const start = pointAt(nodes, rawStart);
+    const end = pointAt(nodes, rawEnd);
+    if (start && end) {
+      const range = root.ownerDocument.createRange();
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset);
+      ranges.push(range);
+    }
+    cursor = index + normalizedNeedle.length;
+  }
+  return ranges;
+}
+
+function quoteRanges(root) {
+  const ranges = [];
+  for (const node of textNodes(root, false)) {
+    DIALOGUE_QUOTE_PATTERN.lastIndex = 0;
+    for (const match of node.data.matchAll(DIALOGUE_QUOTE_PATTERN)) {
+      const range = root.ownerDocument.createRange();
+      range.setStart(node, match.index || 0);
+      range.setEnd(node, (match.index || 0) + match[0].length);
+      ranges.push(range);
+    }
+  }
+  return ranges;
+}
+
+function highlightRuntime(root) {
+  const view = root?.ownerDocument?.defaultView;
+  const registry = view?.CSS?.highlights;
+  const Highlight = view?.Highlight;
+  return registry && typeof Highlight === "function" ? { registry, Highlight } : null;
+}
+
+function refreshHighlights(root) {
+  const runtime = highlightRuntime(root);
+  if (!runtime) return;
+  for (const [tone, name] of Object.entries(HIGHLIGHT_NAMES)) {
+    const ranges = [...highlightOwners.values()].flatMap((entry) => entry[tone]);
+    if (ranges.length) runtime.registry.set(name, new runtime.Highlight(...ranges));
+    else runtime.registry.delete(name);
+  }
+}
+
+export function registerMarkdownTextToneHighlights(root, underlineTexts) {
+  if (!root) return () => {};
+  const ranges = {
+    quote: quoteRanges(root),
+    underline: underlineRanges(root, underlineTexts),
+  };
+  highlightOwners.set(root, ranges);
+  refreshHighlights(root);
+  return () => {
+    highlightOwners.delete(root);
+    refreshHighlights(root);
+  };
+}

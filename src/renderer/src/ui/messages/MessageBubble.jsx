@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faChevronLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -16,6 +16,7 @@ import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../mod
 import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
 import { normalizeMarkdownForRendering } from "./normalizeMarkdownForRendering.js";
+import { prepareMarkdownTextTones, registerMarkdownTextToneHighlights } from "./markdownTextTones.js";
 
 const fallbackMarkdownComponents = {
   a({ children, href, node: _node, ...props }) {
@@ -149,11 +150,23 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   const liveProcess = shouldShowInlineAgentProcess(message, displayContent)
     ? liveProcessPresentation(message.process)
     : null;
+  const markdownTonePresentation = useMemo(
+    () => prepareMarkdownTextTones(displayContent || ""),
+    [displayContent],
+  );
+  const markdownRef = useRef(null);
   const requestedPage = Number(pageInput);
   const requestedIndex = Number.isInteger(requestedPage) ? requestedPage - 1 : -1;
   const requestedPageValid = requestedIndex >= 0 && requestedIndex < options.length;
 
   useEffect(() => setDraft(content || ""), [content]);
+  useLayoutEffect(() => {
+    if (!displayContent || editing || liveProcess) return undefined;
+    return registerMarkdownTextToneHighlights(
+      markdownRef.current,
+      markdownTonePresentation.underlineTexts,
+    );
+  }, [displayContent, editing, liveProcess, markdownTonePresentation, pending]);
   useEffect(() => {
     if (!expanded) return undefined;
     const close = (event) => { if (!toolsRef.current?.contains(event.target)) setExpanded(false); };
@@ -302,10 +315,10 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
           <AgentProcessIcon name={liveProcess.icon} size={liveProcess.icon === 'reasoning' ? 27 : 17} animated={liveProcess.icon === 'reasoning'} />
           <span className="agent-process-inline-label">{liveProcess.title}</span>
           <MessageChevronRightIcon size={14} />
-        </button> : displayContent ? <div className="bubble markdown-message">
+        </button> : displayContent ? <div ref={markdownRef} className="bubble markdown-message">
           <MessagePresentation
             message={message}
-            content={displayContent}
+            content={markdownTonePresentation.markdown}
             streaming={pending}
             renderMessageContent={renderMessageContent}
           />
