@@ -70,6 +70,16 @@ const probe = `
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'src', 'index.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'cordis.patch.yml'))
+    for (const moduleName of [
+      'agent-preset-bridge.mjs', 'conversation-context.mjs', 'request-config.mjs',
+      'session-snapshot.mjs', 'tool-policy.mjs', 'required-setting-cache.mjs'
+    ]) {
+      await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'src', 'host', moduleName))
+    }
+    await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-web-search-tavily', 'package.json'))
+    await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-web-search-tavily', 'cordis.patch.yml'))
+    await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-web-search-tavily', 'src', 'index.js'))
+    await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-web-search-tavily', 'locale', 'zh.json'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-characters', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-character-configuration', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-models', 'src', 'client.js'))
@@ -213,6 +223,10 @@ const probe = `
     })
     try {
       const ready = await pluginHost.start()
+      const desktopProfile = JSON.parse(await readFile(join(pluginRoot, 'home', 'profiles', 'desktop', 'package.json'), 'utf8'))
+      if (!desktopProfile.dsh?.profile?.bundles?.includes('@eleckoi/dsh-web-search-tavily')) {
+        throw new Error('Packaged DSH profile did not select the ElecKoi Tavily bundle.')
+      }
       const response = await fetch(ready.url, { redirect: 'manual' })
       if (response.status !== 303 || !response.headers.get('set-cookie')) {
         throw new Error('Packaged plugin Host did not issue the client login cookie.')

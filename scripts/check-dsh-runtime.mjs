@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse as parseYaml } from 'yaml'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(resolve(root, 'package.json'))
 const desktop = readJson('package.json')
+const workspace = parseYaml(readFileSync(resolve(root, 'pnpm-workspace.yaml'), 'utf8'))
 const runtime = readJson('packages/dsh-runtime/package.json')
 const manifest = readJson('resources/dsh/runtime-manifest.json')
 const builderConfig = readFileSync(resolve(root, 'electron-builder.yml'), 'utf8')
@@ -14,7 +16,25 @@ const presetConfig = readFileSync(resolve(root, 'resources/dsh', manifest.preset
 const sdkServerSource = readFileSync(require.resolve('@deepseek-ai/dsh-sdk-jsonrpc-server'), 'utf8')
 
 if (manifest.schemaVersion !== 1) throw new Error('DSH runtime manifest schemaVersion 必须为 1。')
-if (manifest.transport !== 'stdio-jsonrpc') throw new Error('DSH Runtime 必须使用 stdio JSON-RPC transport。')
+if (manifest.transport !== 'authenticated-web-host') throw new Error('DSH 桌面对话必须使用当前 Web Host 运行路径。')
+if (manifest.compositionRole !== 'sdk-compatibility') {
+  throw new Error('cordis.yml 必须明确标为 SDK 兼容组合，不能冒充桌面对话主路径。')
+}
+if (manifest.desktopProfile?.name !== 'desktop' || manifest.desktopProfile.base !== 'web') {
+  throw new Error('DSH 桌面 profile 必须基于官方 Web 组合。')
+}
+if (!manifest.desktopProfile.bundles?.includes('@eleckoi/dsh-client-roleplay')
+  || !manifest.desktopProfile.bundles?.includes('@eleckoi/dsh-web-search-tavily')) {
+  throw new Error('DSH 桌面 profile 缺少 ElecKoi 角色或联网搜索组合包。')
+}
+readFileSync(resolve(root, 'resources/dsh', manifest.desktopProfile.agentPatch))
+for (const bundle of manifest.desktopProfile.bundles) {
+  if (desktop.dependencies?.[bundle] !== 'workspace:*' || runtime.dependencies?.[bundle] !== 'workspace:*') {
+    throw new Error(`${bundle} 必须由桌面运行时携带。`)
+  }
+  const bundleManifest = require(`${bundle}/package.json`)
+  if (!bundleManifest.dsh?.bundle?.patch) throw new Error(`${bundle} 未声明 DSH 组合包。`)
+}
 if (!/^[0-9a-f]{40}$/.test(manifest.upstream.commit)) {
   throw new Error('DSH upstream commit 必须固定为完整的 40 位 Git commit。')
 }
@@ -121,13 +141,14 @@ for (const capability of [
 }
 
 for (const nativeDependency of ['@deepseek-ai/dsh-subprocess-local', 'koffi', 'node-pty', 'sharp']) {
-  if (!desktop.pnpm?.onlyBuiltDependencies?.includes(nativeDependency)) {
+  if (!workspace.onlyBuiltDependencies?.includes(nativeDependency)) {
     throw new Error(`DSH native runtime dependency 未允许执行构建脚本：${nativeDependency}`)
   }
 }
 
 console.log(
-  `DSH runtime closure check passed: ${declaredPlugins.length} plugins, `
+  `DSH desktop Web Host manifest check passed: ${manifest.desktopProfile.bundles.length} ElecKoi bundles; `
+  + `SDK compatibility composition ${declaredPlugins.length} plugins; `
   + `${productionClosure.length} pinned production packages, upstream ${manifest.upstream.commit.slice(0, 12)}.`
 )
 

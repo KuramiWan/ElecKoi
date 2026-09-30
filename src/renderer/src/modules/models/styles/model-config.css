@@ -4,6 +4,9 @@
   grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
   background: var(--list);
 }
 
@@ -128,20 +131,20 @@
 }
 
 .model-config-list {
+  align-self: stretch;
   display: grid;
   align-content: start;
   gap: 10px;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px 0 18px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.model-config-list::-webkit-scrollbar,
-.model-config-detail::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2, color-mix(in srgb, var(--muted) 42%, transparent)) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
 .model-group-block {
@@ -346,13 +349,65 @@ button.model-group-row:hover {
 }
 
 .model-config-detail {
+  align-self: stretch;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   container-type: inline-size;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--chat);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2, color-mix(in srgb, var(--muted) 42%, transparent)) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.model-config-list::-webkit-scrollbar,
+.model-config-detail::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.model-config-list::-webkit-scrollbar-track,
+.model-config-detail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.model-config-list::-webkit-scrollbar-thumb,
+.model-config-detail::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 3px solid transparent;
+  border-radius: 999px; corner-shape: round;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  background-clip: content-box;
+}
+
+.model-config-list:hover::-webkit-scrollbar-thumb,
+.model-config-list:focus-within::-webkit-scrollbar-thumb,
+.model-config-detail:hover::-webkit-scrollbar-thumb,
+.model-config-detail:focus-within::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.model-config-list::-webkit-scrollbar-thumb:hover,
+.model-config-list::-webkit-scrollbar-thumb:active,
+.model-config-detail::-webkit-scrollbar-thumb:hover,
+.model-config-detail::-webkit-scrollbar-thumb:active {
+  background-color: var(--muted);
+}
+
+.model-config-list::-webkit-scrollbar-button,
+.model-config-list::-webkit-scrollbar-button:single-button,
+.model-config-list::-webkit-scrollbar-corner,
+.model-config-detail::-webkit-scrollbar-button,
+.model-config-detail::-webkit-scrollbar-button:single-button,
+.model-config-detail::-webkit-scrollbar-corner {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
 }
 
 .model-detail-body {

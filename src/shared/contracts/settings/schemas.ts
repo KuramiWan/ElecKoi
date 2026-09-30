@@ -20,11 +20,13 @@ export const conversationEntryIdsSchema = z.array(z.string().trim().min(1))
 export const listCollapseStateSchema = z.object({
   characters: collapsedGroupMapSchema.optional(),
   presets: collapsedGroupMapSchema.optional(),
-  models: collapsedGroupMapSchema.optional()
+  models: collapsedGroupMapSchema.optional(),
+  plugins: collapsedGroupMapSchema.optional()
 })
 export const appearanceUiPreferencesSchema = z.object({
   sidebar_character_artwork: sidebarCharacterArtworkSchema.optional(),
   new_character_background: newCharacterBackgroundSchema.optional(),
+  conversation_content_width: z.number().finite().positive().optional(),
   pinned_chat_ids: conversationEntryIdsSchema.optional(),
   hidden_chat_ids: conversationEntryIdsSchema.optional(),
   list_collapse_state: listCollapseStateSchema.optional()

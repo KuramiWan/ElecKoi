@@ -407,11 +407,14 @@ export class AgentSessionCoordinator {
         }
         targetMessageId = firstConversationMessage.id
       }
-      this.dependencies.messages.get(conversationId, targetMessageId)
+      const targetMessage = this.dependencies.messages.get(conversationId, targetMessageId)
       const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
       this.dependencies.messages.reconcileUnboundActiveResponses(runtimeThreadId)
       const visibleMessages = this.dependencies.messages.list(conversationId)
       const targetIndex = visibleMessages.findIndex((message) => message.id === targetMessageId)
+      const retainedUserInput = targetMessage.role === 'assistant'
+        ? visibleMessages.find((message) => message.role === 'user' && message.id === targetMessage.turnId)
+        : undefined
       const deletedAttachmentIds = targetIndex < 0 ? [] : visibleMessages.slice(targetIndex)
         .flatMap((message) => message.inputImageAttachments?.map((image) => image.attachmentId) ?? [])
       const deletedFiles = targetIndex < 0 ? [] : visibleMessages.slice(targetIndex)
@@ -445,7 +448,9 @@ export class AgentSessionCoordinator {
       }
       let rewound = false
       let deleted: ReturnType<MessageRepository['deleteFrom']>
-      const drafts = this.dependencies.messages.captureDrafts(visibleMessages.slice(targetIndex).map((message) => message.id))
+      const draftIds = new Set(visibleMessages.slice(targetIndex).map((message) => message.id))
+      if (retainedUserInput) draftIds.add(retainedUserInput.id)
+      const drafts = this.dependencies.messages.captureDrafts([...draftIds])
       try {
         if (boundary) {
           if (await this.dependencies.runtime.rewindConversation!(conversationId, runtimeThreadId, boundary.turn) !== 'rewound') {
@@ -454,6 +459,7 @@ export class AgentSessionCoordinator {
           rewound = true
         }
         deleted = this.dependencies.database.withWriteTx((database) => {
+          if (retainedUserInput) this.dependencies.messages.preservePendingUserInput(retainedUserInput)
           const result = this.dependencies.messages.deleteFrom(conversationId, targetMessageId, deletedAttachmentIds)
           this.dependencies.generations.deleteForMessages(conversationId, result.deletedResponseIds)
           if (result.rollbackSettingLibraryStateJson !== undefined) {
@@ -569,15 +575,14 @@ export class AgentSessionCoordinator {
 
   async createSession(conversationId: string): Promise<void> {
     if (!this.dependencies.runtime.createSession) throw new Error('DSH 会话创建服务未装载。')
-    const settings = this.dependencies.models.resolve(this.dependencies.userSettings.read('models.active'), '')
-    const subagentSelection = this.dependencies.agentPresets?.subagentModelSelection()
-    const subagentSettings = subagentSelection
-      ? this.dependencies.models.resolveExact(subagentSelection.configId, subagentSelection.model, '')
-      : undefined
+    const settings = this.dependencies.models.resolveForSessionCreation(
+      this.dependencies.userSettings.read('models.active'),
+      ''
+    )
     const runtimeThreadId = this.dependencies.messages.conversationRuntimeThreadId(conversationId)
     const { variableContext, conversationContext, disabledGroupIds } = this.runtimeContext(conversationId, '')
     await this.dependencies.runtime.createSession({
-      conversationId, runtimeThreadId, settings, subagentSettings, variableContext, conversationContext,
+      conversationId, runtimeThreadId, settings, variableContext, conversationContext,
       toolPolicy: { disabledGroupIds },
       webSearch: this.dependencies.webSearchSettings?.runtimeSettings(),
       agentPreset: this.dependencies.agentPresets?.runtimeSelection()

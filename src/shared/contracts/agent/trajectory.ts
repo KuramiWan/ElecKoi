@@ -28,6 +28,7 @@ export const agentRequestContextItemSchema = z.object({
 })
 
 export const agentTrajectoryRequestSchema = z.object({
+  purpose: z.enum(['assistant', 'compaction']),
   number: z.number().int().positive(),
   seq: z.number().int().nonnegative(),
   turn: z.number().int().positive().nullable(),
@@ -36,11 +37,30 @@ export const agentTrajectoryRequestSchema = z.object({
   reason: z.string(),
   provider: z.string(),
   model: z.string(),
+  requestConfig: z.record(z.string(), z.unknown()).nullable(),
+  usage: z.object({
+    input: z.number().int().nonnegative().optional(),
+    cacheRead: z.number().int().nonnegative().optional(),
+    cacheWrite: z.number().int().nonnegative().optional(),
+    output: z.number().int().nonnegative().optional(),
+    reasoning: z.number().int().nonnegative().optional()
+  }).nullable(),
+  cumulativeUsage: z.object({
+    input: z.number().int().nonnegative().optional(),
+    cacheRead: z.number().int().nonnegative().optional(),
+    cacheWrite: z.number().int().nonnegative().optional(),
+    output: z.number().int().nonnegative().optional(),
+    reasoning: z.number().int().nonnegative().optional()
+  }).nullable(),
   detail: z.string(),
   rawJson: z.string(),
   context: z.array(agentRequestContextItemSchema),
   timeMillis: z.number().int().nonnegative().nullable(),
-  durationMillis: z.number().int().nonnegative().nullable()
+  durationMillis: z.number().int().nonnegative().nullable(),
+  startedAt: z.number().int().nonnegative().nullable(),
+  completedAt: z.number().int().nonnegative().nullable(),
+  firstTokenTime: z.number().int().nonnegative().nullable(),
+  resultSeq: z.number().int().nonnegative().nullable()
 })
 
 export const agentTrajectoryRecordSchema = z.object({

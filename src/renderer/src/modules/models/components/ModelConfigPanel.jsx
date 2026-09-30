@@ -41,6 +41,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   onTestConnection,
   onNotify,
   onDirtyChange,
+  renderEditor,
   renderLayout,
 }, ref) {
   const [form, setForm] = useState(config);
@@ -565,7 +566,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     />
   );
 
-  const mainPanel = <ModelConfigDetail
+  const builtInMainPanel = <ModelConfigDetail
     activeProvider={activeProvider}
     isImageProvider={isImageProvider}
     hasUnsavedChanges={hasUnsavedChanges}
@@ -590,6 +591,28 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       form, draftHeader, setDraftHeader, onUpdateField: updateField, onUpdateHeader: updateHeader, onAddHeader: addHeader,
     }}
   />;
+  const mainPanel = renderEditor?.({
+    configId: form.id || '',
+    providerId: activeProviderId,
+    form,
+    provider: activeProvider,
+    isImageProvider,
+    dirty: hasUnsavedChanges,
+    saving,
+    error: imageParameterError || parameterError || '',
+    onChange: (patch) => {
+      const next = { ...formRef.current, ...patch };
+      formRef.current = next;
+      isDirtyRef.current = true;
+      setForm(next);
+      setIsDirty(true);
+      setConnectionTest({ status: "idle", message: "" });
+    },
+    onCancel: cancelCurrentChanges,
+    onSave: saveCurrentConfig,
+    onFetchModels: fetchModels,
+    onTestConnection: testConnection,
+  }, builtInMainPanel) ?? builtInMainPanel;
 
   const overlays = (
     <>

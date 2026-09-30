@@ -4,26 +4,30 @@ export { PersonNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/ic
 
 export function CharacterPage() {
   const view = useMainPageView();
-  const { chat, appearance, renderLayout } = view;
+  const { chat, appearance, renderCharacterPageSection, renderLayout } = view;
+  const listOwner = {
+    characters: chat.characters,
+    activeCharacterId: chat.selectedCharacterId || chat.characters.active_character_id,
+    artworkMode: appearance.sidebarCharacterArtwork,
+    onSelectCharacter: chat.selectCharacter,
+    onOpenCharacterChat: chat.openCharacterChat,
+    onSaveCharacterGroups: chat.saveCharacterGroups,
+    onImportPreparedCharacters: chat.importPreparedCharacters,
+    onCreateCharacter: chat.createCharacter,
+    onDeleteCharacters: chat.deleteCharacterIds,
+  };
+  const listFallback = <CharacterListPanel {...listOwner} />;
+  const profileOwner = {
+    characters: chat.characters,
+    selectedCharacterId: chat.selectedCharacterId,
+    onSelectCharacter: chat.selectCharacter,
+    onStartConversation: chat.openCharacterChat,
+    onEditCharacter: openCharacterEditorWindow,
+    onCreateFirstCharacter: () => chat.createCharacter(),
+  };
+  const profileFallback = <CharacterProfilePanel {...profileOwner} />;
   return renderLayout({
-    sidePanel: <CharacterListPanel
-      characters={chat.characters}
-      activeCharacterId={chat.selectedCharacterId || chat.characters.active_character_id}
-      artworkMode={appearance.sidebarCharacterArtwork}
-      onSelectCharacter={chat.selectCharacter}
-      onOpenCharacterChat={chat.openCharacterChat}
-      onSaveCharacterGroups={chat.saveCharacterGroups}
-      onImportPreparedCharacters={chat.importPreparedCharacters}
-      onCreateCharacter={chat.createCharacter}
-      onDeleteCharacters={chat.deleteCharacterIds}
-    />,
-    mainPanel: <CharacterProfilePanel
-      characters={chat.characters}
-      selectedCharacterId={chat.selectedCharacterId}
-      onSelectCharacter={chat.selectCharacter}
-      onStartConversation={chat.openCharacterChat}
-      onEditCharacter={openCharacterEditorWindow}
-      onCreateFirstCharacter={() => chat.createCharacter()}
-    />,
+    sidePanel: renderCharacterPageSection?.("list", listOwner, listFallback) ?? listFallback,
+    mainPanel: renderCharacterPageSection?.("profile", profileOwner, profileFallback) ?? profileFallback,
   });
 }

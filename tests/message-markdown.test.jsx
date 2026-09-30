@@ -1,4 +1,6 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MessageBubble } from "../src/renderer/src/ui/messages/MessageBubble.jsx";
@@ -6,7 +8,7 @@ import { MessageBubble } from "../src/renderer/src/ui/messages/MessageBubble.jsx
 globalThis.React = React;
 
 describe("message markdown presentation", () => {
-  it("matches Android roleplay chat by rendering source line breaks", () => {
+  it("keeps roleplay source line breaks in the renderer fallback", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
         id: "message-1",
@@ -16,7 +18,9 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html).toContain("第一行<br/>\n第二行");
+    expect(html).toContain("<p>第一行\n第二行</p>");
+    expect(readFileSync(resolve("src/renderer/src/modules/chat/styles/chat-panel.css"), "utf8"))
+      .toMatch(/\.markdown-message p\s*\{[^}]*white-space:\s*pre-wrap;/);
   });
 
   it("renders GFM tables instead of showing their source pipes", () => {
@@ -29,7 +33,7 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html).toContain('<div class="message-table-scroll"><table>');
+    expect(html).toContain("<table>");
     expect(html).toMatch(/<th[^>]*>项目<\/th>/);
     expect(html).toMatch(/<td[^>]*>新建设定<\/td>/);
   });
@@ -55,13 +59,24 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html).toContain('data-streamdown="code-block"');
+    expect(html).toContain('<pre><code class="language-json">');
     expect(html).not.toContain("```json");
     expect(html).not.toContain("&lt;status&gt;");
     expect(html).not.toContain("&lt;combat_driver&gt;");
     expect(html).toContain("第一行");
     expect(html).toContain("第二行");
     expect(html).toContain("无");
+  });
+
+  it("keeps the official DSH code toolbar attached to its code card while scrolling", () => {
+    const chatStyles = readFileSync(
+      resolve("src/renderer/src/modules/chat/styles/chat-panel.css"),
+      "utf8",
+    );
+
+    expect(chatStyles).toMatch(
+      /\.markdown-message \.md-code-block > :has\(> \[data-code-block-banner\]\)\s*\{[^}]*position:\s*static;[^}]*z-index:\s*auto;/,
+    );
   });
 
   it("preserves line breaks inside an unfenced status wrapper", () => {
@@ -83,7 +98,7 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html).toContain("状态一<br/>\n状态二");
+    expect(html).toContain("<p>状态一\n状态二</p>");
     expect(html).not.toContain("&lt;status&gt;");
     expect(html).not.toContain("&lt;combat_driver&gt;");
     expect(html).toContain("无");
@@ -99,12 +114,12 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html).toContain('data-streamdown="code-block"');
+    expect(html).toContain('<pre><code class="language-xml">');
     expect(html).toContain("&lt;combat_driver&gt;");
     expect(html).toContain("&lt;/combat_driver&gt;");
   });
 
-  it("marks six dialogue quote pairs without touching inline code", () => {
+  it("preserves dialogue punctuation and inline code through the official parser", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
         id: "message-quotes",
@@ -114,13 +129,11 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html.match(/<q>/g)).toHaveLength(6);
-    expect(html).toContain('<q>“中文”</q>');
-    expect(html).toContain('<q>「日文」</q>');
+    expect(html).toContain('&quot;English&quot; “中文” «French» 「日文」 『双层』 ＂全角＂');
     expect(html).toMatch(/<code[^>]*>&quot;code&quot;<\/code>/);
   });
 
-  it("keeps italic and underline markup as real elements for theme colors", () => {
+  it("keeps the fallback safe from authored HTML while preserving Markdown emphasis", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
         id: "message-text-styles",
@@ -131,7 +144,8 @@ describe("message markdown presentation", () => {
     }));
 
     expect(html).toContain("<em>斜体</em>");
-    expect(html).toContain("<ins>下划线</ins>");
+    expect(html).toContain("<p><em>斜体</em> 下划线</p>");
+    expect(html).not.toContain("<u>");
   });
 
   it("places opening navigation on the message edges with the counter below the next control", () => {

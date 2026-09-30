@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { initProfile, loadOverlayPatches, PROFILE_PATCH_FILENAME, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
@@ -10,6 +10,18 @@ import type { ChildHostMessage, HostPromptPart, HostRunRequest, ParentHostMessag
 
 const require = createRequire(import.meta.url)
 const runtimeRequire = createRequire(require.resolve('@eleckoi/dsh-runtime'))
+const TAVILY_BUNDLE = '@eleckoi/dsh-web-search-tavily'
+
+function selectTavilyBundleOnce(profile: string): void {
+  const marker = join(profile, '.eleckoi-tavily-bundle-v1')
+  if (existsSync(marker)) return
+  const manifest = readProfileManifest('dsh', profile)
+  const bundles = manifest.dsh?.profile?.bundles ?? []
+  if (!bundles.includes(TAVILY_BUNDLE)) {
+    writeProfileBundles(profile, manifest, [...bundles, TAVILY_BUNDLE])
+  }
+  writeFileSync(marker, 'initialized\n', { flag: 'wx' })
+}
 
 function synchronizeModelProfile(profile: string, providerPatchPath: string | undefined): void {
   if (!providerPatchPath) return
@@ -129,7 +141,8 @@ export class DshDesktopPluginHost {
     this.configurationKey = configurationKey
     const home = join(this.options.runtimeDataRoot, 'home')
     const profile = join(home, 'profiles', 'desktop')
-    initProfile(profile, [...PROFILE_TEMPLATES.web.bundles, '@eleckoi/dsh-client-roleplay'])
+    initProfile(profile, [...PROFILE_TEMPLATES.web.bundles, '@eleckoi/dsh-client-roleplay', TAVILY_BUNDLE])
+    selectTavilyBundleOnce(profile)
     const profileManifest = readProfileManifest('dsh', profile)
     const activeBundles = profileManifest.dsh?.profile?.bundles ?? []
     if (!activeBundles.includes('@eleckoi/dsh-client-roleplay')) {
@@ -201,7 +214,6 @@ export class DshDesktopPluginHost {
         DSH_CWD: this.options.workspaceRoot,
         ELECKOI_SESSION_SNAPSHOT_ROOT: join(this.options.runtimeDataRoot, 'session-snapshots'),
         ELECKOI_PRESET_ROOT: join(this.options.runtimeDataRoot, 'generated-presets'),
-        ELECKOI_ROLEPLAY_BRIDGE_ENTRY: join(dirname(this.options.agentPatchPath), 'agent-preset-bridge.mjs'),
         DSH_TELEMETRY_DISABLED: '1',
         ELECTRON_RUN_AS_NODE: '1',
         DSH_WEB_SEARCH_PROVIDER: hostConfiguration.credentials.DSH_WEB_SEARCH_PROVIDER,

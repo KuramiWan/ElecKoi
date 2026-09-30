@@ -32,27 +32,43 @@ export const agentPlugin = {
   ],
   provide: ['agentSessions', 'pluginHost'],
   apply(ctx: Context) {
+    const appPaths = ctx.appPaths
+    const fileDrafts = ctx.fileDrafts
+    const fileOpener = ctx.fileOpener
+    const appLog = ctx.appLog
+    const database = ctx.database
+    const desktopGateway = ctx.desktopGateway
+    const conversations = ctx.conversations
+    const messages = ctx.messages
+    const models = ctx.models
+    const personas = ctx.personas
+    const variableStates = ctx.variableStates
+    const settingLibraries = ctx.settingLibraries
+    const agentPresets = ctx.agentPresets
+    const webSearchSettings = ctx.webSearchSettings
+    const regexRules = ctx.regexRules
+    const userSettings = ctx.userSettings
     const pluginFailureListeners = new Set<(error: Error) => void>()
-    const runtime = new DshAgentRuntime(ctx.appPaths, ctx.models, ctx.webSearchSettings, error => {
-      ctx.appLog.error({ error }, 'DSH plugin Host exited unexpectedly')
-      ctx.desktopGateway.broadcast('plugins.host.failed', { message: '插件服务意外退出，请重新打开插件中心。' })
+    const runtime = new DshAgentRuntime(appPaths, models, webSearchSettings, error => {
+      appLog.error({ error }, 'DSH plugin Host exited unexpectedly')
+      desktopGateway.broadcast('plugins.host.failed', { message: '插件服务意外退出，请重新打开插件中心。' })
       for (const listener of pluginFailureListeners) listener(error)
     })
-    const detachTranscriptReader = ctx.messages.attachTranscriptReader((runtimeThreadId) => (
+    const detachTranscriptReader = messages.attachTranscriptReader((runtimeThreadId) => (
       runtime.transcript(runtimeThreadId)
     ))
     const checkedThreads = new Set<string>()
-    for (const response of ctx.messages.unboundActiveResponses()) {
+    for (const response of messages.unboundActiveResponses()) {
       if (checkedThreads.has(response.runtimeThreadId)) continue
       checkedThreads.add(response.runtimeThreadId)
       try {
-        ctx.messages.reconcileUnboundActiveResponses(response.runtimeThreadId)
+        messages.reconcileUnboundActiveResponses(response.runtimeThreadId)
       } catch (error) {
-        ctx.appLog.warn({ err: error, conversationId: response.conversationId }, '历史 DSH 回合绑定失败')
+        appLog.warn({ err: error, conversationId: response.conversationId }, '历史 DSH 回合绑定失败')
       }
     }
-    const detachPreviewReader = ctx.conversations.attachPreviewReader((conversationId) => (
-      ctx.messages.latestPreview(conversationId)
+    const detachPreviewReader = conversations.attachPreviewReader((conversationId) => (
+      messages.latestPreview(conversationId)
     ))
     ctx.provide('pluginHost', {
       start: () => runtime.startPluginHost(),
@@ -62,49 +78,49 @@ export const agentPlugin = {
         return () => { pluginFailureListeners.delete(listener) }
       }
     })
-    const generations = new GenerationRepository(ctx.database, ctx.messages)
-    const attachmentCleanup = new AgentAttachmentCleanupRepository(ctx.database, runtime, ctx.messages)
+    const generations = new GenerationRepository(database, messages)
+    const attachmentCleanup = new AgentAttachmentCleanupRepository(database, runtime, messages)
     attachmentCleanup.drain()
     const sessions = new AgentSessionCoordinator({
-      logger: ctx.appLog,
+      logger: appLog,
       runtime,
-      database: ctx.database,
-      gateway: ctx.desktopGateway,
-      conversations: ctx.conversations,
-      messages: ctx.messages,
-      personas: ctx.personas,
-      models: ctx.models,
-      userSettings: ctx.userSettings,
+      database,
+      gateway: desktopGateway,
+      conversations,
+      messages,
+      personas,
+      models,
+      userSettings,
       generations,
-      variableStates: ctx.variableStates,
-      settingLibraries: ctx.settingLibraries,
-      agentPresets: ctx.agentPresets,
-      webSearchSettings: ctx.webSearchSettings,
-      regexRules: ctx.regexRules,
+      variableStates,
+      settingLibraries,
+      agentPresets,
+      webSearchSettings,
+      regexRules,
       discardPreparedImages: (attachmentIds) => attachmentCleanup.discardPrepared(attachmentIds),
-      resolveInputFiles: (ids) => ctx.fileDrafts.resolve(ids),
-      discardInputFiles: (ids) => ctx.fileDrafts.discard(ids),
+      resolveInputFiles: (ids) => fileDrafts.resolve(ids),
+      discardInputFiles: (ids) => fileDrafts.discard(ids),
       discardFileReferences: (refs) => attachmentCleanup.discardFiles(refs),
       queueFileReferences: (refs) => attachmentCleanup.queueFiles(refs),
       drainFileReferences: () => attachmentCleanup.drain(),
       enqueueAttachmentsBeforeDelete: (conversationId) => attachmentCleanup.enqueue(conversationId)
     })
     ctx.provide('agentSessions', sessions)
-    const archives = new ConversationArchiveRepository(ctx.database)
-    const unregisterDeleteCleanup = ctx.conversations.registerDeleteCleanup(attachmentCleanup)
-    const sessionCleanup = new DshSessionCleanupRepository(ctx.database, ctx.messages, runtime)
-    const unregisterSessionCleanup = ctx.conversations.registerDeleteCleanup(sessionCleanup)
+    const archives = new ConversationArchiveRepository(database)
+    const unregisterDeleteCleanup = conversations.registerDeleteCleanup(attachmentCleanup)
+    const sessionCleanup = new DshSessionCleanupRepository(database, messages, runtime)
+    const unregisterSessionCleanup = conversations.registerDeleteCleanup(sessionCleanup)
     sessionCleanup.drain()
-    const unregisterDeleteGuard = ctx.conversations.registerDeleteGuard(generations)
-    const unregisterDeleteParticipant = ctx.conversations.registerDeleteParticipant(sessions)
-    const detachSessionCreator = ctx.conversations.attachSessionCreator(id => sessions.createSession(id))
+    const unregisterDeleteGuard = conversations.registerDeleteGuard(generations)
+    const unregisterDeleteParticipant = conversations.registerDeleteParticipant(sessions)
+    const detachSessionCreator = conversations.attachSessionCreator(id => sessions.createSession(id))
 
     const unregister = [
-      ctx.desktopGateway.register('command.conversations.archive.export', ({ conversationId }) => {
+      desktopGateway.register('command.conversations.archive.export', ({ conversationId }) => {
         if (sessions.inspect(conversationId).active) throw new Error('请先等待当前回复结束，再导出聊天记录。')
-        ctx.messages.assertReadableHistory(conversationId)
+        messages.assertReadableHistory(conversationId)
         const snapshot = archives.export(conversationId)
-        const sessionLogs = ctx.messages.runtimeThreadIdsForArchive(conversationId)
+        const sessionLogs = messages.runtimeThreadIdsForArchive(conversationId)
           .map((id) => runtime.exportSession(id))
           .filter((item): item is DshSessionArchive => item !== null)
         const archivedIds = new Set<string>(sessionLogs.map((item) => item.header.id))
@@ -116,7 +132,7 @@ export const agentPlugin = {
           exportedAt: new Date().toISOString(), snapshot, sessionLogs
         }, null, 2) }
       }),
-      ctx.desktopGateway.register('command.conversations.archive.import', async ({ characterId, json }) => {
+      desktopGateway.register('command.conversations.archive.import', async ({ characterId, json }) => {
         let value: unknown
         try { value = JSON.parse(json) } catch { throw new Error('聊天记录不是有效的 JSON 文件。') }
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('聊天记录文件格式不正确。')
@@ -144,27 +160,27 @@ export const agentPlugin = {
         try {
           await runtime.importSessions(logs, ids)
           const importedId = archives.import(snapshot, characterId, ids, conversationId)
-          ctx.desktopGateway.broadcast('records.changed', { module: 'conversations' })
+          desktopGateway.broadcast('records.changed', { module: 'conversations' })
           return { conversationId: importedId }
         } catch (error) {
           await runtime.disposeConversation(conversationId, [...ids.values()]).catch(() => {})
           throw error
         }
       }),
-      ctx.desktopGateway.register('command.agent.start', ({ conversationId, requestId, text, images, files }) => (
+      desktopGateway.register('command.agent.start', ({ conversationId, requestId, text, images, files }) => (
         sessions.start(conversationId, text, images, requestId, files)
       )),
-      ctx.desktopGateway.register('command.agent.files.begin', ({ name, bytes }) => ctx.fileDrafts.begin(name, bytes)),
-      ctx.desktopGateway.register('command.agent.files.chunk', ({ id, offset, data }) => ctx.fileDrafts.chunk(id, offset, data)),
-      ctx.desktopGateway.register('command.agent.files.finish', ({ id }) => ctx.fileDrafts.finish(id)),
-      ctx.desktopGateway.register('command.agent.files.discard', ({ ids }) => {
-        ctx.fileDrafts.discard(ids)
+      desktopGateway.register('command.agent.files.begin', ({ name, bytes }) => fileDrafts.begin(name, bytes)),
+      desktopGateway.register('command.agent.files.chunk', ({ id, offset, data }) => fileDrafts.chunk(id, offset, data)),
+      desktopGateway.register('command.agent.files.finish', ({ id }) => fileDrafts.finish(id)),
+      desktopGateway.register('command.agent.files.discard', ({ ids }) => {
+        fileDrafts.discard(ids)
         return { ok: true as const }
       }),
-      ctx.desktopGateway.register('command.agent.cancel', ({ conversationId, requestId, runId }) => (
+      desktopGateway.register('command.agent.cancel', ({ conversationId, requestId, runId }) => (
         sessions.cancel(conversationId, { requestId, runId })
       )),
-      ctx.desktopGateway.register('command.agent.regenerate', ({ conversationId, requestId, targetMessageId, replacementMessage }) => (
+      desktopGateway.register('command.agent.regenerate', ({ conversationId, requestId, targetMessageId, replacementMessage }) => (
         sessions.regenerate(
           conversationId,
           targetMessageId,
@@ -172,30 +188,30 @@ export const agentPlugin = {
           requestId
         )
       )),
-      ctx.desktopGateway.register('command.conversations.messages.edit', ({ conversationId, messageId, content }) => (
+      desktopGateway.register('command.conversations.messages.edit', ({ conversationId, messageId, content }) => (
         sessions.editMessage(conversationId, messageId, content)
       )),
-      ctx.desktopGateway.register('command.conversations.messages.delete_from', ({ conversationId, messageId }) => (
+      desktopGateway.register('command.conversations.messages.delete_from', ({ conversationId, messageId }) => (
         sessions.deleteMessagesFrom(conversationId, messageId)
       )),
-      ctx.desktopGateway.register('query.agent.inspect', ({ conversationId }) => (
+      desktopGateway.register('query.agent.inspect', ({ conversationId }) => (
         sessions.inspect(conversationId)
       )),
-      ctx.desktopGateway.register('query.agent.generation_stats', ({ conversationId }) => (
+      desktopGateway.register('query.agent.generation_stats', ({ conversationId }) => (
         sessions.generationStats(conversationId)
       )),
-      ctx.desktopGateway.register('query.agent.trajectory', ({ conversationId, beforeIndex, limit }) => (
+      desktopGateway.register('query.agent.trajectory', ({ conversationId, beforeIndex, limit }) => (
         sessions.trajectory(conversationId, { beforeIndex, limit })
       )),
-      ctx.desktopGateway.register('query.agent.model_capabilities', (input) => (
+      desktopGateway.register('query.agent.model_capabilities', (input) => (
         runtime.describeModelCapabilities(input)
       )),
-      ctx.desktopGateway.register('query.agent.image', async ({ conversationId, attachmentId }) => {
-        return runtime.readImage(ctx.messages.findInputImage(conversationId, attachmentId))
+      desktopGateway.register('query.agent.image', async ({ conversationId, attachmentId }) => {
+        return runtime.readImage(messages.findInputImage(conversationId, attachmentId))
       }),
-      ctx.desktopGateway.register('command.agent.file.reveal', ({ conversationId, attachmentId, name }) => {
-        const reference = ctx.messages.findInputFile(conversationId, attachmentId, name)
-        ctx.fileOpener.reveal(runtime.filePath(reference))
+      desktopGateway.register('command.agent.file.reveal', ({ conversationId, attachmentId, name }) => {
+        const reference = messages.findInputFile(conversationId, attachmentId, name)
+        fileOpener.reveal(runtime.filePath(reference))
         return { ok: true as const }
       })
     ]

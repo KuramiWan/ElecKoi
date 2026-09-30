@@ -4,7 +4,7 @@ export { ModelNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/ico
 
 export function ModelPage() {
   const view = useMainPageView();
-  const { chat, modelConfigPanelRef, setModelConfigDirty, renderLayout } = view;
+  const { chat, modelConfigPanelRef, setModelConfigDirty, renderModelEditor, renderLayout } = view;
   return <ModelConfigPanel
     ref={modelConfigPanelRef}
     config={chat.modelConfig}
@@ -19,6 +19,7 @@ export function ModelPage() {
     onTestConnection={chat.testModelConnection}
     onNotify={chat.notify}
     onDirtyChange={setModelConfigDirty}
+    renderEditor={renderModelEditor}
     renderLayout={renderLayout}
   />;
 }

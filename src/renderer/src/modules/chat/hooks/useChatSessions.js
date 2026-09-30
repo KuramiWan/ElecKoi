@@ -124,6 +124,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     setMessagesWithScroll,
     reconcileMessages,
     updatePendingReply,
+    updatePendingReplyDeferred,
     settlePendingReply,
     commitPendingError,
     prependMessages,
@@ -377,6 +378,10 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       setIsSwitchingChat(false);
       await refreshSessionsOnly();
       setActiveSectionState("messages");
+    } catch (error) {
+      const message = getErrorMessage(error, "添加对话失败");
+      setStatus(message);
+      notifyRef.current?.("error", message);
     } finally {
       if (selectionGeneration === loadGenerationRef.current) setIsSwitchingChat(false);
     }
@@ -425,7 +430,9 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       setStatus("新会话");
       setActiveSectionState("messages");
     } catch (error) {
-      setStatus(getErrorMessage(error, "新建会话失败"));
+      const message = getErrorMessage(error, "新建会话失败");
+      setStatus(message);
+      notifyRef.current?.("error", message);
     } finally {
       if (creationGeneration === loadGenerationRef.current) setIsSwitchingChat(false);
     }
@@ -560,7 +567,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       event, input: inputOverride ?? input, inputImagesRef, inputFilesRef, isSending: chatBusy || filesUploading, modelConfig, modelSupportsImages, setStatus,
       requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
       setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
-      setMessages, updatePendingReply, requestScrollToEnd,
+      setMessages, updatePendingReply, updatePendingReplyDeferred, requestScrollToEnd,
       reconcileChatMessages, commitPendingError, notify, restoreChatEntry, conversationModel: conversations,
     });
   }
@@ -599,7 +606,9 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   async function regenerateReply(options = {}) {
     if (!sessionId || chatBusy) return;
     if (!modelConfig?.id || !modelConfig.model?.trim()) {
-      setStatus("请先在发送按钮左侧选择模型");
+      const message = "未配置可用的对话模型，请先前往“模型配置”添加模型和 API 密钥。";
+      setStatus(message);
+      notifyRef.current?.("error", message);
       return;
     }
     const requestedTargetMessageId = String(options.targetMessageId || "").trim();
@@ -655,7 +664,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       if (!conversations) {
         const unlistenProcess = await listenAgentProcess((event) => {
           if (event?.request_id !== requestId || event?.session_id !== sessionId || !event?.item) return;
-          updatePendingReply((current) => current?.id === assistantId
+          updatePendingReplyDeferred((current) => current?.id === assistantId
             ? { ...current, process: upsertProcess(current.process, event.item) }
             : current);
         });
@@ -663,7 +672,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
         throwIfAborted(controller.signal);
         const unlistenDelta = await listenChatStreamDelta((event) => {
           if (event?.request_id !== requestId || event?.session_id !== sessionId || !event?.delta) return;
-          updatePendingReply((current) => current?.id === assistantId
+          updatePendingReplyDeferred((current) => current?.id === assistantId
             ? { ...current, pending: true, content: `${current.content || ""}${event.delta}` }
             : current);
         });

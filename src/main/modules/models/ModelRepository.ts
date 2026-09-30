@@ -115,6 +115,15 @@ export class ModelRepository {
     return this.resolveConfig(config, model, systemPrompt)
   }
 
+  resolveForSessionCreation(selection: ActiveModelSelection, systemPrompt: string): RuntimeModelSettings {
+    const all = this.list().filter((item) => item.enabled !== false && !isImageProvider(item.provider))
+    const id = selection.config_id
+    const config = all.find((item) => item.id === id) ?? all[0]
+    if (!config) throw new Error('请先在设置里添加可用的聊天模型。')
+    const model = config.id === id && selection.model.trim() ? selection.model.trim() : config.model.trim()
+    return this.resolveConfig(config, model, systemPrompt, false)
+  }
+
   resolveExact(configId: string, modelId: string, systemPrompt: string): RuntimeModelSettings | undefined {
     const normalizedId = configId.trim()
     if (!normalizedId) return undefined
@@ -137,8 +146,8 @@ export class ModelRepository {
       })
   }
 
-  private resolveConfig(config: ModelConfig, model: string, systemPrompt: string): RuntimeModelSettings {
-    if (!config?.api_key) throw new Error('请先在设置里填写模型 API Key。')
+  private resolveConfig(config: ModelConfig, model: string, systemPrompt: string, requireApiKey = true): RuntimeModelSettings {
+    if (requireApiKey && !config?.api_key) throw new Error('请先在设置里填写模型 API Key。')
     if (!model) throw new Error('请先在设置里选择模型。')
     const option = config.model_options.find((item) => item.id === model)
     const baseUrl = config.base_url.trim() || defaultBaseUrl(config.provider)

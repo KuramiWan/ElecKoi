@@ -12,7 +12,14 @@ interface Result {
   error?: { message: string }
 }
 
-function mountCatalog(request: () => Promise<Result>) {
+function mountCatalog(
+  request: (name?: string, input?: unknown) => Promise<Result | unknown>,
+  runtime: {
+    allowOtherQueries?: boolean
+    requestAnimationFrame?: (callback: () => void) => number
+    cancelAnimationFrame?: (id: number) => void
+  } = {}
+) {
   let registration: { id: string; factory: () => { apply: (ctx: unknown) => void } } | undefined
   let onEvent: ((event: unknown) => void) | undefined
   let stopped = false
@@ -24,9 +31,11 @@ function mountCatalog(request: () => Promise<Result>) {
   } | undefined
   const bridge = {
     request: (name: string, input: unknown) => {
-      expect(name).toBe('query.conversations.list')
-      expect(input).toEqual({})
-      return request()
+      if (!runtime.allowOtherQueries) {
+        expect(name).toBe('query.conversations.list')
+        expect(input).toEqual({})
+      }
+      return request(name, input)
     },
     subscribe: (listener: (event: unknown) => void) => {
       onEvent = listener
@@ -34,6 +43,8 @@ function mountCatalog(request: () => Promise<Result>) {
     }
   }
   runInNewContext(source, {
+    requestAnimationFrame: runtime.requestAnimationFrame,
+    cancelAnimationFrame: runtime.cancelAnimationFrame,
     window: {
       eleckoi: bridge,
       __ModuleLoader__: { load: (item: typeof registration) => { registration = item } }
@@ -116,6 +127,59 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(catalog.preferredSession('character-a')).toBe('older-a')
     catalog.forgetSession('character-a', 'older-a')
     expect(catalog.preferredSession('character-a')).toBe('')
+    mounted.dispose()
+  })
+
+  it('coalesces streaming deltas to the official frame cadence and flushes terminal state immediately', async () => {
+    let nextFrame = 0
+    const frames = new Map<number, () => void>()
+    const mounted = mountCatalog(async (name, input) => {
+      if (name === 'query.conversations.list') return { ok: true, data: [{ id: 'chat-1' }] }
+      if (name === 'query.agent.inspect') {
+        return { ok: true, data: { conversationId: (input as { conversationId: string }).conversationId, active: false } }
+      }
+      if (name === 'query.conversations.details') {
+        return { ok: true, data: { conversation: { id: 'chat-1' }, messages: [] } }
+      }
+      throw new Error(`Unexpected query: ${name}`)
+    }, {
+      allowOtherQueries: true,
+      requestAnimationFrame: (callback) => {
+        nextFrame += 1
+        frames.set(nextFrame, callback)
+        return nextFrame
+      },
+      cancelAnimationFrame: (id) => { frames.delete(id) },
+    })
+    const catalog = mounted.catalog as typeof mounted.catalog & {
+      activate: (id: string) => void
+      getStreamSnapshot: () => { content: string; status: string; sequence: number }
+      subscribeStream: (listener: () => void) => () => void
+    }
+    catalog.activate('chat-1')
+    await settle()
+    let changes = 0
+    catalog.subscribeStream(() => { changes += 1 })
+
+    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 1, delta: 'a' } })
+    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 2, delta: 'b' } })
+    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 3, delta: 'c' } })
+    expect(catalog.getStreamSnapshot().content).toBe('')
+    expect(changes).toBe(0)
+
+    for (let index = 0; index < 3; index += 1) {
+      const entry = frames.entries().next().value as [number, () => void]
+      frames.delete(entry[0])
+      entry[1]()
+    }
+    expect(catalog.getStreamSnapshot()).toMatchObject({ content: 'abc', status: 'running', sequence: 3 })
+    expect(changes).toBe(1)
+
+    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 4, delta: 'd' } })
+    mounted.emit({ name: 'agent.run.finished', payload: { conversationId: 'chat-1', runId: 'run-1', message: { id: 'reply-1' } } })
+    expect(catalog.getStreamSnapshot()).toMatchObject({ content: 'abcd', status: 'idle', sequence: 4 })
+    expect(changes).toBe(2)
+    expect(frames.size).toBe(0)
     mounted.dispose()
   })
 

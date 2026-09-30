@@ -14,7 +14,7 @@ export async function runChatMessageSend(options) {
     event, input, inputImagesRef, inputFilesRef, isSending, modelConfig, modelSupportsImages, setStatus,
     requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
     setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
-    setMessages, updatePendingReply, requestScrollToEnd,
+    setMessages, updatePendingReply, updatePendingReplyDeferred, requestScrollToEnd,
     reconcileChatMessages, commitPendingError, notify, restoreChatEntry, conversationModel,
   } = options;
   event.preventDefault();
@@ -23,7 +23,9 @@ export async function runChatMessageSend(options) {
   const draftFiles = [...inputFilesRef.current];
   if ((!text && !draftImages.length && !draftFiles.length) || isSending) return;
   if (!modelConfig?.id || !modelConfig.model?.trim()) {
-    setStatus("请先在发送按钮左侧选择模型");
+    const message = "未配置可用的对话模型，请先前往“模型配置”添加模型和 API 密钥。";
+    setStatus(message);
+    notify?.("error", message);
     return;
   }
   if (draftImages.length && !modelSupportsImages) {
@@ -87,7 +89,7 @@ export async function runChatMessageSend(options) {
     if (!conversationModel) {
       const unlistenProcess = await listenAgentProcess((event) => {
         if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.item) return;
-        updatePendingReply((current) => current?.id === assistantId
+        updatePendingReplyDeferred((current) => current?.id === assistantId
           ? { ...current, process: upsertProcess(current.process, event.item) }
           : current);
       });
@@ -95,7 +97,7 @@ export async function runChatMessageSend(options) {
       throwIfAborted(controller.signal);
       const unlistenDelta = await listenChatStreamDelta((event) => {
         if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.delta) return;
-        updatePendingReply((current) => current?.id === assistantId
+        updatePendingReplyDeferred((current) => current?.id === assistantId
           ? { ...current, pending: true, content: `${current.content || ""}${event.delta}` }
           : current);
       });

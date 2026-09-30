@@ -2,6 +2,7 @@ export const LIST_COLLAPSE_AREAS = Object.freeze({
   characters: 'characters',
   presets: 'presets',
   models: 'models',
+  plugins: 'plugins',
 });
 
 export function normalizeCollapsedGroups(value, defaults = {}, validKeys) {

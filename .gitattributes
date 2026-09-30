@@ -1,13 +1,3 @@
-# Keep generated source checks deterministic on Windows and Linux runners.
-* text=auto eol=lf
-
-# Windows command scripts still require CRLF.
-*.bat text eol=crlf
-*.cmd text eol=crlf
-
-# Do not perform line-ending conversion on binary assets.
-*.ico binary
-*.png binary
-
-# Unified diff context prefixes may precede tab indentation in target files.
-patches/*.patch whitespace=-space-before-tab
+# Unified diff context lines intentionally begin with a space followed by the
+# target file's indentation; do not report those nested patches as whitespace errors.
+patches/*.patch -whitespace

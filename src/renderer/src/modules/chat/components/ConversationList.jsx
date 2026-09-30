@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRightIcon, PinIcon, TrashIcon, WindowIcon } from "../../../ui/icons/index.jsx";
 import { ALL_CHARACTERS, characterAvatar, characterCover, characterGroup, characterName } from "../../../utils/characterDisplay.js";
@@ -22,8 +22,11 @@ export function ConversationList({
   onOpenChatWindow,
   onHideChat,
 }) {
+  const listRef = useRef(null);
+  const searchRowRef = useRef(null);
   const [menu, setMenu] = useState(null);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
+  const [characterPickerStyle, setCharacterPickerStyle] = useState(null);
   const [collapsedPickerGroups, setCollapsedPickerGroups] = useState({});
   const resolvedArtworkMode = artworkMode === "avatar" ? "avatar" : "cover";
   const characterById = useMemo(
@@ -46,6 +49,38 @@ export function ConversationList({
       })),
     ];
   }, [characters]);
+
+  const updateCharacterPickerPosition = useCallback(() => {
+    const list = listRef.current;
+    const searchRow = searchRowRef.current;
+    if (!list || !searchRow || typeof window === "undefined") return;
+    const listRect = list.getBoundingClientRect();
+    const searchRect = searchRow.getBoundingClientRect();
+    const top = Math.round(searchRect.bottom - 2);
+    const availableHeight = Math.max(96, window.innerHeight - top - 10);
+    setCharacterPickerStyle({
+      left: `${Math.round(listRect.left + 10)}px`,
+      top: `${top}px`,
+      width: `${Math.max(0, Math.round(listRect.width - 20))}px`,
+      maxHeight: `${Math.min(430, availableHeight)}px`,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!addCharacterOpen) {
+      setCharacterPickerStyle(null);
+      return undefined;
+    }
+    updateCharacterPickerPosition();
+    window.addEventListener("resize", updateCharacterPickerPosition);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(updateCharacterPickerPosition) : null;
+    if (observer && listRef.current) observer.observe(listRef.current);
+    if (observer && searchRowRef.current) observer.observe(searchRowRef.current);
+    return () => {
+      window.removeEventListener("resize", updateCharacterPickerPosition);
+      observer?.disconnect();
+    };
+  }, [addCharacterOpen, updateCharacterPickerPosition]);
 
   useEffect(() => {
     function closeMenu() {
@@ -79,8 +114,8 @@ export function ConversationList({
   }
 
   return (
-    <aside className="conversation-list">
-      <div className="search-row">
+    <aside className="conversation-list" ref={listRef}>
+      <div className="search-row" ref={searchRowRef}>
         <DshSearchField value={keyword} onValueChange={setKeyword} placeholder="搜索会话…" ariaLabel="搜索会话" />
         <SidebarCreateButton
           title="新建对话"
@@ -90,8 +125,12 @@ export function ConversationList({
         />
       </div>
 
-      {addCharacterOpen ? (
-        <div className="conversation-character-picker" onPointerDown={(event) => event.stopPropagation()}>
+      {addCharacterOpen && characterPickerStyle && typeof document !== "undefined" ? createPortal(
+        <div
+          className="conversation-character-picker"
+          style={characterPickerStyle}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           {groupedCharacters.map(({ group, items }) => (
             <section className="conversation-character-picker-group" key={group}>
               <button
@@ -149,7 +188,8 @@ export function ConversationList({
               </button>
             </div>
           ) : null}
-        </div>
+        </div>,
+        document.body,
       ) : null}
 
       <div className="conversation-scroll">

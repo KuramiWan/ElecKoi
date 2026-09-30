@@ -5,8 +5,9 @@ import {
 } from '../src/renderer/src/modules/settings/model/listCollapseState.js';
 
 describe('persistent list collapse state', () => {
-  it('keeps the three list preferences independent', () => {
-    expect(new Set(Object.values(LIST_COLLAPSE_AREAS)).size).toBe(3);
+  it('keeps the four list preferences independent', () => {
+    expect(new Set(Object.values(LIST_COLLAPSE_AREAS)).size).toBe(4);
+    expect(LIST_COLLAPSE_AREAS.plugins).toBe('plugins');
   });
 
   it('keeps boolean states and prunes groups that no longer exist', () => {

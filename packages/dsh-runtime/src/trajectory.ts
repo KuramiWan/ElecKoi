@@ -5,6 +5,7 @@ import {
   realpathSync
 } from 'node:fs'
 import { dirname, isAbsolute, join, relative } from 'node:path'
+import { assistantStreamFirstTokenTime, type AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
 import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog, sessionFormatCatalog, SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format-catalog'
 import { historicalChildCatalogSource } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import { finalReplyText } from './notifications'
@@ -22,7 +23,16 @@ export type DshTrajectoryRecordKind =
 
 export type DshTrajectoryRecordStatus = 'running' | 'complete' | 'error' | 'cancelled'
 
+export interface DshTrajectoryUsage {
+  input?: number
+  cacheRead?: number
+  cacheWrite?: number
+  output?: number
+  reasoning?: number
+}
+
 export interface DshTrajectoryRequest {
+  purpose: 'assistant' | 'compaction'
   number: number
   seq: number
   turn: number | null
@@ -31,11 +41,18 @@ export interface DshTrajectoryRequest {
   reason: string
   provider: string
   model: string
+  requestConfig: Record<string, unknown> | null
+  usage: DshTrajectoryUsage | null
+  cumulativeUsage: DshTrajectoryUsage | null
   detail: string
   rawJson: string
   context: DshRequestContextItem[]
   timeMillis: number | null
   durationMillis: number | null
+  startedAt: number | null
+  completedAt: number | null
+  firstTokenTime: number | null
+  resultSeq: number | null
 }
 
 export interface DshTrajectoryRecord {
@@ -379,6 +396,7 @@ export function projectDshTrajectory(
   const syntheticSeedStepSeqs = findSyntheticSeedStepSeqs(events)
   const records: DshTrajectoryRecord[] = []
   const stepStarts = new Map<string, number>()
+  const firstTokenTimes = new Map<string, number>()
   const toolRecords = new Map<string, DshTrajectoryRecord>()
   const subtoolRecords = new Map<string, DshTrajectoryRecord>()
   const compactionRecords = new Map<string, DshTrajectoryRecord>()
@@ -389,6 +407,7 @@ export function projectDshTrajectory(
     reason: string
     provider: string
     model: string
+    requestConfig: Record<string, unknown>
     detail: string
   } | undefined
   let activeTurn: number | null = null
@@ -409,7 +428,30 @@ export function projectDshTrajectory(
       pending.attached = true
       request.status = item.status === 'error' ? 'error' : 'complete'
       request.durationMillis = duration(request.timeMillis, completedAt)
+      request.completedAt = completedAt
+      request.resultSeq = item.seq
       item.requests.push(request)
+    }
+  }
+
+  const settleAssistantRequests = (
+    turn: number | null,
+    step: number | null,
+    completedAt: number | null,
+    firstTokenTime: number | null,
+    usage: DshTrajectoryUsage | null,
+    resultSeq: number,
+    interrupted: boolean
+  ) => {
+    for (const pending of pendingRequests) {
+      const request = pending.request
+      if (request.turn !== turn || request.step !== step) continue
+      request.status = interrupted ? 'error' : 'complete'
+      request.completedAt = completedAt
+      request.firstTokenTime = firstTokenTime
+      request.resultSeq = resultSeq
+      request.durationMillis = duration(request.startedAt, completedAt)
+      request.usage = usage
     }
   }
 
@@ -434,6 +476,7 @@ export function projectDshTrajectory(
         pendingRequests.push({
           attached: false,
           request: {
+            purpose: 'assistant',
             number: ++requestCount,
             seq: event.seq,
             turn: activeTurn,
@@ -442,11 +485,18 @@ export function projectDshTrajectory(
             reason: currentRequestHeader?.reason ?? 'step/start',
             provider: currentRequestHeader?.provider ?? '',
             model: currentRequestHeader?.model ?? '',
+            requestConfig: currentRequestHeader?.requestConfig ?? null,
+            usage: null,
+            cumulativeUsage: null,
             detail: currentRequestHeader?.detail ?? pretty(data),
             rawJson: pretty(event),
             context: [],
             timeMillis: time,
-            durationMillis: null
+            durationMillis: null,
+            startedAt: time,
+            completedAt: null,
+            firstTokenTime: null,
+            resultSeq: null
           }
         })
       }
@@ -476,6 +526,7 @@ export function projectDshTrajectory(
         reason: reason || 'request/header',
         provider: text(config.provider),
         model: text(config.model),
+        requestConfig: config,
         detail: pretty(visibleRequestHeader)
       }
       const activeRequest = [...pendingRequests].reverse().find((pending) => !pending.attached
@@ -487,6 +538,25 @@ export function projectDshTrajectory(
           parseJson(activeRequest.request.rawJson),
           { ...event, data: { ...data, header: visibleRequestHeader } }
         ])
+      }
+      continue
+    }
+
+    if (type === 'assistant/chunk' || type === 'assistant/live-chunk') {
+      const chunk = record(data.chunk)
+      if (turn !== null && step !== null && time !== null && isAssistantTokenDelta(chunk)) {
+        const key = stepKey(turn, step)
+        if (!firstTokenTimes.has(key)) firstTokenTimes.set(key, time)
+      }
+      continue
+    }
+
+    if (type === 'assistant/attempt') {
+      if (turn !== null && step !== null) {
+        const firstTokenTime = assistantFirstTokenTime(data.stream)
+        if (firstTokenTime !== null && !firstTokenTimes.has(stepKey(turn, step))) {
+          firstTokenTimes.set(stepKey(turn, step), firstTokenTime)
+        }
       }
       continue
     }
@@ -520,6 +590,11 @@ export function projectDshTrajectory(
       const content = contentText(message.content)
       const source = record(message.source)
       const startedAt = turn !== null && step !== null ? stepStarts.get(stepKey(turn, step)) : undefined
+      const streamedFirstToken = assistantFirstTokenTime(data.stream)
+      const firstTokenTime = turn !== null && step !== null
+        ? firstTokenTimes.get(stepKey(turn, step)) ?? streamedFirstToken ?? null
+        : streamedFirstToken ?? null
+      const usage = trajectoryUsage(data.usage)
       const item = baseRecord(event, {
         kind: 'assistant',
         title: '助手消息',
@@ -530,6 +605,7 @@ export function projectDshTrajectory(
         durationMillis: duration(startedAt, time),
         turn, step
       })
+      settleAssistantRequests(turn, step, time, firstTokenTime, usage, event.seq, data.interrupted === true)
       attachRequests(item, turn, step, time)
       records.push(item)
       continue
@@ -619,6 +695,7 @@ export function projectDshTrajectory(
         detail: pretty(data), turn, step, status: 'running'
       })
       item.requests.push({
+        purpose: 'compaction',
         number: ++requestCount,
         seq: event.seq,
         turn,
@@ -627,11 +704,18 @@ export function projectDshTrajectory(
         reason: 'compaction',
         provider: '',
         model: '',
+        requestConfig: null,
+        usage: null,
+        cumulativeUsage: null,
         detail: pretty(data),
         rawJson: pretty(event),
         context: [],
         timeMillis: time,
-        durationMillis: null
+        durationMillis: null,
+        startedAt: time,
+        completedAt: null,
+        firstTokenTime: null,
+        resultSeq: null
       })
       compactionRecords.set(id, item)
       records.push(item)
@@ -661,6 +745,8 @@ export function projectDshTrajectory(
         for (const request of item.requests) {
           request.status = item.status
           request.durationMillis = item.durationMillis
+          request.completedAt = time
+          request.resultSeq = item.seq
           request.detail = item.detail
           request.rawJson = item.rawJson
         }
@@ -698,6 +784,7 @@ export function projectDshTrajectory(
   const orderedRecords = records
   orderedRecords.forEach((item, index) => { item.index = index + 1 })
   attachRequestContextsFromLog(orderedRecords, events)
+  attachCumulativeRequestUsage(orderedRecords)
   const times = events.map((event) => nonnegativeInteger(event.time)).filter((value): value is number => value !== null)
   const createdAt = nonnegativeInteger(header.createdAt)
   return {
@@ -947,6 +1034,65 @@ function parseJsonOrValue(value: unknown): unknown {
 
 function parseJson(value: string): unknown {
   try { return JSON.parse(value) } catch { return value }
+}
+
+function attachCumulativeRequestUsage(records: readonly DshTrajectoryRecord[]): void {
+  const requests = records
+    .flatMap((item) => item.requests)
+    .filter((request, index, items) => items.findIndex((item) => item.seq === request.seq) === index)
+    .sort((left, right) => left.seq - right.seq)
+  let cumulative: DshTrajectoryUsage | null = null
+  for (const request of requests) {
+    cumulative = addTrajectoryUsage(cumulative, request.usage)
+    request.cumulativeUsage = cumulative === null ? null : { ...cumulative }
+  }
+}
+
+function trajectoryUsage(value: unknown): DshTrajectoryUsage | null {
+  const usage = record(value)
+  const input = nonnegativeInteger(usage.inputTokens)
+  const cacheRead = nonnegativeInteger(usage.cacheReadTokens)
+  const cacheWrite = nonnegativeInteger(usage.cacheWriteTokens)
+  const output = nonnegativeInteger(usage.outputTokens)
+  const reasoning = nonnegativeInteger(usage.reasoningTokens)
+  if ([input, cacheRead, cacheWrite, output, reasoning].every((item) => item === null)) return null
+  return {
+    ...(input === null ? {} : { input }),
+    ...(cacheRead === null ? {} : { cacheRead }),
+    ...(cacheWrite === null ? {} : { cacheWrite }),
+    ...(output === null ? {} : { output }),
+    ...(reasoning === null ? {} : { reasoning })
+  }
+}
+
+function addTrajectoryUsage(
+  total: DshTrajectoryUsage | null,
+  usage: DshTrajectoryUsage | null
+): DshTrajectoryUsage | null {
+  if (usage === null) return total
+  const next: DshTrajectoryUsage = {}
+  for (const key of ['input', 'cacheRead', 'cacheWrite', 'output', 'reasoning'] as const) {
+    const current = total?.[key]
+    const increment = usage[key]
+    if (current !== undefined || increment !== undefined) next[key] = (current ?? 0) + (increment ?? 0)
+  }
+  return Object.keys(next).length === 0 ? total : next
+}
+
+function isAssistantTokenDelta(chunk: Record<string, unknown>): boolean {
+  const type = text(chunk.type)
+  if (type === 'text-delta' || type === 'reasoning-delta') return text(chunk.text).length > 0
+  return type === 'tool-call-delta'
+    && (text(chunk.argumentsDelta).length > 0 || typeof chunk.name === 'string')
+}
+
+function assistantFirstTokenTime(value: unknown): number | null {
+  if (!Array.isArray(value)) return null
+  try {
+    return nonnegativeInteger(assistantStreamFirstTokenTime(value as AssistantStreamRecord[]))
+  } catch {
+    return null
+  }
 }
 
 function pretty(value: unknown): string {

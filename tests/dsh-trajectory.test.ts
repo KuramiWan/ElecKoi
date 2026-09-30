@@ -162,6 +162,88 @@ describe('DSH trajectory projection', () => {
     expect(result).toMatchObject({ startedAtMillis: 990, completedAtMillis: 1_270 })
   })
 
+  it('projects the official request options, usage and assistant timing fields', () => {
+    const result = projectDshTrajectory([
+      event(0, 'turn/start', { turn: 1 }, 1_000),
+      event(1, 'step/start', { turn: 1, step: 1 }, 1_010),
+      event(2, 'request/header', {
+        header: {
+          system: '不应进入轨迹',
+          config: {
+            provider: 'provider-a',
+            model: 'model-a',
+            reasoningEffort: 'high',
+            maxTokens: 8_192
+          }
+        },
+        reason: 'initial'
+      }, 1_020),
+      event(3, 'assistant/chunk', {
+        turn: 1,
+        step: 1,
+        chunk: { type: 'text-delta', index: 0, text: '回' }
+      }, 1_060),
+      event(4, 'assistant/message', {
+        turn: 1,
+        step: 1,
+        message: {
+          id: 'reply-a',
+          role: 'assistant',
+          source: { provider: 'provider-a', model: 'model-a' },
+          content: [{ type: 'text', text: '回答' }]
+        },
+        usage: {
+          inputTokens: 120,
+          cacheReadTokens: 30,
+          cacheWriteTokens: 10,
+          outputTokens: 20,
+          reasoningTokens: 5
+        }
+      }, 1_110),
+      event(5, 'step/start', { turn: 1, step: 2 }, 1_120),
+      event(6, 'request/header', {
+        header: { config: { provider: 'provider-a', model: 'model-a' } },
+        reason: 'continue'
+      }, 1_130),
+      event(7, 'assistant/message', {
+        turn: 1,
+        step: 2,
+        message: {
+          id: 'reply-b',
+          role: 'assistant',
+          source: { provider: 'provider-a', model: 'model-a' },
+          content: [{ type: 'text', text: '继续回答' }]
+        },
+        usage: { inputTokens: 10, outputTokens: 8 }
+      }, 1_180)
+    ])
+
+    expect(result.records[0]?.requests[0]).toMatchObject({
+      purpose: 'assistant',
+      requestConfig: {
+        provider: 'provider-a',
+        model: 'model-a',
+        reasoningEffort: 'high',
+        maxTokens: 8_192
+      },
+      usage: { input: 120, cacheRead: 30, cacheWrite: 10, output: 20, reasoning: 5 },
+      cumulativeUsage: { input: 120, cacheRead: 30, cacheWrite: 10, output: 20, reasoning: 5 },
+      startedAt: 1_010,
+      completedAt: 1_110,
+      firstTokenTime: 1_060,
+      durationMillis: 100,
+      resultSeq: 4
+    })
+    expect(result.records[1]?.requests[0]?.cumulativeUsage).toEqual({
+      input: 130,
+      cacheRead: 30,
+      cacheWrite: 10,
+      output: 28,
+      reasoning: 5
+    })
+    expect(JSON.stringify(result)).not.toContain('不应进入轨迹')
+  })
+
   it('reads the durable JSONL log, ignores a partial live tail and pages backwards', () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-trajectory-'))
     temporaryDirectories.push(root)

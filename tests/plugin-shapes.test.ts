@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { gatewayPlugin, platformPlugin, sqlitePlugin } from '../src/main/host/plugins'
 import { agentPlugin } from '../src/main/modules/agent'
 import { conversationsPlugin } from '../src/main/modules/conversations'
+import { creatorStudioPlugin } from '../src/main/modules/creatorStudio'
 import { modelsPlugin } from '../src/main/modules/models'
 import { personasPlugin } from '../src/main/modules/personas'
 import { settingsPlugin } from '../src/main/modules/settings'
@@ -18,6 +19,7 @@ const plugins = [
   settingLibrariesPlugin,
   regexRulesPlugin,
   conversationsPlugin,
+  creatorStudioPlugin,
   personasPlugin,
   modelsPlugin,
   settingsPlugin,
@@ -27,7 +29,7 @@ const plugins = [
 
 describe('Cordis plugin definitions', () => {
   it('load as named object plugins without mutating Function.name', () => {
-    expect(plugins).toHaveLength(12)
+    expect(plugins).toHaveLength(13)
     for (const plugin of plugins) {
       expect(plugin.name).toMatch(/^eleckoi-/)
       expect(plugin.apply).toBeTypeOf('function')

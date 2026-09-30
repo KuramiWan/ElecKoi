@@ -10,7 +10,6 @@ import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../src/main/
 import { commonSchemaSql } from '../src/main/platform/sqlite/migrations/commonSchemaSql'
 import { ConversationRepository } from '../src/main/modules/conversations/ConversationRepository'
 import { MessageRepository } from '../src/main/modules/conversations/MessageRepository'
-import { RichMessageHeightRepository } from '../src/main/modules/conversations/RichMessageHeightRepository'
 import { CharacterRepository } from '../src/main/modules/personas/CharacterRepository'
 import { PersonaRepository } from '../src/main/modules/personas/PersonaRepository'
 import { ModelRepository } from '../src/main/modules/models/ModelRepository'
@@ -231,7 +230,8 @@ describe('shared SQLite baseline', () => {
       list_collapse_state: {
         characters: { 全部角色: true },
         presets: { 全部预设: true },
-        models: { general: false, image: true }
+        models: { general: false, image: true },
+        plugins: { official: true, eleckoi: false, installed: true }
       }
     })).toEqual({
       pinned_chat_ids: ['pinned-chat'],
@@ -239,11 +239,13 @@ describe('shared SQLite baseline', () => {
       list_collapse_state: {
         characters: { 全部角色: true },
         presets: { 全部预设: true },
-        models: { general: false, image: true }
+        models: { general: false, image: true },
+        plugins: { official: true, eleckoi: false, installed: true }
       }
     })
     expect(settings.read('appearance.ui').hidden_chat_ids).toEqual(['hidden-chat'])
     expect(settings.read('appearance.ui').list_collapse_state?.models).toEqual({ general: false, image: true })
+    expect(settings.read('appearance.ui').list_collapse_state?.plugins).toEqual({ official: true, eleckoi: false, installed: true })
     expect(() => settings.write('appearance.mode', 'sepia' as never)).toThrow()
   })
 
@@ -448,10 +450,43 @@ describe('shared SQLite baseline', () => {
         PRAGMA user_version = 3;
       `)
       installSchema(database)
-      expect(database.pragma('user_version', { simple: true })).toBe(4)
+      expect(database.pragma('user_version', { simple: true })).toBe(5)
       expect(database.prepare('SELECT title FROM chat_sessions WHERE id=?').get('chat-v3')).toEqual({ title: 'Existing' })
       expect(database.prepare("SELECT name FROM sqlite_master WHERE name='agent_pending_inputs'").get())
         .toEqual({ name: 'agent_pending_inputs' })
+      expect(database.pragma('foreign_key_check')).toEqual([])
+      expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally { database.close() }
+  })
+
+  it('removes the released v4 rich-message height cache in the v5 migration and preserves product data', () => {
+    const database = new Database(':memory:')
+    try {
+      installSchema(database)
+      database.exec(`
+        CREATE TABLE roleplay_rich_heights (
+          sessionId TEXT NOT NULL,
+          messageId TEXT NOT NULL,
+          contentRevision TEXT NOT NULL,
+          rootIndex INTEGER NOT NULL,
+          viewportWidthPx INTEGER NOT NULL,
+          heightPx INTEGER NOT NULL,
+          measuredAtEpochMs INTEGER NOT NULL,
+          PRIMARY KEY(sessionId,messageId,contentRevision,rootIndex,viewportWidthPx),
+          FOREIGN KEY(sessionId) REFERENCES chat_sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX index_roleplay_rich_heights_sessionId ON roleplay_rich_heights(sessionId);
+        INSERT INTO desktop_preferences VALUES ('appearance.mode', '"dark"', 'now');
+        PRAGMA user_version = 4;
+      `)
+
+      installSchema(database)
+
+      expect(database.pragma('user_version', { simple: true })).toBe(5)
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='roleplay_rich_heights'").get())
+        .toBeUndefined()
+      expect(database.prepare('SELECT valueJson FROM desktop_preferences WHERE key=?').get('appearance.mode'))
+        .toEqual({ valueJson: '"dark"' })
       expect(database.pragma('foreign_key_check')).toEqual([])
       expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
     } finally { database.close() }
@@ -903,7 +938,7 @@ describe('shared SQLite baseline', () => {
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
-  it('keeps a new chat only after its DSH Session is created', async () => {
+  it('keeps a new chat only after its blank DSH Session is created', async () => {
     const { conversations } = harness()
     const createdIds: string[] = []
     const detach = conversations.attachSessionCreator(async id => { createdIds.push(id) })
@@ -1086,25 +1121,6 @@ describe('shared SQLite baseline', () => {
     expect(seen.at(-1)).toBe('reply 124')
     expect(() => messages.page(id, -1)).toThrow('游标')
     expect(() => messages.page(id, undefined, 201)).toThrow('轮次数')
-  })
-
-  it('persists rich-message layout by content revision and removes it with the conversation', async () => {
-    const { conversations, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const repository = new RichMessageHeightRepository(database)
-    const base = { conversationId, messageId: 'message-a', rootIndex: 0, viewportWidthPx: 800 }
-
-    repository.save({ ...base, contentRevision: 'revision-a', heightPx: 640 })
-    repository.save({ ...base, contentRevision: 'revision-a', heightPx: 650 })
-    expect(repository.list(conversationId)).toHaveLength(1)
-    expect(repository.list(conversationId)[0]).toMatchObject({ contentRevision: 'revision-a', heightPx: 650 })
-
-    repository.save({ ...base, contentRevision: 'revision-b', heightPx: 700 })
-    expect(repository.list(conversationId)).toHaveLength(1)
-    expect(repository.list(conversationId)[0]).toMatchObject({ contentRevision: 'revision-b', heightPx: 700 })
-
-    await conversations.delete(conversationId)
-    expect(repository.list(conversationId)).toEqual([])
   })
 
   it('keeps a terminal reply immutable when a late checkpoint or duplicate completion arrives', () => {
@@ -1534,7 +1550,6 @@ describe('shared SQLite baseline', () => {
     const { conversations, messages, database } = harness()
     const conversationId = conversations.create({}).conversation.id
     const settings = new SettingLibraryRepository(database)
-    const heights = new RichMessageHeightRepository(database)
     const generations = new GenerationRepository(database, messages)
     const image = {
       attachmentId: `sha256:${'a'.repeat(64)}`,
@@ -1576,11 +1591,6 @@ describe('shared SQLite baseline', () => {
     messages.writeSettingLibraryStateSnapshot(conversationId, secondAssistant.id, settingAfterSecond)
     database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
       .run('{"afterSecond":4}', conversationId)
-    heights.save({
-      conversationId, messageId: secondAssistant.id, contentRevision: 'revision',
-      rootIndex: 0, viewportWidthPx: 900, heightPx: 320
-    })
-
     const deleted = messages.deleteFrom(conversationId, secondUser.id)
     generations.deleteForMessages(conversationId, deleted.deletedResponseIds)
     expect(deleted).toMatchObject({
@@ -1599,7 +1609,6 @@ describe('shared SQLite baseline', () => {
     expect(database.native.prepare('SELECT * FROM generation_attempts WHERE conversationId=?').all(conversationId)).toEqual([])
     expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
       .toBeUndefined()
-    expect(heights.list(conversationId)).toEqual([])
     expect(database.native.prepare('SELECT DISTINCT runtimeThreadId FROM agent_responses WHERE conversationId=?')
       .all(conversationId)).toEqual([{ runtimeThreadId: 'runtime-a' }])
     expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions WHERE id=?')

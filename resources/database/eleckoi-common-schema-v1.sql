@@ -145,10 +145,6 @@ CREATE TABLE IF NOT EXISTS `conversation_setting_changes` (`sessionId` TEXT NOT 
 
 CREATE INDEX IF NOT EXISTS `index_conversation_setting_changes_sessionId` ON `conversation_setting_changes` (`sessionId`);
 
-CREATE TABLE IF NOT EXISTS `roleplay_rich_heights` (`sessionId` TEXT NOT NULL, `messageId` TEXT NOT NULL, `contentRevision` TEXT NOT NULL, `rootIndex` INTEGER NOT NULL, `viewportWidthPx` INTEGER NOT NULL, `heightPx` INTEGER NOT NULL, `measuredAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`sessionId`, `messageId`, `contentRevision`, `rootIndex`, `viewportWidthPx`), FOREIGN KEY(`sessionId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
-
-CREATE INDEX IF NOT EXISTS `index_roleplay_rich_heights_sessionId` ON `roleplay_rich_heights` (`sessionId`);
-
 CREATE TABLE IF NOT EXISTS `agent_preset_state` (`singletonId` INTEGER NOT NULL, `activePresetId` TEXT NOT NULL, PRIMARY KEY(`singletonId`));
 
 CREATE TABLE IF NOT EXISTS `agent_preset_library_groups` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL, PRIMARY KEY(`id`));
@@ -193,6 +189,6 @@ CREATE VIEW `setting_library_version_entries` AS SELECT link.characterId, link.v
         JOIN setting_entry_contents AS content ON content.characterId = link.characterId
           AND content.entryId = link.entryId AND content.revisionId = link.revisionId;
 
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;
 
 COMMIT;

@@ -20,14 +20,6 @@ extraResources:
   - from: resources/dsh/node-bin
     to: dsh/node-bin
 
-extraFiles:
-  - from: LICENSE
-    to: LICENSE.eleckoi.txt
-  - from: NOTICE
-    to: NOTICE.eleckoi.txt
-  - from: resources/licenses/THIRD_PARTY_NOTICES.txt
-    to: THIRD_PARTY_NOTICES.txt
-
 asar: true
 asarUnpack:
   - node_modules/better-sqlite3/**/*
@@ -51,7 +43,6 @@ win:
 
 nsis:
   oneClick: false
-  license: LICENSE
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true

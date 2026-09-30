@@ -13,6 +13,7 @@ import { SidePanelResizeHandle } from "./shell/components/SidePanelResizeHandle.
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { useSidePanelLayout } from "./shell/hooks/useSidePanelLayout.js";
 import { AppUpdateController, useAppUpdates } from "../../modules/updates/index.js";
+import { openCreatorStudioWindow } from "../../modules/creatorStudio/index.js";
 import { desktopClient } from "../../bridge/desktopClient.ts";
 import { MainPageContext } from "./MainPageContext.jsx";
 
@@ -28,7 +29,7 @@ class MainPageErrorBoundary extends Component {
   }
 }
 
-export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderRoleplay }) {
+export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderConversationList, renderPresetEditorSection, renderModelEditor, renderRoleplay }) {
   const chat = useChatClient({ conversations, characters, models, persona, navigation });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const sidePanelLayout = useSidePanelLayout();
@@ -112,6 +113,7 @@ export function MainWindow({ conversations, characters, models, persona, presets
           profileActive={chat.activeSection === "settings" && settingsPage === "profile"}
           onSectionChange={changeActiveSection}
           onNavigationAction={(id) => {
+            if (id === "creatorStudio") return openCreatorStudioWindow();
             if (id === "community") setCommunityOpen(true);
           }}
           persona={chat.persona}
@@ -160,6 +162,11 @@ export function MainWindow({ conversations, characters, models, persona, presets
     presets,
     settingsSections,
     renderSettingsSection,
+    renderUserProfileEditor,
+    renderCharacterPageSection,
+    renderConversationList,
+    renderPresetEditorSection,
+    renderModelEditor,
     renderRoleplay,
     settingsPage,
     setSettingsPage,

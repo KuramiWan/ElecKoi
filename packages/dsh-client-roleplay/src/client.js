@@ -2,6 +2,28 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-roleplay',
   factory(require) {
     const React = require('react')
+    const { MarkdownText } = require('@deepseek-ai/dsh-client-ui-primitives')
+    const markdownLabels = Object.freeze({
+      code: Object.freeze({
+        copyLabel: '复制',
+        copiedLabel: '已复制',
+        toolbarLabels: Object.freeze({
+          codeLabel: '代码',
+          wrapLabel: '自动换行',
+          unwrapLabel: '不换行'
+        })
+      }),
+      footnotes: '脚注'
+    })
+
+    function OfficialMarkdownMessage({ content, streaming }) {
+      return React.createElement('div', { className: 'eleckoi-dsh-markdown' },
+        React.createElement(MarkdownText, {
+          text: content || '',
+          streaming: Boolean(streaming),
+          labels: markdownLabels
+        }))
+    }
 
     function RoleplayView({ matched, sessions, SessionProvider, renderSlot, renderSlotChain }) {
       const runtimeSessionId = matched.props.runtimeSessionId
@@ -74,12 +96,15 @@ window.__ModuleLoader__.load({
         }
       }, [runtimeSessionId, sessions])
       const active = Boolean(runtimeSessionId) && reference?.sessionId === runtimeSessionId
+      const renderRoleplayMessage = React.useCallback((owner) => renderSlotChain(
+        'eleckoi.roleplay.message.content', owner, {
+          fallback: React.createElement(OfficialMarkdownMessage, owner)
+        }
+      ), [renderSlotChain])
       const view = React.createElement(matched.component, {
         ...matched.props,
         renderRoleplaySlot: active ? renderSlot : undefined,
-        renderRoleplayMessage: active ? (owner, fallback) => renderSlotChain(
-          'eleckoi.roleplay.message.content', owner, { fallback }
-        ) : undefined
+        renderRoleplayMessage: active ? renderRoleplayMessage : undefined
       })
       return active ? React.createElement(SessionProvider, { session: reference }, view) : view
     }
@@ -103,7 +128,7 @@ window.__ModuleLoader__.load({
             }
             const sync = () => {
               const spec = ctx.slots.spec(source)
-              const entries = spec?.kind === 'list' && spec.scope === 'session'
+              const entries = spec?.scope === 'session'
                 ? ctx.slots.entriesOfSlot(source).filter(entry =>
                   !entry.children || Object.keys(entry.children).length === 0
                 )
@@ -151,7 +176,8 @@ window.__ModuleLoader__.load({
             'eleckoi.roleplay.conversation.input.left': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.conversation.input.right': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.conversation.input.overlay': { kind: 'list', scope: 'session' },
-            'eleckoi.roleplay.conversation.composer.dock': { kind: 'list', scope: 'session' }
+            'eleckoi.roleplay.conversation.composer.dock': { kind: 'list', scope: 'session' },
+            'eleckoi.roleplay.trajectory.images': { kind: 'single', scope: 'session' }
           },
           inject: () => ({ sessions: ctx.sessions }),
           select: owner => owner?.component ? owner : null
@@ -160,6 +186,7 @@ window.__ModuleLoader__.load({
         projectConversationSeat('conversation.input.right', 'eleckoi.roleplay.conversation.input.right')
         projectConversationSeat('conversation.input.overlay', 'eleckoi.roleplay.conversation.input.overlay')
         projectConversationSeat('conversation.composer.dock', 'eleckoi.roleplay.conversation.composer.dock')
+        projectConversationSeat('conversation.trajectory.images', 'eleckoi.roleplay.trajectory.images')
       }
     }
   }

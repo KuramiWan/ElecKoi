@@ -21,7 +21,7 @@ function normalizeCharacters(collection) {
   };
 }
 
-export function CharacterManagerWindow({ characterCatalog, personaModel }) {
+export function CharacterManagerWindow({ characterCatalog, personaModel, renderCharacterManager }) {
   const [characters, setCharacters] = useState(EMPTY_CHARACTERS);
   const [persona, setPersona] = useState(EMPTY_PERSONA);
   const [loaded, setLoaded] = useState(false);
@@ -86,6 +86,24 @@ export function CharacterManagerWindow({ characterCatalog, personaModel }) {
     return result;
   }
 
+  const managerOwner = {
+    characters,
+    persona,
+    onRefresh: refresh,
+    onSaveGroups: persistGroups,
+    onDeleteCharacters: removeCharacters,
+    onImportCharacters: importCharacters,
+    onExportCharacters: exportCharacterFiles,
+  };
+  const managerFallback = <CharacterManager
+    characters={characters}
+    persona={persona}
+    onSaveGroups={persistGroups}
+    onDeleteCharacters={removeCharacters}
+    onImportCharacters={importCharacters}
+    onExportCharacters={exportCharacterFiles}
+  />;
+
   return (
     <main className="qq-shell management-window-shell">
       <TitleBar splitSurface />
@@ -96,14 +114,7 @@ export function CharacterManagerWindow({ characterCatalog, personaModel }) {
             <button type="button" onClick={() => void refresh()}>重试</button>
           </div>
         ) : (
-          <CharacterManager
-            characters={characters}
-            persona={persona}
-            onSaveGroups={persistGroups}
-            onDeleteCharacters={removeCharacters}
-            onImportCharacters={importCharacters}
-            onExportCharacters={exportCharacterFiles}
-          />
+          renderCharacterManager?.(managerOwner, managerFallback) ?? managerFallback
         )}
       </section>
     </main>

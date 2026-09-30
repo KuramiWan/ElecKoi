@@ -1,0 +1,231 @@
+// @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MessageList } from '../src/renderer/src/modules/chat/components/ChatPanel.jsx'
+import { RunningWhaleTail } from '../src/renderer/src/modules/chat/components/RunningWhaleTail.jsx'
+import { MessageBubble } from '../src/renderer/src/ui/messages/MessageBubble.jsx'
+
+vi.stubGlobal('React', React)
+vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+
+let resizeCallbacks = []
+
+beforeEach(() => {
+  resizeCallbacks = []
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback) { resizeCallbacks.push(callback) }
+    observe() {}
+    disconnect() {}
+  })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+  vi.stubGlobal('React', React)
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  document.body.innerHTML = ''
+})
+
+describe('chat rendering performance', () => {
+  it('keeps settled DSH message rows mounted while a pending reply changes', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const renderRoleplaySlot = vi.fn(() => null)
+    const renderRoleplayMessage = vi.fn((_owner, fallback) => fallback)
+    const settledMessages = [
+      {
+        id: 'user-1', role: 'user', content: '你好', conversationId: 'chat-1',
+        runtimeSessionId: 'session-1', messageIndex: 1,
+      },
+      {
+        id: 'assistant-1', role: 'assistant', content: '你好。', conversationId: 'chat-1',
+        runtimeSessionId: 'session-1', dshMessageId: 'dsh-1', messageIndex: 2,
+      },
+    ]
+    const createPending = (content) => ({
+      id: 'assistant-pending', role: 'assistant', content, pending: true,
+      conversationId: 'chat-1', runtimeSessionId: 'session-1', messageIndex: 3,
+    })
+    const stableProps = {
+      conversationId: 'chat-1', entering: false, scrollElement: null,
+      scrollRequest: { revision: 0, behavior: 'auto' },
+      onFollowingTailChange: vi.fn(), returnToBottomRef: { current: null },
+      layoutMode: 'roleplay', profile: { reply_spacing: 10, turn_spacing: 10 },
+      avatarShape: 'portrait', userAvatar: '', assistantAvatar: '',
+      userPinImage: '', assistantPinImage: '', userName: '用户', assistantName: '角色',
+      showRoleplayTimestamp: false, showRoleplayFloor: false,
+      onOpenProcess: vi.fn(), onEditMessage: vi.fn(), onEditOpening: vi.fn(),
+      onSelectOpening: vi.fn(), onRegenerate: vi.fn(), deleteMode: false,
+      deleteFromMessageId: '', onSelectDeleteFrom: vi.fn(), runtimeSessionId: 'session-1',
+      renderRoleplaySlot, renderRoleplayMessage,
+    }
+
+    try {
+      await act(async () => root.render(
+        <MessageList {...stableProps} messages={[...settledMessages, createPending('正')]} />,
+      ))
+      expect(renderRoleplaySlot).toHaveBeenCalledTimes(3)
+      expect(renderRoleplayMessage).toHaveBeenCalledTimes(3)
+      const settledRenderCount = renderRoleplayMessage.mock.calls.filter(([owner]) => (
+        owner.productMessageId === 'user-1' || owner.productMessageId === 'assistant-1'
+      )).length
+      expect(settledRenderCount).toBe(2)
+
+      await act(async () => root.render(
+        <MessageList {...stableProps} messages={[...settledMessages, createPending('正在回复')]} />,
+      ))
+      expect(renderRoleplaySlot).toHaveBeenCalledTimes(3)
+      expect(renderRoleplayMessage.mock.calls.filter(([owner]) => (
+        owner.productMessageId === 'user-1' || owner.productMessageId === 'assistant-1'
+      ))).toHaveLength(settledRenderCount)
+    } finally {
+      await act(async () => root.unmount())
+    }
+  })
+
+  it('keeps settled message rows mounted while only the streaming tail changes', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const render = (tail) => root.render(<MessageBubble
+      message={{
+        id: 'assistant-stream',
+        role: 'assistant',
+        pending: true,
+        content: `第一段。\n\n第二段。\n\n${tail}`,
+      }}
+      name="角色"
+    />)
+
+    try {
+      await act(async () => render('尾部一'))
+      const firstParagraph = container.querySelector('.eleckoi-markdown-fallback p')
+      expect(firstParagraph?.textContent).toBe('第一段。')
+
+      await act(async () => render('尾部一继续增长'))
+      expect(container.querySelector('.eleckoi-markdown-fallback p')).toBe(firstParagraph)
+      expect(container.textContent).toContain('尾部一继续增长')
+    } finally {
+      await act(async () => root.unmount())
+    }
+  })
+
+  it('does not reclaim the scroll position while the reader moves up', async () => {
+    vi.useFakeTimers()
+    const scrollElement = document.createElement('div')
+    document.body.append(scrollElement)
+    let scrollHeight = 1_000
+    Object.defineProperties(scrollElement, {
+      clientHeight: { configurable: true, get: () => 200 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      scrollTop: { configurable: true, writable: true, value: 800 },
+    })
+    const root = createRoot(scrollElement)
+    const onFollowingTailChange = vi.fn()
+    const props = {
+      conversationId: 'chat-scroll', entering: false, scrollElement,
+      scrollRequest: { revision: 0, behavior: 'auto' },
+      onFollowingTailChange, returnToBottomRef: { current: null },
+      layoutMode: 'roleplay', profile: { reply_spacing: 10, turn_spacing: 10 },
+      avatarShape: 'portrait', userAvatar: '', assistantAvatar: '',
+      userPinImage: '', assistantPinImage: '', userName: '用户', assistantName: '角色',
+      showRoleplayTimestamp: false, showRoleplayFloor: false,
+      onOpenProcess: vi.fn(), onEditMessage: vi.fn(), onEditOpening: vi.fn(),
+      onSelectOpening: vi.fn(), onRegenerate: vi.fn(), deleteMode: false,
+      deleteFromMessageId: '', onSelectDeleteFrom: vi.fn(), runtimeSessionId: '',
+    }
+
+    try {
+      await act(async () => root.render(<MessageList {...props} messages={[
+        { id: 'message-1', role: 'assistant', content: '消息', conversationId: 'chat-scroll' },
+      ]} />))
+      scrollElement.scrollTop = 520
+      scrollElement.dispatchEvent(new Event('scroll'))
+
+      scrollHeight = 1_200
+      for (const callback of resizeCallbacks) callback([])
+      expect(scrollElement.scrollTop).toBe(520)
+
+      await act(async () => { vi.advanceTimersByTime(500) })
+      expect(scrollElement.scrollTop).toBe(520)
+      expect(onFollowingTailChange).toHaveBeenCalledWith(false)
+    } finally {
+      await act(async () => root.unmount())
+    }
+  })
+
+  it('preserves the first loaded message position when older history is prepended', async () => {
+    vi.useFakeTimers()
+    const scrollElement = document.createElement('div')
+    document.body.append(scrollElement)
+    Object.defineProperties(scrollElement, {
+      clientHeight: { configurable: true, get: () => 400 },
+      scrollHeight: { configurable: true, get: () => 1_400 },
+      scrollTop: { configurable: true, writable: true, value: 1_000 },
+    })
+    scrollElement.getBoundingClientRect = () => ({ top: 0, bottom: 400, left: 0, right: 800, width: 800, height: 400 })
+    const root = createRoot(scrollElement)
+    const historyPagingRef = { current: null }
+    const positions = new Map([['current-1', 200]])
+    const props = {
+      conversationId: 'chat-history', entering: false, scrollElement,
+      scrollRequest: { revision: 0, behavior: 'auto' },
+      onFollowingTailChange: vi.fn(), returnToBottomRef: { current: null }, historyPagingRef,
+      layoutMode: 'roleplay', profile: { reply_spacing: 10, turn_spacing: 10 },
+      avatarShape: 'portrait', userAvatar: '', assistantAvatar: '',
+      userPinImage: '', assistantPinImage: '', userName: '用户', assistantName: '角色',
+      showRoleplayTimestamp: false, showRoleplayFloor: false,
+      onOpenProcess: vi.fn(), onEditMessage: vi.fn(), onEditOpening: vi.fn(),
+      onSelectOpening: vi.fn(), onRegenerate: vi.fn(), deleteMode: false,
+      deleteFromMessageId: '', onSelectDeleteFrom: vi.fn(), runtimeSessionId: '',
+    }
+    const current = { id: 'current-1', role: 'assistant', content: '当前消息', conversationId: 'chat-history' }
+    const older = { id: 'older-1', role: 'user', content: '更早消息', conversationId: 'chat-history' }
+
+    try {
+      await act(async () => root.render(<MessageList {...props} messages={[current]} />))
+      for (const row of scrollElement.querySelectorAll('[data-chat-anchor-key]')) {
+        row.getBoundingClientRect = () => {
+          const top = (positions.get(row.dataset.chatAnchorKey) ?? 0) - scrollElement.scrollTop
+          return { top, bottom: top + 80, left: 0, right: 800, width: 800, height: 80 }
+        }
+      }
+      scrollElement.scrollTop = 120
+      scrollElement.dispatchEvent(new Event('scroll'))
+      await act(async () => { vi.advanceTimersByTime(500) })
+      expect(historyPagingRef.current?.()).toBe(true)
+
+      positions.set('older-1', 200)
+      positions.set('current-1', 400)
+      await act(async () => root.render(<MessageList {...props} messages={[older, current]} />))
+      for (const row of scrollElement.querySelectorAll('[data-chat-anchor-key]')) {
+        row.getBoundingClientRect = () => {
+          const top = (positions.get(row.dataset.chatAnchorKey) ?? 0) - scrollElement.scrollTop
+          return { top, bottom: top + 80, left: 0, right: 800, width: 800, height: 80 }
+        }
+      }
+      for (const callback of resizeCallbacks) callback([])
+
+      expect(scrollElement.scrollTop).toBe(320)
+    } finally {
+      await act(async () => root.unmount())
+    }
+  })
+
+  it('uses the DSH APNG whale with an accessible static fallback', () => {
+    const html = renderToStaticMarkup(<RunningWhaleTail />)
+    const image = readFileSync(resolve('src/renderer/src/modules/chat/assets/running-whale@2x.png'))
+    expect(html).toContain('chat-running-whale-animated')
+    expect(html).toContain('chat-running-whale-still')
+    expect(html).not.toContain('<animate')
+    expect(image.subarray(1, 4).toString()).toBe('PNG')
+    expect(image.includes(Buffer.from('acTL'))).toBe(true)
+    expect(image.includes(Buffer.from('fcTL'))).toBe(true)
+  })
+})

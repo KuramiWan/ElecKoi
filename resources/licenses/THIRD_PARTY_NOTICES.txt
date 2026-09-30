@@ -13,37 +13,13 @@ Author: Zed Industries
 Homepage: https://github.com/agentclientprotocol/typescript-sdk#readme
 Bundled notice text: e8e2fe35f5fdc1e2
 
-@anthropic-ai/sdk@0.123.0
+@anthropic-ai/sdk@0.124.0
 License: MIT
 Author: Anthropic
 Homepage: https://github.com/anthropics/anthropic-sdk-typescript#readme
 Bundled notice text: d298496454d461ef
 
-@aws-crypto/sha256-browser@5.2.0
-License: Apache-2.0
-Author: AWS Crypto Tools Team
-Homepage: https://github.com/aws/aws-sdk-js-crypto-helpers/tree/master/packages/sha256-browser
-Bundled notice text: 283ea6cc2997a1a7
-
-@aws-crypto/sha256-js@5.2.0
-License: Apache-2.0
-Author: AWS Crypto Tools Team
-Homepage: https://github.com/aws/aws-sdk-js-crypto-helpers/tree/master/packages/sha256-js
-Bundled notice text: 6dc0e068dcf3a5bc
-
-@aws-crypto/supports-web-crypto@5.2.0
-License: Apache-2.0
-Author: AWS Crypto Tools Team
-Homepage: https://github.com/aws/aws-sdk-js-crypto-helpers/tree/master/packages/supports-web-crypto
-Bundled notice text: 283ea6cc2997a1a7
-
-@aws-crypto/util@5.2.0
-License: Apache-2.0
-Author: AWS Crypto Tools Team
-Homepage: https://github.com/aws/aws-sdk-js-crypto-helpers/tree/master/packages/util
-Bundled notice text: 6dc0e068dcf3a5bc
-
-@aws-sdk/client-bedrock-runtime@3.1048.0
+@aws-sdk/client-bedrock-runtime@3.1127.0
 License: Apache-2.0
 Author: AWS SDK for JavaScript Team
 Homepage: https://github.com/aws/aws-sdk-js-v3/tree/main/clients/client-bedrock-runtime
@@ -133,7 +109,7 @@ Author: AWS SDK for JavaScript Team
 Homepage: https://github.com/aws/aws-sdk-js-v3/tree/main/packages/signature-v4-multi-region
 Bundled notice text: 2ef1e48ea743d9c8
 
-@aws-sdk/token-providers@3.1048.0, 3.1116.0
+@aws-sdk/token-providers@3.1116.0, 3.1127.0
 License: Apache-2.0
 Author: AWS SDK for JavaScript Team
 Homepage: https://github.com/aws/aws-sdk-js-v3/tree/main/packages/token-providers
@@ -143,12 +119,6 @@ Bundled notice text: d82ceb8cbd004a2d
 License: Apache-2.0
 Author: AWS SDK for JavaScript Team
 Homepage: https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/types
-Bundled notice text: d82ceb8cbd004a2d
-
-@aws-sdk/util-locate-window@3.965.10
-License: Apache-2.0
-Author: AWS SDK for JavaScript Team
-Homepage: https://github.com/aws/aws-sdk-js-v3/tree/main/packages-internal/util-locate-window
 Bundled notice text: d82ceb8cbd004a2d
 
 @aws-sdk/xml-builder@3.972.40
@@ -223,1398 +193,1398 @@ Author: Shigma
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: e9cb8335ea090625
 
-@deepseek-ai/dsh@0.2.0-rc.1
+@deepseek-ai/dsh@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-acp@0.2.0-rc.1
+@deepseek-ai/dsh-acp@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-acp-app@0.2.0-rc.1
+@deepseek-ai/dsh-acp-app@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-agent@0.2.0-rc.1
+@deepseek-ai/dsh-agent@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-agent-default-model@0.2.0-rc.1
+@deepseek-ai/dsh-agent-default-model@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-agent-instructions@0.2.0-rc.1
+@deepseek-ai/dsh-agent-instructions@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-agent-loop@0.2.0-rc.1
+@deepseek-ai/dsh-agent-loop@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-agent-preset@0.2.0-rc.1
+@deepseek-ai/dsh-agent-preset@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-agent-preset-registry@0.2.0-rc.1
+@deepseek-ai/dsh-agent-preset-registry@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-agent-tool-presentation@0.2.0-rc.1
+@deepseek-ai/dsh-agent-tool-presentation@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-anonymous-user-id@0.2.0-rc.1
+@deepseek-ai/dsh-anonymous-user-id@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-account-controller@0.2.0-rc.1
+@deepseek-ai/dsh-api-account-controller@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-gateway@0.2.0-rc.1
+@deepseek-ai/dsh-api-gateway@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-job-controller@0.2.0-rc.1
+@deepseek-ai/dsh-api-job-controller@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-remotes@0.2.0-rc.1
+@deepseek-ai/dsh-api-remotes@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-session-controller@0.2.0-rc.1
+@deepseek-ai/dsh-api-session-controller@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-settings-controller@0.2.0-rc.1
+@deepseek-ai/dsh-api-settings-controller@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-terminal-controller@0.2.0-rc.1
+@deepseek-ai/dsh-api-terminal-controller@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-workspace-controller@0.2.0-rc.1
+@deepseek-ai/dsh-api-workspace-controller@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-api-workspace-files@0.2.0-rc.1
+@deepseek-ai/dsh-api-workspace-files@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-app-boot@0.2.0-rc.1
+@deepseek-ai/dsh-app-boot@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-atomic-write@0.2.0-rc.1
+@deepseek-ai/dsh-atomic-write@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-attachment@0.2.0-rc.1
+@deepseek-ai/dsh-attachment@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-attachment-local@0.2.0-rc.1
+@deepseek-ai/dsh-attachment-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-authorization@0.2.0-rc.1
+@deepseek-ai/dsh-authorization@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-base@0.2.0-rc.1
+@deepseek-ai/dsh-base@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-bash-local@0.2.0-rc.1
+@deepseek-ai/dsh-bash-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-bash-sandbox@0.2.0-rc.1
+@deepseek-ai/dsh-bash-sandbox@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-brand@0.2.0-rc.1
+@deepseek-ai/dsh-brand@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-chunked-list@0.2.0-rc.1
+@deepseek-ai/dsh-chunked-list@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-connection@0.2.0-rc.1
+@deepseek-ai/dsh-client-connection@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-file-upload@0.2.0-rc.1
+@deepseek-ai/dsh-client-file-upload@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-hmr@0.2.0-rc.1
+@deepseek-ai/dsh-client-hmr@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-locale@0.2.0-rc.1
+@deepseek-ai/dsh-client-locale@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-modules@0.2.0-rc.1
+@deepseek-ai/dsh-client-modules@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-product-analytics@0.2.0-rc.1
+@deepseek-ai/dsh-client-product-analytics@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-resources@0.2.0-rc.1
+@deepseek-ai/dsh-client-resources@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-shortcuts@0.2.0-rc.1
+@deepseek-ai/dsh-client-shortcuts@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-store@0.2.0-rc.1
+@deepseek-ai/dsh-client-store@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-agent-preset@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-agent-preset@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-approval@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-approval@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-attachment@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-attachment@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-brand-official@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-brand-official@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-chat@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-chat@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-commands@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-commands@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-conversation@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-conversation@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-cordis@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-cordis@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-deliverables@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-deliverables@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-directory-picker-browse@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-directory-picker-browse@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-directory-picker-native@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-directory-picker-native@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-goal@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-goal@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-input-trigger@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-input-trigger@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-jobs@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-jobs@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-layout@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-layout@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-message-feedback@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-message-feedback@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-model-selection@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-model-selection@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-open-in-app@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-open-in-app@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-permission-presets@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-permission-presets@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-plan@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-plan@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-plugin-manager@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-plugin-manager@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-primitives@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-primitives@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-reference@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-reference@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-renderer@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-renderer@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-schedule@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-schedule@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-session@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-session@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-account@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-account@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-agent-loop@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-agent-loop@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-general@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-general@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-models@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-models@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-plugin-inventory@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-plugin-inventory@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-plugins@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-plugins@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-session-log@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-session-log@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-shell@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-shell@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-subagent@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-subagent@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-settings-web-search@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-settings-web-search@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-shortcuts@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-shortcuts@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-sidebar@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-sidebar@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-sidebar-browser@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-sidebar-browser@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-sidebar-documentpreview@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-sidebar-documentpreview@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-sidebar-files@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-sidebar-files@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-sidebar-right@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-sidebar-right@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-sidebar-terminal@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-sidebar-terminal@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-skill@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-skill@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-slots@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-slots@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-subagent@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-subagent@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-theme@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-theme@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-tool@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-tool@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-trajectory@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-trajectory@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-user-questions@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-user-questions@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-workflow-run@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-workflow-run@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-client-ui-workspace@0.2.0-rc.1
+@deepseek-ai/dsh-client-ui-workspace@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-cmdline@0.2.0-rc.1
+@deepseek-ai/dsh-cmdline@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-command-compact@0.2.0-rc.1
+@deepseek-ai/dsh-command-compact@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-command-feedback@0.2.0-rc.1
+@deepseek-ai/dsh-command-feedback@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-command-goal@0.2.0-rc.1
+@deepseek-ai/dsh-command-goal@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-commands@0.2.0-rc.1
+@deepseek-ai/dsh-commands@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-compaction@0.2.0-rc.1
+@deepseek-ai/dsh-compaction@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-compaction-basic@0.2.0-rc.1
+@deepseek-ai/dsh-compaction-basic@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-compaction-image-offload@0.2.0-rc.1
+@deepseek-ai/dsh-compaction-image-offload@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-compaction-tool-result-pruner@0.2.0-rc.1
+@deepseek-ai/dsh-compaction-tool-result-pruner@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-config-editor@0.2.0-rc.1
+@deepseek-ai/dsh-config-editor@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-cordis-client-runner@0.2.0-rc.1
+@deepseek-ai/dsh-cordis-client-runner@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-cordis-host-runner@0.2.0-rc.1
+@deepseek-ai/dsh-cordis-host-runner@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-credentials@0.2.0-rc.1
+@deepseek-ai/dsh-credentials@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-credentials-local@0.2.0-rc.1
+@deepseek-ai/dsh-credentials-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-deepseek-account@0.2.0-rc.1
+@deepseek-ai/dsh-deepseek-account@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-deepseek-account-platform@0.2.0-rc.1
+@deepseek-ai/dsh-deepseek-account-platform@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-deepseek-llm-api-extensions@0.2.0-rc.1
+@deepseek-ai/dsh-deepseek-llm-api-extensions@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-deque@0.2.0-rc.1
+@deepseek-ai/dsh-deque@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-agent-team@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-agent-team@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-agent-team-profile@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-agent-team-profile@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-api-speech-to-text@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-api-speech-to-text@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-auto-review@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-auto-review@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-client-ui-agent-team@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-client-ui-agent-team@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-client-ui-voice-input@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-client-ui-voice-input@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-schedule-bundle@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-schedule-bundle@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-speech-to-text@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-speech-to-text@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-speech-to-text-sensevoice@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-speech-to-text-sensevoice@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-tool-agent-team@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-tool-agent-team@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-experimental-voice-input-bundle@0.2.0-rc.1
+@deepseek-ai/dsh-experimental-voice-input-bundle@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-file-reference@0.2.0-rc.1
+@deepseek-ai/dsh-file-reference@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-file-reference-local@0.2.0-rc.1
+@deepseek-ai/dsh-file-reference-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-fs@0.2.0-rc.1
+@deepseek-ai/dsh-fs@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-fs-local@0.2.0-rc.1
+@deepseek-ai/dsh-fs-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-fs-observation-policy@0.2.0-rc.1
+@deepseek-ai/dsh-fs-observation-policy@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-fs-sandbox@0.2.0-rc.1
+@deepseek-ai/dsh-fs-sandbox@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-goal@0.2.0-rc.1
+@deepseek-ai/dsh-goal@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-goal-round-driver@0.2.0-rc.1
+@deepseek-ai/dsh-goal-round-driver@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-headless@0.2.0-rc.1
+@deepseek-ai/dsh-headless@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-hmr@0.2.0-rc.1
+@deepseek-ai/dsh-hmr@0.2.0-rc.2
 License: MIT
 Author: Shigma
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: e9cb8335ea090625
 
-@deepseek-ai/dsh-home-paths@0.2.0-rc.1
+@deepseek-ai/dsh-home-paths@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-hook-protocol@0.2.0-rc.1
+@deepseek-ai/dsh-hook-protocol@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-hooks-claude-code@0.2.0-rc.1
+@deepseek-ai/dsh-hooks-claude-code@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-hooks-codex@0.2.0-rc.1
+@deepseek-ai/dsh-hooks-codex@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-directory-picker@0.2.0-rc.1
+@deepseek-ai/dsh-host-directory-picker@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-directory-picker-auto@0.2.0-rc.1
+@deepseek-ai/dsh-host-directory-picker-auto@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-directory-picker-browse@0.2.0-rc.1
+@deepseek-ai/dsh-host-directory-picker-browse@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-directory-picker-native@0.2.0-rc.1
+@deepseek-ai/dsh-host-directory-picker-native@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-frontend-static@0.2.0-rc.1
+@deepseek-ai/dsh-host-frontend-static@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-open-in-app@0.2.0-rc.1
+@deepseek-ai/dsh-host-open-in-app@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-plugin-inventory@0.2.0-rc.1
+@deepseek-ai/dsh-host-plugin-inventory@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-product-telemetry-otel@0.2.0-rc.1
+@deepseek-ai/dsh-host-product-telemetry-otel@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-host-webserver@0.2.0-rc.1
+@deepseek-ai/dsh-host-webserver@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-http-proxy@0.2.0-rc.1
+@deepseek-ai/dsh-http-proxy@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-invariants@0.2.0-rc.1
+@deepseek-ai/dsh-invariants@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-jobs@0.2.0-rc.1
+@deepseek-ai/dsh-jobs@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-jobs-local@0.2.0-rc.1
+@deepseek-ai/dsh-jobs-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-launch-environment@0.2.0-rc.1
+@deepseek-ai/dsh-launch-environment@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-lazy-require@0.2.0-rc.1
+@deepseek-ai/dsh-lazy-require@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-llm@0.2.0-rc.1
+@deepseek-ai/dsh-llm@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-llm-deepseek@0.2.0-rc.1
+@deepseek-ai/dsh-llm-deepseek@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-llm-deepseek-account@0.2.0-rc.1
+@deepseek-ai/dsh-llm-deepseek-account@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-llm-deepseek-api-key@0.2.0-rc.1
+@deepseek-ai/dsh-llm-deepseek-api-key@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.1
+@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-llm-retry@0.2.0-rc.1
+@deepseek-ai/dsh-llm-retry@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-mcp-client@0.2.0-rc.1
+@deepseek-ai/dsh-mcp-client@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-mcp-resources@0.2.0-rc.1
+@deepseek-ai/dsh-mcp-resources@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-message-feedback@0.2.0-rc.1
+@deepseek-ai/dsh-message-feedback@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-native-command@0.2.0-rc.1
+@deepseek-ai/dsh-native-command@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-office-to-pdf@0.2.0-rc.1
+@deepseek-ai/dsh-office-to-pdf@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-otel@0.2.0-rc.1
+@deepseek-ai/dsh-otel@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-output-retention@0.2.0-rc.1
+@deepseek-ai/dsh-output-retention@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-package-manifest@0.2.0-rc.1
+@deepseek-ai/dsh-package-manifest@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-permission-presets@0.2.0-rc.1
+@deepseek-ai/dsh-permission-presets@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-persona@0.2.0-rc.1
+@deepseek-ai/dsh-persona@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-plan-mode@0.2.0-rc.1
+@deepseek-ai/dsh-plan-mode@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-plugin-manager@0.2.0-rc.1
+@deepseek-ai/dsh-plugin-manager@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-plugin-package-inventory-deepseek@0.2.0-rc.1
+@deepseek-ai/dsh-plugin-package-inventory-deepseek@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-ptc-runtime@0.2.0-rc.1
+@deepseek-ai/dsh-ptc-runtime@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-ptc-runtime-node@0.2.0-rc.1
+@deepseek-ai/dsh-ptc-runtime-node@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-pwsh-local@0.2.0-rc.1
+@deepseek-ai/dsh-pwsh-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-pwsh-sandbox@0.2.0-rc.1
+@deepseek-ai/dsh-pwsh-sandbox@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-repeat-tool-reminder@0.2.0-rc.1
+@deepseek-ai/dsh-repeat-tool-reminder@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sandbox@0.2.0-rc.1
+@deepseek-ai/dsh-sandbox@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sandbox-local@0.2.0-rc.1
+@deepseek-ai/dsh-sandbox-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sandbox-policy@0.2.0-rc.1
+@deepseek-ai/dsh-sandbox-policy@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sandbox-windows-acl@0.2.0-rc.1
+@deepseek-ai/dsh-sandbox-windows-acl@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-schedule@0.2.0-rc.1
+@deepseek-ai/dsh-schedule@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-scope@0.2.0-rc.1
+@deepseek-ai/dsh-scope@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sdk-app@0.2.0-rc.1
+@deepseek-ai/dsh-sdk-app@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sdk-client@0.2.0-rc.1
+@deepseek-ai/dsh-sdk-client@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sdk-jsonrpc-server@0.2.0-rc.1
+@deepseek-ai/dsh-sdk-jsonrpc-server@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sdk-minimal@0.2.0-rc.1
+@deepseek-ai/dsh-sdk-minimal@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-sdk-protocol@0.2.0-rc.1
+@deepseek-ai/dsh-sdk-protocol@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session@0.2.0-rc.1
+@deepseek-ai/dsh-session@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-checkpoint-policy@0.2.0-rc.1
+@deepseek-ai/dsh-session-checkpoint-policy@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-format@0.2.0-rc.1
+@deepseek-ai/dsh-session-format@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-format-catalog@0.2.0-rc.1
+@deepseek-ai/dsh-session-format-catalog@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-format-v0-to-v1@0.2.0-rc.1
+@deepseek-ai/dsh-session-format-v0-to-v1@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-format-v1-to-v2@0.2.0-rc.1
+@deepseek-ai/dsh-session-format-v1-to-v2@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-format-v2-to-v3@0.2.0-rc.1
+@deepseek-ai/dsh-session-format-v2-to-v3@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-format-v3-to-v4@0.2.0-rc.1
+@deepseek-ai/dsh-session-format-v3-to-v4@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-log-deepseek@0.2.0-rc.1
+@deepseek-ai/dsh-session-log-deepseek@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-log-export@0.2.0-rc.1
+@deepseek-ai/dsh-session-log-export@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-persistence@0.2.0-rc.1
+@deepseek-ai/dsh-session-persistence@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-persistence-jsonl@0.2.0-rc.1
+@deepseek-ai/dsh-session-persistence-jsonl@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-projection@0.2.0-rc.1
+@deepseek-ai/dsh-session-projection@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-projection-cache@0.2.0-rc.1
+@deepseek-ai/dsh-session-projection-cache@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-query@0.2.0-rc.1
+@deepseek-ai/dsh-session-query@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-query-sqlite@0.2.0-rc.1
+@deepseek-ai/dsh-session-query-sqlite@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-reference@0.2.0-rc.1
+@deepseek-ai/dsh-session-reference@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-stats@0.2.0-rc.1
+@deepseek-ai/dsh-session-stats@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-telemetry@0.2.0-rc.1
+@deepseek-ai/dsh-session-telemetry@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-telemetry-otel@0.2.0-rc.1
+@deepseek-ai/dsh-session-telemetry-otel@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-title@0.2.0-rc.1
+@deepseek-ai/dsh-session-title@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-title-first-prompt-llm@0.2.0-rc.1
+@deepseek-ai/dsh-session-title-first-prompt-llm@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-title-llm@0.2.0-rc.1
+@deepseek-ai/dsh-session-title-llm@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-session-turn-outline@0.2.0-rc.1
+@deepseek-ai/dsh-session-turn-outline@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-settings@0.2.0-rc.1
+@deepseek-ai/dsh-settings@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-shell@0.2.0-rc.1
+@deepseek-ai/dsh-shell@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-shell-env@0.2.0-rc.1
+@deepseek-ai/dsh-shell-env@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-skill@0.2.0-rc.1
+@deepseek-ai/dsh-skill@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-skill-badge@0.2.0-rc.1
+@deepseek-ai/dsh-skill-badge@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-skill-filesystem@0.2.0-rc.1
+@deepseek-ai/dsh-skill-filesystem@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-skill-office@0.2.0-rc.1
+@deepseek-ai/dsh-skill-office@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-spill@0.2.0-rc.1
+@deepseek-ai/dsh-spill@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-spill-local@0.2.0-rc.1
+@deepseek-ai/dsh-spill-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-spill-policy@0.2.0-rc.1
+@deepseek-ai/dsh-spill-policy@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-storage@0.2.0-rc.1
+@deepseek-ai/dsh-storage@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-storage-domain@0.2.0-rc.1
+@deepseek-ai/dsh-storage-domain@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-storage-json@0.2.0-rc.1
+@deepseek-ai/dsh-storage-json@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-subagent@0.2.0-rc.1
+@deepseek-ai/dsh-subagent@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-subagent-fork-in-process@0.2.0-rc.1
+@deepseek-ai/dsh-subagent-fork-in-process@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-subagent-in-process-driver@0.2.0-rc.1
+@deepseek-ai/dsh-subagent-in-process-driver@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-subagent-spawn-in-process@0.2.0-rc.1
+@deepseek-ai/dsh-subagent-spawn-in-process@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-subprocess@0.2.0-rc.1
+@deepseek-ai/dsh-subprocess@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-subprocess-local@0.2.0-rc.1
+@deepseek-ai/dsh-subprocess-local@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-system-prompt@0.2.0-rc.1
+@deepseek-ai/dsh-system-prompt@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-terminal@0.2.0-rc.1
+@deepseek-ai/dsh-terminal@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-terminal-bash@0.2.0-rc.1
+@deepseek-ai/dsh-terminal-bash@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-time-context@0.2.0-rc.1
+@deepseek-ai/dsh-time-context@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-timeout@0.2.0-rc.1
+@deepseek-ai/dsh-timeout@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tmux-context@0.2.0-rc.1
+@deepseek-ai/dsh-tmux-context@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-token-meter@0.2.0-rc.1
+@deepseek-ai/dsh-token-meter@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-ask-user@0.2.0-rc.1
+@deepseek-ai/dsh-tool-ask-user@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-bash@0.2.0-rc.1
+@deepseek-ai/dsh-tool-bash@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-bash-persistent@0.2.0-rc.1
+@deepseek-ai/dsh-tool-bash-persistent@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-call-timeout-policy@0.2.0-rc.1
+@deepseek-ai/dsh-tool-call-timeout-policy@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-cordis@0.2.0-rc.1
+@deepseek-ai/dsh-tool-cordis@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-fs@0.2.0-rc.1
+@deepseek-ai/dsh-tool-fs@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-fs-search@0.2.0-rc.1
+@deepseek-ai/dsh-tool-fs-search@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-goal@0.2.0-rc.1
+@deepseek-ai/dsh-tool-goal@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-jobs@0.2.0-rc.1
+@deepseek-ai/dsh-tool-jobs@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-present@0.2.0-rc.1
+@deepseek-ai/dsh-tool-present@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-pwsh@0.2.0-rc.1
+@deepseek-ai/dsh-tool-pwsh@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-pwsh-persistent@0.2.0-rc.1
+@deepseek-ai/dsh-tool-pwsh-persistent@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-ralph@0.2.0-rc.1
+@deepseek-ai/dsh-tool-ralph@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-skill@0.2.0-rc.1
+@deepseek-ai/dsh-tool-skill@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-str-replace-editor@0.2.0-rc.1
+@deepseek-ai/dsh-tool-str-replace-editor@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-subagent@0.2.0-rc.1
+@deepseek-ai/dsh-tool-subagent@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-subagent-control@0.2.0-rc.1
+@deepseek-ai/dsh-tool-subagent-control@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-todo@0.2.0-rc.1
+@deepseek-ai/dsh-tool-todo@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-web@0.2.0-rc.1
+@deepseek-ai/dsh-tool-web@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-workflow@0.2.0-rc.1
+@deepseek-ai/dsh-tool-workflow@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tool-workspace-dependencies@0.2.0-rc.1
+@deepseek-ai/dsh-tool-workspace-dependencies@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-tools@0.2.0-rc.1
+@deepseek-ai/dsh-tools@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-typert-loader@0.2.0-rc.1
+@deepseek-ai/dsh-typert-loader@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-typert-protocol@0.2.0-rc.1
+@deepseek-ai/dsh-typert-protocol@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-typert-registry@0.2.0-rc.1
+@deepseek-ai/dsh-typert-registry@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-user-approval@0.2.0-rc.1
+@deepseek-ai/dsh-user-approval@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-user-questions@0.2.0-rc.1
+@deepseek-ai/dsh-user-questions@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-util-code-language@0.2.0-rc.1
+@deepseek-ai/dsh-util-code-language@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-util-crypto@0.2.0-rc.1
+@deepseek-ai/dsh-util-crypto@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-util-time@0.2.0-rc.1
+@deepseek-ai/dsh-util-time@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-util-values@0.2.0-rc.1
+@deepseek-ai/dsh-util-values@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-util-workspace-path@0.2.0-rc.1
+@deepseek-ai/dsh-util-workspace-path@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-web@0.2.0-rc.1
+@deepseek-ai/dsh-web@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-web-app@0.2.0-rc.1
+@deepseek-ai/dsh-web-app@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-web-fetch-http@0.2.0-rc.1
+@deepseek-ai/dsh-web-fetch-http@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-web-frontend@0.2.0-rc.1
+@deepseek-ai/dsh-web-frontend@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-web-search-deepseek@0.2.0-rc.1
+@deepseek-ai/dsh-web-search-deepseek@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-webhook@0.2.0-rc.1
+@deepseek-ai/dsh-webhook@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-webhook-github@0.2.0-rc.1
+@deepseek-ai/dsh-webhook-github@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-win32-process@0.2.0-rc.1
+@deepseek-ai/dsh-win32-process@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-workflow@0.2.0-rc.1
+@deepseek-ai/dsh-workflow@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-workflow-ptc@0.2.0-rc.1
+@deepseek-ai/dsh-workflow-ptc@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-workspace@0.2.0-rc.1
+@deepseek-ai/dsh-workspace@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
 
-@deepseek-ai/dsh-workspace-changes@0.2.0-rc.1
+@deepseek-ai/dsh-workspace-changes@0.2.0-rc.2
 License: MIT
 Homepage: https://github.com/deepseek-ai/deepseek-harness#readme
 Bundled notice text: fe195482bb2bddf3
@@ -1707,13 +1677,13 @@ License: MIT
 Homepage: https://semi.design
 Bundled notice text: 64c608825a1c57d4
 
-@earendil-works/pi-ai@0.85.1
+@earendil-works/pi-ai@0.87.1
 License: MIT
 Author: Mario Zechner
 Homepage: https://github.com/earendil-works/pi#readme
 Bundled notice text: not supplied by package
 
-@earendil-works/pi-telemetry@0.85.1
+@earendil-works/pi-telemetry@0.87.1
 License: MIT
 Author: Mario Zechner
 Homepage: https://github.com/earendil-works/pi#readme
@@ -1778,7 +1748,7 @@ License: MIT
 Homepage: https://github.com/FortAwesome/react-fontawesome
 Bundled notice text: ad3e8508eaf5e40b
 
-@google/genai@1.52.0
+@google/genai@2.21.0
 License: Apache-2.0
 Homepage: https://github.com/googleapis/js-genai#readme
 Bundled notice text: 283ea6cc2997a1a7
@@ -2034,6 +2004,54 @@ Author: Ze-Zheng Wu
 Homepage: https://github.com/Sec-ant/readable-stream
 Bundled notice text: bb55cf05a8cd895b
 
+@shikijs/core@4.3.1
+License: MIT
+Author: Pine Wu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
+@shikijs/engine-javascript@4.3.1
+License: MIT
+Author: Anthony Fu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
+@shikijs/engine-oniguruma@4.3.1
+License: MIT
+Author: Anthony Fu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
+@shikijs/langs@4.3.1
+License: MIT
+Author: Anthony Fu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
+@shikijs/primitive@4.3.1
+License: MIT
+Author: Anthony Fu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
+@shikijs/themes@4.3.1
+License: MIT
+Author: Anthony Fu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
+@shikijs/types@4.3.1
+License: MIT
+Author: Anthony Fu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
+@shikijs/vscode-textmate@10.0.2
+License: MIT
+Author: Microsoft Corporation
+Homepage: https://github.com/shikijs/vscode-textmate#readme
+Bundled notice text: b09ac0e46520eec4
+
 @sindresorhus/is@7.2.0
 License: MIT
 Author: Sindre Sorhus
@@ -2064,13 +2082,7 @@ Author: AWS SDK for JavaScript Team
 Homepage: https://github.com/smithy-lang/smithy-typescript/tree/main/packages/fetch-http-handler
 Bundled notice text: d82ceb8cbd004a2d
 
-@smithy/is-array-buffer@2.2.0
-License: Apache-2.0
-Author: AWS SDK for JavaScript Team
-Homepage: https://github.com/awslabs/smithy-typescript/tree/main/packages/is-array-buffer
-Bundled notice text: d82ceb8cbd004a2d
-
-@smithy/node-http-handler@4.12.1, 4.7.3
+@smithy/node-http-handler@4.12.1
 License: Apache-2.0
 Author: AWS SDK for JavaScript Team
 Homepage: https://github.com/smithy-lang/smithy-typescript/tree/main/packages/node-http-handler
@@ -2087,18 +2099,6 @@ License: Apache-2.0
 Author: AWS Smithy Team
 Homepage: https://github.com/smithy-lang/smithy-typescript/tree/main/packages/types
 Bundled notice text: 2ef1e48ea743d9c8
-
-@smithy/util-buffer-from@2.2.0
-License: Apache-2.0
-Author: AWS SDK for JavaScript Team
-Homepage: https://github.com/awslabs/smithy-typescript/tree/main/packages/util-buffer-from
-Bundled notice text: d82ceb8cbd004a2d
-
-@smithy/util-utf8@2.3.0
-License: Apache-2.0
-Author: AWS SDK for JavaScript Team
-Homepage: https://github.com/awslabs/smithy-typescript/tree/main/packages/util-utf8
-Bundled notice text: d82ceb8cbd004a2d
 
 @stablelib/base64@1.0.1
 License: MIT
@@ -2355,6 +2355,11 @@ License: MIT
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/http-cache-semantics
 Bundled notice text: ff82c90f84945c60
 
+@types/katex@0.16.8
+License: MIT
+Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/katex
+Bundled notice text: ff82c90f84945c60
+
 @types/mdast@4.0.4
 License: MIT
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/mdast
@@ -2453,7 +2458,7 @@ License: MIT
 Homepage: https://github.com/acornjs/acorn-jsx
 Bundled notice text: c7a13840e603db93
 
-agent-base@7.1.4
+agent-base@7.1.4, 9.0.0
 License: MIT
 Author: Nathan Rajlich
 Homepage: https://github.com/TooTallNate/proxy-agents#readme
@@ -2470,6 +2475,12 @@ License: MIT
 Author: Evgeny Poberezkin
 Homepage: https://github.com/ajv-validator/ajv-formats#readme
 Bundled notice text: 0eb7e0538bf86bad
+
+anser@2.3.5
+License: MIT
+Author: Ionică Bizău
+Homepage: https://github.com/IonicaBizau/anser#readme
+Bundled notice text: 9e5ca16a84c08721
 
 argparse@2.0.1
 License: Python-2.0
@@ -2689,7 +2700,7 @@ Author: Titus Wormer
 Homepage: https://github.com/wooorm/comma-separated-tokens#readme
 Bundled notice text: d9c32f07344cb9c8
 
-commander@15.0.0
+commander@15.0.0, 8.3.0
 License: MIT
 Author: TJ Holowaychuk
 Homepage: https://github.com/tj/commander.js#readme
@@ -2953,12 +2964,6 @@ License: MIT
 Author: Mathias Buus
 Homepage: https://github.com/mafintosh/end-of-stream
 Bundled notice text: 3fe8d55a98dbf260
-
-entities@6.0.1
-License: BSD-2-Clause
-Author: Felix Boehm
-Homepage: https://github.com/fb55/entities#readme
-Bundled notice text: 0e57eeaccc07eade
 
 es-define-property@1.0.1
 License: MIT
@@ -3279,34 +3284,16 @@ Author: Jordan Harband
 Homepage: https://github.com/inspect-js/hasOwn#readme
 Bundled notice text: 928a86b1d2984fd8
 
-hast-util-from-parse5@8.0.3
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/syntax-tree/hast-util-from-parse5#readme
-Bundled notice text: ea559213e0e927a2
-
-hast-util-parse-selector@4.0.0
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/syntax-tree/hast-util-parse-selector#readme
-Bundled notice text: d9c32f07344cb9c8
-
-hast-util-raw@9.1.0
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/syntax-tree/hast-util-raw#readme
-Bundled notice text: ea559213e0e927a2
-
-hast-util-sanitize@5.0.2
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/syntax-tree/hast-util-sanitize#readme
-Bundled notice text: ea559213e0e927a2
-
 hast-util-to-estree@3.1.3
 License: MIT
 Author: Titus Wormer
 Homepage: https://github.com/syntax-tree/hast-util-to-estree#readme
+Bundled notice text: ea559213e0e927a2
+
+hast-util-to-html@9.0.5
+License: MIT
+Author: Titus Wormer
+Homepage: https://github.com/syntax-tree/hast-util-to-html#readme
 Bundled notice text: ea559213e0e927a2
 
 hast-util-to-jsx-runtime@2.3.6
@@ -3315,23 +3302,11 @@ Author: Titus Wormer
 Homepage: https://github.com/syntax-tree/hast-util-to-jsx-runtime#readme
 Bundled notice text: ea559213e0e927a2
 
-hast-util-to-parse5@8.0.1
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/syntax-tree/hast-util-to-parse5#readme
-Bundled notice text: ea559213e0e927a2
-
 hast-util-whitespace@3.0.0
 License: MIT
 Author: Titus Wormer
 Homepage: https://github.com/syntax-tree/hast-util-whitespace#readme
 Bundled notice text: d9c32f07344cb9c8
-
-hastscript@9.0.1
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/syntax-tree/hastscript#readme
-Bundled notice text: ea559213e0e927a2
 
 hono@4.13.8
 License: MIT
@@ -3363,7 +3338,7 @@ Author: Jonathan Ong
 Homepage: https://github.com/jshttp/http-errors#readme
 Bundled notice text: b279be1458cd102a
 
-http-proxy-agent@7.0.2
+http-proxy-agent@9.1.0
 License: MIT
 Author: Nathan Rajlich
 Homepage: https://github.com/TooTallNate/proxy-agents#readme
@@ -3375,7 +3350,7 @@ Author: Szymon Marczak
 Homepage: https://github.com/szmarczak/http2-wrapper#readme
 Bundled notice text: a352701187ac42c6
 
-https-proxy-agent@7.0.6
+https-proxy-agent@7.0.6, 9.1.0
 License: MIT
 Author: Nathan Rajlich
 Homepage: https://github.com/TooTallNate/proxy-agents#readme
@@ -3398,6 +3373,12 @@ License: BSD-3-Clause
 Author: Feross Aboukhadijeh
 Homepage: https://github.com/feross/ieee754#readme
 Bundled notice text: 9d78a7400453b7f1
+
+immer@10.2.0
+License: MIT
+Author: Michel Weststrate
+Homepage: https://github.com/immerjs/immer#readme
+Bundled notice text: 6768b01a4a41e5a4
 
 inherits@2.0.4
 License: ISC
@@ -3576,6 +3557,11 @@ Author: Brian J Brennan
 Homepage: https://github.com/brianloveswords/node-jws#readme
 Bundled notice text: f175d4a76efebb84
 
+katex@0.16.47
+License: MIT
+Homepage: https://katex.org
+Bundled notice text: d3c8c167dfa0a8a7
+
 keyv@5.6.0
 License: MIT
 Author: Jared Wray
@@ -3659,12 +3645,6 @@ Author: Titus Wormer
 Homepage: https://github.com/wooorm/markdown-table#readme
 Bundled notice text: ea559213e0e927a2
 
-marked@17.0.6
-License: MIT
-Author: Christopher Jeffrey
-Homepage: https://marked.js.org
-Bundled notice text: dd923de9769808b2
-
 math-intrinsics@1.1.0
 License: MIT
 Author: Jordan Harband
@@ -3719,6 +3699,12 @@ Author: Titus Wormer
 Homepage: https://github.com/syntax-tree/mdast-util-gfm-task-list-item#readme
 Bundled notice text: 0e99f2710dd25758
 
+mdast-util-math@3.0.0
+License: MIT
+Author: Titus Wormer
+Homepage: https://github.com/syntax-tree/mdast-util-math#readme
+Bundled notice text: 0e99f2710dd25758
+
 mdast-util-mdx@3.0.0
 License: MIT
 Author: Titus Wormer
@@ -3742,12 +3728,6 @@ License: MIT
 Author: Titus Wormer
 Homepage: https://github.com/syntax-tree/mdast-util-mdxjs-esm#readme
 Bundled notice text: 0e99f2710dd25758
-
-mdast-util-newline-to-break@2.0.0
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/syntax-tree/mdast-util-newline-to-break#readme
-Bundled notice text: c828db7b576fd1c9
 
 mdast-util-phrasing@4.1.0
 License: MIT
@@ -3842,6 +3822,12 @@ micromark-extension-gfm-task-list-item@2.1.0
 License: MIT
 Author: Titus Wormer
 Homepage: https://github.com/micromark/micromark-extension-gfm-task-list-item#readme
+Bundled notice text: 0e99f2710dd25758
+
+micromark-extension-math@3.1.0
+License: MIT
+Author: Titus Wormer
+Homepage: https://github.com/micromark/micromark-extension-math#readme
 Bundled notice text: 0e99f2710dd25758
 
 micromark-extension-mdx-expression@3.0.1
@@ -4132,6 +4118,18 @@ Author: Isaac Z. Schlueter
 Homepage: https://github.com/isaacs/once#readme
 Bundled notice text: 0ae52fe329ccfd23
 
+oniguruma-parser@0.12.2
+License: MIT
+Author: Steven Levithan
+Homepage: https://github.com/slevithan/oniguruma-parser#readme
+Bundled notice text: a73647cf797f6a2f
+
+oniguruma-to-es@4.3.6
+License: MIT
+Author: Steven Levithan
+Homepage: https://github.com/slevithan/oniguruma-to-es#readme
+Bundled notice text: 84a6a26e0f609d20
+
 open@11.0.4
 License: MIT
 Author: Sindre Sorhus
@@ -4178,12 +4176,6 @@ License: MIT
 Author: Sindre Sorhus
 Homepage: https://github.com/sindresorhus/parse-ms#readme
 Bundled notice text: 1529f88b36750950
-
-parse5@7.3.0
-License: MIT
-Author: Ivan Nikulin
-Homepage: https://parse5.js.org
-Bundled notice text: 2c01a01133de3c6d
 
 parseurl@1.3.3
 License: MIT
@@ -4360,6 +4352,12 @@ Author: Douglas Christopher Wilson
 Homepage: https://github.com/jshttp/proxy-addr#readme
 Bundled notice text: 49fa72ab1de52693
 
+proxy-agent-negotiate@1.1.0
+License: MIT
+Author: Nathan Rajlich
+Homepage: https://github.com/TooTallNate/proxy-agents#readme
+Bundled notice text: not supplied by package
+
 pump@3.0.4
 License: MIT
 Author: Mathias Buus Madsen
@@ -4481,35 +4479,29 @@ Author: Titus Wormer
 Homepage: https://github.com/mdx-js/recma
 Bundled notice text: 2cf2d507c76caa8f
 
-rehype-harden@1.1.8
+regex@6.1.0
 License: MIT
-Author: S. Elliott Johnson
-Homepage: https://github.com/vercel-labs/markdown-sanitizers#readme
-Bundled notice text: efe76166c0f9311e
+Author: Steven Levithan
+Homepage: https://github.com/slevithan/regex#readme
+Bundled notice text: f526adb7b81e5d0b
 
-rehype-raw@7.0.0
+regex-recursion@6.0.2
 License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/rehypejs/rehype-raw#readme
-Bundled notice text: d9c32f07344cb9c8
+Author: Steven Levithan
+Homepage: https://github.com/slevithan/regex-recursion#readme
+Bundled notice text: f526adb7b81e5d0b
+
+regex-utilities@2.3.0
+License: MIT
+Author: Steven Levithan
+Homepage: https://github.com/slevithan/regex-utilities#readme
+Bundled notice text: 4b47df8ec8583084
 
 rehype-recma@1.0.0
 License: MIT
 Author: Titus Wormer
 Homepage: https://github.com/mdx-js/recma
 Bundled notice text: 2cf2d507c76caa8f
-
-rehype-sanitize@6.0.0
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/rehypejs/rehype-sanitize#readme
-Bundled notice text: d9c32f07344cb9c8
-
-remark-breaks@4.0.0
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/remarkjs/remark-breaks#readme
-Bundled notice text: c828db7b576fd1c9
 
 remark-gfm@4.0.1
 License: MIT
@@ -4540,12 +4532,6 @@ License: MIT
 Author: Titus Wormer
 Homepage: https://remark.js.org
 Bundled notice text: f78777570e325f82
-
-remend@1.3.1
-License: Apache-2.0
-Author: Hayden Bleasel
-Homepage: https://streamdown.ai/docs/termination
-Bundled notice text: b4f9adb7c5689048
 
 require-from-string@2.0.2
 License: MIT
@@ -4695,6 +4681,12 @@ Author: The next-gen Kaldi team
 Homepage: https://github.com/csukuangfj/sherpa-onnx#readme
 Bundled notice text: not supplied by package
 
+shiki@4.3.1
+License: MIT
+Author: Pine Wu
+Homepage: https://github.com/shikijs/shiki#readme
+Bundled notice text: f20e2ee5da6ce4bf
+
 side-channel@1.1.1
 License: MIT
 Author: Jordan Harband
@@ -4737,6 +4729,12 @@ Author: Feross Aboukhadijeh
 Homepage: https://github.com/feross/simple-get
 Bundled notice text: df12b5d07fbd3cf2
 
+simple-icons@16.31.0
+License: CC0-1.0
+Author: Simple Icons Collaborators
+Homepage: https://simpleicons.org
+Bundled notice text: 64806c781f178cff
+
 sonic-boom@4.2.1
 License: MIT
 Author: Matteo Collina
@@ -4772,12 +4770,6 @@ License: MIT
 Homepage: https://github.com/jshttp/statuses#readme
 Bundled notice text: bc11a2b203c77ed6
 
-streamdown@2.6.0
-License: Apache-2.0
-Author: Hayden Bleasel
-Homepage: https://streamdown.ai
-Bundled notice text: b4f9adb7c5689048
-
 string_decoder@1.3.0
 License: MIT
 Homepage: https://github.com/nodejs/string_decoder
@@ -4812,12 +4804,6 @@ License: MIT
 Author: Mark
 Homepage: https://github.com/remarkablemark/style-to-object#readme
 Bundled notice text: 20b25fb4d9ba5aab
-
-tailwind-merge@3.6.0
-License: MIT
-Author: Dany Castillo
-Homepage: https://github.com/dcastil/tailwind-merge
-Bundled notice text: b25c1d68b3530dcc
 
 tar-fs@2.1.5
 License: MIT
@@ -4902,7 +4888,7 @@ License: MIT
 Homepage: https://github.com/jshttp/type-is#readme
 Bundled notice text: 7cb4d976f1c892a7
 
-typebox@1.3.7
+typebox@1.3.27
 License: MIT
 Author: sinclairzx81
 Homepage: https://github.com/sinclairzx81/typebox#readme
@@ -4960,6 +4946,12 @@ Author: Titus Wormer
 Homepage: https://github.com/syntax-tree/unist-util-position-from-estree#readme
 Bundled notice text: 59e8b888f1d3003c
 
+unist-util-remove-position@5.0.0
+License: MIT
+Author: Titus Wormer
+Homepage: https://github.com/syntax-tree/unist-util-remove-position#readme
+Bundled notice text: d9c32f07344cb9c8
+
 unist-util-stringify-position@4.0.0
 License: MIT
 Author: Titus Wormer
@@ -4990,10 +4982,10 @@ Author: Douglas Christopher Wilson
 Homepage: https://github.com/stream-utils/unpipe#readme
 Bundled notice text: 072fb4ea37f0b4a7
 
-use-sync-external-store@1.6.0
+use-sync-external-store@1.2.0, 1.6.0
 License: MIT
 Homepage: https://github.com/facebook/react#readme
-Bundled notice text: cf9b17822d1fcd4f
+Bundled notice text: a80c79b8f80e824c, cf9b17822d1fcd4f
 
 util-deprecate@1.0.2
 License: MIT
@@ -5019,12 +5011,6 @@ Author: Titus Wormer
 Homepage: https://github.com/vfile/vfile#readme
 Bundled notice text: e453dafb35c9b3cb
 
-vfile-location@5.0.3
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/vfile/vfile-location#readme
-Bundled notice text: d9c32f07344cb9c8
-
 vfile-message@4.0.3
 License: MIT
 Author: Titus Wormer
@@ -5036,12 +5022,6 @@ License: MIT
 Author: Marijn Haverbeke
 Homepage: https://github.com/marijnh/w3c-keyname#readme
 Bundled notice text: 4c54c0a6cedf9284
-
-web-namespaces@2.0.1
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/wooorm/web-namespaces#readme
-Bundled notice text: d9c32f07344cb9c8
 
 web-streams-polyfill@3.3.3
 License: MIT
@@ -5109,7 +5089,7 @@ Author: Stefan Terdell
 Homepage: https://github.com/StefanTerdell/zod-to-json-schema#readme
 Bundled notice text: 80d3168ad2f70f6f
 
-zustand@4.5.7
+zustand@4.4.7, 4.5.7
 License: MIT
 Author: Paul Henschel
 Homepage: https://github.com/pmndrs/zustand
@@ -5552,24 +5532,6 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-NOTICE TEXT 0e57eeaccc07eade
-------------------------------------
-Source filenames: LICENSE
-Applies to:
-- entities@6.0.1
-
-Copyright (c) Felix Böhm
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-
-Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-
-THIS IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS,
-EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 NOTICE TEXT 0e8d2550baea17eb
 ------------------------------------
 Source filenames: LICENSE.txt
@@ -5600,6 +5562,7 @@ Applies to:
 - mdast-util-gfm-strikethrough@2.0.0
 - mdast-util-gfm-table@2.0.0
 - mdast-util-gfm-task-list-item@2.0.0
+- mdast-util-math@3.0.0
 - mdast-util-mdx-expression@2.0.1
 - mdast-util-mdx-jsx@3.2.0
 - mdast-util-mdx@3.0.0
@@ -5609,6 +5572,7 @@ Applies to:
 - micromark-extension-gfm-tagfilter@2.0.0
 - micromark-extension-gfm-task-list-item@2.1.0
 - micromark-extension-gfm@3.0.0
+- micromark-extension-math@3.1.0
 - micromark-extension-mdx-jsx@3.0.2
 - micromark-extension-mdx-md@2.0.0
 - micromark-extension-mdxjs-esm@3.0.0
@@ -6557,9 +6521,7 @@ NOTICE TEXT 283ea6cc2997a1a7
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- @aws-crypto/sha256-browser@5.2.0
-- @aws-crypto/supports-web-crypto@5.2.0
-- @google/genai@1.52.0
+- @google/genai@2.21.0
 - @opentelemetry/api-logs@0.220.0
 - @opentelemetry/api@1.9.1
 - @opentelemetry/core@2.11.0,2.9.0
@@ -6816,32 +6778,6 @@ Applies to:
 The MIT License (MIT)
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-NOTICE TEXT 2c01a01133de3c6d
-------------------------------------
-Source filenames: LICENSE
-Applies to:
-- parse5@7.3.0
-
-Copyright (c) 2013-2019 Ivan Nikulin (ifaaan@gmail.com, https://github.com/inikulin)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -7332,7 +7268,7 @@ NOTICE TEXT 384a8fa756d4ca7e
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- zustand@4.5.7
+- zustand@4.4.7,4.5.7
 
 MIT License
 
@@ -8148,6 +8084,34 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+NOTICE TEXT 4b47df8ec8583084
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- regex-utilities@2.3.0
+
+MIT License
+
+Copyright (c) 2024 Steven Levithan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 NOTICE TEXT 4b68ef983e0fd2b2
 ------------------------------------
 Source filenames: LICENSE
@@ -8618,7 +8582,7 @@ NOTICE TEXT 4cc9c2af4eb0056c
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- commander@15.0.0
+- commander@15.0.0,8.3.0
 
 (The MIT License)
 
@@ -9501,6 +9465,43 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+NOTICE TEXT 64806c781f178cff
+------------------------------------
+Source filenames: LICENSE.md
+Applies to:
+- simple-icons@16.31.0
+
+# CC0 1.0 Universal
+
+## Statement of Purpose
+
+The laws of most jurisdictions throughout the world automatically confer exclusive Copyright and Related Rights (defined below) upon the creator and subsequent owner(s) (each and all, an “owner”) of an original work of authorship and/or a database (each, a “Work”).
+
+Certain owners wish to permanently relinquish those rights to a Work for the purpose of contributing to a commons of creative, cultural and scientific works (“Commons”) that the public can reliably and without fear of later claims of infringement build upon, modify, incorporate in other works, reuse and redistribute as freely as possible in any form whatsoever and for any purposes, including without limitation commercial purposes. These owners may contribute to the Commons to promote the ideal of a free culture and the further production of creative, cultural and scientific works, or to gain reputation or greater distribution for their Work in part through the use and efforts of others.
+
+For these and/or other purposes and motivations, and without any expectation of additional consideration or compensation, the person associating CC0 with a Work (the “Affirmer”), to the extent that he or she is an owner of Copyright and Related Rights in the Work, voluntarily elects to apply CC0 to the Work and publicly distribute the Work under its terms, with knowledge of his or her Copyright and Related Rights in the Work and the meaning and intended legal effect of CC0 on those rights.
+
+1. Copyright and Related Rights. A Work made available under CC0 may be protected by copyright and related or neighboring rights (“Copyright and Related Rights”). Copyright and Related Rights include, but are not limited to, the following:
+    1. the right to reproduce, adapt, distribute, perform, display, communicate, and translate a Work;
+    2. moral rights retained by the original author(s) and/or performer(s);
+    3. publicity and privacy rights pertaining to a person’s image or likeness depicted in a Work;
+    4. rights protecting against unfair competition in regards to a Work, subject to the limitations in paragraph 4(i), below;
+    5. rights protecting the extraction, dissemination, use and reuse of data in a Work;
+    6. database rights (such as those arising under Directive 96/9/EC of the European Parliament and of the Council of 11 March 1996 on the legal protection of databases, and under any national implementation thereof, including any amended or successor version of such directive); and
+    7. other similar, equivalent or corresponding rights throughout the world based on applicable law or treaty, and any national implementations thereof.
+
+2. Waiver. To the greatest extent permitted by, but not in contravention of, applicable law, Affirmer hereby overtly, fully, permanently, irrevocably and unconditionally waives, abandons, and surrenders all of Affirmer’s Copyright and Related Rights and associated claims and causes of action, whether now known or unknown (including existing as well as future claims and causes of action), in the Work (i) in all territories worldwide, (ii) for the maximum duration provided by applicable law or treaty (including future time extensions), (iii) in any current or future medium and for any number of copies, and (iv) for any purpose whatsoever, including without limitation commercial, advertising or promotional purposes (the “Waiver”). Affirmer makes the Waiver for the benefit of each member of the public at large and to the detriment of Affirmer’s heirs and successors, fully intending that such Waiver shall not be subject to revocation, rescission, cancellation, termination, or any other legal or equitable action to disrupt the quiet enjoyment of the Work by the public as contemplated by Affirmer’s express Statement of Purpose.
+
+3. Public License Fallback. Should any part of the Waiver for any reason be judged legally invalid or ineffective under applicable law, then the Waiver shall be preserved to the maximum extent permitted taking into account Affirmer’s express Statement of Purpose. In addition, to the extent the Waiver is so judged Affirmer hereby grants to each affected person a royalty-free, non transferable, non sublicensable, non exclusive, irrevocable and unconditional license to exercise Affirmer’s Copyright and Related Rights in the Work (i) in all territories worldwide, (ii) for the maximum duration provided by applicable law or treaty (including future time extensions), (iii) in any current or future medium and for any number of copies, and (iv) for any purpose whatsoever, including without limitation commercial, advertising or promotional purposes (the “License”). The License shall be deemed effective as of the date CC0 was applied by Affirmer to the Work. Should any part of the License for any reason be judged legally invalid or ineffective under applicable law, such partial invalidity or ineffectiveness shall not invalidate the remainder of the License, and in such case Affirmer hereby affirms that he or she will not (i) exercise any of his or her remaining Copyright and Related Rights in the Work or (ii) assert any associated claims and causes of action with respect to the Work, in either case contrary to Affirmer’s express Statement of Purpose.
+
+4. Limitations and Disclaimers.
+    1. No trademark or patent rights held by Affirmer are waived, abandoned, surrendered, licensed or otherwise affected by this document.
+    2. Affirmer offers the Work as-is and makes no representations or warranties of any kind concerning the Work, express, implied, statutory or otherwise, including without limitation warranties of title, merchantability, fitness for a particular purpose, non infringement, or the absence of latent or other defects, accuracy, or the present or absence of errors, whether or not discoverable, all to the greatest extent permissible under applicable law.
+    3. Affirmer disclaims responsibility for clearing rights of other persons that may apply to the Work or any use thereof, including without limitation any person’s Copyright and Related Rights in the Work. Further, Affirmer disclaims responsibility for obtaining any necessary consents, permissions or other rights required for any use of the Work.
+    4. Affirmer understands and acknowledges that Creative Commons is not a party to this document and has no duty or obligation with respect to this CC0 or use of the Work.
+
+For more information, please see <https://creativecommons.org/publicdomain/zero/1.0>.
+
 NOTICE TEXT 64bfee3981d999e0
 ------------------------------------
 Source filenames: LICENSE
@@ -9683,6 +9684,34 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+NOTICE TEXT 6768b01a4a41e5a4
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- immer@10.2.0
+
+MIT License
+
+Copyright (c) 2017 Michel Weststrate
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 NOTICE TEXT 68574014a3913453
 ------------------------------------
 Source filenames: LICENSE
@@ -9819,8 +9848,6 @@ NOTICE TEXT 6dc0e068dcf3a5bc
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- @aws-crypto/sha256-js@5.2.0
-- @aws-crypto/util@5.2.0
 - detect-libc@2.1.2
 
 Apache License
@@ -10148,7 +10175,7 @@ NOTICE TEXT 711cb7cff0da93b9
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- @aws-sdk/client-bedrock-runtime@3.1048.0
+- @aws-sdk/client-bedrock-runtime@3.1127.0
 
 Apache License
                            Version 2.0, January 2004
@@ -11279,6 +11306,34 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+NOTICE TEXT 84a6a26e0f609d20
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- oniguruma-to-es@4.3.6
+
+MIT License
+
+Copyright (c) 2024-2026 Steven Levithan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 NOTICE TEXT 8694aa57bec3f3e9
 ------------------------------------
 Source filenames: LICENSE
@@ -11840,9 +11895,9 @@ NOTICE TEXT 8d8c55319c7729d5
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- agent-base@7.1.4
-- http-proxy-agent@7.0.2
-- https-proxy-agent@7.0.6
+- agent-base@7.1.4,9.0.0
+- http-proxy-agent@9.1.0
+- https-proxy-agent@7.0.6,9.1.0
 
 (The MIT License)
 
@@ -12560,6 +12615,34 @@ OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
 WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
 ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+NOTICE TEXT 9e5ca16a84c08721
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- anser@2.3.5
+
+The MIT License (MIT)
+
+Copyright (c) 2012-25 Ionică Bizău <bizauionica@gmail.com> (https://ionicabizau.net)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 NOTICE TEXT 9ff562631a04b8cb
 ------------------------------------
 Source filenames: LICENSE
@@ -12938,11 +13021,40 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+NOTICE TEXT a73647cf797f6a2f
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- oniguruma-parser@0.12.2
+
+MIT License
+
+Copyright (c) 2025-2026 Steven Levithan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 NOTICE TEXT a80c79b8f80e824c
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
 - react-is@16.13.1
+- use-sync-external-store@1.2.0,1.6.0
 
 MIT License
 
@@ -13198,15 +13310,15 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-NOTICE TEXT b1c501095de70182
+NOTICE TEXT b09ac0e46520eec4
 ------------------------------------
-Source filenames: LICENSE
+Source filenames: LICENSE.md
 Applies to:
-- memoize-one@5.2.1
+- @shikijs/vscode-textmate@10.0.2
 
-MIT License
+The MIT License (MIT)
 
-Copyright (c) 2019 Alexander Reardon
+Copyright (c) Microsoft Corporation
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -13226,15 +13338,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-NOTICE TEXT b25c1d68b3530dcc
+NOTICE TEXT b1c501095de70182
 ------------------------------------
-Source filenames: LICENSE.md
+Source filenames: LICENSE
 Applies to:
-- tailwind-merge@3.6.0
+- memoize-one@5.2.1
 
 MIT License
 
-Copyright (c) 2021 Dany Castillo
+Copyright (c) 2019 Alexander Reardon
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -13398,27 +13510,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-NOTICE TEXT b4f9adb7c5689048
-------------------------------------
-Source filenames: LICENSE
-Applies to:
-- remend@1.3.1
-- streamdown@2.6.0
-
-Copyright 2023 Vercel, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 
 NOTICE TEXT b5954f59305d917a
 ------------------------------------
@@ -14184,36 +14275,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-NOTICE TEXT c828db7b576fd1c9
-------------------------------------
-Source filenames: license
-Applies to:
-- mdast-util-newline-to-break@2.0.0
-- remark-breaks@4.0.0
-
-(The MIT License)
-
-Copyright (c) 2017 Titus Wormer <tituswormer@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-'Software'), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 NOTICE TEXT c9808a775260db56
 ------------------------------------
 Source filenames: license
@@ -14698,7 +14759,7 @@ Applies to:
 - react-dom@19.2.8
 - react@19.2.8
 - scheduler@0.27.0
-- use-sync-external-store@1.6.0
+- use-sync-external-store@1.2.0,1.6.0
 
 MIT License
 
@@ -14783,7 +14844,7 @@ NOTICE TEXT d298496454d461ef
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- @anthropic-ai/sdk@0.123.0
+- @anthropic-ai/sdk@0.124.0
 
 Copyright 2023 Anthropic, PBC.
 
@@ -14802,6 +14863,34 @@ Applies to:
 The MIT License (MIT)
 
 Copyright (c) 2016 Zeit, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+NOTICE TEXT d3c8c167dfa0a8a7
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- katex@0.16.47
+
+The MIT License (MIT)
+
+Copyright (c) 2013-2020 Khan Academy and other contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -15108,17 +15197,13 @@ Applies to:
 - @aws-sdk/credential-provider-ini@3.973.15
 - @aws-sdk/credential-provider-node@3.972.82
 - @aws-sdk/middleware-eventstream@3.972.29
-- @aws-sdk/token-providers@3.1048.0,3.1116.0
+- @aws-sdk/token-providers@3.1116.0,3.1127.0
 - @aws-sdk/types@3.974.5
-- @aws-sdk/util-locate-window@3.965.10
 - @aws-sdk/xml-builder@3.972.40
 - @smithy/credential-provider-imds@4.5.2
 - @smithy/fetch-http-handler@5.8.0
-- @smithy/is-array-buffer@2.2.0
-- @smithy/node-http-handler@4.12.1,4.7.3
+- @smithy/node-http-handler@4.12.1
 - @smithy/signature-v4@5.7.3
-- @smithy/util-buffer-from@2.2.0
-- @smithy/util-utf8@2.3.0
 
 Apache License
                            Version 2.0, January 2004
@@ -15327,7 +15412,6 @@ NOTICE TEXT d9c32f07344cb9c8
 Source filenames: license
 Applies to:
 - comma-separated-tokens@2.0.3
-- hast-util-parse-selector@4.0.0
 - hast-util-whitespace@3.0.0
 - html-void-elements@3.0.0
 - is-alphabetical@2.0.1
@@ -15335,13 +15419,10 @@ Applies to:
 - is-decimal@2.0.1
 - is-hexadecimal@2.0.1
 - mdast-util-to-hast@13.2.1
-- rehype-raw@7.0.0
-- rehype-sanitize@6.0.0
 - space-separated-tokens@2.0.2
+- unist-util-remove-position@5.0.0
 - unist-util-stringify-position@4.0.0
 - unist-util-visit-parents@6.0.2
-- vfile-location@5.0.3
-- web-namespaces@2.0.1
 - zwitch@2.0.4
 
 (The MIT License)
@@ -15573,57 +15654,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-NOTICE TEXT dd923de9769808b2
-------------------------------------
-Source filenames: LICENSE.md
-Applies to:
-- marked@17.0.6
-
-# License information
-
-## Contribution License Agreement
-
-If you contribute code to this project, you are implicitly allowing your code
-to be distributed under the MIT license. You are also implicitly verifying that
-all code is your original work. `</legalese>`
-
-## Marked
-
-Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/)
-Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-## Markdown
-
-Copyright © 2004, John Gruber
-http://daringfireball.net/
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
-* Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
-* Neither the name “Markdown” nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
-
-This software is provided by the copyright holders and contributors “as is” and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright owner or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
 
 NOTICE TEXT ddb4986a4ed37c90
 ------------------------------------
@@ -15943,7 +15973,7 @@ NOTICE TEXT e8a7cc256941a26b
 ------------------------------------
 Source filenames: license
 Applies to:
-- typebox@1.3.7
+- typebox@1.3.27
 
 TypeBox
 
@@ -16205,7 +16235,7 @@ Applies to:
 - @deepseek-ai/cordis-plugin-timer@1.1.6
 - @deepseek-ai/cordis@4.0.4
 - @deepseek-ai/cosmokit@1.8.5
-- @deepseek-ai/dsh-hmr@0.2.0-rc.1
+- @deepseek-ai/dsh-hmr@0.2.0-rc.2
 - @deepseek-ai/schemastery@3.18.4
 
 MIT License
@@ -16236,13 +16266,9 @@ Source filenames: license
 Applies to:
 - decode-named-character-reference@1.3.0
 - estree-util-scope@1.0.1
-- hast-util-from-parse5@8.0.3
-- hast-util-raw@9.1.0
-- hast-util-sanitize@5.0.2
 - hast-util-to-estree@3.1.3
+- hast-util-to-html@9.0.5
 - hast-util-to-jsx-runtime@2.3.6
-- hast-util-to-parse5@8.0.1
-- hastscript@9.0.1
 - markdown-table@3.0.4
 - mdast-util-find-and-replace@3.0.2
 - mdast-util-from-markdown@2.0.3
@@ -16545,34 +16571,6 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-NOTICE TEXT efe76166c0f9311e
-------------------------------------
-Source filenames: LICENSE.md
-Applies to:
-- rehype-harden@1.1.8
-
-MIT License
-
-Copyright (c) 2025 Vercel Inc.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
 NOTICE TEXT f117d4ede85429d4
 ------------------------------------
 Source filenames: LICENSE
@@ -16652,6 +16650,42 @@ INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PA
 PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
 FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+NOTICE TEXT f20e2ee5da6ce4bf
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- @shikijs/core@4.3.1
+- @shikijs/engine-javascript@4.3.1
+- @shikijs/engine-oniguruma@4.3.1
+- @shikijs/langs@4.3.1
+- @shikijs/primitive@4.3.1
+- @shikijs/themes@4.3.1
+- @shikijs/types@4.3.1
+- shiki@4.3.1
+
+MIT License
+
+Copyright (c) 2021 Pine Wu
+Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 NOTICE TEXT f2fde84e6c1f1776
 ------------------------------------
@@ -16739,6 +16773,35 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+NOTICE TEXT f526adb7b81e5d0b
+------------------------------------
+Source filenames: LICENSE
+Applies to:
+- regex-recursion@6.0.2
+- regex@6.1.0
+
+MIT License
+
+Copyright (c) 2025 Steven Levithan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 NOTICE TEXT f5854c00454b526e
 ------------------------------------
@@ -17272,284 +17335,284 @@ NOTICE TEXT fe195482bb2bddf3
 ------------------------------------
 Source filenames: LICENSE
 Applies to:
-- @deepseek-ai/dsh-acp-app@0.2.0-rc.1
-- @deepseek-ai/dsh-acp@0.2.0-rc.1
-- @deepseek-ai/dsh-agent-default-model@0.2.0-rc.1
-- @deepseek-ai/dsh-agent-instructions@0.2.0-rc.1
-- @deepseek-ai/dsh-agent-loop@0.2.0-rc.1
-- @deepseek-ai/dsh-agent-preset-registry@0.2.0-rc.1
-- @deepseek-ai/dsh-agent-preset@0.2.0-rc.1
-- @deepseek-ai/dsh-agent-tool-presentation@0.2.0-rc.1
-- @deepseek-ai/dsh-agent@0.2.0-rc.1
-- @deepseek-ai/dsh-anonymous-user-id@0.2.0-rc.1
-- @deepseek-ai/dsh-api-account-controller@0.2.0-rc.1
-- @deepseek-ai/dsh-api-gateway@0.2.0-rc.1
-- @deepseek-ai/dsh-api-job-controller@0.2.0-rc.1
-- @deepseek-ai/dsh-api-remotes@0.2.0-rc.1
-- @deepseek-ai/dsh-api-session-controller@0.2.0-rc.1
-- @deepseek-ai/dsh-api-settings-controller@0.2.0-rc.1
-- @deepseek-ai/dsh-api-terminal-controller@0.2.0-rc.1
-- @deepseek-ai/dsh-api-workspace-controller@0.2.0-rc.1
-- @deepseek-ai/dsh-api-workspace-files@0.2.0-rc.1
-- @deepseek-ai/dsh-app-boot@0.2.0-rc.1
-- @deepseek-ai/dsh-atomic-write@0.2.0-rc.1
-- @deepseek-ai/dsh-attachment-local@0.2.0-rc.1
-- @deepseek-ai/dsh-attachment@0.2.0-rc.1
-- @deepseek-ai/dsh-authorization@0.2.0-rc.1
-- @deepseek-ai/dsh-base@0.2.0-rc.1
-- @deepseek-ai/dsh-bash-local@0.2.0-rc.1
-- @deepseek-ai/dsh-bash-sandbox@0.2.0-rc.1
-- @deepseek-ai/dsh-brand@0.2.0-rc.1
-- @deepseek-ai/dsh-chunked-list@0.2.0-rc.1
-- @deepseek-ai/dsh-client-connection@0.2.0-rc.1
-- @deepseek-ai/dsh-client-file-upload@0.2.0-rc.1
-- @deepseek-ai/dsh-client-hmr@0.2.0-rc.1
-- @deepseek-ai/dsh-client-locale@0.2.0-rc.1
-- @deepseek-ai/dsh-client-modules@0.2.0-rc.1
-- @deepseek-ai/dsh-client-product-analytics@0.2.0-rc.1
-- @deepseek-ai/dsh-client-resources@0.2.0-rc.1
-- @deepseek-ai/dsh-client-shortcuts@0.2.0-rc.1
-- @deepseek-ai/dsh-client-store@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-agent-preset@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-approval@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-attachment@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-brand-official@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-chat@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-commands@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-conversation@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-cordis@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-deliverables@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-directory-picker-browse@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-directory-picker-native@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-goal@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-input-trigger@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-jobs@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-layout@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-message-feedback@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-model-selection@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-open-in-app@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-permission-presets@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-plan@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-plugin-manager@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-primitives@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-reference@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-renderer@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-schedule@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-session@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-account@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-agent-loop@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-general@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-models@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-plugin-inventory@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-plugins@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-session-log@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-shell@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-subagent@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings-web-search@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-settings@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-shortcuts@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-sidebar-browser@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-sidebar-documentpreview@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-sidebar-files@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-sidebar-right@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-sidebar-terminal@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-sidebar@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-skill@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-slots@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-subagent@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-theme@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-tool@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-trajectory@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-user-questions@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-workflow-run@0.2.0-rc.1
-- @deepseek-ai/dsh-client-ui-workspace@0.2.0-rc.1
-- @deepseek-ai/dsh-cmdline@0.2.0-rc.1
-- @deepseek-ai/dsh-command-compact@0.2.0-rc.1
-- @deepseek-ai/dsh-command-feedback@0.2.0-rc.1
-- @deepseek-ai/dsh-command-goal@0.2.0-rc.1
-- @deepseek-ai/dsh-commands@0.2.0-rc.1
-- @deepseek-ai/dsh-compaction-basic@0.2.0-rc.1
-- @deepseek-ai/dsh-compaction-image-offload@0.2.0-rc.1
-- @deepseek-ai/dsh-compaction-tool-result-pruner@0.2.0-rc.1
-- @deepseek-ai/dsh-compaction@0.2.0-rc.1
-- @deepseek-ai/dsh-config-editor@0.2.0-rc.1
-- @deepseek-ai/dsh-cordis-client-runner@0.2.0-rc.1
-- @deepseek-ai/dsh-cordis-host-runner@0.2.0-rc.1
-- @deepseek-ai/dsh-credentials-local@0.2.0-rc.1
-- @deepseek-ai/dsh-credentials@0.2.0-rc.1
-- @deepseek-ai/dsh-deepseek-account-platform@0.2.0-rc.1
-- @deepseek-ai/dsh-deepseek-account@0.2.0-rc.1
-- @deepseek-ai/dsh-deepseek-llm-api-extensions@0.2.0-rc.1
-- @deepseek-ai/dsh-deque@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-agent-team-profile@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-agent-team@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-api-speech-to-text@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-auto-review@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-client-ui-agent-team@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-client-ui-voice-input@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-schedule-bundle@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-speech-to-text-sensevoice@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-speech-to-text@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-tool-agent-team@0.2.0-rc.1
-- @deepseek-ai/dsh-experimental-voice-input-bundle@0.2.0-rc.1
-- @deepseek-ai/dsh-file-reference-local@0.2.0-rc.1
-- @deepseek-ai/dsh-file-reference@0.2.0-rc.1
-- @deepseek-ai/dsh-fs-local@0.2.0-rc.1
-- @deepseek-ai/dsh-fs-observation-policy@0.2.0-rc.1
-- @deepseek-ai/dsh-fs-sandbox@0.2.0-rc.1
-- @deepseek-ai/dsh-fs@0.2.0-rc.1
-- @deepseek-ai/dsh-goal-round-driver@0.2.0-rc.1
-- @deepseek-ai/dsh-goal@0.2.0-rc.1
-- @deepseek-ai/dsh-headless@0.2.0-rc.1
-- @deepseek-ai/dsh-home-paths@0.2.0-rc.1
-- @deepseek-ai/dsh-hook-protocol@0.2.0-rc.1
-- @deepseek-ai/dsh-hooks-claude-code@0.2.0-rc.1
-- @deepseek-ai/dsh-hooks-codex@0.2.0-rc.1
-- @deepseek-ai/dsh-host-directory-picker-auto@0.2.0-rc.1
-- @deepseek-ai/dsh-host-directory-picker-browse@0.2.0-rc.1
-- @deepseek-ai/dsh-host-directory-picker-native@0.2.0-rc.1
-- @deepseek-ai/dsh-host-directory-picker@0.2.0-rc.1
-- @deepseek-ai/dsh-host-frontend-static@0.2.0-rc.1
-- @deepseek-ai/dsh-host-open-in-app@0.2.0-rc.1
-- @deepseek-ai/dsh-host-plugin-inventory@0.2.0-rc.1
-- @deepseek-ai/dsh-host-product-telemetry-otel@0.2.0-rc.1
-- @deepseek-ai/dsh-host-webserver@0.2.0-rc.1
-- @deepseek-ai/dsh-http-proxy@0.2.0-rc.1
-- @deepseek-ai/dsh-invariants@0.2.0-rc.1
-- @deepseek-ai/dsh-jobs-local@0.2.0-rc.1
-- @deepseek-ai/dsh-jobs@0.2.0-rc.1
-- @deepseek-ai/dsh-launch-environment@0.2.0-rc.1
-- @deepseek-ai/dsh-lazy-require@0.2.0-rc.1
-- @deepseek-ai/dsh-llm-deepseek-account@0.2.0-rc.1
-- @deepseek-ai/dsh-llm-deepseek-api-key@0.2.0-rc.1
-- @deepseek-ai/dsh-llm-deepseek@0.2.0-rc.1
-- @deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.1
-- @deepseek-ai/dsh-llm-retry@0.2.0-rc.1
-- @deepseek-ai/dsh-llm@0.2.0-rc.1
-- @deepseek-ai/dsh-mcp-client@0.2.0-rc.1
-- @deepseek-ai/dsh-mcp-resources@0.2.0-rc.1
-- @deepseek-ai/dsh-message-feedback@0.2.0-rc.1
-- @deepseek-ai/dsh-native-command@0.2.0-rc.1
-- @deepseek-ai/dsh-office-to-pdf@0.2.0-rc.1
-- @deepseek-ai/dsh-otel@0.2.0-rc.1
-- @deepseek-ai/dsh-output-retention@0.2.0-rc.1
-- @deepseek-ai/dsh-package-manifest@0.2.0-rc.1
-- @deepseek-ai/dsh-permission-presets@0.2.0-rc.1
-- @deepseek-ai/dsh-persona@0.2.0-rc.1
-- @deepseek-ai/dsh-plan-mode@0.2.0-rc.1
-- @deepseek-ai/dsh-plugin-manager@0.2.0-rc.1
-- @deepseek-ai/dsh-plugin-package-inventory-deepseek@0.2.0-rc.1
-- @deepseek-ai/dsh-ptc-runtime-node@0.2.0-rc.1
-- @deepseek-ai/dsh-ptc-runtime@0.2.0-rc.1
-- @deepseek-ai/dsh-pwsh-local@0.2.0-rc.1
-- @deepseek-ai/dsh-pwsh-sandbox@0.2.0-rc.1
-- @deepseek-ai/dsh-repeat-tool-reminder@0.2.0-rc.1
-- @deepseek-ai/dsh-sandbox-local@0.2.0-rc.1
-- @deepseek-ai/dsh-sandbox-policy@0.2.0-rc.1
-- @deepseek-ai/dsh-sandbox-windows-acl@0.2.0-rc.1
-- @deepseek-ai/dsh-sandbox@0.2.0-rc.1
-- @deepseek-ai/dsh-schedule@0.2.0-rc.1
-- @deepseek-ai/dsh-scope@0.2.0-rc.1
-- @deepseek-ai/dsh-sdk-app@0.2.0-rc.1
-- @deepseek-ai/dsh-sdk-client@0.2.0-rc.1
-- @deepseek-ai/dsh-sdk-jsonrpc-server@0.2.0-rc.1
-- @deepseek-ai/dsh-sdk-minimal@0.2.0-rc.1
-- @deepseek-ai/dsh-sdk-protocol@0.2.0-rc.1
-- @deepseek-ai/dsh-session-checkpoint-policy@0.2.0-rc.1
-- @deepseek-ai/dsh-session-format-catalog@0.2.0-rc.1
-- @deepseek-ai/dsh-session-format-v0-to-v1@0.2.0-rc.1
-- @deepseek-ai/dsh-session-format-v1-to-v2@0.2.0-rc.1
-- @deepseek-ai/dsh-session-format-v2-to-v3@0.2.0-rc.1
-- @deepseek-ai/dsh-session-format-v3-to-v4@0.2.0-rc.1
-- @deepseek-ai/dsh-session-format@0.2.0-rc.1
-- @deepseek-ai/dsh-session-log-deepseek@0.2.0-rc.1
-- @deepseek-ai/dsh-session-log-export@0.2.0-rc.1
-- @deepseek-ai/dsh-session-persistence-jsonl@0.2.0-rc.1
-- @deepseek-ai/dsh-session-persistence@0.2.0-rc.1
-- @deepseek-ai/dsh-session-projection-cache@0.2.0-rc.1
-- @deepseek-ai/dsh-session-projection@0.2.0-rc.1
-- @deepseek-ai/dsh-session-query-sqlite@0.2.0-rc.1
-- @deepseek-ai/dsh-session-query@0.2.0-rc.1
-- @deepseek-ai/dsh-session-reference@0.2.0-rc.1
-- @deepseek-ai/dsh-session-stats@0.2.0-rc.1
-- @deepseek-ai/dsh-session-telemetry-otel@0.2.0-rc.1
-- @deepseek-ai/dsh-session-telemetry@0.2.0-rc.1
-- @deepseek-ai/dsh-session-title-first-prompt-llm@0.2.0-rc.1
-- @deepseek-ai/dsh-session-title-llm@0.2.0-rc.1
-- @deepseek-ai/dsh-session-title@0.2.0-rc.1
-- @deepseek-ai/dsh-session-turn-outline@0.2.0-rc.1
-- @deepseek-ai/dsh-session@0.2.0-rc.1
-- @deepseek-ai/dsh-settings@0.2.0-rc.1
-- @deepseek-ai/dsh-shell-env@0.2.0-rc.1
-- @deepseek-ai/dsh-shell@0.2.0-rc.1
-- @deepseek-ai/dsh-skill-badge@0.2.0-rc.1
-- @deepseek-ai/dsh-skill-filesystem@0.2.0-rc.1
-- @deepseek-ai/dsh-skill-office@0.2.0-rc.1
-- @deepseek-ai/dsh-skill@0.2.0-rc.1
-- @deepseek-ai/dsh-spill-local@0.2.0-rc.1
-- @deepseek-ai/dsh-spill-policy@0.2.0-rc.1
-- @deepseek-ai/dsh-spill@0.2.0-rc.1
-- @deepseek-ai/dsh-storage-domain@0.2.0-rc.1
-- @deepseek-ai/dsh-storage-json@0.2.0-rc.1
-- @deepseek-ai/dsh-storage@0.2.0-rc.1
-- @deepseek-ai/dsh-subagent-fork-in-process@0.2.0-rc.1
-- @deepseek-ai/dsh-subagent-in-process-driver@0.2.0-rc.1
-- @deepseek-ai/dsh-subagent-spawn-in-process@0.2.0-rc.1
-- @deepseek-ai/dsh-subagent@0.2.0-rc.1
-- @deepseek-ai/dsh-subprocess-local@0.2.0-rc.1
-- @deepseek-ai/dsh-subprocess@0.2.0-rc.1
-- @deepseek-ai/dsh-system-prompt@0.2.0-rc.1
-- @deepseek-ai/dsh-terminal-bash@0.2.0-rc.1
-- @deepseek-ai/dsh-terminal@0.2.0-rc.1
-- @deepseek-ai/dsh-time-context@0.2.0-rc.1
-- @deepseek-ai/dsh-timeout@0.2.0-rc.1
-- @deepseek-ai/dsh-tmux-context@0.2.0-rc.1
-- @deepseek-ai/dsh-token-meter@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-ask-user@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-bash-persistent@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-bash@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-call-timeout-policy@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-cordis@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-fs-search@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-fs@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-goal@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-jobs@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-present@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-pwsh-persistent@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-pwsh@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-ralph@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-skill@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-str-replace-editor@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-subagent-control@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-subagent@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-todo@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-web@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-workflow@0.2.0-rc.1
-- @deepseek-ai/dsh-tool-workspace-dependencies@0.2.0-rc.1
-- @deepseek-ai/dsh-tools@0.2.0-rc.1
-- @deepseek-ai/dsh-typert-loader@0.2.0-rc.1
-- @deepseek-ai/dsh-typert-protocol@0.2.0-rc.1
-- @deepseek-ai/dsh-typert-registry@0.2.0-rc.1
-- @deepseek-ai/dsh-user-approval@0.2.0-rc.1
-- @deepseek-ai/dsh-user-questions@0.2.0-rc.1
-- @deepseek-ai/dsh-util-code-language@0.2.0-rc.1
-- @deepseek-ai/dsh-util-crypto@0.2.0-rc.1
-- @deepseek-ai/dsh-util-time@0.2.0-rc.1
-- @deepseek-ai/dsh-util-values@0.2.0-rc.1
-- @deepseek-ai/dsh-util-workspace-path@0.2.0-rc.1
-- @deepseek-ai/dsh-web-app@0.2.0-rc.1
-- @deepseek-ai/dsh-web-fetch-http@0.2.0-rc.1
-- @deepseek-ai/dsh-web-frontend@0.2.0-rc.1
-- @deepseek-ai/dsh-web-search-deepseek@0.2.0-rc.1
-- @deepseek-ai/dsh-web@0.2.0-rc.1
-- @deepseek-ai/dsh-webhook-github@0.2.0-rc.1
-- @deepseek-ai/dsh-webhook@0.2.0-rc.1
-- @deepseek-ai/dsh-win32-process@0.2.0-rc.1
-- @deepseek-ai/dsh-workflow-ptc@0.2.0-rc.1
-- @deepseek-ai/dsh-workflow@0.2.0-rc.1
-- @deepseek-ai/dsh-workspace-changes@0.2.0-rc.1
-- @deepseek-ai/dsh-workspace@0.2.0-rc.1
-- @deepseek-ai/dsh@0.2.0-rc.1
+- @deepseek-ai/dsh-acp-app@0.2.0-rc.2
+- @deepseek-ai/dsh-acp@0.2.0-rc.2
+- @deepseek-ai/dsh-agent-default-model@0.2.0-rc.2
+- @deepseek-ai/dsh-agent-instructions@0.2.0-rc.2
+- @deepseek-ai/dsh-agent-loop@0.2.0-rc.2
+- @deepseek-ai/dsh-agent-preset-registry@0.2.0-rc.2
+- @deepseek-ai/dsh-agent-preset@0.2.0-rc.2
+- @deepseek-ai/dsh-agent-tool-presentation@0.2.0-rc.2
+- @deepseek-ai/dsh-agent@0.2.0-rc.2
+- @deepseek-ai/dsh-anonymous-user-id@0.2.0-rc.2
+- @deepseek-ai/dsh-api-account-controller@0.2.0-rc.2
+- @deepseek-ai/dsh-api-gateway@0.2.0-rc.2
+- @deepseek-ai/dsh-api-job-controller@0.2.0-rc.2
+- @deepseek-ai/dsh-api-remotes@0.2.0-rc.2
+- @deepseek-ai/dsh-api-session-controller@0.2.0-rc.2
+- @deepseek-ai/dsh-api-settings-controller@0.2.0-rc.2
+- @deepseek-ai/dsh-api-terminal-controller@0.2.0-rc.2
+- @deepseek-ai/dsh-api-workspace-controller@0.2.0-rc.2
+- @deepseek-ai/dsh-api-workspace-files@0.2.0-rc.2
+- @deepseek-ai/dsh-app-boot@0.2.0-rc.2
+- @deepseek-ai/dsh-atomic-write@0.2.0-rc.2
+- @deepseek-ai/dsh-attachment-local@0.2.0-rc.2
+- @deepseek-ai/dsh-attachment@0.2.0-rc.2
+- @deepseek-ai/dsh-authorization@0.2.0-rc.2
+- @deepseek-ai/dsh-base@0.2.0-rc.2
+- @deepseek-ai/dsh-bash-local@0.2.0-rc.2
+- @deepseek-ai/dsh-bash-sandbox@0.2.0-rc.2
+- @deepseek-ai/dsh-brand@0.2.0-rc.2
+- @deepseek-ai/dsh-chunked-list@0.2.0-rc.2
+- @deepseek-ai/dsh-client-connection@0.2.0-rc.2
+- @deepseek-ai/dsh-client-file-upload@0.2.0-rc.2
+- @deepseek-ai/dsh-client-hmr@0.2.0-rc.2
+- @deepseek-ai/dsh-client-locale@0.2.0-rc.2
+- @deepseek-ai/dsh-client-modules@0.2.0-rc.2
+- @deepseek-ai/dsh-client-product-analytics@0.2.0-rc.2
+- @deepseek-ai/dsh-client-resources@0.2.0-rc.2
+- @deepseek-ai/dsh-client-shortcuts@0.2.0-rc.2
+- @deepseek-ai/dsh-client-store@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-agent-preset@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-approval@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-attachment@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-brand-official@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-chat@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-commands@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-conversation@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-cordis@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-deliverables@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-directory-picker-browse@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-directory-picker-native@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-goal@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-input-trigger@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-jobs@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-layout@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-message-feedback@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-model-selection@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-open-in-app@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-permission-presets@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-plan@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-plugin-manager@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-primitives@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-reference@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-renderer@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-schedule@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-session@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-account@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-agent-loop@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-general@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-models@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-plugin-inventory@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-plugins@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-session-log@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-shell@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-subagent@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings-web-search@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-settings@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-shortcuts@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-sidebar-browser@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-sidebar-documentpreview@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-sidebar-files@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-sidebar-right@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-sidebar-terminal@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-sidebar@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-skill@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-slots@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-subagent@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-theme@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-tool@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-trajectory@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-user-questions@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-workflow-run@0.2.0-rc.2
+- @deepseek-ai/dsh-client-ui-workspace@0.2.0-rc.2
+- @deepseek-ai/dsh-cmdline@0.2.0-rc.2
+- @deepseek-ai/dsh-command-compact@0.2.0-rc.2
+- @deepseek-ai/dsh-command-feedback@0.2.0-rc.2
+- @deepseek-ai/dsh-command-goal@0.2.0-rc.2
+- @deepseek-ai/dsh-commands@0.2.0-rc.2
+- @deepseek-ai/dsh-compaction-basic@0.2.0-rc.2
+- @deepseek-ai/dsh-compaction-image-offload@0.2.0-rc.2
+- @deepseek-ai/dsh-compaction-tool-result-pruner@0.2.0-rc.2
+- @deepseek-ai/dsh-compaction@0.2.0-rc.2
+- @deepseek-ai/dsh-config-editor@0.2.0-rc.2
+- @deepseek-ai/dsh-cordis-client-runner@0.2.0-rc.2
+- @deepseek-ai/dsh-cordis-host-runner@0.2.0-rc.2
+- @deepseek-ai/dsh-credentials-local@0.2.0-rc.2
+- @deepseek-ai/dsh-credentials@0.2.0-rc.2
+- @deepseek-ai/dsh-deepseek-account-platform@0.2.0-rc.2
+- @deepseek-ai/dsh-deepseek-account@0.2.0-rc.2
+- @deepseek-ai/dsh-deepseek-llm-api-extensions@0.2.0-rc.2
+- @deepseek-ai/dsh-deque@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-agent-team-profile@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-agent-team@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-api-speech-to-text@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-auto-review@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-client-ui-agent-team@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-client-ui-voice-input@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-schedule-bundle@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-speech-to-text-sensevoice@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-speech-to-text@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-tool-agent-team@0.2.0-rc.2
+- @deepseek-ai/dsh-experimental-voice-input-bundle@0.2.0-rc.2
+- @deepseek-ai/dsh-file-reference-local@0.2.0-rc.2
+- @deepseek-ai/dsh-file-reference@0.2.0-rc.2
+- @deepseek-ai/dsh-fs-local@0.2.0-rc.2
+- @deepseek-ai/dsh-fs-observation-policy@0.2.0-rc.2
+- @deepseek-ai/dsh-fs-sandbox@0.2.0-rc.2
+- @deepseek-ai/dsh-fs@0.2.0-rc.2
+- @deepseek-ai/dsh-goal-round-driver@0.2.0-rc.2
+- @deepseek-ai/dsh-goal@0.2.0-rc.2
+- @deepseek-ai/dsh-headless@0.2.0-rc.2
+- @deepseek-ai/dsh-home-paths@0.2.0-rc.2
+- @deepseek-ai/dsh-hook-protocol@0.2.0-rc.2
+- @deepseek-ai/dsh-hooks-claude-code@0.2.0-rc.2
+- @deepseek-ai/dsh-hooks-codex@0.2.0-rc.2
+- @deepseek-ai/dsh-host-directory-picker-auto@0.2.0-rc.2
+- @deepseek-ai/dsh-host-directory-picker-browse@0.2.0-rc.2
+- @deepseek-ai/dsh-host-directory-picker-native@0.2.0-rc.2
+- @deepseek-ai/dsh-host-directory-picker@0.2.0-rc.2
+- @deepseek-ai/dsh-host-frontend-static@0.2.0-rc.2
+- @deepseek-ai/dsh-host-open-in-app@0.2.0-rc.2
+- @deepseek-ai/dsh-host-plugin-inventory@0.2.0-rc.2
+- @deepseek-ai/dsh-host-product-telemetry-otel@0.2.0-rc.2
+- @deepseek-ai/dsh-host-webserver@0.2.0-rc.2
+- @deepseek-ai/dsh-http-proxy@0.2.0-rc.2
+- @deepseek-ai/dsh-invariants@0.2.0-rc.2
+- @deepseek-ai/dsh-jobs-local@0.2.0-rc.2
+- @deepseek-ai/dsh-jobs@0.2.0-rc.2
+- @deepseek-ai/dsh-launch-environment@0.2.0-rc.2
+- @deepseek-ai/dsh-lazy-require@0.2.0-rc.2
+- @deepseek-ai/dsh-llm-deepseek-account@0.2.0-rc.2
+- @deepseek-ai/dsh-llm-deepseek-api-key@0.2.0-rc.2
+- @deepseek-ai/dsh-llm-deepseek@0.2.0-rc.2
+- @deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2
+- @deepseek-ai/dsh-llm-retry@0.2.0-rc.2
+- @deepseek-ai/dsh-llm@0.2.0-rc.2
+- @deepseek-ai/dsh-mcp-client@0.2.0-rc.2
+- @deepseek-ai/dsh-mcp-resources@0.2.0-rc.2
+- @deepseek-ai/dsh-message-feedback@0.2.0-rc.2
+- @deepseek-ai/dsh-native-command@0.2.0-rc.2
+- @deepseek-ai/dsh-office-to-pdf@0.2.0-rc.2
+- @deepseek-ai/dsh-otel@0.2.0-rc.2
+- @deepseek-ai/dsh-output-retention@0.2.0-rc.2
+- @deepseek-ai/dsh-package-manifest@0.2.0-rc.2
+- @deepseek-ai/dsh-permission-presets@0.2.0-rc.2
+- @deepseek-ai/dsh-persona@0.2.0-rc.2
+- @deepseek-ai/dsh-plan-mode@0.2.0-rc.2
+- @deepseek-ai/dsh-plugin-manager@0.2.0-rc.2
+- @deepseek-ai/dsh-plugin-package-inventory-deepseek@0.2.0-rc.2
+- @deepseek-ai/dsh-ptc-runtime-node@0.2.0-rc.2
+- @deepseek-ai/dsh-ptc-runtime@0.2.0-rc.2
+- @deepseek-ai/dsh-pwsh-local@0.2.0-rc.2
+- @deepseek-ai/dsh-pwsh-sandbox@0.2.0-rc.2
+- @deepseek-ai/dsh-repeat-tool-reminder@0.2.0-rc.2
+- @deepseek-ai/dsh-sandbox-local@0.2.0-rc.2
+- @deepseek-ai/dsh-sandbox-policy@0.2.0-rc.2
+- @deepseek-ai/dsh-sandbox-windows-acl@0.2.0-rc.2
+- @deepseek-ai/dsh-sandbox@0.2.0-rc.2
+- @deepseek-ai/dsh-schedule@0.2.0-rc.2
+- @deepseek-ai/dsh-scope@0.2.0-rc.2
+- @deepseek-ai/dsh-sdk-app@0.2.0-rc.2
+- @deepseek-ai/dsh-sdk-client@0.2.0-rc.2
+- @deepseek-ai/dsh-sdk-jsonrpc-server@0.2.0-rc.2
+- @deepseek-ai/dsh-sdk-minimal@0.2.0-rc.2
+- @deepseek-ai/dsh-sdk-protocol@0.2.0-rc.2
+- @deepseek-ai/dsh-session-checkpoint-policy@0.2.0-rc.2
+- @deepseek-ai/dsh-session-format-catalog@0.2.0-rc.2
+- @deepseek-ai/dsh-session-format-v0-to-v1@0.2.0-rc.2
+- @deepseek-ai/dsh-session-format-v1-to-v2@0.2.0-rc.2
+- @deepseek-ai/dsh-session-format-v2-to-v3@0.2.0-rc.2
+- @deepseek-ai/dsh-session-format-v3-to-v4@0.2.0-rc.2
+- @deepseek-ai/dsh-session-format@0.2.0-rc.2
+- @deepseek-ai/dsh-session-log-deepseek@0.2.0-rc.2
+- @deepseek-ai/dsh-session-log-export@0.2.0-rc.2
+- @deepseek-ai/dsh-session-persistence-jsonl@0.2.0-rc.2
+- @deepseek-ai/dsh-session-persistence@0.2.0-rc.2
+- @deepseek-ai/dsh-session-projection-cache@0.2.0-rc.2
+- @deepseek-ai/dsh-session-projection@0.2.0-rc.2
+- @deepseek-ai/dsh-session-query-sqlite@0.2.0-rc.2
+- @deepseek-ai/dsh-session-query@0.2.0-rc.2
+- @deepseek-ai/dsh-session-reference@0.2.0-rc.2
+- @deepseek-ai/dsh-session-stats@0.2.0-rc.2
+- @deepseek-ai/dsh-session-telemetry-otel@0.2.0-rc.2
+- @deepseek-ai/dsh-session-telemetry@0.2.0-rc.2
+- @deepseek-ai/dsh-session-title-first-prompt-llm@0.2.0-rc.2
+- @deepseek-ai/dsh-session-title-llm@0.2.0-rc.2
+- @deepseek-ai/dsh-session-title@0.2.0-rc.2
+- @deepseek-ai/dsh-session-turn-outline@0.2.0-rc.2
+- @deepseek-ai/dsh-session@0.2.0-rc.2
+- @deepseek-ai/dsh-settings@0.2.0-rc.2
+- @deepseek-ai/dsh-shell-env@0.2.0-rc.2
+- @deepseek-ai/dsh-shell@0.2.0-rc.2
+- @deepseek-ai/dsh-skill-badge@0.2.0-rc.2
+- @deepseek-ai/dsh-skill-filesystem@0.2.0-rc.2
+- @deepseek-ai/dsh-skill-office@0.2.0-rc.2
+- @deepseek-ai/dsh-skill@0.2.0-rc.2
+- @deepseek-ai/dsh-spill-local@0.2.0-rc.2
+- @deepseek-ai/dsh-spill-policy@0.2.0-rc.2
+- @deepseek-ai/dsh-spill@0.2.0-rc.2
+- @deepseek-ai/dsh-storage-domain@0.2.0-rc.2
+- @deepseek-ai/dsh-storage-json@0.2.0-rc.2
+- @deepseek-ai/dsh-storage@0.2.0-rc.2
+- @deepseek-ai/dsh-subagent-fork-in-process@0.2.0-rc.2
+- @deepseek-ai/dsh-subagent-in-process-driver@0.2.0-rc.2
+- @deepseek-ai/dsh-subagent-spawn-in-process@0.2.0-rc.2
+- @deepseek-ai/dsh-subagent@0.2.0-rc.2
+- @deepseek-ai/dsh-subprocess-local@0.2.0-rc.2
+- @deepseek-ai/dsh-subprocess@0.2.0-rc.2
+- @deepseek-ai/dsh-system-prompt@0.2.0-rc.2
+- @deepseek-ai/dsh-terminal-bash@0.2.0-rc.2
+- @deepseek-ai/dsh-terminal@0.2.0-rc.2
+- @deepseek-ai/dsh-time-context@0.2.0-rc.2
+- @deepseek-ai/dsh-timeout@0.2.0-rc.2
+- @deepseek-ai/dsh-tmux-context@0.2.0-rc.2
+- @deepseek-ai/dsh-token-meter@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-ask-user@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-bash-persistent@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-bash@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-call-timeout-policy@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-cordis@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-fs-search@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-fs@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-goal@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-jobs@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-present@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-pwsh-persistent@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-pwsh@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-ralph@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-skill@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-str-replace-editor@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-subagent-control@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-subagent@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-todo@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-web@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-workflow@0.2.0-rc.2
+- @deepseek-ai/dsh-tool-workspace-dependencies@0.2.0-rc.2
+- @deepseek-ai/dsh-tools@0.2.0-rc.2
+- @deepseek-ai/dsh-typert-loader@0.2.0-rc.2
+- @deepseek-ai/dsh-typert-protocol@0.2.0-rc.2
+- @deepseek-ai/dsh-typert-registry@0.2.0-rc.2
+- @deepseek-ai/dsh-user-approval@0.2.0-rc.2
+- @deepseek-ai/dsh-user-questions@0.2.0-rc.2
+- @deepseek-ai/dsh-util-code-language@0.2.0-rc.2
+- @deepseek-ai/dsh-util-crypto@0.2.0-rc.2
+- @deepseek-ai/dsh-util-time@0.2.0-rc.2
+- @deepseek-ai/dsh-util-values@0.2.0-rc.2
+- @deepseek-ai/dsh-util-workspace-path@0.2.0-rc.2
+- @deepseek-ai/dsh-web-app@0.2.0-rc.2
+- @deepseek-ai/dsh-web-fetch-http@0.2.0-rc.2
+- @deepseek-ai/dsh-web-frontend@0.2.0-rc.2
+- @deepseek-ai/dsh-web-search-deepseek@0.2.0-rc.2
+- @deepseek-ai/dsh-web@0.2.0-rc.2
+- @deepseek-ai/dsh-webhook-github@0.2.0-rc.2
+- @deepseek-ai/dsh-webhook@0.2.0-rc.2
+- @deepseek-ai/dsh-win32-process@0.2.0-rc.2
+- @deepseek-ai/dsh-workflow-ptc@0.2.0-rc.2
+- @deepseek-ai/dsh-workflow@0.2.0-rc.2
+- @deepseek-ai/dsh-workspace-changes@0.2.0-rc.2
+- @deepseek-ai/dsh-workspace@0.2.0-rc.2
+- @deepseek-ai/dsh@0.2.0-rc.2
 - @deepseek-ai/node-addon-system@0.1.2
 
 MIT License
@@ -17742,6 +17805,7 @@ Applies to:
 - @types/estree@1.0.9
 - @types/hast@3.0.5
 - @types/http-cache-semantics@4.2.0
+- @types/katex@0.16.8
 - @types/mdast@4.0.4
 - @types/mdx@2.0.14
 - @types/ms@2.1.0

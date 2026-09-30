@@ -9,12 +9,16 @@ import {
 import { ChevronRightIcon } from "../../../../ui/icons/index.jsx";
 import { DshSearchField } from "../../../../ui/ui/DshSearchField.jsx";
 import { SidebarCreateButton } from "../../../../ui/ui/SidebarCreateButton.jsx";
+import { useSidebarListScroll } from "../../../../ui/hooks/useSidebarListScroll.js";
+import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from "../../../../modules/settings/index.js";
 import "../styles/plugin-center.css";
 
 const GROUPS = [
-  { id: "official", label: "官方插件" },
-  { id: "bundles", label: "其他插件" },
+  { id: "official", label: "DSH 官方插件" },
+  { id: "eleckoi", label: "ElecKoi 内置插件" },
+  { id: "installed", label: "用户安装插件" },
 ];
+const GROUP_IDS = GROUPS.map((group) => group.id);
 
 const ITEM_ARTWORK = {
   shell: PluginArtworkTerminal,
@@ -33,12 +37,19 @@ function PluginIcon({ item }) {
   </span>;
 }
 
+export { applySidebarListWheel as applyPluginListWheel } from "../../../../ui/hooks/useSidebarListScroll.js";
+
 export function PluginListPanel({ onNotify }) {
   const [entries, setEntries] = useState([]);
   const [keyword, setKeyword] = useState("");
-  const [collapsed, setCollapsed] = useState({});
+  const [collapsed, setCollapsed, collapseStateReady] = usePersistentCollapseState(
+    LIST_COLLAPSE_AREAS.plugins,
+    {},
+    GROUP_IDS,
+  );
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
+  const scrollRef = useSidebarListScroll();
 
   useEffect(() => {
     const receive = (event) => {
@@ -80,8 +91,8 @@ export function PluginListPanel({ onNotify }) {
       <DshSearchField value={keyword} onValueChange={setKeyword} placeholder="搜索插件…" ariaLabel="搜索插件" />
       <SidebarCreateButton title="添加插件" onClick={add} />
     </div>
-    <div className="character-list-scroll preset-list-scroll">
-      {GROUPS.map((group) => {
+    <div ref={scrollRef} className="character-list-scroll preset-list-scroll">
+      {collapseStateReady ? GROUPS.map((group) => {
         const items = filtered.filter((entry) => entry.group === group.id);
         const isCollapsed = Boolean(collapsed[group.id]);
         return <section className="character-group-block preset-list-group" key={group.id}>
@@ -96,7 +107,7 @@ export function PluginListPanel({ onNotify }) {
             </button>)}
           </div> : null}
         </section>;
-      })}
+      }) : null}
       {error ? <p className="preset-list-state is-error">{error}</p> : null}
     </div>
   </aside>;

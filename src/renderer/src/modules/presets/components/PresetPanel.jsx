@@ -5,6 +5,7 @@ import { CharacterManagerIcon, ChevronRightIcon, ImportIcon, PlusIcon, TrashIcon
 import { Avatar } from '../../../ui/ui/Avatar.jsx';
 import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
 import { SidebarCreateButton } from '../../../ui/ui/SidebarCreateButton.jsx';
+import { useSidebarListScroll } from '../../../ui/hooks/useSidebarListScroll.js';
 import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
 import defaultPresetAvatar from '../../../assets/eleckoi-app-icon.png';
 import { SaveControl } from '../../settingLibraries/index.js';
@@ -130,6 +131,7 @@ function usePresets() {
 }
 
 export function PresetListPanel() {
+  const scrollRef = useSidebarListScroll();
   const { catalog, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError } = usePresets();
   const [keyword, setKeyword] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -288,7 +290,7 @@ export function PresetListPanel() {
     </div> : null}
     <input ref={importInputRef} type="file" accept="image/png,application/json,.png,.json" hidden onChange={handleImport} />
     <button type="button" className="character-manager-entry preset-manager-entry" onClick={openPresetManagerWindow}><CharacterManagerIcon /><span>预设管理器</span></button>
-    <div className="character-list-scroll preset-list-scroll">
+    <div ref={scrollRef} className="character-list-scroll preset-list-scroll">
       {collapseStateReady ? sections.map(renderGroup) : null}
       {shouldShowPresetCatalogLoading(catalog, error) ? <p className="preset-list-state">正在读取…</p> : null}
       {error || importError ? <p className="preset-list-state is-error">{error || importError}</p> : null}
@@ -319,6 +321,7 @@ export function PresetWorkspace({
   onLoadModels,
   onSaveModelConfig,
   onNotify,
+  renderEditorSection,
 }) {
   const { catalog, catalogModel, selectedPresetId, setCatalog, navigationGuard, refresh, error: catalogError } = usePresets();
   const [preset, setPreset] = useState(null);
@@ -508,8 +511,21 @@ export function PresetWorkspace({
     }}
   />;
 
-  if (profileEditing) return <>
-    <section className="preset-profile-edit-workspace" aria-label="编辑预设资料">
+  const extensionOwner = {
+    presetId: preset.id,
+    preset,
+    active: catalog?.activePresetId === preset.id,
+    dirty,
+    saving,
+    error,
+    onChange: setPreset,
+    onSave: save,
+    onDiscard: discardChanges,
+    onActivate: activate,
+  };
+
+  if (profileEditing) {
+    const profileEditor = <section className="preset-profile-edit-workspace" aria-label="编辑预设资料">
       <PresetProfileEditor
         preset={preset}
         dirty={dirty}
@@ -519,9 +535,36 @@ export function PresetWorkspace({
         onCancel={() => { discardChanges(); setProfileEditing(false); }}
         onSave={async () => { if (await save()) setProfileEditing(false); }}
       />
-    </section>
-    {leaveDialog}
-  </>;
+    </section>;
+    return <>
+      {renderEditorSection?.('profile', {
+        ...extensionOwner,
+        onClose: () => navigate(() => setProfileEditing(false)),
+      }, profileEditor) ?? profileEditor}
+      {leaveDialog}
+    </>;
+  }
+
+  let tabEditor = null;
+  if (tab === 'introduction') {
+    tabEditor = <PresetIntroductionEditor key={preset.id} preset={preset} editorRef={introductionRef} saving={saving} error={error} onClearError={() => setError('')} onSaveProfile={(patch) => save({ ...preset, profile: { ...preset.profile, ...patch } })} />;
+  } else if (tab === 'prompts') {
+    tabEditor = <PresetPromptEditor preset={preset} onChange={setPreset} saveAction={saveAction} />;
+  } else if (tab === 'tools') {
+    tabEditor = <PresetToolsEditor
+      preset={preset}
+      modelConfigs={modelConfigs}
+      modelOptionsByKey={modelOptionsByKey}
+      onChange={setPreset}
+      onLoadModels={onLoadModels}
+      onSaveModelConfig={onSaveModelConfig}
+      onNotify={onNotify}
+      saveAction={saveAction}
+    />;
+  } else if (tab === 'regex') {
+    tabEditor = <PresetRegexEditor preset={preset} onChange={setPreset} saveAction={saveAction} />;
+  }
+  const renderedTabEditor = renderEditorSection?.(tab, extensionOwner, tabEditor) ?? tabEditor;
 
   return <>
     <section className="preset-workspace" aria-label="预设编辑器">
@@ -530,19 +573,7 @@ export function PresetWorkspace({
         <div className="preset-workspace-tab-list">{TABS.map((item) => <button type="button" key={item.id} aria-current={tab === item.id ? 'page' : undefined} onClick={() => { if (tab !== item.id) navigate(() => setTab(item.id)); }}><span>{item.label}</span>{tabCounts[item.id] !== undefined ? <em>{tabCounts[item.id]}</em> : null}</button>)}</div>
       </nav>
       <div className={`preset-workspace-body is-${tab}`}>
-        {tab === 'introduction' ? <PresetIntroductionEditor key={preset.id} preset={preset} editorRef={introductionRef} saving={saving} error={error} onClearError={() => setError('')} onSaveProfile={(patch) => save({ ...preset, profile: { ...preset.profile, ...patch } })} /> : null}
-        {tab === 'prompts' ? <PresetPromptEditor preset={preset} onChange={setPreset} saveAction={saveAction} /> : null}
-        {tab === 'tools' ? <PresetToolsEditor
-          preset={preset}
-          modelConfigs={modelConfigs}
-          modelOptionsByKey={modelOptionsByKey}
-          onChange={setPreset}
-          onLoadModels={onLoadModels}
-          onSaveModelConfig={onSaveModelConfig}
-          onNotify={onNotify}
-          saveAction={saveAction}
-        /> : null}
-        {tab === 'regex' ? <PresetRegexEditor preset={preset} onChange={setPreset} saveAction={saveAction} /> : null}
+        {renderedTabEditor}
       </div>
     </section>
     {leaveDialog}

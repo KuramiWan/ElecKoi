@@ -358,7 +358,7 @@ function ChatDisplaySettings({
   );
 }
 
-function UserProfileSettings({ persona, onUpdateUserProfile }) {
+function UserProfileSettings({ persona, onUpdateUserProfile, renderUserProfileEditor }) {
   const displayName = persona?.user_name || "你";
   const [name, setName] = useState(displayName);
   const [avatars, setAvatars] = useState(() => avatarSetFromPersona(persona, "user"));
@@ -371,18 +371,28 @@ function UserProfileSettings({ persona, onUpdateUserProfile }) {
     setAvatars(avatarSetFromPersona(persona, "user"));
   }, [persona?.user_avatar, persona?.user_name, persona?.user_portrait, persona?.user_square]);
 
-  async function saveProfile(event) {
-    event.preventDefault();
+  async function commitProfile(candidate = { name, avatars }) {
     setSaving(true);
     setMessage("");
     try {
-      await onUpdateUserProfile?.({ name: name.trim() || "你", avatars });
+      const nextName = candidate.name?.trim() || "你";
+      const nextAvatars = candidate.avatars || avatars;
+      await onUpdateUserProfile?.({ name: nextName, avatars: nextAvatars });
+      setName(nextName);
+      setAvatars(nextAvatars);
       setMessage("已保存");
+      return true;
     } catch (error) {
       setMessage(error?.message || "保存失败，请稍后再试。");
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveProfile(event) {
+    event.preventDefault();
+    await commitProfile();
   }
 
   async function saveAvatars(nextAvatars) {
@@ -408,7 +418,7 @@ function UserProfileSettings({ persona, onUpdateUserProfile }) {
     );
   }
 
-  return (
+  const fallback = (
     <form className="profile-settings-page" onSubmit={saveProfile}>
       <header className="app-settings-heading">
         <h1>用户资料</h1>
@@ -434,6 +444,19 @@ function UserProfileSettings({ persona, onUpdateUserProfile }) {
       </div>
     </form>
   );
+  const owner = {
+    persona,
+    profile: { name, avatars },
+    saving,
+    message,
+    onChange: (patch) => {
+      if (Object.hasOwn(patch, "name")) setName(patch.name ?? "");
+      if (patch.avatars) setAvatars(patch.avatars);
+    },
+    onSave: commitProfile,
+    onManageAvatars: () => setEditingAvatars(true),
+  };
+  return renderUserProfileEditor?.(owner, fallback) ?? fallback;
 }
 
 export function SettingsPanel({
@@ -441,6 +464,7 @@ export function SettingsPanel({
   onPageChange,
   persona,
   onUpdateUserProfile,
+  renderUserProfileEditor,
   chatDisplay,
   onChatDisplayChange,
   appearanceMode,
@@ -482,7 +506,7 @@ export function SettingsPanel({
   const mainPanel = (
     <section className="app-settings-content">
       {page === "profile" ? (
-        <UserProfileSettings persona={persona} onUpdateUserProfile={onUpdateUserProfile} />
+        <UserProfileSettings persona={persona} onUpdateUserProfile={onUpdateUserProfile} renderUserProfileEditor={renderUserProfileEditor} />
       ) : page === "chat" ? (
         <ChatDisplaySettings
           persona={persona}
