@@ -96,7 +96,7 @@ if (checkOnly) {
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error
   }
-  if (current !== content) {
+  if (current.replaceAll('\r\n', '\n') !== content.replaceAll('\r\n', '\n')) {
     throw new Error('作者运行库第三方许可声明已过期，请运行 pnpm generate:author-runtime-notices')
   }
   console.log('Author runtime third-party license notice is current.')

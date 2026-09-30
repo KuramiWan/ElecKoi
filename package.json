@@ -1,6 +1,6 @@
 {
   "name": "eleckoi-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "ElecKoi offline-first AI desktop client",
   "author": "ElecKoi",
   "private": true,
