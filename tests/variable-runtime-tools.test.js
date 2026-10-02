@@ -11,15 +11,22 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools({ extraCount = 0 } = {}) {
+async function tools({ extraCount = 0, mapMarkerCount = 0 } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-variable-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
   const extraNames = Array.from({ length: extraCount }, (_, index) => `指标${index}`);
+  const mapMarkers = Object.fromEntries(Array.from({ length: mapMarkerCount }, (_, index) => [
+    `marker-${index}`,
+    { title: `地点 ${index}`, description: `地点说明 ${index} `.repeat(900), image: `https://example.invalid/${index}.webp` },
+  ]));
   writeFileSync(file, JSON.stringify({
     enabled: true,
     config: {
-      initialState: { 状态: { 好感度: 0, 称呼: "陌生人", ...Object.fromEntries(extraNames.map((name) => [name, 0])) } },
+      initialState: {
+        状态: { 好感度: 0, 称呼: "陌生人", ...Object.fromEntries(extraNames.map((name) => [name, 0])) },
+        ...(mapMarkerCount ? { 地图标记: mapMarkers } : {}),
+      },
       schemaCode: "const Schema = z.object({ 状态: z.object({ 好感度: z.number().max(100), 称呼: z.string() }) })",
       objects: [
         { id: "status", name: "状态", parentId: "", enabled: true, description: "角色状态", updateRule: "仅在剧情明确变化时更新", dynamicKey: false },
@@ -28,9 +35,13 @@ async function tools({ extraCount = 0 } = {}) {
         { id: "affinity", title: "好感度", objectId: "status", enabled: true, type: "number", defaultValue: "0", description: "当前好感", updateRule: "按互动结果小幅增减", readMode: "required" },
         { id: "address", title: "称呼", objectId: "status", enabled: true, type: "string", defaultValue: "陌生人", description: "当前称呼", updateRule: "关系变化后更新", readMode: "on_demand" },
         ...extraNames.map((name, index) => ({ id: `extra-${index}`, title: name, objectId: "status", enabled: true, type: "number", defaultValue: "0", description: "测试指标", updateRule: "按规则更新", readMode: "on_demand" })),
+        ...(mapMarkerCount ? [{ id: "map-markers", title: "地图标记", objectId: "", enabled: true, type: "object", defaultValue: "{}", description: "地图资料", updateRule: "按剧情更新", readMode: "on_demand" }] : []),
       ],
     },
-    state: { 状态: { 好感度: 10, 称呼: "朋友" } },
+    state: {
+      状态: { 好感度: 10, 称呼: "朋友" },
+      ...(mapMarkerCount ? { 地图标记: mapMarkers } : {}),
+    },
   }, null, 2));
   const sessionId = "variable-tool-test-session";
   const snapshotRoot = join(directory, "session-snapshots");
@@ -84,6 +95,28 @@ describe("DSH character variable tools", () => {
     const read = await runtime.byName.get("eleckoi_read_variables").execute({ paths: found.paths.slice(0, 20) });
     expect(read.variables).toHaveLength(20);
     expect(read.variables.map((item) => item.path)).toEqual(found.paths.slice(0, 20));
+  });
+
+  it("pages large object values and exposes exact child paths without logging the full state", async () => {
+    const runtime = await tools({ mapMarkerCount: 60 });
+    const readTool = runtime.byName.get("eleckoi_read_variables");
+    const first = await readTool.execute({ paths: ["/地图标记"], limit: 10 });
+
+    expect(first.variables[0].current).toMatchObject({
+      kind: "object_page", total: 60, offset: 0, limit: 10, returned: 10, has_more: true, next_offset: 10,
+    });
+    expect(JSON.stringify(first).length).toBeLessThan(30_000);
+    const child = first.variables[0].current.entries[0];
+    expect(child).toMatchObject({ path: "/地图标记/marker-0", value_omitted: true });
+
+    const detail = await readTool.execute({ paths: [child.path], limit: 2 });
+    expect(detail.variables[0]).toMatchObject({ configured_path: "/地图标记" });
+    expect(detail.variables[0].current).toMatchObject({ kind: "object_page", total: 3, returned: 2, has_more: true });
+    expect(JSON.stringify(detail).length).toBeLessThan(20_000);
+
+    const description = await readTool.execute({ paths: [`${child.path}/description`], char_limit: 500 });
+    expect(description.variables[0].current).toMatchObject({ kind: "text_page", char_offset: 0, char_limit: 500, returned_chars: 500, has_more: true });
+    expect(description.variables[0].current.text).toHaveLength(500);
   });
 
   it("commits valid patches to the bridge and rejects Zod-invalid changes atomically", async () => {

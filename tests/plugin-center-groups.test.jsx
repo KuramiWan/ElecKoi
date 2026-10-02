@@ -30,7 +30,7 @@ describe('plugin center groups', () => {
         detail: {
           status: 'ready', selected: '', entries: [
             { id: '@deepseek-ai/example', kind: 'package', name: 'DSH 示例', icon: '', group: 'official' },
-            { id: 'eleckoi.characters', kind: 'item', name: '角色与角色卡', icon: '', group: 'eleckoi' },
+            { id: '@eleckoi/dsh-client-characters', kind: 'package', name: '角色页面', icon: '', group: 'eleckoi' },
             { id: '@third-party/example', kind: 'package', name: '第三方扩展', icon: '', group: 'installed' },
           ]
         }
@@ -38,7 +38,7 @@ describe('plugin center groups', () => {
       expect(container.textContent).toContain('DSH 官方插件')
       expect(container.textContent).toContain('ElecKoi 内置插件')
       expect(container.textContent).toContain('用户安装插件')
-      expect(container.textContent).toContain('角色与角色卡')
+      expect(container.textContent).toContain('角色页面')
       expect(container.textContent).toContain('第三方扩展')
     } finally {
       await act(async () => root.unmount())

@@ -2,14 +2,14 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { CharacterTransferService } from '../src/main/modules/characterTransfer/CharacterTransferService'
-import { CharacterRepository } from '../src/main/modules/personas/CharacterRepository'
-import { RegexRuleRepository } from '../src/main/modules/regexRules/RegexRuleRepository'
-import { AgentPresetRepository } from '../src/main/modules/agentPresets'
-import { SettingLibraryRepository } from '../src/main/modules/settingLibraries/SettingLibraryRepository'
-import { VariableConfigRepository } from '../src/main/modules/variables/VariableConfigRepository'
-import { SqliteDatabase } from '../src/main/platform/sqlite/SqliteDatabase'
-import { LocalMediaStore } from '../src/main/platform/filesystem/LocalMediaStore'
+import { CharacterTransferService } from '../packages/dsh-product-data/src/domain/characterTransfer/CharacterTransferService'
+import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
+import { RegexRuleRepository } from '../packages/dsh-product-data/src/domain/regexRules/RegexRuleRepository'
+import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
+import { SettingLibraryRepository } from '../packages/dsh-product-data/src/domain/settingLibraries/SettingLibraryRepository'
+import { VariableConfigRepository } from '../packages/dsh-product-data/src/domain/variables/VariableConfigRepository'
+import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
+import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []
@@ -28,7 +28,6 @@ function harness() {
   const media = new LocalMediaStore(join(root, 'media'))
   const characters = new CharacterRepository(database, {
     deleteForCharacter() {},
-    flushCleanup() {},
     refreshCharacterIdentity() {}
   }, media)
   const settingLibraries = new SettingLibraryRepository(database)

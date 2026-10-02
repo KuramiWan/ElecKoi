@@ -4,6 +4,13 @@ import { z } from 'zod'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 
 const fixedObjectId = 'fixed-variable-initialization-object'
+const defaultCollectionPageSize = 20
+const maximumCollectionPageSize = 100
+const defaultTextPageSize = 4_000
+const maximumTextPageSize = 8_000
+const maximumInlineValueChars = 4_000
+const maximumPageChars = 12_000
+const maximumGrepLineChars = 2_000
 export const name = 'eleckoi-variable-tools'
 export const inject = ['tools']
 
@@ -119,9 +126,13 @@ function grepTool() {
 function readTool() {
   return defineTool({
     name: 'eleckoi_read_variables',
-    description: '读取当前回合变量搜索结果中的完整路径，给出当前值、默认值、说明和完整更新规则。每轮先用变量 Glob 获取 required_variables 并读取这些必读变量；上轮读取不能代替本轮状态。修改前应先读并遵守作者规则。',
+    description: '按 JSON Pointer 读取当前回合变量，给出当前值、默认值、说明和完整更新规则。对象和数组按子项分页，长文本按字符分页；分页项会返回可继续读取的精确子路径，避免把大型变量整体写入会话日志。每轮先用变量 Glob 获取 required_variables 并读取这些必读变量；上轮读取不能代替本轮状态。修改前应先读并遵守作者规则。',
     parameters: {
-      paths: { type: 'array', items: { type: 'string' }, required: true, description: '一个或多个当前回合 Glob 或 Grep 已返回的完整变量 JSON Pointer 路径。' },
+      paths: { type: 'array', items: { type: 'string' }, required: true, description: '一个或多个完整变量 JSON Pointer 路径。可使用分页结果返回的精确子路径继续读取。' },
+      offset: { type: 'integer', description: '对象或数组的子项起始位置，默认 0。' },
+      limit: { type: 'integer', description: '对象或数组每页最多返回的子项数，默认 20，最大 100。' },
+      char_offset: { type: 'integer', description: '长文本的字符起始位置，默认 0。' },
+      char_limit: { type: 'integer', description: '长文本每页最多返回的字符数，默认 4000，最大 8000。' },
     },
     output: outputDefinition(),
     async execute(args, exec) {
@@ -129,21 +140,31 @@ function readTool() {
       const paths = [...new Set(args.paths.filter((path) => typeof path === 'string' && path.startsWith('/')))]
       if (!paths.length) return failure('invalid_arguments', '至少需要读取一个变量路径。')
       const bridge = readBridge(bridgeFile)
-      const byPath = new Map(variableCatalog(bridge).map((entry) => [entry.path, entry]))
-      const missing = paths.filter((path) => !byPath.has(path))
+      const catalog = variableCatalog(bridge)
+      const options = {
+        offset: nonnegativeInteger(args.offset, 0),
+        limit: boundedInteger(args.limit, defaultCollectionPageSize, 1, maximumCollectionPageSize),
+        charOffset: nonnegativeInteger(args.char_offset, 0),
+        charLimit: boundedInteger(args.char_limit, defaultTextPageSize, 1, maximumTextPageSize),
+      }
+      const resolved = paths.map((path) => {
+        const entry = catalogEntryForPath(catalog, path)
+        const current = valueAtPointer(bridge.state, path)
+        const initial = valueAtPointer(bridge.config.initialState, path)
+        return { path, entry, current, initial }
+      })
+      const missing = resolved.filter((item) => !item.entry || (!item.current.present && !item.initial.present)).map((item) => item.path)
       if (missing.length) return { ...failure('not_found', '存在当前变量配置中没有的路径，请重新使用 Glob 或 Grep。'), paths: missing }
       return {
         status: 'ok',
-        variables: paths.map((path) => {
-          const entry = byPath.get(path)
-          const current = valueAtPointer(bridge.state, path)
-          const initial = valueAtPointer(bridge.config.initialState, path)
+        variables: resolved.map(({ path, entry, current, initial }) => {
           return {
             path,
+            ...(entry.path === path ? {} : { configured_path: entry.path }),
             read_mode: entry.readMode,
-            type: entry.type,
-            default: initial.value,
-            current: current.value,
+            type: inferredType(current.present ? current.value : initial.value),
+            default: pageVariableValue(initial, path, options),
+            current: pageVariableValue(current, path, options),
             current_present: current.present,
             write_guidance: entry.allowsDynamicChildren
               ? '这是对象容器；用 insert /当前路径/<新键> 创建新键，是否允许由作者 Zod 决定'
@@ -434,6 +455,83 @@ function valueAtPointer(root, path) {
   return { present: true, value: current }
 }
 
+function catalogEntryForPath(catalog, path) {
+  const candidates = catalog.filter((entry) => path === entry.path || path.startsWith(entry.path + '/'))
+  const authored = candidates.filter((entry) => entry.variable || entry.object)
+  return (authored.length ? authored : candidates).sort((left, right) => right.path.length - left.path.length)[0]
+}
+
+function pageVariableValue(result, path, options) {
+  if (!result.present) return null
+  const value = result.value
+  if (typeof value === 'string' && (value.length > maximumInlineValueChars || options.charOffset > 0)) {
+    const text = value.slice(options.charOffset, options.charOffset + options.charLimit)
+    const nextOffset = options.charOffset + text.length
+    return {
+      kind: 'text_page',
+      text,
+      total_chars: value.length,
+      char_offset: options.charOffset,
+      char_limit: options.charLimit,
+      returned_chars: text.length,
+      has_more: nextOffset < value.length,
+      ...(nextOffset < value.length ? { next_char_offset: nextOffset } : {}),
+    }
+  }
+  const pairs = Array.isArray(value)
+    ? value.map((item, index) => ({ key: index, value: item }))
+    : isObject(value)
+      ? Object.entries(value).map(([key, item]) => ({ key, value: item }))
+      : null
+  if (pairs === null) return value
+
+  const selected = pairs.slice(options.offset, options.offset + options.limit)
+  const entries = []
+  let outputChars = 0
+  for (const pair of selected) {
+    const childPath = `${path}/${encodePointer(pair.key)}`
+    const item = pagedEntry(pair.key, childPath, pair.value)
+    const itemChars = JSON.stringify(item).length
+    if (entries.length > 0 && outputChars + itemChars > maximumPageChars) break
+    entries.push(item)
+    outputChars += itemChars
+  }
+  const nextOffset = options.offset + entries.length
+  return {
+    kind: Array.isArray(value) ? 'array_page' : 'object_page',
+    total: pairs.length,
+    offset: options.offset,
+    limit: options.limit,
+    returned: entries.length,
+    has_more: nextOffset < pairs.length,
+    ...(nextOffset < pairs.length ? { next_offset: nextOffset } : {}),
+    entries,
+  }
+}
+
+function pagedEntry(key, path, value) {
+  const serialized = JSON.stringify(value)
+  if (serialized.length <= maximumInlineValueChars) return { key, path, value }
+  const childCount = Array.isArray(value) ? value.length : isObject(value) ? Object.keys(value).length : undefined
+  return {
+    key,
+    path,
+    value_omitted: true,
+    value_type: inferredType(value),
+    value_chars: serialized.length,
+    ...(childCount === undefined ? {} : { child_count: childCount }),
+    read_hint: '再次调用 eleckoi_read_variables 并把此 path 放入 paths。',
+  }
+}
+
+function nonnegativeInteger(value, fallback) {
+  return Number.isInteger(value) && value >= 0 ? value : fallback
+}
+
+function boundedInteger(value, fallback, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, Number.isInteger(value) ? value : fallback))
+}
+
 function valueAtSegments(root, segments) {
   let current = root
   for (const segment of segments) {
@@ -475,7 +573,7 @@ function grepContent(content, expression, multiline) {
     let count = 0
     sourceLines.forEach((text, index) => {
       const matches = matchCount(text, expression)
-      if (matches > 0) lines.push({ line: index + 1, text, match_count: matches })
+      if (matches > 0) lines.push({ line: index + 1, ...boundedGrepLine(text), match_count: matches })
       count += matches
     })
     return { count, lines }
@@ -490,8 +588,13 @@ function grepContent(content, expression, multiline) {
   }
   return {
     count: matches.length,
-    lines: [...countByLine].map(([line, count]) => ({ line, text: sourceLines[line - 1] || '', match_count: count })),
+    lines: [...countByLine].map(([line, count]) => ({ line, ...boundedGrepLine(sourceLines[line - 1] || ''), match_count: count })),
   }
+}
+
+function boundedGrepLine(text) {
+  if (text.length <= maximumGrepLineChars) return { text }
+  return { text: text.slice(0, maximumGrepLineChars), text_truncated: true, original_chars: text.length }
 }
 
 function normalizeScope(value) {

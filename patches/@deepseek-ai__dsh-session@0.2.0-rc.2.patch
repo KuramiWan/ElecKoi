@@ -1,0 +1,37 @@
+diff --git a/lib/index.js b/lib/index.js
+index 16b79c79bd73c6a390092d86858b26d441ffa348..4128f8743ec83664a5a7296ae2354eda262c3027 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1441,6 +1441,7 @@ var Session = class Session {
+ 	append(type, data, ...opts) {
+ 		const surfaceOpts = opts[0];
+ 		const surfaceMetadata = {
++			...surfaceOpts?.ignorable === void 0 ? {} : { ignorable: surfaceOpts.ignorable },
+ 			...surfaceOpts?.sourceEventSeqs === void 0 ? {} : { sourceEventSeqs: surfaceOpts.sourceEventSeqs },
+ 			...surfaceOpts?.surfaceOp === void 0 ? {} : { surfaceOp: surfaceOpts.surfaceOp }
+ 		};
+diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
+index 9db02581f79f1b2465997f2b7c6026af93d5a214..8d87ee49967728914e8692883118a952ddf8b06e 100644
+--- a/lib/types/index.d.ts
++++ b/lib/types/index.d.ts
+@@ -243,7 +243,7 @@ export declare class Session {
+      *   append reentered while this acceptance/publication boundary is open also
+      *   rejects before the log changes.
+      */
+-    append<T extends SessionEventType>(type: T, data: SessionEventMap[T], ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : []): SessionEvent<T>;
++    append<T extends SessionEventType>(type: T, data: SessionEventMap[T], ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T> & { ignorable?: true }] : [opts?: { ignorable: true }]): SessionEvent<T>;
+     /** Cached fold of the request-header events — see {@link requestHeader}. */
+     private headerFold;
+     /** Log position (events consumed) the header fold has reached. */
+diff --git a/lib/types/index.js b/lib/types/index.js
+index 3eed948569089579fe85e46590b938318142a26b..1b38454edba37d633777d8e067a60146d7087904 100644
+--- a/lib/types/index.js
++++ b/lib/types/index.js
+@@ -567,6 +567,7 @@ export class Session {
+     append(type, data, ...opts) {
+         const surfaceOpts = opts[0];
+         const surfaceMetadata = {
++            ...surfaceOpts?.ignorable === undefined ? {} : { ignorable: surfaceOpts.ignorable },
+             ...surfaceOpts?.sourceEventSeqs === undefined ? {} : { sourceEventSeqs: surfaceOpts.sourceEventSeqs },
+             ...surfaceOpts?.surfaceOp === undefined ? {} : { surfaceOp: surfaceOpts.surfaceOp },
+         };

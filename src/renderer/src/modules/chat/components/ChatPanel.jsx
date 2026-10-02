@@ -1,8 +1,8 @@
-import { ChatComposer } from "./ChatComposer.jsx";
+import { RoleplayInputMenu } from "./RoleplayInputMenu.jsx";
+import { ChatModelPicker } from "./ChatModelPicker.jsx";
 import { ChatWaitingReply } from "./ChatWaitingReply.jsx";
 import { ConversationWidthControls } from "./ConversationWidthControls.tsx";
 import conversationWidthCss from "./ConversationWidthControls.module.css";
-import { ChatDropOverlay } from "./ChatDropOverlay.jsx";
 import { PinnedAvatar } from "./PinnedAvatar.jsx";
 import { AgentProcessDialog } from "./AgentProcessDialog.jsx";
 import { VariableViewerDialog } from "./VariableViewerDialog.jsx";
@@ -12,8 +12,7 @@ import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
 import { DshAgentPresetIcon, DshNewChatIcon, DshToBottomIcon } from "../../../ui/icons/dshComposerIcons.jsx";
 import { SlidersHorizontal } from "@phosphor-icons/react";
-import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { getActivePresetName, getGenerationStats, listenGenerationStatsEvent } from "../api/chatApi.js";
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   chatDisplayCssVariables,
   chatTextColorCssVariables,
@@ -23,13 +22,17 @@ import {
   resolveChatDisplayProfile,
 } from "../../appearance/index.js";
 import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.js";
-import { ContextMeter, retainVisibleGenerationStats } from "./GenerationStats.jsx";
+import { GenerationStatsLine } from "./GenerationStats.jsx";
 import { useChatTailReading } from "../hooks/useChatTailReading.js";
 import { useChatHistoryAnchor } from "../hooks/useChatHistoryAnchor.js";
+import { revealChatFile } from "../api/chatApi.js";
 
 const TrajectoryView = lazy(() => import("./TrajectoryDialog.jsx").then((module) => ({
   default: module.TrajectoryView,
 })));
+const emptyStats = Object.freeze({ id: '', stats: null });
+const readEmptyStats = () => emptyStats;
+const subscribeEmptyStats = () => () => {};
 
 export function ChatPanel({
   hasActiveChat,
@@ -37,6 +40,7 @@ export function ChatPanel({
   currentTitle,
   conversationId,
   conversationModel,
+  presetCatalog,
   persona,
   messages,
   input,
@@ -56,7 +60,6 @@ export function ChatPanel({
   modelOptionsByKey,
   onLoadModelOptions,
   onSelectModel,
-  onSaveModelConfig,
   onNotify,
   onSend,
   onStop,
@@ -78,7 +81,10 @@ export function ChatPanel({
   chatDisplay,
   runtimeSessionId = "",
   renderRoleplaySlot,
+  renderRoleplaySlotChain,
   renderRoleplayMessage,
+  dshComposerOwner,
+  dshInputZone,
   isSwitchingChat = false,
   conversationTransitionRevision = 0,
 }) {
@@ -90,13 +96,21 @@ export function ChatPanel({
   const [trajectoryRevision, setTrajectoryRevision] = useState(0);
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [imageDragActive, setImageDragActive] = useState(false);
   const [messageScrollElement, setMessageScrollElement] = useState(null);
   const [followingTail, setFollowingTail] = useState(true);
-  const [generationStats, setGenerationStats] = useState(null);
-  const generationStatsRequestRef = useRef(0);
-  const generationStatsConversationRef = useRef(conversationId);
-  generationStatsConversationRef.current = conversationId;
+  const statsSnapshot = useSyncExternalStore(
+    conversationModel?.subscribeStats || subscribeEmptyStats,
+    conversationModel?.getStatsSnapshot || readEmptyStats,
+    readEmptyStats,
+  );
+  const generationStats = statsSnapshot.id === conversationId ? statsSnapshot.stats : null;
+  const loadImage = useCallback((id, image) => {
+    if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
+    return conversationModel.readImage(id, image);
+  }, [conversationModel]);
+  const openFile = useCallback((id, attachmentId, name) => {
+    return revealChatFile(id, attachmentId, name, { model: conversationModel });
+  }, [conversationModel]);
   const [deleteMode, setDeleteMode] = useState(false);
   const [deleteFromMessageId, setDeleteFromMessageId] = useState("");
   const [deletingMessages, setDeletingMessages] = useState(false);
@@ -108,7 +122,6 @@ export function ChatPanel({
   const returnToBottomRef = useRef(null);
   const historyPagingRef = useRef(null);
   const headerMenuRef = useRef(null);
-  const imageDragDepthRef = useRef(0);
   const previousMessageScrollTopRef = useRef(null);
 
   useLayoutEffect(() => {
@@ -131,7 +144,6 @@ export function ChatPanel({
     item.role === "assistant" && !String(item.content || "").trim() && !(item.process || []).length
   )), [messages]);
   const regenerateFrom = useCallback(async (message) => {
-    generationStatsRequestRef.current += 1;
     const result = await onRegenerate?.(message);
     if (result !== false) setTrajectoryRevision((revision) => revision + 1);
     return result;
@@ -153,10 +165,10 @@ export function ChatPanel({
 
   useEffect(() => {
     let active = true;
-    const load = () => getActivePresetName()
-      .then((name) => {
+    const load = () => presetCatalog.refresh()
+      .then((catalog) => {
         if (!active) return;
-        setActivePresetName(name);
+        setActivePresetName(catalog.presets.find((preset) => preset.id === catalog.activePresetId)?.name || "");
       })
       .catch(() => {
         if (active) setActivePresetName("");
@@ -167,7 +179,7 @@ export function ChatPanel({
       active = false;
       window.removeEventListener("focus", load);
     };
-  }, [conversationId]);
+  }, [conversationId, presetCatalog]);
 
   useEffect(() => {
     setDeleteMode(false);
@@ -200,28 +212,6 @@ export function ChatPanel({
     return () => window.removeEventListener("click", close);
   }, [headerMenuOpen]);
 
-  useEffect(() => {
-    let active = true;
-    const request = ++generationStatsRequestRef.current;
-    setGenerationStats(null);
-    if (!conversationId) return undefined;
-    getGenerationStats(conversationId)
-      .then((stats) => {
-        if (active && generationStatsRequestRef.current === request) setGenerationStats(stats);
-      })
-      .catch(() => {});
-    const dispose = listenGenerationStatsEvent((event) => {
-      if (active && event.conversationId === conversationId) {
-        generationStatsRequestRef.current += 1;
-        setGenerationStats((previous) => retainVisibleGenerationStats(previous, event.stats));
-      }
-    });
-    return () => {
-      active = false;
-      dispose?.();
-    };
-  }, [conversationId]);
-
   const openingMessage = messages.find((item) => item.id === "opening" && item.openingOptions?.length > 1);
   useEffect(() => {
     if (!openingMessage || isSending || deleteMode || String(input || "").length || processMessage || headerMenuOpen) return undefined;
@@ -247,54 +237,6 @@ export function ChatPanel({
     window.addEventListener("keydown", switchOpening);
     return () => window.removeEventListener("keydown", switchOpening);
   }, [deleteMode, headerMenuOpen, input, isSending, onSelectOpening, openingMessage, processMessage]);
-
-  useEffect(() => {
-    if (!hasActiveChat) return undefined;
-    const resetDrop = () => {
-      imageDragDepthRef.current = 0;
-      setImageDragActive(false);
-    };
-    const enterFileDrop = (event) => {
-      if (!hasFileDrag(event)) return;
-      event.preventDefault();
-      imageDragDepthRef.current += 1;
-      setImageDragActive(true);
-    };
-    const overFileDrop = (event) => {
-      if (!hasFileDrag(event)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = isSending ? 'none' : 'copy';
-    };
-    const leaveFileDrop = (event) => {
-      if (!hasFileDrag(event)) return;
-      imageDragDepthRef.current = Math.max(0, imageDragDepthRef.current - 1);
-      if (imageDragDepthRef.current === 0) setImageDragActive(false);
-      const outside = event.clientX <= 0 || event.clientY <= 0
-        || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight;
-      if (outside && (event.target === document.body || event.target === document.documentElement)) resetDrop();
-    };
-    const receiveDrop = (event) => {
-      if (!hasFileDrag(event)) return;
-      event.preventDefault();
-      resetDrop();
-      if (isSending) return;
-      const files = [...(event.dataTransfer.files || [])];
-      receiveImages(files.filter((file) => file.type.startsWith('image/')));
-      receiveFiles(files.filter((file) => !file.type.startsWith('image/')));
-    };
-    document.addEventListener('dragenter', enterFileDrop);
-    document.addEventListener('dragover', overFileDrop);
-    document.addEventListener('dragleave', leaveFileDrop);
-    document.addEventListener('drop', receiveDrop);
-    window.addEventListener('dragend', resetDrop);
-    return () => {
-      document.removeEventListener('dragenter', enterFileDrop);
-      document.removeEventListener('dragover', overFileDrop);
-      document.removeEventListener('dragleave', leaveFileDrop);
-      document.removeEventListener('drop', receiveDrop);
-      window.removeEventListener('dragend', resetDrop);
-    };
-  }, [hasActiveChat, isSending, onAddFiles, onAddImages, onNotify]);
 
   if (!hasActiveChat) {
     return (
@@ -360,17 +302,6 @@ export function ChatPanel({
     const deleted = await onDeleteMessages?.(deleteFromMessageId);
     if (deleted !== false) {
       setTrajectoryRevision((revision) => revision + 1);
-      const request = ++generationStatsRequestRef.current;
-      setGenerationStats(null);
-      if (conversationId) {
-        getGenerationStats(conversationId)
-          .then((stats) => {
-            if (generationStatsRequestRef.current === request && generationStatsConversationRef.current === conversationId) {
-              setGenerationStats(stats);
-            }
-          })
-          .catch(() => {});
-      }
       setDeleteMode(false);
       setDeleteFromMessageId("");
       setDeleteConfirmationOpen(false);
@@ -381,25 +312,48 @@ export function ChatPanel({
   const deleteFromIndex = displayedMessages.findIndex((message) => message.id === deleteFromMessageId);
   const selectedDeleteCount = deleteFromIndex < 0 ? 0 : displayedMessages.length - deleteFromIndex;
 
-  function receiveImages(files) {
-    try {
-      Promise.resolve(onAddImages?.(files)).catch((error) => onNotify?.("error", error?.message || "图片添加失败"));
-    } catch (error) {
-      onNotify?.("error", error?.message || "图片添加失败");
-    }
-  }
-
-  function receiveFiles(files) {
-    try {
-      Promise.resolve(onAddFiles?.(files)).catch((error) => onNotify?.("error", error?.message || "文件添加失败"));
-    } catch (error) {
-      onNotify?.("error", error?.message || "文件添加失败");
-    }
-  }
-
-  function hasFileDrag(event) {
-    return [...(event.dataTransfer?.types || [])].includes("Files");
-  }
+  const roleplayMenu = <RoleplayInputMenu
+    isSending={isSending}
+    onCreateChat={onCreateChat}
+    onOpenHistory={onOpenHistory}
+    onOpenTools={() => setToolsOpen(true)}
+    onOpenVariables={() => setVariablesOpen(true)}
+    onEnterDeleteMode={enterDeleteMode}
+    canDeleteMessages={displayedMessages.some((message) => message.id !== "opening")}
+    onRegenerate={regenerateFrom}
+    regenerateTargetMessageId={regenerateTargetMessageId}
+  />;
+  const roleplayModel = <ChatModelPicker
+    configs={modelConfigs}
+    selectedConfigId={selectedModelConfigId}
+    selectedModel={selectedModel}
+    modelOptionsByKey={modelOptionsByKey}
+    onLoadModels={onLoadModelOptions}
+    onSelect={onSelectModel}
+    onNotify={onNotify}
+  />;
+  const roleplayDock = <>
+    {chatDisplay?.generation_stats_enabled !== false ? <GenerationStatsLine stats={generationStats} /> : null}
+    {renderRoleplaySlot?.("eleckoi.roleplay.conversation.composer.dock", {})}
+  </>;
+  const residentComposer = renderRoleplaySlot?.(
+    "eleckoi.roleplay.conversation.composer.bar",
+    {
+      variant: "composer",
+      placeholder: "输入消息",
+      leadingAccessory: roleplayMenu,
+      modelAccessory: roleplayModel,
+      dockAccessory: roleplayDock,
+      renderBridgeSlot: renderRoleplaySlot,
+    },
+  ) ?? null;
+  const composedInput = renderRoleplaySlotChain && dshComposerOwner
+    ? renderRoleplaySlotChain(
+      "eleckoi.roleplay.conversation.composer",
+      { ...dshComposerOwner, renderBridgeSlot: renderRoleplaySlot },
+      { fallback: residentComposer, overlay: true },
+    ) ?? residentComposer
+    : residentComposer;
 
   return (
     <section
@@ -503,6 +457,8 @@ export function ChatPanel({
           runtimeSessionId={runtimeSessionId}
           renderRoleplaySlot={renderRoleplaySlot}
           renderRoleplayMessage={renderRoleplayMessage}
+          loadImage={loadImage}
+          onOpenFile={openFile}
           />}
         </div> : <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
           <TrajectoryView
@@ -535,46 +491,12 @@ export function ChatPanel({
         ) : (
           <>
             {isSending ? <ChatWaitingReply startTime={Number.isFinite(parsedStartedAt) ? parsedStartedAt : undefined} /> : null}
-            <ChatComposer
-          input={input}
-          setInput={setInput}
-          inputImages={inputImages}
-          onAddImages={receiveImages}
-          onRemoveImage={onRemoveImage}
-          inputFiles={inputFiles}
-          onAddFiles={receiveFiles}
-          onRemoveFile={onRemoveFile}
-          filesUploading={filesUploading}
-          fileUploadProgress={fileUploadProgress}
-          isSending={isSending}
-          modelConfigs={modelConfigs}
-          selectedModelConfigId={selectedModelConfigId}
-          selectedModel={selectedModel}
-          modelOptionsByKey={modelOptionsByKey}
-          onLoadModelOptions={onLoadModelOptions}
-          onSelectModel={onSelectModel}
-          onSaveModelConfig={onSaveModelConfig}
-          onNotify={onNotify}
-          onSend={onSend}
-          onStop={onStop}
-          onCreateChat={onCreateChat}
-          onOpenHistory={onOpenHistory}
-          onOpenTools={() => setToolsOpen(true)}
-          onOpenVariables={() => setVariablesOpen(true)}
-          onEnterDeleteMode={enterDeleteMode}
-          canDeleteMessages={displayedMessages.some((message) => message.id !== "opening")}
-          onRegenerate={regenerateFrom}
-          regenerateTargetMessageId={regenerateTargetMessageId}
-          renderRoleplaySlot={renderRoleplaySlot}
-          conversationId={conversationId}
-            />
+            {dshInputZone
+              ? renderRoleplaySlot?.("eleckoi.roleplay.conversation.input.dock", dshInputZone)
+              : null}
+            {composedInput}
           </>
         )}
-        <div className="chat-composer-dock" data-stats-hidden={chatDisplay?.generation_stats_enabled === false || undefined}>
-          {renderRoleplaySlot?.("eleckoi.roleplay.conversation.composer.dock", { generationStats })}
-          {renderRoleplaySlot?.("eleckoi.roleplay.composer.dock", { conversationId })}
-          {chatDisplay?.generation_stats_enabled !== false ? <ContextMeter stats={generationStats} /> : null}
-        </div>
       </div>
         <ConversationWidthControls
           container={conversationBody}
@@ -582,7 +504,6 @@ export function ChatPanel({
         />
       </div>
       {activeView === "chat" && pinnedAvatar ? <PinnedAvatar src={pinnedAvatar.src} name={pinnedAvatar.name} containerRef={chatPanelRef} onClose={() => setPinnedAvatar(null)} /> : null}
-      {imageDragActive ? <ChatDropOverlay disabled={isSending} /> : null}
       {processMessage ? (
         <AgentProcessDialog
           message={messages.find((item) => (
@@ -595,10 +516,10 @@ export function ChatPanel({
       ) : null}
       {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
       {toolsOpen ? <AgentToolsDialog
+        presetCatalog={presetCatalog}
         modelConfigs={modelConfigs}
         modelOptionsByKey={modelOptionsByKey}
         onLoadModels={onLoadModelOptions}
-        onSaveModelConfig={onSaveModelConfig}
         onClose={() => setToolsOpen(false)}
         onManage={onOpenPresetTools}
         onNotify={onNotify}
@@ -649,6 +570,8 @@ export function MessageList({
   runtimeSessionId,
   renderRoleplaySlot,
   renderRoleplayMessage,
+  loadImage,
+  onOpenFile,
 }) {
   const [isEntering, setIsEntering] = useState(Boolean(entering));
   const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant" && !message.pending);
@@ -760,6 +683,8 @@ export function MessageList({
           runtimeSessionId={runtimeSessionId}
           renderRoleplaySlot={renderRoleplaySlot}
           renderRoleplayMessage={renderRoleplayMessage}
+          loadImage={loadImage}
+          onOpenFile={onOpenFile}
         />;
       })}
     </div>
@@ -795,6 +720,8 @@ const MessageRow = memo(function MessageRow({
   runtimeSessionId,
   renderRoleplaySlot,
   renderRoleplayMessage,
+  loadImage,
+  onOpenFile,
 }) {
   const pluginScopeActive = !deleteMode && item.runtimeSessionId === runtimeSessionId;
   const pluginMessage = pluginScopeActive && renderRoleplaySlot && !item.pending;
@@ -827,6 +754,8 @@ const MessageRow = memo(function MessageRow({
     pluginActions={pluginActions}
     pluginAfter={pluginAfter}
     renderMessageContent={renderMessageContent}
+    loadImage={loadImage}
+    onOpenFile={onOpenFile}
   />;
 
   return (

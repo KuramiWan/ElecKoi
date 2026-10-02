@@ -6,10 +6,10 @@ import { RoleplayPlanEditor, SubagentModelSelect, WebSearchSettings } from '../.
 import { loadAgentTools, setAgentToolGroupEnabled, setRoleplayPlanSettings, setSubagentModelSelection } from '../api/agentToolsApi.js';
 
 export function AgentToolsDialog({
+  presetCatalog,
   modelConfigs = [],
   modelOptionsByKey,
   onLoadModels,
-  onSaveModelConfig,
   onClose,
   onManage,
   onNotify,
@@ -25,12 +25,12 @@ export function AgentToolsDialog({
   useEffect(() => {
     let active = true;
     setLoading(true);
-    loadAgentTools()
+    loadAgentTools(presetCatalog, modelConfigs)
       .then((value) => { if (active) setCatalog(value); })
       .catch(() => { if (active) onNotify?.('error', '读取工具失败'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [onNotify]);
+  }, [modelConfigs, onNotify, presetCatalog]);
 
   useEffect(() => {
     const closeOnEscape = (event) => {
@@ -50,7 +50,7 @@ export function AgentToolsDialog({
       groups: current.groups.map((item) => item.id === group.id ? { ...item, enabled } : item),
     } : current);
     try {
-      setCatalog(await setAgentToolGroupEnabled(group.id, enabled));
+      setCatalog(await setAgentToolGroupEnabled(presetCatalog, group.id, enabled, modelConfigs));
     } catch {
       setCatalog((current) => current ? {
         ...current,
@@ -68,7 +68,7 @@ export function AgentToolsDialog({
     const previous = catalog?.subagentModelSelection;
     setCatalog((current) => current ? { ...current, subagentModelSelection: selection } : current);
     try {
-      setCatalog(await setSubagentModelSelection(selection));
+      setCatalog(await setSubagentModelSelection(presetCatalog, selection, modelConfigs));
     } catch {
       setCatalog((current) => current ? { ...current, subagentModelSelection: previous } : current);
       onNotify?.('error', '保存子 Agent 模型失败');
@@ -85,7 +85,7 @@ export function AgentToolsDialog({
     if (savingRoleplayPlan) return;
     setSavingRoleplayPlan(true);
     try {
-      setCatalog(await setRoleplayPlanSettings(roleplayPlan));
+      setCatalog(await setRoleplayPlanSettings(presetCatalog, roleplayPlan, modelConfigs));
       onNotify?.('success', '角色扮演计划已保存');
     } catch {
       onNotify?.('error', '保存角色扮演计划失败');
@@ -113,7 +113,6 @@ export function AgentToolsDialog({
           savingRoleplayPlan={savingRoleplayPlan}
           onChange={(enabled) => changeEnabled(selected, enabled)}
           onLoadModels={onLoadModels}
-          onSaveModelConfig={onSaveModelConfig}
           onNotify={onNotify}
           onSubagentModelChange={changeSubagentModel}
           onRoleplayPlanChange={changeRoleplayPlan}
@@ -158,7 +157,6 @@ function ToolDetail({
   savingRoleplayPlan,
   onChange,
   onLoadModels,
-  onSaveModelConfig,
   onNotify,
   onSubagentModelChange,
   onRoleplayPlanChange,
@@ -177,7 +175,6 @@ function ToolDetail({
       disabled={savingSubagentModel}
       onChange={onSubagentModelChange}
       onLoadModels={onLoadModels}
-      onSaveModelConfig={onSaveModelConfig}
       onNotify={onNotify}
     /> : null}
     {group.id === 'builtin:web' ? <div className="agent-tool-web-config"><WebSearchSettings /></div> : <>

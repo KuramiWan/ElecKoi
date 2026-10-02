@@ -3,7 +3,6 @@ import type { AgentProcessItem, ChatImageMediaType, ChatUserFileAttachment, Chat
 import type { VariableItemConfig, VariableObjectConfig } from '../variables/schemas'
 import type { SettingLibraryEntry, SettingLibraryGroup, SettingLibraryPromptPosition } from '../settingLibrary/schemas'
 import type { AgentGenerationStats } from './generationStats'
-import type { WebSearchMode } from './webSearch'
 import type { AgentTrajectorySnapshot } from './trajectory'
 
 export interface AgentVariableRuntimeContext {
@@ -57,11 +56,6 @@ export interface AgentRunInput {
     retainedTurns: number
   } | undefined
   toolPolicy?: { disabledGroupIds: string[] } | undefined
-  webSearch?: {
-    mode: WebSearchMode
-    maxResults: 3 | 5 | 8
-    tavilyApiKey: string
-  } | undefined
   agentPreset?: {
     id: string
     versionId: string
@@ -92,6 +86,27 @@ export interface AgentRunCallbacks {
 
 export type AgentRunResult = 'complete' | 'cancelled'
 
+export interface AgentResolvedModelInfo {
+  provider: string
+  id: string
+  name: string
+  description?: string
+  inputModalities?: string[]
+  contextWindow?: number
+  defaultMaxTokens?: number
+  reasoning?: {
+    efforts: Array<{ id: string; name: string; description?: string }>
+    defaultEffort?: string
+  }
+}
+
+export interface AgentModelCatalog {
+  default: { provider: string; model: string; reasoningEffort?: string }
+  routableProviders: string[]
+  groups: Array<{ id: string; name: string; models: AgentResolvedModelInfo[] }>
+  failures: Array<{ id: string; name: string; message: string }>
+}
+
 export interface AgentRuntimePort {
   createSession?(input: Omit<AgentRunInput, 'runId' | 'text'>): Promise<void>
   prepareImages?(images: EncodedChatImageAttachment[]): Promise<ChatUserImageAttachment[]>
@@ -103,6 +118,18 @@ export interface AgentRuntimePort {
     runtimeThreadId: string,
     options?: { beforeIndex?: number | undefined; limit?: number | undefined }
   ): AgentTrajectorySnapshot
+  modelCatalog?(): Promise<AgentModelCatalog>
+  describeModel?(provider: string, model: string): Promise<AgentResolvedModelInfo>
+  resolveModelSelection?(runtimeThreadId: string): Promise<{
+    provider: string
+    model: string
+    reasoningEffort?: string | undefined
+  }>
+  selectModel?(runtimeThreadId: string, selection: {
+    provider: string
+    model: string
+    reasoningEffort?: string | undefined
+  }): Promise<{ provider: string; model: string; reasoningEffort?: string | undefined }>
   cancel(conversationId: string): Promise<boolean>
   rewindConversation?(conversationId: string, runtimeThreadId: string, fromTurn: number): Promise<'rewound' | 'unavailable'>
   editMessage?(conversationId: string, runtimeThreadId: string, messageId: string, role: 'user' | 'assistant', content: string): Promise<void>

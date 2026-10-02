@@ -9,6 +9,7 @@ import {
   MVU_STATUS_PLACEHOLDER,
   injectMvuFrontendActionBridge,
   injectMvuFrontendSnapshotBridge,
+  hideMvuDisplayMarkers,
   mvuMessageDisplayCompatibility,
   resolveMvuMessageVariableMacros
 } from '@eleckoi/compatibility-mvu'
@@ -18,7 +19,8 @@ import {
   detectRichMessagePresentation
 } from '../src/shared/foundation/richMessage'
 import { transformWithRegexRules } from '../src/shared/foundation/regex/RegexRuleProcessor'
-import type { RegexRule } from '../src/shared/contracts/regex/schemas'
+import type { RegexRule, RegexRuleCollection } from '../src/shared/contracts/regex/schemas'
+import { MessageDisplayProjector } from '../packages/dsh-product-data/src/domain/conversations/MessageDisplayProjector'
 
 function request(method: string, params: Record<string, unknown> = {}) {
   return JSON.stringify({ id: 'test-1', apiVersion: AUTHOR_API_VERSION, method, params })
@@ -75,6 +77,30 @@ describe('MVU display compatibility', () => {
     expect(mvuMessageDisplayCompatibility.prepareAssistantText('正文', false, patterns)).toBe('正文')
     expect(mvuMessageDisplayCompatibility.prepareAssistantText('正文', true, [])).toBe('正文')
     expect(mvuMessageDisplayCompatibility.prepareAssistantText('正文', true, patterns)).toContain(MVU_STATUS_PLACEHOLDER)
+  })
+
+  it('hides protocol markers only in the display projection', () => {
+    const source = '<FINAL>正文</FINAL>\n\n<StatusPlaceHolderImpl/>'
+    expect(hideMvuDisplayMarkers(source)).toBe('正文\n\n')
+    expect(mvuMessageDisplayCompatibility.resolveVariableMacros(source, '{}')).toBe('正文\n\n')
+  })
+
+  it('runs display regexes before hiding protocol markers', () => {
+    const collection: RegexRuleCollection = {
+      characterId: 'character-1', agentPresetId: '', agentPresetName: '', agentPresetRegexRevision: '0'.repeat(64),
+      globalRules: [], agentPresetRules: [], characterRules: [{
+        id: 'clean', name: '清理', pattern: '/状态：(\\d+)/g', replacement: 'HP=$1',
+        targets: ['AiOutput'], enabled: true, displayOnly: true, promptOnly: false, runOnEdit: false, order: 0
+      }],
+      versions: [{ id: 'version-1', name: '当前', globalEnabledIds: [], agentPresetEnabledIds: [], characterEnabledIds: ['clean'] }],
+      activeVersionId: 'version-1', revision: 1
+    }
+    const source = { id: 'message-1', conversationId: 'chat-1', role: 'assistant' as const,
+      content: '<FINAL>状态：7</FINAL>', variableStateJson: '{}', status: 'complete' as const,
+      createdAt: '2026-10-02T00:00:00.000Z' }
+    const projected = new MessageDisplayProjector(mvuMessageDisplayCompatibility).project(source, collection)
+    expect(projected.content).toBe('<FINAL>状态：7</FINAL>')
+    expect(projected.displayContent).toBe('HP=7')
   })
 
   it('injects read-only snapshot and controlled action bridges only when referenced', () => {

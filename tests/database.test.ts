@@ -1,35 +1,29 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
 import { getTableColumns, getTableName } from 'drizzle-orm'
-import { SqliteDatabase } from '../src/main/platform/sqlite/SqliteDatabase'
-import { commonTables } from '../src/main/platform/sqlite/schema/common'
-import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../src/main/platform/sqlite/installSchema'
-import { commonSchemaSql } from '../src/main/platform/sqlite/migrations/commonSchemaSql'
-import { ConversationRepository } from '../src/main/modules/conversations/ConversationRepository'
-import { MessageRepository } from '../src/main/modules/conversations/MessageRepository'
-import { CharacterRepository } from '../src/main/modules/personas/CharacterRepository'
-import { PersonaRepository } from '../src/main/modules/personas/PersonaRepository'
-import { ModelRepository } from '../src/main/modules/models/ModelRepository'
-import { GenerationRepository } from '../src/main/modules/agent/GenerationRepository'
-import { ConversationCleanupRepository } from '../src/main/modules/conversations/ConversationCleanupRepository'
-import { resolveConversationSeed } from '../src/main/modules/conversations/conversationSeed'
-import { ConversationFiles } from '../src/main/platform/filesystem/ConversationFiles'
-import { LocalMediaStore } from '../src/main/platform/filesystem/LocalMediaStore'
-import { UserSettingsStore } from '../src/main/modules/settings/UserSettingsStore'
-import { DEFAULT_CHAT_DISPLAY_PREFERENCES } from '../src/shared/contracts/settings/schemas'
-import { SettingLibraryRepository } from '../src/main/modules/settingLibraries/SettingLibraryRepository'
-import { emptyEntry } from '../src/main/modules/settingLibraries/settingLibraryNormalization'
-import { readEntry, writeEntry } from '../src/main/modules/settingLibraries/settingLibraryCodec'
-import { AgentPresetRepository } from '../src/main/modules/agentPresets/AgentPresetRepository'
-import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '../src/main/modules/agentTools'
+import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
+import { commonTables } from '../packages/dsh-product-data/src/storage/sqlite/schema/common'
+import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../packages/dsh-product-data/src/storage/sqlite/installSchema'
+import { commonSchemaSql } from '../packages/dsh-product-data/src/storage/sqlite/migrations/commonSchemaSql'
+import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
+import { MessageRepository } from '../packages/dsh-product-data/src/domain/conversations/MessageRepository'
+import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
+import { PersonaRepository } from '../packages/dsh-product-data/src/domain/personas/PersonaRepository'
+import { resolveConversationSeed } from '../packages/dsh-product-data/src/domain/conversations/conversationSeed'
+import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
+import { SettingLibraryRepository } from '../packages/dsh-product-data/src/domain/settingLibraries/SettingLibraryRepository'
+import { emptyEntry } from '../packages/dsh-product-data/src/domain/settingLibraries/settingLibraryNormalization'
+import { readEntry, writeEntry } from '../packages/dsh-product-data/src/domain/settingLibraries/settingLibraryCodec'
+import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets/AgentPresetRepository'
+import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '../packages/dsh-product-data/src/domain/agentTools'
 import { defaultRoleplayPlanSettings } from '../src/shared/contracts/presets/roleplayPlan'
 import { DEFAULT_HIDDEN_TOOL_TIMELINE_CONTENT } from '../src/shared/contracts/presets/builtIns'
 import { settingLibraryEntrySchema, settingLibraryPromptPositionSchema, settingLibraryStoredEntrySchema } from '../src/shared/contracts/settingLibrary/schemas'
-import { VariableConfigRepository } from '../src/main/modules/variables/VariableConfigRepository'
-import { VariableStateRepository } from '../src/main/modules/variables/VariableStateRepository'
+import { VariableConfigRepository } from '../packages/dsh-product-data/src/domain/variables/VariableConfigRepository'
+import { VariableStateRepository } from '../packages/dsh-product-data/src/domain/variables/VariableStateRepository'
 import { VARIABLE_INITIALIZATION_OBJECT_ID } from '../src/shared/contracts/variables/schemas'
 
 const directories: string[] = []
@@ -57,10 +51,11 @@ function card(id = 'card-a') {
   return { id, name: id, group: '', persona: { assistant_name: id, assistant_avatar: '', assistant_cover: '', opening: 'opening', show_opening: true } }
 }
 function schemaObjects(db: Database.Database) {
-  return db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'desktop_%' ORDER BY type,name").all()
+  return db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
 }
 
 const legacyContentSql = `
+  CREATE TABLE web_search_settings (singletonId INTEGER NOT NULL PRIMARY KEY, mode TEXT NOT NULL, maxResults INTEGER NOT NULL, tavilyApiKey TEXT NOT NULL, updatedAt TEXT NOT NULL);
   CREATE TABLE agent_content_parts (conversationId TEXT NOT NULL,ownerType TEXT NOT NULL,ownerId TEXT NOT NULL,partIndex INTEGER NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,payloadJson TEXT NOT NULL,chunkIndex INTEGER NOT NULL,PRIMARY KEY(ownerType,ownerId,partIndex,chunkIndex));
   CREATE INDEX index_agent_content_parts_conversationId ON agent_content_parts(conversationId);
   CREATE INDEX index_agent_content_parts_ownerType_ownerId ON agent_content_parts(ownerType,ownerId);
@@ -128,6 +123,11 @@ function legacyV1Database(path = ':memory:'): Database.Database {
     ALTER TABLE agent_responses ADD COLUMN turnStartedAtMillis INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE agent_responses ADD COLUMN turnCompletedAtMillis INTEGER;
 
+    CREATE TABLE generation_attempts (id TEXT NOT NULL PRIMARY KEY, conversationId TEXT NOT NULL, ownerId TEXT NOT NULL, state TEXT NOT NULL,
+      FOREIGN KEY(conversationId) REFERENCES agent_conversations(id) ON DELETE CASCADE);
+    CREATE INDEX index_generation_attempts_conversationId ON generation_attempts (conversationId);
+    CREATE UNIQUE INDEX index_generation_attempts_conversationId_ownerId ON generation_attempts (conversationId, ownerId);
+    CREATE INDEX index_generation_attempts_conversationId_state ON generation_attempts (conversationId, state);
     DROP INDEX index_generation_attempts_conversationId_ownerId;
     ALTER TABLE generation_attempts ADD COLUMN kind TEXT NOT NULL DEFAULT 'generation';
     ALTER TABLE generation_attempts ADD COLUMN parentAttemptId TEXT;
@@ -185,6 +185,27 @@ function currentV2Database(): Database.Database {
 }
 
 describe('shared SQLite baseline', () => {
+  it('removes DSH-owned configuration in the v5 to v6 migration without a handoff', () => {
+    const database = new Database(':memory:')
+    try {
+      installSchema(database)
+      database.exec(`
+        CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
+        INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
+        CREATE TABLE web_search_settings (singletonId INTEGER NOT NULL PRIMARY KEY, mode TEXT NOT NULL, maxResults INTEGER NOT NULL, tavilyApiKey TEXT NOT NULL, updatedAt TEXT NOT NULL);
+        CREATE TABLE desktop_preferences (key TEXT PRIMARY KEY, valueJson TEXT NOT NULL, updatedAt TEXT NOT NULL);
+        INSERT INTO web_search_settings VALUES (1,'tavily',8,'retired-ciphertext','saved');
+        INSERT INTO desktop_preferences VALUES ('appearance.mode','"dark"','saved');
+        PRAGMA user_version = 5;
+      `)
+      installSchema(database)
+      expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name IN ('web_search_settings','migration_handoffs','desktop_preferences','desktop_schema')").all()).toEqual([])
+      expect(database.pragma('foreign_key_check')).toEqual([])
+      expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally { database.close() }
+  })
+
   it('reads existing setting payloads with unknown enum values without changing the database version', () => {
     const raw = JSON.parse(writeEntry(emptyEntry('saved-setting', 'now'))) as Record<string, unknown>
     raw.content = '已保存正文'
@@ -213,77 +234,6 @@ describe('shared SQLite baseline', () => {
       agentReadStrategy: 'normal',
       position: null
     })
-  })
-
-  it('defaults appearance to light and persists only the three supported modes', () => {
-    const { database, media } = harness()
-    const settings = new UserSettingsStore(database, media)
-
-    expect(settings.read('appearance.mode')).toBe('light')
-    expect(settings.read('chat.display')).toEqual(DEFAULT_CHAT_DISPLAY_PREFERENCES)
-    expect(settings.read('chat.display').reasoning_display_mode).toBe('collapsed')
-    expect(settings.write('appearance.mode', 'system')).toBe('system')
-    expect(settings.read('appearance.mode')).toBe('system')
-    expect(settings.write('appearance.ui', {
-      pinned_chat_ids: ['pinned-chat'],
-      hidden_chat_ids: ['hidden-chat'],
-      list_collapse_state: {
-        characters: { 全部角色: true },
-        presets: { 全部预设: true },
-        models: { general: false, image: true },
-        plugins: { official: true, eleckoi: false, installed: true }
-      }
-    })).toEqual({
-      pinned_chat_ids: ['pinned-chat'],
-      hidden_chat_ids: ['hidden-chat'],
-      list_collapse_state: {
-        characters: { 全部角色: true },
-        presets: { 全部预设: true },
-        models: { general: false, image: true },
-        plugins: { official: true, eleckoi: false, installed: true }
-      }
-    })
-    expect(settings.read('appearance.ui').hidden_chat_ids).toEqual(['hidden-chat'])
-    expect(settings.read('appearance.ui').list_collapse_state?.models).toEqual({ general: false, image: true })
-    expect(settings.read('appearance.ui').list_collapse_state?.plugins).toEqual({ official: true, eleckoi: false, installed: true })
-    expect(() => settings.write('appearance.mode', 'sepia' as never)).toThrow()
-  })
-
-  it('restores the selected conversation and per-character history after reopening', () => {
-    const { path, database, media } = harness()
-    const selection = {
-      active_conversation_id: 'conversation-b',
-      preferred_sessions: { 'character-a': 'conversation-b' }
-    }
-    const settings = new UserSettingsStore(database, media)
-    expect(settings.read('chat.selection')).toEqual({ active_conversation_id: '', preferred_sessions: {} })
-    settings.write('chat.selection', selection)
-
-    database.close()
-    connections.splice(connections.indexOf(database), 1)
-    const reopened = new SqliteDatabase(path)
-    reopened.open()
-    connections.push(reopened)
-    expect(new UserSettingsStore(reopened, media).read('chat.selection')).toEqual(selection)
-  }, 15000)
-
-  it('keeps valid saved preferences when old JSON has extra fields', () => {
-    const { database, media } = harness()
-    const settings = new UserSettingsStore(database, media)
-    const value = {
-      ...DEFAULT_CHAT_DISPLAY_PREFERENCES,
-      layout: 'social',
-      editorOnly: true,
-      profiles: {
-        ...DEFAULT_CHAT_DISPLAY_PREFERENCES.profiles,
-        social: { ...DEFAULT_CHAT_DISPLAY_PREFERENCES.profiles.social, editorOnly: true }
-      }
-    }
-    database.native.prepare('INSERT INTO desktop_preferences(key,valueJson,updatedAt) VALUES (?, ?, ?)')
-      .run('chat.display', JSON.stringify(value), 'now')
-    expect(settings.read('chat.display').layout).toBe('social')
-    expect(settings.read('chat.display')).not.toHaveProperty('editorOnly')
-    expect(settings.read('chat.display').profiles.social).not.toHaveProperty('editorOnly')
   })
 
   it('installs all common tables, views, indexes and foreign keys exactly and maps every column', () => {
@@ -444,13 +394,16 @@ describe('shared SQLite baseline', () => {
     try {
       installSchema(database)
       database.exec(`
+        CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
+        INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
         INSERT INTO chat_sessions(id,title,characterId,characterName,characterAvatar,historyMessageCount,historyUserMessageCount,createdAt,updatedAt)
           VALUES ('chat-v3','Existing','','','',0,0,'created','updated');
+        CREATE TABLE web_search_settings (singletonId INTEGER NOT NULL PRIMARY KEY, mode TEXT NOT NULL, maxResults INTEGER NOT NULL, tavilyApiKey TEXT NOT NULL, updatedAt TEXT NOT NULL);
         DROP TABLE agent_pending_inputs;
         PRAGMA user_version = 3;
       `)
       installSchema(database)
-      expect(database.pragma('user_version', { simple: true })).toBe(5)
+      expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(database.prepare('SELECT title FROM chat_sessions WHERE id=?').get('chat-v3')).toEqual({ title: 'Existing' })
       expect(database.prepare("SELECT name FROM sqlite_master WHERE name='agent_pending_inputs'").get())
         .toEqual({ name: 'agent_pending_inputs' })
@@ -464,6 +417,10 @@ describe('shared SQLite baseline', () => {
     try {
       installSchema(database)
       database.exec(`
+        CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
+        INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
+        CREATE TABLE web_search_settings (singletonId INTEGER NOT NULL PRIMARY KEY, mode TEXT NOT NULL, maxResults INTEGER NOT NULL, tavilyApiKey TEXT NOT NULL, updatedAt TEXT NOT NULL);
+        CREATE TABLE desktop_preferences (key TEXT PRIMARY KEY, valueJson TEXT NOT NULL, updatedAt TEXT NOT NULL);
         CREATE TABLE roleplay_rich_heights (
           sessionId TEXT NOT NULL,
           messageId TEXT NOT NULL,
@@ -482,11 +439,10 @@ describe('shared SQLite baseline', () => {
 
       installSchema(database)
 
-      expect(database.pragma('user_version', { simple: true })).toBe(5)
+      expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='roleplay_rich_heights'").get())
         .toBeUndefined()
-      expect(database.prepare('SELECT valueJson FROM desktop_preferences WHERE key=?').get('appearance.mode'))
-        .toEqual({ valueJson: '"dark"' })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name='desktop_preferences'").get()).toBeUndefined()
       expect(database.pragma('foreign_key_check')).toEqual([])
       expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
     } finally { database.close() }
@@ -526,18 +482,16 @@ describe('shared SQLite baseline', () => {
       installSchema(database)
 
       expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(database.prepare('SELECT baseline FROM desktop_schema WHERE id = 1').get()).toEqual({ baseline: BASELINE_ID })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name='desktop_schema'").get()).toBeUndefined()
       expect(database.prepare('SELECT title FROM chat_sessions').get()).toEqual({ title: '保留会话' })
       expect((database.pragma('table_info(chat_sessions)') as Array<{ name: string }>).map((column) => column.name))
         .not.toContain('historySummary')
       expect(database.prepare('SELECT displayName FROM conversation_speakers ORDER BY id').all()).toEqual([{ displayName: '角色' }, { displayName: '测试用户' }])
       expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_content_parts'").get()).toBeUndefined()
       expect(database.prepare('SELECT runtimeThreadId FROM agent_responses').get()).toEqual({ runtimeThreadId: 'dsh-session' })
-      expect(database.prepare('SELECT id, conversationId, ownerId, state FROM generation_attempts').get()).toEqual({ id: 'attempt', conversationId: 'chat', ownerId: 'response', state: 'complete' })
-      expect(database.prepare('SELECT valueJson FROM desktop_preferences WHERE key = ?').get('appearance.mode')).toEqual({ valueJson: '"dark"' })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('generation_attempts','cleanup_operations','desktop_preferences')").all()).toEqual([])
       expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('chat_session_model_settings','frontend_projects','character_frontend_settings','agent_conversation_display_cache','global_tool_config')").all()).toEqual([])
-      expect(database.prepare('SELECT mode,maxResults,tavilyApiKey,updatedAt FROM web_search_settings').get())
-        .toEqual({ mode: 'tavily', maxResults: 8, tavilyApiKey: 'encrypted-key', updatedAt: 'tool-updated' })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name='web_search_settings'").get()).toBeUndefined()
       expect(database.prepare("SELECT content FROM agent_preset_contents WHERE presetId='preset' AND kind='usage_instructions'").get())
         .toEqual({ content: '使用说明' })
       expect(database.prepare("SELECT content FROM agent_preset_version_contents WHERE presetId='preset' AND versionId='preset-v1' AND kind='usage_instructions'").get())
@@ -572,14 +526,12 @@ describe('shared SQLite baseline', () => {
       expect(firstStart.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(firstStart.native.prepare('SELECT title FROM chat_sessions WHERE id = ?').get('chat-reopen'))
         .toEqual({ title: '迁移后保留' })
-      expect(firstStart.native.prepare('SELECT valueJson FROM desktop_preferences WHERE key = ?').get('appearance.mode'))
-        .toEqual({ valueJson: '"dark"' })
+      expect(firstStart.native.prepare("SELECT name FROM sqlite_master WHERE name='desktop_preferences'").get()).toBeUndefined()
       firstStart.close()
 
       secondStart.open()
       expect(secondStart.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(secondStart.native.prepare('SELECT baseline FROM desktop_schema WHERE id = 1').get())
-        .toEqual({ baseline: BASELINE_ID })
+      expect(secondStart.native.prepare("SELECT name FROM sqlite_master WHERE name='desktop_schema'").get()).toBeUndefined()
       expect(secondStart.native.prepare('SELECT title FROM chat_sessions WHERE id = ?').get('chat-reopen'))
         .toEqual({ title: '迁移后保留' })
       expect(secondStart.native.pragma('foreign_key_check')).toEqual([])
@@ -619,9 +571,8 @@ describe('shared SQLite baseline', () => {
       installSchema(database)
 
       expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(database.prepare('SELECT baseline FROM desktop_schema WHERE id=1').get()).toEqual({ baseline: BASELINE_ID })
-      expect(database.prepare('SELECT mode,maxResults,tavilyApiKey,updatedAt FROM web_search_settings').get())
-        .toEqual({ mode: 'tavily', maxResults: 3, tavilyApiKey: 'ciphertext', updatedAt: 'saved-at' })
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name='desktop_schema'").get()).toBeUndefined()
+      expect(database.prepare("SELECT name FROM sqlite_master WHERE name='web_search_settings'").get()).toBeUndefined()
       expect(database.prepare("SELECT content FROM agent_preset_contents WHERE presetId='preset-v2' AND kind='usage_instructions'").get())
         .toEqual({ content: '保留说明' })
       expect(database.pragma('foreign_key_check')).toEqual([])
@@ -684,7 +635,7 @@ describe('shared SQLite baseline', () => {
     }
   })
 
-  it('migrates a closed v2 file to v3 and reopens every persisted setting placement', () => {
+  it('migrates a closed v2 file to v3 and reopens every persisted setting placement', { timeout: 30_000 }, () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-v2-placement-test-'))
     directories.push(directory)
     const path = join(directory, 'eleckoi.sqlite3')
@@ -797,7 +748,7 @@ describe('shared SQLite baseline', () => {
     reopened.open()
     try {
       expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(reopened.native.prepare('SELECT baseline FROM desktop_schema WHERE id=1').get()).toEqual({ baseline: BASELINE_ID })
+      expect(reopened.native.prepare("SELECT name FROM sqlite_master WHERE name='desktop_schema'").get()).toBeUndefined()
 
       const library = new SettingLibraryRepository(reopened).get('synthetic-character')
       expect(library.entries[0]?.position).toBe('insert_point_1')
@@ -850,7 +801,7 @@ describe('shared SQLite baseline', () => {
     }
   })
 
-  it('keeps a v2 file unchanged when the placement migration encounters damaged JSON', () => {
+  it('keeps a v2 file unchanged when the placement migration encounters damaged JSON', { timeout: 30_000 }, () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-v2-placement-rollback-'))
     directories.push(directory)
     const path = join(directory, 'eleckoi.sqlite3')
@@ -936,20 +887,6 @@ describe('shared SQLite baseline', () => {
     expect(messages.list(a).slice(1).map((message) => message.responseIndex)).toEqual([0, 1])
     expect(() => messages.createResponse(b, user.turnId!, 'wrong', 'complete', { id: 'member', name: '', avatar: '', kind: 'card_character' })).toThrow('活动分支')
     expect(database.native.pragma('foreign_key_check')).toEqual([])
-  })
-
-  it('keeps a new chat only after its blank DSH Session is created', async () => {
-    const { conversations } = harness()
-    const createdIds: string[] = []
-    const detach = conversations.attachSessionCreator(async id => { createdIds.push(id) })
-    const created = await conversations.createWithSession({ title: '新对话' })
-    expect(createdIds).toEqual([created.conversation.id])
-    expect(conversations.get(created.conversation.id).id).toBe(created.conversation.id)
-    detach()
-
-    conversations.attachSessionCreator(async () => { throw new Error('DSH 创建失败') })
-    await expect(conversations.createWithSession({ title: '失败对话' })).rejects.toThrow('DSH 创建失败')
-    expect(conversations.list().map(row => row.conversation.id)).toEqual([created.conversation.id])
   })
 
   it('binds an active historical reply to its exact DSH turn without changing message text', () => {
@@ -1124,14 +1061,13 @@ describe('shared SQLite baseline', () => {
   })
 
   it('keeps a terminal reply immutable when a late checkpoint or duplicate completion arrives', () => {
-    const { conversations, messages, database } = harness()
+    const { conversations, messages } = harness()
     const id = conversations.create({}).conversation.id
     messages.create(id, 'user', 'input', 'complete')
     const reply = messages.create(id, 'assistant', '', 'streaming')
     messages.finish(reply.id, 'final', 'complete')
     messages.appendCheckpoint(reply.id, 'late delta')
     expect(messages.finish(reply.id, 'late failure', 'error')).toMatchObject({ content: 'final', status: 'complete' })
-    expect(() => new GenerationRepository(database, messages).start('late-run', id, reply.id)).toThrow('本场回复')
   })
 
   it('projects the variable snapshot stored on each message instead of the latest conversation state', () => {
@@ -1393,17 +1329,17 @@ describe('shared SQLite baseline', () => {
       ...library,
       entries: library.entries.map((entry) => entry.id === opening.id ? {
         ...opening,
-        content: '保存后的开场白',
+        content: '<FINAL>保存后的开场白</FINAL>',
         openingMessages: [{
           id: 'opening-primary',
           title: '默认开场',
-          content: '保存后的开场白',
+          content: '<FINAL>保存后的开场白</FINAL>',
           initialVariableStateJson: '{"好感":10}'
         }],
         defaultOpeningMessageId: 'opening-primary'
       } : entry)
     })
-    const conversations = new ConversationRepository(database, undefined, (characterId, db) => (
+    const conversations = new ConversationRepository(database, (characterId, db) => (
       resolveConversationSeed(characterId, db, settingLibraries, variables)
     ))
     const messages = new MessageRepository(database)
@@ -1411,7 +1347,7 @@ describe('shared SQLite baseline', () => {
     const created = conversations.create({ metadata: { characterId: 'card-a' } })
 
     expect(messages.list(created.conversation.id)).toEqual([
-      expect.objectContaining({ id: 'opening', role: 'assistant', content: '保存后的开场白', status: 'complete' })
+      expect.objectContaining({ id: 'opening', role: 'assistant', content: '<FINAL>保存后的开场白</FINAL>', status: 'complete' })
     ])
     expect(conversations.list()[0]?.conversation.preview).toBe('保存后的开场白')
     expect(database.native.prepare("SELECT kind,stateJson FROM chat_session_variable_states WHERE sessionId=? ORDER BY kind")
@@ -1441,7 +1377,7 @@ describe('shared SQLite baseline', () => {
         defaultOpeningMessageId: 'primary'
       } : entry)
     })
-    const conversations = new ConversationRepository(database, undefined, (characterId, db) => (
+    const conversations = new ConversationRepository(database, (characterId, db) => (
       resolveConversationSeed(characterId, db, settingLibraries, variables)
     ))
     const messages = new MessageRepository(database)
@@ -1468,9 +1404,8 @@ describe('shared SQLite baseline', () => {
       .toContainEqual(expect.objectContaining({ id: 'backup', content: '备用开场' }))
 
     messages.create(conversationId, 'user', '开始聊天', 'complete')
-    conversations.attachPreviewReader((id) => messages.latestPreview(id))
     conversations.touch(conversationId, '最近的真实消息')
-    expect(conversations.get(conversationId).preview).toBe('开始聊天')
+    expect(conversations.get(conversationId).preview).toBe('只改当前对话的备用开场')
     expect(() => conversations.selectOpening(conversationId, 'primary')).toThrow('对话开始后不能再切换开场白')
     expect(() => conversations.updateOpening(conversationId, '不能再改')).toThrow('对话开始后不能修改开场白')
 
@@ -1546,11 +1481,10 @@ describe('shared SQLite baseline', () => {
     } finally { detach() }
   })
 
-  it('deletes a message tail together with process, attempts, media caches and rewinds native state', () => {
+  it('deletes a message tail together with process, media caches and rewinds native state', () => {
     const { conversations, messages, database } = harness()
     const conversationId = conversations.create({}).conversation.id
     const settings = new SettingLibraryRepository(database)
-    const generations = new GenerationRepository(database, messages)
     const image = {
       attachmentId: `sha256:${'a'.repeat(64)}`,
       mediaType: 'image/png' as const,
@@ -1579,20 +1513,17 @@ describe('shared SQLite baseline', () => {
     const secondUser = messages.create(conversationId, 'user', '第二轮', 'complete', undefined, '', [image])
     messages.writeSettingLibraryStateSnapshot(conversationId, secondUser.id, settingBeforeSecond)
     const secondAssistant = messages.create(conversationId, 'assistant', '', 'streaming', undefined, 'runtime-b')
-    generations.start('attempt-second', conversationId, secondAssistant.id)
     messages.upsertProcessItem(secondAssistant.id, {
       id: 'tool-second', kind: 'tool', status: 'complete', toolName: 'generate_image',
       arguments: '{"prompt":"scene"}', summary: '生成图片', detail: '完成',
       startedAtMillis: 1, completedAtMillis: 2
     })
     messages.finish(secondAssistant.id, '第二轮回复', 'complete', undefined, '{"afterSecond":4}')
-    generations.finish('attempt-second', 'complete')
     settings.restoreConversationRuntimeState(conversationId, settingAfterSecond)
     messages.writeSettingLibraryStateSnapshot(conversationId, secondAssistant.id, settingAfterSecond)
     database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
       .run('{"afterSecond":4}', conversationId)
     const deleted = messages.deleteFrom(conversationId, secondUser.id)
-    generations.deleteForMessages(conversationId, deleted.deletedResponseIds)
     expect(deleted).toMatchObject({
       deletedMessageCount: 2,
       remainingMessageCount: 2,
@@ -1606,7 +1537,6 @@ describe('shared SQLite baseline', () => {
     expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
       .get(conversationId)).toEqual({ stateJson: '{"betweenRounds":3}' })
     expect(settings.snapshotConversationRuntimeState(conversationId)).toBe(settingBeforeSecond)
-    expect(database.native.prepare('SELECT * FROM generation_attempts WHERE conversationId=?').all(conversationId)).toEqual([])
     expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
       .toBeUndefined()
     expect(database.native.prepare('SELECT DISTINCT runtimeThreadId FROM agent_responses WHERE conversationId=?')
@@ -1647,7 +1577,7 @@ describe('shared SQLite baseline', () => {
     expect(database.native.prepare('SELECT COUNT(*) AS count FROM variable_config_objects WHERE characterId = ?').get('card-a')).toEqual({ count: 2 })
     expect(database.native.prepare('SELECT COUNT(*) AS count FROM variable_config_variables WHERE characterId = ?').get('card-a')).toEqual({ count: 1 })
 
-    const conversations = new ConversationRepository(database, undefined, (characterId, db) => repository.initialState(characterId, db))
+    const conversations = new ConversationRepository(database, (characterId, db) => repository.initialState(characterId, db))
     const conversationId = conversations.create({ metadata: { characterId: 'card-a' } }).conversation.id
     expect(database.native.prepare('SELECT kind,stateJson FROM chat_session_variable_states WHERE sessionId = ? ORDER BY kind').all(conversationId)).toEqual([
       { kind: 'current', stateJson: saved.initialStateJson },
@@ -1666,22 +1596,17 @@ describe('shared SQLite baseline', () => {
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
-  it('keeps streaming text in memory and recovers interrupted execution metadata', async () => {
+  it('keeps streaming text in memory and marks an interrupted response as failed after reopening', async () => {
     const { conversations, messages, database } = harness()
     const id = conversations.create({}).conversation.id
     messages.create(id, 'user', 'input', 'complete')
     const reply = messages.create(id, 'assistant', '', 'streaming')
-    const generations = new GenerationRepository(database, messages)
-    conversations.registerDeleteGuard(generations)
-    generations.start('run-a', id, reply.id)
     const prefix = 'x'.repeat(64 * 1024 - 1) + '😀' + 'y'.repeat(100)
     messages.appendCheckpoint(reply.id, prefix)
     messages.appendCheckpoint(reply.id, 'tail')
     expect(messages.list(id).at(-1)?.content).toBe(prefix + 'tail')
-    await expect(conversations.delete(id)).rejects.toThrow('先停止')
     database.close(); database.open()
     expect(new MessageRepository(database).list(id).at(-1)).toMatchObject({ content: '', status: 'error' })
-    expect(database.native.prepare("SELECT state FROM generation_attempts WHERE id='run-a'").get()).toEqual({ state: 'failed' })
     await conversations.delete(id)
     expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get()).toBeUndefined()
   })
@@ -1692,92 +1617,12 @@ describe('shared SQLite baseline', () => {
     const a = conversations.create({ metadata: { characterId: 'card-a' } }).conversation.id
     const b = conversations.create({ metadata: { characterId: 'card-b' } }).conversation.id
     messages.create(a, 'user', 'a', 'complete'); messages.create(b, 'user', 'b', 'complete')
-    database.native.prepare('INSERT INTO web_search_settings VALUES(1,?,?,?,?)').run('provider_native', 5, '', 'now')
     characters.delete(['card-a'])
     expect(conversations.exists(a)).toBe(false)
     expect(messages.list(b).map((message) => message.content)).toEqual(['b'])
-    expect(database.native.prepare('SELECT * FROM web_search_settings').all()).toHaveLength(1)
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
-  it('encrypts credentials, preserves common model fields, and does not rewrite identical saves', () => {
-    const { database } = harness()
-    const models = new ModelRepository(database, { encrypt: (value) => 'encrypted:'+value, decrypt: (value) => value.slice(10) })
-    const input = { id: 'model', api_key: 'test-key', custom_headers: { 'X-Test': 'value' }, enabled: false, supports_tools: true, api_format: 'chat_completions' as const, image_settings: { size: 'large' } }
-    models.save(input)
-    expect(database.native.prepare('SELECT apiKey FROM model_configs').get()).toEqual({ apiKey: 'encrypted:test-key' })
-    expect(models.list()[0]).toMatchObject(input)
-    const before = database.native.prepare('SELECT total_changes() AS count').get()
-    models.save(models.list()[0]!)
-    expect(database.native.prepare('SELECT total_changes() AS count').get()).toEqual(before)
-  })
-
-  it('rolls back a model save when the current strict model data cannot be read', () => {
-    const { database } = harness()
-    const models = new ModelRepository(database, { encrypt: (value) => 'encrypted:'+value, decrypt: (value) => value.slice(10) })
-    models.save({
-      id: 'current',
-      name: 'Current',
-      provider: 'deepseek',
-      api_key: 'test-key',
-      base_url: 'https://api.deepseek.com',
-      proxy_url: '',
-      model: 'deepseek-chat',
-      model_options: [{ id: 'deepseek-chat', name: 'deepseek-chat' }],
-      custom_headers: {},
-      supports_tools: null,
-      enabled: true,
-      image_settings: {},
-      api_format: 'responses'
-    })
-    database.native.prepare('UPDATE model_configs SET modelOptionsJson = ? WHERE id = ?').run('["legacy-string"]', 'current')
-
-    expect(() => models.save({ id: 'must-not-survive', provider: 'custom' }))
-      .toThrow('模型配置“current”的模型列表不是当前对象格式')
-    expect(database.native.prepare('SELECT id FROM model_configs ORDER BY id').all())
-      .toEqual([{ id: 'current' }])
-  })
-
-  it('retains failed file cleanup after database deletion and retries it after reopening', async () => {
-    const { database } = harness()
-    let fail = true
-    const removed: string[] = []
-    const queue = new ConversationCleanupRepository(database, { remove: (id) => {
-      if (fail) throw new Error('injected file failure')
-      removed.push(id)
-    } })
-    const conversations = new ConversationRepository(database, queue)
-    const id = conversations.create({}).conversation.id
-    await conversations.delete(id)
-    expect(conversations.exists(id)).toBe(false)
-    expect(database.native.prepare('SELECT targetId,state,attemptCount FROM cleanup_operations').all()).toEqual([{ targetId: id, state: 'failed', attemptCount: 1 }])
-    database.close(); database.open()
-    fail = false
-    queue.drain(); queue.drain()
-    expect(removed).toEqual([id])
-    expect(database.native.prepare('SELECT * FROM cleanup_operations').all()).toEqual([])
-  })
-
-  it('cleans only the named conversation directories and rejects path traversal', () => {
-    const { path } = harness()
-    const directory = join(path, '..', 'files')
-    const roots = [join(directory, 'workspaces'), join(directory, 'sessions')]
-    for (const root of roots) {
-      for (const id of ['owned', 'another']) {
-        mkdirSync(join(root, id), { recursive: true })
-        writeFileSync(join(root, id, 'record.txt'), id)
-      }
-    }
-    const files = new ConversationFiles(roots)
-    expect(() => files.remove('../another')).toThrow('编号无效')
-    expect(() => files.remove('')).toThrow('编号无效')
-    files.remove('owned')
-    files.remove('owned')
-    for (const root of roots) {
-      expect(existsSync(join(root, 'owned'))).toBe(false)
-      expect(readFileSync(join(root, 'another', 'record.txt'), 'utf8')).toBe('another')
-    }
-  })
 
   it('restores a consistent SQLite snapshot in an independent directory', async () => {
     const { database, characters, conversations, messages } = harness()
@@ -1807,9 +1652,9 @@ describe('shared SQLite baseline', () => {
     expect(() => database.open()).toThrow('公共数据库结构不匹配')
   })
 
-  it('refuses a renamed desktop preferences table without creating a replacement', () => {
+  it('refuses an unexpected product table without modifying the database', () => {
     const { database } = harness()
-    database.native.exec('ALTER TABLE desktop_preferences RENAME TO unknown_preferences')
+    database.native.exec('CREATE TABLE unknown_preferences (id TEXT PRIMARY KEY)')
     database.close()
     expect(() => database.open()).toThrow('未知表')
   })

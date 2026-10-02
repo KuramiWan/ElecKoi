@@ -183,23 +183,11 @@ export function useConversationMessages() {
   function reconcileMessages(nextMessages, page = {}) {
     const pending = pendingReplyRef.current;
     clearPendingReply();
-    setMessages((current) => {
-      const reconciled = preserveMessageRenderKeys(current, nextMessages, pending);
-      const firstIncomingSequence = nextMessages.reduce((first, message) => (
-        Number.isInteger(message.sequence) ? Math.min(first, message.sequence) : first
-      ), Number.POSITIVE_INFINITY);
-      if (!Number.isFinite(firstIncomingSequence)) return reconciled;
-      const retained = current.filter((message) => (
-        Number.isInteger(message.sequence) && message.sequence < firstIncomingSequence
-      ));
-      return retained.length ? [...retained, ...reconciled] : reconciled;
+    setMessages((current) => preserveMessageRenderKeys(current, nextMessages, pending));
+    setHistoryPage({
+      hasMore: Boolean(page.hasMore),
+      beforeSequence: page.beforeSequence ?? null,
     });
-    setHistoryPage((current) => current.beforeSequence === null
-      ? {
-          hasMore: Boolean(page.hasMore),
-          beforeSequence: page.beforeSequence ?? null,
-        }
-      : current);
   }
 
   function prependMessages(olderMessages, page = {}) {

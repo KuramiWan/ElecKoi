@@ -1,23 +1,34 @@
 # ElecKoi 角色聊天客户端插槽
 
-该 bundle 由 DSH 客户端 Loader 装载，使用 DSH UI Slots 和当前 `SessionReference` 渲染 ElecKoi 角色聊天。它不挂载另一套隐藏的官方聊天页面。
+该 bundle 由锁定版本 DSH 客户端 Loader 装载，在真实 `SessionReference` 下承载角色聊天与官方 InputBar。输入区只维护官方草稿、发送和原生文件/图片附件链。
 
-可扩展的 Session 作用域列表插槽：
+类型入口：`@eleckoi/dsh-client-roleplay/slots`。完整接口清单及 owner 类型见 [界面插槽](../../docs/plugins/ui-slots.md#角色聊天入口19)；插件中心标题和说明由本包 `package.json.eleckoi.developerInterfaces` 提供。
 
-| 插槽 | 位置 | 提供给插件的参数 |
-| --- | --- | --- |
-| `eleckoi.roleplay.message.content` | 单条消息正文，可按链式插槽替换 | `conversationId`、`productMessageId`、`messageId`、`role`、`content`、`streaming` |
-| `eleckoi.roleplay.message.actions` | AI 消息操作栏 | `conversationId`、产品 `productMessageId`、日志中的 DSH `messageId` |
-| `eleckoi.roleplay.message.after` | 消息正文之后 | `conversationId`、`productMessageId`、`messageId`（用户消息可能为空）、`role` |
-| `eleckoi.roleplay.input.left` | 输入框工具栏左侧 | `conversationId`、`input`、`setInput`、`isSending` |
-| `eleckoi.roleplay.input.right` | 输入框工具栏右侧 | 同上 |
-| `eleckoi.roleplay.input.overlay` | 输入框卡片内部 | 同上 |
-| `eleckoi.roleplay.composer.dock` | 输入框下方 | `conversationId` |
+## 输入区
 
-贡献通过 `ctx.slots.inject(name, () => ctx.slots.register({ name, ... }, Component))` 注册，生命周期由 DSH 管理。消息插槽仅在记录属于当前 DSH Session 时渲染；开场白没有日志消息 ID，因此不会显示 `message.actions`。输入扩展直接操作 ElecKoi 当前草稿，不需要另外维护一份草稿。
+| 插槽 | 当前用途 |
+| --- | --- |
+| `eleckoi.roleplay.conversation.composer.bar` | 替换整套输入框，接收官方输入服务及产品 `leadingAccessory`、`modelAccessory`、`dockAccessory` |
+| `eleckoi.roleplay.conversation.composer` | 按 `select(owner)` 临时接管输入区，结束后恢复原输入框 |
+| `eleckoi.roleplay.conversation.input.left` | 左侧工具区追加控件 |
+| `eleckoi.roleplay.conversation.input.right` | 模型选择器附近追加控件 |
+| `eleckoi.roleplay.conversation.input.overlay` | 输入框内浮层 |
+| `eleckoi.roleplay.conversation.input.dock` | 输入框上方内容，owner 为官方 `InputZone` |
+| `eleckoi.roleplay.conversation.input.attachments` | 替换附件展示，沿用原生添加、移除和重试操作 |
+| `eleckoi.roleplay.conversation.input.permission` | 权限控件 |
+| `eleckoi.roleplay.conversation.input.plan` | 计划模式控件 |
+| `eleckoi.roleplay.conversation.input.model` | 供输入框皮肤调用的模型位置；默认 InputBar 使用产品 `modelAccessory` |
+| `eleckoi.roleplay.conversation.input.activity` | 可展开的工具栏活动区 |
+| `eleckoi.roleplay.conversation.composer.dock` | 输入框下方追加内容，空 owner；统计可通过 Session `useProjection` 读取 |
 
-锁定的 DSH 客户端中，`conversation.input.left`、`conversation.input.right`、`conversation.input.overlay` 和 `conversation.composer.dock` 的活动叶子贡献也会通过独立的 Session 插槽显示在 ElecKoi 输入框。独立插槽不向官方插件传入 ElecKoi 草稿参数；官方统计项所需的 `sessionStats` 和 `tokenUsage` 由当前聊天的统计结果提供，以跟随删除及重新生成后的日志回退。官方输入框内部的上下文圆环不是独立插槽；ElecKoi 在同一统计行显示由当前聊天统计结果驱动的圆环。
+官方 `conversation.*` 活动贡献由 DSH Slot Registry 投影到上述位置，保留其优先级、注入、store、本地化与卸载行为。第三方可直接使用官方插槽；产品专属扩展也可注册对应的 `eleckoi.roleplay.conversation.*` 插槽。同一贡献不要同时注册两处。
 
-TypeScript 插件可以使用 `import type {} from '@eleckoi/dsh-client-roleplay/slots'` 获得这些插槽的类型合同。
+默认 InputBar 保留原生“＋”和命令弹层，在“＋”右侧显示扮演菜单，在模型位显示 ElecKoi 选择器，在下方显示按当前有效会话重算的统计。官方 `conversation.composer.dock` 中 ID 为 `stats` 的贡献不投影；其他下方贡献与产品统计共用一个区域。输入框皮肤接管后应自行调用需要的子插槽并保留所需的产品装配参数。
 
-官方 `conversation.chat.assistant-actions` 等内部插槽由官方父组件声明。DSH 不允许另一个父组件重复声明同名插槽；除上述四个已接入的位置外，只针对其他官方内部插槽编写的插件不会自动出现在 ElecKoi 角色聊天里。
+## 消息与轨迹
+
+`message.content` 包装或替换正文；`message.actions` 与 `message.after` 追加操作和内容。owner 包含产品会话 ID、产品消息 ID、DSH 消息 ID 与角色，正文另外提供 `content`、`streaming`。开场白没有日志消息 ID，不显示 `message.actions`。
+
+`trajectory` 替换轨迹视图，`trajectory.images` 替换详情图片预览；审批详情与计划审核操作仅在对应输入区接管组件调用时显示。
+
+注册使用 `ctx.slots.inject(name, () => ctx.slots.register({ name, ... }, Component))`，生命周期由 DSH 管理。未接入的官方内部插槽不会自动出现在产品角色聊天里；不要使用 DOM 查询或另建插槽总线绕过父组件声明。

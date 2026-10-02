@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.js",
     "./client": "./src/client.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
@@ -15,15 +16,180 @@
         "@eleckoi/dsh-client-characters",
         "@eleckoi/dsh-client-character-configuration",
         "@eleckoi/dsh-client-conversations",
+        "@eleckoi/dsh-client-creator-studio",
+        "@eleckoi/dsh-client-display-preferences",
         "@eleckoi/dsh-client-models",
         "@eleckoi/dsh-client-persona",
         "@eleckoi/dsh-client-presets",
+        "@eleckoi/dsh-client-web-search",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-plugin-manager"
       ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
+  },
+  "description": "提供主窗口、导航、设置和插件中心。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "layout",
+        "kind": "service",
+        "title": "桌面布局服务",
+        "description": "切换主面板并控制桌面导航和侧栏。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "selectPanel",
+          "beginNavigation",
+          "toggleSidebar",
+          "openRightbar",
+          "closeRightbar"
+        ]
+      },
+      {
+        "id": "sidebar.brand.mark",
+        "kind": "ui-slot",
+        "title": "品牌图标",
+        "description": "提供侧边栏品牌图标。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "sidebar.brand.name",
+        "kind": "ui-slot",
+        "title": "品牌名称",
+        "description": "提供侧边栏品牌名称。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "sidebar.toggle.badge",
+        "kind": "ui-slot",
+        "title": "侧栏收起按钮内容",
+        "description": "提供侧栏收起按钮附加内容。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "sidebar.panellist",
+        "kind": "ui-slot",
+        "title": "导航入口",
+        "description": "向侧边栏增加主导航入口。",
+        "mode": "append",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "sidebar.workspaces",
+        "kind": "ui-slot",
+        "title": "工作区入口",
+        "description": "提供侧边栏工作区入口。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "sidebar.settings",
+        "kind": "ui-slot",
+        "title": "设置入口",
+        "description": "提供侧边栏设置入口。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "sidebar.footer.action",
+        "kind": "ui-slot",
+        "title": "侧栏底部操作",
+        "description": "向侧边栏底部增加操作。",
+        "mode": "append",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "sidebar",
+        "kind": "ui-slot",
+        "title": "侧边栏",
+        "description": "替换桌面侧边栏。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "main",
+        "kind": "ui-slot",
+        "title": "主面板",
+        "description": "按面板键注册桌面主页面。",
+        "mode": "register",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "rightbar",
+        "kind": "ui-slot",
+        "title": "右侧面板",
+        "description": "提供桌面右侧面板。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "shell.overlay",
+        "kind": "ui-slot",
+        "title": "全局浮层",
+        "description": "在桌面界面上方增加浮层。",
+        "mode": "append",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "shell.leading",
+        "kind": "ui-slot",
+        "title": "窗口前置区域",
+        "description": "提供桌面窗口前置内容。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "settings.section",
+        "kind": "ui-slot",
+        "title": "设置分区",
+        "description": "向设置页增加分区。",
+        "mode": "append",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "settings.general.item",
+        "kind": "ui-slot",
+        "title": "通用设置项",
+        "description": "向通用设置增加设置项。",
+        "mode": "append",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay",
+        "kind": "ui-slot",
+        "title": "角色聊天页面",
+        "description": "包装或替换角色聊天页面。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      }
+    ]
   }
 }

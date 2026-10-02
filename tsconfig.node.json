@@ -15,7 +15,10 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "paths": {
+      "@eleckoi/dsh-product-data": ["./packages/dsh-product-data/src/index.ts"],
+      "@eleckoi/dsh-product-data/media": ["./packages/dsh-product-data/src/storage/media/index.ts"],
       "@main/*": ["./src/main/*"],
+      "@product-data/*": ["./packages/dsh-product-data/src/*"],
       "@shared/*": ["./src/shared/*"]
     }
   },
@@ -25,6 +28,7 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
+    "packages/dsh-product-data/src/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts"
   ]

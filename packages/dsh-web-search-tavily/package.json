@@ -19,6 +19,25 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/dsh-web": "0.2.0-rc.2"
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-web": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "dsh.web.search-provider:tavily",
+        "kind": "contribution",
+        "title": "Tavily 搜索提供器",
+        "description": "向 DSH Web 注册 Tavily 联网搜索实现。",
+        "mode": "register",
+        "scope": "host",
+        "relation": "contributes",
+        "owner": "@deepseek-ai/dsh-web",
+        "members": [
+          "registerSearchProvider"
+        ]
+      }
+    ]
   }
 }

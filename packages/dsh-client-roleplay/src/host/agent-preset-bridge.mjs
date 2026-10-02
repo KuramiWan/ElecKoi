@@ -1,16 +1,17 @@
 /** Composes each ElecKoi Agent from its immutable Session snapshot. */
 
 import { installConversationContext } from './conversation-context.mjs'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { installRequestConfig } from './request-config.mjs'
 import { commitSessionPreset, inheritSessionSnapshot, readSessionSnapshot, removeSessionSnapshot } from './session-snapshot.mjs'
 import { applyDisabledPolicy } from './tool-policy.mjs'
+import { installRoleplaySessionRuntime } from './session-runtime.mjs'
 
 export const name = 'eleckoi-agent-preset-bridge'
 export const inject = ['agents', 'agentPresets']
 
-export function apply(ctx) {
+export async function apply(ctx) {
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
   const presetRoot = process.env.ELECKOI_PRESET_ROOT
   if (!snapshotRoot) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
@@ -75,7 +76,21 @@ export function apply(ctx) {
     registrations.set(id, registration)
     return registration
   }
-  ctx.provide('eleckoiPresetRegistrar', {
+  // SessionController resolves the durable preset before calling agents.resume.
+  // The generated declaration catalogue owns registrations; snapshots may outlive
+  // a deleted declaration and must not become Host startup dependencies.
+  if (existsSync(presetRoot)) {
+    const ids = readdirSync(presetRoot, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && existsSync(join(presetRoot, entry.name, 'preset.json')))
+      .map(entry => entry.name)
+    try {
+      await Promise.all(ids.map(registerPreset))
+    } catch (error) {
+      await Promise.allSettled([...registrations.values()].map(async task => (await task)()))
+      throw error
+    }
+  }
+  const presetRegistrar = {
     async registerForSession(sessionId) {
       const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
       await registerPreset(snapshot.mountedPresetId)
@@ -102,7 +117,9 @@ export function apply(ctx) {
         return requested
       })
     }
-  })
+  }
+  ctx.provide('eleckoiPresetRegistrar', presetRegistrar)
+  const disposeRuntime = installRoleplaySessionRuntime(ctx, presetRegistrar)
   const originalCreate = ctx.agents.create
   const originalResume = ctx.agents.resume
   const wrappedCreate = function (options) {
@@ -160,6 +177,7 @@ export function apply(ctx) {
   ctx.agents.create = wrappedCreate
   ctx.agents.resume = wrappedResume
   return async () => {
+    disposeRuntime()
     if (ctx.agents.create === wrappedCreate) ctx.agents.create = originalCreate
     if (ctx.agents.resume === wrappedResume) ctx.agents.resume = originalResume
     await Promise.allSettled([...registrations.values()].map(async (task) => {

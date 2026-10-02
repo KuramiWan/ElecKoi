@@ -1,8 +1,4 @@
-import {
-  customReasoningOptions,
-  reasoningOptions,
-  withCustomReasoningEffort,
-} from "../model/modelReasoningOptions.js";
+import { reasoningOptions } from "../model/modelReasoningOptions.js";
 
 function optionalNumber(value) {
   const text = String(value).trim();
@@ -12,19 +8,14 @@ function optionalNumber(value) {
 }
 
 export function ModelParametersSection({ form, activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError, modelCapabilities, onChange }) {
-  const usesCustomList = modelCapabilities.source === "provider_default" || modelCapabilities.source === "explicit_profile";
-  const hasExplicitProfile = activeModelOption?.reasoningEfforts != null;
-  const options = usesCustomList
-    ? customReasoningOptions(hasExplicitProfile)
-    : reasoningOptions(modelCapabilities.reasoningEfforts);
+  const options = reasoningOptions(modelCapabilities.reasoningEfforts);
   const selectedEffort = options.some((item) => item.id === activeModelOption?.reasoningEffort)
     ? activeModelOption.reasoningEffort
     : "";
-  const reasoningAvailable = usesCustomList || modelCapabilities.reasoningEfforts.length > 0;
+  const reasoningAvailable = modelCapabilities.reasoningEfforts.length > 0;
 
   function updateReasoningEffort(value) {
     onChange({
-      ...(usesCustomList ? { reasoningEfforts: withCustomReasoningEffort(activeModelOption?.reasoningEfforts, value) } : {}),
       reasoningEffort: value || null,
     });
   }
@@ -48,7 +39,7 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
           <input type="number" min="1" max="4000000" disabled={!form.model} value={activeModelOption?.maxOutputTokens ?? ""} onChange={(event) => onChange({ maxOutputTokens: optionalNumber(event.target.value) })} placeholder="自动" />
         </label>
         <label>
-          <span>推理强度 <small>{usesCustomList ? "自定义列表" : "DSH / pi-ai"}</small></span>
+          <span>推理强度 <small>DSH / pi-ai</small></span>
           <select disabled={!form.model || !reasoningAvailable} value={selectedEffort} onChange={(event) => updateReasoningEffort(event.target.value)}>
             {options.map((effort) => <option key={effort.id} value={effort.id}>{effort.label}</option>)}
           </select>

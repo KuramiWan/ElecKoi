@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { getUiPreferences, saveUiPreferences } from "../../settings/index.js";
+import { useDshDisplayPreferences } from "../../settings/index.js";
 import { HistoryExportIcon, HistoryImportIcon, TrashIcon, XIcon } from "../../../ui/icons/index.jsx";
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
 import { applyChatHistoryPolicy, exportChatHistory, importChatHistory } from "../api/chatApi.js";
+
+const EMPTY_SNAPSHOT = Object.freeze({ status: "loading", ui: Object.freeze({}) });
+const EMPTY_SUBSCRIBE = () => () => {};
+const GET_EMPTY_SNAPSHOT = () => EMPTY_SNAPSHOT;
 
 function dateTitle(value) {
   if (!value) return "未知日期";
@@ -20,7 +24,12 @@ function timeTitle(value) {
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose, onLoadChat, onDeleteChat, onHistoryPolicyChange }) {
+export function HistoryModal({ open, sessions, sessionId, chatCharacter, conversationModel, onClose, onLoadChat, onDeleteChat, onHistoryPolicyChange }) {
+  const preferences = useDshDisplayPreferences();
+  const preferenceSnapshot = useSyncExternalStore(
+    preferences?.subscribe || EMPTY_SUBSCRIBE,
+    preferences?.getSnapshot || GET_EMPTY_SNAPSHOT,
+  );
   const [keyword, setKeyword] = useState("");
   const [saveMode, setSaveMode] = useState("all");
   const [confirmAction, setConfirmAction] = useState(null);
@@ -32,19 +41,9 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
   const characterName = currentSession?.character_name || chatCharacter?.assistant_name || chatCharacter?.character_name || "";
 
   useEffect(() => {
-    if (!open) return;
-    let active = true;
-    getUiPreferences()
-      .then((data) => {
-        if (active) {
-          setSaveMode(data?.history_save_mode === "recent10" ? "recent10" : "all");
-        }
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [open]);
+    if (!open || preferenceSnapshot.status !== "ready") return;
+    setSaveMode(preferenceSnapshot.ui?.history_save_mode === "recent10" ? "recent10" : "all");
+  }, [open, preferenceSnapshot.status, preferenceSnapshot.ui]);
 
   const filteredGroups = useMemo(() => {
     const key = keyword.trim().toLowerCase();
@@ -83,7 +82,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
 
   async function applySaveMode(mode) {
     setSaveMode(mode);
-    await saveUiPreferences({ history_save_mode: mode });
+    await preferences?.updateUi({ history_save_mode: mode });
     if (mode === "recent10" && currentCharacterId) {
       await applyChatHistoryPolicy(currentCharacterId);
       await onHistoryPolicyChange?.();
@@ -99,7 +98,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
     setTransferError("");
     setTransferring(true);
     try {
-      const { json } = await exportChatHistory(item.id);
+      const { json } = await exportChatHistory(item.id, { model: conversationModel });
       const url = URL.createObjectURL(new Blob([json], { type: "application/json;charset=utf-8" }));
       const link = document.createElement("a");
       link.href = url;
@@ -126,7 +125,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, onClose
     }
     setTransferring(true);
     try {
-      const { conversationId } = await importChatHistory(currentCharacterId, await file.text());
+      const { conversationId } = await importChatHistory(currentCharacterId, await file.text(), { model: conversationModel });
       await onHistoryPolicyChange?.();
       await onLoadChat?.(conversationId);
       onClose?.();

@@ -5,7 +5,7 @@ export { MessageNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/i
 
 export function MessagesPage() {
   const view = useMainPageView();
-  const { chat, appearance, conversations, renderRoleplay, renderConversationList, renderLayout, selectConversation, openChatBackground, openPresetTools, openCharacterSection } = view;
+  const { chat, appearance, conversations, presets, renderRoleplay, renderConversationList, renderLayout, selectConversation, openChatBackground, openPresetTools, openCharacterSection } = view;
   const listOwner = {
     keyword: chat.keyword,
     setKeyword: chat.setKeyword,
@@ -32,6 +32,7 @@ export function MessagesPage() {
       conversationTransitionRevision={chat.conversationTransitionRevision}
       runtimeSessionId={chat.runtimeSessionId}
       conversationModel={conversations}
+      presetCatalog={presets}
       hasCharacters={Boolean(chat.characters?.items?.length)}
       currentTitle={chat.currentTitle}
       persona={chat.chatPersona}
@@ -53,7 +54,6 @@ export function MessagesPage() {
       modelOptionsByKey={chat.modelOptionsByKey}
       onLoadModelOptions={chat.loadModelOptions}
       onSelectModel={chat.selectChatModel}
-      onSaveModelConfig={chat.saveModelConfig}
       onNotify={chat.notify}
       onSend={chat.sendMessage}
       onStop={chat.stopSend}

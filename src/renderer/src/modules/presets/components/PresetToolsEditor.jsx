@@ -12,7 +12,6 @@ export function PresetToolsEditor({
   modelOptionsByKey,
   onChange,
   onLoadModels,
-  onSaveModelConfig,
   onNotify,
   saveAction,
 }) {
@@ -109,7 +108,6 @@ export function PresetToolsEditor({
         onClose={closeConfig}
         onEnabledChange={(enabled) => updateGroup(configGroup.id, { enabled })}
         onLoadModels={onLoadModels}
-        onSaveModelConfig={onSaveModelConfig}
         onNotify={onNotify}
         onSubagentModelChange={(subagentModelSelection) => onChange({ ...preset, subagentModelSelection })}
         onRoleplayPlanChange={(roleplayPlan) => onChange({ ...preset, roleplayPlan })}
@@ -127,7 +125,6 @@ function PresetToolConfigDialog({
   onClose,
   onEnabledChange,
   onLoadModels,
-  onSaveModelConfig,
   onNotify,
   onSubagentModelChange,
   onRoleplayPlanChange,
@@ -166,7 +163,6 @@ function PresetToolConfigDialog({
           modelOptionsByKey={modelOptionsByKey}
           onChange={onSubagentModelChange}
           onLoadModels={onLoadModels}
-          onSaveModelConfig={onSaveModelConfig}
           onNotify={onNotify}
         /> : null}
         {group.id === 'builtin:web' ? <div className="preset-tool-web-config"><WebSearchSettings /></div> : <>

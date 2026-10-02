@@ -1,25 +1,38 @@
-import { ModelConfigPanel } from "../../../src/renderer/src/modules/models/index.js";
+import { useRef, useSyncExternalStore } from "react";
+import { ModelConfigPanel, initialConfigForProvider } from "../../../src/renderer/src/modules/models/index.js";
 import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
 export { ModelNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/icons/navIcons.jsx";
 
 export function ModelPage() {
   const view = useMainPageView();
-  const { chat, modelConfigPanelRef, setModelConfigDirty, renderModelEditor, renderLayout } = view;
+  const { chat, models, modelNavigationGuardRef, renderLayout } = view;
+  const snapshot = useSyncExternalStore(models.subscribe, models.getSnapshot);
+  const panelRef = useRef(null);
+  const initialConfig = useRef(null);
+  const fallbackConfig = useRef({
+    ...initialConfigForProvider("deepseek"),
+  });
+  if (!initialConfig.current && snapshot.status === "ready") initialConfig.current = snapshot.configs[0] || fallbackConfig.current;
+  if (!initialConfig.current) return renderLayout({
+    sidePanel: null,
+    mainPanel: <div role={snapshot.status === "error" ? "alert" : "status"}>{snapshot.error || "正在加载模型配置…"}</div>,
+  });
+  const config = initialConfig.current || fallbackConfig.current;
   return <ModelConfigPanel
-    ref={modelConfigPanelRef}
-    config={chat.modelConfig}
-    configs={chat.modelConfigs}
-    providers={chat.meta?.providers || []}
+    ref={panelRef}
+    navigationGuardRef={modelNavigationGuardRef}
+    config={config}
+    configs={snapshot.configs}
+    providers={[]}
     modelOptionsByKey={chat.modelOptionsByKey}
-    onSave={chat.saveModelConfig}
-    onDeleteConfig={chat.deleteModelConfig}
-    onDeleteProvider={chat.deleteModelProvider}
-    onFetchModels={chat.loadModelOptions}
-    onProbeModels={chat.probeModelOptions}
-    onTestConnection={chat.testModelConnection}
+    onSave={draft => models.save(draft)}
+    onRevealApiKey={id => models.revealApiKey(id)}
+    onDeleteConfig={id => models.deleteConfig(id)}
+    onDeleteProvider={(provider, preferredId) => models.deleteProvider(provider, preferredId)}
+    onFetchModels={draft => models.discover(draft)}
+    onProbeModels={draft => models.discover(draft)}
+    onTestConnection={draft => models.testConnection(draft)}
     onNotify={chat.notify}
-    onDirtyChange={setModelConfigDirty}
-    renderEditor={renderModelEditor}
     renderLayout={renderLayout}
   />;
 }

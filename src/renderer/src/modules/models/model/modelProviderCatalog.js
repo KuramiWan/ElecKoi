@@ -213,8 +213,5 @@ export function configVersionName(config) {
 }
 
 export function modelOptionsKey(config) {
-  const provider = normalizeProviderId(config.provider);
-  return [config.id || "", provider, config.api_format || "", config.base_url || "", config.api_key || ""]
-    .map((item) => String(item).trim())
-    .join("|");
+  return String(config?.id || config?.provider || "").trim();
 }

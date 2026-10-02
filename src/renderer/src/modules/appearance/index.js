@@ -1,18 +1,11 @@
 export { ThemePaletteModal } from "./components/ThemePaletteModal.jsx";
 export {
-  getAppearanceMode,
-  getChatDisplay,
-  listenAppearanceModeChanged,
-  listenChatDisplayChanged,
-  saveAppearanceMode,
-  saveChatDisplay,
-} from "./api/appearanceApi.js";
-export {
   applyAppearanceMode,
   initializeAppearanceMode,
   normalizeAppearanceMode,
 } from "./theme/appearanceMode.js";
 export { applyAppearanceTheme } from "./theme/appearanceTheme.js";
+export { AppearanceProvider, useDshAppearance } from "./model/AppearanceContext.jsx";
 export {
   DEFAULT_SIDEBAR_CHARACTER_ARTWORK,
   normalizeSidebarCharacterArtwork,

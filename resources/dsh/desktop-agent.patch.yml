@@ -42,15 +42,6 @@
         approval: never
     defaultPreset: eleckoi-workspace
 
-- id: web
-  config:
-    searchProvider: !!js process.env.DSH_WEB_SEARCH_PROVIDER ?? 'deepseek-official'
-    fetchProvider: http
-
-- id: web-search-deepseek
-  config:
-    apiKeyEnv: ELECKOI_NATIVE_WEB_SEARCH_API_KEY
-
 - id: agent-preset-registry
   config:
     default: eleckoi-default

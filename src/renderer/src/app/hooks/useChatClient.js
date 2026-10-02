@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChatSessions } from "../../modules/chat/index.js";
 import { getModelMeta, useModelRuntime } from "../../modules/models/index.js";
 import { usePersonaCharacters } from "../../modules/persona/index.js";
-import { listenRecordsChanged } from "../../bridge/recordEvents.js";
 
 export function useChatClient({ conversations, characters: characterCatalog, models: modelCatalog, persona: personaModel, navigation } = {}) {
   const [localActiveSection, setLocalActiveSection] = useState("messages");
@@ -27,28 +26,13 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
   const dismissNotice = useCallback(() => setNotice(null), []);
 
   const {
-    modelConfig,
     modelConfigs,
     modelOptionsByKey,
-    saveModelConfig,
-    deleteModelConfig,
-    deleteModelProvider,
     loadModelOptions,
-    probeModelOptions,
-    testConnection,
   } = useModelRuntime({ modelCatalog, setStatus });
   const language = meta?.defaults?.language || "zh-CN";
   const chatModelConfigs = useMemo(
-    () =>
-      (modelConfigs || []).filter((config) =>
-        [
-          config.name,
-          config.base_url,
-          config.api_key,
-          config.proxy_url,
-          config.model,
-        ].some((value) => String(value || "").trim()) || (Array.isArray(config.model_options) && config.model_options.length),
-      ),
+    () => (modelConfigs || []).filter((config) => Array.isArray(config.model_options) && config.model_options.length),
     [modelConfigs],
   );
   const {
@@ -58,6 +42,8 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     loadPersona,
     loadCharacters,
     importPreparedCharacters,
+    prepareCharacterImports,
+    discardCharacterImports,
     saveCharacterGroups,
     updateCharacter,
     selectCharacter,
@@ -184,13 +170,6 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     };
   }, []);
 
-  useEffect(() => {
-    return listenRecordsChanged((event) => {
-      if (characterCatalog || (event.module !== "personas" && event.module !== "settingLibraries")) return;
-      loadCharacters().catch((error) => setStatus(error.message));
-    });
-  }, []);
-
   return {
     activeSection,
     setActiveSection,
@@ -198,7 +177,6 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     meta,
     persona,
     characters,
-    modelConfig,
     modelConfigs,
     chatModelConfigs,
     modelOptionsByKey,
@@ -256,18 +234,15 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     editOpening: chatSessions.editOpening,
     updateUserProfile,
     importPreparedCharacters,
+    prepareCharacterImports,
+    discardCharacterImports,
     saveCharacterGroups,
     selectCharacter,
     openCharacterChat,
     updateChatBackground,
     createCharacter,
     deleteCharacterIds,
-    saveModelConfig,
-    deleteModelConfig,
-    deleteModelProvider,
     loadModelOptions,
-    probeModelOptions,
-    testModelConnection: testConnection,
     togglePinChat: chatSessions.togglePinChat,
     hideChatEntry: chatSessions.hideChatEntry,
     removeHistoryChat: chatSessions.removeHistoryChat,

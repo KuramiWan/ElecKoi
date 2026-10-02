@@ -9,12 +9,108 @@
     "./slots": {
       "types": "./src/slots.d.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
       "platform": "web",
-      "inject": ["@deepseek-ai/dsh-client-ui-renderer"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@eleckoi/dsh-product-api"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
+  },
+  "description": "管理预设内容、提示词、工具策略和正则。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiPresets",
+        "kind": "service",
+        "title": "Agent 预设服务",
+        "description": "读取预设目录与详情，并通过正式数据入口保存预设。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "getDetailSnapshot",
+          "subscribeDetail",
+          "read",
+          "save",
+          "create",
+          "import",
+          "export",
+          "setActive",
+          "createGroup",
+          "renameGroup",
+          "assignGroup",
+          "deleteGroup",
+          "delete",
+          "refresh"
+        ]
+      },
+      {
+        "id": "eleckoi.preset.editor.profile",
+        "kind": "ui-slot",
+        "title": "预设基础资料",
+        "description": "扩展预设名称、分组和基础资料编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.preset.editor.introduction",
+        "kind": "ui-slot",
+        "title": "预设说明",
+        "description": "扩展预设说明和开场内容编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.preset.editor.prompts",
+        "kind": "ui-slot",
+        "title": "提示词编辑",
+        "description": "扩展预设提示词编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.preset.editor.tools",
+        "kind": "ui-slot",
+        "title": "工具配置",
+        "description": "扩展预设工具策略编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.preset.editor.regex",
+        "kind": "ui-slot",
+        "title": "预设正则",
+        "description": "扩展预设正则规则编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.preset.manager",
+        "kind": "ui-slot",
+        "title": "预设管理器",
+        "description": "包装或替换预设导入、导出和批量管理界面。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      }
+    ]
   }
 }

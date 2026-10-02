@@ -1,10 +1,14 @@
+// @vitest-environment jsdom
 import React from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MessageBubble } from "../src/renderer/src/ui/messages/MessageBubble.jsx";
-import { prepareMarkdownTextTones } from "../src/renderer/src/ui/messages/markdownTextTones.js";
+import {
+  prepareMarkdownTextTones,
+  registerMarkdownTextToneHighlights,
+} from "../src/renderer/src/ui/messages/markdownTextTones.js";
 
 globalThis.React = React;
 
@@ -22,6 +26,34 @@ describe("message markdown presentation", () => {
     expect(html).toContain("<p>第一行\n第二行</p>");
     expect(readFileSync(resolve("src/renderer/src/modules/chat/styles/chat-panel.css"), "utf8"))
       .toMatch(/\.markdown-message p\s*\{[^}]*white-space:\s*pre-wrap;/);
+  });
+
+  it("strips protocol markers when an assistant has no display projection", () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, {
+      message: {
+        id: "message-final",
+        role: "assistant",
+        content: "<FINAL>可见正文</FINAL>",
+      },
+      name: "角色",
+    }));
+
+    expect(html).toContain("可见正文");
+    expect(html).not.toContain("FINAL");
+  });
+
+  it("keeps an explicit empty display projection empty", () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, {
+      message: {
+        id: "message-empty-display",
+        role: "assistant",
+        content: "<FINAL>正文</FINAL>",
+        displayContent: "",
+      },
+      name: "角色",
+    }));
+
+    expect(html).not.toContain("正文");
   });
 
   it("renders GFM tables instead of showing their source pipes", () => {
@@ -105,6 +137,38 @@ describe("message markdown presentation", () => {
     expect(html).toContain("无");
   });
 
+  it("removes unknown XML wrappers while keeping their body visible", () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, {
+      message: {
+        id: "message-custom-xml",
+        role: "assistant",
+        content: "<人物 class=\"state\">中文正文</人物>\n<english_word>English body</english_word>",
+      },
+      name: "角色",
+    }));
+
+    expect(html).toContain("中文正文");
+    expect(html).toContain("English body");
+    expect(html).not.toContain("人物");
+    expect(html).not.toContain("english_word");
+    expect(html).not.toContain("class=\"state\"");
+    expect(html).not.toContain("rich-message-frame");
+  });
+
+  it("leaves custom XML examples untouched inside inline and fenced code", () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, {
+      message: {
+        id: "message-custom-code",
+        role: "assistant",
+        content: "`<人物>行内示例</人物>`\n\n```xml\n<人物>代码示例</人物>\n```",
+      },
+      name: "角色",
+    }));
+
+    expect(html).toContain("&lt;人物&gt;行内示例&lt;/人物&gt;");
+    expect(html).toContain("&lt;人物&gt;代码示例&lt;/人物&gt;");
+  });
+
   it("keeps wrapper-looking source visible when it belongs to a code fence", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
@@ -159,11 +223,21 @@ describe("message markdown presentation", () => {
       underlineTexts: [],
     });
     const styles = readFileSync(resolve("src/renderer/src/modules/chat/styles/chat-panel.css"), "utf8");
-    expect(styles).toContain("::highlight(eleckoi-roleplay-underline)");
-    expect(styles).toContain("::highlight(eleckoi-roleplay-quote)");
+    expect(styles).not.toContain("::highlight(");
+
+    const root = document.createElement("div");
+    root.className = "markdown-message";
+    root.textContent = "“引号” 下划线";
+    document.body.append(root);
+    const dispose = registerMarkdownTextToneHighlights(root, ["下划线"]);
+    const runtimeStyles = document.getElementById("eleckoi-markdown-text-tone-highlights")?.textContent || "";
+    expect(runtimeStyles).toContain("::highlight(eleckoi-roleplay-underline)");
+    expect(runtimeStyles).toContain("::highlight(eleckoi-roleplay-quote)");
+    dispose();
+    root.remove();
   });
 
-  it("places opening navigation on the message edges with the counter below the next control", () => {
+  it("keeps opening navigation below the content and within the pencil column", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
         id: "opening",
@@ -187,6 +261,17 @@ describe("message markdown presentation", () => {
     expect(html).toContain('data-icon="chevron-right"');
     expect(html).toMatch(/<\/div><div class="opening-pager"/);
     expect(html.indexOf('opening-pager-next')).toBeLessThan(html.indexOf('opening-pager-index'));
+
+    const chatStyles = readFileSync(
+      resolve("src/renderer/src/modules/chat/styles/chat-panel.css"),
+      "utf8",
+    );
+    expect(chatStyles).toMatch(
+      /\.opening-pager\s*\{[^}]*position:\s*static;/,
+    );
+    expect(chatStyles).toMatch(
+      /\.message-roleplay > \.opening-pager\s*\{[^}]*grid-column:\s*1\s*\/\s*3;[^}]*grid-row:\s*2;/,
+    );
   });
 
   it("places Agent response actions below the answer and keeps the opening pager with them", () => {

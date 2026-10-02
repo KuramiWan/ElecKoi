@@ -216,6 +216,13 @@ export function injectMvuFrontendActionBridge(text: string): string {
   return referencesActions ? insertIntoHead(text, actionBridge()) : text
 }
 
+export function hideMvuDisplayMarkers(text: string): string {
+  return text
+    .replace(/<FINAL>(?:\r\n|\r|\n)?/g, '')
+    .replace(/(?:\r\n|\r|\n)?<\/FINAL>/g, '')
+    .replaceAll(MVU_STATUS_PLACEHOLDER, '')
+}
+
 export const mvuMessageDisplayCompatibility: MessageDisplayCompatibility = {
   prepareAssistantText(text, complete, displayRulePatterns) {
     if (!complete || text.includes(MVU_STATUS_PLACEHOLDER)) return text
@@ -225,7 +232,7 @@ export const mvuMessageDisplayCompatibility: MessageDisplayCompatibility = {
   resolveVariableMacros(text, variableStateJson) {
     return injectMvuFrontendActionBridge(
       injectMvuFrontendSnapshotBridge(
-        resolveMvuMessageVariableMacros(text, variableStateJson),
+        hideMvuDisplayMarkers(resolveMvuMessageVariableMacros(text, variableStateJson)),
         variableStateJson
       )
     )

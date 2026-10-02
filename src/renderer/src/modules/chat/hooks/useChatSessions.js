@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  cancelChatStream,
   createChat as createChatSession,
   deleteChat,
   deleteChatMessagesFrom,
   editChatMessage,
   getChat,
-  listenAgentProcess,
-  listenChatStreamDelta,
-  listChats,
   mapChatDetails,
   mapConversations,
   regenerateChatMessage,
@@ -39,8 +35,7 @@ import { mergeProcessItems, useConversationMessages } from "./useConversationMes
 import { useChatHistoryPaging } from "./useChatHistoryPaging.js";
 import { useAuthorFrontendActions } from "./useAuthorFrontendActions.js";
 import { useChatInputImages } from "./useChatInputImages.js";
-import { getErrorMessage, isAbortError, runChatMessageSend, stopChatMessageSend, throwIfAborted, upsertProcess } from "./chatMessageSend.js";
-import { readSetting, writeSetting } from "../../../bridge/settingsClient.js";
+import { getErrorMessage, isAbortError, runChatMessageSend, stopChatMessageSend, throwIfAborted } from "./chatMessageSend.js";
 
 const EMPTY_CATALOG = { status: "loading", items: [], error: "" };
 const EMPTY_DETAILS = { id: "", status: "idle", details: null, error: "" };
@@ -49,16 +44,8 @@ const subscribeEmptyCatalog = () => () => {};
 const getEmptyCatalog = () => EMPTY_CATALOG;
 const getEmptyDetails = () => EMPTY_DETAILS;
 const getEmptyStream = () => EMPTY_STREAM;
-let selectionWriteQueue = Promise.resolve();
-
-function saveChatSelection(selection) {
-  const operation = selectionWriteQueue.then(() => writeSetting("chat.selection", selection));
-  selectionWriteQueue = operation.catch(() => {});
-  return operation;
-}
 
 export function useChatSessions({ conversations, persona, characters, modelConfigs, language, setStatus, setActiveSectionState, notify }) {
-  const [localSessions, setLocalSessions] = useState([]);
   const catalog = useSyncExternalStore(
     conversations?.subscribe || subscribeEmptyCatalog,
     conversations?.getSnapshot || getEmptyCatalog,
@@ -83,10 +70,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     setStatus(detailsSnapshot.error);
     notifyRef.current?.("error", detailsSnapshot.error);
   }, [conversations, detailsSnapshot.error, detailsSnapshot.status, setStatus]);
-  const sessions = useMemo(
-    () => conversations ? mapConversations(catalog.items) : localSessions,
-    [catalog.items, conversations, localSessions],
-  );
+  const sessions = useMemo(() => mapConversations(catalog.items), [catalog.items]);
   const [sessionId, setSessionId] = useState(() => conversations?.getDetailsSnapshot()?.id || "");
   const preferredSessionByCharacterRef = useRef(new Map());
   const [selectionReady, setSelectionReady] = useState(false);
@@ -97,9 +81,10 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   const [input, setInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const restoredRun = Boolean(conversations && streamSnapshot.id === sessionId
-    && streamSnapshot.status === "running" && streamSnapshot.runId && !isSending);
-  const chatBusy = isSending || restoredRun;
+  const liveRun = Boolean(conversations && streamSnapshot.id === sessionId
+    && streamSnapshot.status === "running" && streamSnapshot.runId);
+  const restoredRun = liveRun && !isSending;
+  const chatBusy = isSending || liveRun;
   const [historyOpen, setHistoryOpen] = useState(false);
   const [chatCharacter, setChatCharacter] = useState(() => createEmptyChatCharacter());
 
@@ -112,21 +97,22 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     hideChatEntry,
     restoreChatEntry,
   } = useConversationListPreferences();
-  const { modelConfig, modelSelection, selectChatModel } = useActiveChatModel({ modelConfigs, setStatus });
+  const { modelConfig, modelSelection, selectChatModel } = useActiveChatModel({
+    conversations, conversationId: sessionId, modelConfigs, setStatus,
+  });
   const {
     inputImages, inputImagesRef, modelSupportsImages, addInputImages, removeInputImage, clearInputImages,
   } = useChatInputImages({ modelConfig, isSending: chatBusy });
-  const { inputFiles, inputFilesRef, filesUploading, fileUploadProgress, addInputFiles, removeInputFile, clearInputFiles, discardInputFiles } = useChatInputFiles();
+  const { inputFiles, inputFilesRef, filesUploading, fileUploadProgress, addInputFiles, removeInputFile, clearInputFiles, discardInputFiles } = useChatInputFiles({
+    conversationId: sessionId,
+    conversations,
+  });
   const {
     messages,
     displayedMessages,
     setMessages,
     setMessagesWithScroll,
     reconcileMessages,
-    updatePendingReply,
-    updatePendingReplyDeferred,
-    settlePendingReply,
-    commitPendingError,
     prependMessages,
     historyPage,
     requestScrollToEnd,
@@ -134,10 +120,18 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     scrollRef,
   } = useConversationMessages();
   const visibleMessages = useMemo(() => {
-    if (!restoredRun || !streamSnapshot.messageId) return displayedMessages;
-    const index = displayedMessages.findIndex((message) => message.id === streamSnapshot.messageId);
-    if (index < 0) return [...displayedMessages, {
+    // The settled transcript and live reply must be read in the same render.
+    // Mirroring the transcript through an effect leaves an empty frame between them.
+    const transcript = detailsSnapshot.details?.conversation.id === sessionId
+      ? mapChatDetails(detailsSnapshot.details).messages
+      : displayedMessages;
+    if (!liveRun || !streamSnapshot.messageId) return transcript;
+    const index = transcript.findIndex((message) => message.id === streamSnapshot.messageId
+      || (streamSnapshot.renderKey && message.renderKey === streamSnapshot.renderKey));
+    if (index >= 0 && transcript[index].status !== "streaming") return transcript;
+    if (index < 0) return [...transcript, {
       id: streamSnapshot.messageId,
+      renderKey: streamSnapshot.renderKey,
       conversationId: sessionId,
       role: "assistant",
       content: streamSnapshot.content,
@@ -147,18 +141,19 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       process: streamSnapshot.process,
       created_at: "",
     }];
-    return displayedMessages.map((message, messageIndex) => messageIndex === index ? {
+    return transcript.map((message, messageIndex) => messageIndex === index ? {
       ...message,
       content: streamSnapshot.content,
       status: "streaming",
       pending: true,
       process: mergeProcessItems(message.process, streamSnapshot.process),
     } : message);
-  }, [displayedMessages, restoredRun, sessionId, streamSnapshot]);
+  }, [detailsSnapshot.details, displayedMessages, liveRun, sessionId, streamSnapshot]);
   const { isLoadingOlderMessages, loadOlderMessages } = useChatHistoryPaging({
     sessionId,
     historyPage,
     prependMessages,
+    reconcileMessages,
     setStatus,
     conversations,
   });
@@ -186,7 +181,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
 
   useEffect(() => {
     if (!conversations || !selectionReady) return;
-    void saveChatSelection({
+    void conversations.saveSelection({
       active_conversation_id: sessionId,
       preferred_sessions: Object.fromEntries(preferredSessionByCharacterRef.current),
     }).catch((error) => {
@@ -234,26 +229,15 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
 
   useEffect(() => {
     const details = detailsSnapshot.details;
-    if (!conversations || !details || details.conversation.id !== sessionId || isSending) return;
+    if (!conversations || !details || details.conversation.id !== sessionId) return;
     const chat = mapChatDetails(details);
     reconcileChatMessages(chat);
     setChatCharacter(normalizeLatestChatCharacter(chat));
   }, [conversations, detailsSnapshot.details, sessionId]);
 
-  useEffect(() => {
-    if (!conversations || !isSending || streamSnapshot.id !== sessionId || streamSnapshot.status !== "running") return;
-    updatePendingReply((current) => current ? {
-      ...current,
-      content: streamSnapshot.content,
-      process: streamSnapshot.process,
-    } : current);
-  }, [conversations, isSending, sessionId, streamSnapshot]);
-
   async function readSessions() {
-    if (conversations) {
-      return { items: mapConversations(await conversations.refresh()) };
-    }
-    return listChats();
+    if (!conversations) throw new Error("DSH 聊天服务尚未就绪");
+    return { items: mapConversations(await conversations.refresh()) };
   }
 
   async function loadSessions(preferredId = "") {
@@ -261,7 +245,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     let savedSelection = null;
     if (conversations) {
       try {
-        savedSelection = await readSetting("chat.selection");
+        savedSelection = await conversations.readSelection();
         if (restoreGeneration === loadGenerationRef.current) {
           for (const [characterId, id] of Object.entries(savedSelection?.preferred_sessions || {})) {
             if (characterId && id) rememberPreferredSession(characterId, id);
@@ -273,7 +257,6 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     }
     const data = await readSessions();
     const items = data.items || [];
-    if (!conversations) setLocalSessions(items);
     try {
       if (restoreGeneration !== loadGenerationRef.current) return;
       const availableIds = new Set(items.map((item) => item.id));
@@ -290,19 +273,17 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       setMessagesWithScroll([], "auto");
       notifyRef.current?.("error", getErrorMessage(error, "恢复当前聊天记录失败"));
     } finally {
-      if (conversations) setSelectionReady(true);
+      setSelectionReady(true);
     }
   }
 
   async function refreshSessionsOnly(options = {}) {
-    const data = await readSessions();
-    if (!conversations) setLocalSessions(data.items || []);
+    await readSessions();
     if (!options.keepSection) setActiveSectionState("messages");
   }
 
   async function openHistory() {
-    const data = await readSessions();
-    if (!conversations) setLocalSessions(data.items || []);
+    await readSessions();
     setHistoryOpen(true);
   }
 
@@ -358,7 +339,6 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       const data = await readSessions();
       if (selectionGeneration !== loadGenerationRef.current) return;
       const items = data.items || [];
-      if (!conversations) setLocalSessions(items);
       const preferredId = conversations?.preferredSession?.(characterId)
         || preferredSessionByCharacterRef.current.get(characterId)
         || (chatCharacter.character_id === characterId ? sessionId : "");
@@ -368,7 +348,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
         await loadChat(existing.id, { bumpToTop: true, transition: true });
         return;
       }
-      const created = await createChatSession(characterName, characterData);
+      const created = await createChatSession(characterName, characterData, { model: conversations,
+        modelSelection: modelConfig ? { provider: modelConfig.id, model: modelConfig.model } : undefined });
       if (selectionGeneration !== loadGenerationRef.current) return;
       rememberPreferredSession(characterId, created.chat.id);
       setSessionId(created.chat.id);
@@ -391,11 +372,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     const activeRequest = requestRef.current;
     requestRef.current = null;
     activeRequest?.controller?.abort?.();
-    activeRequest?.unlisten?.();
-    if (activeRequest?.requestId) {
-      (conversations
-        ? conversations.cancelRequest(activeRequest.conversationId || sessionId, activeRequest.requestId)
-        : cancelChatStream(activeRequest.requestId)).catch(() => {});
+    if (activeRequest?.requestId && conversations) {
+      conversations.cancelRequest(activeRequest.conversationId || sessionId, activeRequest.requestId).catch(() => {});
     }
   }
 
@@ -415,7 +393,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     setIsSwitchingChat(true);
     const characterName = chatCharacter.assistant_name || chatCharacter.character_name || "新对话";
     try {
-      const created = await createChatSession(characterName, chatCharacter);
+      const created = await createChatSession(characterName, chatCharacter, { model: conversations,
+        modelSelection: modelConfig ? { provider: modelConfig.id, model: modelConfig.model } : undefined });
       if (creationGeneration !== loadGenerationRef.current) return;
       const chat = created.chat;
       rememberPreferredSession(chatCharacter.character_id, chat.id);
@@ -441,9 +420,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   async function selectOpening(message, openingId) {
     if (!sessionId || chatBusy || message?.id !== "opening" || !openingId) return;
     try {
-      const result = await selectChatOpening(sessionId, openingId);
+      const result = await selectChatOpening(sessionId, openingId, { model: conversations });
       replaceChatMessages(result.chat, "auto");
-      conversations?.invalidateDetails(sessionId);
       setChatCharacter(normalizeLatestChatCharacter(result.chat));
       await refreshSessionsOnly({ keepSection: true });
     } catch (error) {
@@ -454,9 +432,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   async function editOpening(message, replacementMessage) {
     if (!sessionId || chatBusy || message?.id !== "opening") return false;
     try {
-      const result = await updateChatOpening(sessionId, replacementMessage);
+      const result = await updateChatOpening(sessionId, replacementMessage, { model: conversations });
       replaceChatMessages(result.chat, "auto");
-      conversations?.invalidateDetails(sessionId);
       setChatCharacter(normalizeLatestChatCharacter(result.chat));
       await refreshSessionsOnly({ keepSection: true });
       return true;
@@ -495,7 +472,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
     const shouldCreateReplacement = Boolean(targetCharacterId) && remainingSameCharacterSessions.length === 0;
 
-    await deleteChat(chatId);
+    await deleteChat(chatId, { model: conversations });
     unpinChat(chatId);
     forgetPreferredSession(targetCharacterId, chatId);
 
@@ -509,7 +486,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
         assistant_avatar: target?.character_avatar || chatCharacter.assistant_avatar || chatCharacter.character_avatar || "",
       });
       const characterName = replacementCharacter.assistant_name || replacementCharacter.character_name || "新对话";
-      const created = await createChatSession(characterName, replacementCharacter);
+      const created = await createChatSession(characterName, replacementCharacter, { model: conversations,
+        modelSelection: modelConfig ? { provider: modelConfig.id, model: modelConfig.model } : undefined });
       rememberPreferredSession(targetCharacterId, created.chat.id);
       setSessionId(created.chat.id);
       replaceChatMessages(created.chat, "auto");
@@ -555,10 +533,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     }
     const activeRequest = requestRef.current;
     stopChatMessageSend({
-      requestRef, setIsSending, setStatus, settlePendingReply, notify,
-      cancelRequest: conversations
-        ? (requestId) => conversations.cancelRequest(activeRequest?.conversationId || sessionId, requestId)
-        : cancelChatStream,
+      requestRef, setIsSending, setStatus, notify,
+      cancelRequest: (requestId) => conversations.cancelRequest(activeRequest?.conversationId || sessionId, requestId),
     });
   }
 
@@ -567,15 +543,16 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       event, input: inputOverride ?? input, inputImagesRef, inputFilesRef, isSending: chatBusy || filesUploading, modelConfig, modelSupportsImages, setStatus,
       requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
       setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
-      setMessages, updatePendingReply, updatePendingReplyDeferred, requestScrollToEnd,
-      reconcileChatMessages, commitPendingError, notify, restoreChatEntry, conversationModel: conversations,
+      requestScrollToEnd, reconcileChatMessages, notify, restoreChatEntry, conversationModel: conversations,
     });
   }
 
   async function deleteMessagesFrom(messageId) {
     if (!sessionId || !messageId || chatBusy) return false;
     try {
-      const result = await deleteChatMessagesFrom(sessionId, messageId);
+      const message = messages.find((item) => item.id === messageId);
+      if (!message || !Number.isSafeInteger(message.sessionEventSeq)) throw new Error("找不到对应的 DSH 消息");
+      const result = await deleteChatMessagesFrom(sessionId, message, { model: conversations });
       replaceChatMessages(result.chat, "auto");
       conversations?.invalidateDetails(sessionId);
       setChatCharacter(normalizeLatestChatCharacter(result.chat));
@@ -591,7 +568,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   async function editMessage(message, replacementMessage) {
     if (!sessionId || !message?.id || chatBusy) return false;
     try {
-      const result = await editChatMessage(sessionId, message.id, replacementMessage);
+      if (!Number.isSafeInteger(message.sessionEventSeq)) throw new Error("找不到对应的 DSH 消息");
+      const result = await editChatMessage(sessionId, message, replacementMessage, { model: conversations });
       replaceChatMessages(result.chat, "auto");
       conversations?.invalidateDetails(sessionId);
       setChatCharacter(normalizeLatestChatCharacter(result.chat));
@@ -607,6 +585,12 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     if (!sessionId || chatBusy) return;
     if (!modelConfig?.id || !modelConfig.model?.trim()) {
       const message = "未配置可用的对话模型，请先前往“模型配置”添加模型和 API 密钥。";
+      setStatus(message);
+      notifyRef.current?.("error", message);
+      return;
+    }
+    if (!conversations) {
+      const message = "DSH 聊天服务尚未就绪";
       setStatus(message);
       notifyRef.current?.("error", message);
       return;
@@ -629,6 +613,10 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       return;
     }
     const branchUser = messages[branchUserIndex];
+    if (!Number.isSafeInteger(branchUser?.sessionEventSeq)) {
+      setStatus("找不到这条输入对应的 DSH 消息");
+      return;
+    }
     const targetMessageId = String(branchUser?.turnId || branchUser?.id || requestedTargetMessageId).trim();
     restoreChatEntry(sessionId);
 
@@ -638,48 +626,18 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     requestRef.current = activeRequest;
     setIsSending(true);
     setStatus("正在重新生成...");
-    let assistantId = "";
-
     try {
-      const createdAt = new Date().toISOString();
-      assistantId = `regen-${Date.now()}`;
       const payload = {
         target_message_id: targetMessageId,
+        session_event_seq: branchUser.sessionEventSeq,
         replacement_message: hasReplacementMessage ? replacementMessage : null,
       };
-      setMessages((items) => {
-        const userIndex = findRegenerateBranchUserIndex(items, targetMessageId, hasReplacementMessage);
-        if (userIndex < 0) return items;
-        const branch = items.slice(0, userIndex + 1).map((item, index) =>
-          index === userIndex && hasReplacementMessage ? { ...item, content: replacementMessage } : item,
-        );
-        return branch;
-      });
-      updatePendingReply({ id: assistantId, conversationId: sessionId, role: "assistant", content: "", variableStateJson: '{}', pending: true, created_at: createdAt });
       requestScrollToEnd("auto");
 
-      let result;
       const requestId = `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       activeRequest.requestId = requestId;
-      if (!conversations) {
-        const unlistenProcess = await listenAgentProcess((event) => {
-          if (event?.request_id !== requestId || event?.session_id !== sessionId || !event?.item) return;
-          updatePendingReplyDeferred((current) => current?.id === assistantId
-            ? { ...current, process: upsertProcess(current.process, event.item) }
-            : current);
-        });
-        activeRequest.unlisten = unlistenProcess;
-        throwIfAborted(controller.signal);
-        const unlistenDelta = await listenChatStreamDelta((event) => {
-          if (event?.request_id !== requestId || event?.session_id !== sessionId || !event?.delta) return;
-          updatePendingReplyDeferred((current) => current?.id === assistantId
-            ? { ...current, pending: true, content: `${current.content || ""}${event.delta}` }
-            : current);
-        });
-        activeRequest.unlisten = () => { unlistenDelta(); unlistenProcess(); };
-      }
       throwIfAborted(controller.signal);
-      result = await regenerateChatMessage(sessionId, payload, requestId, { model: conversations });
+      const result = await regenerateChatMessage(sessionId, payload, requestId, { model: conversations, signal: controller.signal });
       if (result.cancelled) {
         if (requestRef.current === null || requestRef.current === activeRequest) {
           replaceChatMessages(result.chat);
@@ -698,27 +656,22 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     } catch (error) {
       if (requestRef.current === activeRequest && !isAbortError(error)) {
         const message = getErrorMessage(error, "重新生成失败");
-        let reconciled = false;
+        setIsSending(false);
+        setStatus(message);
+        notify?.("error", message);
         try {
-          const durable = conversations
-            ? await getChat(sessionId, { model: conversations })
-            : await getChat(sessionId);
+          const durable = await getChat(sessionId, { model: conversations });
           if (requestRef.current === activeRequest) {
             replaceChatMessages(durable.chat);
             conversations?.invalidateDetails(sessionId);
             setChatCharacter(normalizeLatestChatCharacter(durable.chat || {}));
-            reconciled = true;
           }
         } catch {
           // Preserve the original regeneration failure when durable refresh also fails.
         }
         if (requestRef.current !== activeRequest) return;
-        if (!reconciled) commitPendingError(assistantId);
-        setStatus(message);
-        notify?.("error", message);
       }
     } finally {
-      activeRequest.unlisten?.();
       if (requestRef.current === activeRequest) {
         requestRef.current = null;
         setIsSending(false);
@@ -751,7 +704,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     });
   }, [chatCharacter.character_id, characterLookup]);
 
-  useAuthorFrontendActions({ sessionId, setIsSending, setStatus, setMessages, reconcileChatMessages,
+  useAuthorFrontendActions({ sessionId, setIsSending, setStatus, reconcileChatMessages,
     replaceChatMessages, conversations,
     setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, requestScrollToEnd, loadChat,
     input, inputImages, setInput, sendMessage });

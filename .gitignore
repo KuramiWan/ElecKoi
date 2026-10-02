@@ -30,6 +30,8 @@ dev-dist/
 dist/
 out/
 release/
+packages/dsh-product-api/lib/
+packages/dsh-product-data/lib/
 resources/native/
 coverage/
 playwright-report/

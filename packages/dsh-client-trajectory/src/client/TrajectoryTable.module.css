@@ -1014,6 +1014,11 @@
   scrollbar-gutter: stable;
 }
 
+.detailBodySummary,
+.detailBodyProgram {
+  scrollbar-gutter: auto;
+}
+
 .detailBodySummary {
   display: flex;
   box-sizing: border-box;

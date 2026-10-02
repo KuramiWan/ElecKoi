@@ -1,23 +1,11 @@
-export { ModelConfigPanel } from "./components/ModelConfigPanel.jsx";
 export { ModelIdentityIcon } from "./components/ModelIdentityIcon.jsx";
+export { ModelConfigPanel } from "./components/ModelConfigPanel.jsx";
+export { blankConfigForProvider } from "./model/modelProviderCatalog.js";
+export { initialConfigForProvider } from "./model/modelConfigDraft.js";
 export { ModelPicker } from "./components/ModelPicker.jsx";
 export { useModelRuntime } from "./hooks/useModelRuntime.js";
 export {
-  getActiveModelSelection,
   getModelMeta,
-  listenActiveModelSelectionChanged,
-  saveActiveModelSelection,
 } from "./api/modelApi.js";
-export {
-  addableProviderItems,
-  blankConfigForProvider,
-  catalogItem,
-  configVersionName,
-  filterProviderItems,
-  isImageProviderId,
-  mergeProviderMeta,
-  modelProviderSections,
-  modelOptionsKey,
-  normalizeProviderId,
-} from "./model/modelProviderCatalog.js";
+export { modelOptionsKey } from "./model/modelProviderCatalog.js";
 export { detectModelIconId, modelIdentityMeta } from "./model/modelIdentity.js";

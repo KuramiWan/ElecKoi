@@ -1,0 +1,34 @@
+diff --git a/lib/client.js b/lib/client.js
+index f830d1d9036fa79a8d7aaab0457781530eae980a..630ef0733a93883036159efa6c802a7f0e77c227 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -796,6 +796,7 @@ window.__ModuleLoader__.load({
+ 				...bundle.version === void 0 ? {} : { version: bundle.version },
+ 				...bundle.description === void 0 ? {} : { description: bundle.description },
+ 				...bundle.meta === void 0 ? {} : { meta: bundle.meta },
++				...bundle.developerInterfaces === void 0 ? {} : { developerInterfaces: bundle.developerInterfaces },
+ 				...bundle.readOnlyReason === void 0 ? {} : { readOnlyReason: bundle.readOnlyReason },
+ 				...bundle.error === void 0 ? {} : { error: bundle.error }
+ 			};
+@@ -3339,7 +3340,7 @@ window.__ModuleLoader__.load({
+ 				};
+ 			}, [highlight, clearHighlight]);
+ 			const noticeLine = state.notice === null || state.notice.kind === "refresh-failed" ? null : noticeText(state.notice, t);
+-			const listed = state.packages.filter((pkg) => !BUILTIN_PROFILE_BUNDLES.has(pkg.name) && (pkg.installed || pkg.optional || pkg.error !== void 0));
++			const listed = state.packages.filter((pkg) => !BUILTIN_PROFILE_BUNDLES.has(pkg.name) && (pkg.enabled || pkg.installed || pkg.optional || pkg.error !== void 0));
+ 			const mine = listed.filter((pkg) => pkg.installed || !pkg.optional);
+ 			const official = listed.filter((pkg) => pkg.optional && !pkg.installed);
+ 			const loaded = state.status === "ready" || state.status === "error";
+diff --git a/lib/types/client/manager-store.d.ts b/lib/types/client/manager-store.d.ts
+index a2ea825937b68ff712665a05d3f8bd3886909c20..3b83f64241601ea0cc2151e56534c1224788a114 100644
+--- a/lib/types/client/manager-store.d.ts
++++ b/lib/types/client/manager-store.d.ts
+@@ -63,6 +63,8 @@ export interface PackageView {
+     readonly description?: string;
+     /** Local package display text and metadata diagnostics supplied by the Host. */
+     readonly meta?: PluginLocalizedMeta;
++    /** Public developer contracts declared by this bundle. */
++    readonly developerInterfaces?: BundleInfo['developerInterfaces'];
+     /** Whether the profile's own dependencies hold the package; false for a bundle the installation supplies. */
+     readonly installed: boolean;
+     /** Whether the installation ships the bundle for the person to switch on: official, off until selected, never removable. */

@@ -9,12 +9,122 @@
     "./slots": {
       "types": "./src/slots.d.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
       "platform": "web",
-      "inject": ["@deepseek-ai/dsh-client-ui-renderer"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@eleckoi/dsh-product-api"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
+  },
+  "description": "展示角色列表和资料，提供角色操作入口。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiCharacters",
+        "kind": "service",
+        "title": "角色目录服务",
+        "description": "读取并维护角色目录，支持角色、分组、导入与导出操作。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "refresh",
+          "create",
+          "update",
+          "select",
+          "saveGroups",
+          "delete",
+          "prepareImport",
+          "commitImport",
+          "discardImport",
+          "exportCharacters"
+        ]
+      },
+      {
+        "id": "eleckoi.character.page.list",
+        "kind": "ui-slot",
+        "title": "角色列表区域",
+        "description": "包装或替换角色列表。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.page.profile",
+        "kind": "ui-slot",
+        "title": "角色资料区域",
+        "description": "包装或替换角色资料展示。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.card",
+        "kind": "ui-slot",
+        "title": "角色基础资料编辑",
+        "description": "扩展角色名称、头像和基础资料编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.lore",
+        "kind": "ui-slot",
+        "title": "设定库编辑",
+        "description": "扩展角色设定库编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.variables",
+        "kind": "ui-slot",
+        "title": "变量编辑",
+        "description": "扩展角色变量编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.regex",
+        "kind": "ui-slot",
+        "title": "正则编辑",
+        "description": "扩展角色正则规则编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.dynamic",
+        "kind": "ui-slot",
+        "title": "动态设定编辑",
+        "description": "扩展动态设定编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.manager",
+        "kind": "ui-slot",
+        "title": "角色卡管理器",
+        "description": "包装或替换角色卡导入、导出和批量管理界面。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      }
+    ]
   }
 }

@@ -1,11 +1,12 @@
 const { app, BrowserWindow, nativeTheme } = require('electron')
 const { mkdtempSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
-const { dirname, join } = require('node:path')
+const { dirname, join, resolve } = require('node:path')
 
 const root = mkdtempSync(join(tmpdir(), 'eleckoi-dsh-client-'))
 let host
 let window
+const diagnostics = []
 
 async function main() {
   const { DshDesktopPluginHost } = await import('@eleckoi/dsh-runtime')
@@ -15,13 +16,27 @@ async function main() {
   }
   await app.whenReady()
   if (process.env.ELECKOI_PLUGIN_CLIENT_THEME === 'dark') nativeTheme.themeSource = 'dark'
-  host = new DshDesktopPluginHost({ runtimeDataRoot: root, executablePath: process.execPath, packageManager })
+  host = new DshDesktopPluginHost({
+    runtimeDataRoot: root,
+    workspaceRoot: join(root, 'workspace'),
+    presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
+    agentPatchPath: resolve('resources/dsh/desktop-agent.patch.yml'),
+    executablePath: process.execPath,
+    packageManager,
+    onDiagnostic: message => diagnostics.push(`host:${message}`)
+  })
   const ready = await host.start()
   window = new BrowserWindow({
     width: 1280,
     height: 850,
     show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  window.webContents.on('console-message', details => {
+    diagnostics.push(`console:${details.level}:${details.message}`)
+  })
+  window.webContents.on('did-fail-load', (_event, code, description, url) => {
+    diagnostics.push(`load:${code}:${description}:${url}`)
   })
   await window.loadURL(ready.url)
   const deadline = Date.now() + 30_000
@@ -32,7 +47,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 300))
   }
   if (!body.includes('插件') && !body.includes('Plugins')) {
-    throw new Error(`DSH client did not show plugin navigation: ${body.slice(0, 500)}`)
+    throw new Error(`DSH client did not show plugin navigation: ${body.slice(0, 1000)}\n${diagnostics.slice(-100).join('\n')}`)
   }
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === '插件' || button.getAttribute('aria-label') === 'Plugins')?.click()`)
   let pluginPage = ''
@@ -134,7 +149,7 @@ async function main() {
 }
 
 main().catch(error => {
-  process.stderr.write(`${error.stack ?? error}\n`)
+  process.stderr.write(`${error.stack ?? error}\n${diagnostics.slice(-100).join('\\n')}\\n`)
   process.exitCode = 1
 }).finally(async () => {
   window?.destroy()

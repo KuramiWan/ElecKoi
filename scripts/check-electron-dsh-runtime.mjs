@@ -31,3 +31,12 @@ if (pluginHost.status !== 0) {
 }
 
 process.stdout.write(pluginHost.stdout)
+
+const regeneration = spawnSync(executable, [join(process.cwd(), 'scripts', 'probe-dsh-regeneration.mjs')], {
+  cwd: process.cwd(), env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8', timeout: 90_000,
+})
+if (regeneration.status !== 0) {
+  process.stderr.write(regeneration.stderr || regeneration.stdout || 'Electron DSH regeneration check failed.\n')
+  process.exit(regeneration.status ?? 1)
+}
+process.stdout.write(regeneration.stdout)

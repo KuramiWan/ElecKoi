@@ -65,6 +65,18 @@ describe('generation statistics display', () => {
     expect(html).toContain('aria-haspopup="dialog"');
   });
 
+  it('reads timing and speed from the official DSH session statistics envelope', () => {
+    const html = renderToStaticMarkup(React.createElement(GenerationStatsLine, { stats: {
+      sessionStats: { turns: 3, steps: 3, decodeMs: 1_000, decodeTokens: 203 },
+      tokenUsage: { uncachedInputTokens: 1_000, cacheReadTokens: 8_000, cacheWriteTokens: 0, outputTokens: 203 },
+      contextPressure: { projectedTokens: 3_000, contextWindow: 1_000_000 },
+    } }));
+
+    expect(html).toContain('3 轮 3 步 · 203 tok/s');
+    expect(html).toContain('9.2K tok · 缓存命中 89%');
+    expect(html).toContain('0.3%');
+  });
+
   it('preserves the DSH near-100 cache precision rule', () => {
     const usage = { uncachedInputTokens: 5, outputTokens: 1, cacheReadTokens: 9_995, cacheWriteTokens: 0 };
     expect(billedInputTokens(usage)).toBe(10_000);

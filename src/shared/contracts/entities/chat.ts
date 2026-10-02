@@ -29,7 +29,7 @@ export interface ChatTurnTokenUsage {
   routes?: readonly { provider: string; model: string }[]
 }
 
-/** Renderer-to-Main upload shape. Base64 exists only at this Gateway boundary. */
+/** Base64-encoded image payload submitted by the Client to the DSH Host. */
 export interface EncodedChatImageAttachment {
   mediaType: ChatImageMediaType
   data: string

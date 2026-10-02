@@ -7,12 +7,13 @@ import { showCurrentWindow } from "../services/windowControls.js";
 import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
+import { MainPageContext } from "./MainPageContext.jsx";
 
 const CHAT_WINDOW_STYLE = {
   "--side-panel-width": "0px",
 };
 
-export function ChatWindow({ conversations, characters, models, persona, renderRoleplay }) {
+export function ChatWindow({ conversations, characters, characterConfiguration, models, persona, presets, renderRoleplay }) {
   const chat = useChatClient({ conversations, characters, models, persona });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
@@ -34,7 +35,9 @@ export function ChatWindow({ conversations, characters, models, persona, renderR
   });
   const showChatWallpaper = Boolean(chat.sessionId || chat.chatCharacter?.character_id) && Boolean(chatWallpaper.image);
 
-  return (
+  const pageView = { chat, conversations, characters, characterConfiguration, models, presets };
+
+  return <MainPageContext.Provider value={pageView}>
     <main className={`qq-shell qq-chat-window-shell${showChatWallpaper ? " has-chat-wallpaper" : ""}`} style={CHAT_WINDOW_STYLE}>
       {showChatWallpaper ? <ChatWallpaperLayer wallpaper={chatWallpaper} /> : null}
       <TitleBar />
@@ -43,6 +46,7 @@ export function ChatWindow({ conversations, characters, models, persona, renderR
           renderRoleplay={renderRoleplay}
           hasActiveChat={Boolean(chat.sessionId || chat.chatCharacter?.character_id)}
           conversationId={chat.sessionId}
+          presetCatalog={presets}
           isSwitchingChat={chat.isSwitchingChat}
           conversationTransitionRevision={chat.conversationTransitionRevision}
           runtimeSessionId={chat.runtimeSessionId}
@@ -68,7 +72,6 @@ export function ChatWindow({ conversations, characters, models, persona, renderR
           modelOptionsByKey={chat.modelOptionsByKey}
           onLoadModelOptions={chat.loadModelOptions}
           onSelectModel={chat.selectChatModel}
-          onSaveModelConfig={chat.saveModelConfig}
           onNotify={chat.notify}
           onSend={chat.sendMessage}
           onStop={chat.stopSend}
@@ -96,6 +99,7 @@ export function ChatWindow({ conversations, characters, models, persona, renderR
         sessions={chat.sessions}
         sessionId={chat.sessionId}
         chatCharacter={chat.chatCharacter}
+        conversationModel={conversations}
         onClose={chat.closeHistory}
         onLoadChat={chat.loadChat}
         onDeleteChat={chat.removeHistoryChat}
@@ -117,5 +121,5 @@ export function ChatWindow({ conversations, characters, models, persona, renderR
       />
       <AppToast notice={chat.notice} onDismiss={chat.dismissNotice} />
     </main>
-  );
+  </MainPageContext.Provider>;
 }

@@ -11,4 +11,4 @@ windows/
 └─ styles/                   Window Styles（窗口级样式）
 ```
 
-业务功能放进 `modules/`，跨功能界面组件放进 `ui/`，应用级 Hook 与服务放进 `app/`，跨进程调用只放进 `bridge/`。`windows/` 只负责窗口组合，不堆业务实现。
+业务功能放进 `modules/`，跨功能界面组件放进 `ui/`，应用级 Hook 与服务放进 `app/`。产品跨 Host/Client 调用由 DSH Client 插件通过生成的 Typert Remote 或 DSH Connection 正式协议完成，不建立独立的 Renderer 业务桥。`windows/` 只负责窗口组合，不堆业务实现。

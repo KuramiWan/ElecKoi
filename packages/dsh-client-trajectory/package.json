@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./client": "./src/client.ts",
+    "./projection": "./src/projection.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

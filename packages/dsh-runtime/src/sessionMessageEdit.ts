@@ -8,9 +8,9 @@ type MessageRole = 'user' | 'assistant'
 
 /** Edit the selected persisted message while preserving every other Session event. */
 export function editDshSessionMessage(
-  sessionRoot: string, sessionId: string, messageId: string, role: MessageRole, content: string
+  sessionRoot: string, sessionId: string, eventSeq: number, role: MessageRole, content: string
 ): void {
-  if (!messageId || !content.trim()) throw new Error('消息内容不能为空。')
+  if (!Number.isSafeInteger(eventSeq) || eventSeq < 0 || !content.trim()) throw new Error('消息编辑参数不正确。')
   const log = readDshSessionLog(sessionRoot, sessionId)
   if (!log) throw new Error('找不到要编辑的 DSH 会话。')
   if (log.header.isSeeded || log.inheritedEventCount !== 0) {
@@ -21,10 +21,9 @@ export function editDshSessionMessage(
     throw new Error('DSH 会话必须先迁移到当前格式，才能编辑消息。')
   }
   const type = role === 'user' ? 'user/message' : 'assistant/message'
-  const matches = log.events.filter((event) => event.type === type
+  const matches = log.events.filter((event) => event.seq === eventSeq && event.type === type
     && event.surfaceOp === 'append'
-    && isRecord(event.data)
-    && (role === 'user' ? event.data : event.data.message)?.id === messageId)
+    && isRecord(event.data))
   if (matches.length !== 1) throw new Error('找不到唯一对应的消息；原聊天记录未修改。')
   const selected = matches[0]!
   const data = selected.data as Record<string, unknown>
@@ -75,7 +74,7 @@ export function editDshSessionMessage(
     if (!reread || reread.events.length !== events.length
       || !reread.events.some((event) => event.seq === selected.seq
         && isRecord(event.data)
-        && (role === 'user' ? event.data : event.data.message)?.id === messageId)) {
+        && event.seq === eventSeq)) {
       throw new Error('编辑后的 DSH 会话无法读取。')
     }
   } catch (error) {

@@ -1,14 +1,4 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import {
-  createCharacter as persistCreateCharacter,
-  commitCharacterImports,
-  deleteCharacters,
-  getCharacters,
-  getPersona,
-  saveCharacterGroups as persistCharacterGroups,
-  savePersona,
-  updateCharacter as persistUpdateCharacter,
-} from "../api/personaApi.js";
 import { emptyPersona } from "../../../utils/constants/defaults.js";
 
 function newCharacter(group = "") {
@@ -126,18 +116,18 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }, [catalog.collection, catalog.status, characterCatalog]);
 
   async function loadPersona() {
-    const profile = personaModel
-      ? personaModel.getSnapshot().profile || await personaModel.refresh()
-      : (await getPersona()).persona;
+    if (!personaModel) throw new Error("用户资料服务未装载。");
+    const profile = personaModel.getSnapshot().profile || await personaModel.refresh();
     const loaded = { ...emptyPersona, ...(profile || {}) };
     setPersona(loaded);
     return loaded;
   }
 
   async function loadCharacters() {
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
     const data = characterCatalog?.getSnapshot().status === "ready"
       ? characterCatalog.getSnapshot().collection
-      : characterCatalog ? await characterCatalog.refresh() : await getCharacters();
+      : await characterCatalog.refresh();
     const items = data.items || [];
     const active = items.find((item) => item.id === data.active_character_id) || items[0] || null;
     const next = {
@@ -151,7 +141,8 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   async function saveCharacterGroups(groups, assignments = []) {
-    const saved = await persistCharacterGroups(groups, assignments);
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    const saved = await characterCatalog.saveGroups(groups, assignments);
     applyCharacterCollection(saved);
     setStatus("角色分组已保存");
     return saved;
@@ -166,7 +157,8 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   async function createCharacter(group = "") {
     const character = newCharacter(group);
     setSelectedCharacter(character.id);
-    const saved = await persistCreateCharacter(character);
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    const saved = await characterCatalog.create(character);
     applyCharacterCollection(saved);
     setSelectedCharacter(character.id);
     setActiveSectionState("character");
@@ -174,7 +166,8 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   async function updateCharacter(character, quiet = false, options = {}) {
-    const saved = await persistUpdateCharacter(character);
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    const saved = await characterCatalog.update(character);
     if (options.skipApply) setCharacterState(saved);
     else applyCharacterCollection(saved);
     if (!quiet) setStatus("角色卡已保存");
@@ -184,7 +177,8 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   async function deleteCharacterIds(characterIds) {
     const ids = [...new Set(characterIds.filter(Boolean))];
     if (!ids.length) return charactersRef.current;
-    const saved = await deleteCharacters(ids);
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    const saved = await characterCatalog.delete(ids);
     applyCharacterCollection(saved);
     setActiveSectionState("character");
     setStatus(ids.length > 1 ? `已删除 ${ids.length} 个角色` : "角色已删除");
@@ -192,7 +186,8 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   async function importPreparedCharacters(token) {
-    const result = await commitCharacterImports(token);
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    const result = await characterCatalog.commitImport(token);
     applyCharacterCollection(result.collection);
     const selectedId = result.importedCharacterIds?.[0] || result.collection.active_character_id;
     setSelectedCharacter(selectedId);
@@ -201,6 +196,16 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
     const failed = result.failedMessages?.length || 0;
     setStatus(failed ? `已导入 ${imported} 个，${failed} 个失败` : imported > 1 ? `已导入 ${imported} 个角色` : "角色卡已导入");
     return result;
+  }
+
+  function prepareCharacterImports(source, files) {
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    return characterCatalog.prepareImport(source, files);
+  }
+
+  function discardCharacterImports(token) {
+    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    return characterCatalog.discardImport(token);
   }
 
   async function updateUserProfile({ name, avatars }) {
@@ -212,9 +217,9 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
       user_square: avatars?.square ?? persona.user_square ?? "",
       user_portrait: avatars?.portrait ?? persona.user_portrait ?? "",
     };
-    const saved = await savePersona(nextPersona);
+    if (!personaModel) throw new Error("用户资料服务未装载。");
+    const saved = { persona: await personaModel.save(nextPersona) };
     const updated = { ...emptyPersona, ...(saved.persona || nextPersona) };
-    personaModel?.adopt(updated);
     setPersona(updated);
     return updated;
   }
@@ -231,6 +236,8 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
     createCharacter,
     deleteCharacterIds,
     importPreparedCharacters,
+    prepareCharacterImports,
+    discardCharacterImports,
     updateUserProfile,
   };
 }

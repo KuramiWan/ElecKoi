@@ -15,6 +15,34 @@ afterEach(() => {
 })
 
 describe('DSH subagent runtime context inheritance', () => {
+  it('restores owned declarations without treating orphan snapshots as Host dependencies', async () => {
+    const fixture = runtimeFixture()
+    writeFileSync(join(fixture.snapshotRoot, 'orphan-session.json'), JSON.stringify({
+      ...JSON.parse(readFileSync(join(fixture.snapshotRoot, 'root-session.json'), 'utf8')),
+      mountedPresetId: 'deleted-preset'
+    }))
+    writeFileSync(join(fixture.snapshotRoot, 'unused-snapshot.json'), '{')
+    mkdirSync(join(process.env.ELECKOI_PRESET_ROOT, 'preset-b'))
+    writeFileSync(join(process.env.ELECKOI_PRESET_ROOT, 'preset-b', 'preset.json'),
+      JSON.stringify({ id: 'preset-b', plugins: [] }))
+    const unregister = vi.fn()
+    const ctx = {
+      provide: vi.fn(),
+      on: vi.fn(),
+      agents: { create: vi.fn(), resume: vi.fn() },
+      agentPresets: { register: vi.fn(async () => unregister) }
+    }
+    const dispose = await applyAgentPresetBridge(ctx)
+    expect(ctx.agentPresets.register.mock.calls.map(([definition]) => definition.id).sort())
+      .toEqual(['preset-a', 'preset-b'])
+    expect(ctx.provide).toHaveBeenCalledWith('eleckoiPresetRegistrar', expect.any(Object))
+    await expect(ctx.agents.resume({ resumeSessionId: 'orphan-session' }))
+      .rejects.toThrow('deleted-preset')
+    await dispose()
+    expect(unregister).toHaveBeenCalledTimes(2)
+    expect(existsSync(join(fixture.snapshotRoot, 'orphan-session.json'))).toBe(true)
+  })
+
   it('gives created, nested, and resumed children the parent setting library and variables', async () => {
     const fixture = runtimeFixture()
     const originalCreate = vi.fn(async (options) => ({ agent: { id: options.sessionId }, dispose: vi.fn() }))
@@ -25,7 +53,9 @@ describe('DSH subagent runtime context inheritance', () => {
       agents: { create: originalCreate, resume: originalResume },
       agentPresets: { mount: vi.fn(), register: vi.fn(async () => async () => undefined) }
     }
-    const dispose = applyAgentPresetBridge(ctx)
+    const dispose = await applyAgentPresetBridge(ctx)
+    expect(ctx.agentPresets.register).toHaveBeenCalledWith(expect.objectContaining({ id: 'preset-a' }))
+    expect(originalResume).not.toHaveBeenCalled()
 
     await ctx.agents.create(childCreateOptions('child-a', 'root-session'))
     await expect(toolResultFor('child-a', 'eleckoi_glob_setting_files', { pattern: '**' }))
@@ -76,7 +106,7 @@ describe('DSH subagent runtime context inheritance', () => {
       },
       agentPresets: { mount: vi.fn(), register: vi.fn(async () => async () => undefined) }
     }
-    applyAgentPresetBridge(ctx)
+    await applyAgentPresetBridge(ctx)
 
     await expect(ctx.agents.create(childCreateOptions('failed-child', 'root-session'))).rejects.toThrow(failure)
     expect(existsSync(join(fixture.snapshotRoot, 'failed-child.json'))).toBe(false)

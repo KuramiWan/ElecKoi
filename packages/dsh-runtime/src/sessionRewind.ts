@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, renameSync, rmSync, statSync, writeFileSync }
 import { basename } from 'node:path'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { readDshSessionLog } from './trajectory'
+import { HISTORY_RESTORED_EVENT, historyRestoredSchema } from '@eleckoi/dsh-client-roleplay/host/history-stats-projection.mjs'
 
 export class DshSessionRewindUnavailableError extends Error {}
 
@@ -10,7 +11,7 @@ export class DshSessionRewindUnavailableError extends Error {}
  * Rewrite a closed root Session up to (but excluding) the requested turn.
  * The caller must first dispose every active DSH handle for this Session.
  */
-export function rewindDshSession(sessionRoot: string, sessionId: string, fromTurn: number): number {
+export function rewindDshSession(sessionRoot: string, sessionId: string, fromTurn: number, fromEventSeq?: number): number {
   if (!Number.isSafeInteger(fromTurn) || fromTurn < 1) throw new Error('DSH 回退轮次必须是正整数。')
   const log = readDshSessionLog(sessionRoot, sessionId)
   if (log === undefined) throw new DshSessionRewindUnavailableError('找不到要回退的 DSH 会话。')
@@ -44,8 +45,47 @@ export function rewindDshSession(sessionRoot: string, sessionId: string, fromTur
   if (fromTurn > 1 && previousTurnEnd < 0) {
     throw new Error(`DSH 会话第 ${fromTurn - 1} 轮尚未结束，不能回退。`)
   }
-  const cut = previousTurnEnd + 1
+  let cut = previousTurnEnd + 1
+  let closePrefixStep = false
+  if (fromTurn === 1) {
+    const firstTurnIndex = turnStart < 0 ? log.events.length : turnStart
+    for (let index = 0; index < firstTurnIndex; index++) {
+      const event = log.events[index]!
+      if (event.type === 'user/message' && event.surfaceOp === 'append'
+        && isRecord(event.data) && isRecord(event.data.source) && event.data.source.kind === 'user') cut = index + 1
+    }
+    if (fromEventSeq !== undefined) {
+      const targetIndex = log.events.findIndex(event => event.seq === fromEventSeq)
+      if (targetIndex < 0) throw new Error('找不到要回退的 DSH 消息。')
+      if (targetIndex < firstTurnIndex) cut = targetIndex
+      else {
+        const firstStep = log.events.findIndex(event => event.type === 'step/start'
+          && isRecord(event.data) && event.data.turn === 1 && event.data.step === 1)
+        const restoredIds = new Set(log.events.slice(0, targetIndex)
+          .filter(event => event.type === HISTORY_RESTORED_EVENT)
+          .flatMap(event => historyRestoredSchema.parse(event.data).messageIds))
+        let previousUser = -1
+        for (let index = firstStep + 1; index < targetIndex; index++) {
+          const event = log.events[index]!
+          if (event.type === 'user/message' && isRecord(event.data) && restoredIds.has(String(event.data.id))) previousUser = index
+        }
+        if (firstStep >= 0 && previousUser >= 0) {
+          cut = previousUser + 1
+          closePrefixStep = true
+        }
+      }
+    }
+  }
+  if (log.events[cut - 1]?.type === HISTORY_RESTORED_EVENT) cut--
   const retained = log.events.slice(0, cut)
+  if (closePrefixStep) {
+    const stepEnd = log.events.find(event => event.type === 'step/end'
+      && isRecord(event.data) && event.data.turn === 1 && event.data.step === 1)
+    const turnEnd = log.events.find(event => event.type === 'turn/end'
+      && isRecord(event.data) && event.data.turn === 1)
+    if (!stepEnd || !turnEnd) throw new Error('旧聊天历史所在的首轮尚未结束，不能安全回退。')
+    retained.push({ ...stepEnd, seq: cut }, { ...turnEnd, seq: cut + 1 })
+  }
   if (retained.at(-1)?.type === 'turn/start' || retained.at(-1)?.type === 'step/start') {
     throw new Error('DSH 会话上一轮尚未结束，不能回退。')
   }
@@ -90,7 +130,7 @@ export function rewindDshSession(sessionRoot: string, sessionId: string, fromTur
     if (existsSync(temporary)) rmSync(temporary, { force: true })
     if (!retainBackup && existsSync(backup)) rmSync(backup, { force: true })
   }
-  return cut
+  return retained.length
 }
 
 function verifyEncodedLog(source: string, sessionId: string, eventCount: number): void {

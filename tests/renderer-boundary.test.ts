@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { assertTrustedDshClientBoot, isAllowedExternalUrl, isAppRendererUrl, isDshChildUrl } from '../src/main/platform/electron/validateSender'
+import { assertTrustedDshClientFrame, isAllowedExternalUrl, isAppRendererUrl, isDshChildUrl } from '../src/main/platform/electron/validateSender'
 import type { WebContents } from 'electron'
 
 const originalRendererUrl = process.env.ELECTRON_RENDERER_URL
@@ -37,10 +37,10 @@ describe('Renderer trust boundary', () => {
 
   it('accepts the owned DSH top frame and rejects a same-origin subframe', () => {
     const sender = { getURL: () => 'dsh-app://app/' } as WebContents
-    expect(() => assertTrustedDshClientBoot(sender, 'dsh-app://app/', true, [sender])).not.toThrow()
-    expect(() => assertTrustedDshClientBoot(sender, 'dsh-app://app/', false, [sender])).toThrow()
-    expect(() => assertTrustedDshClientBoot(sender, 'dsh-app://app/', true, [])).toThrow()
-    expect(() => assertTrustedDshClientBoot(sender, 'dsh-app://app.evil.invalid/', true, [sender])).toThrow()
+    expect(() => assertTrustedDshClientFrame(sender, 'dsh-app://app/', true, [sender])).not.toThrow()
+    expect(() => assertTrustedDshClientFrame(sender, 'dsh-app://app/', false, [sender])).toThrow()
+    expect(() => assertTrustedDshClientFrame(sender, 'dsh-app://app/', true, [])).toThrow()
+    expect(() => assertTrustedDshClientFrame(sender, 'dsh-app://app.evil.invalid/', true, [sender])).toThrow()
   })
 
   it('boots only owned DSH child routes and rejects arbitrary same-origin pages', () => {
@@ -53,8 +53,8 @@ describe('Renderer trust boundary', () => {
     expect(isDshChildUrl('dsh-app://app/?view=chat')).toBe(false)
     expect(isDshChildUrl('dsh-app://app/?view=chat&chat=one&extra=1')).toBe(false)
     expect(isDshChildUrl('dsh-app://app.evil.invalid/?view=chat&chat=one')).toBe(false)
-    expect(() => assertTrustedDshClientBoot(sender, url, true, [sender])).not.toThrow()
-    expect(() => assertTrustedDshClientBoot(sender, url, true, [])).toThrow()
-    expect(() => assertTrustedDshClientBoot(sender, 'dsh-app://app/?view=unknown', true, [sender])).toThrow()
+    expect(() => assertTrustedDshClientFrame(sender, url, true, [sender])).not.toThrow()
+    expect(() => assertTrustedDshClientFrame(sender, url, true, [])).toThrow()
+    expect(() => assertTrustedDshClientFrame(sender, 'dsh-app://app/?view=unknown', true, [sender])).toThrow()
   })
 })

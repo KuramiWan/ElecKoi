@@ -3,8 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const api = vi.hoisted(() => ({
   createChat: vi.fn(),
   getChat: vi.fn(),
-  listenAgentProcess: vi.fn(),
-  listenChatStreamDelta: vi.fn(),
   sendChatMessage: vi.fn()
 }))
 const images = vi.hoisted(() => ({ encodeImageDraft: vi.fn() }))
@@ -46,7 +44,6 @@ describe('chat message send cancellation', () => {
     let finishEncoding
     images.encodeImageDraft.mockImplementation(() => new Promise((resolve) => { finishEncoding = resolve }))
     const requestRef = { current: null }
-    const setMessages = vi.fn()
 
     const sending = runChatMessageSend({
       event: { preventDefault: vi.fn() },
@@ -69,11 +66,9 @@ describe('chat message send cancellation', () => {
       setInput: vi.fn(),
       clearInputImages: vi.fn(),
       clearInputFiles: vi.fn(),
-      setMessages,
-      updatePendingReply: vi.fn(),
       requestScrollToEnd: vi.fn(),
       reconcileChatMessages: vi.fn(),
-      commitPendingError: vi.fn()
+      conversationModel: {},
     })
 
     await vi.waitFor(() => expect(images.encodeImageDraft).toHaveBeenCalledOnce())
@@ -83,15 +78,11 @@ describe('chat message send cancellation', () => {
     finishEncoding({ mediaType: 'image/png', data: 'iVBORw0KGgo=', name: 'test.png' })
     await sending
 
-    expect(api.listenAgentProcess).not.toHaveBeenCalled()
     expect(api.sendChatMessage).not.toHaveBeenCalled()
-    expect(setMessages).not.toHaveBeenCalled()
   })
 
   it('rehydrates the durable cancelled reply after the local request is released', async () => {
     let finishReply
-    api.listenAgentProcess.mockResolvedValue(vi.fn())
-    api.listenChatStreamDelta.mockResolvedValue(vi.fn())
     api.sendChatMessage.mockImplementation(() => new Promise((resolve) => { finishReply = resolve }))
     const requestRef = { current: null }
     const reconcileChatMessages = vi.fn()
@@ -117,11 +108,9 @@ describe('chat message send cancellation', () => {
       setInput: vi.fn(),
       clearInputImages: vi.fn(),
       clearInputFiles: vi.fn(),
-      setMessages: vi.fn(),
-      updatePendingReply: vi.fn(),
       requestScrollToEnd: vi.fn(),
       reconcileChatMessages,
-      commitPendingError: vi.fn()
+      conversationModel: {},
     })
 
     await vi.waitFor(() => expect(api.sendChatMessage).toHaveBeenCalledOnce())
@@ -135,8 +124,6 @@ describe('chat message send cancellation', () => {
 
   it('does not let an old cancelled reply replace a newer active request', async () => {
     let finishReply
-    api.listenAgentProcess.mockResolvedValue(vi.fn())
-    api.listenChatStreamDelta.mockResolvedValue(vi.fn())
     api.sendChatMessage.mockImplementation(() => new Promise((resolve) => { finishReply = resolve }))
     const requestRef = { current: null }
     const reconcileChatMessages = vi.fn()
@@ -146,8 +133,8 @@ describe('chat message send cancellation', () => {
       modelConfig: { id: 'model-1', model: 'test-model' }, modelSupportsImages: false, setStatus: vi.fn(),
       requestRef, setIsSending: vi.fn(), sessionId: 'conversation-1', chatCharacter: { character_id: 'character-1' },
       setSessionId: vi.fn(), replaceChatMessages: vi.fn(), setChatCharacter: vi.fn(), normalizeLatestChatCharacter: vi.fn(),
-      refreshSessionsOnly: vi.fn(), setInput: vi.fn(), clearInputImages: vi.fn(), clearInputFiles: vi.fn(), setMessages: vi.fn(),
-      updatePendingReply: vi.fn(), requestScrollToEnd: vi.fn(), reconcileChatMessages, commitPendingError: vi.fn()
+      refreshSessionsOnly: vi.fn(), setInput: vi.fn(), clearInputImages: vi.fn(), clearInputFiles: vi.fn(),
+      requestScrollToEnd: vi.fn(), reconcileChatMessages, conversationModel: {}
     })
 
     await vi.waitFor(() => expect(api.sendChatMessage).toHaveBeenCalledOnce())
@@ -159,15 +146,12 @@ describe('chat message send cancellation', () => {
   })
 
   it('reconciles durable history when image preparation rejects before persistence', async () => {
-    api.listenAgentProcess.mockResolvedValue(vi.fn())
-    api.listenChatStreamDelta.mockResolvedValue(vi.fn())
     images.encodeImageDraft.mockResolvedValue({ mediaType: 'image/png', data: 'iVBORw0KGgo=', name: 'test.png' })
     const durableChat = { id: 'conversation-1', messages: [] }
     api.getChat.mockResolvedValue({ chat: durableChat })
     api.sendChatMessage.mockRejectedValue(new Error('图片处理失败，请重新添加。'))
     const requestRef = { current: null }
     const reconcileChatMessages = vi.fn()
-    const commitPendingError = vi.fn()
     const notify = vi.fn()
 
     await runChatMessageSend({
@@ -191,17 +175,54 @@ describe('chat message send cancellation', () => {
       setInput: vi.fn(),
       clearInputImages: vi.fn(),
       clearInputFiles: vi.fn(),
-      setMessages: vi.fn(),
-      updatePendingReply: vi.fn(),
       requestScrollToEnd: vi.fn(),
       reconcileChatMessages,
-      commitPendingError,
       notify,
+      conversationModel: {},
     })
 
-    expect(api.getChat).toHaveBeenCalledWith('conversation-1')
+    expect(api.getChat).toHaveBeenCalledWith('conversation-1', { model: {} })
     expect(reconcileChatMessages).toHaveBeenCalledWith(durableChat)
-    expect(commitPendingError).not.toHaveBeenCalled()
     expect(notify).toHaveBeenCalledWith('error', '图片处理失败，请重新添加。')
+  })
+
+  it('passes official file upload receipts to the same DSH conversation', async () => {
+    const conversationModel = {}
+    api.sendChatMessage.mockResolvedValue({
+      cancelled: false,
+      session_id: 'conversation-1',
+      chat: { id: 'conversation-1', messages: [] },
+    })
+
+    await runChatMessageSend({
+      event: { preventDefault: vi.fn() },
+      input: '读取文件',
+      inputImagesRef: { current: [] },
+      inputFilesRef: { current: [{
+        id: 'receipt-1', receiptId: 'receipt-1', attachmentId: 'sha256:file-1', name: 'notes.txt', bytes: 12,
+      }] },
+      isSending: false,
+      modelConfig: { id: 'model-1', model: 'test-model' },
+      modelSupportsImages: false,
+      setStatus: vi.fn(),
+      requestRef: { current: null },
+      setIsSending: vi.fn(),
+      sessionId: 'conversation-1',
+      chatCharacter: { character_id: 'character-1' },
+      setSessionId: vi.fn(),
+      setChatCharacter: vi.fn(),
+      normalizeLatestChatCharacter: vi.fn((chat) => chat),
+      refreshSessionsOnly: vi.fn(),
+      setInput: vi.fn(),
+      clearInputImages: vi.fn(),
+      clearInputFiles: vi.fn(),
+      requestScrollToEnd: vi.fn(),
+      reconcileChatMessages: vi.fn(),
+      conversationModel,
+    })
+
+    expect(api.sendChatMessage).toHaveBeenCalledWith({
+      message: '读取文件', images: [], files: ['receipt-1'], session_id: 'conversation-1',
+    }, expect.stringMatching(/^chat-/), { model: conversationModel, signal: expect.any(AbortSignal) })
   })
 })

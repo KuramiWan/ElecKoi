@@ -1,0 +1,50 @@
+{
+  "name": "@eleckoi/dsh-client-web-search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@eleckoi/dsh-product-api"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "description": "通过 DSH Settings、Credentials 与 Remote 管理联网搜索配置。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiWebSearch",
+        "kind": "service",
+        "title": "联网搜索设置服务",
+        "description": "读取并维护搜索提供商、Tavily 设置和凭据状态。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "refresh",
+          "update",
+          "saveAndTest",
+          "test",
+          "removeKey"
+        ]
+      }
+    ]
+  }
+}

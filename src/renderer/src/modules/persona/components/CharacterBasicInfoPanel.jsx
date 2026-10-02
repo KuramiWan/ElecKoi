@@ -206,7 +206,7 @@ export function CharacterBasicInfoPanel({ character, dirty, saving, error, saveN
           title="保存（Ctrl/Command + S）"
           aria-keyshortcuts="Control+S Meta+S"
           disabled={!dirty || saving}
-          onClick={onSave}
+          onClick={() => onSave()}
         >
           {saving ? "保存中…" : "保存更改"}
         </button>

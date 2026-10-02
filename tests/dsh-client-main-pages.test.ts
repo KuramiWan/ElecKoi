@@ -26,7 +26,6 @@ describe('ElecKoi DSH main pages', () => {
     }
     runInNewContext(source, {
       window: {
-        eleckoi: {},
         __ModuleLoader__: { load: (value: any) => { registration = value } },
       },
     })
@@ -40,6 +39,7 @@ describe('ElecKoi DSH main pages', () => {
     })
     plugin.apply({
       provide: () => {},
+      remote: { eleckoiAgentPresets: {} },
       slots,
       effect: () => {},
     })

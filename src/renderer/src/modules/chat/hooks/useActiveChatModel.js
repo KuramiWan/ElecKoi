@@ -1,16 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  getActiveModelSelection,
-  listenActiveModelSelectionChanged,
-  saveActiveModelSelection,
-} from "../../models/index.js";
-import {
-  normalizeModelSelection,
-  reconcileModelSelection,
-  resolveModelConfig,
-  selectionFromActiveSetting,
-  toActiveModelSelection,
-} from "../model/chatModelSelection.js";
+import { normalizeModelSelection, resolveModelConfig } from "../model/chatModelSelection.js";
 
 const DEFAULT_SELECTION = {
   capability: "chat",
@@ -24,58 +13,72 @@ function errorMessage(error, fallback) {
   return fallback;
 }
 
-export function useActiveChatModel({ modelConfigs, setStatus }) {
+function fromDshSelection(selection = {}) {
+  return normalizeModelSelection({
+    capability: "chat",
+    configId: selection.provider || "",
+    model: selection.model || "",
+  });
+}
+
+export function useActiveChatModel({ conversations, conversationId, modelConfigs, setStatus }) {
   const [modelSelection, setModelSelection] = useState(DEFAULT_SELECTION);
-  const activeModelLoadedRef = useRef(false);
+  const generationRef = useRef(0);
+  const configKey = JSON.stringify((modelConfigs || []).map(config => [config.id, config.model,
+    config.enabled, config.credentialConfigured, (config.model_options || []).map(option => option.id)]));
   const modelConfig = useMemo(
     () => resolveModelConfig(modelConfigs, modelSelection),
     [modelConfigs, modelSelection.configId, modelSelection.model],
   );
 
   async function selectChatModel(nextSelection) {
+    if (!conversations) throw new Error("DSH 聊天服务尚未就绪。");
+    const generation = ++generationRef.current;
     const previous = modelSelection;
     const next = normalizeModelSelection(nextSelection);
     setModelSelection(next);
+    if (!conversationId) return;
     try {
-      await saveActiveModelSelection(toActiveModelSelection(next));
+      const selected = await conversations.selectModel(conversationId, {
+        provider: next.configId,
+        model: next.model,
+      });
+      if (generation === generationRef.current) setModelSelection(fromDshSelection(selected));
     } catch (error) {
-      setModelSelection(previous);
-      setStatus(errorMessage(error, "模型选择保存失败"));
+      if (generation === generationRef.current) {
+        setModelSelection(previous);
+        setStatus(errorMessage(error, "模型选择保存失败"));
+      }
       throw error;
     }
   }
 
   useEffect(() => {
-    let active = true;
-    let dispose = () => {};
-    getActiveModelSelection().then((selection) => {
-      if (!active) return;
-      activeModelLoadedRef.current = true;
-      setModelSelection(selectionFromActiveSetting(selection));
-    }).catch((error) => setStatus(errorMessage(error, "模型选择读取失败")));
-    listenActiveModelSelectionChanged((selection) => {
-      if (active) setModelSelection(selectionFromActiveSetting(selection));
-    }).then((cleanup) => {
-      if (active) dispose = cleanup;
-      else cleanup();
-    }).catch(() => {});
-    return () => {
-      active = false;
-      dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!modelConfigs?.length) return;
-    const next = reconcileModelSelection(modelSelection, modelConfigs);
-    if (next.configId === modelSelection.configId && next.model === modelSelection.model) return;
-    setModelSelection(next);
-    if (activeModelLoadedRef.current) {
-      saveActiveModelSelection(toActiveModelSelection(next)).catch((error) => {
-        setStatus(errorMessage(error, "模型选择保存失败"));
-      });
+    const generation = ++generationRef.current;
+    const fallback = (modelConfigs || []).find(config => config.enabled !== false
+      && config.credentialConfigured !== false && (config.model || config.model_options?.[0]?.id));
+    const defaultSelection = fallback ? normalizeModelSelection({ configId: fallback.id,
+      model: fallback.model || fallback.model_options[0].id }) : DEFAULT_SELECTION;
+    if (!conversations || !conversationId) {
+      setModelSelection(defaultSelection);
+      return;
     }
-  }, [modelConfigs, modelSelection.configId, modelSelection.model]);
+    setModelSelection(DEFAULT_SELECTION);
+    conversations.readModelSelection(conversationId).then(async (selection) => {
+      if (generation !== generationRef.current) return;
+      const current = fromDshSelection(selection);
+      if (resolveModelConfig(modelConfigs, current) || !fallback) {
+        setModelSelection(current);
+        return;
+      }
+      const selected = await conversations.selectModel(conversationId, {
+        provider: defaultSelection.configId, model: defaultSelection.model,
+      });
+      if (generation === generationRef.current) setModelSelection(fromDshSelection(selected));
+    }).catch((error) => {
+      if (generation === generationRef.current) setStatus(errorMessage(error, "模型选择读取失败"));
+    });
+  }, [conversations, conversationId, setStatus, configKey]);
 
   return { modelConfig, modelSelection, selectChatModel };
 }

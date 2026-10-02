@@ -9,14 +9,13 @@ import { CharacterImportDialog } from "./CharacterImportDialog.jsx";
 import { ALL_CHARACTERS, characterGroup, characterName } from "./characterUtils.js";
 
 const CHARACTER_ARTWORK_RATIOS = [0.76, 0.68, 0.84, 0.72];
-// 与契约 command.characters.export.files 的 max(50) 对齐：超了会被输入校验直接拒掉。
 const MAX_EXPORT_SELECTION = 50;
 
 export function characterArtworkAspectRatio(index) {
   return CHARACTER_ARTWORK_RATIOS[index % CHARACTER_ARTWORK_RATIOS.length];
 }
 
-export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCharacters, onImportCharacters, onExportCharacters }) {
+export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCharacters, onImportCharacters, onPrepareImports, onDiscardImports, onExportCharacters }) {
   const [selectedGroup, setSelectedGroup] = useState(ALL_CHARACTERS);
   const [selectedCharacterId, setSelectedCharacterId] = useState(characters.active_character_id || characters.items?.[0]?.id || "");
   const [keyword, setKeyword] = useState("");
@@ -257,7 +256,6 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
     setExportNotice("");
     setExporting(true);
     try {
-      // 主进程弹一次目录选择，然后把所有卡直接写进那个目录（见 command.characters.export.files）。
       const result = await onExportCharacters([...selectedIds], exportFormat);
       if (result?.canceled) return;
       const failures = result?.failures || [];
@@ -458,7 +456,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
           onCancel={() => setGroupDialog(null)}
         />
       ) : null}
-      {importOpen ? <CharacterImportDialog onClose={() => setImportOpen(false)} onImported={onImportCharacters} /> : null}
+      {importOpen ? <CharacterImportDialog onClose={() => setImportOpen(false)} onImported={onImportCharacters} onPrepare={onPrepareImports} onDiscard={onDiscardImports} /> : null}
     </section>
   );
 }

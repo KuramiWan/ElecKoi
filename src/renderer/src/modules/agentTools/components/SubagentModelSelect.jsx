@@ -8,7 +8,6 @@ export function SubagentModelSelect({
   disabled = false,
   onChange,
   onLoadModels,
-  onSaveModelConfig,
   onNotify,
 }) {
   const selectedConfig = configs.find((config) => config.id === selection?.configId) || null;
@@ -26,7 +25,6 @@ export function SubagentModelSelect({
       elevated
       onLoadModels={onLoadModels}
       onSelect={({ configId, model }) => onChange({ configId, model })}
-      onSaveModelConfig={onSaveModelConfig}
       onNotify={onNotify}
       renderTrigger={({ open, openPicker }) => <button
         type="button"

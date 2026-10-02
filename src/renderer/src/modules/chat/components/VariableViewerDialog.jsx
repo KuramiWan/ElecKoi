@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, CaretDown, CaretRight, Database, X } from "@phosphor-icons/react";
-import { getVariableTimeline, listenAgentFinishedEvent } from "../api/chatApi.js";
 
 const EMPTY_TIMELINE = { id: "", status: "idle", timeline: null, error: "" };
 const subscribeEmptyTimeline = () => () => {};
 const getEmptyTimeline = () => EMPTY_TIMELINE;
 
 export function VariableViewerDialog({ conversationId, conversationModel, onClose, onNotify }) {
-  const [timeline, setTimeline] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
@@ -20,59 +16,29 @@ export function VariableViewerDialog({ conversationId, conversationModel, onClos
   );
 
   useEffect(() => {
-    if (conversationModel) {
-      let active = true;
-      conversationModel.openTimeline(conversationId).catch((cause) => {
-        if (active) onNotify?.("error", cause?.message || "变量时间线读取失败");
-      });
-      return () => {
-        active = false;
-        conversationModel.closeTimeline(conversationId);
-      };
+    if (!conversationModel) {
+      onNotify?.("error", "DSH 聊天服务尚未就绪");
+      return undefined;
     }
     let active = true;
-    async function load() {
-      try {
-        const value = await getVariableTimeline(conversationId);
-        if (!active) return;
-        setTimeline(value);
-        setSelectedId((current) => value.floors.some((floor) => floor.id === current)
-          ? current
-          : value.floors.at(-1)?.id || "");
-        setError("");
-      } catch (loadError) {
-        if (!active) return;
-        const message = loadError?.message || "变量时间线读取失败";
-        setError(message);
-        onNotify?.("error", message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-    load();
-    const dispose = listenAgentFinishedEvent((event) => {
-      if (event.conversationId === conversationId) load();
+    conversationModel.openTimeline(conversationId).catch((cause) => {
+      if (active) onNotify?.("error", cause?.message || "变量时间线读取失败");
     });
     return () => {
       active = false;
-      dispose?.();
+      conversationModel.closeTimeline(conversationId);
     };
   }, [conversationId, conversationModel, onNotify]);
 
-  const visibleTimeline = conversationModel
-    ? timelineSnapshot.id === conversationId ? timelineSnapshot.timeline : null
-    : timeline;
-  const visibleLoading = conversationModel
-    ? timelineSnapshot.id !== conversationId || timelineSnapshot.status === "loading"
-    : loading;
-  const visibleError = conversationModel && timelineSnapshot.id === conversationId
-    ? timelineSnapshot.error : error;
+  const visibleTimeline = timelineSnapshot.id === conversationId ? timelineSnapshot.timeline : null;
+  const visibleLoading = timelineSnapshot.id !== conversationId || timelineSnapshot.status === "loading";
+  const visibleError = timelineSnapshot.id === conversationId ? timelineSnapshot.error : "";
 
   useEffect(() => {
-    if (!conversationModel || !visibleTimeline) return;
+    if (!visibleTimeline) return;
     setSelectedId((current) => visibleTimeline.floors.some((floor) => floor.id === current)
       ? current : visibleTimeline.floors.at(-1)?.id || "");
-  }, [conversationModel, visibleTimeline]);
+  }, [visibleTimeline]);
 
   useEffect(() => {
     closeRef.current?.focus();

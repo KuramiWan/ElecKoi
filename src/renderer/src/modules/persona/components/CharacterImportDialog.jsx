@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretRight, CheckCircle, WarningCircle } from "@phosphor-icons/react";
 import { ImportIcon, XIcon } from "../../../ui/icons/index.jsx";
-import { discardCharacterImports, prepareCharacterImports } from "../api/personaApi.js";
 
 const SOURCES = [
   { id: "eleckoi", title: "本项目角色卡", detail: "导入 ElecKoi 导出的角色卡" },
   { id: "sillytavern", title: "酒馆角色卡", detail: "导入 SillyTavern 角色卡并转换" },
 ];
 
-export function CharacterImportDialog({ onClose, onImported }) {
+export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscard }) {
   const inputRef = useRef(null);
   const sourceRef = useRef("");
   const [preview, setPreview] = useState(null);
@@ -19,9 +18,9 @@ export function CharacterImportDialog({ onClose, onImported }) {
   const [error, setError] = useState("");
 
   const close = useCallback(async () => {
-    if (preview?.token) await discardCharacterImports(preview.token).catch(() => {});
+    if (preview?.token) await onDiscard(preview.token).catch(() => {});
     onClose();
-  }, [onClose, preview?.token]);
+  }, [onClose, onDiscard, preview?.token]);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -58,7 +57,7 @@ export function CharacterImportDialog({ onClose, onImported }) {
         mimeType: file.type,
         base64: await fileBase64(file),
       })));
-      const next = await prepareCharacterImports(sourceRef.current, payloads);
+      const next = await onPrepare(sourceRef.current, payloads);
       setFiles(selected);
       setPreview(next);
     } catch (caught) {

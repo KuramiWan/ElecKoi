@@ -4,21 +4,17 @@
 
 ## Ownership（职责）
 
-- Own the DSH Desktop Web Host process, SessionController integration, notifications and session disposal.
-- Implement the ElecKoi-owned Agent Runtime Port used by `src/main/modules/agent`.
-- Keep Renderer, Preload, Gateway and product UI independent from DSH package APIs and versions.
+- Own the managed DSH Desktop Web Host process, SessionController integration and controlled session editing.
+- Compose ElecKoi Host plugins with the locked official Agent, Session, Jobs and Web Client runtime.
+- Keep Electron Main and the product Renderer independent from DSH package internals.
 - Build real ESM/CJS artifacts and declarations in `dist/`; consumers must use the package root export.
 
 ## Current capability（当前能力）
 
-- Conversation-scoped text streaming.
-- Event-sourced session persistence and restart resume.
-- Deterministic cancellation and shutdown.
-- Windows PowerShell, filesystem tools and background jobs.
-- Local skills, goals, todos and automatic context compaction.
-- Spawn/fork subagents, continuation controls and worker-thread workflows.
-- Conversation-scoped character variables with Glob/Grep/Read/Patch tools, author Zod validation,
-  and turn-atomic state commits.
+- Official DSH Session persistence, projection, streaming, cancellation and restart recovery.
+- Same-Session message editing and rewind for deletion and regeneration.
+- Host lifecycle and child-process startup protocol for the Electron shell.
+- Trajectory helpers for ElecKoi's request and context presentation.
 - Exact, compatibility-batch DSH dependency versions.
 
 The active conversation path starts the official Web profile through `desktopPluginHostChild.ts`.
@@ -26,8 +22,9 @@ The active conversation path starts the official Web profile through `desktopPlu
 ElecKoi's roleplay lifecycle and Tavily search provider. `resources/dsh/cordis.yml` remains an
 SDK compatibility composition, not the active desktop conversation tree. The pinned upstream
 commit, both composition roles and capability inventory are recorded in
-`resources/dsh/runtime-manifest.json`. Renderer presentation consumes ElecKoi-owned typed stream
-events, while the DSH Web Client loads the ElecKoi client plugins.
+`resources/dsh/runtime-manifest.json`. Product data and Remote services are owned by
+`@eleckoi/dsh-product-data` and `@eleckoi/dsh-product-api`; the DSH Web Client loads ElecKoi's
+Client plugins and consumes official Session/Connection projections.
 
 ## Upstream update（上游更新）
 

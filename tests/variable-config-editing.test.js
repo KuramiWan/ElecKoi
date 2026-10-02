@@ -19,7 +19,7 @@ import {
   switchVariableVersion,
 } from "../src/renderer/src/modules/variables/model/variableConfigTransfer.js";
 import { variableTreeNodes } from "../src/renderer/src/modules/variables/model/variableConfigTree.js";
-import { requestContracts } from "../src/shared/contracts/gateway/definitions.ts";
+import { variableConfigSchema } from "../src/shared/contracts/variables/schemas.ts";
 
 const stamp = "2026-09-06T00:00:00.000Z";
 function config() {
@@ -39,7 +39,7 @@ function config() {
 }
 
 function expectSaveRequestValid(value) {
-  const result = requestContracts["command.variable_config.save"].input.safeParse({ characterId: value.characterId, config: value });
+  const result = variableConfigSchema.safeParse(value);
   expect(result.success, result.success ? "" : JSON.stringify(result.error.issues)).toBe(true);
 }
 
@@ -122,17 +122,16 @@ describe("variable configuration versions and transfer", () => {
       variables: source.variables.map((variable) => ({ ...variable, editorOnly: true })),
       versions: source.versions.map((version) => ({ ...version, editorOnly: true })),
     };
-    const contract = requestContracts["command.variable_config.save"].input;
-    const parsed = contract.parse({ characterId: source.characterId, config: withVersionFields });
-    expect(parsed.config).not.toHaveProperty("id");
-    expect(parsed.config).not.toHaveProperty("createdAt");
-    expect(parsed.config.objects[0]).not.toHaveProperty("editorOnly");
-    expect(parsed.config.variables[0]).not.toHaveProperty("editorOnly");
-    expect(parsed.config.versions[0]).not.toHaveProperty("editorOnly");
-    expect(contract.safeParse({ characterId: source.characterId, config: { ...source, name: 123 } }).success).toBe(false);
+    const parsed = variableConfigSchema.parse(withVersionFields);
+    expect(parsed).not.toHaveProperty("id");
+    expect(parsed).not.toHaveProperty("createdAt");
+    expect(parsed.objects[0]).not.toHaveProperty("editorOnly");
+    expect(parsed.variables[0]).not.toHaveProperty("editorOnly");
+    expect(parsed.versions[0]).not.toHaveProperty("editorOnly");
+    expect(variableConfigSchema.safeParse({ ...source, name: 123 }).success).toBe(false);
   });
 
-  it("submits new variables and version operations using the Gateway configuration contract", () => {
+  it("submits new variables and version operations using the product configuration contract", () => {
     const source = ensureInitializationObject(config());
     const createdVariable = createVariableDraft(source);
     const edited = { ...source, variables: [...source.variables, createdVariable] };

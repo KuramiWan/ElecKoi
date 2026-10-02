@@ -1,0 +1,3 @@
+- insert:
+    - id: eleckoi-session-edit
+      name: '@eleckoi/dsh-runtime/session-edit-plugin'

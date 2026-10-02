@@ -6,12 +6,12 @@
 
 ### Architecture route（架构归属）
 
-- [ ] Main 新文件位于闭合集合：`host / gateway / modules / platform / i18n`
+- [ ] Main 新文件仅承担桌面壳职责，位于 `host / modules / platform / i18n`
 - [ ] Shared 新文件位于闭合集合：`contracts / foundation`
-- [ ] Renderer 的 Query / Command / Event 只走 `Desktop Gateway`
+- [ ] 产品跨 Host/Client 查询与命令使用生成的 Typert Remote；会话事件、分页与 projection 使用 DSH Connection 正式协议，未新增业务 IPC 或私有桥
 - [ ] Renderer 未直接访问 Electron、Node、SQLite 或 DSH SDK
-- [ ] DSH 只经 `@eleckoi/dsh-runtime`；上游包仍是同一个精确版本批次
-- [ ] 新业务进入垂直模块，跨模块依赖只使用对方 `index.ts` 公开面
+- [ ] 官方运行时装配隔离在 `@eleckoi/dsh-runtime`；Host/Client 插件使用同版本公开合同，上游包仍是同一个精确版本批次
+- [ ] 新业务进入 DSH Host/Client 插件；产品数据库与 Repository 由 `@eleckoi/dsh-product-data` 独占，跨模块依赖只使用对方 `index.ts` 公开面
 - [ ] 长生命周期资源已注册为 Host/Cordis Plugin，并能反向释放
 
 ### Data and compatibility（数据与兼容）
@@ -24,7 +24,7 @@
 
 - [ ] `pnpm test`
 - [ ] `pnpm build`
-- [ ] DSH 改动已通过 `pnpm check:electron-dsh`；发布链改动已通过 `pnpm build:unpack`
+- [ ] DSH 改动已通过 `pnpm check:electron-dsh`；发布前已完成本地发布链验证，安装包及打包产物校验仅由 GitHub Release 工作流执行
 - [ ] 没有启动 Android、Docker、QEMU 或 ARM64 DSH 核心编译
 - [ ] UI 未定稿阶段没有借底层改造擅自改变 JSX/CSS 视觉
 

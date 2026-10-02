@@ -9,11 +9,50 @@
     "./slots": {
       "types": "./src/slots.d.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "inject": [
+        "@eleckoi/dsh-product-api"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
+  },
+  "description": "管理用户名称、头像和角色扮演身份。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiPersona",
+        "kind": "service",
+        "title": "用户资料服务",
+        "description": "读取用户资料、订阅变化并主动刷新。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "refresh",
+          "save"
+        ]
+      },
+      {
+        "id": "eleckoi.persona.editor",
+        "kind": "ui-slot",
+        "title": "用户资料编辑",
+        "description": "包装或替换用户资料编辑器。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      }
+    ]
   }
 }

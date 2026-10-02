@@ -13,6 +13,8 @@ export function CharacterPage() {
     onOpenCharacterChat: chat.openCharacterChat,
     onSaveCharacterGroups: chat.saveCharacterGroups,
     onImportPreparedCharacters: chat.importPreparedCharacters,
+    onPrepareCharacterImports: chat.prepareCharacterImports,
+    onDiscardCharacterImports: chat.discardCharacterImports,
     onCreateCharacter: chat.createCharacter,
     onDeleteCharacters: chat.deleteCharacterIds,
   };

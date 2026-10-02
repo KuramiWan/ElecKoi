@@ -14,7 +14,6 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { ExportIcon, ImportIcon } from "../../../ui/icons/index.jsx";
-import { getCharacters } from "../../persona/index.js";
 import {
   createLibraryVersion,
   deleteActiveLibraryVersion,
@@ -241,7 +240,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
     setLoadingSources(true);
     const ownVersions = current.versions.filter((version) => version.id !== current.activeVersionId);
     setSources([{ id: "__self__", name: "当前角色 · 其他版本", versions: ownVersions }]);
-    getCharacters().then(async (collection) => {
+    settingLibraries.listCharacters().then(async (collection) => {
       const others = await Promise.all((collection.items || []).filter((item) => item.id !== characterId).map(async (item) => {
         try {
           const otherLibrary = await settingLibraries.readUntracked(item.id);

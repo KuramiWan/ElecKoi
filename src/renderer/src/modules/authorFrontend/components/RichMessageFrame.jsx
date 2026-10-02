@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { desktopClient } from '../../../bridge/desktopClient.ts';
+import { useMainPageView } from '../../../app/windows/MainPageContext.jsx';
 import { buildRichMessageHtml } from '../model/buildRichMessageHtml.js';
 import { subscribeAuthorConversationEvents } from '../model/authorConversationEvents.js';
 import { routeAuthorHostInputRequest } from '../model/authorHostInput.js';
 import { routeAuthorAudioRequest, subscribeAuthorAudioEvents } from '../model/authorAudioHost.js';
+import { routeAuthorConversationRequest } from '../model/authorConversationHost.js';
 import { prepareAuthorRuntimeLibraries } from '../model/authorRuntimeLibraries.js';
 
 const minimumHeight = 1;
@@ -13,6 +14,7 @@ function createChannel() {
 }
 
 export function RichMessageFrame({ message, document, rootIndex = 0 }) {
+  const { conversations, models } = useMainPageView();
   const frameRef = useRef(null);
   const viewportWidthRef = useRef(0);
   const [height, setHeight] = useState(minimumHeight);
@@ -56,10 +58,10 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
         response,
       }, '*');
     };
-    const disposeConversation = subscribeAuthorConversationEvents(message.conversationId, publish);
+    const disposeConversation = subscribeAuthorConversationEvents(conversations, message.conversationId, publish);
     const disposeAudio = subscribeAuthorAudioEvents(message.conversationId, publish);
     return () => { disposeConversation(); disposeAudio(); };
-  }, [channel, message.conversationId]);
+  }, [channel, conversations, message.conversationId]);
 
   useEffect(() => {
     const receive = async (event) => {
@@ -80,14 +82,13 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
       try {
         response = await routeAuthorAudioRequest(data.request, message.conversationId);
         if (response === null) response = await routeAuthorHostInputRequest(data.request, message.conversationId);
-        if (response === null) {
-          const result = await desktopClient.request('command.author_sdk.invoke', {
-            conversationId: message.conversationId,
-            messageId: message.id,
-            request: data.request,
-          });
-          response = result.response;
-        }
+        if (response === null) response = await routeAuthorConversationRequest(data.request, {
+          bridgeKey: channel,
+          conversationId: message.conversationId,
+          messageId: message.id,
+          conversations,
+          models,
+        });
       } catch (error) {
         let id = '';
         try { id = String(JSON.parse(data.request)?.id || ''); } catch { /* invalid requests keep an empty id */ }
@@ -127,7 +128,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [channel, message.conversationId, message.id]);
+  }, [channel, conversations, message.conversationId, message.id, models]);
 
   return (
     <iframe

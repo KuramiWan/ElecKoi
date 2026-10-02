@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { ChevronRightIcon, DownloadIcon, PlugIcon, PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
 import { configVersionName } from "../model/modelProviderCatalog.js";
@@ -12,6 +12,9 @@ const API_FORMATS = [
 
 export function ModelBasicConfigSection({ editor }) {
   const [showApiKey, setShowApiKey] = useState(false);
+  const [savedApiKey, setSavedApiKey] = useState("");
+  const [readingApiKey, setReadingApiKey] = useState(false);
+  const revealGeneration = useRef(0);
   const apiKeyInputId = useId();
   const {
     form,
@@ -53,9 +56,42 @@ export function ModelBasicConfigSection({ editor }) {
     testingConnection,
     testConnection,
     updateField,
+    onRevealApiKey,
+    onCredentialError,
   } = editor;
 
-  useEffect(() => setShowApiKey(false), [selectedConfigId, activeProvider.id]);
+  useEffect(() => {
+    revealGeneration.current += 1;
+    setShowApiKey(false);
+    setSavedApiKey("");
+    setReadingApiKey(false);
+    return () => { revealGeneration.current += 1; };
+  }, [form.id, form.credentialRef, form.credentialConfigured, selectedConfigId, activeProvider.id]);
+
+  async function toggleApiKey() {
+    if (showApiKey) {
+      revealGeneration.current += 1;
+      setShowApiKey(false);
+      setSavedApiKey("");
+      return;
+    }
+    if (form.api_key || !form.credentialConfigured) {
+      setShowApiKey(true);
+      return;
+    }
+    const generation = ++revealGeneration.current;
+    setReadingApiKey(true);
+    try {
+      const value = await onRevealApiKey(form.id);
+      if (generation !== revealGeneration.current) return;
+      setSavedApiKey(value);
+      setShowApiKey(true);
+    } catch (error) {
+      if (generation === revealGeneration.current) onCredentialError?.(error.message);
+    } finally {
+      if (generation === revealGeneration.current) setReadingApiKey(false);
+    }
+  }
 
   return (
     <section className="model-form-section">
@@ -123,7 +159,7 @@ export function ModelBasicConfigSection({ editor }) {
         <label>
           <span>接口格式</span>
           <div className="model-api-format-control">
-            <select value={form.api_format || "responses"} onChange={(event) => updateField("api_format", event.target.value)}>
+            <select value={form.api_format === "deepseek_messages" ? "anthropic_messages" : form.api_format || "responses"} onChange={(event) => updateField("api_format", form.id === "deepseek-official" && event.target.value === "anthropic_messages" ? "deepseek_messages" : event.target.value)}>
               {API_FORMATS.map((format) => <option key={format.id} value={format.id}>{format.label}</option>)}
             </select>
             <ChevronRightIcon />
@@ -140,8 +176,8 @@ export function ModelBasicConfigSection({ editor }) {
         <div className="model-api-key-field">
           <label htmlFor={apiKeyInputId}><span>API Key</span></label>
           <div className="model-api-key-control">
-            <input id={apiKeyInputId} type={showApiKey ? "text" : "password"} autoComplete="off" value={form.api_key || ""} onChange={(event) => updateField("api_key", event.target.value)} placeholder={activeProvider.apiKeyPlaceholder} />
-            <button type="button" aria-label={showApiKey ? "隐藏 API Key" : "显示 API Key"} aria-pressed={showApiKey} onClick={() => setShowApiKey((current) => !current)}>
+            <input id={apiKeyInputId} type={showApiKey ? "text" : "password"} autoComplete="off" value={form.api_key || (showApiKey ? savedApiKey : "")} onChange={(event) => { revealGeneration.current += 1; setReadingApiKey(false); setSavedApiKey(""); updateField("api_key", event.target.value); }} placeholder={form.credentialConfigured ? "已保存，留空保留" : activeProvider.apiKeyPlaceholder} />
+            <button type="button" aria-label={showApiKey ? "隐藏 API Key" : "显示 API Key"} aria-pressed={showApiKey} aria-busy={readingApiKey} disabled={readingApiKey} onClick={toggleApiKey}>
               {showApiKey ? <EyeSlash aria-hidden="true" /> : <Eye aria-hidden="true" />}
             </button>
           </div>

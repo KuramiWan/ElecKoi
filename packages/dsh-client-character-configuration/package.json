@@ -6,11 +6,85 @@
   "exports": {
     ".": "./src/index.js",
     "./client": "./src/client.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "inject": [
+        "@eleckoi/dsh-product-api"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
+  },
+  "description": "读取、保存并更新设定库、变量、正则和动态设定。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiSettingLibraries",
+        "kind": "service",
+        "title": "设定库服务",
+        "description": "读取、保存和订阅角色设定库及对话设定。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "read",
+          "readUntracked",
+          "save",
+          "saveViewState",
+          "getConversationSnapshot",
+          "readConversations",
+          "saveConversation",
+          "resetConversation",
+          "saveConversationVersion"
+        ]
+      },
+      {
+        "id": "eleckoiVariables",
+        "kind": "service",
+        "title": "角色变量服务",
+        "description": "读取、保存和订阅角色变量配置。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "read",
+          "readUntracked",
+          "save",
+          "saveViewState"
+        ]
+      },
+      {
+        "id": "eleckoiRegexRules",
+        "kind": "service",
+        "title": "角色正则服务",
+        "description": "读取、保存、导入、导出并测试角色正则。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "read",
+          "readUntracked",
+          "save",
+          "saveViewState",
+          "import",
+          "export",
+          "test"
+        ]
+      }
+    ]
   }
 }

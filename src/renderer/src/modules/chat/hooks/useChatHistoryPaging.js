@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { getChatMessages } from "../api/chatApi.js";
 
-export function useChatHistoryPaging({ sessionId, historyPage, prependMessages, setStatus, conversations }) {
+export function useChatHistoryPaging({ sessionId, historyPage, prependMessages, reconcileMessages, setStatus, conversations }) {
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const requestRef = useRef(false);
   const sessionIdRef = useRef(sessionId);
@@ -17,7 +17,8 @@ export function useChatHistoryPaging({ sessionId, historyPage, prependMessages, 
       const page = await getChatMessages(requestSessionId, { beforeSequence, limit: 50, model: conversations });
       if (!page) return;
       if (sessionIdRef.current !== requestSessionId) return;
-      prependMessages(page.messages || [], {
+      const applyPage = page.replace ? reconcileMessages : prependMessages;
+      applyPage(page.messages || [], {
         hasMore: page.has_more,
         beforeSequence: page.before_sequence,
       });

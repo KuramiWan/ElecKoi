@@ -10,7 +10,7 @@
 //   - 能力：不依赖具体控件形态 —— 用户点选的卡片就是被导出的卡片。
 //   - 边界：防回归取证。
 //
-// 组件用例只覆盖选择状态和 Gateway 参数；文件写入由主进程用例覆盖。
+// 组件用例只覆盖选择状态和导出服务参数；文件下载由 Client 插件用例覆盖。
 
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -52,7 +52,7 @@ describe('角色卡导出：选择哪些卡片', () => {
       expect(pressedFormat(container)).toBe('PNG')
     })
 
-    it('勾选多张后确认导出，一次性把所选交给主进程', async () => {
+    it('勾选多张后确认导出，一次性把所选交给导出服务', async () => {
       const { container, onExportCharacters } = renderManager()
       enterExport(container, 'PNG')
 
@@ -164,20 +164,16 @@ describe('角色卡导出：选择哪些卡片', () => {
       expect(onExportCharacters.mock.calls).toEqual([[['card-1', 'card-2'], 'png']])
     })
 
-    it('两条路由并存：批量走 characterIds，单卡路由仍受契约保护', async () => {
-      const { requestContracts } = await import('@shared/contracts/gateway/definitions')
+    it('批量选择只向服务传递角色编号与当前格式', async () => {
+      const { container, onExportCharacters } = renderManager()
+      enterExport(container, 'PNG')
+      click(cardByName(container, '角色甲'))
+      click(cardByName(container, '角色乙'))
 
-      const batch = requestContracts['command.characters.export.files']
-      expect(batch.input.safeParse({ characterIds: ['card-1', 'card-2'], format: 'png' }).success).toBe(true)
-      expect(batch.input.safeParse({ characterIds: [], format: 'png' }).success).toBe(false)
-      // 契约上限 50，UI 的 MAX_EXPORT_SELECTION 与它对齐
-      const tooMany = Array.from({ length: 51 }, (_, index) => `card-${index}`)
-      expect(batch.input.safeParse({ characterIds: tooMany, format: 'png' }).success).toBe(false)
+      await clickAsync(exportButton(container))
 
-      // 单卡路由保留为契约层公开接口；渲染层当前不再调用它
-      const single = requestContracts['command.characters.export']
-      expect(single.input.safeParse({ characterId: 'card-1', format: 'png' }).success).toBe(true)
-      expect(single.input.safeParse({ characterIds: ['card-1'], format: 'png' }).success).toBe(false)
+      expect(onExportCharacters).toHaveBeenCalledTimes(1)
+      expect(onExportCharacters).toHaveBeenCalledWith(['card-1', 'card-2'], 'png')
     })
   })
 })

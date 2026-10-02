@@ -1,5 +1,5 @@
 import type { WebContents } from 'electron'
-import { DesktopError, DESKTOP_ERROR_CODES } from '@shared/contracts/gateway/DesktopError'
+import { DesktopError, DESKTOP_ERROR_CODES } from '@shared/foundation/DesktopError'
 
 export function isAppRendererUrl(url: string): boolean {
   try {
@@ -58,7 +58,7 @@ export function assertTrustedRenderer(sender: WebContents, frameUrl: string, isM
   }
 }
 
-export function assertTrustedDshClientBoot(
+export function assertTrustedDshClientFrame(
   sender: WebContents,
   frameUrl: string,
   isMainFrame: boolean,
@@ -68,6 +68,6 @@ export function assertTrustedDshClientBoot(
     || !isDshAppUrl(frameUrl)
     || (new URL(frameUrl).pathname !== '/')
     || (new URL(frameUrl).search !== '' && !isDshChildUrl(frameUrl))) {
-    throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi DSH 页面进程的启动请求。')
+    throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi DSH 页面进程的桌面调用。')
   }
 }

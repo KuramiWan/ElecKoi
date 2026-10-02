@@ -38,7 +38,7 @@ describe('ElecKoi DSH client navigation', () => {
       let registration: any
       const source = readFileSync(new URL(`../packages/${packageName}/src/client.js`, import.meta.url), 'utf8')
       runInNewContext(source, {
-        window: { eleckoi: {}, __ModuleLoader__: { load: (value: any) => { registration = value } } },
+        window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
         AbortController,
       })
       const plugin = registration.factory((name: string) => {
@@ -55,6 +55,8 @@ describe('ElecKoi DSH client navigation', () => {
       plugin.apply({
         slots,
         provide: () => {},
+        get: () => undefined,
+        remote: { eleckoiAgentPresets: {} },
         reflect: { provide: () => () => {} },
         effect: (run: () => void) => { if (packageName === 'dsh-client-shell' && effectCount++ === 0) run() },
       })

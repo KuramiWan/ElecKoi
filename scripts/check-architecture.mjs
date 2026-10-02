@@ -41,14 +41,14 @@ function forbidImports(path, patterns, description) {
 
 assertClosedSet(
   'src/main',
-  new Set(['gateway', 'host', 'i18n', 'modules', 'platform']),
+  new Set(['host', 'i18n', 'modules', 'platform']),
   new Set(['main.ts'])
 )
 assertClosedSet('src/shared', new Set(['contracts', 'foundation']), new Set())
 assertClosedSet('src/preload', new Set(), new Set(['preload.ts']))
 assertClosedSet(
   'src/renderer/src',
-  new Set(['app', 'assets', 'bridge', 'modules', 'ui', 'utils']),
+  new Set(['app', 'assets', 'modules', 'ui', 'utils']),
   new Set(['main.jsx', 'env.d.ts'])
 )
 
@@ -62,7 +62,7 @@ forbidImports(
     /from\s+['"]@deepseek-ai\//,
     /from\s+['"]@eleckoi\/dsh-runtime['"]/
   ],
-  '违反 Renderer 只能通过 Desktop Gateway 访问桌面能力的边界。'
+  '违反 Renderer 只能通过 DSH Client 服务或明确的 Electron 壳适配访问桌面能力的边界。'
 )
 forbidImports(
   'src/main',
@@ -152,6 +152,41 @@ function assertAcyclicModules(dependencies, label) {
 }
 assertAcyclicModules(mainModuleDependencies, 'Main 业务模块')
 
+const productDataDomainRoot = join(root, 'packages/dsh-product-data/src/domain')
+const productDataDependencies = new Map()
+for (const entry of readdirSync(productDataDomainRoot, { withFileTypes: true })) {
+  if (entry.isDirectory() && !existsSync(join(productDataDomainRoot, entry.name, 'index.ts'))) {
+    failures.push(`packages/dsh-product-data/src/domain/${entry.name} 缺少唯一公开入口 index.ts。`)
+  }
+}
+for (const file of sourceFiles('packages/dsh-product-data/src/domain')) {
+  const normalized = relative(productDataDomainRoot, file).split(sep).join('/')
+  const ownModule = normalized.split('/')[0]
+  const content = readFileSync(file, 'utf8')
+  const dependencies = productDataDependencies.get(ownModule) ?? new Set()
+  productDataDependencies.set(ownModule, dependencies)
+  for (const match of content.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
+    const specifier = match[1]
+    let importedPath
+    if (specifier.startsWith('@product-data/domain/')) {
+      importedPath = specifier.slice('@product-data/domain/'.length)
+    } else if (specifier.startsWith('.')) {
+      const targetRelative = relative(productDataDomainRoot, resolve(dirname(file), specifier))
+      if (targetRelative.startsWith(`..${sep}`) || targetRelative === '..') continue
+      importedPath = targetRelative.split(sep).join('/')
+    } else {
+      continue
+    }
+    const [importedModule, ...insideModule] = importedPath.split('/')
+    if (!importedModule || importedModule === ownModule) continue
+    dependencies.add(importedModule)
+    if (insideModule.length > 0 && !/^index(?:\.[a-z]+)?$/i.test(insideModule.join('/'))) {
+      failures.push(`${relative(root, file)} 必须通过 ${importedModule}/index.ts 使用跨领域公开接口。`)
+    }
+  }
+}
+assertAcyclicModules(productDataDependencies, 'DSH Host 产品数据领域')
+
 const exclusiveTableOwners = new Map([
   ['chatSessions', 'conversations'],
   ['chatSessionCharacterSnapshots', 'conversations'],
@@ -163,7 +198,6 @@ const exclusiveTableOwners = new Map([
   ['agentResponses', 'conversations'],
   ['agentContentParts', 'conversations'],
   ['conversationSpeakers', 'conversations'],
-  ['generationAttempts', 'agent'],
   ['chatSessionVariableStates', 'conversations'],
   ['conversationSettingChanges', 'settingLibraries'],
   ['agentPresetState', 'agentPresets'],
@@ -187,7 +221,6 @@ const exclusiveSqlTableOwners = new Map([
   ['agent_turns', 'conversations'],
   ['agent_responses', 'conversations'],
   ['conversation_speakers', 'conversations'],
-  ['generation_attempts', 'agent'],
   ['chat_session_variable_states', 'conversations'],
   ['conversation_setting_changes', 'settingLibraries'],
   ['agent_preset_state', 'agentPresets'],
@@ -202,11 +235,11 @@ const exclusiveSqlTableOwners = new Map([
   ['agent_preset_version_entries', 'agentPresets']
 ])
 
-for (const file of sourceFiles('src/main/modules')) {
-  const normalized = relative(mainModulesRoot, file).split(sep).join('/')
+for (const file of sourceFiles('packages/dsh-product-data/src/domain')) {
+  const normalized = relative(productDataDomainRoot, file).split(sep).join('/')
   const ownModule = normalized.split('/')[0]
   const content = readFileSync(file, 'utf8')
-  for (const match of content.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*['"]@main\/platform\/sqlite\/schema\/common['"]/g)) {
+  for (const match of content.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*['"]@product-data\/storage\/sqlite\/schema\/common['"]/g)) {
     const importedNames = match[1].split(',').map((part) => part.trim().split(/\s+as\s+/)[0]).filter(Boolean)
     for (const importedName of importedNames) {
       const owner = exclusiveTableOwners.get(importedName)
@@ -285,19 +318,22 @@ for (const file of [...sourceFiles('src/renderer/src/app'), ...sourceFiles('src/
 
 for (const file of sourceFiles('src')) {
   const content = readFileSync(file, 'utf8')
+  if (/\bDesktopGateway\b|\bdesktopGateway\b|\bwindow\.eleckoi\b|eleckoi\.desktop\.request|DESKTOP_REQUEST_CHANNEL/.test(content)) {
+    failures.push(`${relative(root, file)} 恢复了已删除的 Desktop Gateway 业务桥；跨 Host/Client 产品调用必须使用 DSH Remote。`)
+  }
   if (!file.startsWith(join(root, 'src/preload') + sep) && /\bipcRenderer\b/.test(content)) {
     failures.push(`${relative(root, file)} 在 Preload 之外直接使用 ipcRenderer。`)
   }
   if (/\blocalStorage\b|\bsessionStorage\b/.test(content)) {
-    failures.push(`${relative(root, file)} 使用浏览器临时存储；产品状态必须经 Desktop Gateway 持久化。`)
+    failures.push(`${relative(root, file)} 使用浏览器临时存储；产品状态必须由 DSH Host 所有的正式存储合同持久化。`)
   }
 }
 
-const dshAdapter = join(root, 'src/main/modules/agent/DshAgentRuntime.ts')
+const dshHostComposition = join(root, 'src/main/host/dshHostPlugin.ts')
 for (const file of sourceFiles('src')) {
   const content = readFileSync(file, 'utf8')
-  if (/@eleckoi\/dsh-runtime|@deepseek-ai\/dsh-/.test(content) && file !== dshAdapter) {
-    failures.push(`${relative(root, file)} 绕过了 Agent 模块的 DSH Runtime Adapter。`)
+  if (/@eleckoi\/dsh-runtime|@deepseek-ai\/dsh-/.test(content) && file !== dshHostComposition) {
+    failures.push(`${relative(root, file)} 绕过了 Desktop Host 组合根；产品侧不得直接依赖 DSH Runtime。`)
   }
 }
 const dshRuntimeExports = JSON.parse(readFileSync(join(root, 'packages/dsh-runtime/package.json'), 'utf8')).exports
@@ -318,5 +354,5 @@ if (failures.length > 0) {
   console.error(failures.map((failure) => `- ${failure}`).join('\n'))
   process.exitCode = 1
 } else {
-  console.log('Architecture check passed: Host, Gateway, Modules, Platform and Renderer boundaries are intact.')
+  console.log('Architecture check passed: DSH Remote is enforced and the legacy Desktop Gateway remains removed.')
 }

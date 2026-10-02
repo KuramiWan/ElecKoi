@@ -17,7 +17,8 @@ export interface UpdateServiceOptions {
   currentVersion: string
   enabled: boolean
   disabledMessage: string
-  canInstall: () => boolean
+  prepareInstall: () => Promise<boolean>
+  releaseInstall: () => Promise<void>
   publish: (status: UpdateStatus) => void
   logger: Pick<Logger, 'info' | 'warn' | 'error'>
 }
@@ -114,9 +115,9 @@ export class UpdateService {
     return this.state
   }
 
-  install(): UpdateInstallResult {
+  async install(): Promise<UpdateInstallResult> {
     if (!this.started || this.state.phase !== 'ready') return { accepted: false, reason: 'not_ready' }
-    if (!this.options.canInstall()) return { accepted: false, reason: 'agent_running' }
+    if (!await this.options.prepareInstall()) return { accepted: false, reason: 'agent_running' }
 
     this.setState({ ...this.state, phase: 'installing', message: '正在重启并安装更新…' })
     this.installTimer = setTimeout(() => {
@@ -124,6 +125,9 @@ export class UpdateService {
         this.options.updater.quitAndInstall(false, true)
       } catch (error) {
         this.handleError(asError(error))
+        void this.options.releaseInstall().catch((releaseError: unknown) => {
+          this.options.logger.warn({ err: releaseError }, '释放 DSH 更新锁失败')
+        })
       }
     }, 250)
     this.installTimer.unref()

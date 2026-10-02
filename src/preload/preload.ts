@@ -1,18 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DesktopBridge } from '@shared/contracts/desktopBridge'
-import { DESKTOP_EVENT_CHANNEL, DESKTOP_REQUEST_CHANNEL } from '@shared/contracts/gateway/channels'
-import type { GatewayEventEnvelope } from '@shared/contracts/gateway/types'
+import { DESKTOP_SHELL_IPC, type DshDesktopProductApi } from '@shared/contracts/desktopShell'
+import type { UpdateInstallResult, UpdateStatus } from '@shared/contracts/updates/schemas'
 
-const bridge: DesktopBridge = {
-  request: (name, input) => ipcRenderer.invoke(DESKTOP_REQUEST_CHANNEL, { name, input }),
-  subscribe: (listener) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, envelope: GatewayEventEnvelope) => listener(envelope)
-    ipcRenderer.on(DESKTOP_EVENT_CHANNEL, wrapped)
-    return () => ipcRenderer.removeListener(DESKTOP_EVENT_CHANNEL, wrapped)
+function createDesktopProductApi(): DshDesktopProductApi {
+  return {
+    protocolVersion: 1,
+    updates: {
+      status: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesStatus) as Promise<UpdateStatus>,
+      check: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesCheck) as Promise<UpdateStatus>,
+      download: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesDownload) as Promise<UpdateStatus>,
+      install: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesInstall) as Promise<UpdateInstallResult>,
+      subscribe(listener) {
+        const handle = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]): void => listener(status)
+        ipcRenderer.on(DESKTOP_SHELL_IPC.updatesChanged, handle)
+        return () => ipcRenderer.off(DESKTOP_SHELL_IPC.updatesChanged, handle)
+      }
+    },
+    windowControls: {
+      minimize: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.windowControl, 'minimize') as Promise<void>,
+      maximizeToggle: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.windowControl, 'maximize') as Promise<void>,
+      close: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.windowControl, 'close') as Promise<void>
+    },
+    host: {
+      subscribeFailure(listener) {
+        const handle = (_event: Electron.IpcRendererEvent, message: string): void => listener(message)
+        ipcRenderer.on(DESKTOP_SHELL_IPC.hostFailure, handle)
+        return () => ipcRenderer.off(DESKTOP_SHELL_IPC.hostFailure, handle)
+      }
+    }
   }
 }
-
-contextBridge.exposeInMainWorld('eleckoi', bridge)
 
 const documentLocation = (globalThis as unknown as { location?: { protocol: string; hostname: string } }).location
 if (documentLocation?.protocol === 'dsh-app:' && documentLocation.hostname === 'app' && process.isMainFrame) {
@@ -44,7 +61,6 @@ if (documentLocation?.protocol === 'dsh-app:' && documentLocation.hostname === '
     detail.style.cssText = 'max-width:min(640px,80vw);white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;font:12px/1.5 monospace;color:inherit;'
     hint?.after(detail)
   }
-  contextBridge.exposeInMainWorld('dshDesktop', { protocolVersion: 1 })
   contextBridge.exposeInMainWorld('dshDesktopBoot', {
     ready: () => ipcRenderer.invoke('eleckoi:dsh-client-boot') as Promise<unknown>,
     failed: (message: string) => {
@@ -71,3 +87,10 @@ if (documentLocation?.protocol === 'dsh-app:' && documentLocation.hostname === '
     browser.addEventListener('DOMContentLoaded', observeThemeSource, { once: true })
   } else observeThemeSource()
 }
+
+contextBridge.exposeInMainWorld(
+  'dshDesktop',
+  documentLocation?.protocol === 'dsh-app:' && documentLocation.hostname === 'app' && process.isMainFrame
+    ? createDesktopProductApi()
+    : { protocolVersion: 1 }
+)

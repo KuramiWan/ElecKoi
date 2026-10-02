@@ -12,7 +12,7 @@ import { DshPanelLeftIcon } from "../../ui/icons/dshComposerIcons.jsx";
 import { showCurrentWindow } from "../services/windowControls.js";
 import { WindowControls } from "./shell/components/TitleBar.jsx";
 
-export function CreatorStudioWindow({ characterCatalog }) {
+export function CreatorStudioWindow({ characterCatalog, projectCatalog }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -101,7 +101,7 @@ export function CreatorStudioWindow({ characterCatalog }) {
         onDirtyChange={setCanvasDirty}
         viewport={canvasViewport}
         onViewportChange={setCanvasViewport}
-      /> : <CreatorStudioProjectHome sidebarCollapsed={sidebarCollapsed} characterCatalog={characterCatalog} onOpenProject={openProject} />}
+      /> : <CreatorStudioProjectHome sidebarCollapsed={sidebarCollapsed} characterCatalog={characterCatalog} projectCatalog={projectCatalog} onOpenProject={openProject} />}
     </section>
   </main>;
 }

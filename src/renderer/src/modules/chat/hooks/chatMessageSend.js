@@ -1,10 +1,6 @@
 import {
-  cancelChatStream,
   createChat as createChatSession,
-  discardChatFileDrafts,
   getChat,
-  listenAgentProcess,
-  listenChatStreamDelta,
   sendChatMessage,
 } from "../api/chatApi.js";
 import { encodeImageDraft } from "./useChatInputImages.js";
@@ -14,8 +10,7 @@ export async function runChatMessageSend(options) {
     event, input, inputImagesRef, inputFilesRef, isSending, modelConfig, modelSupportsImages, setStatus,
     requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
     setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
-    setMessages, updatePendingReply, updatePendingReplyDeferred, requestScrollToEnd,
-    reconcileChatMessages, commitPendingError, notify, restoreChatEntry, conversationModel,
+    requestScrollToEnd, reconcileChatMessages, notify, restoreChatEntry, conversationModel,
   } = options;
   event.preventDefault();
   const text = input.trim();
@@ -24,6 +19,12 @@ export async function runChatMessageSend(options) {
   if ((!text && !draftImages.length && !draftFiles.length) || isSending) return;
   if (!modelConfig?.id || !modelConfig.model?.trim()) {
     const message = "未配置可用的对话模型，请先前往“模型配置”添加模型和 API 密钥。";
+    setStatus(message);
+    notify?.("error", message);
+    return;
+  }
+  if (!conversationModel) {
+    const message = "DSH 聊天服务尚未就绪";
     setStatus(message);
     notify?.("error", message);
     return;
@@ -38,10 +39,7 @@ export async function runChatMessageSend(options) {
   requestRef.current = activeRequest;
   setIsSending(true);
   setStatus(draftImages.length ? "正在处理图片..." : "正在回复...");
-  let assistantId = "";
   let targetSessionId = sessionId;
-  let filesCleared = false;
-  let requestDispatched = false;
 
   try {
     const encodedImages = await Promise.all(draftImages.map(encodeImageDraft));
@@ -49,7 +47,8 @@ export async function runChatMessageSend(options) {
     if (!targetSessionId) {
       if (!chatCharacter.character_id) throw new Error("请先从角色设定中双击角色进入聊天");
       const characterName = chatCharacter.assistant_name || chatCharacter.character_name || "新对话";
-      const created = await createChatSession(characterName, chatCharacter);
+      const created = await createChatSession(characterName, chatCharacter, { model: conversationModel,
+        modelSelection: { provider: modelConfig.id, model: modelConfig.model } });
       throwIfAborted(controller.signal);
       targetSessionId = created.chat.id;
       setSessionId(targetSessionId);
@@ -63,52 +62,20 @@ export async function runChatMessageSend(options) {
     activeRequest.conversationId = targetSessionId;
 
     setInput("");
-    const createdAt = new Date().toISOString();
-    const userMessage = {
-      id: `local-${Date.now()}`, conversationId: targetSessionId, role: "user", content: text,
-      variableStateJson: '{}', created_at: createdAt,
-      inputImageAttachments: draftImages.map((image, index) => ({
-        attachmentId: image.localId, mediaType: encodedImages[index].mediaType, bytes: image.bytes, name: image.name,
-        dataUrl: `data:${encodedImages[index].mediaType};base64,${encodedImages[index].data}`,
-      })),
-      inputFileAttachments: draftFiles.map((file) => ({ attachmentId: file.id, name: file.name, bytes: file.bytes })),
-    };
     clearInputImages();
     clearInputFiles();
-    filesCleared = true;
     const payload = {
       message: text,
       images: encodedImages,
-      files: draftFiles.map((file) => file.id),
+      files: draftFiles.map((file) => file.receiptId || file.id),
       session_id: targetSessionId,
     };
 
-    assistantId = `pending-${Date.now()}`;
     const requestId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     activeRequest.requestId = requestId;
-    if (!conversationModel) {
-      const unlistenProcess = await listenAgentProcess((event) => {
-        if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.item) return;
-        updatePendingReplyDeferred((current) => current?.id === assistantId
-          ? { ...current, process: upsertProcess(current.process, event.item) }
-          : current);
-      });
-      activeRequest.unlisten = unlistenProcess;
-      throwIfAborted(controller.signal);
-      const unlistenDelta = await listenChatStreamDelta((event) => {
-        if (event?.request_id !== requestId || event?.session_id !== targetSessionId || !event?.delta) return;
-        updatePendingReplyDeferred((current) => current?.id === assistantId
-          ? { ...current, pending: true, content: `${current.content || ""}${event.delta}` }
-          : current);
-      });
-      activeRequest.unlisten = () => { unlistenDelta(); unlistenProcess(); };
-    }
     throwIfAborted(controller.signal);
-    setMessages((items) => [...items, userMessage]);
-    updatePendingReply({ id: assistantId, conversationId: targetSessionId, role: "assistant", content: "", variableStateJson: '{}', pending: true, created_at: createdAt });
     requestScrollToEnd("auto");
-    requestDispatched = true;
-    const result = await sendChatMessage(payload, requestId, { model: conversationModel });
+    const result = await sendChatMessage(payload, requestId, { model: conversationModel, signal: controller.signal });
     if (result.cancelled) {
       if (requestRef.current === null || requestRef.current === activeRequest) {
         reconcileChatMessages(result.chat);
@@ -124,33 +91,25 @@ export async function runChatMessageSend(options) {
     if (requestRef.current !== activeRequest) return;
     setStatus("回复完成");
   } catch (error) {
-    if (filesCleared && !requestDispatched && draftFiles.length) {
-      await discardChatFileDrafts(draftFiles.map((file) => file.id)).catch(() => {});
-    }
     if (requestRef.current === activeRequest && !isAbortError(error)) {
-      let reconciled = false;
+      const message = getErrorMessage(error, "发送失败");
+      setIsSending(false);
+      setStatus(message);
+      notify?.("error", message);
       if (targetSessionId) {
         try {
-          const durable = conversationModel
-            ? await getChat(targetSessionId, { model: conversationModel })
-            : await getChat(targetSessionId);
+          const durable = await getChat(targetSessionId, { model: conversationModel });
           if (requestRef.current === activeRequest) {
             reconcileChatMessages(durable.chat);
             setChatCharacter(normalizeLatestChatCharacter(durable.chat || {}));
-            reconciled = true;
           }
         } catch {
           // Keep the original send failure visible if refreshing durable state also fails.
         }
       }
       if (requestRef.current !== activeRequest) return;
-      if (!reconciled) commitPendingError(assistantId);
-      const message = getErrorMessage(error, "发送失败");
-      setStatus(message);
-      notify?.("error", message);
     }
   } finally {
-    activeRequest.unlisten?.();
     if (requestRef.current === activeRequest) {
       requestRef.current = null;
       setIsSending(false);
@@ -162,9 +121,8 @@ export function stopChatMessageSend({
   requestRef,
   setIsSending,
   setStatus,
-  settlePendingReply,
   notify,
-  cancelRequest = cancelChatStream,
+  cancelRequest,
 }) {
   const activeRequest = requestRef.current;
   if (!activeRequest || activeRequest.stopping) return false;
@@ -172,11 +130,9 @@ export function stopChatMessageSend({
   activeRequest.stopping = true;
   requestRef.current = null;
   activeRequest.controller?.abort?.();
-  activeRequest.unlisten?.();
-  settlePendingReply?.();
   setIsSending?.(false);
   setStatus("已停止");
-  if (!activeRequest.requestId) {
+  if (!activeRequest.requestId || typeof cancelRequest !== "function") {
     return true;
   }
 
@@ -202,10 +158,4 @@ export function throwIfAborted(signal) {
   const error = new Error("生成已停止");
   error.name = "AbortError";
   throw error;
-}
-
-export function upsertProcess(items = [], item) {
-  const index = items.findIndex((candidate) => candidate.id === item.id);
-  if (index < 0) return [...items, item];
-  return items.map((candidate, candidateIndex) => candidateIndex === index ? item : candidate);
 }

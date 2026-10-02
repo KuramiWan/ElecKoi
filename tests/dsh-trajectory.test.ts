@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
 import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { releasedV3SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
-import { projectDshTrajectory, readDshSessionLog, readDshTrajectory } from '@eleckoi/dsh-runtime'
+import { projectDshTrajectory, readDshSessionLog, readDshTrajectory, removeDshSessionTree } from '@eleckoi/dsh-runtime'
 import { agentTrajectorySnapshotSchema } from '../src/shared/contracts/agent/trajectory'
 
 const temporaryDirectories: string[] = []
@@ -85,6 +85,39 @@ describe('DSH trajectory projection', () => {
     writeFileSync(join(parentDirectory, 'session.v3.jsonl'), `${JSON.stringify(parent)}\n`)
     writeFileSync(join(childDirectory, 'session.v3.jsonl'), `${JSON.stringify(child)}\n`)
     expect(readDshTrajectory(root, 'parent')).toMatchObject({ runtimeThreadId: 'parent', totalRecords: 0 })
+  })
+
+  it('removes one stored Session tree without touching unrelated sessions', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-session-remove-'))
+    temporaryDirectories.push(root)
+    const project = join(root, 'project-a')
+    const headers = [
+      { id: 'parent', delegationDepth: 0 },
+      { id: 'child', parentSession: 'parent', origin: 'subagent' as const, delegationDepth: 1 },
+      { id: 'grandchild', parentSession: 'child', origin: 'subagent' as const, delegationDepth: 2 },
+      { id: 'unrelated', delegationDepth: 0 }
+    ]
+    for (const header of headers) {
+      const directory = join(project, header.id)
+      mkdirSync(directory, { recursive: true })
+      const row = releasedV3SessionFormatCodec.encodeHeader({
+        version: 3,
+        createdAt: 1_000,
+        cwd: 'D:/workspace',
+        isSeeded: false,
+        ...header
+      }, 0)
+      writeFileSync(join(directory, 'session.v3.jsonl'), `${JSON.stringify(row)}\n`)
+    }
+
+    expect(readDshSessionLog(root, 'parent')?.header.id).toBe('parent')
+    removeDshSessionTree(root, 'parent')
+
+    expect(existsSync(join(project, 'parent'))).toBe(false)
+    expect(existsSync(join(project, 'child'))).toBe(false)
+    expect(existsSync(join(project, 'grandchild'))).toBe(false)
+    expect(existsSync(join(project, 'unrelated'))).toBe(true)
+    expect(readDshSessionLog(root, 'parent')).toBeUndefined()
   })
 
   it('keeps the raw event ledger separate while pairing calls with their results', () => {
@@ -300,6 +333,27 @@ describe('DSH trajectory projection', () => {
     })}\n`)
     expect(readDshTrajectory(root, runtimeThreadId).records.flatMap((record) => record.requests)[0]?.context)
       .toEqual([expect.objectContaining({ content: '问题' })])
+  })
+
+  it('reuses one decoded current Session version and invalidates it after the log changes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-session-log-cache-'))
+    temporaryDirectories.push(root)
+    const runtimeThreadId = 'cached-thread'
+    const directory = join(root, 'project-a', runtimeThreadId)
+    mkdirSync(directory, { recursive: true })
+    const path = join(directory, `session.v${sessionFormatCatalog.currentVersion}.jsonl`)
+    const firstEvents = [event(0, 'turn/start', { turn: 1 }, 1_010)]
+    writeFileSync(path, `${currentSessionRows(runtimeThreadId, 1_000, firstEvents).map((row) => JSON.stringify(row)).join('\n')}\n`)
+
+    const first = readDshSessionLog(root, runtimeThreadId)
+    const reused = readDshSessionLog(root, runtimeThreadId)
+    expect(reused).toBe(first)
+
+    const nextEvents = [...firstEvents, event(1, 'turn/end', { turn: 1, reason: { kind: 'completed' } }, 1_020)]
+    writeFileSync(path, `${currentSessionRows(runtimeThreadId, 1_000, nextEvents).map((row) => JSON.stringify(row)).join('\n')}\n`)
+    const refreshed = readDshSessionLog(root, runtimeThreadId)
+    expect(refreshed).not.toBe(first)
+    expect(refreshed?.events).toHaveLength(2)
   })
 
   it('keeps DSH session-global request numbers across turns, resumes and compactions', () => {

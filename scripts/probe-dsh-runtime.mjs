@@ -1,28 +1,34 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { DshDesktopPluginHost, DshRuntime } from '@eleckoi/dsh-runtime'
+import { basename, join, resolve, sep } from 'node:path'
+import { DshDesktopPluginHost } from '@eleckoi/dsh-runtime'
 
 const root = await mkdtemp(join(tmpdir(), 'eleckoi-electron-dsh-'))
-const runtime = new DshRuntime({
-  configPath: resolve('resources/dsh/cordis.yml'),
-  presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
-  workspaceRoot: join(root, 'workspace'),
+const host = new DshDesktopPluginHost({
   runtimeDataRoot: join(root, 'runtime'),
+  workspaceRoot: join(root, 'workspace'),
+  productDatabasePath: join(root, 'product.sqlite'),
+  productMediaRoot: join(root, 'media'),
+  presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
+  agentPatchPath: resolve('resources/dsh/desktop-agent.patch.yml'),
   executablePath: process.execPath
 })
-runtime.bindSessionHost(new DshDesktopPluginHost({
-  runtimeDataRoot: join(root, 'runtime'),
-  workspaceRoot: join(root, 'workspace'),
-  agentPatchPath: resolve('resources/dsh/desktop-agent.patch.yml'),
-  hostConfiguration: () => runtime.hostConfiguration(),
-  executablePath: process.execPath
-}))
 
 try {
-  await runtime.verify()
-  console.log('Electron DSH runtime handshake passed.')
+  const ready = await host.start()
+  if (!ready.url || !Array.isArray(ready.injections)) {
+    throw new Error('DSH Desktop Host did not return its authenticated client bootstrap.')
+  }
+  if (await host.updateTasks('inspect') !== false) {
+    throw new Error('DSH Desktop Host reported unexpected active tasks.')
+  }
+  console.log('Electron DSH Desktop Host handshake passed.')
 } finally {
-  await runtime.close()
-  await rm(root, { recursive: true, force: true })
+  await host.close()
+  const absolute = resolve(root)
+  if (!absolute.startsWith(resolve(tmpdir()) + sep)
+    || !basename(absolute).startsWith('eleckoi-electron-dsh-')) {
+    throw new Error('Refusing to remove an unexpected probe directory.')
+  }
+  await rm(absolute, { recursive: true, force: true })
 }

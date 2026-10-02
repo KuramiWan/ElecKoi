@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
+import { recordRequestContext } from './request-context-record.mjs'
 
 export const name = 'eleckoi-conversation-context'
 export const projectionPlugin = 'eleckoi-request-projection'
@@ -54,6 +55,7 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
         messages.unshift(freezeMessage({ ...createSystemMessage(instructions, name), id }))
       }
     }
+    recordRequestContext(agentCtx.sessionProjections, session, requestContextItems(messages, projection.plan))
     return agentCtx.llm.stream({
       ...options,
       messages
@@ -95,6 +97,7 @@ export function requestProjectionPlan(context) {
 export function requestProjectionSnapshot(context) {
   return {
     plan: requestProjectionPlan(context),
+    historyMode: context?.historyMode === 'prefix' ? 'prefix' : 'replace',
     history: (Array.isArray(context?.history) ? context.history : [])
       .flatMap((item) => isProductHistoryEntry(item)
         ? [{ role: item.role, content: item.content }]
@@ -142,6 +145,14 @@ export function projectionPlanFromMessages(messages) {
   const envelope = messages.findLast(isProjectionEnvelope)
   if (!envelope) return undefined
   return decodeProjectionEnvelope(envelope).plan
+}
+
+/** Reconstruct previously recorded provider input from its product envelope. */
+export function replayRequestContext(messages) {
+  const envelope = messages.findLast(isProjectionEnvelope)
+  const snapshot = envelope ? decodeProjectionEnvelope(envelope) : undefined
+  const history = snapshot ? projectProductHistory(messages, snapshot) : messages
+  return requestContextItems(projectRequestMessages(history, snapshot?.plan), snapshot?.plan)
 }
 
 export function isProjectionEnvelope(message) {
@@ -294,13 +305,14 @@ function decodeProjectionEnvelope(message) {
   const prefix = text.startsWith(PROJECTION_PREFIX)
     ? PROJECTION_PREFIX
     : text.startsWith(LEGACY_PROJECTION_PREFIX) ? LEGACY_PROJECTION_PREFIX : undefined
-  if (!prefix) return { plan: [], history: [] }
+  if (!prefix) return { plan: [], historyMode: 'replace', history: [] }
   try {
     const value = JSON.parse(text.slice(prefix.length))
-    if (Array.isArray(value)) return { plan: value.filter(isProjectionEntry), history: [] }
-    if (!value || typeof value !== 'object') return { plan: [], history: [] }
+    if (Array.isArray(value)) return { plan: value.filter(isProjectionEntry), historyMode: 'replace', history: [] }
+    if (!value || typeof value !== 'object') return { plan: [], historyMode: 'replace', history: [] }
     return {
       plan: Array.isArray(value.plan) ? value.plan.filter(isProjectionEntry) : [],
+      historyMode: value.historyMode === 'prefix' ? 'prefix' : 'replace',
       history: Array.isArray(value.history) ? value.history.filter(isProductHistoryEntry) : []
     }
   } catch {
@@ -342,8 +354,7 @@ function projectionMessage(entry) {
 }
 
 /**
- * Replace previous native provider turns with the active product branch.
- * Current-turn tool messages remain untouched because this runs only at step 1.
+ * Keep prior user input and final replies, with the active turn's full flow.
  */
 export function projectProductHistory(messages, context) {
   const currentUserIndex = findCurrentUserIndex(messages)
@@ -356,12 +367,49 @@ export function projectProductHistory(messages, context) {
   const productHistory = (Array.isArray(context?.history) ? context.history : [])
     .map(productHistoryMessage)
     .filter(Boolean)
+  if (context?.historyMode === 'prefix') {
+    const dialogueHistory = previousTurnDialogue(nativeHistory)
+    const prefix = productHistory.filter((product, index) => !messagesMatch(product, dialogueHistory[index]))
+    return [
+      ...messages.slice(0, replaceFrom),
+      ...prefix,
+      ...dialogueHistory,
+      ...messages.slice(currentUserIndex)
+    ]
+  }
   const authoritative = compactedProjection(productHistory, nativeHistory) ?? productHistory
   return [
     ...messages.slice(0, replaceFrom),
     ...authoritative,
     ...messages.slice(currentUserIndex)
   ]
+}
+
+function previousTurnDialogue(messages) {
+  const history = []
+  let finalReply
+  const flush = () => {
+    if (finalReply) history.push(finalReply)
+    finalReply = undefined
+  }
+  for (const message of messages) {
+    if (isDirectUserMessage(message) || isCompactionCheckpoint(message)) {
+      flush()
+      history.push(message)
+    } else if (message?.role === 'assistant'
+      && message?.source?.kind !== 'tool'
+      && !message.content?.some(block => block?.type === 'tool-call' || block?.type === 'tool-result')) {
+      const content = normalizedDialogueText(messageText(message), 'assistant')
+      if (content) finalReply = freezeMessage({
+        id: message.id,
+        role: 'assistant',
+        content: [{ type: 'text', text: content }],
+        source: { kind: 'plugin:eleckoi-product-history' }
+      })
+    }
+  }
+  flush()
+  return history
 }
 
 function isProductHistoryEntry(value) {

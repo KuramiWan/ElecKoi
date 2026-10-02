@@ -6,7 +6,7 @@ export function ModelNetworkSection({ form, draftHeader, setDraftHeader, onUpdat
       <h3>网络</h3>
       <label>
         <span>网络代理 URL（可选）</span>
-        <input value={form.proxy_url || ""} onChange={(event) => onUpdateField("proxy_url", event.target.value)} placeholder="一般留空，例如 http://127.0.0.1:7890" />
+        <input value="" disabled title="当前 DSH 适配器使用系统代理" placeholder="使用系统代理" />
       </label>
       <div className="model-headers-editor">
         <div className="model-section-heading">

@@ -1,15 +1,3 @@
-export {
-  commitCharacterImports,
-  createCharacter,
-  deleteCharacters,
-  exportCharacter,
-  exportCharacterFiles,
-  getCharacters,
-  getPersona,
-  saveCharacterGroups,
-  savePersona,
-  updateCharacter,
-} from "./api/personaApi.js";
 export { CharacterBasicInfoPanel } from "./components/CharacterBasicInfoPanel.jsx";
 export { CharacterListPanel } from "./components/CharacterListPanel.jsx";
 export { CharacterManager } from "./components/CharacterManager.jsx";

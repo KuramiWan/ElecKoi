@@ -4,11 +4,10 @@ import { DesktopHost } from '@main/host/DesktopHost'
 import { StartupProfileStore } from '@main/host/startup/StartupProfileStore'
 import { configureElectron, configureRuntimeUserData } from '@main/host/startup/configureElectron'
 import { getBootstrapLogger } from '@main/platform/logging/AppLog'
-import { registerLocalMediaScheme } from '@main/platform/electron/mediaProtocol'
+import { localMediaScheme } from '@main/platform/electron/mediaProtocol'
 
 const logger = getBootstrapLogger()
-registerLocalMediaScheme()
-protocol.registerSchemesAsPrivileged([{
+protocol.registerSchemesAsPrivileged([localMediaScheme, {
   scheme: 'dsh-app',
   privileges: {
     standard: true,

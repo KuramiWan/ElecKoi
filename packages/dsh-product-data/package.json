@@ -1,0 +1,46 @@
+{
+  "name": "@eleckoi/dsh-product-data",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./media": {
+      "types": "./lib/media.d.ts",
+      "default": "./lib/media.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/index.d.ts",
+    "lib/index.js.map",
+    "lib/media.js",
+    "lib/media.d.ts",
+    "lib/media.js.map"
+  ],
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@eleckoi/compatibility-mvu": "workspace:*",
+    "@deepseek-ai/cordis": "4.0.4",
+    "better-sqlite3": "12.11.1",
+    "drizzle-orm": "0.44.5",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "tsdown": "0.16.6",
+    "typescript": "5.9.3"
+  },
+  "description": "ElecKoi 产品数据的 DSH Host Cordis 服务。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  }
+}

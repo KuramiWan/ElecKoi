@@ -1,0 +1,6 @@
+- insert:
+    - id: eleckoi-product-data
+      name: '@eleckoi/dsh-product-data'
+- insert:
+    - id: eleckoi-product-api
+      name: '@eleckoi/dsh-product-api'

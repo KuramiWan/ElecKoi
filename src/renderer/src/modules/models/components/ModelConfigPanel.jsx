@@ -34,6 +34,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   providers,
   modelOptionsByKey = {},
   onSave,
+  onRevealApiKey,
   onDeleteConfig,
   onDeleteProvider,
   onFetchModels,
@@ -43,6 +44,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   onDirtyChange,
   renderEditor,
   renderLayout,
+  navigationGuardRef,
 }, ref) {
   const [form, setForm] = useState(config);
   const [collapsedGroups, setCollapsedGroups, collapseStateReady] = usePersistentCollapseState(
@@ -96,6 +98,12 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   useImperativeHandle(ref, () => ({
     save: saveCurrentConfig,
   }));
+
+  useEffect(() => {
+    if (!navigationGuardRef) return;
+    navigationGuardRef.current = requestDraftReplacement;
+    return () => { navigationGuardRef.current = null; };
+  }, [navigationGuardRef]);
 
   useEffect(() => {
     const current = formRef.current || {};
@@ -215,7 +223,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     setConfirmDeleteConfig(false);
     setDeleteTargetConfig(null);
     setConnectionTest({ status: "idle", message: "" });
-    if (["provider", "base_url", "api_key"].includes(key)) {
+    if (["provider", "base_url", "api_key", "api_format", "custom_headers"].includes(key)) {
       setLocalModelOptions({ key: "", items: [] });
     }
     isDirtyRef.current = true;
@@ -225,6 +233,13 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
         ...current,
         [key]: value,
       };
+      if (key === "api_format" && current.provider === "deepseek") {
+        const address = String(current.base_url || "").replace(/\/+$/, "");
+        if (["https://api.deepseek.com", "https://api.deepseek.com/anthropic"].includes(address)) {
+          next.base_url = value === "deepseek_messages" || value === "anthropic_messages"
+            ? "https://api.deepseek.com/anthropic" : "https://api.deepseek.com";
+        }
+      }
       formRef.current = next;
       return next;
     });
@@ -477,7 +492,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
         showNotice("success", "已丢弃未保存的配置草稿");
       } else if (targetProviderConfigs.length <= 1 && catalogItem(deletedProvider).fixed !== false) {
         const cleared = { ...blankConfigForProvider(deletedProvider), id: target.id || initialConfigForProvider(deletedProvider).id };
-        nextForm = onSave ? await onSave(cleared) : cleared;
+        nextForm = onSave ? await onSave({ ...cleared, clearConfiguration: true }) : cleared;
         showNotice("success", "当前配置已清空");
       } else if (onDeleteConfig) {
         const activeAfterDelete = await onDeleteConfig(target.id);
@@ -510,7 +525,15 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     try {
       const fetchConfig = formRef.current;
       const fetchKey = modelOptionsKey(fetchConfig);
-      const models = await onFetchModels(fetchConfig);
+      const discovered = await onFetchModels(fetchConfig);
+      if (formRef.current !== fetchConfig) return;
+      if (!discovered.length) {
+        showNotice("error", "未读取到模型，当前配置已保留。");
+        return;
+      }
+      const ids = new Set(discovered.map((item) => item.id));
+      const models = [...discovered, ...(fetchConfig.model_options || [])
+        .filter((item) => item.isUserAdded && !ids.has(item.id))];
       setLocalModelOptions({ key: fetchKey, items: models });
       const modelIds = models.map((item) => item.id || item.name).filter(Boolean);
       const previousModel = String(fetchConfig.model || "").trim();
@@ -581,6 +604,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       setDeleteTargetConfig, deleteTargetVersionName, deleting, deleteCurrentConfig, modelPickerRef, manualModelRef, modelMenuOpen,
       setModelMenuOpen, modelItems, removableModelIds, selectModel, deleteModel, loadingModels, fetchModels, manualModelOpen, setManualModelOpen,
       manualModelName, setManualModelName, addManualModel, connectionTest, testingConnection, testConnection, updateField,
+      onRevealApiKey, onCredentialError: message => showNotice("error", message),
     }}
     parameterEditor={{
       form, imageParameterError, activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError, modelCapabilities,

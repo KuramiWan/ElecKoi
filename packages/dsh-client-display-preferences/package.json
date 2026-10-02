@@ -1,0 +1,54 @@
+{
+  "name": "@eleckoi/dsh-client-display-preferences",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@eleckoi/dsh-product-api"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4",
+    "@eleckoi/dsh-product-api": "workspace:*",
+    "@eleckoi/dsh-product-data": "workspace:*"
+  },
+  "description": "通过 DSH Settings 保存 ElecKoi 的显示偏好。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiDisplayPreferences",
+        "kind": "service",
+        "title": "显示偏好服务",
+        "description": "读取和更新侧栏、会话列表与聊天显示偏好。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "refresh",
+          "updateUi",
+          "setChatDisplay"
+        ]
+      }
+    ]
+  }
+}

@@ -4,7 +4,6 @@ import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
 import { AppToast } from "../../ui/ui/AppToast.jsx";
-import { UnsavedChangesDialog } from "../../ui/ui/UnsavedChangesDialog.jsx";
 import { SidebarRail } from "./shell/components/SidebarRail.jsx";
 import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
 import { SidePanelShell } from "./shell/components/SidePanelShell.jsx";
@@ -14,7 +13,6 @@ import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { useSidePanelLayout } from "./shell/hooks/useSidePanelLayout.js";
 import { AppUpdateController, useAppUpdates } from "../../modules/updates/index.js";
 import { openCreatorStudioWindow } from "../../modules/creatorStudio/index.js";
-import { desktopClient } from "../../bridge/desktopClient.ts";
 import { MainPageContext } from "./MainPageContext.jsx";
 
 class MainPageErrorBoundary extends Component {
@@ -29,7 +27,7 @@ class MainPageErrorBoundary extends Component {
   }
 }
 
-export function MainWindow({ conversations, characters, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderConversationList, renderPresetEditorSection, renderModelEditor, renderRoleplay }) {
+export function MainWindow({ conversations, characters, characterConfiguration, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderConversationList, renderPresetEditorSection, renderRoleplay }) {
   const chat = useChatClient({ conversations, characters, models, persona, navigation });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const sidePanelLayout = useSidePanelLayout();
@@ -38,54 +36,29 @@ export function MainWindow({ conversations, characters, models, persona, presets
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState("chat");
-  const [modelConfigDirty, setModelConfigDirty] = useState(false);
-  const [pendingSection, setPendingSection] = useState(null);
-  const [savingPendingModelChanges, setSavingPendingModelChanges] = useState(false);
   const [presetRequestedTab, setPresetRequestedTab] = useState("");
-  const modelConfigPanelRef = useRef(null);
   const presetNavigationGuardRef = useRef(null);
+  const modelNavigationGuardRef = useRef(null);
 
   useEffect(() => {
     document.title = "ElecKoi";
   }, []);
 
-  useEffect(() => desktopClient.on("plugins.host.failed", ({ message }) => {
+  useEffect(() => window.dshDesktop.host?.subscribeFailure((message) => {
     chat.notify("error", message);
   }), [chat.notify]);
 
   const changeActiveSection = useCallback((section) => {
+    if (chat.activeSection === "model" && section !== "model" && modelNavigationGuardRef.current) {
+      modelNavigationGuardRef.current(() => chat.setActiveSection(section));
+      return;
+    }
     if (chat.activeSection === "presets" && section !== "presets" && presetNavigationGuardRef.current) {
       presetNavigationGuardRef.current(() => chat.setActiveSection(section));
       return;
     }
-    if (chat.activeSection === "model" && section !== "model" && modelConfigDirty) {
-      setPendingSection(section);
-      return;
-    }
     chat.setActiveSection(section);
-  }, [chat, modelConfigDirty]);
-
-  const discardModelChangesAndLeave = useCallback(() => {
-    const section = pendingSection;
-    setPendingSection(null);
-    setModelConfigDirty(false);
-    if (section) chat.setActiveSection(section);
-  }, [chat, pendingSection]);
-
-  const saveModelChangesAndLeave = useCallback(async () => {
-    if (savingPendingModelChanges) return;
-    setSavingPendingModelChanges(true);
-    try {
-      const saved = await modelConfigPanelRef.current?.save();
-      if (!saved) return;
-      const section = pendingSection;
-      setPendingSection(null);
-      setModelConfigDirty(false);
-      if (section) chat.setActiveSection(section);
-    } finally {
-      setSavingPendingModelChanges(false);
-    }
-  }, [chat, pendingSection, savingPendingModelChanges]);
+  }, [chat]);
 
   const chatWallpaper = useMemo(() => resolveChatWallpaper({
     character: chat.chatBackgroundCharacter,
@@ -159,6 +132,9 @@ export function MainWindow({ conversations, characters, models, persona, presets
     appearance,
     appUpdates,
     conversations,
+    characters,
+    characterConfiguration,
+    models,
     presets,
     settingsSections,
     renderSettingsSection,
@@ -166,13 +142,11 @@ export function MainWindow({ conversations, characters, models, persona, presets
     renderCharacterPageSection,
     renderConversationList,
     renderPresetEditorSection,
-    renderModelEditor,
     renderRoleplay,
     settingsPage,
     setSettingsPage,
-    modelConfigPanelRef,
-    setModelConfigDirty,
     presetNavigationGuardRef,
+    modelNavigationGuardRef,
     presetRequestedTab,
     setPresetRequestedTab,
     changeActiveSection,
@@ -238,6 +212,7 @@ export function MainWindow({ conversations, characters, models, persona, presets
         sessions={chat.sessions}
         sessionId={chat.sessionId}
         chatCharacter={chat.chatCharacter}
+        conversationModel={conversations}
         onClose={chat.closeHistory}
         onLoadChat={chat.loadChat}
         onDeleteChat={chat.removeHistoryChat}
@@ -261,15 +236,6 @@ export function MainWindow({ conversations, characters, models, persona, presets
         open={communityOpen}
         onClose={() => setCommunityOpen(false)}
         onNotify={chat.notify}
-      />
-      <UnsavedChangesDialog
-        open={Boolean(pendingSection)}
-        title="保存修改？"
-        description="离开前是否保存当前模型配置的修改？"
-        saving={savingPendingModelChanges}
-        onCancel={() => setPendingSection(null)}
-        onSave={saveModelChangesAndLeave}
-        onDiscard={discardModelChangesAndLeave}
       />
       <AppToast notice={chat.notice} onDismiss={chat.dismissNotice} />
       <AppUpdateController updates={appUpdates} />

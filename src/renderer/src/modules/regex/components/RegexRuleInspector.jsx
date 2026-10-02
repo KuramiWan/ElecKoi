@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Copy, Play, Trash, X } from "@phosphor-icons/react";
 import { REGEX_SCOPES, REGEX_TARGETS } from "../model/regexRulesEditing.js";
-import { testRegexRule } from "../api/regexRulesApi.js";
 
 function Switch({ checked, onChange, label }) {
   return (
@@ -13,7 +12,7 @@ function Switch({ checked, onChange, label }) {
   );
 }
 
-export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange, onMoveScope, onClose, onDuplicate, onDelete, onTest = testRegexRule }) {
+export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange, onMoveScope, onClose, onDuplicate, onDelete, onTest }) {
   const [testInput, setTestInput] = useState("");
   const [testOutput, setTestOutput] = useState("");
   const [testError, setTestError] = useState("");
@@ -29,6 +28,7 @@ export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange,
     setTesting(true);
     setTestError("");
     try {
+      if (typeof onTest !== "function") throw new Error("正则测试服务尚未就绪");
       const result = await onTest(testInput, rule, rule.targets[0] || "AiOutput");
       setTestOutput(result.output);
       setTestError(result.validationMessage || "");

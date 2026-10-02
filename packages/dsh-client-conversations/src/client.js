@@ -4,9 +4,283 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const MessagesPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-messages.js')
       .then(module => ({ default: module.MessagesPage })))
+
+    const contentText = content => Array.isArray(content)
+      ? content.filter(block => block?.type === 'text').map(block => String(block.text || '')).join('')
+      : ''
+
+    const assistantText = blocks => Array.isArray(blocks)
+      ? blocks.filter(block => block?.kind === 'text').map(block => String(block.text || '')).join('')
+      : ''
+
+    const FinalOpenTag = '<FINAL>'
+    const FinalCloseTag = '</FINAL>'
+
+    const removeLeadingLineBreak = value => value.replace(/^(?:\r\n|\r|\n)/, '')
+    const removeTrailingLineBreak = value => value.replace(/(?:\r\n|\r|\n)$/, '')
+
+    function withoutPartialFinalClose(value) {
+      for (let length = FinalCloseTag.length - 1; length > 0; length -= 1) {
+        if (value.endsWith(FinalCloseTag.slice(0, length))) {
+          return removeTrailingLineBreak(value.slice(0, -length))
+        }
+      }
+      return value
+    }
+
+    function finalReplyText(value) {
+      const markerIndex = value.indexOf(FinalOpenTag)
+      if (markerIndex < 0) return value
+      const content = removeLeadingLineBreak(value.slice(markerIndex + FinalOpenTag.length))
+      const closingIndex = content.indexOf(FinalCloseTag)
+      return removeTrailingLineBreak(closingIndex < 0 ? content : content.slice(0, closingIndex))
+    }
+
+    function liveFinalReply(value) {
+      const markerIndex = value.indexOf(FinalOpenTag)
+      if (markerIndex < 0) return { started: false, content: '' }
+      const content = removeLeadingLineBreak(value.slice(markerIndex + FinalOpenTag.length))
+      const closingIndex = content.indexOf(FinalCloseTag)
+      return {
+        started: true,
+        content: closingIndex < 0
+          ? withoutPartialFinalClose(content)
+          : removeTrailingLineBreak(content.slice(0, closingIndex))
+      }
+    }
+
+    const processText = content => Array.isArray(content)
+      ? content.map(block => block?.type === 'text' ? String(block.text || '') : JSON.stringify(block)).join('\n')
+      : ''
+
+    const processKind = name => name === 'subagent' || name === 'subagent_fork' ? 'subagent' : 'tool'
+
+    const orderedChatNodes = snapshot => Array.isArray(snapshot?.order)
+      ? snapshot.order.map(key => snapshot.nodes?.get(key)).filter(Boolean)
+      : []
+
+    function toolProcess(block, parentId = '') {
+      if (!block?.callId) return []
+      const settled = block.kind === 'tool-result'
+      const name = settled ? block.call?.name || block.callId : block.name || block.callId
+      const item = {
+        id: String(block.callId), kind: processKind(name),
+        status: settled ? block.isError ? 'error' : 'complete' : 'running',
+        toolName: name,
+        arguments: settled ? block.call?.argsRaw || '' : block.argsRaw || '',
+        summary: name,
+        detail: settled ? processText(block.content) || block.error?.reason || block.error?.code || '' : '',
+        startedAtMillis: Number(settled ? block.callTime : block.time) || 0,
+        ...(settled ? { completedAtMillis: Number(block.time) || 0 } : {}),
+        ...(parentId ? { parentId } : {})
+      }
+      return [item, ...(block.subCalls || []).flatMap(child => toolProcess(child, item.id))]
+    }
+
+    function officialProcess(snapshot) {
+      const byTurn = new Map()
+      const append = (turn, item) => {
+        if (!Number.isSafeInteger(turn) || turn < 0) return
+        const items = byTurn.get(turn) || []
+        const index = items.findIndex(candidate => candidate.id === item.id)
+        if (index < 0) byTurn.set(turn, [...items, item])
+        else byTurn.set(turn, items.map((candidate, at) => at === index ? item : candidate))
+      }
+      const nodes = orderedChatNodes(snapshot)
+      for (const node of nodes) {
+        const turn = node.location?.kind === 'step' || node.location?.kind === 'turn'
+          ? node.location.turn.turn : node.data?.turn
+        if (node.kind === 'assistant-step') {
+          const blocks = node.data?.blocks || []
+          const hasToolCall = blocks.some(block => block?.kind === 'tool-call')
+          blocks.forEach((block, index) => {
+            if (block?.kind === 'reasoning' && block.text) append(turn, {
+              id: `reasoning:${turn}:${node.data?.step ?? 0}:${index}`,
+              kind: 'reasoning', status: node.data?.status === 'running' ? 'running' : 'complete',
+              toolName: 'reasoning', arguments: '', summary: '', detail: block.text,
+              startedAtMillis: Number(node.data?.time) || 0,
+            })
+            if (hasToolCall && block?.kind === 'text' && block.text) append(turn, {
+              id: `narrative:${turn}:${node.data?.step ?? 0}:${index}`,
+              kind: 'narrative', status: node.data?.status === 'running' ? 'running' : 'complete',
+              toolName: 'assistant_narrative', arguments: '', summary: block.text, detail: block.text,
+              startedAtMillis: Number(node.data?.time) || 0,
+            })
+          })
+        }
+        if (node.kind === 'tool-call') {
+          for (const item of toolProcess(node.data?.root)) append(turn, item)
+        }
+      }
+      return byTurn
+    }
+
+    function mergedProcess(product = [], official = []) {
+      const items = [...product]
+      for (const item of official) {
+        const index = items.findIndex(candidate => candidate.id === item.id)
+        if (index < 0) items.push(item)
+        else items[index] = { ...items[index], ...item }
+      }
+      return items
+    }
+
+    const inputImages = content => Array.isArray(content) ? content.flatMap(block => {
+      const attachment = block?.type === 'image' ? block.attachment : null
+      return attachment?.attachmentId ? [{ ...attachment }] : []
+    }) : []
+
+    const inputFiles = content => Array.isArray(content) ? content.flatMap(block => {
+      const attachment = block?.type === 'file' ? block.attachment : null
+      return attachment?.attachmentId ? [{ ...attachment }] : []
+    }) : []
+
+    async function waitForOfficialSession(session, eventSource, requestId) {
+      return new Promise((resolve, reject) => {
+        let settled = false
+        const disposers = []
+        const finish = (error, value) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timeout)
+          for (const dispose of disposers) dispose()
+          if (error) reject(error)
+          else resolve(value)
+        }
+        const timeout = setTimeout(() => {
+          finish(new Error('等待 DSH 会话完成超时。'))
+        }, 10 * 60 * 1000)
+        const check = () => {
+          if (settled) return
+          const snapshot = session.getSnapshot()
+          if (snapshot?.promptError?.op === 'send') {
+            finish(new Error(snapshot.promptError.error?.message || '生成失败。'))
+            return
+          }
+          // Agent execution errors arrive separately from prompt admission and journal frames.
+          if (snapshot?.lastAgentError) {
+            finish(new Error(snapshot.lastAgentError))
+            return
+          }
+          if (snapshot?.openError || snapshot?.removed) {
+            finish(new Error(snapshot.openError?.message || 'DSH 会话已关闭。'))
+            return
+          }
+          if (snapshot?.running) return
+          const events = (eventSource.getSnapshot()?.entries || [])
+            .filter(entry => entry.type === 'event').map(entry => entry.event)
+          const userIndex = events.findLastIndex(event => event.type === 'user/message'
+            && event.data?.source?.kind === 'user' && event.data.source.rpcId === requestId)
+          if (userIndex < 0) return
+          const ended = events.slice(userIndex + 1).find(event => event.type === 'turn/end')
+          if (!ended) return
+          const reason = ended.data?.reason
+          if (reason?.kind === 'error') finish(new Error(reason.error?.message || snapshot.lastAgentError || '生成失败。'))
+          else finish(null, { cancelled: reason?.kind === 'aborted' || reason?.kind === 'interrupted' })
+        }
+        disposers.push(session.subscribe(check), eventSource.subscribe(check))
+        check()
+      })
+    }
+
+    function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map()) {
+      if (!snapshot) return details?.messages || []
+      const projected = orderedChatNodes(snapshot).flatMap(node => {
+        if (node.kind === 'user' || node.kind === 'steering') {
+          const input = node.data
+          return [{
+            role: 'user', seq: input.seq, time: input.time, content: contentText(input.content),
+            images: inputImages(input.content), files: inputFiles(input.content), dshMessageId: input.messageId || '',
+            sessionEventSeq: input.seq
+          }]
+        }
+        if (node.kind !== 'turn-tail' || !node.data?.closing) return []
+        const tail = node.data
+        const closing = tail.closing
+        const finalNode = closing.finalNode
+        return [{
+          role: 'assistant', seq: finalNode.seq, time: finalNode.time, content: assistantText(closing.blocks),
+          displayContent: finalReplyText(assistantText(closing.blocks)),
+          dshMessageId: finalNode.messageId || '', interrupted: finalNode.interrupted === true,
+          usage: closing.usage, turnUsage: tail.tokenUsage, sessionEventSeq: finalNode.seq, dshTurn: tail.turn
+        }]
+      })
+      projected.sort((left, right) => {
+        const leftSeq = Number.isFinite(left.seq) ? left.seq : Number.MAX_SAFE_INTEGER
+        const rightSeq = Number.isFinite(right.seq) ? right.seq : Number.MAX_SAFE_INTEGER
+        if (leftSeq !== rightSeq) return leftSeq - rightSeq
+        return Number(left.time || 0) - Number(right.time || 0)
+      })
+      const product = Array.isArray(details?.messages) ? details.messages : []
+      const opening = product.filter(message => message.id === 'opening')
+      const candidates = product.filter(message => message.id !== 'opening')
+      const matched = new Map()
+      const claimedCandidates = new Set()
+      for (let index = 0; index < projected.length; index += 1) {
+        const item = projected[index]
+        const sourceIndex = candidates.findIndex(candidate => !claimedCandidates.has(candidate)
+          && candidate.role === item.role
+          && ((item.dshMessageId && candidate.dshMessageId === item.dshMessageId)
+            || candidate.sessionEventSeq === item.seq))
+        if (sourceIndex >= 0) {
+          const source = candidates[sourceIndex]
+          claimedCandidates.add(source)
+          matched.set(index, source)
+        }
+      }
+      for (let index = 0; index < projected.length; index += 1) {
+        if (matched.has(index)) continue
+        const source = candidates.find(candidate => !claimedCandidates.has(candidate)
+          && !candidate.dshMessageId && candidate.role === projected[index].role)
+        if (source) { claimedCandidates.add(source); matched.set(index, source) }
+      }
+      const visible = projected.map((item, index) => {
+        const source = matched.get(index)
+        const id = source?.id || item.dshMessageId || `dsh-${runtimeSessionId}-${item.seq}-${item.role}`
+        const message = {
+          ...(source || {}), id, conversationId: details?.conversation?.id || source?.conversationId || '',
+          ...(Number.isInteger(source?.productSequence ?? source?.sequence) ? { productSequence: source.productSequence ?? source.sequence } : {}),
+          runtimeSessionId, dshMessageId: item.dshMessageId || source?.dshMessageId || '',
+          sessionEventSeq: item.sessionEventSeq,
+          ...(Number.isSafeInteger(item.dshTurn) ? {
+            dshTurn: item.dshTurn,
+            renderKey: `dsh-reply-${runtimeSessionId}-${item.dshTurn}`
+          } : {}),
+          // `sequence` is the durable DSH event position. `messageIndex` is only
+          // the current visible list position and must be rebuilt after sorting.
+          sequence: item.seq, messageIndex: index,
+          role: item.role, content: item.content,
+          // Product projection owns an explicit display value, including an
+          // intentional empty result. Only an unmapped live message uses the
+          displayContent: source?.content === item.content && typeof source.displayContent === 'string'
+            ? source.displayContent
+            : item.displayContent ?? item.content,
+          variableStateJson: source?.variableStateJson || '{}',
+          createdAt: source?.createdAt || new Date(item.time || Date.now()).toISOString(),
+          status: item.pending ? 'streaming' : item.interrupted ? 'cancelled' : 'complete',
+          process: mergedProcess(source?.process, processByTurn.get(item.dshTurn)),
+          ...(item.turnUsage || source?.turnUsage ? { turnUsage: item.turnUsage || source.turnUsage } : {}),
+          ...(item.images?.length ? { inputImageAttachments: item.images } : {}),
+          ...(item.files?.length ? { inputFileAttachments: item.files } : {})
+        }
+        const hasAttachments = Boolean(message.inputImageAttachments?.length || message.inputFileAttachments?.length)
+        const hasProcess = Array.isArray(message.process) && message.process.length > 0
+        const hasText = String(message.content || '').trim().length > 0
+        return { message, keep: hasText || hasAttachments || hasProcess || message.status === 'streaming' }
+      }).filter(item => item.keep).map(item => item.message)
+      const anchor = visible.findIndex(message => Number.isSafeInteger(matched.get(projected.findIndex(item => item.seq === message.sequence))?.messageIndex))
+      const firstFloor = !details?.hasMore || anchor < 0 ? opening.length : Math.max(opening.length,
+        matched.get(projected.findIndex(item => item.seq === visible[anchor].sequence)).messageIndex - anchor)
+      return [...opening, ...visible.map((message, index) => ({ ...message, messageIndex: firstFloor + index }))]
+    }
+
     class ConversationCatalog {
-      constructor(bridge) {
-        this.bridge = bridge
+      constructor(remote, sessions, uiConversation, fileUpload, regexRules) {
+        this.remote = remote
+        this.sessions = sessions
+        this.uiConversation = uiConversation
+        this.fileUpload = fileUpload
+        this.regexRules = regexRules
         this.snapshot = { status: 'loading', items: [], error: '' }
         this.listeners = new Set()
         this.detailsSnapshot = { id: '', status: 'idle', details: null, error: '' }
@@ -20,11 +294,28 @@ window.__ModuleLoader__.load({
         this.streamListeners = new Set()
         this.streamGeneration = 0
         this.streamFrame = undefined
-        this.pendingRun = null
         this.preferredSessions = new Map()
+        this.selectionWriteQueue = Promise.resolve()
+        this.sessionReference = null
+        this.sessionTarget = null
+        this.stopSessionTarget = () => {}
+        this.stopSessionState = () => {}
+        this.stopProjections = () => {}
+        this.statsSnapshot = { id: '', stats: null }
+        this.latestStatsSnapshot = this.statsSnapshot
+        this.statsListeners = new Set()
+        this.sessionBindingGeneration = 0
+        this.activeRequests = new Map()
+        this.sessionMutations = new Map()
         this.generation = 0
         this.disposed = false
+        this.changeFeedAbort = null
+        this.changeFeed = null
         this.stopEvents = () => {}
+        this.stopRegexRules = () => {}
+        this.displayProjectionKey = ''
+        this.displayProjectionGeneration = 0
+        this.displayProjectionResults = null
       }
 
       getSnapshot = () => this.snapshot
@@ -36,6 +327,36 @@ window.__ModuleLoader__.load({
 
       getDetailsSnapshot = () => this.detailsSnapshot
 
+      getStatsSnapshot = () => this.statsSnapshot
+
+      subscribeStats = listener => {
+        this.statsListeners.add(listener)
+        return () => this.statsListeners.delete(listener)
+      }
+
+      publishStats(id, stats) {
+        this.latestStatsSnapshot = { id, stats }
+        const request = this.activeRequests.get(id)
+        if (request?.statsPending) {
+          // Rewound baseline counts belong to the retained prefix. Hand off
+          // the display only when the new run records its first settled step.
+          if (request.statsBaselineSteps === undefined
+            || !(stats?.sessionStats?.steps > request.statsBaselineSteps)) return
+          request.statsPending = false
+        }
+        this.statsSnapshot = { id, stats }
+        for (const listener of this.statsListeners) listener()
+      }
+
+      async readImage(conversationId, attachment) {
+        if (this.disposed || !attachment?.attachmentId) throw new Error('图片不可用。')
+        const runtimeSessionId = this.runtimeSessionId(conversationId)
+          || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.runtimeSessionId : '')
+        if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
+        if (this.detailsSnapshot.id === conversationId) await this.bindOfficialSession(conversationId)
+        return this.uiConversation.imageUrl(runtimeSessionId, attachment)
+      }
+
       rememberSession(characterId, sessionId) {
         if (characterId && sessionId) this.preferredSessions.set(characterId, sessionId)
       }
@@ -46,6 +367,112 @@ window.__ModuleLoader__.load({
 
       forgetSession(characterId, sessionId) {
         if (this.preferredSessions.get(characterId) === sessionId) this.preferredSessions.delete(characterId)
+      }
+
+      normalizeSelection(value) {
+        const preferred = value?.preferred_sessions
+        return {
+          active_conversation_id: typeof value?.active_conversation_id === 'string' ? value.active_conversation_id : '',
+          preferred_sessions: preferred && typeof preferred === 'object' && !Array.isArray(preferred)
+            ? Object.fromEntries(Object.entries(preferred).filter(([key, item]) => key && typeof item === 'string' && item))
+            : {}
+        }
+      }
+
+      unwrap(result, fallback) {
+        if (!result?.ok) throw new Error(result?.error?.message || fallback)
+        return result.value
+      }
+
+      async readSelection() {
+        const document = this.unwrap(await this.remote.settings.describe(), '读取当前聊天记录失败。')
+        const namespace = document?.namespaces?.find(item => item.ns === 'eleckoi-client-conversations')
+        return this.normalizeSelection(namespace?.value?.selection)
+      }
+
+      saveSelection(value) {
+        const selection = this.normalizeSelection(value)
+        const operation = this.selectionWriteQueue.then(async () => {
+          const document = this.unwrap(await this.remote.settings.describe(), '读取聊天选择状态失败。')
+          const namespace = document?.namespaces?.find(item => item.ns === 'eleckoi-client-conversations')
+          this.unwrap(await this.remote.settings.mutate('eleckoi-client-conversations', [{
+            op: 'set', path: ['selection'], value: selection
+          }], namespace?.revision), '保存当前聊天记录失败。')
+          return selection
+        })
+        this.selectionWriteQueue = operation.catch(() => {})
+        return operation
+      }
+
+      async readModelSelection(conversationId) {
+        if (!conversationId) return { provider: '', model: '' }
+        return this.unwrap(
+          await this.remote.eleckoiConversationModels.current(conversationId),
+          '读取聊天模型失败。'
+        )
+      }
+
+      async readAuthorState(conversationId) {
+        if (!conversationId) throw new Error('请先打开一个聊天。')
+        return this.unwrap(
+          await this.remote.eleckoiConversations.authorState(conversationId),
+          '读取作者接口上下文失败。'
+        )
+      }
+
+      async exportArchive(conversationId) {
+        if (!conversationId) throw new Error('请选择要导出的聊天记录。')
+        return this.unwrap(
+          await this.remote.eleckoiConversations.exportArchive(conversationId),
+          '导出聊天记录失败。'
+        )
+      }
+
+      async importArchive(characterId, json) {
+        if (!characterId) throw new Error('请先选择角色，再导入聊天记录。')
+        return this.unwrap(
+          await this.remote.eleckoiConversations.importArchive(characterId, json),
+          '导入聊天记录失败。'
+        )
+      }
+
+      async revealFile(conversationId, attachmentId, name) {
+        if (!conversationId) throw new Error('当前聊天不可用。')
+        this.unwrap(
+          await this.remote.eleckoiConversations.revealFile(conversationId, attachmentId, name),
+          '无法在文件管理器中显示该文件。'
+        )
+      }
+
+      async readTrajectory(conversationId) {
+        if (!conversationId) throw new Error('请先打开一个聊天。')
+        if (conversationId !== this.detailsSnapshot.id) await this.open(conversationId)
+        await this.bindOfficialSession(conversationId)
+        const binding = this.sessionReference?.binding
+        if (!binding) throw new Error('当前聊天的 DSH Session 尚未就绪。')
+        const target = this.uiConversation.binding(binding).target('trajectory')
+        const snapshot = target.getSnapshot()
+        if (!snapshot) throw new Error('DSH 轨迹投影尚未就绪。')
+        return snapshot
+      }
+
+      async replaceAuthorVariableState(conversationId, state) {
+        if (!conversationId) throw new Error('请先打开一个聊天。')
+        const stateJson = JSON.stringify(state)
+        const saved = this.unwrap(
+          await this.remote.eleckoiConversations.replaceVariableState(conversationId, stateJson),
+          '保存作者接口变量失败。'
+        )
+        if (this.timelineSnapshot.id === conversationId) void this.refreshTimeline().catch(() => {})
+        return JSON.parse(saved || '{}')
+      }
+
+      async selectModel(conversationId, selection) {
+        if (!conversationId) throw new Error('请先打开一个聊天。')
+        return this.unwrap(
+          await this.remote.eleckoiConversationModels.select(conversationId, selection),
+          '保存聊天模型失败。'
+        )
       }
 
       subscribeDetails = listener => {
@@ -73,8 +500,77 @@ window.__ModuleLoader__.load({
       }
 
       publishDetails(next) {
+        const request = this.activeRequests.get(next.id)
+        if (Number.isSafeInteger(request?.rewindEventSeq) && next.details) {
+          // The selected input owns the visible branch while the Host rewinds.
+          // A refresh of the retiring Session must not put its old replies back.
+          const messages = next.details.messages.filter(message => message.id === 'opening'
+            || message.sessionEventSeq <= request.rewindEventSeq).map(message =>
+            message.role === 'user' && message.sessionEventSeq === request.rewindEventSeq
+              && request.replacementMessage != null
+              ? { ...message, content: request.replacementMessage, displayContent: request.replacementMessage }
+              : message)
+          next = { ...next, details: { ...next.details, messages } }
+        }
+        next = this.applyDisplayProjection(next)
         this.detailsSnapshot = next
         for (const listener of this.detailsListeners) listener()
+        if (next.status === 'ready' && next.details) this.scheduleDisplayProjection(next.id, next.details)
+      }
+
+      displayProjectionInput(messages) {
+        return messages.filter(message => typeof message.content === 'string')
+          .map(message => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            variableStateJson: typeof message.variableStateJson === 'string' ? message.variableStateJson : '{}',
+            status: message.status,
+            createdAt: message.createdAt
+          }))
+      }
+
+      applyDisplayProjection(next) {
+        if (next.status !== 'ready' || !next.details || !this.displayProjectionResults) return next
+        const input = this.displayProjectionInput(next.details.messages || [])
+        if (`${next.id}\u0000${JSON.stringify(input)}` !== this.displayProjectionKey) return next
+        const byId = new Map(this.displayProjectionResults.map(result => [result?.id, result]))
+        let changed = false
+        const messages = next.details.messages.map(message => {
+          const result = byId.get(message.id)
+          if (!result || result.sourceContent !== message.content
+            || typeof result.displayContent !== 'string'
+            || typeof result.variableStateJson !== 'string') return message
+          if (message.displayContent === result.displayContent
+            && message.variableStateJson === result.variableStateJson) return message
+          changed = true
+          return { ...message, displayContent: result.displayContent, variableStateJson: result.variableStateJson }
+        })
+        return changed ? { ...next, details: { ...next.details, messages } } : next
+      }
+
+      scheduleDisplayProjection(id, details) {
+        const projectDisplay = this.remote?.eleckoiConversations?.projectDisplay
+        if (this.disposed || !id || typeof projectDisplay !== 'function') return
+        const input = this.displayProjectionInput(details.messages || [])
+        const key = `${id}\u0000${JSON.stringify(input)}`
+        if (key === this.displayProjectionKey) return
+        this.displayProjectionKey = key
+        this.displayProjectionResults = null
+        const generation = ++this.displayProjectionGeneration
+        void projectDisplay.call(this.remote.eleckoiConversations, id, input).then((response) => {
+          const results = this.unwrap(response, '生成消息显示内容失败。')
+          if (!Array.isArray(results)) throw new Error('消息显示投影返回的数据格式不正确。')
+          const current = this.detailsSnapshot
+          if (this.disposed || generation !== this.displayProjectionGeneration
+            || current.id !== id || current.status !== 'ready' || !current.details) return
+          this.displayProjectionResults = results
+          const projected = this.applyDisplayProjection(current)
+          if (projected !== current) this.publishDetails(projected)
+        }).catch((error) => {
+          if (generation === this.displayProjectionGeneration) this.displayProjectionKey = ''
+          console.error('ElecKoi 消息显示投影失败：', error)
+        })
       }
 
       publishTimeline(next) {
@@ -112,64 +608,99 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        this.stopEvents = this.bridge.subscribe(event => {
-          if (event?.name === 'records.changed' && event.payload?.module === 'conversations') {
-            const generation = this.generation + 1
-            const selectedId = this.detailsSnapshot.id
-            const timelineId = this.timelineSnapshot.id
-            void this.refresh().then(items => {
-              if (this.disposed || generation !== this.generation) return
-              const available = new Set(items.map(item => item.id))
-              if (selectedId && this.detailsSnapshot.id === selectedId) {
-                if (available.has(selectedId)) void this.refreshDetails().catch(() => {})
-                else this.activate('')
-              }
-              if (timelineId && this.timelineSnapshot.id === timelineId) {
-                if (available.has(timelineId)) void this.refreshTimeline().catch(() => {})
-                else this.closeTimeline(timelineId)
-              }
-            }).catch(() => {})
-          } else if (event?.name === 'messages.changed' && event.payload?.conversationId === this.detailsSnapshot.id) {
-            if (event.payload.reason === 'deleted' || event.payload.reason === 'regenerated' || event.payload.reason === 'edited') {
-              this.invalidateDetails(event.payload.conversationId)
-            } else {
-              void this.refreshDetails().catch(() => {})
-            }
-          } else if (event?.name === 'agent.output.delta') {
-            this.acceptDelta(event.payload)
-          } else if (event?.name === 'agent.process.updated') {
-            this.acceptProcess(event.payload)
-          } else if (event?.name === 'agent.run.finished' || event?.name === 'agent.run.failed') {
-            this.settleStream(event.payload)
-            this.acceptRunTerminal(event.name, event.payload)
-          } else if (event?.name === 'agent.state.changed' && event.payload?.conversationId === this.detailsSnapshot.id
-            && (event.payload.state === 'starting' || event.payload.state === 'streaming')) {
-            void this.refreshStream().catch(() => {})
+        const controller = new AbortController()
+        this.changeFeedAbort = controller
+        const remoteStream = typeof this.remote?.$stream === 'function'
+          ? this.remote.$stream({
+            name: 'ElecKoi conversation changes',
+            open: signal => this.remote.eleckoiConversations.changes(signal),
+            ended: () => new Error('ElecKoi 会话变更流意外结束。')
+          })
+          : this.remote.eleckoiConversations.changes(controller.signal)
+        this.changeFeed = remoteStream
+        void this.consumeChanges(remoteStream)
+        this.stopEvents = () => {
+          controller.abort()
+          if (typeof remoteStream?.dispose === 'function') void remoteStream.dispose()
+        }
+        if (this.regexRules?.subscribe) {
+          this.stopRegexRules = this.regexRules.subscribe((kind, characterId, snapshot) => {
+            const current = this.detailsSnapshot
+            if (kind !== 'configuration' || snapshot?.status !== 'ready'
+              || !current.details || current.details.metadata?.characterId !== characterId) return
+            this.displayProjectionKey = ''
+            this.scheduleDisplayProjection(current.id, current.details)
+          })
+        }
+      }
+
+      async consumeChanges(stream) {
+        try {
+          for await (const item of stream) {
+            if (this.disposed) return
+            const change = item?.value ?? item
+            item?.accept?.()
+            this.handleChange(change)
           }
-        })
-        void this.refresh().catch(() => {})
+        } catch (error) {
+          if (!this.disposed && !this.changeFeedAbort?.signal.aborted) {
+            console.error('ElecKoi 会话变更流失败：', error)
+            void this.refresh().catch(() => {})
+          }
+        }
+      }
+
+      handleChange(change) {
+        if (!change || typeof change !== 'object') return
+        if (change.kind === 'snapshot' || change.kind === 'catalog') {
+          const generation = this.generation + 1
+          const selectedId = this.detailsSnapshot.id
+          const timelineId = this.timelineSnapshot.id
+          void this.refresh().then(items => {
+            if (this.disposed || generation !== this.generation) return
+            const available = new Set(items.map(item => item.id))
+            if (selectedId && this.detailsSnapshot.id === selectedId) {
+              if (available.has(selectedId)) void this.refreshDetails().catch(() => {})
+              else this.activate('')
+            }
+            if (timelineId && this.timelineSnapshot.id === timelineId) {
+              if (available.has(timelineId)) void this.refreshTimeline().catch(() => {})
+              else this.closeTimeline(timelineId)
+            }
+          }).catch(() => {})
+          return
+        }
+        if (change.kind !== 'messages' || change.conversationId !== this.detailsSnapshot.id) return
+        if (change.reason === 'deleted' || change.reason === 'regenerated' || change.reason === 'edited') {
+          this.invalidateDetails(change.conversationId)
+        } else {
+          void this.refreshDetails().catch(() => {})
+        }
       }
 
       restoreConnection() {
         void this.refresh().catch(() => {})
         if (this.detailsSnapshot.id) void this.refreshDetails().catch(() => {})
         if (this.timelineSnapshot.id) void this.refreshTimeline().catch(() => {})
-        if (this.streamState.id) void this.refreshStream().catch(() => {})
+        if (this.detailsSnapshot.id) void this.bindOfficialSession(this.detailsSnapshot.id).catch(() => {})
       }
 
       async refresh() {
         if (this.disposed) throw new Error('ElecKoi 会话目录已关闭。')
         const generation = ++this.generation
         try {
-          const result = await this.bridge.request('query.conversations.list', {})
-          if (!result?.ok) throw new Error(result?.error?.message || '读取会话列表失败。')
-          if (!Array.isArray(result.data) || result.data.some(item => !item || typeof item.id !== 'string')) {
+          const items = this.unwrap(
+            await this.remote.eleckoiConversations.list(),
+            '读取会话列表失败。'
+          )
+          if (!Array.isArray(items) || items.some(item => !item || typeof item.id !== 'string')) {
             throw new Error('会话目录返回的数据格式不正确。')
           }
           if (!this.disposed && generation === this.generation) {
-            this.publish({ status: 'ready', items: result.data, error: '' })
+            this.publish({ status: 'ready', items, error: '' })
+            if (this.detailsSnapshot.id) void this.bindOfficialSession(this.detailsSnapshot.id).catch(() => {})
           }
-          return result.data
+          return items
         } catch (error) {
           if (!this.disposed && generation === this.generation) {
             this.publish({
@@ -182,164 +713,481 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async create(input) {
+        const value = this.unwrap(
+          await this.remote.eleckoiConversations.create(input),
+          '新建聊天失败。'
+        )
+        const conversationId = value?.conversation?.id
+        if (typeof conversationId !== 'string' || !conversationId) throw new Error('新建聊天返回的数据格式不正确。')
+        const details = this.assertDetails(value, conversationId)
+        await Promise.all([this.refresh(), this.sessions.refresh()])
+        return details
+      }
+
+      async delete(conversationId) {
+        if (!conversationId) return
+        if (this.detailsSnapshot.id === conversationId) this.activate('')
+        this.unwrap(
+          await this.remote.eleckoiConversations.delete(conversationId),
+          '删除聊天失败。'
+        )
+        if (this.timelineSnapshot.id === conversationId) this.closeTimeline(conversationId)
+        await Promise.all([this.refresh(), this.sessions.refresh()])
+      }
+
+      async selectOpening(conversationId, openingId) {
+        if (!conversationId || !openingId) throw new Error('请选择要切换的开场白。')
+        const details = this.assertDetails(this.unwrap(
+          await this.remote.eleckoiConversations.selectOpening(conversationId, openingId),
+          '切换开场白失败。'
+        ), conversationId)
+        this.acceptMutationDetails(conversationId, details)
+        await this.refresh()
+        return this.detailsSnapshot.id === conversationId ? this.refreshDetails() : details
+      }
+
+      async updateOpening(conversationId, content) {
+        if (!conversationId) throw new Error('请先打开一个聊天。')
+        const details = this.assertDetails(this.unwrap(
+          await this.remote.eleckoiConversations.updateOpening(conversationId, content),
+          '修改开场白失败。'
+        ), conversationId)
+        this.acceptMutationDetails(conversationId, details)
+        await this.refresh()
+        return this.detailsSnapshot.id === conversationId ? this.refreshDetails() : details
+      }
+
+      async editMessage(conversationId, eventSeq, role, content) {
+        if (!this.sessions || !this.uiConversation) throw new Error('DSH 会话客户端尚未就绪。')
+        await this.mutateSession(conversationId, async () => this.unwrap(
+          await this.remote.eleckoiConversations.editMessage(conversationId, eventSeq, role, content),
+          '修改消息失败。'
+        ))
+        await this.sessions.refresh()
+        await this.bindOfficialSession(conversationId)
+        await this.refreshDetails()
+        return this.detailsSnapshot.details
+      }
+
+      async deleteMessagesFrom(conversationId, eventSeq, role) {
+        if (!this.sessions || !this.uiConversation) throw new Error('DSH 会话客户端尚未就绪。')
+        const result = await this.mutateSession(conversationId, async () => this.unwrap(
+          await this.remote.eleckoiConversations.deleteMessagesFrom(conversationId, eventSeq, role),
+          '删除消息失败。'
+        ))
+        await this.sessions.refresh()
+        await this.bindOfficialSession(conversationId)
+        await this.refreshDetails()
+        await this.refresh()
+        return { ...result, details: this.detailsSnapshot.details }
+      }
+
+      acceptMutationDetails(conversationId, details) {
+        if (this.detailsSnapshot.id !== conversationId) return
+        this.detailGeneration += 1
+        const chat = this.sessionTarget?.getSnapshot()
+        const runtimeSessionId = details.runtimeSessionId || this.detailsSnapshot.runtimeSessionId || ''
+        const hasMore = chat ? Boolean(this.sessionReference.binding.eventSource.getSnapshot().hasMore) : details.hasMore
+        const next = { ...details, runtimeSessionId, hasMore,
+          messages: chat ? officialMessages(chat, { ...details, hasMore }, runtimeSessionId, officialProcess(chat))
+            : details.messages.filter(message => message.id === 'opening') }
+        if (chat) next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
+        this.publishDetails({
+          id: conversationId,
+          status: 'ready',
+          details: next,
+          runtimeSessionId,
+          error: ''
+        })
+      }
+
       activate(id) {
         if (this.disposed) return
         if (id === this.detailsSnapshot.id) return
+        this.releaseOfficialSession()
+        this.publishStats('', null)
         this.detailGeneration += 1
-        this.publishDetails({ id, status: id ? 'loading' : 'idle', details: null, error: '' })
+        const runtimeSessionId = this.runtimeSessionId(id)
+        this.publishDetails({ id, status: id ? 'loading' : 'idle', details: null, runtimeSessionId, error: '' })
         this.streamGeneration += 1
         this.publishStream({ id, status: 'idle', runId: '', requestId: '', messageId: '', sequence: 0, content: '', process: [], error: '' })
-        if (id) void this.refreshStream().catch(() => {})
+        if (id) {
+          void this.bindOfficialSession(id).catch(() => {})
+        }
       }
 
-      async refreshStream() {
-        const id = this.streamState.id
-        if (this.disposed || !id) return null
-        const generation = ++this.streamGeneration
-        const result = await this.bridge.request('query.agent.inspect', { conversationId: id })
-        if (!result?.ok) throw new Error(result?.error?.message || '恢复实时回复失败。')
-        const inspected = result.data
-        if (!inspected || inspected.conversationId !== id || typeof inspected.active !== 'boolean') {
-          throw new Error('实时回复返回的数据格式不正确。')
-        }
-        if (this.disposed || generation !== this.streamGeneration || this.streamState.id !== id) return null
-        const current = this.streamState
-        if (!inspected.active) {
-          this.publishStream({ ...current, status: 'idle' })
-          return null
-        }
-        if (typeof inspected.runId !== 'string' || typeof inspected.requestId !== 'string' || typeof inspected.messageId !== 'string'
-          || typeof inspected.accumulated !== 'string' || !Number.isInteger(inspected.sequence)) {
-          throw new Error('实时回复返回的数据格式不正确。')
-        }
-        if (current.runId === inspected.runId && current.sequence > inspected.sequence) return current
-        const next = {
-          id, status: 'running', runId: inspected.runId, requestId: inspected.requestId, messageId: inspected.messageId,
-          sequence: inspected.sequence, content: inspected.accumulated,
-          process: current.runId === inspected.runId ? current.process : [], error: ''
-        }
-        this.publishStream(next)
-        return next
+      runtimeSessionId(id) {
+        return this.snapshot.items.find(item => item.id === id)?.runtimeSessionId || ''
       }
 
-      acceptDelta(event) {
-        if (this.disposed || !event || event.conversationId !== this.streamState.id || !event.runId) return
-        const current = this.streamState
-        const sameRun = current.runId === event.runId
-        if (sameRun && current.status !== 'running') return
-        const previous = sameRun ? current : {
-          id: event.conversationId, status: 'running', runId: event.runId, requestId: '', messageId: event.messageId,
-          sequence: 0, content: '', process: [], error: ''
-        }
-        if (!sameRun) this.streamGeneration += 1
-        if (!Number.isInteger(event.sequence) || event.sequence <= previous.sequence) return
-        if (event.sequence !== previous.sequence + 1) {
-          this.publishStream(previous, 'animation-frame')
-          void this.refreshStream().catch(() => {})
-          return
-        }
-        this.publishStream({ ...previous, status: 'running', sequence: event.sequence, content: previous.content + event.delta }, 'animation-frame')
+      releaseOfficialSession() {
+        this.displayProjectionGeneration += 1
+        this.displayProjectionKey = ''
+        this.displayProjectionResults = null
+        this.sessionBindingGeneration += 1
+        this.stopSessionTarget()
+        this.stopSessionState()
+        this.stopProjections()
+        this.stopSessionTarget = () => {}
+        this.stopSessionState = () => {}
+        this.stopProjections = () => {}
+        this.sessionTarget = null
+        this.sessionReference?.release()
+        this.sessionReference = null
       }
 
-      acceptProcess(event) {
-        if (this.disposed || !event || event.conversationId !== this.streamState.id || !event.runId) return
-        const current = this.streamState
-        const sameRun = current.runId === event.runId
-        if (sameRun && current.status !== 'running') return
-        if (!sameRun) this.streamGeneration += 1
-        const previous = sameRun ? current : {
-          id: event.conversationId, status: 'running', runId: event.runId, requestId: '', messageId: event.messageId,
-          sequence: 0, content: '', process: [], error: ''
+      async mutateSession(conversationId, operation) {
+        if (this.sessionMutations.has(conversationId)) throw new Error('当前聊天正在修改消息。')
+        await this.bindOfficialSession(conversationId)
+        let finish
+        const settled = new Promise(resolve => { finish = resolve })
+        this.sessionMutations.set(conversationId, settled)
+        this.detailGeneration += 1
+        const reference = this.sessionReference
+        this.sessionReference = null
+        this.releaseOfficialSession()
+        const session = reference?.binding.session
+        let stop = () => {}
+        let timeout
+        const retired = session ? new Promise((resolve, reject) => {
+          const check = () => { if (session.getSnapshot().removed) resolve() }
+          stop = session.subscribe(check)
+          timeout = setTimeout(() => reject(new Error('等待 DSH 会话关闭通知超时。')), 15_000)
+          check()
+        }) : Promise.resolve()
+        void retired.catch(() => {})
+        try {
+          const result = await operation()
+          await retired
+          const runtimeSessionId = reference?.sessionId || this.runtimeSessionId(conversationId)
+          if (runtimeSessionId) await this.sessions.reloadHistory(runtimeSessionId)
+          return result
+        } catch (error) {
+          // A rejected preflight may keep the writer; a reverted edit replaces it.
+          // In either case discard the retired generation before the next action.
+          const runtimeSessionId = reference?.sessionId || this.runtimeSessionId(conversationId)
+          if (runtimeSessionId) await this.sessions.reloadHistory(runtimeSessionId).catch(() => {})
+          throw error
+        } finally {
+          clearTimeout(timeout)
+          stop()
+          reference?.release()
+          this.detailGeneration += 1
+          this.sessionMutations.delete(conversationId)
+          finish()
         }
-        const process = [...previous.process]
-        if (event.item?.id) {
-          const index = process.findIndex(item => item.id === event.item.id)
-          if (index < 0) process.push(event.item)
-          else process[index] = event.item
-        }
-        this.publishStream({ ...previous, status: 'running', process }, 'animation-frame')
-        if (!sameRun) void this.refreshStream().catch(() => {})
       }
 
-      settleStream(event) {
-        if (this.disposed || !event || event.conversationId !== this.streamState.id) return
+      async bindOfficialSession(id, runtimeSessionIdHint = '') {
+        // A rewind closes the Host writer. Catalog and change-feed refreshes
+        // must not materialize the next Client generation until it has finished.
+        const mutation = this.sessionMutations.get(id)
+        if (mutation) await mutation
+        if (this.disposed || !id || id !== this.detailsSnapshot.id) return
+        const runtimeSessionId = runtimeSessionIdHint || this.runtimeSessionId(id) || this.detailsSnapshot.runtimeSessionId || ''
+        if (!runtimeSessionId) return
+        if (this.sessionReference?.sessionId === runtimeSessionId && this.sessionTarget) return
+        let reference = this.sessionReference?.sessionId === runtimeSessionId ? this.sessionReference : null
+        if (!reference) this.releaseOfficialSession()
+        const generation = this.sessionBindingGeneration
+        if (!reference) {
+          if (!this.sessions.list.getSnapshot().byId[runtimeSessionId]) await this.sessions.refresh()
+          if (this.disposed || generation !== this.sessionBindingGeneration || id !== this.detailsSnapshot.id) return
+          reference = this.sessions.retain(runtimeSessionId, { source: 'mainView' })
+          this.sessionReference = reference
+        }
+        try {
+          const binding = await reference.ready
+          if (this.disposed || generation !== this.sessionBindingGeneration || id !== this.detailsSnapshot.id) {
+            reference.release()
+            return
+          }
+          if (this.sessionTarget) return
+          const target = this.uiConversation.binding(binding).target('chat')
+          this.sessionTarget = target
+          const publish = () => this.acceptOfficialSession(id, runtimeSessionId, binding.session, target)
+          this.stopSessionTarget = target.subscribe(publish)
+          this.stopSessionState = binding.session.subscribe(publish)
+          const projections = ['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown', 'eleckoiHistoryStatsAdjustment']
+            .map(key => [key, binding.session.projections?.faceOf(key)])
+          const publishProjections = () => {
+            if (this.disposed || generation !== this.sessionBindingGeneration || id !== this.detailsSnapshot.id) return
+            const stats = Object.fromEntries(projections.map(([key, face]) => [key, face?.getSnapshot()]))
+            const adjustment = stats.eleckoiHistoryStatsAdjustment
+            delete stats.eleckoiHistoryStatsAdjustment
+            if (adjustment && stats.sessionStats) stats.sessionStats = {
+              ...stats.sessionStats,
+              steps: Math.max(0, stats.sessionStats.steps - (Number(adjustment.steps) || 0)),
+              turns: Math.max(0, stats.sessionStats.turns - (Number(adjustment.turns) || 0))
+            }
+            this.publishStats(id, stats)
+          }
+          const stops = projections.map(([, face]) => face?.subscribe(publishProjections)).filter(Boolean)
+          this.stopProjections = () => { for (const stop of stops) stop() }
+          publishProjections()
+          publish()
+        } catch (error) {
+          if (this.sessionReference === reference) this.sessionReference = null
+          reference.release()
+          throw error
+        }
+      }
+
+      acceptOfficialSession(id, runtimeSessionId, session, target) {
+        if (this.disposed || id !== this.detailsSnapshot.id) return
+        const sessionState = session.getSnapshot()
+        const chat = target.getSnapshot()
+        const details = this.detailsSnapshot.details
+        const processByTurn = officialProcess(chat)
+        if (details) {
+          const hasMore = Boolean(this.sessionReference?.binding.eventSource.getSnapshot().hasMore)
+          const next = {
+            ...details, runtimeSessionId,
+            messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn),
+            hasMore,
+          }
+          next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
+          this.publishDetails({ id, status: 'ready', details: next, runtimeSessionId, error: '' })
+        }
+        const runningAssistant = orderedChatNodes(chat)
+          .findLast(node => node.kind === 'assistant-step' && node.data?.status === 'running')
         const current = this.streamState
-        if (current.runId && current.runId !== event.runId) return
-        this.streamGeneration += 1
-        this.publishStream({
-          ...current, runId: event.runId || current.runId,
-          status: event.code ? 'error' : 'idle',
-          error: event.code ? event.message || '生成失败。' : ''
-        })
-        if (this.detailsSnapshot.id === event.conversationId) void this.refreshDetails().catch(() => {})
-        if (this.timelineSnapshot.id === event.conversationId) void this.refreshTimeline().catch(() => {})
+        const openTurn = runningAssistant?.data?.turn
+          ?? [...(chat?.timeline?.turns?.values?.() || [])].findLast(turn => turn.status === 'open')?.turn
+          ?? current.dshTurn
+        const sameLiveTurn = current.id === id && current.status === 'running' && current.dshTurn === openTurn
+        const projectedReply = liveFinalReply(assistantText(runningAssistant?.data?.blocks))
+        const content = projectedReply.started ? projectedReply.content
+          : !runningAssistant && sameLiveTurn ? current.content : ''
+        const promptError = sessionState.promptError?.op === 'send'
+          ? sessionState.promptError.error?.message || '生成失败。'
+          : ''
+        const executionError = promptError || sessionState.lastAgentError || sessionState.openError?.message
+          || (sessionState.removed ? 'DSH 会话已关闭。' : '')
+        const turnSettled = sameLiveTurn && Number.isSafeInteger(current.dshTurn)
+          && orderedChatNodes(chat).some(node => node.kind === 'turn-tail' && node.data?.turn === current.dshTurn)
+        if (executionError) {
+          this.publishStream({ ...current, id, runId: runtimeSessionId, status: 'error', error: executionError })
+        } else if (turnSettled) {
+          this.publishStream({ ...current, status: 'idle', error: '' })
+        } else if (sessionState.running) {
+          const message = details?.messages?.findLast(item => item.role === 'assistant'
+            && item.status === 'streaming' && item.dshTurn === openTurn)
+          const process = mergedProcess(message?.process || (sameLiveTurn ? current.process : []), processByTurn.get(openTurn))
+          // Activity creates the live row before final text. The body boundary
+          // controls only its content, not the visibility of reasoning and tools.
+          const hasLiveMessage = projectedReply.started || process.length > 0 || (sameLiveTurn && Boolean(current.messageId))
+          this.publishStream({
+            id, status: 'running', runId: runtimeSessionId, requestId: '',
+            messageId: hasLiveMessage ? message?.id || (sameLiveTurn ? current.messageId : '') || `dsh-live-${runtimeSessionId}` : '',
+            renderKey: `dsh-reply-${runtimeSessionId}-${openTurn}`,
+            dshTurn: openTurn,
+            sequence: current.id === id ? current.sequence + 1 : 1,
+            content, process, error: ''
+          })
+        } else if (!sessionState.running && current.id === id && current.status === 'running') {
+          this.publishStream({ ...current, status: 'idle', error: '' })
+        }
       }
 
       async cancelStream(expectedRunId) {
-        let current = this.streamState
+        const current = this.streamState
         if (this.disposed || current.status !== 'running' || !current.runId || current.runId !== expectedRunId) return false
-        if (!current.requestId) {
-          await this.refreshStream()
-          current = this.streamState
-          if (current.status !== 'running' || current.runId !== expectedRunId || !current.requestId) return false
-        }
-        const result = await this.bridge.request('command.agent.cancel', {
-          conversationId: current.id, requestId: current.requestId, runId: current.runId
-        })
+        const session = this.sessionReference?.binding.session
+        if (!session) return false
+        const result = await session.cancel()
         if (!result?.ok) throw new Error(result?.error?.message || '停止生成失败。')
-        return Boolean(result.data?.cancelled)
+        return true
       }
 
-      acceptRunTerminal(name, event) {
-        const pending = this.pendingRun
-        if (!pending || !event || pending.conversationId !== event.conversationId) return
-        if (!pending.runId) {
-          pending.queued.push({ name, event })
-          return
+      async send(input) {
+        if (this.disposed || !input?.conversationId || !input.requestId) throw new Error('无法开始这次回复。')
+        if (!this.sessions || !this.uiConversation || !this.remote?.session) {
+          throw new Error('DSH 会话客户端尚未就绪。')
         }
-        if (pending.runId === event.runId) pending.resolve({ name, event })
+        return this.runRequest(input, request => this.runOfficialPrompt(input, request))
       }
 
-      async run(command, input) {
-        if (this.disposed || this.pendingRun || !input?.conversationId || !input.requestId
-          || (command !== 'command.agent.start' && command !== 'command.agent.regenerate')) {
-          throw new Error('无法开始这次回复。')
+      async regenerate(input) {
+        if (this.disposed || !input?.conversationId || !input.requestId) throw new Error('无法重新生成这次回复。')
+        if (!this.sessions || !this.uiConversation || !this.remote?.session) {
+          throw new Error('DSH 会话客户端尚未就绪。')
         }
-        let resolveTerminal
-        const terminal = new Promise(resolve => { resolveTerminal = resolve })
-        const pending = { conversationId: input.conversationId, runId: '', queued: [], resolve: resolveTerminal }
-        this.pendingRun = pending
+        return this.runRequest(input, request => this.runOfficialRegeneration(input, request))
+      }
+
+      async runRequest(input, run) {
+        if (this.activeRequests.has(input.conversationId)) throw new Error('当前聊天正在生成。')
+        const request = { requestId: input.requestId, cancelled: false, session: null }
+        this.activeRequests.set(input.conversationId, request)
+        this.publishStream({
+          id: input.conversationId, status: 'idle', runId: '', requestId: input.requestId,
+          messageId: '', sequence: 0, content: '', process: [], error: ''
+        })
         try {
-          const result = await this.bridge.request(command, input)
-          if (!result?.ok) throw new Error(result?.error?.message || '生成请求失败。')
-          if (!result.data?.accepted || typeof result.data.runId !== 'string') {
-            throw new Error('生成请求返回的数据格式不正确。')
+          return await run(request)
+        } catch (error) {
+          if (this.streamState.id === input.conversationId) {
+            this.publishStream({ ...this.streamState, status: 'error', error: error.message || String(error) })
           }
-          if (this.disposed) throw new Error('会话客户端已关闭。')
-          pending.runId = result.data.runId
-          const queued = pending.queued.find(item => item.event.runId === pending.runId)
-          if (queued) pending.resolve(queued)
-          const settled = await terminal
-          if (settled.name === 'disposed') throw new Error('会话客户端已关闭。')
-          if (settled.name === 'agent.run.failed') throw new Error(settled.event.message || '生成失败。')
-          const details = this.detailsSnapshot.id === input.conversationId
-            ? await this.refreshDetails()
-            : await this.bridge.request('query.conversations.details', { conversationId: input.conversationId })
-          const value = details?.ok === true ? details.data : details
-          return {
-            details: this.assertDetails(value, input.conversationId),
-            cancelled: settled.event.message?.status === 'cancelled'
-          }
+          throw error
         } finally {
-          if (this.pendingRun === pending) this.pendingRun = null
+          if (this.activeRequests.get(input.conversationId) === request) this.activeRequests.delete(input.conversationId)
+          if (request.statsPending && this.detailsSnapshot.id === input.conversationId
+            && this.latestStatsSnapshot.id === input.conversationId) {
+            this.publishStats(input.conversationId, this.latestStatsSnapshot.stats)
+          }
+        }
+      }
+
+      async runOfficialPrompt(input, request) {
+        const conversationId = input.conversationId
+        const runtimeSessionId = this.runtimeSessionId(conversationId) || this.detailsSnapshot.runtimeSessionId
+        if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
+        await this.unwrap(
+          await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || ''),
+          '准备 DSH 会话失败。'
+        )
+        if (!this.sessionReference || this.sessionReference.sessionId !== runtimeSessionId) {
+          await this.bindOfficialSession(conversationId)
+        }
+        const session = this.sessionReference?.binding.session
+        if (!session) throw new Error('当前聊天的 DSH Session 尚未连接。')
+        request.session = session
+        if (request.cancelled || input.signal?.aborted) {
+          return { details: await this.refreshDetails(), cancelled: true }
+        }
+        const content = []
+        if (typeof input.text === 'string' && input.text.length > 0) content.push({ type: 'text', text: input.text })
+        for (const image of Array.isArray(input.images) ? input.images : []) {
+          if (!image?.data || !image?.mediaType) continue
+          content.push({ type: 'image', data: image.data, mediaType: image.mediaType, ...(image.name ? { name: image.name } : {}) })
+        }
+        for (const file of Array.isArray(input.files) ? input.files : []) {
+          if (typeof file !== 'string' || !file) continue
+          content.push({ type: 'file', receiptId: file })
+        }
+        const accepted = await session.prompt(content, 'queue', input.signal, input.requestId)
+        if (!accepted?.ok) throw new Error(accepted?.error?.message || '生成请求失败。')
+        if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
+        const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
+        const details = this.detailsSnapshot.id === conversationId
+          ? await this.refreshDetails()
+          : this.unwrap(await this.remote.eleckoiConversations.details(conversationId, undefined, undefined), '读取会话详情失败。')
+        return {
+          details: this.assertDetails(details, conversationId),
+          cancelled: completed.cancelled || request.cancelled
+        }
+      }
+
+      async prepareNativeInput({ sessionId, text, signal }) {
+        if (signal?.aborted) {
+          const error = new Error('生成请求已取消。')
+          error.name = 'AbortError'
+          throw error
+        }
+        const conversationId = this.detailsSnapshot.id
+        if (!conversationId || this.runtimeSessionId(conversationId) !== sessionId) return
+        await this.unwrap(
+          await this.remote.eleckoiConversations.preparePrompt(conversationId, text || ''),
+          '准备 DSH 会话失败。'
+        )
+      }
+
+      async uploadFile(conversationId, file, options = {}) {
+        if (this.disposed) throw new Error('ElecKoi 会话目录已关闭。')
+        if (!conversationId) throw new Error('请先打开一个聊天。')
+        if (!file || typeof file.name !== 'string') throw new Error('请选择有效文件。')
+        if (!this.fileUpload) throw new Error('DSH 文件上传服务尚未就绪。')
+        if (this.detailsSnapshot.id !== conversationId) await this.open(conversationId)
+        const runtimeSessionId = this.runtimeSessionId(conversationId)
+          || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.runtimeSessionId : '')
+          || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.details?.runtimeSessionId : '')
+        if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
+        const uploaded = this.unwrap(
+          await this.fileUpload.upload(
+            runtimeSessionId,
+            file,
+            file.name,
+            options.signal,
+            options.onProgress
+          ),
+          '文件上传失败。'
+        )
+        if (!uploaded || typeof uploaded.receiptId !== 'string'
+          || !uploaded.file || typeof uploaded.file.attachmentId !== 'string') {
+          throw new Error('DSH 文件上传服务返回的数据格式不正确。')
+        }
+        return {
+          id: uploaded.receiptId,
+          receiptId: uploaded.receiptId,
+          attachmentId: uploaded.file.attachmentId,
+          name: typeof uploaded.file.name === 'string' && uploaded.file.name ? uploaded.file.name : file.name,
+          bytes: Number.isSafeInteger(uploaded.file.bytes) ? uploaded.file.bytes : file.size
+        }
+      }
+
+      async runOfficialRegeneration(input, request) {
+        if (!Number.isSafeInteger(input.eventSeq)) throw new Error('找不到这条输入对应的 DSH 消息。')
+        request.statsPending = this.statsSnapshot.id === input.conversationId && Boolean(this.statsSnapshot.stats)
+        request.rewindEventSeq = input.eventSeq
+        request.replacementMessage = input.replacementMessage
+        this.detailGeneration += 1
+        this.displayProjectionGeneration += 1
+        this.displayProjectionKey = ''
+        if (this.detailsSnapshot.id === input.conversationId) this.publishDetails(this.detailsSnapshot)
+        let prepared
+        try {
+          prepared = await this.mutateSession(input.conversationId, async () => this.unwrap(
+            await this.remote.eleckoiConversations.regenerateMessage(
+              input.conversationId,
+              input.eventSeq,
+              input.requestId,
+              input.replacementMessage == null ? undefined : input.replacementMessage
+            ),
+            '重新生成失败。'
+          ))
+        } catch (error) {
+          request.rewindEventSeq = undefined
+          await (async () => {
+            await this.sessions.refresh()
+            await this.bindOfficialSession(input.conversationId)
+            await this.refreshDetails()
+          })().catch(() => {})
+          throw error
+        } finally {
+          request.rewindEventSeq = undefined
+        }
+        await this.sessions.refresh()
+        await this.bindOfficialSession(input.conversationId)
+        request.statsBaselineSteps = this.latestStatsSnapshot.stats?.sessionStats?.steps ?? 0
+        const session = this.sessionReference?.binding.session
+        if (!session || prepared.prepared !== true) throw new Error('重新生成请求未完成 DSH Session 回退。')
+        request.session = session
+        const cancelled = request.cancelled || input.signal?.aborted === true
+        const accepted = this.unwrap(
+          await this.remote.eleckoiConversations.startRegeneration(input.conversationId, input.requestId, cancelled),
+          '重新生成请求失败。'
+        )
+        if (cancelled) return { details: await this.refreshDetails(), cancelled: true }
+        if (accepted.accepted !== true) throw new Error('重新生成请求未被 DSH Session 接受。')
+        if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
+        const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
+        const details = await this.refreshDetails()
+        return {
+          details: this.assertDetails(details, input.conversationId),
+          cancelled: completed.cancelled || request.cancelled
         }
       }
 
       async cancelRequest(conversationId, requestId) {
         if (this.disposed || !conversationId || !requestId) return false
-        const result = await this.bridge.request('command.agent.cancel', { conversationId, requestId })
-        if (!result?.ok) throw new Error(result?.error?.message || '停止生成失败。')
-        return Boolean(result.data?.cancelled)
+        const request = this.activeRequests.get(conversationId)
+        if (!request || request.requestId !== requestId) return false
+        request.cancelled = true
+        if (request.session) this.unwrap(await request.session.cancel(), '停止生成失败。')
+        return true
       }
 
       invalidateDetails(id) {
@@ -380,17 +1228,35 @@ window.__ModuleLoader__.load({
         if (this.disposed || !id) throw new Error('ElecKoi 当前会话不可用。')
         const generation = ++this.detailGeneration
         try {
-          const result = await this.bridge.request('query.conversations.details', { conversationId: id })
-          if (!result?.ok) throw new Error(result?.error?.message || '读取会话详情失败。')
-          const details = this.assertDetails(result.data, id)
-          if (!this.disposed && generation === this.detailGeneration && this.detailsSnapshot.id === id) {
+          const details = this.assertDetails(this.unwrap(
+            await this.remote.eleckoiConversations.details(id, undefined, undefined),
+            '读取会话详情失败。'
+          ), id)
+          const runtimeSessionId = details.runtimeSessionId || this.runtimeSessionId(id)
+          if (runtimeSessionId && this.sessions && this.uiConversation) {
+            await this.bindOfficialSession(id, runtimeSessionId)
+          }
+          if (this.disposed || this.detailsSnapshot.id !== id) return null
+          const chat = this.sessionTarget?.getSnapshot()
+          if (runtimeSessionId && this.sessions && this.uiConversation && !chat) {
+            throw new Error('DSH 聊天正文尚未加载。')
+          }
+          const hasMore = chat ? Boolean(this.sessionReference.binding.eventSource.getSnapshot().hasMore) : details.hasMore
+          const projected = chat
+            ? { ...details, runtimeSessionId, hasMore,
+              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, officialProcess(chat)) }
+            : details
+          if (chat) projected.beforeSequence = projected.messages.find(message => message.id !== 'opening')?.sequence ?? null
+          if (generation === this.detailGeneration) {
             this.publishDetails({
               id, status: 'ready',
-              details: this.mergeTail(this.detailsSnapshot.details, details),
+              details: chat ? projected : this.mergeTail(this.detailsSnapshot.details, projected),
+              runtimeSessionId,
               error: ''
             })
+            return this.detailsSnapshot.details
           }
-          return details
+          return projected
         } catch (error) {
           if (!this.disposed && generation === this.detailGeneration && this.detailsSnapshot.id === id) {
             this.publishDetails({
@@ -415,11 +1281,16 @@ window.__ModuleLoader__.load({
         const beforeSequence = current.details?.beforeSequence
         if (this.disposed || !id || id !== expectedId || beforeSequence !== expectedBeforeSequence
           || !current.details?.hasMore || !Number.isInteger(beforeSequence)) return null
-        const result = await this.bridge.request('query.conversations.messages', {
-          conversationId: id, beforeSequence, limit: 50
-        })
-        if (!result?.ok) throw new Error(result?.error?.message || '读取更早消息失败。')
-        const page = result.data
+        const session = this.sessionReference?.binding.session
+        const bindingGeneration = this.sessionBindingGeneration
+        const metadataSequence = current.details.messages.reduce((first, message) =>
+          Number.isInteger(message.productSequence) ? Math.min(first, message.productSequence) : first,
+        Number.POSITIVE_INFINITY)
+        const [, result] = await Promise.all([
+          session?.loadOlder(),
+          this.remote.eleckoiConversations.details(id, Number.isFinite(metadataSequence) ? metadataSequence : beforeSequence, 50)
+        ])
+        const page = this.unwrap(result, '读取更早消息失败。')
         if (!page || !Array.isArray(page.messages)
           || page.messages.some(message => !message || typeof message.id !== 'string')
           || typeof page.hasMore !== 'boolean'
@@ -427,7 +1298,18 @@ window.__ModuleLoader__.load({
           throw new Error('更早消息返回的数据格式不正确。')
         }
         const latest = this.detailsSnapshot
-        if (this.disposed || latest.id !== id || latest.details?.beforeSequence !== beforeSequence) return null
+        if (this.disposed || latest.id !== id || bindingGeneration !== this.sessionBindingGeneration
+          || (!session && latest.details?.beforeSequence !== beforeSequence)) return null
+        const chat = this.sessionTarget?.getSnapshot()
+        if (chat) {
+          const metadata = { ...latest.details, messages: [...page.messages, ...latest.details.messages] }
+          const hasMore = Boolean(this.sessionReference.binding.eventSource.getSnapshot().hasMore)
+          const messages = officialMessages(chat, { ...metadata, hasMore }, latest.runtimeSessionId, officialProcess(chat))
+          const next = { ...latest.details, messages, hasMore,
+            beforeSequence: messages.find(message => message.id !== 'opening')?.sequence ?? null }
+          this.publishDetails({ ...latest, status: 'ready', error: '', details: next })
+          return { ...page, messages, hasMore, beforeSequence: next.beforeSequence, replace: true }
+        }
         const existingIds = new Set(latest.details.messages.map(message => message.id))
         const older = page.messages.filter(message => !existingIds.has(message.id))
         this.publishDetails({
@@ -447,9 +1329,10 @@ window.__ModuleLoader__.load({
         if (this.disposed || !id) throw new Error('ElecKoi 当前变量时间线不可用。')
         const generation = ++this.timelineGeneration
         try {
-          const result = await this.bridge.request('query.conversations.variable_timeline', { conversationId: id })
-          if (!result?.ok) throw new Error(result?.error?.message || '读取变量时间线失败。')
-          const timeline = result.data
+          const timeline = this.unwrap(
+            await this.remote.eleckoiConversations.variableTimeline(id),
+            '读取变量时间线失败。'
+          )
           if (!timeline || !Array.isArray(timeline.floors)
             || timeline.floors.some(floor => !floor || typeof floor.id !== 'string')) {
             throw new Error('变量时间线返回的数据格式不正确。')
@@ -488,22 +1371,26 @@ window.__ModuleLoader__.load({
       dispose() {
         if (this.disposed) return
         this.disposed = true
-        this.pendingRun?.resolve({ name: 'disposed' })
-        this.pendingRun = null
         this.generation += 1
         this.detailGeneration += 1
         this.timelineGeneration += 1
+        this.releaseOfficialSession()
+        this.publishStats('', null)
         this.cancelStreamFrame()
         this.stopEvents()
+        this.stopRegexRules()
+        this.changeFeed = null
+        this.changeFeedAbort = null
         this.listeners.clear()
         this.detailsListeners.clear()
         this.timelineListeners.clear()
         this.streamListeners.clear()
+        this.statsListeners.clear()
       }
     }
 
     function apply(ctx) {
-      const catalog = new ConversationCatalog(window.eleckoi)
+      const catalog = new ConversationCatalog(ctx.remote, ctx.sessions, ctx.uiConversation, ctx.fileUpload, ctx.eleckoiRegexRules)
       ctx.provide('eleckoiConversations', catalog)
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'messages', registrant: '@eleckoi/dsh-client-conversations' },
         () => React.createElement(MessagesPage)))
@@ -522,6 +1409,6 @@ window.__ModuleLoader__.load({
       }, 'eleckoi: conversation catalog')
     }
 
-    return { inject: ['slots'], apply }
+    return { inject: ['slots', 'sessions', 'uiConversation', 'fileUpload', 'eleckoiRegexRules', 'remote', 'remote.settings', 'remote.session', 'remote.eleckoiConversationModels', 'remote.eleckoiConversations'], apply }
   }
 })

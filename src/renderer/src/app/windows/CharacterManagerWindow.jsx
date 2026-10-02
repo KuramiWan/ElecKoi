@@ -2,10 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
 import {
   CharacterManager,
-  commitCharacterImports,
-  deleteCharacters,
-  exportCharacterFiles,
-  saveCharacterGroups,
 } from "../../modules/persona/index.js";
 import { showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
@@ -66,22 +62,19 @@ export function CharacterManagerWindow({ characterCatalog, personaModel, renderC
   }, [characterCatalog, personaModel, refresh]);
 
   async function persistGroups(groups, assignments = []) {
-    const saved = await saveCharacterGroups(groups, assignments);
-    characterCatalog.adopt(saved);
+    const saved = await characterCatalog.saveGroups(groups, assignments);
     setCharacters(normalizeCharacters(saved));
     return saved;
   }
 
   async function removeCharacters(characterIds) {
-    const saved = await deleteCharacters(characterIds);
-    characterCatalog.adopt(saved);
+    const saved = await characterCatalog.delete(characterIds);
     setCharacters(normalizeCharacters(saved));
     return saved;
   }
 
   async function importCharacters(token) {
-    const result = await commitCharacterImports(token);
-    characterCatalog.adopt(result.collection);
+    const result = await characterCatalog.commitImport(token);
     setCharacters(normalizeCharacters(result.collection));
     return result;
   }
@@ -93,7 +86,9 @@ export function CharacterManagerWindow({ characterCatalog, personaModel, renderC
     onSaveGroups: persistGroups,
     onDeleteCharacters: removeCharacters,
     onImportCharacters: importCharacters,
-    onExportCharacters: exportCharacterFiles,
+    onPrepareImports: (source, files) => characterCatalog.prepareImport(source, files),
+    onDiscardImports: (token) => characterCatalog.discardImport(token),
+    onExportCharacters: (ids, format) => characterCatalog.exportCharacters(ids, format),
   };
   const managerFallback = <CharacterManager
     characters={characters}
@@ -101,7 +96,9 @@ export function CharacterManagerWindow({ characterCatalog, personaModel, renderC
     onSaveGroups={persistGroups}
     onDeleteCharacters={removeCharacters}
     onImportCharacters={importCharacters}
-    onExportCharacters={exportCharacterFiles}
+    onPrepareImports={(source, files) => characterCatalog.prepareImport(source, files)}
+    onDiscardImports={(token) => characterCatalog.discardImport(token)}
+    onExportCharacters={(ids, format) => characterCatalog.exportCharacters(ids, format)}
   />;
 
   return (

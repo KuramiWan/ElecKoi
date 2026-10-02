@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
 import {
   downloadPresetFile,
-  exportPreset,
   fileBase64,
-  importPreset,
   PresetImportDialog,
   PresetManager,
 } from "../../modules/presets/index.js";
@@ -85,7 +83,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
     setImporting(true);
     setImportError("");
     try {
-      const result = await importPreset(importSourceRef.current, {
+      const result = await presetCatalog.import(importSourceRef.current, {
         displayName: file.name,
         mimeType: file.type,
         base64: await fileBase64(file),
@@ -102,7 +100,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   async function downloadPreset(format) {
     if (!selectedPresetId) return;
     setImportError("");
-    downloadPresetFile(await exportPreset(selectedPresetId, format));
+    downloadPresetFile(await presetCatalog.export(selectedPresetId, format));
   }
 
   const managerOwner = {
@@ -118,6 +116,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
     onExport: downloadPreset,
   };
   const managerFallback = catalog ? <PresetManager
+    catalogModel={presetCatalog}
     catalog={catalog}
     selectedGroup={selectedGroup}
     selectedPresetId={selectedPresetId}

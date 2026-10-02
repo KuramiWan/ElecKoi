@@ -196,12 +196,16 @@ export function rulesForSurface(
       : scope === 'Character'
         ? activeVersion?.characterEnabledIds
         : undefined
-    return collection[scopeKeys[scope]].filter((rule) => (
-      rule.enabled
-      && rule.targets.includes(target)
-      && ruleAppliesToSurface(rule, surface, target)
-      && (allowedIds === undefined || allowedIds.includes(rule.id))
-    ))
+    return collection[scopeKeys[scope]]
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) => (
+        rule.enabled
+        && rule.targets.includes(target)
+        && ruleAppliesToSurface(rule, surface, target)
+        && (allowedIds === undefined || allowedIds.includes(rule.id))
+      ))
+      .sort((left, right) => left.rule.order - right.rule.order || left.index - right.index)
+      .map(({ rule }) => rule)
   })
 }
 

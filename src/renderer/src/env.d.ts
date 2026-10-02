@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
 
-import type { DesktopBridge } from '../../shared/contracts/desktopBridge'
+import type { DshDesktopProductApi } from '../../shared/contracts/desktopShell'
 
 declare global {
   interface Window {
-    eleckoi: DesktopBridge
+    dshDesktop: DshDesktopProductApi
   }
 }
 

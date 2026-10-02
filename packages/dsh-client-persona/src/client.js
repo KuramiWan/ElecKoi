@@ -2,13 +2,13 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-persona',
   factory() {
     class PersonaProfile {
-      constructor(bridge) {
-        this.bridge = bridge
+      constructor(remote) {
+        this.remote = remote
         this.snapshot = { status: 'loading', profile: null, error: '' }
         this.listeners = new Set()
         this.generation = 0
         this.disposed = false
-        this.stopEvents = () => {}
+        this.changeAbort = null
       }
 
       getSnapshot = () => this.snapshot
@@ -24,11 +24,25 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        this.stopEvents = this.bridge.subscribe(event => {
-          if (event?.name !== 'records.changed' || event.payload?.module !== 'personas') return
-          void this.refresh().catch(() => {})
-        })
         void this.refresh().catch(() => {})
+        this.changeAbort = new AbortController()
+        void this.consumeChanges(this.changeAbort.signal)
+      }
+
+      async consumeChanges(signal) {
+        try {
+          const stream = this.remote.eleckoiPersona.changes.$stream
+            ? await this.remote.eleckoiPersona.changes.$stream(signal)
+            : this.remote.eleckoiPersona.changes(signal)
+          for await (const change of stream) {
+            if (signal.aborted || this.disposed) break
+            if (change?.kind === 'snapshot' || change?.domain === 'persona') {
+              await this.refresh().catch(() => {})
+            }
+          }
+        } catch (error) {
+          if (!signal.aborted && !this.disposed) console.error('用户资料变更流已中断。', error)
+        }
       }
 
       assertProfile(value) {
@@ -51,9 +65,9 @@ window.__ModuleLoader__.load({
         if (this.disposed) throw new Error('ElecKoi 用户资料已关闭。')
         const generation = ++this.generation
         try {
-          const result = await this.bridge.request('query.persona.read', {})
+          const result = await this.remote.eleckoiPersona.read()
           if (!result?.ok) throw new Error(result?.error?.message || '读取用户资料失败。')
-          const profile = this.assertProfile(result.data)
+          const profile = this.assertProfile(result.value)
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', profile, error: '' })
           }
@@ -70,17 +84,27 @@ window.__ModuleLoader__.load({
         }
       }
 
+      async save(profile) {
+        if (this.disposed) throw new Error('ElecKoi 用户资料已关闭。')
+        const result = await this.remote.eleckoiPersona.save(this.assertProfile(profile))
+        if (!result?.ok) throw new Error(result?.error?.message || '保存用户资料失败。')
+        const saved = this.assertProfile(result.value)
+        this.adopt(saved)
+        return saved
+      }
+
       dispose() {
         if (this.disposed) return
         this.disposed = true
         this.generation += 1
-        this.stopEvents()
+        this.changeAbort?.abort()
+        this.changeAbort = null
         this.listeners.clear()
       }
     }
 
     function apply(ctx) {
-      const profile = new PersonaProfile(window.eleckoi)
+      const profile = new PersonaProfile(ctx.remote)
       ctx.provide('eleckoiPersona', profile)
       ctx.effect(() => {
         profile.start()
@@ -92,6 +116,6 @@ window.__ModuleLoader__.load({
       }, 'eleckoi: user profile')
     }
 
-    return { apply }
+    return { inject: ['remote', 'remote.eleckoiPersona'], apply }
   }
 })

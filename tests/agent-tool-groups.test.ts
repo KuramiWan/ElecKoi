@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AGENT_TOOL_GROUPS } from '../src/main/modules/agentTools'
+import { AGENT_TOOL_GROUPS } from '../packages/dsh-product-data/src/domain/agentTools'
 
 describe('desktop Agent tool catalog', () => {
   it('lists only the current DSH workflow and collaboration tools', () => {

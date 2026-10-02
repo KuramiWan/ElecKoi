@@ -1,0 +1,22 @@
+diff --git a/lib/index.js b/lib/index.js
+index a42f2a21c904e5d49b39f46ddc35921b5eaabd17..7cdad88c27ca25727a6ed66241d00f8b74ed1e17 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -3524,4 +3524,4 @@ var JsonlSessionPersistence = class extends SessionPersistence {
+ 	}
+ };
+ //#endregion
+-export { JsonlCompressionSchema, JsonlSessionPersistence as default };
++export { JsonlCompressionSchema, JsonlSessionPersistence as default, SessionWriteLease };
+diff --git a/lib/types/index.d.ts b/lib/types/index.d.ts
+index 48f035100d4e58fd605a5c1531566f0fdc3e0a91..973f944327b5d69bf116769ebfc44242a48a44bd 100644
+--- a/lib/types/index.d.ts
++++ b/lib/types/index.d.ts
+@@ -10,6 +10,7 @@ import z from '@deepseek-ai/schemastery';
+ import { SessionPersistence, type SessionAccess, type SessionHandle, type SessionHandleReadResult, type SessionPersistenceCreateOptions, type SessionPersistenceListOptions, type SessionPersistenceOpenOptions, type SessionPersistenceSnapshot, type SessionPersistenceStatOptions, type SessionPersistenceRevision as PersistenceRevision } from '@deepseek-ai/dsh-session-persistence';
+ import { JsonlSessionHandle } from './storage.ts';
+ import { SessionWriteLease } from './lease.ts';
++export { SessionWriteLease } from './lease.ts';
+ import type { SessionEvent, SessionId, SessionHeader, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session';
+ import { type JsonlCompression } from './format.ts';
+ export type { JsonlCompression } from './format.ts';

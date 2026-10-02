@@ -1,1 +1,0 @@
-export { characterTransferPlugin } from './characterTransferPlugin'

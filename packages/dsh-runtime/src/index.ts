@@ -1,54 +1,11 @@
-export { DshRuntime } from './DshRuntime'
 export { DshDesktopPluginHost, resolveDshWebFrontendDirectory } from './desktopPluginHost'
+export { ELECKOI_DESKTOP_BUNDLES, ELECKOI_INSTALL_ANCHOR, registerDesktopBundles } from './desktopPluginBundles'
 export type { DshDesktopPluginHostOptions, DshDesktopPluginHostReady } from './desktopPluginHost'
-export {
-  createDshProviderCatalog,
-  describeDshModelCapabilities,
-  resolveDshProviderBinding
-} from './modelProfiles'
-export { projectDshTrajectory, readDshSessionLog, readDshTrajectory } from './trajectory'
-export { projectDshTranscript, readDshTranscript } from './transcript'
-export { exportDshSession, importDshSessions } from './sessionTransfer'
-export type { DshSessionArchive } from './sessionTransfer'
+export { projectDshTrajectory, readDshSessionLog, readDshTrajectory, removeDshSessionTree } from './trajectory'
 export { rewindDshSession } from './sessionRewind'
 export { editDshSessionMessage } from './sessionMessageEdit'
-export type { DshTranscriptTurn } from './transcript'
-export { DshProcessProjector, DshReplyProjector, finalReplyText } from './notifications'
-export {
-  DshGenerationStatsProjector,
-  emptyStoredGenerationStats,
-  generationStatsFromSessionEvents,
-  parseStoredGenerationStats,
-  regenerationGenerationStats
-} from './generationStats'
-export type {
-  DshRuntimeOptions,
-  DshModelIdentity,
-  DshModelSettings,
-  DshReasoningEffort,
-  DshStreamCallbacks,
-  DshVariableRuntimeContext,
-  DshProcessItem,
-  DshConversationContext,
-  DshConversationHistoryItem,
-  DshSettingLibraryRuntimeContext,
-  DshToolPolicy,
-  DshWebSearchSettings,
-  DshEncodedImageAttachment,
-  DshImageAttachmentRef,
-  DshImageMediaType
-} from './types'
-export type {
-  DshModelCapabilities,
-  DshProviderBinding,
-  DshProviderCatalog
-} from './modelProfiles'
-export type {
-  DshContextBreakdownStats,
-  DshContextPressureStats,
-  DshGenerationStats,
-  DshTokenUsageStats
-} from './generationStats'
+export { repairRequestContextLog, repairRequestContextLogs } from './sessionRequestContextRepair'
+export { recoverSessionHistory } from './sessionHistoryRecovery'
 export type {
   DshSessionEventRecord,
   DshSessionHeader,

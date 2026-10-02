@@ -10,7 +10,11 @@
     "./slots": {
       "types": "./src/slots.d.ts"
     },
-    "./package.json": "./package.json"
+    "./projections": {
+      "types": "./src/projections.d.ts"
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "bundle": {
@@ -18,10 +22,199 @@
     },
     "client": {
       "platform": "web",
-      "inject": ["@deepseek-ai/dsh-client-ui-primitives"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
     }
   },
   "dependencies": {
-    "@deepseek-ai/dsh-llm": "0.2.0-rc.2"
+    "@deepseek-ai/dsh-agent-default-model": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2",
+    "@eleckoi/dsh-product-data": "workspace:*",
+    "yaml": "2.9.0",
+    "zod": "4.1.11",
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2"
+  },
+  "description": "提供角色聊天界面，并将角色配置接入 DSH 对话运行。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoi.roleplay.message.content",
+        "kind": "ui-slot",
+        "title": "消息正文",
+        "description": "包装或替换角色聊天消息正文。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.message.actions",
+        "kind": "ui-slot",
+        "title": "消息操作",
+        "description": "在消息旁增加操作。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.message.after",
+        "kind": "ui-slot",
+        "title": "消息下方",
+        "description": "在消息下方增加内容。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.composer.bar",
+        "kind": "ui-slot",
+        "title": "整体输入框",
+        "description": "替换当前官方输入框，可读取扮演菜单、模型选择器和统计区的装配参数。",
+        "mode": "replace",
+        "scope": "session-maybe",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.composer",
+        "kind": "ui-slot",
+        "title": "输入区临时接管",
+        "description": "按当前会话的审批或计划等状态临时接管输入区，释放后恢复原输入框。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.left",
+        "kind": "ui-slot",
+        "title": "输入框左侧",
+        "description": "在当前官方输入框的左侧工具区追加控件。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.right",
+        "kind": "ui-slot",
+        "title": "输入框右侧",
+        "description": "在当前官方输入框的模型选择器附近追加控件。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.overlay",
+        "kind": "ui-slot",
+        "title": "输入框浮层",
+        "description": "在当前官方输入框内追加浮层。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.dock",
+        "kind": "ui-slot",
+        "title": "输入框上方",
+        "description": "在输入框上方追加内容，并读取当前会话和输入状态。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.attachments",
+        "kind": "ui-slot",
+        "title": "附件展示",
+        "description": "替换原生文件和图片附件的展示，继续使用官方添加、移除和上传重试操作。",
+        "mode": "replace",
+        "scope": "session-maybe",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.permission",
+        "kind": "ui-slot",
+        "title": "权限控件",
+        "description": "替换输入框中的权限控件。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.plan",
+        "kind": "ui-slot",
+        "title": "计划控件",
+        "description": "替换输入框中的计划模式控件。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.model",
+        "kind": "ui-slot",
+        "title": "输入框皮肤模型位",
+        "description": "供输入框皮肤调用的模型控件位置；默认输入框使用 ElecKoi 模型选择器。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.input.activity",
+        "kind": "ui-slot",
+        "title": "输入框活动区",
+        "description": "替换输入框右侧活动区，展开时占用工具栏空间。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.composer.dock",
+        "kind": "ui-slot",
+        "title": "输入框下方",
+        "description": "在输入框下方的产品统计区域追加内容；默认官方统计不重复显示。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.approval.detail",
+        "kind": "ui-slot",
+        "title": "审批详情",
+        "description": "在输入区被审批组件接管时替换审批详情。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.conversation.plan-review.actions",
+        "kind": "ui-slot",
+        "title": "计划审核操作",
+        "description": "在输入区被计划审核组件接管时追加操作。",
+        "mode": "append",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.trajectory.images",
+        "kind": "ui-slot",
+        "title": "轨迹图片预览",
+        "description": "提供轨迹详情中的图片预览。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.trajectory",
+        "kind": "ui-slot",
+        "title": "角色聊天轨迹",
+        "description": "替换角色聊天轨迹视图，并读取正式 Session 轨迹和请求上下文投影。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      }
+    ]
   }
 }

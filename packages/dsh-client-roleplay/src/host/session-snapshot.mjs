@@ -10,6 +10,19 @@ export function readSessionSnapshot(root, sessionId) {
   return value
 }
 
+export function writeSessionSnapshot(root, sessionId, value) {
+  if (!root) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
+  mkdirSync(root, { recursive: true })
+  const path = snapshotPath(root, sessionId)
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
+  try {
+    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+    renameSync(temporary, path)
+  } finally {
+    rmSync(temporary, { force: true })
+  }
+}
+
 export function commitSessionPreset(root, sessionId, mountedPresetId) {
   const snapshot = readSessionSnapshot(root, sessionId)
   const { pendingPresetId: _pending, ...rest } = snapshot
@@ -48,7 +61,7 @@ export function removeSessionSnapshot(root, sessionId) {
   rmSync(snapshotPath(root, sessionId), { force: true })
 }
 
-function snapshotPath(root, sessionId) {
+export function snapshotPath(root, sessionId) {
   if (!root) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
   const safeId = String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 160) || 'default'
   return join(root, `${safeId}.json`)

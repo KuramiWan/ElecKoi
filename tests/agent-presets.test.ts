@@ -2,11 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AgentPresetRepository } from '../src/main/modules/agentPresets'
-import { LocalMediaStore } from '../src/main/platform/filesystem/LocalMediaStore'
-import { readPngText } from '../src/main/platform/filesystem/PngTextChunkCodec'
-import { SqliteDatabase } from '../src/main/platform/sqlite/SqliteDatabase'
-import { requestContracts } from '../src/shared/contracts/gateway/definitions'
+import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
+import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
+import { readPngText } from '@eleckoi/dsh-product-data/media'
+import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
+import { agentPresetSchema } from '../src/shared/contracts/presets/schemas'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []
@@ -42,36 +42,34 @@ describe('agent preset repository', () => {
     const repository = harness()
     repository.ensureInitialized()
     const initial = repository.active()
-    const request = requestContracts['command.agent_presets.save'].input.parse({
-      preset: {
+    const request = {
+      preset: agentPresetSchema.parse({
         ...initial, editorOnly: true,
         profile: { ...initial.profile, editorOnly: true },
         roleplayPlan: { ...initial.roleplayPlan, editorOnly: true },
         entries: initial.entries.map((entry) => ({ ...entry, editorOnly: true }))
-      },
+      }),
       expectedRegexRules: initial.regexRules
-    })
+    }
     expect(request.preset).not.toHaveProperty('editorOnly')
     expect(request.preset.profile).not.toHaveProperty('editorOnly')
     expect(request.preset.roleplayPlan).not.toHaveProperty('editorOnly')
     expect(request.preset.entries[0]).not.toHaveProperty('editorOnly')
     expect(repository.save(request.preset, request.expectedRegexRules).id).toBe(initial.id)
-    expect(requestContracts['command.agent_presets.save'].input.safeParse({
-      preset: { ...initial, name: 123 }, expectedRegexRules: initial.regexRules
-    }).success).toBe(false)
+    expect(agentPresetSchema.safeParse({ ...initial, name: 123 }).success).toBe(false)
   })
 
   it('removes unfinished empty roleplay tasks before the save command reaches the repository', () => {
     const repository = harness()
     repository.ensureInitialized()
     const initial = repository.active()
-    const request = requestContracts['command.agent_presets.save'].input.parse({
-      preset: {
+    const request = {
+      preset: agentPresetSchema.parse({
         ...initial,
         roleplayPlan: { steps: ['  读取设定  ', '', '   ', '  输出正文  '] }
-      },
+      }),
       expectedRegexRules: initial.regexRules
-    })
+    }
 
     expect(request.preset.roleplayPlan.steps).toEqual(['读取设定', '输出正文'])
     expect(repository.save(request.preset, request.expectedRegexRules).roleplayPlan.steps).toEqual([

@@ -1,20 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apply } from '../resources/dsh/tavily-web-search.mjs';
 
-const originalKey = process.env.ELECKOI_TAVILY_API_KEY;
-
 afterEach(() => {
   vi.unstubAllGlobals();
-  if (originalKey === undefined) delete process.env.ELECKOI_TAVILY_API_KEY;
-  else process.env.ELECKOI_TAVILY_API_KEY = originalKey;
 });
 
 describe('Tavily DSH web provider', () => {
   it('registers into ctx.web and returns normalized safe sources', async () => {
     let provider;
-    apply({ web: { registerSearchProvider(value) { provider = value; } } });
-    process.env.ELECKOI_TAVILY_API_KEY = 'tvly-runtime';
-    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: [
+    let key = 'synthetic-first-key';
+    const resolve = vi.fn(async () => ({ value: key, source: 'test' }));
+    apply({ web: { registerSearchProvider(value) { provider = value; } }, get: () => ({ resolve }) }, {
+      apiKeyEnv: { get: () => 'TAVILY_API_KEY' }, maxResults: { get: () => 5 }
+    });
+    const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ results: [
       { title: 'Result', url: 'https://example.com/page', content: 'Snippet' },
       { title: 'Unsafe', url: 'file:///private', content: 'Drop me' },
     ] }), { status: 200 }));
@@ -29,6 +28,11 @@ describe('Tavily DSH web provider', () => {
       method: 'POST', redirect: 'error',
     }));
     expect(JSON.parse(request.mock.calls[0][1].body)).toMatchObject({ query: 'latest', max_results: 3 });
+    key = 'synthetic-second-key';
+    await provider.search({ query: 'next', maxResults: 8 });
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[1][1].headers.Authorization).toBe('Bearer synthetic-second-key');
+    expect(JSON.parse(request.mock.calls[1][1].body).max_results).toBe(5);
   });
 });
 

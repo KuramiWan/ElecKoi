@@ -11,7 +11,6 @@ import { AgentProcessIcon } from "../../modules/chat/components/AgentProcessIcon
 import { ChatImageGallery } from "../../modules/chat/components/ChatImageGallery.jsx";
 import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
 import { TurnUsage } from "../../modules/chat/components/TurnUsage.jsx";
-import { revealChatFile } from "../../modules/chat/api/chatApi.js";
 import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
 import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
@@ -122,7 +121,7 @@ function MessagePresentation({ message, content, streaming, renderMessageContent
   })}</div>;
 }
 
-function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, pluginActions, pluginAfter, renderMessageContent }) {
+function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {
   const { role, content, pending = false } = message;
   const displayContent = message.displayContent ?? content;
   const isUser = role === "user";
@@ -293,9 +292,9 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
             <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑"><MessagePencilIcon /></button>
           </div> : null}
         </div>
-        {isUser ? <ChatImageGallery images={message.inputImageAttachments || []} conversationId={message.conversationId} agentMessage={layoutMode === "agent"} /> : null}
+        {isUser ? <ChatImageGallery images={message.inputImageAttachments || []} conversationId={message.conversationId} agentMessage={layoutMode === "agent"} loadImage={loadImage} /> : null}
         {isUser ? <ChatFileCards files={message.inputFileAttachments || []}
-          onOpen={(file) => revealChatFile(message.conversationId, file.attachmentId, file.name)} /> : null}
+          onOpen={(file) => onOpenFile?.(message.conversationId, file.attachmentId, file.name)} /> : null}
         {editing ? <div className="message-inline-editor"><textarea
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

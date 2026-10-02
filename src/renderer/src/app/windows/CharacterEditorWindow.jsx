@@ -9,7 +9,6 @@ import {
 import logoIcon from "../../assets/eleckoi-app-icon.png";
 import {
   CharacterBasicInfoPanel,
-  updateCharacter,
 } from "../../modules/persona/index.js";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
 import { DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/settingLibraries/index.js";
@@ -139,8 +138,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     setSaveError("");
     setBasicSaveNotice("");
     try {
-      const saved = await updateCharacter(submittedCharacter);
-      characterCatalog.adopt(saved);
+      const saved = await characterCatalog.update(submittedCharacter);
       const savedCharacter = saved.items.find((item) => item.id === submittedCharacter.id) || submittedCharacter;
       collectionRef.current = saved;
       setPersistedCharacter(savedCharacter);

@@ -74,7 +74,7 @@ describe('desktop updater', () => {
     expect(notes?.length).toBe(4_000)
   })
 
-  it('publishes available, download and ready states and blocks restart during generation', () => {
+  it('publishes available, download and ready states and blocks restart during generation', async () => {
     const updater = new FakeUpdater()
     const published: UpdateStatus[] = []
     let canInstall = false
@@ -83,7 +83,8 @@ describe('desktop updater', () => {
       currentVersion: '0.1.0',
       enabled: true,
       disabledMessage: '',
-      canInstall: () => canInstall,
+      prepareInstall: async () => canInstall,
+      releaseInstall: async () => {},
       publish: (status) => published.push(status),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     })
@@ -105,11 +106,11 @@ describe('desktop updater', () => {
 
     updater.emit('update-downloaded', { ...updateInfo(), downloadedFile: 'ElecKoi.exe' })
     expect(service.status().phase).toBe('ready')
-    expect(service.install()).toEqual({ accepted: false, reason: 'agent_running' })
+    await expect(service.install()).resolves.toEqual({ accepted: false, reason: 'agent_running' })
     expect(updater.quitAndInstall).not.toHaveBeenCalled()
 
     canInstall = true
-    expect(service.install()).toEqual({ accepted: true, reason: null })
+    await expect(service.install()).resolves.toEqual({ accepted: true, reason: null })
     expect(service.status().phase).toBe('installing')
     expect(published.map((status) => status.phase)).toEqual([
       'available',
@@ -128,7 +129,8 @@ describe('desktop updater', () => {
       currentVersion: '0.1.0',
       enabled: false,
       disabledMessage: '开发模式不检查更新。',
-      canInstall: () => true,
+      prepareInstall: async () => true,
+      releaseInstall: async () => {},
       publish: vi.fn(),
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     })
@@ -155,7 +157,8 @@ describe('desktop updater', () => {
       currentVersion: '0.1.0',
       enabled: true,
       disabledMessage: '',
-      canInstall: () => true,
+      prepareInstall: async () => true,
+      releaseInstall: async () => {},
       publish: (status) => published.push(status),
       logger
     })

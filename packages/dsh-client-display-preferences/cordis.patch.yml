@@ -1,0 +1,3 @@
+- insert:
+    - id: eleckoi-display-preferences
+      name: '@eleckoi/dsh-client-display-preferences'

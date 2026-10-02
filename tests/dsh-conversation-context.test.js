@@ -167,6 +167,26 @@ describe('DSH conversation context', () => {
     expect(projected[1].source).toEqual({ kind: 'plugin:eleckoi-product-history' })
   })
 
+  it('keeps durable DSH history when product context only supplies an opening prefix', () => {
+    const native = [
+      createUserMessage({ content: [{ type: 'text', text: '上一问' }], source: { kind: 'user' } }),
+      message('assistant', '上一答', { kind: 'model', provider: 'test', model: 'test' }),
+      createUserMessage({ content: [{ type: 'text', text: '当前问题' }], source: { kind: 'user' } })
+    ]
+
+    const projected = projectProductHistory(native, {
+      historyMode: 'prefix',
+      history: [{ role: 'assistant', content: '开场白' }]
+    })
+
+    expect(projected.map((item) => [item.role, text(item)])).toEqual([
+      ['assistant', '开场白'],
+      ['user', '上一问'],
+      ['assistant', '上一答'],
+      ['user', '当前问题']
+    ])
+  })
+
   it('sends only product user and assistant history on the next turn request', () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-product-history-request-'))
     const sessionId = 'session-product-history-request'
@@ -209,6 +229,7 @@ describe('DSH conversation context', () => {
     const agentCtx = {
       systemPrompt: { section: vi.fn(() => vi.fn()) },
       sessions: { get: vi.fn(() => session) },
+      sessionProjections: { stateOf: () => ({ pendingSeq: 9 }) },
       llm: { stream: streamed },
       on: vi.fn((event, handler) => {
         listeners.set(event, handler)
@@ -244,9 +265,18 @@ describe('DSH conversation context', () => {
     expect(JSON.stringify(result.messages)).not.toContain('call-1')
     expect(JSON.stringify(result.messages)).not.toContain('旧工具结果')
     expect(streamed).toHaveBeenCalledOnce()
+    expect(session.append).toHaveBeenCalledWith('eleckoi/request-context', {
+      requestSeq: 9,
+      context: requestContextItems(result.messages)
+    }, { ignorable: true })
     expect(existsSync(requestContextFile)).toBe(false)
 
     nativeMessages.push(
+      {
+        id: 'current-reasoning', role: 'assistant',
+        content: [{ type: 'reasoning', text: '当前轮次推理' }],
+        source: { kind: 'model', provider: 'test', model: 'test' }
+      },
       {
         id: 'current-tool-call', role: 'assistant',
         content: [{ type: 'tool-call', id: 'call-2', name: 'lookup', arguments: '{}' }],
@@ -264,9 +294,12 @@ describe('DSH conversation context', () => {
       ['assistant', '上一答'],
       ['user', '当前问题（已处理）'],
       ['assistant', ''],
+      ['assistant', ''],
       ['user', '']
     ])
     expect(JSON.stringify(continuation.messages)).toContain('本轮工具结果')
+    expect(continuation.messages.at(-3)).toBe(nativeMessages.at(-3))
+    expect(JSON.stringify(continuation.messages)).toContain('当前轮次推理')
     expect(JSON.stringify(continuation.messages)).not.toContain('旧工具结果')
     expect(JSON.stringify(continuation.messages)).not.toContain('上一轮思考')
 
@@ -287,6 +320,52 @@ describe('DSH conversation context', () => {
     expect(text(projected[1])).toBe('模型提示词')
     expect(projected[1].content[1]).toEqual(image)
     expect(text(current)).toBe('原文')
+  })
+
+  it('drops prior reasoning and tool flow in prefix mode but keeps the entire active turn', () => {
+    const model = { kind: 'model', provider: 'test', model: 'test', replayState: { signature: 'old-signature' } }
+    const currentFlow = [
+      { id: 'reasoning', role: 'assistant', content: [{ type: 'reasoning', text: '当前推理' }], source: model },
+      { id: 'call', role: 'assistant', content: [{ type: 'tool-call', id: 'active-call', name: 'lookup', arguments: '{}' }], source: model },
+      { id: 'result', role: 'user', content: [{ type: 'tool-result', toolCallId: 'active-call', content: [{ type: 'text', text: '当前结果' }] }], source: { kind: 'tool', callId: 'active-call' } }
+    ]
+    const native = [
+      message('user', '旧问题', { kind: 'user' }),
+      { ...currentFlow[0], content: [{ type: 'reasoning', text: '旧推理' }] },
+      { ...currentFlow[1], content: [{ type: 'tool-call', id: 'old-call', name: 'lookup', arguments: '{}' }] },
+      { ...currentFlow[2], content: [{ type: 'tool-result', toolCallId: 'old-call', content: [] }], source: { kind: 'tool', callId: 'old-call' } },
+      { ...message('assistant', '<FINAL>旧回复</FINAL>', model), content: [{ type: 'reasoning', text: '旧最终推理' }, { type: 'text', text: '<FINAL>旧回复</FINAL>' }] },
+      message('user', '当前问题', { kind: 'user' }),
+      ...currentFlow
+    ]
+    const projected = projectProductHistory(native, { historyMode: 'prefix', history: [{ role: 'assistant', content: '开场白' }] })
+    expect(projected.slice(0, 4).map(item => [item.role, text(item)])).toEqual([
+      ['assistant', '开场白'], ['user', '旧问题'], ['assistant', '旧回复'], ['user', '当前问题']
+    ])
+    expect(projected.slice(4)).toEqual(currentFlow)
+    expect(projected.at(-3)).toBe(currentFlow[0])
+    expect(projected[2].source).toEqual({ kind: 'plugin:eleckoi-product-history' })
+    expect(JSON.stringify(projected.slice(0, 4))).not.toMatch(/旧推理|旧最终推理|old-call|old-signature/)
+    expect(native).toHaveLength(9)
+  })
+
+  it('does not promote an assistant tool result into an old final reply', () => {
+    const projected = projectProductHistory([
+      message('user', '旧问题', { kind: 'user' }),
+      {
+        id: 'old-tool-result-message',
+        role: 'assistant',
+        content: [
+          { type: 'tool-result', toolCallId: 'old-call', content: [{ type: 'text', text: '旧工具结果' }] }
+        ],
+        source: { kind: 'model', provider: 'test', model: 'test' }
+      },
+      message('assistant', '<FINAL>旧最终回复</FINAL>', { kind: 'model', provider: 'test', model: 'test' }),
+      message('user', '当前问题', { kind: 'user' })
+    ], { historyMode: 'prefix', history: [{ role: 'assistant', content: '开场白' }] })
+
+    expect(projected.map(text)).toEqual(['开场白', '旧问题', '旧最终回复', '当前问题'])
+    expect(JSON.stringify(projected)).not.toContain('旧工具结果')
   })
 
   it('preserves a matching compaction checkpoint and replaces its native tail', () => {

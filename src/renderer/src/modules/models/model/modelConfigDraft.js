@@ -51,9 +51,7 @@ export function removeUserAddedModel(form, modelId, visibleOptions = []) {
 
 export function modelParameterState(form, activeProviderId) {
   const activeModelOption = (form.model_options || []).find((item) => item.id === form.model) || null;
-  const automaticContextWindow = activeProviderId === "deepseek" && (!form.base_url || form.base_url.includes("api.deepseek.com"))
-    ? 1_000_000
-    : 272_000;
+  const automaticContextWindow = activeModelOption?.contextWindowTokens || 262_144;
   const effectiveContextWindow = activeModelOption?.contextWindowTokens || automaticContextWindow;
   const reasoningProfileError = activeModelOption?.reasoningEfforts
     && typeof activeModelOption.reasoningEfforts === "object"

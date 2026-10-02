@@ -1,18 +1,10 @@
 import { z } from 'zod'
 
-export const activeModelSelectionSchema = z.object({
-  capability: z.literal('chat'),
-  config_id: z.string(),
-  model: z.string()
-})
-
 export const chatSelectionSchema = z.object({
   active_conversation_id: z.string(),
   preferred_sessions: z.record(z.string(), z.string())
 })
 
-export const appearanceModeSchema = z.enum(['light', 'dark', 'system'])
-export const resolvedAppearanceModeSchema = z.enum(['light', 'dark'])
 export const sidebarCharacterArtworkSchema = z.enum(['avatar', 'cover'])
 export const newCharacterBackgroundSchema = z.enum(['app', 'character'])
 export const collapsedGroupMapSchema = z.record(z.string(), z.boolean())
@@ -146,27 +138,6 @@ export const DEFAULT_CHAT_DISPLAY_PREFERENCES: ChatDisplayPreferences = {
   }
 }
 
-export const settingKeySchema = z.enum([
-  'appearance.mode',
-  'appearance.ui',
-  'chat.display',
-  'chat.selection',
-  'locale.current',
-  'models.active'
-])
-
-export const settingSchemas = {
-  'appearance.mode': appearanceModeSchema,
-  'appearance.ui': appearanceUiPreferencesSchema,
-  'chat.display': chatDisplayPreferencesSchema,
-  'chat.selection': chatSelectionSchema,
-  'locale.current': z.string(),
-  'models.active': activeModelSelectionSchema
-} as const
-
-export type SettingKey = keyof typeof settingSchemas
-export type ActiveModelSelection = z.output<typeof activeModelSelectionSchema>
-export type AppearanceMode = z.output<typeof appearanceModeSchema>
+export type ChatSelection = z.output<typeof chatSelectionSchema>
 export type SidebarCharacterArtwork = z.output<typeof sidebarCharacterArtworkSchema>
 export type NewCharacterBackground = z.output<typeof newCharacterBackgroundSchema>
-export type ResolvedAppearanceMode = z.output<typeof resolvedAppearanceModeSchema>

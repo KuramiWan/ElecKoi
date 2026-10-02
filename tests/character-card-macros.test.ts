@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { MessageDisplayProjector } from '../src/main/modules/conversations/MessageDisplayProjector'
+import { MessageDisplayProjector } from '../packages/dsh-product-data/src/domain/conversations/MessageDisplayProjector'
 import {
   resolveSettingLibraryCharacterCardMacros,
   resolveVariableContextCharacterCardMacros
-} from '../src/main/modules/agent/CharacterCardMacroResolver'
+} from '../packages/dsh-product-data/src/domain/agent/CharacterCardMacroResolver'
 import type {
   AgentSettingLibraryRuntimeContext,
   AgentVariableRuntimeContext

@@ -41,13 +41,13 @@ export function useModelConnectionTest({ formRef, onProbeModels, onTestConnectio
       }));
     }
 
-    let testedConfig;
+    let testedConfig = snapshot;
     try {
       const models = await onProbeModels(snapshot);
       const modelIds = models.map((item) => String(item.id || item.name || "").trim()).filter(Boolean);
       if (!modelIds.length) throw new Error("连接成功，但接口没有返回可用模型。");
       const previousModel = String(snapshot.model || "").trim();
-      const selectedModel = modelIds.includes(previousModel) ? previousModel : modelIds[0];
+      const selectedModel = previousModel || modelIds[0];
       testedConfig = { ...snapshot, model: selectedModel, model_options: models };
       patchDialog((current) => ({ ...current, modelLabel: selectedModel }));
       patchStep("connection", { status: "passed" });
@@ -55,28 +55,33 @@ export function useModelConnectionTest({ formRef, onProbeModels, onTestConnectio
       patchStep("tools", { status: "running" });
     } catch (error) {
       const message = errorMessage(error, "连接测试失败");
-      patchStep("connection", { status: "failed", detail: message });
-      patchDialog((current) => ({ ...current, finished: true, failed: true, completionMessage: "本次连接测试未通过，请检查错误后重试。" }));
-      setConnectionTest({ status: "error", message });
-      onNotify?.("error", message);
-      finish();
-      return;
+      patchStep("models", { status: "failed", detail: message });
+      if (!String(snapshot.model || "").trim()) {
+        patchStep("connection", { status: "failed", detail: message });
+        patchDialog((current) => ({ ...current, finished: true, failed: true, completionMessage: "请选择要测试的模型。" }));
+        setConnectionTest({ status: "error", message });
+        finish();
+        return;
+      }
+      patchStep("tools", { status: "running" });
     }
 
     try {
       await onTestConnection(testedConfig);
+      patchStep("connection", { status: "passed" });
       patchStep("tools", { status: "passed", detail: "支持" });
       patchDialog((current) => ({
         ...current,
         finished: true,
         failed: false,
-        completionMessage: "这个配置支持完整工具调用，可以用于 Agent。",
+        completionMessage: "本次工具调用测试通过。",
       }));
       setConnectionTest({ status: "success", message: "连接测试成功" });
       onNotify?.("success", "连接与工具调用测试通过");
     } catch (error) {
       const message = errorMessage(error, "工具调用测试失败");
       patchStep("tools", { status: "failed", detail: message });
+      patchDialog((current) => ({ ...current, steps: current.steps.map((step) => step.id === "connection" && step.status === "running" ? { ...step, status: "failed", detail: message } : step) }));
       patchDialog((current) => ({
         ...current,
         finished: true,

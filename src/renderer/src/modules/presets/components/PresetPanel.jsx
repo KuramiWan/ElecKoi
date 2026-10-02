@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
-import { listenRecordsChanged } from '../../../bridge/recordEvents.js';
 import { CharacterManagerIcon, ChevronRightIcon, ImportIcon, PlusIcon, TrashIcon } from '../../../ui/icons/index.jsx';
 import { Avatar } from '../../../ui/ui/Avatar.jsx';
 import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
@@ -10,15 +9,6 @@ import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
 import defaultPresetAvatar from '../../../assets/eleckoi-app-icon.png';
 import { SaveControl } from '../../settingLibraries/index.js';
 import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from '../../settings/index.js';
-import {
-  createPreset,
-  deletePreset,
-  getPreset,
-  getPresetCatalog,
-  importPreset,
-  savePreset,
-  setActivePreset,
-} from '../api/presetApi.js';
 import { PresetIntroductionEditor } from './PresetIntroductionEditor.jsx';
 import { PresetContextMenu, usePresetContextMenu } from './PresetContextMenu.jsx';
 import { PresetProfileHeader } from './PresetProfileHeader.jsx';
@@ -64,21 +54,19 @@ export function shouldShowPresetCatalogLoading(catalog, error) {
 }
 
 export function PresetProvider({ children, catalogModel, navigationGuardRef: externalNavigationGuardRef }) {
-  const [localCatalog, setLocalCatalog] = useState(null);
   const snapshot = useSyncExternalStore(
     catalogModel?.subscribe || subscribeEmptyCatalog,
     catalogModel?.getSnapshot || getEmptyCatalog,
   );
-  const catalog = catalogModel ? snapshot.catalog : localCatalog;
+  const catalog = snapshot.catalog;
   const [selectedPresetId, commitSelectedPresetId] = useState('');
   const [localError, setError] = useState('');
-  const error = localError || (catalogModel ? snapshot.error : '');
+  const error = localError || snapshot.error;
   const internalNavigationGuardRef = useRef(null);
   const navigationGuard = externalNavigationGuardRef || internalNavigationGuardRef;
 
   function setCatalog(next) {
-    if (catalogModel) catalogModel.adopt(next);
-    else setLocalCatalog(next);
+    catalogModel.adopt(next);
   }
 
   function setSelectedPresetId(id) {
@@ -90,8 +78,7 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
 
   async function refresh(preferredId = '') {
     try {
-      const next = catalogModel ? await catalogModel.refresh() : await getPresetCatalog();
-      if (!catalogModel) setLocalCatalog(next);
+      const next = await catalogModel.refresh();
       commitSelectedPresetId((current) => {
         const requested = preferredId || current || next.activePresetId;
         return next.presets.some((item) => item.id === requested) ? requested : next.presets[0]?.id || '';
@@ -104,22 +91,15 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
     }
   }
 
-  useEffect(() => { if (!catalogModel) void refresh(); }, [catalogModel]);
+  useEffect(() => { if (catalogModel) void refresh(); }, [catalogModel]);
   useEffect(() => {
     if (!catalog) return;
-    if (catalogModel) setError('');
+    setError('');
     commitSelectedPresetId((current) => {
       const requested = current || catalog.activePresetId;
       return catalog.presets.some((item) => item.id === requested) ? requested : catalog.presets[0]?.id || '';
     });
   }, [catalog, catalogModel]);
-  useEffect(() => {
-    if (catalogModel) return;
-    return listenRecordsChanged((event) => {
-      if (event.module === 'agentPresets') void refresh();
-    });
-  }, [catalogModel]);
-
   const value = useMemo(() => ({ catalog, catalogModel, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError }), [catalog, catalogModel, selectedPresetId, error]);
   return <PresetContext.Provider value={value}>{children}</PresetContext.Provider>;
 }
@@ -132,7 +112,7 @@ function usePresets() {
 
 export function PresetListPanel() {
   const scrollRef = useSidebarListScroll();
-  const { catalog, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError } = usePresets();
+  const { catalog, catalogModel, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError } = usePresets();
   const [keyword, setKeyword] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(ALL_PRESETS);
@@ -175,7 +155,7 @@ export function PresetListPanel() {
     const create = async () => {
       const selectedGroupRecord = groups.find((group) => group.id === selectedGroup);
       const libraryGroupId = selectedGroupRecord?.id || '';
-      const created = await createPreset('新预设', libraryGroupId);
+      const created = await catalogModel.create('新预设', libraryGroupId);
       await refresh(created.id);
     };
     if (navigationGuard.current) navigationGuard.current(create);
@@ -215,7 +195,7 @@ export function PresetListPanel() {
       setImporting(true);
       setImportError('');
       try {
-        const result = await importPreset(importSourceRef.current, {
+        const result = await catalogModel.import(importSourceRef.current, {
           displayName: file.name,
           mimeType: file.type,
           base64: await fileBase64(file),
@@ -233,7 +213,7 @@ export function PresetListPanel() {
   function activateFromList(preset) {
     runGuarded(async () => {
       try {
-        setCatalog(await setActivePreset(preset.id));
+        setCatalog(await catalogModel.setActive(preset.id));
         setError('');
       } catch (cause) { setError(cause?.message || '启用预设失败'); }
     });
@@ -242,7 +222,7 @@ export function PresetListPanel() {
   function removeFromList(preset) {
     runGuarded(async () => {
       try {
-        await deletePreset(preset.id);
+        await catalogModel.delete(preset.id);
         await refresh();
       } catch (cause) { setError(cause?.message || '删除预设失败'); }
     });
@@ -319,8 +299,8 @@ export function PresetWorkspace({
   modelConfigs = [],
   modelOptionsByKey,
   onLoadModels,
-  onSaveModelConfig,
   onNotify,
+  onTestRegex,
   renderEditorSection,
 }) {
   const { catalog, catalogModel, selectedPresetId, setCatalog, navigationGuard, refresh, error: catalogError } = usePresets();
@@ -362,7 +342,7 @@ export function PresetWorkspace({
     let active = true;
     setLoading(true);
     setError('');
-    (catalogModel ? catalogModel.read(selectedPresetId) : getPreset(selectedPresetId)).then((loaded) => {
+    catalogModel.read(selectedPresetId).then((loaded) => {
       if (!active) return;
       pendingLatestRef.current = null;
       externalChangeRef.current = false;
@@ -395,17 +375,10 @@ export function PresetWorkspace({
         setPersisted(loaded);
         setError('');
     };
-    if (catalogModel) {
-      return catalogModel.subscribeDetail(selectedPresetId, () => {
-        const snapshot = catalogModel.getDetailSnapshot(selectedPresetId);
-        if (snapshot.status === 'ready') applyLatest(snapshot.preset);
-        else if (snapshot.status === 'error') setError(snapshot.error);
-      });
-    }
-    return listenRecordsChanged((event) => {
-      if (event.module !== 'agentPresets' || savingRef.current) return;
-      void getPreset(selectedPresetId).then(applyLatest)
-        .catch((cause) => active && setError(cause?.message || '同步预设失败'));
+    return catalogModel.subscribeDetail(selectedPresetId, () => {
+      const snapshot = catalogModel.getDetailSnapshot(selectedPresetId);
+      if (snapshot.status === 'ready') applyLatest(snapshot.preset);
+      else if (snapshot.status === 'error') setError(snapshot.error);
     });
   }, [catalogModel, selectedPresetId, persisted]);
 
@@ -447,9 +420,7 @@ export function PresetWorkspace({
     setSaving(true);
     setError('');
     try {
-      const saved = await (catalogModel
-        ? catalogModel.save(candidate, persisted?.regexRules || [])
-        : savePreset(candidate, persisted?.regexRules || []));
+      const saved = await catalogModel.save(candidate, persisted?.regexRules || []);
       pendingLatestRef.current = null;
       externalChangeRef.current = false;
       setPreset(saved);
@@ -477,7 +448,7 @@ export function PresetWorkspace({
   async function activate() {
     if (!preset) return;
     if (dirty && !await save()) return;
-    const next = await setActivePreset(preset.id);
+    const next = await catalogModel.setActive(preset.id);
     setCatalog(next);
   }
 
@@ -557,12 +528,11 @@ export function PresetWorkspace({
       modelOptionsByKey={modelOptionsByKey}
       onChange={setPreset}
       onLoadModels={onLoadModels}
-      onSaveModelConfig={onSaveModelConfig}
       onNotify={onNotify}
       saveAction={saveAction}
     />;
   } else if (tab === 'regex') {
-    tabEditor = <PresetRegexEditor preset={preset} onChange={setPreset} saveAction={saveAction} />;
+    tabEditor = <PresetRegexEditor preset={preset} onChange={setPreset} saveAction={saveAction} onTest={onTestRegex} />;
   }
   const renderedTabEditor = renderEditorSection?.(tab, extensionOwner, tabEditor) ?? tabEditor;
 

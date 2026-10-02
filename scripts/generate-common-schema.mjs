@@ -26,8 +26,8 @@ for (const [, name, body] of tables) {
 if (!types.has('real')) mappings[2] = mappings[2].replace('real, ', '')
 mappings.push(`export const commonTables = { ${tables.map(([, name]) => camel(name)).join(', ')} }`, '')
 const outputs = new Map([
-  ['src/main/platform/sqlite/schema/common.ts', mappings.join('\n')],
-  ['src/main/platform/sqlite/migrations/commonSchemaSql.ts', header + `export const commonSchemaSql = ${JSON.stringify(source)}\n`]
+  ['packages/dsh-product-data/src/storage/sqlite/schema/common.ts', mappings.join('\n')],
+  ['packages/dsh-product-data/src/storage/sqlite/migrations/commonSchemaSql.ts', header + `export const commonSchemaSql = ${JSON.stringify(source)}\n`]
 ])
 for (const [path, content] of outputs) {
   const file = resolve(root, path)

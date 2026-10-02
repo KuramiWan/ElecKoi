@@ -12,7 +12,7 @@ import { useSidebarListScroll } from "../../../ui/hooks/useSidebarListScroll.js"
 import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from "../../settings/index.js";
 import { openCharacterManagerWindow } from "../window/openCharacterManagerWindow.js";
 
-export function CharacterListPanel({ characters, activeCharacterId, artworkMode, onSelectCharacter, onOpenCharacterChat, onSaveCharacterGroups, onImportPreparedCharacters, onCreateCharacter, onDeleteCharacters }) {
+export function CharacterListPanel({ characters, activeCharacterId, artworkMode, onSelectCharacter, onOpenCharacterChat, onSaveCharacterGroups, onImportPreparedCharacters, onPrepareCharacterImports, onDiscardCharacterImports, onCreateCharacter, onDeleteCharacters }) {
   const [keyword, setKeyword] = useState("");
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -278,6 +278,8 @@ export function CharacterListPanel({ characters, activeCharacterId, artworkMode,
         <CharacterImportDialog
           onClose={() => setImportOpen(false)}
           onImported={onImportPreparedCharacters}
+          onPrepare={onPrepareCharacterImports}
+          onDiscard={onDiscardCharacterImports}
         />
       ) : null}
 

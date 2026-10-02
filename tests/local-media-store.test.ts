@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LocalMediaStore } from '../src/main/platform/filesystem/LocalMediaStore'
+import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 
 const directories: string[] = []
 

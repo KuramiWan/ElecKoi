@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "types": ["node"]
+  },
+  "include": [
+    "src/index.ts",
+    "src/types.ts",
+    "src/tavily.ts",
+    "src/modelConnection.ts"
+  ]
+}

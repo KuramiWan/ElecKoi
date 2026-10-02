@@ -23,10 +23,6 @@ CREATE TABLE IF NOT EXISTS `character_meta` (`id` TEXT NOT NULL, `activeCharacte
 
 CREATE TABLE IF NOT EXISTS `user_profile` (`id` TEXT NOT NULL, `userName` TEXT NOT NULL, `userAvatar` TEXT NOT NULL, `userSquare` TEXT NOT NULL, `userPortrait` TEXT NOT NULL, `userCover` TEXT NOT NULL, PRIMARY KEY(`id`));
 
-CREATE TABLE IF NOT EXISTS `model_configs` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `provider` TEXT NOT NULL, `apiKey` TEXT NOT NULL, `baseUrl` TEXT NOT NULL, `proxyUrl` TEXT NOT NULL, `model` TEXT NOT NULL, `modelOptionsJson` TEXT NOT NULL, `customHeadersJson` TEXT NOT NULL, `supportsTools` INTEGER, `enabled` INTEGER NOT NULL, `imageSettingsJson` TEXT NOT NULL, `apiFormat` TEXT NOT NULL, PRIMARY KEY(`id`));
-
-CREATE TABLE IF NOT EXISTS `model_config_meta` (`id` TEXT NOT NULL, `activeConfigId` TEXT NOT NULL, PRIMARY KEY(`id`));
-
 CREATE TABLE IF NOT EXISTS `variable_configs` (`characterId` TEXT NOT NULL, `activeVersionId` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`characterId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`characterId`, `activeVersionId`) REFERENCES `variable_config_versions`(`characterId`, `versionId`) ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED);
 
 CREATE INDEX IF NOT EXISTS `index_variable_configs_characterId_activeVersionId` ON `variable_configs` (`characterId`, `activeVersionId`);
@@ -58,14 +54,6 @@ CREATE TABLE IF NOT EXISTS `regex_enablement_versions` (`id` TEXT NOT NULL, `nam
 CREATE TABLE IF NOT EXISTS `regex_state` (`singletonId` INTEGER NOT NULL, `activeVersionId` TEXT, `revision` INTEGER NOT NULL, PRIMARY KEY(`singletonId`), FOREIGN KEY(`activeVersionId`) REFERENCES `regex_enablement_versions`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL );
 
 CREATE INDEX IF NOT EXISTS `index_regex_state_activeVersionId` ON `regex_state` (`activeVersionId`);
-
-CREATE TABLE IF NOT EXISTS `web_search_settings` (`singletonId` INTEGER NOT NULL, `mode` TEXT NOT NULL, `maxResults` INTEGER NOT NULL, `tavilyApiKey` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`singletonId`));
-
-CREATE TABLE IF NOT EXISTS `cleanup_operations` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `targetId` TEXT NOT NULL, `state` TEXT NOT NULL, `attemptCount` INTEGER NOT NULL, `createdAtEpochMs` INTEGER NOT NULL, `updatedAtEpochMs` INTEGER NOT NULL, `lastError` TEXT NOT NULL, PRIMARY KEY(`id`));
-
-CREATE UNIQUE INDEX IF NOT EXISTS `index_cleanup_operations_kind_targetId` ON `cleanup_operations` (`kind`, `targetId`);
-
-CREATE INDEX IF NOT EXISTS `index_cleanup_operations_state_updatedAtEpochMs` ON `cleanup_operations` (`state`, `updatedAtEpochMs`);
 
 CREATE TABLE IF NOT EXISTS `agent_conversations` (`id` TEXT NOT NULL, `activeBranchId` TEXT NOT NULL, `runtimeThreadId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`));
 
@@ -110,14 +98,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS `index_agent_openings_conversationId` ON `agen
 CREATE TABLE IF NOT EXISTS `agent_setting_snapshots` (`conversationId` TEXT NOT NULL, `ownerType` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `stateJson` TEXT NOT NULL, PRIMARY KEY(`ownerType`, `ownerId`), FOREIGN KEY(`conversationId`) REFERENCES `agent_conversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
 
 CREATE INDEX IF NOT EXISTS `index_agent_setting_snapshots_conversationId` ON `agent_setting_snapshots` (`conversationId`);
-
-CREATE TABLE IF NOT EXISTS `generation_attempts` (`id` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `state` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`conversationId`) REFERENCES `agent_conversations`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
-
-CREATE INDEX IF NOT EXISTS `index_generation_attempts_conversationId` ON `generation_attempts` (`conversationId`);
-
-CREATE UNIQUE INDEX IF NOT EXISTS `index_generation_attempts_conversationId_ownerId` ON `generation_attempts` (`conversationId`, `ownerId`);
-
-CREATE INDEX IF NOT EXISTS `index_generation_attempts_conversationId_state` ON `generation_attempts` (`conversationId`, `state`);
 
 CREATE TABLE IF NOT EXISTS `setting_libraries` (`characterId` TEXT NOT NULL, `name` TEXT NOT NULL, `activeVersionId` TEXT NOT NULL, `listAllExpanded` INTEGER NOT NULL, `expandedGroupIdsJson` TEXT NOT NULL, `promptPositionsJson` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`characterId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
 
@@ -189,6 +169,6 @@ CREATE VIEW `setting_library_version_entries` AS SELECT link.characterId, link.v
         JOIN setting_entry_contents AS content ON content.characterId = link.characterId
           AND content.entryId = link.entryId AND content.revisionId = link.revisionId;
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 
 COMMIT;

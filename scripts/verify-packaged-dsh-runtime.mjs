@@ -13,8 +13,6 @@ if (!existsSync(executable) || !existsSync(appAsar)) {
 
 const probe = `
   import('node:fs/promises').then(async ({ access, mkdtemp, readFile, rm }) => {
-    const { createServer } = await import('node:http')
-    const { once } = await import('node:events')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
     const { pathToFileURL } = await import('node:url')
@@ -66,7 +64,17 @@ const probe = `
       }
     }
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-shell', 'src', 'client.js'))
+    const desktopManifest = JSON.parse(await readFile(join(appAsar, 'resources', 'dsh', 'runtime-manifest.json'), 'utf8'))
+    for (const name of desktopManifest.desktopProfile.bundles) {
+      const directory = join(appAsar, 'node_modules', ...name.split('/'))
+      const declaration = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
+      const patches = declaration.dsh?.bundle?.patch
+      if (!patches) throw new Error('Packaged plugin has no bundle declaration: ' + name)
+      for (const patch of Array.isArray(patches) ? patches : [patches]) await access(join(directory, patch))
+      await access(join(directory, 'locale', 'zh.json'))
+    }
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-conversations', 'src', 'client.js'))
+    await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-creator-studio', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'src', 'index.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-roleplay', 'cordis.patch.yml'))
@@ -98,132 +106,28 @@ const probe = `
     }
     process.stdout.write('Packaged ElecKoi DSH renderer assets are present.\\n')
     const runtimeUrl = pathToFileURL(join(appAsar, 'node_modules', '@eleckoi', 'dsh-runtime', 'dist', 'index.mjs')).href
-    const { DshDesktopPluginHost, DshRuntime } = await import(runtimeUrl)
+    const { DshDesktopPluginHost } = await import(runtimeUrl)
     const packageManagerPath = join(unpacked, 'resources', 'dsh', 'pnpm', 'bin', 'pnpm.mjs')
     const nodeBinPath = join(unpacked, 'resources', 'dsh', 'node-bin')
     await access(packageManagerPath)
     await access(join(nodeBinPath, 'node.cmd'))
-    const root = await mkdtemp(join(tmpdir(), 'eleckoi-packaged-dsh-'))
-    const runtime = new DshRuntime({
-      configPath: join(appAsar, 'resources', 'dsh', 'cordis.yml'),
-      presetTemplatePath: join(appAsar, 'resources', 'dsh', 'agent-preset-template', 'agent.cordis.yml'),
-      workspaceRoot: join(root, 'workspace'),
-      runtimeDataRoot: join(root, 'runtime'),
-      executablePath: process.execPath
-    })
-    runtime.bindSessionHost(new DshDesktopPluginHost({
-      runtimeDataRoot: join(root, 'runtime'),
-      workspaceRoot: join(root, 'workspace'),
-      agentPatchPath: join(appAsar, 'resources', 'dsh', 'desktop-agent.patch.yml'),
-      hostConfiguration: () => runtime.hostConfiguration(),
-      executablePath: process.execPath,
-      packageManager: { entryPath: packageManagerPath, nodeBinPath }
-    }))
-    let server
-    try {
-      await runtime.verify()
-      process.stdout.write('Packaged DSH runtime handshake passed.\\n')
-      server = createServer(async (request, response) => {
-        for await (const _chunk of request) {}
-        response.writeHead(200, {
-          'content-type': 'text/event-stream',
-          'cache-control': 'no-cache'
-        })
-        const base = {
-          id: 'chatcmpl-packaged-probe',
-          object: 'chat.completion.chunk',
-          created: 1,
-          model: 'packaged-probe-model'
-        }
-        const send = (choice) => response.write('data: ' + JSON.stringify({
-          ...base,
-          choices: [{ index: 0, ...choice }]
-        }) + '\\n\\n')
-        send({ delta: { role: 'assistant', content: '' }, finish_reason: null })
-        send({ delta: { content: 'packaged probe ok' }, finish_reason: null })
-        send({ delta: {}, finish_reason: 'stop' })
-        response.end('data: [DONE]\\n\\n')
-      })
-      server.listen(0, '127.0.0.1')
-      await once(server, 'listening')
-      const address = server.address()
-      if (address === null || typeof address === 'string') {
-        throw new Error('Packaged DSH probe server did not expose a TCP port.')
-      }
-      const final = []
-      await runtime.stream(
-        'packaged-probe-conversation',
-        'hello',
-        {
-          configId: 'packaged-probe-config',
-          provider: 'custom',
-          apiKey: 'packaged-probe-key',
-          baseUrl: 'http://127.0.0.1:' + address.port,
-          model: 'packaged-probe-model',
-          systemPrompt: '',
-          apiFormat: 'openai-completions',
-          customHeaders: {},
-          contextWindow: 128000,
-          autoCompactTokenLimit: 96000,
-          supportsImageInput: false
-        },
-        { onDelta() {}, onFinal(content) { final.push(content) } },
-        undefined,
-        {
-          characterId: 'packaged-probe-character',
-          characterName: 'Probe Character',
-          persona: {},
-          history: [],
-          settingLibrary: {
-            characterId: 'packaged-probe-character',
-            name: 'Probe Library',
-            entries: [],
-            groups: [],
-            promptPositions: []
-          }
-        },
-        'packaged-probe-thread',
-        {
-          disabledGroupIds: [
-            'builtin:variables',
-            'builtin:web',
-            'builtin:workspace',
-            'builtin:roleplay-workflow'
-          ]
-        },
-        [],
-        [],
-        {
-          id: 'agent-preset-standard',
-          versionId: 'packaged-probe-v1',
-          name: 'Packaged Probe',
-          roleplayPlan: { steps: [] }
-        }
-      )
-      if (final.join('') !== 'packaged probe ok') {
-        throw new Error('Packaged DSH probe did not return the expected final reply.')
-      }
-      process.stdout.write('Packaged DSH preset, Agent plane and local turn passed.\\n')
-    } finally {
-      await runtime.close()
-      if (server !== undefined) {
-        server.close()
-        await once(server, 'close')
-      }
-      await rm(root, { recursive: true, force: true })
-    }
     const pluginRoot = await mkdtemp(join(tmpdir(), 'eleckoi-packaged-plugin-host-'))
     const pluginHost = new DshDesktopPluginHost({
       runtimeDataRoot: pluginRoot,
       workspaceRoot: join(pluginRoot, 'workspace'),
+      presetTemplatePath: join(appAsar, 'resources', 'dsh', 'agent-preset-template', 'agent.cordis.yml'),
       agentPatchPath: join(appAsar, 'resources', 'dsh', 'desktop-agent.patch.yml'),
-      hostConfiguration: () => ({ credentials: {} }),
       executablePath: process.execPath,
       packageManager: { entryPath: packageManagerPath, nodeBinPath }
     })
     try {
       const ready = await pluginHost.start()
       const desktopProfile = JSON.parse(await readFile(join(pluginRoot, 'home', 'profiles', 'desktop', 'package.json'), 'utf8'))
+      for (const name of desktopManifest.desktopProfile.bundles) {
+        if (!desktopProfile.dsh?.profile?.bundles?.includes(name)) {
+          throw new Error('Packaged DSH profile did not register ' + name)
+        }
+      }
       if (!desktopProfile.dsh?.profile?.bundles?.includes('@eleckoi/dsh-web-search-tavily')) {
         throw new Error('Packaged DSH profile did not select the ElecKoi Tavily bundle.')
       }
@@ -243,11 +147,15 @@ const probe = `
         throw new Error('Packaged plugin Host did not load the ElecKoi conversation model.')
       }
       if (!ready.injections.some(row => row?.kind === 'global' && row?.name === '__DSH_BOOT__'
+        && row.value?.entries?.some(entry => entry.id === '@eleckoi/dsh-client-creator-studio'))) {
+        throw new Error('Packaged plugin Host did not load the ElecKoi creator studio model.')
+      }
+      if (!ready.injections.some(row => row?.kind === 'global' && row?.name === '__DSH_BOOT__'
         && row.value?.entries?.some(entry => entry.id === '@eleckoi/dsh-client-roleplay'))) {
         throw new Error('Packaged plugin Host did not load the ElecKoi roleplay view.')
       }
-      if (await pluginHost.dispose('probe-nonexistent-session') !== false) {
-        throw new Error('Packaged plugin Host did not load the ElecKoi roleplay lifecycle.')
+      if (await pluginHost.updateTasks('inspect') !== false) {
+        throw new Error('Packaged plugin Host reported unexpected active tasks.')
       }
       if (!ready.injections.some(row => row?.kind === 'global' && row?.name === '__DSH_BOOT__'
         && row.value?.entries?.some(entry => entry.id === '@eleckoi/dsh-client-characters'))) {

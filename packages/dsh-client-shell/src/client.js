@@ -4,8 +4,9 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const {
       PluginArtworkDefault,
+      SegmentedTabs,
       StateDot,
-      Tag
+      Switch
     } = require('@deepseek-ai/dsh-client-ui-primitives')
     const SettingsPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-settings.js')
       .then(module => ({ default: module.SettingsPage })))
@@ -13,179 +14,105 @@ window.__ModuleLoader__.load({
       .then(module => ({ default: module.CreatorStudioNavigationIcon })))
     const CommunityNavigationIcon = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-settings.js')
       .then(module => ({ default: module.CommunityNavigationIcon })))
-    const nativeSettingsSections = new Set(['account', 'general', 'models', 'agent-presets'])
+    const nativeSettingsSections = new Set(['account', 'general', 'agent-presets'])
     const shellActions = new Set(['creatorStudio', 'community'])
-    const runningComponent = (id, title, description) => ({ id, title, description, kind: 'runtime' })
-    const extensionPoint = (id, title, description) => ({ id, title, description, kind: 'extension' })
-    const builtInPlugins = [
-      {
-        id: 'eleckoi.characters', label: '角色与角色卡', packageName: '@eleckoi/dsh-client-characters',
-        description: '提供角色列表、角色卡资料和角色管理入口。',
-        components: [
-          runningComponent('eleckoiCharacters', '角色目录服务', '读取、刷新并同步角色、角色卡和角色分组。'),
-          runningComponent('main#character', '角色主页面', '在 DSH 主界面显示角色列表与角色资料。'),
-          runningComponent('sidebar.panellist#character', '角色导航入口', '在桌面侧边栏打开角色主页面。'),
-          extensionPoint('eleckoi.character.page.list', '角色列表接入口', '允许插件包装或替换角色列表。'),
-          extensionPoint('eleckoi.character.page.profile', '角色资料接入口', '允许插件包装或替换角色资料区域。'),
-          extensionPoint('eleckoi.character.editor.card', '角色卡基础资料接入口', '允许插件扩展角色名称、头像和基础资料编辑。'),
-          extensionPoint('eleckoi.character.editor.lore', '设定库编辑接入口', '允许插件扩展角色设定库编辑。'),
-          extensionPoint('eleckoi.character.editor.variables', '变量编辑接入口', '允许插件扩展角色变量编辑。'),
-          extensionPoint('eleckoi.character.editor.regex', '正则编辑接入口', '允许插件扩展角色正则规则编辑。'),
-          extensionPoint('eleckoi.character.editor.dynamic', '动态设定编辑接入口', '允许插件扩展动态设定编辑。'),
-          extensionPoint('eleckoi.character.manager', '角色管理接入口', '允许插件包装或替换角色导入、导出和批量管理界面。')
-        ]
-      },
-      {
-        id: 'eleckoi.character-configuration', label: '角色配置', packageName: '@eleckoi/dsh-client-character-configuration',
-        description: '提供设定库、变量、正则和动态设定编辑。',
-        components: [
-          runningComponent('eleckoiSettingLibraries', '设定库服务', '读取、保存并同步角色设定库与动态设定。'),
-          runningComponent('eleckoiVariables', '变量配置服务', '读取、保存并同步角色变量、对象和版本。'),
-          runningComponent('eleckoiRegexRules', '正则规则服务', '读取、保存、导入、导出并测试角色正则规则。')
-        ]
-      },
-      {
-        id: 'eleckoi.conversations', label: '角色对话记录', packageName: '@eleckoi/dsh-client-conversations',
-        description: '提供角色会话列表、历史记录和会话状态。',
-        components: [
-          runningComponent('eleckoiConversations', '对话目录服务', '管理对话列表、历史消息、流式状态和变量时间线。'),
-          runningComponent('main#messages', '消息主页面', '在 DSH 主界面显示会话列表和角色聊天。'),
-          runningComponent('sidebar.panellist#messages', '消息导航入口', '在桌面侧边栏打开消息主页面。'),
-          extensionPoint('eleckoi.conversation.list', '对话列表接入口', '允许插件包装或替换对话列表。')
-        ]
-      },
-      {
-        id: 'eleckoi.models', label: '模型配置', packageName: '@eleckoi/dsh-client-models',
-        description: '提供对话、图像、语音等模型服务的配置和连接检查。',
-        components: [
-          runningComponent('eleckoiModels', '模型目录服务', '读取、刷新并同步对话与图像模型配置。'),
-          runningComponent('main#model', '模型配置主页面', '在 DSH 主界面显示模型提供方和模型配置。'),
-          runningComponent('sidebar.panellist#model', '模型配置导航入口', '在桌面侧边栏打开模型配置页面。'),
-          extensionPoint('eleckoi.model.editor', '模型编辑接入口', '允许插件包装或替换模型配置编辑器。')
-        ]
-      },
-      {
-        id: 'eleckoi.persona', label: '用户资料', packageName: '@eleckoi/dsh-client-persona',
-        description: '提供用户身份、头像和个人资料。',
-        components: [
-          runningComponent('eleckoiPersona', '用户资料服务', '读取、保存并同步用户名称、头像和角色扮演身份。'),
-          extensionPoint('eleckoi.persona.editor', '用户资料编辑接入口', '允许插件包装或替换用户资料编辑器。')
-        ]
-      },
-      {
-        id: 'eleckoi.presets', label: 'Agent 预设', packageName: '@eleckoi/dsh-client-presets',
-        description: '提供预设内容、提示词、工具和正则编辑。',
-        components: [
-          runningComponent('eleckoiPresets', '预设目录服务', '读取、保存并同步 Agent 预设目录和详细内容。'),
-          runningComponent('main#presets', '预设主页面', '在 DSH 主界面显示和编辑 Agent 预设。'),
-          runningComponent('sidebar.panellist#presets', '预设导航入口', '在桌面侧边栏打开预设页面。'),
-          extensionPoint('eleckoi.preset.editor.profile', '预设基本资料接入口', '允许插件扩展预设名称、分组和基本资料。'),
-          extensionPoint('eleckoi.preset.editor.introduction', '预设说明接入口', '允许插件扩展预设说明和开场内容。'),
-          extensionPoint('eleckoi.preset.editor.prompts', '提示词编辑接入口', '允许插件扩展预设提示词编辑。'),
-          extensionPoint('eleckoi.preset.editor.tools', '工具配置接入口', '允许插件扩展预设工具策略。'),
-          extensionPoint('eleckoi.preset.editor.regex', '预设正则接入口', '允许插件扩展预设正则规则。'),
-          extensionPoint('eleckoi.preset.manager', '预设管理接入口', '允许插件包装或替换预设导入、导出和管理界面。')
-        ]
-      },
-      {
-        id: 'eleckoi.roleplay', label: '角色聊天', packageName: '@eleckoi/dsh-client-roleplay',
-        description: '通过 DSH Agent 和 Session 运行角色对话。',
-        components: [
-          runningComponent('eleckoi-client-roleplay', 'DSH Host 角色预设桥接', '把 ElecKoi 预设和对话上下文注册到 DSH Agent。'),
-          runningComponent('eleckoi.roleplay', '角色聊天会话容器', '把角色聊天界面绑定到当前 DSH Session。'),
-          extensionPoint('eleckoi.roleplay.message.content', '消息正文接入口', '允许插件包装或替换角色聊天消息正文。'),
-          extensionPoint('eleckoi.roleplay.message.actions', '消息操作接入口', '允许插件在消息旁增加操作。'),
-          extensionPoint('eleckoi.roleplay.message.after', '消息下方接入口', '允许插件在消息下方增加内容。'),
-          extensionPoint('eleckoi.roleplay.input.left', '输入框左侧接入口', '允许插件在角色聊天输入框左侧增加控件。'),
-          extensionPoint('eleckoi.roleplay.input.right', '输入框右侧接入口', '允许插件在角色聊天输入框右侧增加控件。'),
-          extensionPoint('eleckoi.roleplay.input.overlay', '输入框浮层接入口', '允许插件在角色聊天输入区增加浮层。'),
-          extensionPoint('eleckoi.roleplay.composer.dock', '编辑器下方接入口', '允许插件在角色聊天编辑器下方增加内容。'),
-          extensionPoint('eleckoi.roleplay.conversation.input.left', 'DSH 输入框左侧投影', '承接 DSH 会话输入框左侧插件组件。'),
-          extensionPoint('eleckoi.roleplay.conversation.input.right', 'DSH 输入框右侧投影', '承接 DSH 会话输入框右侧插件组件。'),
-          extensionPoint('eleckoi.roleplay.conversation.input.overlay', 'DSH 输入框浮层投影', '承接 DSH 会话输入区浮层插件组件。'),
-          extensionPoint('eleckoi.roleplay.conversation.composer.dock', 'DSH 编辑器下方投影', '承接 DSH 会话编辑器下方插件组件。')
-        ]
-      },
-      {
-        id: 'eleckoi.session-edit', label: '会话消息编辑', packageName: '@eleckoi/dsh-runtime',
-        description: '通过 DSH Session 合同编辑和重新生成消息。',
-        components: [
-          runningComponent('eleckoiSessionEditor', '会话消息编辑服务', '编辑消息并按指定轮次回退 DSH Session，供重新生成使用。')
-        ]
-      },
-      {
-        id: 'eleckoi.shell', label: 'ElecKoi 桌面界面', packageName: '@eleckoi/dsh-client-shell',
-        description: '提供 ElecKoi 主窗口、导航和插件中心。',
-        components: [
-          runningComponent('root#eleckoi-root', 'ElecKoi 客户端根界面', '装配主窗口、页面、主题和当前导航状态。'),
-          runningComponent('layout', '界面布局服务', '向 DSH Client 提供页面选择和面板状态。'),
-          runningComponent('sidebar', '桌面侧边栏', '装配品牌、主页面导航、工作区和底部操作。'),
-          runningComponent('main#settings', '设置主页面', '在 DSH 主界面显示 ElecKoi 设置。'),
-          runningComponent('sidebar.brand.mark#fallback', '品牌图标默认内容', '在没有插件覆盖时保留 ElecKoi 品牌图标。'),
-          runningComponent('sidebar.brand.name#fallback', '品牌名称默认内容', '在没有插件覆盖时保留 ElecKoi 品牌名称。'),
-          runningComponent('sidebar.workspaces#fallback', '工作区默认内容', '承接侧边栏工作区区域的默认内容。'),
-          runningComponent('sidebar.settings#fallback', '设置入口默认内容', '承接侧边栏设置区域的默认内容。'),
-          runningComponent('sidebar.panellist#creatorStudio', 'AI 创作工作室入口', '在侧边栏提供 AI 创作工作室入口。'),
-          runningComponent('sidebar.panellist#community', '社区入口', '在侧边栏提供社区入口。'),
-          runningComponent('plugins.item#eleckoi-built-ins', 'ElecKoi 内置插件目录', '向 DSH 官方插件中心注册全部 ElecKoi 内置插件详情。'),
-          runningComponent('plugins.detail.badge#eleckoi.built-in-version', '内置插件版本标记', '在插件详情标题旁显示 ElecKoi 插件版本。'),
-          extensionPoint('main', '主页面接入口', '允许 DSH Client 插件注册新的主页面。'),
-          extensionPoint('sidebar', '侧边栏接入口', '允许插件替换或包装侧边栏。'),
-          extensionPoint('rightbar', '右侧面板接入口', '允许插件向主界面提供右侧面板。'),
-          extensionPoint('shell.overlay', '全局浮层接入口', '允许插件在桌面界面上方显示浮层。'),
-          extensionPoint('shell.leading', '窗口前置区域接入口', '允许插件提供窗口前置内容。'),
-          extensionPoint('settings.section', '设置分区接入口', '允许插件在设置中增加分区。'),
-          extensionPoint('settings.general.item', '通用设置项接入口', '允许插件增加通用设置项。'),
-          extensionPoint('sidebar.brand.mark', '品牌图标接入口', '允许插件替换侧边栏品牌图标。'),
-          extensionPoint('sidebar.brand.name', '品牌名称接入口', '允许插件替换侧边栏品牌名称。'),
-          extensionPoint('sidebar.toggle.badge', '侧边栏切换标记接入口', '允许插件在侧边栏切换处增加标记。'),
-          extensionPoint('sidebar.panellist', '侧边栏页面接入口', '允许插件增加侧边栏主页面入口。'),
-          extensionPoint('sidebar.workspaces', '工作区接入口', '允许插件替换侧边栏工作区区域。'),
-          extensionPoint('sidebar.settings', '设置入口接入口', '允许插件替换侧边栏设置区域。'),
-          extensionPoint('sidebar.footer.action', '侧边栏底部操作接入口', '允许插件增加侧边栏底部操作。')
-        ]
-      }
+    const builtInBundles = [
+      "@eleckoi/dsh-client-characters",
+      "@eleckoi/dsh-client-character-configuration",
+      "@eleckoi/dsh-client-conversations",
+      "@eleckoi/dsh-client-creator-studio",
+      "@eleckoi/dsh-client-display-preferences",
+      "@eleckoi/dsh-client-models",
+      "@eleckoi/dsh-client-persona",
+      "@eleckoi/dsh-client-presets",
+      "@eleckoi/dsh-client-web-search",
+      "@eleckoi/dsh-client-shell",
+      "@eleckoi/dsh-client-roleplay",
+      "@eleckoi/dsh-product-api",
+      "@eleckoi/dsh-runtime",
+      "@eleckoi/dsh-web-search-tavily"
     ]
-    const builtInPluginById = new Map(builtInPlugins.map(plugin => [plugin.id, plugin]))
-    function BuiltInPluginDescription({ plugin, view }) {
-      if (view === 'summary') return React.createElement('span', { className: 'eleckoi-plugin-summary' },
-        React.createElement('code', null, plugin.packageName),
-        React.createElement('span', null, plugin.description))
-      const running = plugin.components.filter(component => component.kind === 'runtime').length
-      const extensions = plugin.components.length - running
-      const countLabel = extensions > 0
-        ? `共 ${plugin.components.length} 个 · ${running} 运行中 · ${extensions} 已开放`
-        : `共 ${plugin.components.length} 个 · ${running} 运行中`
-      return React.createElement('div', { className: 'eleckoi-plugin-components' },
-          React.createElement('div', { className: 'eleckoi-plugin-components-head' },
-            React.createElement('h4', null, '包含的组件'),
-            React.createElement('span', null, countLabel)),
-          React.createElement('ul', { className: 'eleckoi-plugin-component-list' },
-            plugin.components.map(component => React.createElement('li', {
-              key: component.id,
-              className: 'eleckoi-plugin-component-row',
-              'data-plugin-row': component.id,
-              'data-component-kind': component.kind
-            },
-              React.createElement('span', { className: 'eleckoi-plugin-component-icon', 'aria-hidden': 'true' },
-                React.createElement(PluginArtworkDefault, { size: 28 })),
-              React.createElement('div', { className: 'eleckoi-plugin-component-main' },
-                React.createElement('strong', null, component.title),
-                React.createElement('span', null, component.description),
-                React.createElement('code', null, component.id),
-                React.createElement('code', null, plugin.packageName)),
-              React.createElement('span', { className: 'eleckoi-plugin-component-state' },
-                React.createElement(StateDot, { state: 'done' }),
-                component.kind === 'extension' ? '已开放' : '运行中')))))
+    const phaseLabels = { pending: '等待中', loading: '加载中', active: '运行中', failed: '加载失败', unloading: '卸载中' }
+    const phaseDots = { pending: 'idle', loading: 'ongoing', active: 'done', failed: 'error', unloading: 'ongoing' }
+    const interfaceKindLabels = {
+      'ui-slot': '界面槽位', service: '服务接口', event: '事件接口', contribution: '能力接入', remote: '远程接口'
     }
-    function BuiltInPluginVersion({ subject }) {
-      if (subject?.kind !== 'item' || !builtInPluginById.has(subject.id)) return null
-      return React.createElement(Tag, { tone: 'neutral' }, 'v0.1.0')
+    const interfaceModeLabels = { replace: '可替换', append: '可追加', register: '可注册', call: '可调用', listen: '可订阅' }
+    const interfaceScopeLabels = { root: '全局', session: '会话', 'session-maybe': '会话可为空', client: '客户端', host: 'Host' }
+    function BuiltInPluginContents({ packageName, face }) {
+      const snapshot = React.useSyncExternalStore(
+        listener => face.hooks.pluginManager.subscribe(listener),
+        () => face.hooks.pluginManager.getSnapshot()
+      )
+      const pkg = snapshot.packages.find(candidate => candidate.name === packageName)
+      const [section, setSection] = React.useState('components')
+      const prefix = React.useId()
+      if (!pkg) return React.createElement('p', { role: 'status' }, '插件包信息尚未就绪。')
+      const developerInterfaces = pkg.developerInterfaces || []
+      const tabs = [
+        { value: 'components', label: `运行组件 ${pkg.rows.length}` },
+        { value: 'interfaces', label: `开发接口 ${developerInterfaces.length}` }
+      ].map(tab => ({ ...tab, id: `${prefix}-${tab.value}-tab`, panelId: `${prefix}-${tab.value}-panel` }))
+      const components = pkg.rows.map(row => {
+        const title = row.meta?.title === undefined ? row.rowId : face.resolveText(row.meta.title)
+        const description = row.meta?.description === undefined ? '' : face.resolveText(row.meta.description)
+        const state = !row.enabled ? 'idle' : row.phase === null ? 'idle' : phaseDots[row.phase]
+        const label = !row.enabled ? '已停用' : row.phase === null ? '未运行' : phaseLabels[row.phase]
+        const locked = row.entryId === undefined || row.readOnlyReason !== undefined || pkg.readOnlyReason !== undefined
+        const busy = snapshot.busy.includes(packageName) || snapshot.busy.includes(`row:${row.entryId}`)
+        return React.createElement('li', {
+          key: row.rowId, className: 'eleckoi-plugin-component-row', 'data-plugin-row': row.rowId,
+          'data-component-kind': 'component', 'data-state': !row.enabled ? 'off' : row.phase
+        },
+          React.createElement('span', { className: 'eleckoi-plugin-component-icon', 'aria-hidden': 'true' }, React.createElement(PluginArtworkDefault, { size: 28 })),
+          React.createElement('div', { className: 'eleckoi-plugin-component-main' },
+            React.createElement('strong', null, title),
+            description ? React.createElement('span', null, description) : null,
+            React.createElement('code', null, row.rowId),
+            React.createElement('code', null, row.moduleName)
+          ),
+          React.createElement('span', { className: 'eleckoi-plugin-component-state' }, React.createElement(StateDot, { state }), label),
+          React.createElement(Switch, {
+            checked: row.enabled, label: `启用${title}`, disabled: !pkg.enabled || locked || busy,
+            title: row.readOnlyReason === 'management-required' ? '运行所需的核心组件' : undefined,
+            onChange: enabled => face.setRowEnabled(row.entryId, enabled)
+          })
+        )
+      })
+      const interfaces = developerInterfaces.map(item => React.createElement('li', {
+        key: item.id, className: 'eleckoi-plugin-component-row', 'data-plugin-row': item.id,
+        'data-component-kind': 'interface', 'data-interface-kind': item.kind
+      },
+        React.createElement('span', { className: 'eleckoi-plugin-component-icon', 'aria-hidden': 'true' }, React.createElement(PluginArtworkDefault, { size: 28 })),
+        React.createElement('div', { className: 'eleckoi-plugin-component-main' },
+          React.createElement('div', { className: 'eleckoi-plugin-interface-heading' },
+            React.createElement('strong', null, item.title),
+            React.createElement('span', { className: 'eleckoi-plugin-interface-type' }, interfaceKindLabels[item.kind] || item.kind)
+          ),
+          React.createElement('span', null, item.description),
+          React.createElement('code', null, item.id),
+          React.createElement('span', { className: 'eleckoi-plugin-interface-meta' }, [
+            interfaceModeLabels[item.mode] || item.mode,
+            interfaceScopeLabels[item.scope] || item.scope
+          ].join(' · ')),
+          item.members?.length ? React.createElement('code', { className: 'eleckoi-plugin-interface-members' }, item.members.join(' · ')) : null,
+          item.relation === 'contributes' && item.owner
+            ? React.createElement('span', { className: 'eleckoi-plugin-interface-owner' }, `接入 ${item.owner}`)
+            : null
+        )
+      ))
+      return React.createElement('div', { className: 'eleckoi-plugin-components', 'data-eleckoi-plugin-detail': packageName },
+        React.createElement(SegmentedTabs, { items: tabs, value: section, onChange: setSection, label: '插件详情内容', className: 'eleckoi-plugin-detail-tabs' }),
+        tabs.map(tab => React.createElement('div', {
+          key: tab.value, id: tab.panelId, role: 'tabpanel', 'aria-labelledby': tab.id, tabIndex: 0,
+          hidden: section !== tab.value, 'data-plugin-section': tab.value
+        }, section !== tab.value ? null : React.createElement('ul', { className: 'eleckoi-plugin-component-list' }, tab.value === 'components' ? components : interfaces)))
+      )
     }
     function ElecKoiSidebar({ renderContent, renderSlot }) {
       return renderContent(renderSlot)
     }
-    function ElecKoiRoot({ layout, slots, locale, theme, subscribeTheme, conversations, characters, characterConfiguration, models, persona, presets, renderSlot, renderSlotChain }) {
+    function ElecKoiRoot({ layout, slots, locale, theme, subscribeTheme, conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, displayPreferences, renderSlot, renderSlotChain }) {
       const [ProductApp, setProductApp] = React.useState(null)
       const [loadError, setLoadError] = React.useState('')
       const settingsVersion = React.useSyncExternalStore(
@@ -247,49 +174,26 @@ window.__ModuleLoader__.load({
           layout.selectPanel(panels.includes('messages') ? 'messages' : panels[0])
         }
       }, [layout, mainVersion, panelInfo, slots])
-      React.useEffect(() => {
-        let active = true
-        const publish = snapshot => {
-          if (!active) return
-          const scheme = snapshot.active.colorScheme
-          document.documentElement.dataset.theme = scheme
-          window.dispatchEvent(new CustomEvent('eleckoi:dsh-theme:state', {
-            detail: { preference: snapshot.preference, scheme }
-          }))
-        }
-        const setTheme = event => {
-          const mode = event.detail?.mode
-          if (mode !== 'light' && mode !== 'dark' && mode !== 'system') return
-          try {
-            theme.setTheme(mode)
-            event.detail.applied = true
-          } catch (error) {
-            event.detail.error = error instanceof Error ? error.message : String(error)
-          }
-        }
-        const stop = subscribeTheme(snapshot => queueMicrotask(() => publish(snapshot)))
-        window.addEventListener('eleckoi:dsh-theme:set', setTheme)
-        publish(theme.getTheme())
-        return () => {
-          active = false
-          stop()
-          window.removeEventListener('eleckoi:dsh-theme:set', setTheme)
-        }
-      }, [theme, subscribeTheme])
+      const appearance = React.useMemo(() => ({
+        theme,
+        subscribe: subscribeTheme
+      }), [theme, subscribeTheme])
 
       React.useEffect(() => {
         const profileBundles = new Set([
           '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless',
           '@deepseek-ai/dsh-sdk-app', '@deepseek-ai/dsh-acp-app', '@deepseek-ai/dsh-sdk-minimal',
-          '@eleckoi/dsh-client-character-configuration', '@eleckoi/dsh-client-characters',
-          '@eleckoi/dsh-client-conversations', '@eleckoi/dsh-client-models',
-          '@eleckoi/dsh-client-persona', '@eleckoi/dsh-client-presets',
-          '@eleckoi/dsh-client-roleplay', '@eleckoi/dsh-client-shell'
         ])
         const eleckoiPackages = new Map([
-          ['@eleckoi/dsh-web-search-tavily', 'Tavily 联网搜索'],
+          ['@deepseek-ai/dsh-client-ui-plugin-manager', 'DSH 插件页面适配'],
+          ['@deepseek-ai/dsh-client-ui-conversation', 'DSH 会话输入框适配'],
+          ['@deepseek-ai/dsh-plugin-manager', 'DSH 插件管理适配'],
           ['@deepseek-ai/dsh-llm', 'DSH 模型运行适配'],
           ['@deepseek-ai/dsh-llm-pi-ai', 'DSH 通用模型适配'],
+          ['@deepseek-ai/dsh-llm-deepseek', 'DSH DeepSeek 模型适配'],
+          ['@deepseek-ai/dsh-api-session-controller', 'DSH 会话控制适配'],
+          ['@deepseek-ai/dsh-session', 'DSH 会话记录适配'],
+          ['@deepseek-ai/dsh-session-persistence-jsonl', 'DSH 会话存储适配'],
           ['@deepseek-ai/dsh-sdk-jsonrpc-server', 'DSH 桌面通信适配'],
           ['@earendil-works/pi-ai', '模型协议适配']
         ])
@@ -302,14 +206,14 @@ window.__ModuleLoader__.load({
         const entries = () => {
           if (!face) return []
           const packages = face.hooks.pluginManager.getSnapshot().packages
-            .filter(pkg => !profileBundles.has(pkg.name) && (pkg.installed || pkg.optional || pkg.error !== undefined))
+            .filter(pkg => !profileBundles.has(pkg.name) && (builtInBundles.includes(pkg.name) || pkg.enabled || pkg.installed || pkg.optional || pkg.error !== undefined))
           const toPackage = pkg => ({
             id: pkg.name,
             kind: 'package',
             name: eleckoiPackages.get(pkg.name)
               || (pkg.meta?.title === undefined ? pkg.name : face.resolveText(pkg.meta.title) || pkg.name),
             icon: pkg.meta?.icon || '',
-            group: eleckoiPackages.has(pkg.name) ? 'eleckoi'
+            group: pkg.name.startsWith('@eleckoi/') || eleckoiPackages.has(pkg.name) ? 'eleckoi'
               : pkg.name.startsWith('@deepseek-ai/') || (pkg.optional && !pkg.installed) ? 'official'
                 : 'installed'
           })
@@ -440,7 +344,7 @@ window.__ModuleLoader__.load({
           id: 'eleckoi-root',
           style: { position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'auto' }
         }, ProductApp ? React.createElement(ProductApp, {
-          conversations, characters, characterConfiguration, models, persona, presets, settingsSections,
+          conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, displayPreferences, appearance, settingsSections,
           navigation: {
             items: navigationItems,
             productPanelIds,
@@ -458,7 +362,6 @@ window.__ModuleLoader__.load({
           renderConversationList: (owner, fallback) => renderSlotChain('eleckoi.conversation.list', { ...owner, fallback }, { fallback }),
           renderPresetEditorSection: (section, owner, fallback) => renderSlotChain(`eleckoi.preset.editor.${section}`, { ...owner, fallback }, { fallback }),
           renderPresetManager: (owner, fallback) => renderSlotChain('eleckoi.preset.manager', { ...owner, fallback }, { fallback }),
-          renderModelEditor: (owner, fallback) => renderSlotChain('eleckoi.model.editor', { ...owner, fallback }, { fallback }),
           renderRoleplay: owner => renderSlotChain('eleckoi.roleplay', owner, {
             fallback: React.createElement('section', {
               className: 'chat-panel chat-panel-empty-state',
@@ -476,7 +379,7 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      ctx.effect(() => {
+      {
         let panelSnapshot = { activePanelId: 'messages' }
         let navigation = new AbortController()
         const listeners = new Set()
@@ -537,24 +440,27 @@ window.__ModuleLoader__.load({
             'eleckoi.preset.editor.tools': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.editor.regex': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.manager': { kind: 'chain', scope: 'root' },
-            'eleckoi.model.editor': { kind: 'chain', scope: 'root' },
             'eleckoi.roleplay': { kind: 'chain', scope: 'root' }
           },
           inject: () => ({ layout, slots: ctx.slots, locale: ctx.locale,
             theme: ctx.theme, subscribeTheme: listener => ctx.on('theme/change', listener),
-            conversations: ctx.eleckoiConversations, characters: ctx.eleckoiCharacters,
+            conversations: ctx.get('eleckoiConversations'), characters: ctx.eleckoiCharacters,
             characterConfiguration: { settingLibraries: ctx.eleckoiSettingLibraries,
               variables: ctx.eleckoiVariables, regexRules: ctx.eleckoiRegexRules },
+            creatorStudio: ctx.eleckoiCreatorStudio,
             models: ctx.eleckoiModels,
-            persona: ctx.eleckoiPersona, presets: ctx.eleckoiPresets })
+            persona: ctx.eleckoiPersona, presets: ctx.eleckoiPresets,
+            webSearch: ctx.eleckoiWebSearch,
+            displayPreferences: ctx.eleckoiDisplayPreferences })
         }, ElecKoiRoot)
-        return () => {
+        const disposeRoot = () => {
           navigation.abort()
           stopRoot()
           stopPanelInfo()
           void stopLayout()
         }
-      }, 'eleckoi client root and layout')
+        ctx.effect(() => disposeRoot, 'eleckoi client root and layout')
+      }
 
       ctx.slots.inject('sidebar', () => ctx.slots.register({
         name: 'sidebar',
@@ -577,12 +483,14 @@ window.__ModuleLoader__.load({
 
       ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'settings', registrant: '@eleckoi/dsh-client-shell' },
         () => React.createElement(SettingsPage)))
-      ctx.slots.inject('plugins.item', () => builtInPlugins.map((plugin, index) => ctx.slots.register({
-        name: 'plugins.item', id: plugin.id, label: plugin.label, order: 1000 + index, registrant: '@eleckoi/dsh-client-shell'
-      }, props => React.createElement(BuiltInPluginDescription, { ...props, plugin }))))
-      ctx.slots.inject('plugins.detail.badge', () => ctx.slots.register({
-        name: 'plugins.detail.badge', id: 'eleckoi.built-in-version', order: 1000, registrant: '@eleckoi/dsh-client-shell'
-      }, BuiltInPluginVersion))
+      ctx.slots.inject('plugins.bundle.config', () => builtInBundles.map(packageName => ctx.slots.register({
+        name: 'plugins.bundle.config', key: packageName, registrant: '@eleckoi/dsh-client-shell'
+      }, () => {
+        const entry = ctx.slots.entriesOfSlot('main').find(candidate => candidate.options.key === 'plugins')
+        const face = entry?.inject?.()
+        return face ? React.createElement(BuiltInPluginContents, { key: packageName, packageName, face })
+          : React.createElement('p', { role: 'status' }, '插件管理器尚未就绪。')
+      })))
       ctx.slots.inject('sidebar.panellist', () => [
         ctx.slots.register({
           name: 'sidebar.panellist', id: 'creatorStudio', order: 10,
@@ -625,7 +533,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale', 'theme', 'eleckoiConversations', 'eleckoiCharacters', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets'],
+      inject: ['slots', 'locale', 'theme', 'eleckoiCharacters', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiCreatorStudio', 'eleckoiDisplayPreferences', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets', 'eleckoiWebSearch'],
       apply
     }
   }

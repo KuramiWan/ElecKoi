@@ -2,13 +2,15 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
-  realpathSync
+  realpathSync,
+  rmSync,
+  statSync
 } from 'node:fs'
 import { dirname, isAbsolute, join, relative } from 'node:path'
 import { assistantStreamFirstTokenTime, type AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
 import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog, sessionFormatCatalog, SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format-catalog'
 import { historicalChildCatalogSource } from '@deepseek-ai/dsh-session-format-v3-to-v4'
-import { finalReplyText } from './notifications'
+import { finalReplyText } from './finalReply'
 import type { DshRequestContextItem, DshRequestContextRole } from './requestContext'
 
 const REQUEST_PROJECTION_PLUGIN = 'eleckoi-request-projection'
@@ -119,6 +121,20 @@ interface PendingRequest {
   attached: boolean
 }
 
+type RestoredDshSessionLog = {
+  path: string
+} & ReturnType<ReturnType<typeof sessionFormatCatalog.createRestore>['finish']>
+
+interface SessionLogCacheEntry {
+  path: string
+  fileVersion: string
+  directoryVersion: string
+  value: RestoredDshSessionLog
+}
+
+const SESSION_LOG_CACHE_LIMIT = 128
+const sessionLogCache = new Map<string, SessionLogCacheEntry>()
+
 export function readDshTrajectory(
   sessionLogRoot: string,
   runtimeThreadId: string,
@@ -151,7 +167,19 @@ export function readDshTrajectory(
 export function readDshSessionLog(
   sessionLogRoot: string,
   runtimeThreadId: string
-): ({ path: string } & ReturnType<ReturnType<typeof sessionFormatCatalog.createRestore>['finish']>) | undefined {
+): RestoredDshSessionLog | undefined {
+  const cacheKey = `${sessionLogRoot}\u0000${runtimeThreadId}`
+  const cached = sessionLogCache.get(cacheKey)
+  if (cached !== undefined) {
+    const fileVersion = filesystemVersion(cached.path)
+    const directoryVersion = filesystemVersion(dirname(cached.path))
+    if (fileVersion === cached.fileVersion && directoryVersion === cached.directoryVersion) {
+      sessionLogCache.delete(cacheKey)
+      sessionLogCache.set(cacheKey, cached)
+      return cached.value
+    }
+    sessionLogCache.delete(cacheKey)
+  }
   const located = locateSessionLog(sessionLogRoot, runtimeThreadId)
   if (located === undefined) return undefined
   const source = readFileSync(located, 'utf8')
@@ -196,7 +224,9 @@ export function readDshSessionLog(
   }
   try {
     const artifact = restore.finish()
-    return { path: located, ...artifact }
+    const result = { path: located, ...artifact }
+    if (!historical) rememberSessionLog(cacheKey, result)
+    return result
   } catch (error) {
     if (historical && error instanceof SessionFormatUnsupportedMigrationError) {
       try {
@@ -216,6 +246,78 @@ export function readDshSessionLog(
       }
     }
     throw new Error('DSH 轨迹日志中的流式记录无法解码。', { cause: error })
+  }
+}
+
+/** Removes one stored Session and every persisted subagent descended from it. */
+export function removeDshSessionTree(sessionLogRoot: string, runtimeThreadId: string): void {
+  if (!runtimeThreadId || !existsSync(sessionLogRoot)) return
+  const root = realpathSync(sessionLogRoot)
+  const stored = storedSessionDirectories(root)
+  const discarded = new Set([runtimeThreadId])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const item of stored) {
+      if (!item.parentSession || discarded.has(item.id) || !discarded.has(item.parentSession)) continue
+      discarded.add(item.id)
+      changed = true
+    }
+  }
+  for (const item of stored) {
+    if (!discarded.has(item.id)) continue
+    rmSync(item.directory, { recursive: true, force: true })
+    sessionLogCache.delete(`${sessionLogRoot}\u0000${item.id}`)
+  }
+}
+
+function storedSessionDirectories(root: string): Array<{ id: string; parentSession?: string; directory: string }> {
+  const stored: Array<{ id: string; parentSession?: string; directory: string }> = []
+  for (const project of readdirSync(root, { withFileTypes: true })) {
+    if (!project.isDirectory() || project.isSymbolicLink()) continue
+    const projectDirectory = join(root, project.name)
+    for (const session of readdirSync(projectDirectory, { withFileTypes: true })) {
+      if (!session.isDirectory() || session.isSymbolicLink()) continue
+      const directory = realpathSync(join(projectDirectory, session.name))
+      const relativePath = relative(root, directory)
+      if (!relativePath || relativePath.startsWith('..') || isAbsolute(relativePath)) continue
+      const log = latestSessionLog(directory)
+      if (log === undefined) continue
+      try {
+        const firstLine = readFileSync(log, 'utf8').split(/\r?\n/, 1)[0]
+        const result = sessionFormatCatalog.readHeader(JSON.parse(firstLine ?? ''))
+        if (result.status === 'malformed' || result.status === 'unsupported') continue
+        stored.push({
+          id: result.header.id,
+          ...(result.header.parentSession ? { parentSession: result.header.parentSession } : {}),
+          directory
+        })
+      } catch {
+        continue
+      }
+    }
+  }
+  return stored
+}
+
+function filesystemVersion(path: string): string | undefined {
+  try {
+    const stats = statSync(path, { bigint: true })
+    return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`
+  } catch {
+    return undefined
+  }
+}
+
+function rememberSessionLog(cacheKey: string, value: RestoredDshSessionLog): void {
+  const fileVersion = filesystemVersion(value.path)
+  const directoryVersion = filesystemVersion(dirname(value.path))
+  if (fileVersion === undefined || directoryVersion === undefined) return
+  sessionLogCache.set(cacheKey, { path: value.path, fileVersion, directoryVersion, value })
+  while (sessionLogCache.size > SESSION_LOG_CACHE_LIMIT) {
+    const oldest = sessionLogCache.keys().next().value
+    if (oldest === undefined) break
+    sessionLogCache.delete(oldest)
   }
 }
 

@@ -1,6 +1,5 @@
 import { X } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { readChatImage } from "../api/chatApi.js";
 
 export function agentMessageImageSize(width, height) {
   if (!(width > 0) || !(height > 0)) return { width: 240, height: 240, objectPosition: "center" };
@@ -15,7 +14,7 @@ export function agentMessageImageSize(width, height) {
   };
 }
 
-export function ChatImageGallery({ images = [], conversationId = "", compact = false, agentMessage = false, onRemove }) {
+export function ChatImageGallery({ images = [], conversationId = "", compact = false, agentMessage = false, onRemove, loadImage }) {
   if (!images.length) return null;
   const agentVariant = agentMessage ? images.length > 1 ? "tile" : "single" : "";
   return (
@@ -28,13 +27,14 @@ export function ChatImageGallery({ images = [], conversationId = "", compact = f
           compact={compact}
           agentVariant={agentVariant}
           onRemove={onRemove}
+          loadImage={loadImage}
         />
       ))}
     </div>
   );
 }
 
-function ChatImage({ image, conversationId, compact, agentVariant, onRemove }) {
+function ChatImage({ image, conversationId, compact, agentVariant, onRemove, loadImage }) {
   const [source, setSource] = useState(image.previewUrl || image.dataUrl || "");
   const [failed, setFailed] = useState(false);
   const [naturalSize, setNaturalSize] = useState(null);
@@ -54,11 +54,13 @@ function ChatImage({ image, conversationId, compact, agentVariant, onRemove }) {
       return undefined;
     }
     let active = true;
-    readChatImage(conversationId, image.attachmentId)
+    if (!loadImage) { setFailed(true); return undefined; }
+    setSource("");
+    loadImage(conversationId, image)
       .then((url) => { if (active) setSource(url); })
       .catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
-  }, [conversationId, image.attachmentId, image.dataUrl, image.previewUrl]);
+  }, [conversationId, image.attachmentId, image.dataUrl, image.previewUrl, loadImage]);
 
   const label = image.name || "图片";
   return (

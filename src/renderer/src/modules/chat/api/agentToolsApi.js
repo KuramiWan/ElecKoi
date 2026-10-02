@@ -1,13 +1,11 @@
-import { desktopClient } from '../../../bridge/desktopClient.ts';
-
-async function loadActivePreset() {
-  const catalog = await desktopClient.request('query.agent_presets.catalog', {});
-  const preset = await desktopClient.request('query.agent_presets.read', { presetId: catalog.activePresetId });
+async function loadActivePreset(presetCatalog) {
+  const catalog = await presetCatalog.refresh();
+  const preset = await presetCatalog.read(catalog.activePresetId);
   return { catalog, preset };
 }
 
 function chatModelConfigs(configs) {
-  return configs.filter((config) => config.enabled !== false && config.provider !== 'openai_image' && config.provider !== 'novelai_image');
+  return configs.filter((config) => config.enabled !== false);
 }
 
 function asToolCatalog(preset, configs) {
@@ -21,47 +19,28 @@ function asToolCatalog(preset, configs) {
   };
 }
 
-export async function loadAgentTools() {
-  const [{ preset }, configs] = await Promise.all([
-    loadActivePreset(),
-    desktopClient.request('query.models.list', {}),
-  ]);
+export async function loadAgentTools(presetCatalog, configs = []) {
+  const { preset } = await loadActivePreset(presetCatalog);
   return asToolCatalog(preset, configs);
 }
 
-export async function setAgentToolGroupEnabled(groupId, enabled) {
-  const { preset } = await loadActivePreset();
-  const saved = await desktopClient.request('command.agent_presets.save', {
-    expectedRegexRules: preset.regexRules,
-    preset: {
+export async function setAgentToolGroupEnabled(presetCatalog, groupId, enabled, configs = []) {
+  const { preset } = await loadActivePreset(presetCatalog);
+  const saved = await presetCatalog.save({
       ...preset,
       toolGroups: preset.toolGroups.map((group) => group.id === groupId ? { ...group, included: true, enabled } : group),
-    },
-  });
-  const configs = await desktopClient.request('query.models.list', {});
+  }, preset.regexRules);
   return asToolCatalog(saved, configs);
 }
 
-export async function setSubagentModelSelection(selection) {
-  const [{ preset }, configs] = await Promise.all([
-    loadActivePreset(),
-    desktopClient.request('query.models.list', {}),
-  ]);
-  const saved = await desktopClient.request('command.agent_presets.save', {
-    expectedRegexRules: preset.regexRules,
-    preset: { ...preset, subagentModelSelection: selection },
-  });
+export async function setSubagentModelSelection(presetCatalog, selection, configs = []) {
+  const { preset } = await loadActivePreset(presetCatalog);
+  const saved = await presetCatalog.save({ ...preset, subagentModelSelection: selection }, preset.regexRules);
   return asToolCatalog(saved, configs);
 }
 
-export async function setRoleplayPlanSettings(roleplayPlan) {
-  const [{ preset }, configs] = await Promise.all([
-    loadActivePreset(),
-    desktopClient.request('query.models.list', {}),
-  ]);
-  const saved = await desktopClient.request('command.agent_presets.save', {
-    expectedRegexRules: preset.regexRules,
-    preset: { ...preset, roleplayPlan },
-  });
+export async function setRoleplayPlanSettings(presetCatalog, roleplayPlan, configs = []) {
+  const { preset } = await loadActivePreset(presetCatalog);
+  const saved = await presetCatalog.save({ ...preset, roleplayPlan }, preset.regexRules);
   return asToolCatalog(saved, configs);
 }

@@ -4,11 +4,10 @@ import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
 import { GroupAssignmentMenu } from '../../../ui/ui/GroupAssignmentMenu.jsx';
 import { ExportIcon, ImportIcon, PencilIcon, PlusIcon, TrashIcon } from '../../../ui/icons/index.jsx';
 import defaultPresetAvatar from '../../../assets/eleckoi-app-icon.png';
-import { assignPresetGroup, createPresetGroup, deletePreset, deletePresetGroup, renamePresetGroup } from '../api/presetApi.js';
 
 const ALL_PRESETS = '全部预设';
 
-export function PresetManager({ catalog, selectedGroup, selectedPresetId, onSelectGroup, onSelectPreset, onRefresh, onImport, onExport, importing, importError }) {
+export function PresetManager({ catalogModel, catalog, selectedGroup, selectedPresetId, onSelectGroup, onSelectPreset, onRefresh, onImport, onExport, importing, importError }) {
   const [groupDraft, setGroupDraft] = useState('');
   const [editingGroupId, setEditingGroupId] = useState('');
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -103,7 +102,7 @@ export function PresetManager({ catalog, selectedGroup, selectedPresetId, onSele
     if (!preset || preset.libraryGroupId === groupId) return;
     setError('');
     try {
-      await assignPresetGroup(preset.id, groupId);
+      await catalogModel.assignGroup(preset.id, groupId);
       setPresetGroupMenu(null);
       await onRefresh(preset.id);
     } catch (cause) {
@@ -114,7 +113,7 @@ export function PresetManager({ catalog, selectedGroup, selectedPresetId, onSele
   async function addGroup() {
     if (!groupDraft.trim()) return;
     try {
-      await createPresetGroup(groupDraft);
+      await catalogModel.createGroup(groupDraft);
       setGroupDraft('');
       setGroupDialogOpen(false);
       await onRefresh();
@@ -124,7 +123,7 @@ export function PresetManager({ catalog, selectedGroup, selectedPresetId, onSele
   async function renameGroup() {
     if (!selectedGroupRecord || !groupDraft.trim()) return;
     try {
-      await renamePresetGroup(selectedGroupRecord.id, groupDraft);
+      await catalogModel.renameGroup(selectedGroupRecord.id, groupDraft);
       setGroupDraft('');
       setEditingGroupId('');
       setGroupDialogOpen(false);
@@ -135,7 +134,7 @@ export function PresetManager({ catalog, selectedGroup, selectedPresetId, onSele
   async function removeGroup(group = selectedGroupRecord) {
     if (!group) return;
     try {
-      await deletePresetGroup(group.id);
+      await catalogModel.deleteGroup(group.id);
       onSelectGroup(ALL_PRESETS);
       setGroupMenu(null);
       await onRefresh();
@@ -154,7 +153,7 @@ export function PresetManager({ catalog, selectedGroup, selectedPresetId, onSele
   async function removeSelectedPresets() {
     if (!selectedIds.length) return;
     try {
-      for (const id of selectedIds) await deletePreset(id);
+      for (const id of selectedIds) await catalogModel.delete(id);
       cancelDeleteMode();
       await onRefresh();
     } catch (cause) { setError(cause?.message || '删除预设失败'); }

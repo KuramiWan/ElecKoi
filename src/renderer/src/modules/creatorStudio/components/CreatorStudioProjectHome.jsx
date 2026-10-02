@@ -11,7 +11,6 @@ import {
   UserFocus,
   X,
 } from "@phosphor-icons/react";
-import { desktopClient } from "../../../bridge/desktopClient.ts";
 import {
   DshCheckIcon,
   DshChevronDownIcon,
@@ -306,7 +305,7 @@ export function CreatorStudioPagination({ pageSize, currentPage, totalPages, onP
   </nav>;
 }
 
-function CreateProjectDialog({ characters, onClose, onCreated }) {
+function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated }) {
   const [mode, setMode] = useState("blank");
   const [name, setName] = useState("");
   const [parentDirectory, setParentDirectory] = useState("");
@@ -314,6 +313,7 @@ function CreateProjectDialog({ characters, onClose, onCreated }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const nameRef = useRef(null);
+  const directoryRequestRef = useRef(null);
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -322,13 +322,20 @@ function CreateProjectDialog({ characters, onClose, onCreated }) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [busy, onClose]);
 
+  useEffect(() => () => directoryRequestRef.current?.abort(), []);
+
   const chooseDirectory = async () => {
     setError("");
+    directoryRequestRef.current?.abort();
+    const request = new AbortController();
+    directoryRequestRef.current = request;
     try {
-      const result = await desktopClient.request("command.creator_studio.projects.select_directory", {});
-      if (result.directory) setParentDirectory(result.directory);
+      const directory = await projectCatalog.selectDirectory(request.signal);
+      if (directory && !request.signal.aborted) setParentDirectory(directory);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "无法选择保存位置。");
+      if (!request.signal.aborted) setError(requestError instanceof Error ? requestError.message : "无法选择保存位置。");
+    } finally {
+      if (directoryRequestRef.current === request) directoryRequestRef.current = null;
     }
   };
 
@@ -340,7 +347,7 @@ function CreateProjectDialog({ characters, onClose, onCreated }) {
     if (mode === "existing" && !sourceCharacterId) { setError("请选择要修改的角色。"); return; }
     setBusy(true);
     try {
-      const collection = await desktopClient.request("command.creator_studio.projects.create", {
+      const collection = await projectCatalog.create({
         name: name.trim(), mode, parentDirectory,
         ...(mode === "existing" ? { sourceCharacterId } : {}),
       });
@@ -413,7 +420,7 @@ function LibraryPage({ page }) {
   </div>;
 }
 
-export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCatalog, onOpenProject = () => {} }) {
+export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCatalog, projectCatalog, onOpenProject = () => {} }) {
   const [activePage, setActivePage] = useState("projects");
   const [viewMode, setViewMode] = useState("grid");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -427,20 +434,22 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
   const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
     const updateCharacters = () => {
       const snapshot = characterCatalog.getSnapshot();
       if (snapshot.status === "ready") setCharacters(snapshot.collection.items);
     };
+    const updateProjects = () => {
+      const snapshot = projectCatalog.getSnapshot();
+      if (snapshot.status === "ready") setProjects(snapshot.collection.items);
+    };
     const stopCharacters = characterCatalog.subscribe(updateCharacters);
+    const stopProjects = projectCatalog.subscribe(updateProjects);
     updateCharacters();
+    updateProjects();
     void characterCatalog.refresh().catch(() => {});
-    desktopClient.request("query.creator_studio.projects.list", {}).then((projectCollection) => {
-      if (cancelled) return;
-      setProjects(projectCollection.items);
-    }).catch(() => {});
-    return () => { cancelled = true; stopCharacters(); };
-  }, [characterCatalog]);
+    void projectCatalog.refresh().catch(() => {});
+    return () => { stopCharacters(); stopProjects(); };
+  }, [characterCatalog, projectCatalog]);
 
   useEffect(() => {
     if (!pendingDeletionId) return undefined;
@@ -486,8 +495,7 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
     setDeletingProjectId(project.id);
     setDeleteError("");
     try {
-      const collection = await desktopClient.request("command.creator_studio.projects.delete", { projectId: project.id });
-      setProjects(collection.items);
+      await projectCatalog.delete(project.id);
       setPendingDeletionId("");
     } catch (requestError) {
       setDeleteError(requestError instanceof Error ? requestError.message : "无法删除项目。");
@@ -560,8 +568,8 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
       </div> : <LibraryPage page={activePage} />}
     </div>
 
-    {createDialogOpen ? <CreateProjectDialog characters={characters} onClose={() => setCreateDialogOpen(false)} onCreated={(items) => {
-      setProjects(items); setActivePage("projects"); setCurrentPage(1); setCreateDialogOpen(false);
+    {createDialogOpen ? <CreateProjectDialog characters={characters} projectCatalog={projectCatalog} onClose={() => setCreateDialogOpen(false)} onCreated={() => {
+      setActivePage("projects"); setCurrentPage(1); setCreateDialogOpen(false);
     }} /> : null}
   </div>;
 }

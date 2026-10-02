@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
+import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
+import { MessageDisplayProjector } from '../packages/dsh-product-data/src/domain/conversations/MessageDisplayProjector'
+import type { RegexRuleCollection } from '../src/shared/contracts/regex/schemas'
+import { detectRichMessagePresentation } from '../src/shared/foundation/richMessage'
 
 const source = readFileSync(new URL('../packages/dsh-client-conversations/src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -10,6 +14,93 @@ interface Result {
   ok: boolean
   data?: Array<{ id: string }>
   error?: { message: string }
+}
+
+type ConversationChange =
+  | { kind: 'snapshot' }
+  | { kind: 'catalog'; conversationId: string; reason: 'created' | 'deleted' }
+  | { kind: 'messages'; conversationId: string; reason: 'edited' | 'deleted' | 'regenerated'; messageIds: string[] }
+
+function conversationChangeFeed() {
+  type StreamState = {
+    queue: ConversationChange[]
+    done: boolean
+    wake: (() => void) | undefined
+  }
+  const streams = new Set<StreamState>()
+  let stopped = false
+  return {
+    open(signal?: AbortSignal): AsyncIterable<ConversationChange> {
+      const state: StreamState = { queue: [{ kind: 'snapshot' }], done: false, wake: undefined }
+      streams.add(state)
+      const stop = () => {
+        if (state.done) return
+        state.done = true
+        streams.delete(state)
+        stopped = true
+        state.wake?.()
+        state.wake = undefined
+      }
+      if (signal?.aborted) stop()
+      else signal?.addEventListener('abort', stop, { once: true })
+      return (async function* () {
+        try {
+          while (!state.done) {
+            if (state.queue.length > 0) {
+              yield state.queue.shift()!
+              continue
+            }
+            await new Promise<void>(resolve => { state.wake = resolve })
+            state.wake = undefined
+          }
+        } finally {
+          signal?.removeEventListener('abort', stop)
+          stop()
+        }
+      })()
+    },
+    emit(change: ConversationChange) {
+      for (const state of streams) {
+        state.queue.push(change)
+        state.wake?.()
+        state.wake = undefined
+      }
+    },
+    isStopped: () => stopped
+  }
+}
+
+function conversationRemote(
+  read: (name?: string, input?: unknown) => Promise<Result | unknown>,
+  changes = conversationChangeFeed(),
+  projectDisplay?: (conversationId: string, messages: any[]) => Promise<any[]>
+) {
+  return {
+    eleckoiConversations: {
+      changes: (signal?: AbortSignal) => changes.open(signal),
+      list: async () => {
+        const result = await read('query.conversations.list', {}) as Result
+        return result?.ok
+          ? { ok: true, value: result.data ?? [] }
+          : result
+      },
+      details: async (conversationId: string, beforeSequence?: number, limit?: number) => {
+        const name = beforeSequence === undefined ? 'query.conversations.details' : 'query.conversations.messages'
+        const result = await read(name, { conversationId, beforeSequence, limit }) as Result
+        return result?.ok ? { ok: true, value: result.data } : result
+      },
+      variableTimeline: async (conversationId: string) => {
+        const result = await read('query.conversations.variable_timeline', { conversationId }) as Result
+        return result?.ok ? { ok: true, value: result.data } : result
+      },
+      ...(projectDisplay ? {
+        projectDisplay: async (conversationId: string, messages: any[]) => ({
+          ok: true,
+          value: await projectDisplay(conversationId, messages)
+        })
+      } : {})
+    }
+  }
 }
 
 function mountCatalog(
@@ -21,37 +112,31 @@ function mountCatalog(
   } = {}
 ) {
   let registration: { id: string; factory: () => { apply: (ctx: unknown) => void } } | undefined
-  let onEvent: ((event: unknown) => void) | undefined
-  let stopped = false
+  const changes = conversationChangeFeed()
   let cleanup = () => {}
   let catalog: {
     getSnapshot: () => { status: string; items: Array<{ id: string }>; error: string }
     subscribe: (listener: () => void) => () => void
     refresh: () => Promise<Array<{ id: string }>>
   } | undefined
-  const bridge = {
-    request: (name: string, input: unknown) => {
-      if (!runtime.allowOtherQueries) {
-        expect(name).toBe('query.conversations.list')
-        expect(input).toEqual({})
-      }
-      return request(name, input)
-    },
-    subscribe: (listener: (event: unknown) => void) => {
-      onEvent = listener
-      return () => { stopped = true; onEvent = undefined }
+  const read = (name?: string, input?: unknown) => {
+    if (!runtime.allowOtherQueries) {
+      expect(name).toBe('query.conversations.list')
+      expect(input).toEqual({})
     }
+    return request(name, input)
   }
   runInNewContext(source, {
+    AbortController,
     requestAnimationFrame: runtime.requestAnimationFrame,
     cancelAnimationFrame: runtime.cancelAnimationFrame,
     window: {
-      eleckoi: bridge,
       __ModuleLoader__: { load: (item: typeof registration) => { registration = item } }
     }
   })
   expect(registration?.id).toBe('@eleckoi/dsh-client-conversations')
   dshClientPlugin(registration!).apply({
+    remote: conversationRemote(read, changes),
     provide: (name: string, value: typeof catalog) => {
       expect(name).toBe('eleckoiConversations')
       catalog = value
@@ -62,16 +147,182 @@ function mountCatalog(
   if (!catalog) throw new Error('Conversation catalog was not provided')
   return {
     catalog,
-    emit: (event: unknown) => onEvent?.(event),
+    emit: (change: ConversationChange) => changes.emit(change),
     dispose: () => cleanup(),
-    isStopped: () => stopped
+    isStopped: changes.isStopped
   }
 }
 
 describe('DSH ElecKoi conversation client model', () => {
+  it('projects opening regexes on load, refresh, selection, edits and rule changes without changing the original', async () => {
+    let registration: any
+    let catalog: any
+    let cleanup = () => {}
+    let rulesChanged: (...args: any[]) => void = () => {}
+    let opening = { id: 'opening', role: 'assistant', content: '[ENTRY]\nFirst opening',
+      variableStateJson: '{}', status: 'complete', createdAt: '2026-10-02T00:00:00.000Z',
+      selectedOpeningId: 'entry-1', openingOptions: [
+        { id: 'entry-1', content: '[ENTRY]\nFirst opening' },
+        { id: 'entry-2', content: '[ENTRY]\nSecond opening' }
+      ] }
+    const details = () => ({ conversation: { id: 'chat-1' }, metadata: { characterId: 'character-1' },
+      runtimeSessionId: '', messages: [{ ...opening }], hasMore: false, beforeSequence: null })
+    const collection: RegexRuleCollection = {
+      characterId: 'character-1', agentPresetId: '', agentPresetName: '', agentPresetRegexRevision: '0'.repeat(64),
+      globalRules: [], agentPresetRules: [], characterRules: [{
+        id: 'entry-panel', name: 'Entry panel', pattern: '/\\[ENTRY\\]/g',
+        replacement: '<section class="entry-panel">{{char}}</section>',
+        targets: ['AiOutput'], enabled: true, displayOnly: true, promptOnly: false, runOnEdit: false, order: 0
+      }],
+      versions: [{ id: 'version-1', name: 'Current', globalEnabledIds: [], agentPresetEnabledIds: [],
+        characterEnabledIds: ['entry-panel'] }], activeVersionId: 'version-1', revision: 1
+    }
+    const projector = new MessageDisplayProjector(mvuMessageDisplayCompatibility)
+    const projectDisplay = vi.fn(async (conversationId: string, messages: any[]) => messages.map(message => {
+      const projected = projector.project({ ...message, conversationId }, collection,
+        { characterName: 'Test assistant', userName: 'Test user' })
+      return { id: message.id, sourceContent: message.content,
+        displayContent: projected.displayContent ?? projected.content, variableStateJson: projected.variableStateJson }
+    }))
+    const remote = conversationRemote(async name => name === 'query.conversations.list'
+      ? { ok: true, data: [{ id: 'chat-1' }] }
+      : { ok: true, data: details() }, conversationChangeFeed(), projectDisplay)
+    Object.assign(remote.eleckoiConversations, {
+      selectOpening: async (_id: string, openingId: string) => {
+        opening = { ...opening, content: opening.openingOptions.find(option => option.id === openingId)!.content,
+          selectedOpeningId: openingId }
+        return { ok: true, value: details() }
+      },
+      updateOpening: async (_id: string, content: string) => {
+        opening = { ...opening, content }
+        return { ok: true, value: details() }
+      }
+    })
+    runInNewContext(source, { AbortController,
+      window: { __ModuleLoader__: { load: (item: any) => { registration = item } } } })
+    dshClientPlugin(registration).apply({ remote,
+      eleckoiRegexRules: { subscribe: (listener: typeof rulesChanged) => {
+        rulesChanged = listener
+        return () => { rulesChanged = () => {} }
+      } },
+      provide: (_name: string, value: unknown) => { catalog = value },
+      effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {} })
+    try {
+      await settle()
+      await catalog.open('chat-1')
+      await settle()
+      const displayed = () => catalog.getDetailsSnapshot().details.messages[0]
+      expect(displayed().content).toBe('[ENTRY]\nFirst opening')
+      expect(displayed().displayContent).toContain('<section class="entry-panel">Test assistant</section>')
+      expect(detectRichMessagePresentation(displayed().displayContent, false)?.parts.some(part => part.kind === 'rich'))
+        .toBe(true)
+      const initialCalls = projectDisplay.mock.calls.length
+      await catalog.refreshDetails()
+      await settle()
+      expect(displayed().displayContent).toContain('<section class="entry-panel">Test assistant</section>')
+      expect(projectDisplay).toHaveBeenCalledTimes(initialCalls)
+      await catalog.selectOpening('chat-1', 'entry-2')
+      await settle()
+      expect(displayed()).toMatchObject({ content: '[ENTRY]\nSecond opening', selectedOpeningId: 'entry-2' })
+      expect(displayed().displayContent).toContain('Second opening')
+      expect(displayed().displayContent).not.toContain('[ENTRY]')
+      collection.characterRules[0]!.replacement = '<section class="entry-panel">Updated {{char}}</section>'
+      collection.revision += 1
+      rulesChanged('configuration', 'character-1', { status: 'ready' })
+      await settle()
+      expect(displayed().displayContent).toContain('Updated Test assistant')
+      await catalog.updateOpening('chat-1', '[ENTRY]\nEdited opening')
+      await settle()
+      expect(displayed().content).toBe('[ENTRY]\nEdited opening')
+      expect(displayed().displayContent).toContain('Updated Test assistant')
+      expect(displayed().displayContent).toContain('Edited opening')
+    } finally { cleanup() }
+  })
+
+  it.each(['delayed', 'fast', 'cancelled', 'failed', 'live-error', 'pre-turn-error'])('waits for the matching official request completion (%s)', async (mode) => {
+    let registration: any
+    let catalog: any
+    let cleanup = () => {}
+    const listeners = new Set<() => void>()
+    let events: any[] = []
+    let running = false
+    let lastAgentError: string | null = null
+    const failure = 'Synthetic API error (402): {"message":"request refused"}'
+    const details = { conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', messages: [] }
+    const finish = () => {
+      running = false
+      if (mode === 'live-error' || mode === 'pre-turn-error') lastAgentError = failure
+      events = [
+        { type: 'event', event: { type: 'turn/start', seq: 1, data: { turn: 1 } } },
+        { type: 'event', event: { type: 'user/message', seq: 2, data: { source: { kind: 'user', rpcId: 'request-1' } } } },
+        { type: 'event', event: { type: 'turn/end', seq: 3, data: { turn: 1,
+          reason: mode === 'failed' ? { kind: 'error', error: { message: '模型服务不可用' } }
+            : mode === 'cancelled' ? { kind: 'aborted', reason: 'user' } : { kind: 'completed' } } } },
+      ]
+      // The control error can precede journal completion or occur before user admission.
+      if (mode === 'live-error') { running = true; events = events.slice(0, 2) }
+      if (mode === 'pre-turn-error') events = []
+      for (const listener of listeners) listener()
+    }
+    const session = {
+      getSnapshot: () => ({ running, promptError: null, lastAgentError }),
+      subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+      prompt: vi.fn(async () => {
+        if (mode === 'fast') finish()
+        else { running = true; for (const listener of listeners) listener() }
+        return { ok: true, value: { accepted: true } }
+      }),
+    }
+    const binding = { session, eventSource: {
+      getSnapshot: () => ({ entries: events, hasMore: false }), subscribe: session.subscribe,
+    } }
+    const changes = conversationChangeFeed()
+    runInNewContext(source, { setTimeout, clearTimeout, Date, AbortController,
+      window: { __ModuleLoader__: { load: (item: any) => { registration = item } } },
+    })
+    dshClientPlugin(registration).apply({
+      remote: { session: {}, eleckoiConversations: {
+        changes: (signal?: AbortSignal) => changes.open(signal),
+        list: async () => ({ ok: true, value: [{ id: 'chat-1', runtimeSessionId: 'runtime-1' }] }),
+        details: async () => ({ ok: true, value: details }),
+        preparePrompt: async () => ({ ok: true, value: { runtimeSessionId: 'runtime-1' } }),
+      } },
+      sessions: { list: { getSnapshot: () => ({ byId: { 'runtime-1': {} } }) },
+        refresh: async () => {}, reloadHistory: async () => {}, retain: () => ({ sessionId: 'runtime-1', binding, ready: Promise.resolve(binding), release() {} }) },
+      uiConversation: { binding: () => ({ target: () => ({ getSnapshot: () => ({ legacy: { nodes: [], partial: null } }), subscribe: () => () => {} }) }) },
+      provide: (_key: string, service: any) => { catalog = service },
+      effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {},
+    })
+    try {
+      await settle()
+      await catalog.open('chat-1')
+      let settled = false
+      const sending = catalog.send({ conversationId: 'chat-1', requestId: 'request-1', text: '测试输入' })
+      const observed = sending.then((value: unknown) => { settled = true; return value }, (error: unknown) => { settled = true; throw error })
+      await settle()
+      expect(session.prompt).toHaveBeenCalledWith([{ type: 'text', text: '测试输入' }], 'queue', undefined, 'request-1')
+      if (mode !== 'fast') {
+        expect(settled).toBe(false)
+        const expectation = mode === 'failed' ? expect(observed).rejects.toThrow('模型服务不可用')
+          : mode.endsWith('error') ? expect(observed).rejects.toThrow(failure)
+          : expect(observed).resolves.toMatchObject({ cancelled: mode === 'cancelled' })
+        finish()
+        await expectation
+        if (mode === 'failed' || mode.endsWith('error')) {
+          expect(catalog.getStreamSnapshot()).toMatchObject({ status: 'error' })
+          expect(catalog.activeRequests.size).toBe(0)
+          expect(listeners.size).toBe(1)
+        }
+      } else {
+        await expect(observed).resolves.toMatchObject({ cancelled: false })
+      }
+    } finally { cleanup() }
+  })
+
   it('keeps the latest baseline when requests finish out of order and releases its listener', async () => {
     const pending: Array<(result: Result) => void> = []
     const mounted = mountCatalog(() => new Promise(resolve => pending.push(resolve)))
+    await settle()
     expect(pending).toHaveLength(1)
     let changes = 0
     mounted.catalog.subscribe(() => { changes += 1 })
@@ -84,9 +335,8 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(mounted.catalog.getSnapshot().items.map(item => item.id)).toEqual(['recent'])
     expect(changes).toBe(1)
 
-    mounted.emit({ name: 'records.changed', payload: { module: 'personas' } })
-    expect(pending).toHaveLength(2)
-    mounted.emit({ name: 'records.changed', payload: { module: 'conversations' } })
+    mounted.emit({ kind: 'catalog', conversationId: 'after-change', reason: 'created' })
+    await settle()
     expect(pending).toHaveLength(3)
     pending[2]!({ ok: true, data: [{ id: 'after-change' }] })
     await settle()
@@ -94,8 +344,62 @@ describe('DSH ElecKoi conversation client model', () => {
 
     mounted.dispose()
     expect(mounted.isStopped()).toBe(true)
-    mounted.emit({ name: 'records.changed', payload: { module: 'conversations' } })
+    mounted.emit({ kind: 'catalog', conversationId: 'ignored-after-dispose', reason: 'created' })
     expect(pending).toHaveLength(3)
+  })
+
+  it('reloads and rebinds rejected regeneration before another click', async () => {
+    let registration: any, catalog: any
+    let cleanup = () => {}
+    let seq = 2
+    let retained = 0
+    const calls: number[] = []
+    const details = { conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', messages: [] }
+    const session = { getSnapshot: () => ({ running: false }), subscribe: () => () => {} }
+    const binding = { session, eventSource: { getSnapshot: () => ({ entries: [], hasMore: false }) } }
+    const changes = conversationChangeFeed()
+    const reloadHistory = vi.fn(async () => { seq = 9 })
+    runInNewContext(source, { setTimeout, clearTimeout, Date, AbortController,
+      window: { __ModuleLoader__: { load: (item: any) => { registration = item } } },
+    })
+    dshClientPlugin(registration).apply({
+      remote: { session: {}, eleckoiConversations: {
+        changes: (signal?: AbortSignal) => changes.open(signal),
+        list: async () => ({ ok: true, value: [{ id: 'chat-1', runtimeSessionId: 'runtime-1' }] }),
+        details: async () => ({ ok: true, value: details }),
+        regenerateMessage: async (_id: string, eventSeq: number) => {
+          calls.push(eventSeq)
+          return { ok: false, error: { message: '合成准备失败' } }
+        },
+      } },
+      sessions: { list: { getSnapshot: () => ({ byId: { 'runtime-1': {} } }) },
+        refresh: async () => {}, reloadHistory, retain: () => {
+          retained++
+          return { sessionId: 'runtime-1', binding, ready: Promise.resolve(binding), release() {} }
+        } },
+      uiConversation: { binding: () => ({ target: () => ({ subscribe: () => () => {}, getSnapshot: () => ({
+        order: ['input'], nodes: new Map([['input', { kind: 'user', anchorSeq: seq, data: {
+          seq, time: 10, content: [{ type: 'text', text: '合成输入' }], source: { kind: 'user' }
+        } }]]), legacy: { nodes: [], partial: null },
+      }) }) }) },
+      provide: (_key: string, value: any) => { catalog = value },
+      effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {},
+    })
+    try {
+      await settle()
+      await catalog.open('chat-1')
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const input = catalog.getDetailsSnapshot().details.messages[0]
+        await expect(catalog.regenerate({ conversationId: 'chat-1', requestId: `retry-${attempt}`,
+          eventSeq: input.sessionEventSeq })).rejects.toThrow('合成准备失败')
+        expect(catalog.getDetailsSnapshot().details.messages[0].sessionEventSeq).toBe(9)
+        expect(catalog.activeRequests.size).toBe(0)
+        expect(catalog.sessionMutations.size).toBe(0)
+      }
+      expect(calls).toEqual([2, 9])
+      expect(reloadHistory).toHaveBeenCalledTimes(2)
+      expect(retained).toBeGreaterThanOrEqual(3)
+    } finally { cleanup() }
   })
 
   it('keeps the last valid baseline when a later read fails', async () => {
@@ -130,57 +434,416 @@ describe('DSH ElecKoi conversation client model', () => {
     mounted.dispose()
   })
 
-  it('coalesces streaming deltas to the official frame cadence and flushes terminal state immediately', async () => {
-    let nextFrame = 0
-    const frames = new Map<number, () => void>()
-    const mounted = mountCatalog(async (name, input) => {
-      if (name === 'query.conversations.list') return { ok: true, data: [{ id: 'chat-1' }] }
-      if (name === 'query.agent.inspect') {
-        return { ok: true, data: { conversationId: (input as { conversationId: string }).conversationId, active: false } }
+  it('creates chats and updates openings through the product Remote service', async () => {
+    let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
+    let cleanup = () => {}
+    let sessionRefreshes = 0
+    const created = {
+      conversation: { id: 'created-chat', title: '新聊天' },
+      metadata: {},
+      runtimeSessionId: 'created-runtime',
+      messages: [{ id: 'opening', role: 'assistant', content: '开场白', variableStateJson: '{}', status: 'complete' }],
+      hasMore: false,
+      beforeSequence: null
+    }
+    const calls: Array<{ method: string; args: unknown[] }> = []
+    const changeFeed = conversationChangeFeed()
+    const remote = {
+      eleckoiConversations: {
+        changes: (signal?: AbortSignal) => changeFeed.open(signal),
+        list: async () => ({ ok: true, value: [{ id: 'created-chat', runtimeSessionId: 'created-runtime' }] }),
+        create: async (...args: unknown[]) => { calls.push({ method: 'create', args }); return { ok: true, value: created } },
+        delete: async (...args: unknown[]) => { calls.push({ method: 'delete', args }); return { ok: true, value: undefined } },
+        selectOpening: async (...args: unknown[]) => { calls.push({ method: 'selectOpening', args }); return { ok: true, value: created } },
+        updateOpening: async (...args: unknown[]) => { calls.push({ method: 'updateOpening', args }); return { ok: true, value: created } }
       }
-      if (name === 'query.conversations.details') {
-        return { ok: true, data: { conversation: { id: 'chat-1' }, messages: [] } }
+    }
+    runInNewContext(source, {
+      AbortController,
+      window: {
+        __ModuleLoader__: { load: (item: typeof registration) => { registration = item } }
       }
-      throw new Error(`Unexpected query: ${name}`)
-    }, {
-      allowOtherQueries: true,
-      requestAnimationFrame: (callback) => {
-        nextFrame += 1
-        frames.set(nextFrame, callback)
-        return nextFrame
-      },
-      cancelAnimationFrame: (id) => { frames.delete(id) },
     })
-    const catalog = mounted.catalog as typeof mounted.catalog & {
-      activate: (id: string) => void
-      getStreamSnapshot: () => { content: string; status: string; sequence: number }
-      subscribeStream: (listener: () => void) => () => void
-    }
-    catalog.activate('chat-1')
+    let catalog: any
+    dshClientPlugin(registration!).apply({
+      remote,
+      sessions: { refresh: async () => { sessionRefreshes += 1 }, list: { getSnapshot: () => ({ byId: {} }) } },
+      uiConversation: {},
+      provide: (_name: string, value: unknown) => { catalog = value },
+      effect: (run: () => () => void) => { cleanup = run() },
+      on: () => () => {}
+    })
     await settle()
-    let changes = 0
-    catalog.subscribeStream(() => { changes += 1 })
+    expect(await catalog.create({ title: '新聊天' })).toMatchObject({ conversation: { id: 'created-chat' } })
+    expect(await catalog.selectOpening('created-chat', 'opening-2')).toMatchObject({ conversation: { id: 'created-chat' } })
+    expect(await catalog.updateOpening('created-chat', '修改后的开场白')).toMatchObject({ conversation: { id: 'created-chat' } })
+    await catalog.delete('created-chat')
+    expect(calls).toEqual([
+      { method: 'create', args: [{ title: '新聊天' }] },
+      { method: 'selectOpening', args: ['created-chat', 'opening-2'] },
+      { method: 'updateOpening', args: ['created-chat', '修改后的开场白'] },
+      { method: 'delete', args: ['created-chat'] }
+    ])
+    expect(sessionRefreshes).toBe(2)
+    cleanup()
+  })
 
-    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 1, delta: 'a' } })
-    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 2, delta: 'b' } })
-    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 3, delta: 'c' } })
-    expect(catalog.getStreamSnapshot().content).toBe('')
-    expect(changes).toBe(0)
-
-    for (let index = 0; index < 3; index += 1) {
-      const entry = frames.entries().next().value as [number, () => void]
-      frames.delete(entry[0])
-      entry[1]()
+  it('projects official DSH Session history and live output into the roleplay model', async () => {
+    let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
+    let cleanup = () => {}
+    let targetListener = () => {}
+    let sessionListener = () => {}
+    let released = false
+    const projectionListeners = new Map<string, () => void>()
+    let pressure = { projectedTokens: 40, contextWindow: 100, pressureTokens: 50 }
+    const breakdown = { sections: [] }
+    const sessionStats = { turns: 1, steps: 2, llmMs: 30, toolMs: 4, ttftMs: 5, ttftSteps: 1, decodeMs: 20, decodeTokens: 8 }
+    const tokenUsage = { uncachedInputTokens: 12, outputTokens: 8, cacheReadTokens: 3, cacheWriteTokens: 0 }
+    let historyStatsAdjustment = { steps: 0, turns: 0 }
+    let running = false
+    const userNode = { kind: 'user', anchorSeq: 2, data: {
+      kind: 'user', seq: 2, time: 10, content: [{ type: 'text', text: 'official user' }], source: { kind: 'user' }
+    } }
+    const finalNode = { kind: 'assistant', turn: 1, step: 4, seq: 5, time: 20,
+      messageId: 'assistant-dsh', blocks: [{ kind: 'text', text: '<FINAL>official reply</FINAL>' }] }
+    const turnTailNode = { kind: 'turn-tail', anchorSeq: 6, data: {
+      turn: 1, seq: 6, time: 21, branchUnavailable: false,
+      closing: { status: 'settled', turn: 1, step: 4, time: 20, blocks: finalNode.blocks, finalNode }
+    } }
+    let settledNodes = new Map<string, any>([
+      ['user-2', userNode],
+      ['turn-tail-1', turnTailNode]
+    ])
+    let targetSnapshot: any = {
+      order: [...settledNodes.keys()], nodes: settledNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] }
     }
-    expect(catalog.getStreamSnapshot()).toMatchObject({ content: 'abc', status: 'running', sequence: 3 })
-    expect(changes).toBe(1)
+    const session = {
+      projections: { faceOf: (key: string) => ({
+        getSnapshot: () => key === 'contextPressure' ? pressure
+          : key === 'contextBreakdown' ? breakdown
+            : key === 'sessionStats' ? sessionStats
+              : key === 'eleckoiHistoryStatsAdjustment' ? historyStatsAdjustment : tokenUsage,
+        subscribe: (listener: () => void) => {
+          projectionListeners.set(key, listener)
+          return () => { projectionListeners.delete(key) }
+        }
+      }) },
+      getSnapshot: () => ({ running }),
+      subscribe: (listener: () => void) => { sessionListener = listener; return () => { sessionListener = () => {} } },
+      cancel: async () => ({ ok: true, value: { accepted: true } }),
+      loadOlder: vi.fn(async () => {
+        const olderFinal = { kind: 'assistant', turn: 0, step: 1, seq: 1, time: 2,
+          messageId: 'older-assistant-dsh', blocks: [{ kind: 'text', text: 'earlier reply' }] }
+        settledNodes = new Map([
+          ['user-0', { kind: 'user', anchorSeq: 0, data: {
+            kind: 'user', seq: 0, time: 1, content: [{ type: 'text', text: 'earlier user' }], source: { kind: 'user' }
+          } }],
+          ['turn-tail-0', { kind: 'turn-tail', anchorSeq: 1, data: {
+            turn: 0, seq: 2, time: 3, branchUnavailable: false,
+            closing: { status: 'settled', turn: 0, step: 1, time: 2, blocks: olderFinal.blocks, finalNode: olderFinal }
+          } }],
+          ...settledNodes
+        ])
+        targetSnapshot = { ...targetSnapshot, order: [...settledNodes.keys()], nodes: settledNodes }
+        hasMore = false
+        targetListener()
+      })
+    }
+    let hasMore = false
+    const binding = {
+      session,
+      eventSource: { getSnapshot: () => ({ hasMore }) }
+    }
+    const target = {
+      getSnapshot: () => targetSnapshot,
+      subscribe: (listener: () => void) => { targetListener = listener; return () => { targetListener = () => {} } }
+    }
+    const sessions = {
+      list: { getSnapshot: () => ({ byId: { 'runtime-1': {} } }) },
+      refresh: async () => {},
+      retain: () => ({
+        sessionId: 'runtime-1', binding, ready: Promise.resolve(binding),
+        release: () => { released = true }
+      })
+    }
+    const upload = vi.fn(async (_sessionId, _file, _name, _signal, onProgress) => {
+      onProgress?.({ loaded: 12, total: 12 })
+      return {
+        ok: true,
+        value: {
+          receiptId: 'receipt-1',
+          file: { attachmentId: 'sha256:file-1', name: 'notes.txt', bytes: 12 }
+        }
+      }
+    })
+    const bridge = {
+      request: async (name: string, input?: any) => {
+        if (name === 'query.conversations.messages') {
+          expect(input.beforeSequence).toBe(3)
+          return { ok: true, data: { hasMore: false, beforeSequence: 1, messages: [
+            { id: 'older-user', role: 'user', sequence: 1, messageIndex: 0, dshMessageId: 'older-user-dsh' },
+            { id: 'older-assistant', role: 'assistant', sequence: 2, messageIndex: 1, dshMessageId: 'older-assistant-dsh' },
+          ] } }
+        }
+        if (name === 'query.conversations.details') return { ok: true, data: {
+          conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', hasMore: false, beforeSequence: 1,
+          messages: [
+            { id: 'product-user', role: 'user', sequence: 3, messageIndex: 17, variableStateJson: '{}' },
+            { id: 'product-assistant', role: 'assistant', sequence: 4, messageIndex: 22, dshMessageId: 'assistant-dsh', variableStateJson: '{}', displayContent: '<FINAL>official reply</FINAL>' },
+            { id: 'metadata-user-extra', role: 'user', sequence: 6, variableStateJson: '{}' }
+          ]
+        } }
+        return { ok: true, data: [] }
+      }
+    }
+    const changeFeed = conversationChangeFeed()
+    runInNewContext(source, {
+      Date,
+      AbortController,
+      window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
+    })
+    let catalog: any
+    const imageUrl = vi.fn(async () => 'blob:session-image')
+    dshClientPlugin(registration!).apply({
+      remote: conversationRemote((name, input) => bridge.request(name!, input), changeFeed,
+        async (conversationId, messages) => {
+          expect(conversationId).toBe('chat-1')
+          return messages.map(message => ({
+            id: message.id,
+            sourceContent: message.content,
+            displayContent: message.role === 'assistant'
+              ? `projected:${message.content.replace(/<\/?FINAL>/g, '').trim()}`
+              : message.content,
+            variableStateJson: message.variableStateJson
+          }))
+        }),
+      sessions,
+      uiConversation: { binding: () => ({ target: () => target }), imageUrl },
+      fileUpload: { upload },
+      provide: (_name: string, value: unknown) => { catalog = value },
+      effect: (run: () => () => void) => { cleanup = run() },
+      on: () => () => {}
+    })
+    await settle()
+    const opened = await catalog.open('chat-1')
+    await settle()
+    expect(opened.messages.map((message: any) => message.content)).toEqual(['official user', '<FINAL>official reply</FINAL>'])
+    expect(catalog.getDetailsSnapshot().details.messages.map((message: any) => message.displayContent))
+      .toEqual(['official user', 'projected:official reply'])
+    expect(opened.messages.map((message: any) => message.messageIndex)).toEqual([0, 1])
+    expect(catalog.getDetailsSnapshot().details.messages).toMatchObject([
+      { id: 'product-user', content: 'official user', runtimeSessionId: 'runtime-1' },
+      { id: 'product-assistant', content: '<FINAL>official reply</FINAL>', dshMessageId: 'assistant-dsh' }
+    ])
+    const stepNodes = new Map<string, any>([
+      ['reasoning-1', { kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 } },
+        data: { turn: 1, step: 1, status: 'complete', time: 12, blocks: [{ kind: 'reasoning', text: '检查资料' }] } }],
+      ['assistant-before-tool', { kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 } },
+        data: { turn: 1, step: 2, status: 'settled', time: 13, blocks: [{ kind: 'text', text: '我先检查资料。' }],
+          finalNode: { kind: 'assistant', turn: 1, step: 2, seq: 13, time: 13,
+            messageId: 'assistant-before-tool', blocks: [{ kind: 'text', text: '我先检查资料。' }] } } }],
+      ['tool-1', { kind: 'tool-call', location: { kind: 'step', turn: { turn: 1 } },
+        data: { root: { kind: 'tool-result', callId: 'probe-call', call: { name: 'read_file', argsRaw: '{}' },
+          time: 14, content: [{ type: 'text', text: '资料已读取' }], subCalls: [] } } }],
+    ])
+    const finalAt25 = { ...finalNode, seq: 25 }
+    const tailAt25 = { ...turnTailNode, anchorSeq: 26, data: { ...turnTailNode.data,
+      seq: 26, closing: { ...turnTailNode.data.closing, finalNode: finalAt25 } } }
+    settledNodes = new Map([
+      ['user-2', userNode],
+      ...stepNodes,
+      ['turn-tail-1', tailAt25]
+    ])
+    targetSnapshot = {
+      order: [...settledNodes.keys()], nodes: settledNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] },
+    }
+    targetListener()
+    const transcript = catalog.getDetailsSnapshot().details.messages
+    expect(transcript).toHaveLength(2)
+    expect(transcript.map((message: any) => message.messageIndex)).toEqual([0, 1])
+    expect(transcript[1]).toMatchObject({ id: 'product-assistant', content: '<FINAL>official reply</FINAL>', sessionEventSeq: 25,
+      process: [{ kind: 'reasoning', detail: '检查资料' }, { kind: 'tool', detail: '资料已读取' }] })
+    await catalog.refreshDetails()
+    expect(catalog.getDetailsSnapshot().details.messages).toHaveLength(2)
+    expect(catalog.getDetailsSnapshot().details.messages[1].process).toHaveLength(2)
+    hasMore = true
+    targetListener()
+    const olderPage = await catalog.pageOlder('chat-1', 2)
+    expect(session.loadOlder).toHaveBeenCalledOnce()
+    expect(olderPage.messages.map((message: any) => message.content)).toEqual(['earlier user', 'earlier reply', 'official user', '<FINAL>official reply</FINAL>'])
+    expect(olderPage.messages.map((message: any) => message.messageIndex)).toEqual([0, 1, 2, 3])
+    expect(olderPage.hasMore).toBe(false)
+    expect(olderPage.replace).toBe(true)
+    const file = { name: 'notes.txt', size: 12 }
+    const progress = vi.fn()
+    await expect(catalog.uploadFile('chat-1', file, { onProgress: progress })).resolves.toEqual({
+      id: 'receipt-1',
+      receiptId: 'receipt-1',
+      attachmentId: 'sha256:file-1',
+      name: 'notes.txt',
+      bytes: 12
+    })
+    expect(upload).toHaveBeenCalledWith('runtime-1', file, 'notes.txt', undefined, progress)
+    expect(progress).toHaveBeenCalledWith({ loaded: 12, total: 12 })
+    const image = { attachmentId: 'sha256:image-1', name: 'sample.png', mediaType: 'image/png' }
+    await expect(catalog.readImage('chat-1', image)).resolves.toBe('blob:session-image')
+    expect(imageUrl).toHaveBeenCalledWith('runtime-1', image)
+    expect(catalog.getStatsSnapshot()).toEqual({ id: 'chat-1', stats: {
+      sessionStats, tokenUsage, contextPressure: pressure, contextBreakdown: breakdown
+    } })
+    const previousStats = catalog.getStatsSnapshot()
+    pressure = { ...pressure, projectedTokens: 60 }
+    projectionListeners.get('contextPressure')?.()
+    expect(catalog.getStatsSnapshot()).not.toBe(previousStats)
+    expect(catalog.getStatsSnapshot().stats.contextPressure.projectedTokens).toBe(60)
 
-    mounted.emit({ name: 'agent.output.delta', payload: { conversationId: 'chat-1', runId: 'run-1', messageId: 'reply-1', sequence: 4, delta: 'd' } })
-    mounted.emit({ name: 'agent.run.finished', payload: { conversationId: 'chat-1', runId: 'run-1', message: { id: 'reply-1' } } })
-    expect(catalog.getStreamSnapshot()).toMatchObject({ content: 'abcd', status: 'idle', sequence: 4 })
-    expect(changes).toBe(2)
-    expect(frames.size).toBe(0)
-    mounted.dispose()
+    historyStatsAdjustment = { steps: 1, turns: 1 }
+    projectionListeners.get('eleckoiHistoryStatsAdjustment')?.()
+    expect(catalog.getStatsSnapshot().stats.sessionStats).toEqual({ ...sessionStats, steps: 1, turns: 0 })
+    const adjustedStats = catalog.getStatsSnapshot().stats
+    catalog.publishStats('chat-1', adjustedStats)
+    expect(catalog.getStatsSnapshot().stats.sessionStats).toEqual({ ...sessionStats, steps: 1, turns: 0 })
+    expect(catalog.getStatsSnapshot().stats.tokenUsage).toEqual(tokenUsage)
+    historyStatsAdjustment = { steps: 0, turns: 0 }
+    projectionListeners.get('eleckoiHistoryStatsAdjustment')?.()
+
+    running = true
+    const liveNodes = new Map<string, any>([
+      ['assistant-live', {
+        kind: 'assistant-step',
+        location: { kind: 'step', turn: { turn: 2 }, step: { step: 1 } },
+        data: { turn: 2, step: 1, status: 'running', time: 30, blocks: [
+          { kind: 'reasoning', text: '先读取资料' }
+        ] }
+      }]
+    ])
+    const allLiveNodes = new Map([...settledNodes, ...liveNodes])
+    targetSnapshot = {
+      order: [...allLiveNodes.keys()], nodes: allLiveNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }], [2, { turn: 2, status: 'open' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] }
+    }
+    targetListener()
+    expect(catalog.getStreamSnapshot()).toMatchObject({
+      status: 'running', messageId: 'dsh-live-runtime-1', content: '',
+      renderKey: 'dsh-reply-runtime-1-2', dshTurn: 2,
+      process: [{ kind: 'reasoning', status: 'running', detail: '先读取资料' }]
+    })
+    allLiveNodes.set('assistant-live', {
+      ...allLiveNodes.get('assistant-live'),
+      data: { ...allLiveNodes.get('assistant-live').data, status: 'settled', blocks: [
+        { kind: 'reasoning', text: '先读取资料' }, { kind: 'text', text: '准备工具调用<FIN' }
+      ] }
+    })
+    allLiveNodes.set('tool-live', {
+      kind: 'tool-call',
+      location: { kind: 'step', turn: { turn: 2 }, step: { step: 1 } },
+      data: { root: {
+        phase: 'start', callId: 'call-1', name: 'read_file', argsRaw: '{"path":"notes.txt"}',
+        turn: 2, step: 1, time: 31, subCalls: []
+      } }
+    })
+    targetSnapshot = { ...targetSnapshot, order: [...allLiveNodes.keys()] }
+    targetListener()
+    sessionListener()
+    expect(catalog.getDetailsSnapshot().details.messages.map((message: any) => message.content)).toEqual([
+      'earlier user', 'earlier reply', 'official user', '<FINAL>official reply</FINAL>'
+    ])
+    expect(catalog.getStreamSnapshot()).toMatchObject({
+      status: 'running', messageId: 'dsh-live-runtime-1', content: '', runId: 'runtime-1',
+      renderKey: 'dsh-reply-runtime-1-2', dshTurn: 2,
+      process: [
+        { kind: 'reasoning', status: 'complete', detail: '先读取资料' },
+        { kind: 'tool', status: 'running', toolName: 'read_file' }
+      ]
+    })
+
+    allLiveNodes.set('assistant-live', {
+      ...allLiveNodes.get('assistant-live'),
+      data: {
+        ...allLiveNodes.get('assistant-live').data,
+        status: 'running',
+        blocks: [
+          { kind: 'reasoning', text: '先读取资料' },
+          { kind: 'text', text: '准备工具调用<FINAL>\n第一段</FIN' }
+        ]
+      }
+    })
+    targetListener()
+    expect(catalog.getStreamSnapshot()).toMatchObject({
+      status: 'running', messageId: 'dsh-live-runtime-1', content: '第一段', runId: 'runtime-1',
+      renderKey: 'dsh-reply-runtime-1-2'
+    })
+
+    allLiveNodes.set('assistant-live', {
+      ...allLiveNodes.get('assistant-live'),
+      data: {
+        ...allLiveNodes.get('assistant-live').data,
+        blocks: [
+          { kind: 'reasoning', text: '先读取资料' },
+          { kind: 'text', text: '准备工具调用<FINAL>\n第一段正文。\n</FINAL>' }
+        ]
+      }
+    })
+    targetListener()
+    expect(catalog.getStreamSnapshot()).toMatchObject({
+      status: 'running', messageId: 'dsh-live-runtime-1', content: '第一段正文。', runId: 'runtime-1'
+    })
+
+    const liveFinalNode = { kind: 'assistant', turn: 2, step: 1, seq: 31, time: 40,
+      messageId: 'assistant-live-final', blocks: [{ kind: 'text', text: '<FINAL>\n第一段正文。\n</FINAL>' }] }
+    const completedNodes = new Map([...settledNodes, ['turn-tail-2', {
+      kind: 'turn-tail', anchorSeq: 32, data: {
+        turn: 2, seq: 32, time: 41, branchUnavailable: false,
+        closing: { status: 'settled', turn: 2, step: 1, time: 40,
+          blocks: liveFinalNode.blocks, finalNode: liveFinalNode }
+      }
+    }]])
+    targetSnapshot = {
+      order: [...completedNodes.keys()], nodes: completedNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }], [2, { turn: 2, status: 'closed' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] }
+    }
+    targetListener()
+    expect(catalog.getDetailsSnapshot().details.messages.at(-1)).toMatchObject({
+      content: '<FINAL>\n第一段正文。\n</FINAL>', displayContent: '第一段正文。'
+    })
+    expect(catalog.getStreamSnapshot().status).toBe('idle')
+
+    running = false
+    sessionListener()
+    expect(catalog.getStreamSnapshot().status).toBe('idle')
+
+    // A new turn must not reuse the preceding reply or its activity.
+    running = true
+    targetSnapshot = { ...targetSnapshot, timeline: { turns: new Map([
+      [2, { turn: 2, status: 'closed' }], [3, { turn: 3, status: 'open' }]
+    ]) } }
+    sessionListener()
+    expect(catalog.getStreamSnapshot()).toMatchObject({
+      status: 'running', messageId: '', content: '', process: [], dshTurn: 3
+    })
+    const toolOnlyNodes = new Map([...completedNodes, ['tool-only', {
+      kind: 'tool-call', location: { kind: 'step', turn: { turn: 3 }, step: { step: 1 } },
+      data: { root: { phase: 'start', callId: 'search-1', name: 'web_search', argsRaw: '{}',
+        turn: 3, step: 1, time: 50, subCalls: [] } }
+    }]])
+    targetSnapshot = { ...targetSnapshot, order: [...toolOnlyNodes.keys()], nodes: toolOnlyNodes }
+    targetListener()
+    expect(catalog.getStreamSnapshot()).toMatchObject({
+      status: 'running', messageId: 'dsh-live-runtime-1', content: '',
+      renderKey: 'dsh-reply-runtime-1-3', dshTurn: 3,
+      process: [{ id: 'search-1', kind: 'tool', status: 'running', toolName: 'web_search' }]
+    })
+    expect(catalog.getStreamSnapshot().process).toHaveLength(1)
+    cleanup()
+    expect(released).toBe(true)
+    expect(projectionListeners.size).toBe(0)
+    expect(catalog.getStatsSnapshot()).toEqual({ id: '', stats: null })
   })
 
   it('keeps the active conversation detail when earlier opens finish later', async () => {
@@ -188,7 +851,7 @@ describe('DSH ElecKoi conversation client model', () => {
     const detail = (id: string, messageId: string): Details => ({ conversation: { id }, messages: [{ id: messageId }] })
     const pending: Array<{ id: string; resolve: (result: { ok: boolean; data: Details }) => void }> = []
     let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
-    let onEvent: ((event: unknown) => void) | undefined
+    const changeFeed = conversationChangeFeed()
     let cleanup = () => {}
     let catalog: {
       getDetailsSnapshot: () => { id: string; status: string; details: Details | null }
@@ -202,20 +865,19 @@ describe('DSH ElecKoi conversation client model', () => {
           expect(name).toBe('query.conversations.details')
           pending.push({ id: input.conversationId!, resolve })
         }),
-      subscribe: (listener: (event: unknown) => void) => {
-        onEvent = listener
-        return () => { onEvent = undefined }
-      }
     }
     runInNewContext(source, {
-      window: { eleckoi: bridge, __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
+      AbortController,
+      window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
     })
     dshClientPlugin(registration!).apply({
+      remote: conversationRemote((name, input) => bridge.request(name!, input as { conversationId?: string }), changeFeed),
       provide: (_name: string, value: typeof catalog) => { catalog = value },
       effect: (run: () => () => void) => { cleanup = run() },
       on: () => () => {}
     })
     if (!catalog) throw new Error('Conversation model was not provided')
+    await settle()
     let changes = 0
     catalog.subscribeDetails(() => { changes += 1 })
     const first = catalog.open('first')
@@ -227,7 +889,7 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(await first).toBeNull()
     expect(catalog.getDetailsSnapshot().details?.conversation.id).toBe('second')
 
-    onEvent?.({ name: 'records.changed', payload: { module: 'conversations' } })
+    changeFeed.emit({ kind: 'catalog', conversationId: 'second', reason: 'created' })
     await settle()
     expect(pending[2]?.id).toBe('second')
     pending[2]!.resolve({ ok: true, data: detail('second', 'updated') })
@@ -235,12 +897,12 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(catalog.getDetailsSnapshot().details?.messages[0]?.id).toBe('updated')
     expect(changes).toBe(4)
     cleanup()
-    expect(onEvent).toBeUndefined()
+    expect(changeFeed.isStopped()).toBe(true)
   })
 
   it('clears a deleted active conversation before requesting its details again', async () => {
     let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
-    let onEvent: ((event: unknown) => void) | undefined
+    const changes = conversationChangeFeed()
     let cleanup = () => {}
     let exists = true
     const detailRequests: string[] = []
@@ -253,9 +915,6 @@ describe('DSH ElecKoi conversation client model', () => {
         if (name === 'query.conversations.list') {
           return { ok: true, data: exists ? [{ id: 'only-chat' }] : [] }
         }
-        if (name === 'query.agent.inspect') {
-          return { ok: true, data: { conversationId: input.conversationId, active: false } }
-        }
         if (name === 'query.conversations.details') {
           detailRequests.push(input.conversationId!)
           return exists
@@ -264,25 +923,24 @@ describe('DSH ElecKoi conversation client model', () => {
         }
         throw new Error(`Unexpected query: ${name}`)
       },
-      subscribe: (listener: (event: unknown) => void) => {
-        onEvent = listener
-        return () => { onEvent = undefined }
-      }
     }
     runInNewContext(source, {
-      window: { eleckoi: bridge, __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
+      AbortController,
+      window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
     })
     dshClientPlugin(registration!).apply({
+      remote: conversationRemote((name, input) => bridge.request(name!, input as { conversationId?: string }), changes),
       provide: (_name: string, value: typeof catalog) => { catalog = value },
       effect: (run: () => () => void) => { cleanup = run() },
       on: () => () => {}
     })
     if (!catalog) throw new Error('Conversation model was not provided')
+    await settle()
     await catalog.open('only-chat')
     expect(catalog.getDetailsSnapshot()).toMatchObject({ id: 'only-chat', status: 'ready', error: '' })
 
     exists = false
-    onEvent?.({ name: 'records.changed', payload: { module: 'conversations' } })
+    changes.emit({ kind: 'catalog', conversationId: 'only-chat', reason: 'deleted' })
     await settle()
     expect(detailRequests).toEqual(['only-chat'])
     expect(catalog.getDetailsSnapshot()).toMatchObject({ id: '', status: 'idle', error: '' })
@@ -306,7 +964,7 @@ describe('DSH ElecKoi conversation client model', () => {
     })
     const responses = [detail('first', [3, 4]), detail('first', [3, 4, 5]), detail('first', [5]), detail('second', [8], false)]
     let resolvePage: ((result: unknown) => void) | undefined
-    let onEvent: ((event: unknown) => void) | undefined
+    const changes = conversationChangeFeed()
     let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
     let cleanup = () => {}
     let catalog: {
@@ -323,20 +981,19 @@ describe('DSH ElecKoi conversation client model', () => {
         if (name === 'query.conversations.messages') return new Promise(resolve => { resolvePage = resolve })
         throw new Error(`Unexpected query: ${name}`)
       },
-      subscribe: (listener: (event: unknown) => void) => {
-        onEvent = listener
-        return () => { onEvent = undefined }
-      }
     }
     runInNewContext(source, {
-      window: { eleckoi: bridge, __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
+      AbortController,
+      window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
     })
     dshClientPlugin(registration!).apply({
+      remote: conversationRemote((name) => bridge.request(name!), changes),
       provide: (_name: string, value: typeof catalog) => { catalog = value },
       effect: (run: () => () => void) => { cleanup = run() },
       on: () => () => {}
     })
     if (!catalog) throw new Error('Conversation model was not provided')
+    await settle()
     await catalog.open('first')
     expect(await catalog.pageOlder('second', 3)).toBeNull()
     expect(await catalog.pageOlder('first', 2)).toBeNull()
@@ -346,7 +1003,7 @@ describe('DSH ElecKoi conversation client model', () => {
       hasMore: false, beforeSequence: 1
     } })
     await older
-    onEvent?.({ name: 'records.changed', payload: { module: 'conversations' } })
+    changes.emit({ kind: 'catalog', conversationId: 'first', reason: 'created' })
     await settle()
     expect(catalog.getDetailsSnapshot().details?.messages.map(message => message.sequence)).toEqual([1, 2, 3, 4, 5])
     expect(catalog.getDetailsSnapshot().details?.beforeSequence).toBe(1)
@@ -358,7 +1015,7 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(catalog.getDetailsSnapshot().details?.messages.map(message => message.sequence)).toEqual([5])
     const stalePage = catalog.pageOlder('first', 5)
     catalog.activate('second')
-    expect(catalog.getDetailsSnapshot().runtimeSessionId).toBeUndefined()
+    expect(catalog.getDetailsSnapshot().runtimeSessionId).toBe('')
     await catalog.open('second')
     resolvePage!({ ok: true, data: { messages: [{ id: 'first-4', sequence: 4 }], hasMore: false, beforeSequence: 4 } })
     expect(await stalePage).toBeNull()
@@ -377,26 +1034,25 @@ describe('DSH ElecKoi conversation client model', () => {
       getDetailsSnapshot: () => { id: string; details: Details | null }
     } | undefined
     let cleanup = () => {}
+    const request = (name: string) => {
+      if (name === 'query.conversations.list') return Promise.resolve({ ok: true, data: [] })
+      expect(name).toBe('query.conversations.details')
+      return new Promise(resolve => pending.push(resolve))
+    }
     runInNewContext(source, {
+      AbortController,
       window: {
-        eleckoi: {
-          request: (name: string) => {
-            if (name === 'query.conversations.list') return Promise.resolve({ ok: true, data: [] })
-            if (name === 'query.agent.inspect') return Promise.resolve({ ok: true, data: { conversationId: 'older-history', active: false } })
-            expect(name).toBe('query.conversations.details')
-            return new Promise(resolve => pending.push(resolve))
-          },
-          subscribe: () => () => {}
-        },
         __ModuleLoader__: { load: (item: typeof registration) => { registration = item } }
       }
     })
     dshClientPlugin(registration!).apply({
+      remote: conversationRemote((name) => request(name!), conversationChangeFeed()),
       provide: (_name: string, value: typeof catalog) => { catalog = value },
       effect: (run: () => () => void) => { cleanup = run() },
       on: () => () => {}
     })
     if (!catalog) throw new Error('Conversation model was not provided')
+    await settle()
     const opening = catalog.open('older-history')
     const refresh = catalog.refreshDetails()
     const detail = { conversation: { id: 'older-history' }, messages: [{ id: 'older-message' }] }
@@ -411,7 +1067,7 @@ describe('DSH ElecKoi conversation client model', () => {
   it('refreshes the open variable timeline and drops results after it closes', async () => {
     type Timeline = { floors: Array<{ id: string }> }
     const pending: Array<(result: { ok: boolean; data: Timeline }) => void> = []
-    let onEvent: ((event: unknown) => void) | undefined
+    const changes = conversationChangeFeed()
     let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
     let cleanup = () => {}
     let catalog: {
@@ -423,24 +1079,23 @@ describe('DSH ElecKoi conversation client model', () => {
       request: (name: string) => name === 'query.conversations.variable_timeline'
         ? new Promise<{ ok: boolean; data: Timeline }>(resolve => pending.push(resolve))
         : Promise.resolve({ ok: true, data: [{ id: 'first' }] }),
-      subscribe: (listener: (event: unknown) => void) => {
-        onEvent = listener
-        return () => { onEvent = undefined }
-      }
     }
     runInNewContext(source, {
-      window: { eleckoi: bridge, __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
+      AbortController,
+      window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
     })
     dshClientPlugin(registration!).apply({
+      remote: conversationRemote((name) => bridge.request(name!), changes),
       provide: (_name: string, value: typeof catalog) => { catalog = value },
       effect: (run: () => () => void) => { cleanup = run() },
       on: () => () => {}
     })
     if (!catalog) throw new Error('Conversation model was not provided')
+    await settle()
     const opened = catalog.openTimeline('first')
     pending[0]!({ ok: true, data: { floors: [{ id: 'floor-1' }] } })
     expect((await opened)?.floors[0]?.id).toBe('floor-1')
-    onEvent?.({ name: 'records.changed', payload: { module: 'conversations' } })
+    changes.emit({ kind: 'catalog', conversationId: 'first', reason: 'created' })
     await settle()
     pending[1]!({ ok: true, data: { floors: [{ id: 'floor-2' }] } })
     await settle()
@@ -452,178 +1107,7 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(await stale).toBeNull()
     expect(catalog.getTimelineSnapshot().status).toBe('idle')
     cleanup()
-    expect(onEvent).toBeUndefined()
+    expect(changes.isStopped()).toBe(true)
   })
 
-  it('recovers a missing stream delta from the Main baseline and settles the run', async () => {
-    type Inspection = { active: boolean; conversationId: string; runId?: string; requestId?: string; messageId?: string; accumulated?: string; sequence?: number }
-    const inspections: Array<(result: { ok: boolean; data: Inspection }) => void> = []
-    let onEvent: ((event: unknown) => void) | undefined
-    let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
-    let cleanup = () => {}
-    let catalog: {
-      activate: (id: string) => void
-      getStreamSnapshot: () => { id: string; status: string; sequence: number; content: string; process: Array<{ id: string }> }
-    } | undefined
-    const bridge = {
-      request: (name: string) => {
-        if (name === 'query.agent.inspect') return new Promise<{ ok: boolean; data: Inspection }>(resolve => inspections.push(resolve))
-        if (name === 'query.conversations.details') return Promise.resolve({
-          ok: true, data: { conversation: { id: 'first' }, messages: [{ id: 'assistant' }], hasMore: false, beforeSequence: null }
-        })
-        return Promise.resolve({ ok: true, data: [] })
-      },
-      subscribe: (listener: (event: unknown) => void) => {
-        onEvent = listener
-        return () => { onEvent = undefined }
-      }
-    }
-    runInNewContext(source, {
-      window: { eleckoi: bridge, __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
-    })
-    dshClientPlugin(registration!).apply({
-      provide: (_name: string, value: typeof catalog) => { catalog = value },
-      effect: (run: () => () => void) => { cleanup = run() },
-      on: () => () => {}
-    })
-    if (!catalog) throw new Error('Conversation model was not provided')
-    catalog.activate('first')
-    inspections[0]!({ ok: true, data: { active: false, conversationId: 'first' } })
-    await settle()
-    onEvent?.({ name: 'agent.output.delta', payload: {
-      conversationId: 'first', runId: 'run-1', messageId: 'assistant', sequence: 1, delta: 'A'
-    } })
-    expect(catalog.getStreamSnapshot().content).toBe('A')
-    onEvent?.({ name: 'agent.output.delta', payload: {
-      conversationId: 'first', runId: 'run-1', messageId: 'assistant', sequence: 3, delta: 'C'
-    } })
-    inspections[1]!({ ok: true, data: {
-      active: true, conversationId: 'first', runId: 'run-1', requestId: 'request-1', messageId: 'assistant', accumulated: 'ABC', sequence: 3
-    } })
-    await settle()
-    expect(catalog.getStreamSnapshot().content).toBe('ABC')
-    expect(catalog.getStreamSnapshot().sequence).toBe(3)
-    onEvent?.({ name: 'agent.output.delta', payload: {
-      conversationId: 'first', runId: 'run-1', messageId: 'assistant', sequence: 2, delta: 'B'
-    } })
-    onEvent?.({ name: 'agent.process.updated', payload: {
-      conversationId: 'first', runId: 'run-1', messageId: 'assistant', item: { id: 'step-1' }
-    } })
-    expect(catalog.getStreamSnapshot().content).toBe('ABC')
-    expect(catalog.getStreamSnapshot().process.map(item => item.id)).toEqual(['step-1'])
-    onEvent?.({ name: 'agent.run.finished', payload: { conversationId: 'first', runId: 'run-1', message: { id: 'assistant' } } })
-    expect(catalog.getStreamSnapshot().status).toBe('idle')
-    onEvent?.({ name: 'agent.output.delta', payload: {
-      conversationId: 'first', runId: 'run-1', messageId: 'assistant', sequence: 4, delta: 'late'
-    } })
-    onEvent?.({ name: 'agent.process.updated', payload: {
-      conversationId: 'first', runId: 'run-1', messageId: 'assistant', item: { id: 'late-step' }
-    } })
-    expect(catalog.getStreamSnapshot().status).toBe('idle')
-    expect(catalog.getStreamSnapshot().content).toBe('ABC')
-    expect(catalog.getStreamSnapshot().process.map(item => item.id)).toEqual(['step-1'])
-    cleanup()
-  })
-
-  it('ignores a previous conversation stream baseline after switching conversations', async () => {
-    type Inspection = { active: boolean; conversationId: string; runId?: string; requestId?: string; messageId?: string; accumulated?: string; sequence?: number }
-    const inspections: Array<{ id: string; resolve: (result: { ok: boolean; data: Inspection }) => void }> = []
-    let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
-    let cleanup = () => {}
-    const cancelCalls: Array<{ conversationId?: string; requestId?: string; runId?: string }> = []
-    let catalog: {
-      activate: (id: string) => void
-      getStreamSnapshot: () => { id: string; status: string; runId: string; content: string }
-      cancelStream: (runId: string) => Promise<boolean>
-    } | undefined
-    const bridge = {
-      request: (name: string, input: { conversationId?: string }) => name === 'query.agent.inspect'
-        ? new Promise<{ ok: boolean; data: Inspection }>(resolve => inspections.push({ id: input.conversationId!, resolve }))
-        : name === 'command.agent.cancel'
-          ? (cancelCalls.push(input), Promise.resolve({ ok: true, data: { cancelled: true } }))
-        : Promise.resolve({ ok: true, data: [] }),
-      subscribe: () => () => {}
-    }
-    runInNewContext(source, {
-      window: { eleckoi: bridge, __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
-    })
-    dshClientPlugin(registration!).apply({
-      provide: (_name: string, value: typeof catalog) => { catalog = value },
-      effect: (run: () => () => void) => { cleanup = run() },
-      on: () => () => {}
-    })
-    if (!catalog) throw new Error('Conversation model was not provided')
-    catalog.activate('first')
-    catalog.activate('second')
-    expect(inspections.map(item => item.id)).toEqual(['first', 'second'])
-    inspections[1]!.resolve({ ok: true, data: {
-      active: true, conversationId: 'second', runId: 'run-2', requestId: 'request-2', messageId: 'answer-2', accumulated: 'second reply', sequence: 1
-    } })
-    await settle()
-    inspections[0]!.resolve({ ok: true, data: {
-      active: true, conversationId: 'first', runId: 'run-1', requestId: 'request-1', messageId: 'answer-1', accumulated: 'first reply', sequence: 1
-    } })
-    await settle()
-    expect(catalog.getStreamSnapshot()).toMatchObject({
-      id: 'second', status: 'running', runId: 'run-2', content: 'second reply'
-    })
-    expect(await catalog.cancelStream('run-1')).toBe(false)
-    expect(await catalog.cancelStream('run-2')).toBe(true)
-    expect(cancelCalls).toEqual([{ conversationId: 'second', requestId: 'request-2', runId: 'run-2' }])
-    cleanup()
-  })
-
-  it('settles a model-owned send when its terminal event arrives before command acceptance', async () => {
-    let registration: { factory: () => { apply: (ctx: unknown) => void } } | undefined
-    let onEvent: ((event: unknown) => void) | undefined
-    let cleanup = () => {}
-    let acceptCommand: ((result: unknown) => void) | undefined
-    let catalog: {
-      activate: (id: string) => void
-      run: (command: string, input: unknown) => Promise<{ details: { messages: Array<{ id: string }> }; cancelled: boolean }>
-      cancelRequest: (conversationId: string, requestId: string) => Promise<boolean>
-    } | undefined
-    const calls: Array<{ name: string; input: unknown }> = []
-    const bridge = {
-      request: (name: string, input: unknown) => {
-        calls.push({ name, input })
-        if (name === 'query.agent.inspect') return Promise.resolve({ ok: true, data: { active: false, conversationId: 'first' } })
-        if (name === 'command.agent.start') return new Promise(resolve => { acceptCommand = resolve })
-        if (name === 'command.agent.cancel') return Promise.resolve({ ok: true, data: { cancelled: true } })
-        if (name === 'query.conversations.details') return Promise.resolve({
-          ok: true, data: { conversation: { id: 'first' }, messages: [{ id: 'answer' }], hasMore: false, beforeSequence: null }
-        })
-        return Promise.resolve({ ok: true, data: [] })
-      },
-      subscribe: (listener: (event: unknown) => void) => {
-        onEvent = listener
-        return () => { onEvent = undefined }
-      }
-    }
-    runInNewContext(source, {
-      window: { eleckoi: bridge, __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
-    })
-    dshClientPlugin(registration!).apply({
-      provide: (_name: string, value: typeof catalog) => { catalog = value },
-      effect: (run: () => () => void) => { cleanup = run() },
-      on: () => () => {}
-    })
-    if (!catalog) throw new Error('Conversation model was not provided')
-    catalog.activate('first')
-    const reply = catalog.run('command.agent.start', {
-      conversationId: 'first', requestId: 'request-1', text: 'hello', images: []
-    })
-    onEvent?.({ name: 'agent.run.finished', payload: {
-      conversationId: 'first', runId: 'run-1', message: { id: 'answer', status: 'complete' }
-    } })
-    acceptCommand?.({ ok: true, data: {
-      accepted: true, conversationId: 'first', runId: 'run-1', messageId: 'answer'
-    } })
-    expect(await reply).toMatchObject({ cancelled: false, details: { messages: [{ id: 'answer' }] } })
-    expect(await catalog.cancelRequest('first', 'request-1')).toBe(true)
-    expect(calls.find(call => call.name === 'command.agent.cancel')?.input).toEqual({
-      conversationId: 'first', requestId: 'request-1'
-    })
-    cleanup()
-  })
 })

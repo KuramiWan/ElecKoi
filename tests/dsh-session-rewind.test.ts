@@ -1,11 +1,12 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type {} from '@deepseek-ai/dsh-agent'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
-import { DshRuntime, readDshSessionLog, rewindDshSession } from '@eleckoi/dsh-runtime'
+import { readDshSessionLog, rewindDshSession } from '@eleckoi/dsh-runtime'
 
 const temporaryDirectories: string[] = []
 
@@ -97,58 +98,4 @@ describe('DSH Session physical rewind', () => {
     expect(readFileSync(path, 'utf8')).toBe(before)
   })
 
-  it('derives statistics from the retained log instead of a stale statistics file', async () => {
-    const { root, path } = fixture()
-    const runtimeRoot = join(root, 'runtime')
-    const sessionRoot = join(runtimeRoot, 'sessions')
-    const logDirectory = join(sessionRoot, 'project', 'session')
-    mkdirSync(logDirectory, { recursive: true })
-    copyFileSync(path, join(logDirectory, `session.v${sessionFormatCatalog.currentVersion}.jsonl`))
-    const statsDirectory = join(sessionRoot, 'conversation-a', 'eleckoi-generation-stats')
-    mkdirSync(statsDirectory, { recursive: true })
-    writeFileSync(join(statsDirectory, 'session-a.json'), JSON.stringify({ version: 1, turns: 99, steps: 99 }))
-    const createRuntime = () => new DshRuntime({
-      configPath: join(root, 'unused.yml'),
-      workspaceRoot: join(root, 'workspace'),
-      runtimeDataRoot: runtimeRoot,
-      executablePath: 'unused',
-      presetTemplatePath: join(root, 'unused-preset.yml')
-    })
-    const before = createRuntime()
-    expect(before.generationStats('conversation-a', 'session-a')).toMatchObject({ turns: 3, steps: 3 })
-    await before.close()
-
-    rewindDshSession(sessionRoot, 'session-a', 2)
-    const after = createRuntime()
-    expect(after.generationStats('conversation-a', 'session-a')).toMatchObject({ turns: 1, steps: 1 })
-    await after.close()
-  })
-
-  it('updates live statistics and trajectory after a same-Session rewind', async () => {
-    const { root, path } = fixture()
-    const runtimeRoot = join(root, 'runtime')
-    const sessionRoot = join(runtimeRoot, 'sessions')
-    const logDirectory = join(sessionRoot, 'project', 'session')
-    mkdirSync(logDirectory, { recursive: true })
-    copyFileSync(path, join(logDirectory, `session.v${sessionFormatCatalog.currentVersion}.jsonl`))
-    const runtime = new DshRuntime({
-      configPath: join(root, 'unused.yml'), workspaceRoot: join(root, 'workspace'),
-      runtimeDataRoot: runtimeRoot, executablePath: 'unused', presetTemplatePath: join(root, 'unused-preset.yml')
-    })
-    runtime.bindSessionHost({
-      rewind: async (sessionId: string, fromTurn: number) => rewindDshSession(sessionRoot, sessionId, fromTurn),
-      close: async () => undefined
-    } as Parameters<DshRuntime['bindSessionHost']>[0])
-    try {
-      expect(runtime.generationStats('conversation-a', 'session-a')).toMatchObject({ turns: 3, steps: 3 })
-      expect(runtime.trajectory('conversation-a', 'session-a').records).toHaveLength(3)
-      await runtime.rewindConversation('conversation-a', 'session-a', 2)
-      expect(runtime.generationStats('conversation-a', 'session-a')).toMatchObject({ turns: 1, steps: 1 })
-      expect(runtime.trajectory('conversation-a', 'session-a').records).toHaveLength(1)
-      expect(readFileSync(join(logDirectory, `session.v${sessionFormatCatalog.currentVersion}.jsonl`), 'utf8'))
-        .not.toContain('第2轮')
-    } finally {
-      await runtime.close()
-    }
-  })
 })

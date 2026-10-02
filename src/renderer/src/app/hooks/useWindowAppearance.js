@@ -1,30 +1,38 @@
-import { useEffect, useRef, useState } from "react";
-import { DEFAULT_CHAT_DISPLAY_PREFERENCES } from "@shared/contracts/settings/schemas";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { chatDisplayPreferencesSchema, DEFAULT_CHAT_DISPLAY_PREFERENCES } from "@shared/contracts/settings/schemas";
 import {
   DEFAULT_SIDEBAR_CHARACTER_ARTWORK,
   DEFAULT_NEW_CHARACTER_BACKGROUND,
-  applyAppearanceMode,
   applyAppearanceTheme,
-  getAppearanceMode,
-  getChatDisplay,
-  listenAppearanceModeChanged,
-  listenChatDisplayChanged,
   normalizeAppearanceMode,
+  useDshAppearance,
   normalizeGlobalChatWallpaper,
   normalizeNewCharacterBackground,
   normalizeSidebarCharacterArtwork,
-  saveAppearanceMode,
-  saveChatDisplay,
 } from "../../modules/appearance/index.js";
 import {
-  emitUiPreferencesChanged,
-  getUiPreferences,
-  listenUiPreferencesChanged,
-  saveUiPreferences,
+  useDshDisplayPreferences,
 } from "../../modules/settings/index.js";
 
+const EMPTY_DISPLAY_PREFERENCES = Object.freeze({
+  status: "loading",
+  ui: Object.freeze({}),
+  chatDisplay: Object.freeze({}),
+  writable: false,
+  revision: undefined,
+  error: "",
+});
+const EMPTY_SUBSCRIBE = () => () => {};
+const GET_EMPTY_DISPLAY_PREFERENCES = () => EMPTY_DISPLAY_PREFERENCES;
+
 export function useWindowAppearance({ notify = () => {} } = {}) {
-  const [appearanceMode, setAppearanceMode] = useState("light");
+  const appearance = useDshAppearance();
+  const displayPreferences = useDshDisplayPreferences();
+  const displaySnapshot = useSyncExternalStore(
+    displayPreferences?.subscribe || EMPTY_SUBSCRIBE,
+    displayPreferences?.getSnapshot || GET_EMPTY_DISPLAY_PREFERENCES,
+  );
+  const [appearanceMode, setAppearanceMode] = useState(() => appearance?.theme.getTheme().preference || "light");
   const [sidebarCharacterArtwork, setSidebarCharacterArtwork] = useState(DEFAULT_SIDEBAR_CHARACTER_ARTWORK);
   const [chatDisplay, setChatDisplay] = useState(DEFAULT_CHAT_DISPLAY_PREFERENCES);
   const [globalChatWallpaper, setGlobalChatWallpaper] = useState(() => normalizeGlobalChatWallpaper());
@@ -35,109 +43,44 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
   const chatDisplayDirtyRef = useRef(false);
 
   useEffect(() => {
-    let active = true;
-    let dispose = () => {};
     applyAppearanceTheme(null);
-    const updatePreferences = (preferences) => {
-      if (!active) return;
-      if (Object.hasOwn(preferences || {}, "global_chat_wallpaper")) {
-        setGlobalChatWallpaper(normalizeGlobalChatWallpaper(preferences?.global_chat_wallpaper));
-      }
-      if (Object.hasOwn(preferences || {}, "new_character_background")) {
-        setNewCharacterBackground(normalizeNewCharacterBackground(preferences?.new_character_background));
-      }
-      if (Object.hasOwn(preferences || {}, "sidebar_character_artwork")) {
-        setSidebarCharacterArtwork(normalizeSidebarCharacterArtwork(preferences?.sidebar_character_artwork));
-      }
-    };
-    getUiPreferences().then(updatePreferences).catch(() => {});
-    listenUiPreferencesChanged(updatePreferences).then((cleanup) => {
-      if (active) dispose = cleanup;
-      else cleanup();
-    }).catch(() => {});
-    return () => {
-      active = false;
-      dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (globalThis.__ELECKOI_DSH_PLATFORM__) {
-      const updateMode = (event) => {
-        const preference = event?.detail?.preference || document.documentElement.dataset.dsThemeSource;
-        const scheme = event?.detail?.scheme || (document.body.hasAttribute("data-ds-dark-theme") ? "dark" : "light");
-        setAppearanceMode(["light", "dark", "system"].includes(preference) ? preference : scheme);
-        applyAppearanceMode();
-      };
-      window.addEventListener("eleckoi:dsh-theme:state", updateMode);
-      updateMode();
-      return () => window.removeEventListener("eleckoi:dsh-theme:state", updateMode);
+    const preferences = displaySnapshot.ui;
+    if (Object.hasOwn(preferences, "global_chat_wallpaper")) {
+      setGlobalChatWallpaper(normalizeGlobalChatWallpaper(preferences.global_chat_wallpaper));
     }
-
-    let active = true;
-    let dispose = () => {};
-    const updateMode = (mode) => {
-      if (!active) return;
-      const nextMode = normalizeAppearanceMode(mode);
-      setAppearanceMode(nextMode);
-      applyAppearanceMode(nextMode);
-    };
-    getAppearanceMode().then(updateMode).catch(() => {});
-    listenAppearanceModeChanged(updateMode).then((cleanup) => {
-      if (active) dispose = cleanup;
-      else cleanup();
-    }).catch(() => {});
-    return () => {
-      active = false;
-      dispose();
-    };
-  }, []);
+    if (Object.hasOwn(preferences, "new_character_background")) {
+      setNewCharacterBackground(normalizeNewCharacterBackground(preferences.new_character_background));
+    }
+    if (Object.hasOwn(preferences, "sidebar_character_artwork")) {
+      setSidebarCharacterArtwork(normalizeSidebarCharacterArtwork(preferences.sidebar_character_artwork));
+    }
+  }, [displaySnapshot.ui]);
 
   useEffect(() => {
-    let active = true;
-    let dispose = () => {};
-    const updateDisplay = (preferences) => {
-      if (!active || chatDisplayDirtyRef.current) return;
-      confirmedChatDisplayRef.current = preferences;
-      setChatDisplay(preferences);
-    };
-    getChatDisplay().then(updateDisplay).catch(() => {});
-    listenChatDisplayChanged(updateDisplay).then((cleanup) => {
-      if (active) dispose = cleanup;
-      else cleanup();
-    }).catch(() => {});
+    if (!appearance) return;
+    const update = snapshot => setAppearanceMode(snapshot.preference);
+    const stop = appearance.subscribe(update);
+    update(appearance.theme.getTheme());
+    return stop;
+  }, [appearance]);
+
+  useEffect(() => {
+    if (chatDisplayDirtyRef.current) return;
+    const parsed = chatDisplayPreferencesSchema.safeParse(displaySnapshot.chatDisplay);
+    const preferences = parsed.success ? parsed.data : DEFAULT_CHAT_DISPLAY_PREFERENCES;
+    confirmedChatDisplayRef.current = preferences;
+    setChatDisplay(preferences);
     return () => {
-      active = false;
-      dispose();
       if (chatDisplaySaveTimerRef.current) window.clearTimeout(chatDisplaySaveTimerRef.current);
     };
-  }, []);
+  }, [displaySnapshot.chatDisplay]);
 
-  async function changeAppearanceMode(mode) {
-    const previousMode = appearanceMode;
-    const nextMode = normalizeAppearanceMode(mode);
-    if (globalThis.__ELECKOI_DSH_PLATFORM__) {
-      const detail = { mode: nextMode, applied: false, error: "" };
-      window.dispatchEvent(new CustomEvent("eleckoi:dsh-theme:set", { detail }));
-      if (!detail.applied) {
-        notify("error", detail.error || "外观模式切换失败。");
-        return;
-      }
-      setAppearanceMode(nextMode);
-      applyAppearanceMode();
-      return;
-    }
-
-    setAppearanceMode(nextMode);
-    applyAppearanceMode(nextMode);
+  function changeAppearanceMode(mode) {
     try {
-      const saved = await saveAppearanceMode(nextMode);
-      setAppearanceMode(saved.mode);
-      applyAppearanceMode(saved.mode);
+      if (!appearance) throw new Error("DSH 主题服务尚未就绪。");
+      appearance.theme.setTheme(normalizeAppearanceMode(mode));
     } catch (error) {
-      setAppearanceMode(previousMode);
-      applyAppearanceMode(previousMode);
-      notify("error", error?.message || "外观模式保存失败。");
+      notify("error", error?.message || "外观模式切换失败。");
     }
   }
 
@@ -150,7 +93,10 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     chatDisplaySaveTimerRef.current = window.setTimeout(async () => {
       chatDisplaySaveTimerRef.current = null;
       try {
-        const saved = await saveChatDisplay(nextDisplay);
+        if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+        const snapshot = await displayPreferences.setChatDisplay(nextDisplay);
+        const parsed = chatDisplayPreferencesSchema.safeParse(snapshot.chatDisplay);
+        const saved = parsed.success ? parsed.data : DEFAULT_CHAT_DISPLAY_PREFERENCES;
         if (chatDisplayVersionRef.current !== version) return;
         chatDisplayDirtyRef.current = false;
         confirmedChatDisplayRef.current = saved;
@@ -169,7 +115,8 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     const nextMode = normalizeSidebarCharacterArtwork(mode);
     setSidebarCharacterArtwork(nextMode);
     try {
-      await saveUiPreferences({ sidebar_character_artwork: nextMode });
+      if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+      await displayPreferences.updateUi({ sidebar_character_artwork: nextMode });
     } catch (error) {
       setSidebarCharacterArtwork(previousMode);
       notify("error", error?.message || "侧栏角色图设置保存失败。");
@@ -178,10 +125,10 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
 
   async function saveGlobalChatWallpaper(nextWallpaper) {
     const normalized = normalizeGlobalChatWallpaper(nextWallpaper);
-    const savedPreferences = await saveUiPreferences({ global_chat_wallpaper: normalized });
-    const saved = normalizeGlobalChatWallpaper(savedPreferences?.global_chat_wallpaper);
+    if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+    const snapshot = await displayPreferences.updateUi({ global_chat_wallpaper: normalized });
+    const saved = normalizeGlobalChatWallpaper(snapshot.ui.global_chat_wallpaper);
     setGlobalChatWallpaper(saved);
-    emitUiPreferencesChanged({ global_chat_wallpaper: saved });
     return saved;
   }
 
@@ -189,9 +136,9 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     const normalized = normalizeNewCharacterBackground(nextBackground);
     const previous = newCharacterBackground;
     setNewCharacterBackground(normalized);
-    emitUiPreferencesChanged({ new_character_background: normalized });
     try {
-      await saveUiPreferences({ new_character_background: normalized });
+      if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+      await displayPreferences.updateUi({ new_character_background: normalized });
       return normalized;
     } catch (error) {
       setNewCharacterBackground(previous);

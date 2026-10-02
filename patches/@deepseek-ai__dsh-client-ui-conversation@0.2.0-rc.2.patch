@@ -1,0 +1,66 @@
+diff --git a/lib/client.js b/lib/client.js
+index 7f3f791e8aaa8691f085c472f915bde295ac7ec1..226259ad95bd8eadc412cb9817083f33cbecddc4 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -14331,7 +14331,8 @@ window.__ModuleLoader__.load({
+ 			*/
+ 			sink(session, text, attachmentIds, mode, signal) {
+ 				if (text === "" && attachmentIds.length === 0) return Promise.resolve({ kind: "success" });
+-				return this.conversation().sendSession(session, text, attachmentIds, mode, signal);
++				const product = this.rootCtx.get("eleckoiConversations");
++				return Promise.resolve(product?.prepareNativeInput?.({ sessionId: session.sessionId, text, signal })).then(() => this.conversation().sendSession(session, text, attachmentIds, mode, signal));
+ 			}
+ 			/**
+ 			* Submit every still-pending queued message through QueueDock Steer, in FIFO
+@@ -17223,7 +17224,7 @@ window.__ModuleLoader__.load({
+ 		* The no-session state renders the SAME div inert as the Workspace-picker
+ 		* trigger instead of a parallel tree.
+ 		*/
+-		const InputBar = (0, react.memo)(function InputBar({ useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments, retryFileUpload, toggleCommandMenu, stop, t, renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut, useProjection, sessionId, variant, disabled: inert = false, blocked, workspacePickerOpen = false, onRequestWorkspace, placeholder, accessory }) {
++		const InputBar = (0, react.memo)(function InputBar({ useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments, retryFileUpload, toggleCommandMenu, stop, t, renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut, useProjection, sessionId, variant, disabled: inert = false, blocked, workspacePickerOpen = false, onRequestWorkspace, placeholder, accessory, leadingAccessory, modelAccessory, dockAccessory }) {
+ 			const input = useInput((s) => s);
+ 			const notice = useNotices((s) => s);
+ 			const busyEnter = useBusyEnter((s) => s);
+@@ -17509,6 +17510,7 @@ window.__ModuleLoader__.load({
+ 												children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineMedium, { size: 14 })
+ 											})
+ 										}),
++										leadingAccessory,
+ 										(0, react_jsx_runtime.jsx)("input", {
+ 											ref: fileInputRef,
+ 											type: "file",
+@@ -17529,7 +17531,7 @@ window.__ModuleLoader__.load({
+ 										(0, react_jsx_runtime.jsxs)("div", {
+ 											className: InputBar_module_css_default.standardControls,
+ 											hidden: activity,
+-											children: [input === void 0 || sessionId === void 0 ? null : renderSlot("conversation.input.right", {}), sessionId === void 0 ? null : renderSlot("conversation.input.model", { locked: modelSeatLocked })]
++											children: [input === void 0 || sessionId === void 0 ? null : renderSlot("conversation.input.right", {}), sessionId === void 0 ? null : modelAccessory ?? renderSlot("conversation.input.model", { locked: modelSeatLocked })]
+ 										}),
+ 										input === void 0 || sessionId === void 0 ? null : (0, react_jsx_runtime.jsx)("div", {
+ 											className: activity ? InputBar_module_css_default.activityExpanded : InputBar_module_css_default.activity,
+@@ -17612,7 +17614,7 @@ window.__ModuleLoader__.load({
+ 					}),
+ 					(0, react_jsx_runtime.jsxs)("div", {
+ 						className: InputBar_module_css_default.dock,
+-						children: [variant === "composer" && input !== void 0 && sessionId !== void 0 ? renderSlot("conversation.composer.dock", {}) : null, activity ? null : (0, react_jsx_runtime.jsx)(ContextMeter, {
++						children: dockAccessory !== void 0 ? dockAccessory : [variant === "composer" && input !== void 0 && sessionId !== void 0 ? renderSlot("conversation.composer.dock", {}) : null, activity ? null : (0, react_jsx_runtime.jsx)(ContextMeter, {
+ 							useProjection,
+ 							t
+ 						})]
+diff --git a/lib/types/client/contract/slots.d.ts b/lib/types/client/contract/slots.d.ts
+index 74f584630dd4130c51c61008369c9a86137d263f..22fa7e3c83f93e297f04678a85848fbf3059553d 100644
+--- a/lib/types/client/contract/slots.d.ts
++++ b/lib/types/client/contract/slots.d.ts
+@@ -442,6 +442,12 @@ export interface ComposerBarOwnerProps {
+     placeholder?: string;
+     /** Optional content rendered above the composer surface. */
+     accessory?: ReactNode;
++    /** Product control rendered immediately after the native command button. */
++    leadingAccessory?: ReactNode;
++    /** Product model selector replacing the default model seat. */
++    modelAccessory?: ReactNode;
++    /** Product dock replacing the default statistics and context meter. */
++    dockAccessory?: ReactNode;
+ }
+ /** Package-private operations injected into the resident composer bar. */
+ export interface ComposerBarInjected {

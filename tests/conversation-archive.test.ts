@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { SqliteDatabase } from '../src/main/platform/sqlite/SqliteDatabase'
-import { ConversationRepository } from '../src/main/modules/conversations/ConversationRepository'
-import { ConversationArchiveRepository } from '../src/main/modules/conversations/ConversationArchiveRepository'
+import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
+import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
+import { ConversationArchiveRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationArchiveRepository'
 
 const directories: string[] = []
 const connections: SqliteDatabase[] = []

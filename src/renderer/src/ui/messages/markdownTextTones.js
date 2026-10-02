@@ -5,7 +5,26 @@ const HIGHLIGHT_NAMES = Object.freeze({
   quote: "eleckoi-roleplay-quote",
   underline: "eleckoi-roleplay-underline",
 });
+const HIGHLIGHT_STYLE_ID = "eleckoi-markdown-text-tone-highlights";
 const highlightOwners = new Map();
+
+function ensureHighlightStyles(document) {
+  if (document.getElementById(HIGHLIGHT_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = HIGHLIGHT_STYLE_ID;
+  style.textContent = `
+.markdown-message::highlight(${HIGHLIGHT_NAMES.underline}),
+.markdown-message *::highlight(${HIGHLIGHT_NAMES.underline}) {
+  color: var(--chat-underline-color, currentColor);
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+}
+.markdown-message::highlight(${HIGHLIGHT_NAMES.quote}),
+.markdown-message *::highlight(${HIGHLIGHT_NAMES.quote}) {
+  color: var(--chat-quote-color, #f2a65a);
+}`;
+  document.head.append(style);
+}
 
 function sourceLines(markdown) {
   const lines = [];
@@ -200,6 +219,7 @@ function refreshHighlights(root) {
 
 export function registerMarkdownTextToneHighlights(root, underlineTexts) {
   if (!root) return () => {};
+  ensureHighlightStyles(root.ownerDocument);
   const ranges = {
     quote: quoteRanges(root),
     underline: underlineRanges(root, underlineTexts),

@@ -21,10 +21,11 @@ export function GenerationStatsLine({ stats }) {
   const usageRef = useRef(null);
   const panelRef = useRef(null);
   const position = usePopupPosition(openPill, openPill === "time" ? timeRef : usageRef, 340);
-  const timeRows = useMemo(() => sessionTimeRows(stats), [stats]);
+  const sessionStats = stats?.sessionStats ?? stats;
+  const timeRows = useMemo(() => sessionTimeRows(sessionStats), [sessionStats]);
   const usage = stats?.tokenUsage;
   const totalTokens = billedInputTokens(usage) + (usage?.outputTokens || 0);
-  const hasTime = stats?.steps > 0;
+  const hasTime = sessionStats?.steps > 0;
   const hasUsage = totalTokens > 0;
   const cacheHit = cacheHitPercent(usage);
 
@@ -50,10 +51,10 @@ export function GenerationStatsLine({ stats }) {
   }, [openPill]);
 
   if (!hasTime && !hasUsage && !contextOccupancy(stats?.contextPressure)) return null;
-  const speed = stats?.decodeMs > 0
-    ? `${formatThroughput(stats.decodeTokens / (stats.decodeMs / 1000))} tok/s`
+  const speed = sessionStats?.decodeMs > 0
+    ? `${formatThroughput(sessionStats.decodeTokens / (sessionStats.decodeMs / 1000))} tok/s`
     : null;
-  const timeLabel = `${stats?.turns || 0} 轮 ${stats?.steps || 0} 步${speed ? ` · ${speed}` : ""}`;
+  const timeLabel = `${sessionStats?.turns || 0} 轮 ${sessionStats?.steps || 0} 步${speed ? ` · ${speed}` : ""}`;
   const usageLabel = `${formatTokens(totalTokens)} tok${cacheHit !== null ? ` · 缓存命中 ${cacheHit}%` : ""}`;
   const panelTitle = openPill === "time" ? "会话统计" : "Token 用量";
   return (

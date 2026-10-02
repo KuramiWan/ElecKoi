@@ -2,14 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SqliteDatabase } from '../src/main/platform/sqlite/SqliteDatabase'
-import { ConversationRepository } from '../src/main/modules/conversations/ConversationRepository'
-import { CharacterRepository } from '../src/main/modules/personas/CharacterRepository'
-import { LocalMediaStore } from '../src/main/platform/filesystem/LocalMediaStore'
-import { RegexRuleRepository } from '../src/main/modules/regexRules/RegexRuleRepository'
-import { AgentPresetRepository } from '../src/main/modules/agentPresets'
-import { requestContracts } from '../src/shared/contracts/gateway/definitions'
-import type { RegexRule } from '../src/shared/contracts/regex/schemas'
+import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
+import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
+import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
+import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
+import { RegexRuleRepository } from '../packages/dsh-product-data/src/domain/regexRules/RegexRuleRepository'
+import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
+import { regexRuleCollectionSchema, type RegexRule } from '../src/shared/contracts/regex/schemas'
 import {
   includeImportedRulesInActiveVersion,
   rulesForSurface,
@@ -71,20 +70,19 @@ describe('regex processor', () => {
   it('accepts extra configuration fields without persisting them', () => {
     const { repository } = harness()
     const current = repository.get('card-a')
-    const input = requestContracts['command.regex_rules.save'].input.parse({
+    const input = {
       characterId: 'card-a', expectedRevision: current.revision,
-      collection: {
+      collection: regexRuleCollectionSchema.parse({
         ...current, editorOnly: true,
         characterRules: [{ ...rule(), editorOnly: true }]
-      }
-    })
+      })
+    }
     expect(input.collection).not.toHaveProperty('editorOnly')
     expect(input.collection.characterRules[0]).not.toHaveProperty('editorOnly')
     const saved = repository.save('card-a', input.collection, input.expectedRevision)
     expect(saved.characterRules).toHaveLength(1)
-    expect(requestContracts['command.regex_rules.save'].input.safeParse({
-      characterId: 'card-a', expectedRevision: saved.revision,
-      collection: { ...saved, characterRules: [{ ...rule(), enabled: 'yes' }] }
+    expect(regexRuleCollectionSchema.safeParse({
+      ...saved, characterRules: [{ ...rule(), enabled: 'yes' }]
     }).success).toBe(false)
   })
 
@@ -163,6 +161,29 @@ describe('regex processor', () => {
     ])
     expect(updated.versions[0]?.characterEnabledIds).toEqual(['enabled-import'])
     expect(rulesForSurface(updated, 'AiOutput', 'Stored').map((item) => item.id)).toEqual(['enabled-import'])
+  })
+
+  it('executes enabled rules by saved order within each scope', () => {
+    const collection = {
+      characterId: 'card-a', agentPresetId: 'preset', agentPresetName: '标准',
+      agentPresetRegexRevision: EMPTY_PRESET_REGEX_REVISION, revision: 0,
+      globalRules: [
+        rule({ id: 'global-late', pattern: '/A/g', replacement: 'B', order: 20 }),
+        rule({ id: 'global-early', pattern: '/B/g', replacement: 'C', order: 10 }),
+      ],
+      agentPresetRules: [],
+      characterRules: [
+        rule({ id: 'character-late', pattern: '/C/g', replacement: 'D', order: 20 }),
+        rule({ id: 'character-early', pattern: '/B/g', replacement: 'C', order: 10 }),
+      ],
+      versions: [{ id: 'v1', name: '当前', globalEnabledIds: ['global-late', 'global-early'], agentPresetEnabledIds: [], characterEnabledIds: ['character-late', 'character-early'] }],
+      activeVersionId: 'v1',
+    }
+
+    expect(rulesForSurface(collection, 'AiOutput', 'Display').map((item) => item.id))
+      .toEqual(['global-early', 'global-late', 'character-early', 'character-late'])
+    expect(transformWithRegexRules('A', rulesForSurface(collection, 'AiOutput', 'Display'), 'AiOutput'))
+      .toBe('D')
   })
 })
 

@@ -6,12 +6,18 @@ export default defineConfig({
   resolve: {
     alias: {
       '@main': resolve('src/main'),
+      '@product-data': resolve('packages/dsh-product-data/src'),
       '@shared': resolve('src/shared'),
+      '@eleckoi/dsh-product-data/media': resolve('packages/dsh-product-data/src/storage/media/index.ts'),
+      '@eleckoi/dsh-product-data': resolve('packages/dsh-product-data/src/index.ts'),
       '@eleckoi/dsh-runtime': resolve('packages/dsh-runtime/src/index.ts')
     }
   },
   plugins: [authorVendorPlugin(resolve('.'))],
   test: {
-    environment: 'node'
+    environment: 'node',
+    server: {
+      deps: { inline: ['@deepseek-ai/dsh-client-ui-primitives'] }
+    }
   }
 })

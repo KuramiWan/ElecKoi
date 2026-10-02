@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveConversationSeed } from '../src/main/modules/conversations/conversationSeed'
+import { resolveConversationSeed } from '../packages/dsh-product-data/src/domain/conversations/conversationSeed'
 
 describe('conversation opening seed', () => {
   it('uses the saved primary setting-library opening', () => {

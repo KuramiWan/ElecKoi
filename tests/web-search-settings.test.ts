@@ -1,69 +1,40 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TavilyClient } from '../src/main/modules/agentTools/TavilyClient'
-import { WebSearchSettingsRepository } from '../src/main/modules/agentTools/WebSearchSettingsRepository'
-import { SqliteDatabase } from '../src/main/platform/sqlite/SqliteDatabase'
+import { testTavilyConnection } from '../packages/dsh-product-api/lib/types/tavily.js'
 
-const directories: string[] = []
-const databases: SqliteDatabase[] = []
+afterEach(() => vi.unstubAllGlobals())
 
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close()
-  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
-})
-
-function repository() {
-  const directory = mkdtempSync(join(tmpdir(), 'eleckoi-web-search-test-'))
-  directories.push(directory)
-  const database = new SqliteDatabase(join(directory, 'eleckoi.sqlite3'))
-  database.open()
-  databases.push(database)
-  const cipher = {
-    encrypt: (value: string) => `secure:${Buffer.from(value).toString('base64')}`,
-    decrypt: (value: string) => Buffer.from(value.slice('secure:'.length), 'base64').toString()
-  }
-  return { database, settings: new WebSearchSettingsRepository(database, cipher) }
-}
-
-describe('web search settings', () => {
-  it('keeps provider selection global and never persists a plaintext Tavily key', () => {
-    const { database, settings } = repository()
-
-    expect(settings.read()).toEqual({ mode: 'provider_native', apiKeyConfigured: false, maxResults: 5 })
-    expect(settings.update({ mode: 'tavily', maxResults: 8 })).toEqual({
-      mode: 'tavily', apiKeyConfigured: false, maxResults: 8
-    })
-    expect(settings.saveTavilyApiKey('tvly-secret')).toEqual({
-      mode: 'tavily', apiKeyConfigured: true, maxResults: 8
-    })
-    expect(database.native.prepare('SELECT tavilyApiKey FROM web_search_settings WHERE singletonId = 1').get())
-      .not.toMatchObject({ tavilyApiKey: expect.stringContaining('tvly-secret') })
-    expect(settings.runtimeSettings()).toEqual({ mode: 'tavily', maxResults: 8, tavilyApiKey: 'tvly-secret' })
-    expect(settings.removeTavilyApiKey().apiKeyConfigured).toBe(false)
-  })
-
-  it('persists only the current web-search fields', () => {
-    const { database, settings } = repository()
-    settings.update({ mode: 'provider_native', maxResults: 5 })
-    settings.update({ mode: 'tavily', maxResults: 3 })
-
-    expect(database.native.prepare('SELECT mode,maxResults,tavilyApiKey FROM web_search_settings WHERE singletonId = 1').get())
-      .toEqual({ mode: 'tavily', maxResults: 3, tavilyApiKey: '' })
-  })
-
-  it('tests Tavily through the usage endpoint without exposing the key in results', async () => {
+describe('Tavily Host connection test', () => {
+  it('uses the usage endpoint and returns only account information', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       key: { usage: 12, limit: 100 }, account: { current_plan: 'Project' }
-    }), { status: 200, headers: { 'content-type': 'application/json' } }))
-    const client = new TavilyClient(request)
-
-    await expect(client.test('tvly-test')).resolves.toEqual({
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', request)
+    await expect(testTavilyConnection('synthetic-key')).resolves.toEqual({
       ok: true, plan: 'Project', used: 12, limit: 100
     })
     expect(request).toHaveBeenCalledWith('https://api.tavily.com/usage', expect.objectContaining({
-      method: 'GET', redirect: 'error', headers: expect.objectContaining({ Authorization: 'Bearer tvly-test' })
+      method: 'GET', redirect: 'error', signal: expect.any(AbortSignal),
+      headers: expect.objectContaining({ Authorization: 'Bearer synthetic-key' })
     }))
+  })
+
+  it('rejects missing credentials without a request and redacts credentials from errors', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response('failed synthetic-key', { status: 500 }))
+    vi.stubGlobal('fetch', request)
+    await expect(testTavilyConnection('')).rejects.toThrow('请先填写')
+    expect(request).not.toHaveBeenCalled()
+    await expect(testTavilyConnection('synthetic-key')).rejects.toThrow('[REDACTED]')
+  })
+
+  it('rejects oversized responses and propagates cancellation', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response('{}', {
+      status: 200, headers: { 'content-length': String(3 * 1024 * 1024) }
+    }))
+    vi.stubGlobal('fetch', request)
+    await expect(testTavilyConnection('synthetic-key')).rejects.toThrow('超过安全上限')
+    const abort = new AbortController()
+    abort.abort()
+    request.mockImplementation(async (_input, init) => { init?.signal?.throwIfAborted(); throw new Error('unreachable') })
+    await expect(testTavilyConnection('synthetic-key', abort.signal)).rejects.toThrow('已取消')
   })
 })

@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
-import { getUiPreferences, saveUiPreferences } from '../../settings/index.js'
+import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from 'react'
+import { useDshDisplayPreferences } from '../../settings/index.js'
 import css from './ConversationWidthControls.module.css'
 
 interface ConversationWidthControlsProps {
@@ -7,7 +7,7 @@ interface ConversationWidthControlsProps {
   phase: 'active' | 'hero' | 'settling'
 }
 
-/** Gateway-backed key for the dragged transcript width preference (px). */
+/** DSH Settings key for the dragged transcript width preference (px). */
 const WIDTH_PREF_KEY = 'conversation_content_width'
 /** Floor for a dragged content width; matches the layout center-column minimum. */
 const CONTENT_MIN = 640
@@ -16,6 +16,15 @@ const CONTENT_EDGE_BUDGET = 176
 const WHEEL_DELTA_LINE = 1
 const WHEEL_DELTA_PAGE = 2
 const FALLBACK_WHEEL_LINE_PX = 16
+const EMPTY_SNAPSHOT = Object.freeze({
+  status: 'loading' as const,
+  ui: Object.freeze({}),
+  chatDisplay: Object.freeze({}),
+  writable: false,
+  error: ''
+})
+const EMPTY_SUBSCRIBE = () => () => {}
+const GET_EMPTY_SNAPSHOT = () => EMPTY_SNAPSHOT
 
 /** Read a valid persisted width preference, or null when absent or corrupt. */
 function readWidthPreference(raw: unknown): number | null {
@@ -137,6 +146,12 @@ function WidthHandle(props: {
  * @returns two active-phase width handles, or no controls outside the active phase.
  */
 export function ConversationWidthControls({ container, phase }: ConversationWidthControlsProps) {
+  const preferences = useDshDisplayPreferences()
+  const snapshot = useSyncExternalStore(
+    preferences?.subscribe || EMPTY_SUBSCRIBE,
+    preferences?.getSnapshot || GET_EMPTY_SNAPSHOT,
+    preferences?.getSnapshot || GET_EMPTY_SNAPSHOT,
+  )
   const preference = useRef<number | null>(null)
   const preferenceResolved = useRef(false)
 
@@ -150,21 +165,18 @@ export function ConversationWidthControls({ container, phase }: ConversationWidt
 
   useLayoutEffect(() => {
     if (container === null) return
-    let cancelled = false
     const observer = new ResizeObserver(() => { publishWidths(container) })
     observer.observe(container)
     publishWidths(container)
-    void getUiPreferences().then((settings) => {
-      if (cancelled || preferenceResolved.current) return
-      preference.current = readWidthPreference(settings?.[WIDTH_PREF_KEY])
+    if (snapshot.status === 'ready' && !preferenceResolved.current) {
+      preference.current = readWidthPreference(snapshot.ui?.[WIDTH_PREF_KEY])
       preferenceResolved.current = true
       publishWidths(container)
-    })
+    }
     return () => {
-      cancelled = true
       observer.disconnect()
     }
-  }, [container, publishWidths])
+  }, [container, publishWidths, snapshot.status, snapshot.ui])
 
   const onStart = useCallback((): number => {
     if (container === null) return 680
@@ -180,8 +192,8 @@ export function ConversationWidthControls({ container, phase }: ConversationWidt
     const resolved = resolveContentWidth(container.offsetWidth, width)
     preference.current = resolved
     preferenceResolved.current = true
-    void saveUiPreferences({ [WIDTH_PREF_KEY]: resolved })
-  }, [container])
+    void preferences?.updateUi({ [WIDTH_PREF_KEY]: resolved }).catch(() => {})
+  }, [container, preferences])
   const onEnd = useCallback((): void => {
     if (container !== null) publishWidths(container)
   }, [container, publishWidths])

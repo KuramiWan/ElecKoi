@@ -4,7 +4,7 @@ export { PresetNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/ic
 
 export function PresetsPage() {
   const view = useMainPageView();
-  const { chat, presets, presetNavigationGuardRef, presetRequestedTab, setPresetRequestedTab, renderPresetEditorSection, renderLayout } = view;
+  const { chat, characterConfiguration, presets, presetNavigationGuardRef, presetRequestedTab, setPresetRequestedTab, renderPresetEditorSection, renderLayout } = view;
   return <PresetProvider catalogModel={presets} navigationGuardRef={presetNavigationGuardRef}>
     {renderLayout({
       sidePanel: <PresetListPanel />,
@@ -12,8 +12,8 @@ export function PresetsPage() {
         modelConfigs={chat.chatModelConfigs}
         modelOptionsByKey={chat.modelOptionsByKey}
         onLoadModels={chat.loadModelOptions}
-        onSaveModelConfig={chat.saveModelConfig}
         onNotify={chat.notify}
+        onTestRegex={(text, rule, target) => characterConfiguration.regexRules.test(text, rule, target)}
         requestedTab={presetRequestedTab}
         onRequestedTabHandled={() => setPresetRequestedTab("")}
         renderEditorSection={renderPresetEditorSection}

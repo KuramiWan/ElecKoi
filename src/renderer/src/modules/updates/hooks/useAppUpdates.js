@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { desktopClient } from "../../../bridge/desktopClient";
-
 export function useAppUpdates() {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
-    const unsubscribe = desktopClient.on("updates.state.changed", (nextStatus) => {
+    const updates = window.dshDesktop.updates;
+    if (!updates) {
+      setError("更新服务暂时不可用。");
+      return undefined;
+    }
+    const unsubscribe = updates.subscribe((nextStatus) => {
       if (!active) return;
       setStatus(nextStatus);
       setError("");
     });
-    void desktopClient.request("query.updates.status", {}).then((nextStatus) => {
+    void updates.status().then((nextStatus) => {
       if (!active) return;
       setStatus(nextStatus);
       setError("");
@@ -25,10 +28,10 @@ export function useAppUpdates() {
     };
   }, []);
 
-  const requestStatus = useCallback(async (route) => {
+  const requestStatus = useCallback(async (request) => {
     setError("");
     try {
-      const nextStatus = await desktopClient.request(route, {});
+      const nextStatus = await request();
       setStatus(nextStatus);
       return nextStatus;
     } catch (cause) {
@@ -37,12 +40,22 @@ export function useAppUpdates() {
     }
   }, []);
 
-  const check = useCallback(() => requestStatus("command.updates.check"), [requestStatus]);
-  const download = useCallback(() => requestStatus("command.updates.download"), [requestStatus]);
+  const check = useCallback(() => requestStatus(() => {
+    const updates = window.dshDesktop.updates;
+    if (!updates) throw new Error("更新服务暂时不可用。");
+    return updates.check();
+  }), [requestStatus]);
+  const download = useCallback(() => requestStatus(() => {
+    const updates = window.dshDesktop.updates;
+    if (!updates) throw new Error("更新服务暂时不可用。");
+    return updates.download();
+  }), [requestStatus]);
   const install = useCallback(async () => {
     setError("");
     try {
-      return await desktopClient.request("command.updates.install", {});
+      const updates = window.dshDesktop.updates;
+      if (!updates) throw new Error("更新服务暂时不可用。");
+      return await updates.install();
     } catch (cause) {
       setError(cause?.message || "无法启动安装。");
       throw cause;

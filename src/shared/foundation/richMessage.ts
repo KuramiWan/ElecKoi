@@ -22,7 +22,7 @@ const htmlDocumentMarker = /(?:<!doctype\s+html\b|<(?:html|head|body)(?:\s|>))/i
 const htmlDocumentClose = /<\/(?:body|html)\s*>/is
 const scriptOrStyleBlock = /<(script|style)(?:\s[^>]*)?>.*?<\/\1\s*>/is
 const pairedInteractiveElement = /<(div|section|article|main|header|footer|nav|aside|table|form|button|details|dialog|canvas|svg)(?:\s[^>]*)?>.*?<\/\1\s*>/is
-const styledElement = /<[a-z][a-z0-9:-]*(?:\s+[^>]*?(?:style|class|id|on[a-z]+|data-[a-z0-9_-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)[^>]*)\/?>/is
+const styledElement = /<(?:a|abbr|address|article|aside|b|blockquote|body|button|canvas|caption|code|custom-style|dd|details|dialog|div|dl|dt|em|fieldset|figcaption|figure|footer|form|h1|h2|h3|h4|h5|h6|head|header|hgroup|html|i|iframe|img|input|label|li|main|nav|ol|p|pre|q|section|select|small|span|strong|sub|summary|sup|svg|table|td|textarea|tfoot|th|thead|time|tr|u|ul|video)(?:\s+[^>]*?(?:style|class|id|on[a-z]+|data-[a-z0-9_-]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)[^>]*)\/?>/is
 
 function maskMarkdownFencedCode(source: string): string {
   let output = ''

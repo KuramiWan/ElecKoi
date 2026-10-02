@@ -1,0 +1,8 @@
+- id: web
+  config:
+    searchProvider: deepseek-official
+    fetchProvider: http
+
+- insert:
+    - id: eleckoi-client-web-search
+      name: '@eleckoi/dsh-client-web-search'

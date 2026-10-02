@@ -1,19 +1,5 @@
 import { useEffect, useRef } from 'react';
-import {
-  getChat,
-  listenAgentFailedEvent,
-  listenAgentFinishedEvent,
-  listenAgentOutputEvent,
-  listenAgentProcessEvent,
-} from '../api/chatApi.js';
-
-function upsertProcess(items = [], item) {
-  const index = items.findIndex((candidate) => candidate.id === item.id);
-  if (index < 0) return [...items, item];
-  const next = [...items];
-  next[index] = item;
-  return next;
-}
+import { getChat } from '../api/chatApi.js';
 
 function publicError(error, fallback) {
   const message = typeof error === 'string' ? error : error?.message;
@@ -24,7 +10,6 @@ export function useAuthorFrontendActions({
   sessionId,
   setIsSending,
   setStatus,
-  setMessages,
   reconcileChatMessages,
   replaceChatMessages,
   conversations,
@@ -38,7 +23,7 @@ export function useAuthorFrontendActions({
   setInput,
   sendMessage,
 }) {
-  const runsRef = useRef(new Map());
+  const pendingRunRef = useRef(null);
   const inputRef = useRef(input);
   const hasInputImagesRef = useRef(Boolean(inputImages?.length));
   const sendMessageRef = useRef(sendMessage);
@@ -47,57 +32,9 @@ export function useAuthorFrontendActions({
   sendMessageRef.current = sendMessage;
 
   useEffect(() => {
-    let streamFrame = null;
-    const queuedStreamUpdates = new Map();
-    const cancelStreamFrame = () => {
-      if (streamFrame !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(streamFrame);
-      streamFrame = null;
-    };
-    const flushStreamUpdates = () => {
-      cancelStreamFrame();
-      if (queuedStreamUpdates.size === 0) return;
-      const updates = new Map(queuedStreamUpdates);
-      queuedStreamUpdates.clear();
-      setMessages((items) => items.map((message) => {
-        const update = updates.get(message.id);
-        if (!update) return message;
-        let process = message.process;
-        for (const item of update.process) process = upsertProcess(process, item);
-        return {
-          ...message,
-          ...(update.delta ? { pending: true, content: `${message.content || ''}${update.delta}` } : {}),
-          ...(update.process.length ? { process } : {}),
-        };
-      }));
-    };
-    const scheduleStreamFlush = () => {
-      if (streamFrame !== null) return;
-      if (typeof requestAnimationFrame !== 'function') {
-        flushStreamUpdates();
-        return;
-      }
-      let frames = 3;
-      const tick = () => {
-        frames -= 1;
-        if (frames > 0) {
-          streamFrame = requestAnimationFrame(tick);
-          return;
-        }
-        streamFrame = null;
-        flushStreamUpdates();
-      };
-      streamFrame = requestAnimationFrame(tick);
-    };
-    const queueExternalMessage = (event, update) => {
-      if (event.conversationId !== sessionId || !runsRef.current.has(event.runId)) return;
-      const queued = queuedStreamUpdates.get(event.messageId) || { delta: '', process: [] };
-      update(queued);
-      queuedStreamUpdates.set(event.messageId, queued);
-      scheduleStreamFlush();
-    };
     const refreshActiveChat = async (targetSessionId, resetWindow = false) => {
       if (!targetSessionId || targetSessionId !== sessionId) return;
-      const data = await getChat(targetSessionId);
+      const data = await getChat(targetSessionId, { model: conversations });
       if (resetWindow) {
         replaceChatMessages(data.chat);
         conversations?.invalidateDetails(targetSessionId);
@@ -122,7 +59,7 @@ export function useAuthorFrontendActions({
         'messages.regenerate',
         'messages.editAndRegenerate',
       ].includes(detail.method) && detail.result?.runId) {
-        runsRef.current.set(detail.result.runId, resetWindow);
+        pendingRunRef.current = { conversationId: detail.conversationId, resetWindow };
         setIsSending(true);
         requestScrollToEnd('auto');
       }
@@ -161,42 +98,36 @@ export function useAuthorFrontendActions({
         operation.reject(Object.assign(new Error('未知的输入框操作'), { code: 'METHOD_NOT_FOUND' }));
       }
     };
+    let previousStream = conversations?.getStreamSnapshot?.() || null;
+    const onStreamChanged = () => {
+      const current = conversations?.getStreamSnapshot?.();
+      if (!current || current.id !== sessionId) {
+        previousStream = current || null;
+        return;
+      }
+      if (current.status === 'running') {
+        setIsSending(true);
+        requestScrollToEnd('auto');
+      }
+      const terminal = previousStream?.id === sessionId
+        && previousStream.status === 'running'
+        && current.status !== 'running';
+      previousStream = current;
+      if (!terminal) return;
+      const pending = pendingRunRef.current;
+      pendingRunRef.current = null;
+      setIsSending(false);
+      if (current.status === 'error') setStatus(current.error || '生成失败');
+      refreshActiveChat(sessionId, pending?.resetWindow === true)
+        .catch((error) => setStatus(publicError(error, '刷新聊天失败')));
+    };
     window.addEventListener('eleckoi:author-action', onAuthorAction);
     window.addEventListener('eleckoi:author-input-request', onAuthorInputRequest);
-    const disposeDelta = listenAgentOutputEvent((event) => queueExternalMessage(event, (queued) => {
-      queued.delta += event.delta || '';
-    }));
-    const disposeProcess = listenAgentProcessEvent((event) => queueExternalMessage(event, (queued) => {
-      if (event.item) queued.process.push(event.item);
-    }));
-    const disposeFinished = listenAgentFinishedEvent((event) => {
-      if (!runsRef.current.has(event.runId)) return;
-      flushStreamUpdates();
-      const resetWindow = runsRef.current.get(event.runId);
-      runsRef.current.delete(event.runId);
-      if (event.conversationId === sessionId) setIsSending(false);
-      refreshActiveChat(event.conversationId, resetWindow).catch((error) => setStatus(publicError(error, '刷新聊天失败')));
-    });
-    const disposeFailed = listenAgentFailedEvent((event) => {
-      if (!runsRef.current.has(event.runId)) return;
-      flushStreamUpdates();
-      const resetWindow = runsRef.current.get(event.runId);
-      runsRef.current.delete(event.runId);
-      if (event.conversationId === sessionId) {
-        setIsSending(false);
-        setStatus(event.message || '生成失败');
-      }
-      refreshActiveChat(event.conversationId, resetWindow).catch(() => {});
-    });
+    const disposeStream = conversations?.subscribeStream?.(onStreamChanged) || (() => {});
     return () => {
       window.removeEventListener('eleckoi:author-action', onAuthorAction);
       window.removeEventListener('eleckoi:author-input-request', onAuthorInputRequest);
-      disposeDelta();
-      disposeProcess();
-      disposeFinished();
-      disposeFailed();
-      cancelStreamFrame();
-      queuedStreamUpdates.clear();
+      disposeStream();
     };
   }, [sessionId]);
 }

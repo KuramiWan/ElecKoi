@@ -1,0 +1,3 @@
+- insert:
+    - id: eleckoi-client-character-configuration
+      name: '@eleckoi/dsh-client-character-configuration'

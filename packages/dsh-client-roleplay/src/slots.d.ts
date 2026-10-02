@@ -1,5 +1,27 @@
-import type { Dispatch, SetStateAction } from 'react'
-import type { AgentGenerationStats } from '../../../src/shared/contracts/agent/generationStats'
+import type { ComponentType, ReactNode } from 'react'
+import type {
+  ComposerAttachmentsOwnerProps,
+  ComposerBarOwnerProps,
+  ComposerChainProps,
+  ConvViewOwnerProps,
+  InputActivityOwnerProps,
+  InputControlOwnerProps,
+  InputZone,
+  MessageImagesOwnerProps,
+} from '@deepseek-ai/dsh-client-ui-conversation/client'
+
+type BridgeSlotRenderer = (name: string, owner: unknown, options?: unknown) => ReactNode
+
+export interface RoleplaySessionOwner {
+  matched: {
+    component: ComponentType<any>
+    props: Record<string, unknown>
+  }
+}
+
+export interface ComposerBridgeOwner {
+  renderBridgeSlot?: BridgeSlotRenderer
+}
 
 export interface RoleplayMessageOwner {
   conversationId: string
@@ -13,15 +35,13 @@ export interface RoleplayMessageContentOwner extends RoleplayMessageOwner {
   streaming: boolean
 }
 
-export interface RoleplayInputOwner {
-  conversationId: string
-  input: string
-  setInput: Dispatch<SetStateAction<string>>
-  isSending: boolean
-}
-
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    'eleckoi.roleplay.session': {
+      kind: 'single'
+      scope: 'session'
+      owner: RoleplaySessionOwner
+    }
     'eleckoi.roleplay.message.content': {
       kind: 'chain'
       scope: 'session'
@@ -36,26 +56,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       kind: 'list'
       scope: 'session'
       owner: RoleplayMessageOwner
-    }
-    'eleckoi.roleplay.input.left': {
-      kind: 'list'
-      scope: 'session'
-      owner: RoleplayInputOwner
-    }
-    'eleckoi.roleplay.input.right': {
-      kind: 'list'
-      scope: 'session'
-      owner: RoleplayInputOwner
-    }
-    'eleckoi.roleplay.input.overlay': {
-      kind: 'list'
-      scope: 'session'
-      owner: RoleplayInputOwner
-    }
-    'eleckoi.roleplay.composer.dock': {
-      kind: 'list'
-      scope: 'session'
-      owner: { conversationId: string }
     }
     'eleckoi.roleplay.conversation.input.right': {
       kind: 'list'
@@ -72,10 +72,70 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: Record<string, never>
     }
+    'eleckoi.roleplay.conversation.input.dock': {
+      kind: 'list'
+      scope: 'session'
+      owner: InputZone
+    }
+    'eleckoi.roleplay.conversation.input.attachments': {
+      kind: 'single'
+      scope: 'session-maybe'
+      owner: ComposerAttachmentsOwnerProps
+    }
+    'eleckoi.roleplay.conversation.input.permission': {
+      kind: 'single'
+      scope: 'session'
+      owner: InputControlOwnerProps
+    }
+    'eleckoi.roleplay.conversation.input.plan': {
+      kind: 'single'
+      scope: 'session'
+      owner: InputControlOwnerProps
+    }
+    'eleckoi.roleplay.conversation.input.model': {
+      kind: 'single'
+      scope: 'session'
+      owner: InputControlOwnerProps
+    }
+    'eleckoi.roleplay.conversation.input.activity': {
+      kind: 'single'
+      scope: 'session'
+      owner: InputActivityOwnerProps
+    }
     'eleckoi.roleplay.conversation.composer.dock': {
       kind: 'list'
       scope: 'session'
-      owner: { generationStats: AgentGenerationStats | null }
+      owner: Record<string, never>
+    }
+    'eleckoi.roleplay.conversation.composer': {
+      kind: 'chain'
+      scope: 'session'
+      owner: ComposerChainProps & ComposerBridgeOwner
+    }
+    'eleckoi.roleplay.conversation.composer.bar': {
+      kind: 'single'
+      scope: 'session-maybe'
+      owner: ComposerBarOwnerProps & ComposerBridgeOwner
+    }
+    'eleckoi.roleplay.conversation.approval.detail': {
+      kind: 'single'
+      scope: 'session'
+      owner: Record<string, unknown>
+    }
+    'eleckoi.roleplay.conversation.plan-review.actions': {
+      kind: 'list'
+      scope: 'session'
+      owner: Record<string, unknown>
+    }
+    'eleckoi.roleplay.trajectory.images': {
+      kind: 'single'
+      scope: 'session'
+      owner: MessageImagesOwnerProps
+    }
+    'eleckoi.roleplay.trajectory': {
+      kind: 'single'
+      scope: 'session'
+      owner: ConvViewOwnerProps & { component?: ComponentType<any> }
     }
   }
 }

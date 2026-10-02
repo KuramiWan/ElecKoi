@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { CreatorProjectRepository } from '../src/main/modules/creatorStudio/CreatorProjectRepository'
+import { CreatorProjectRepository } from '../packages/dsh-product-data/src/domain/creatorStudio/CreatorProjectRepository'
 
 let testRoot = ''
 

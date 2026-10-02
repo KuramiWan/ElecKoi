@@ -9,12 +9,94 @@
     "./slots": {
       "types": "./src/slots.d.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "client": {
       "platform": "web",
-      "inject": ["@deepseek-ai/dsh-client-ui-renderer"]
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-file-upload",
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@eleckoi/dsh-client-character-configuration",
+        "@eleckoi/dsh-product-api"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-file-upload": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-chat": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "3.18.4",
+    "@eleckoi/dsh-client-character-configuration": "workspace:*",
+    "@eleckoi/dsh-product-api": "workspace:*"
+  },
+  "description": "管理聊天列表、历史消息和当前聊天状态。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiConversations",
+        "kind": "service",
+        "title": "聊天记录服务",
+        "description": "读取聊天列表、消息、轨迹和当前生成状态。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "getDetailsSnapshot",
+          "subscribeDetails",
+          "getTimelineSnapshot",
+          "subscribeTimeline",
+          "getStreamSnapshot",
+          "subscribeStream",
+          "refresh",
+          "create",
+          "open",
+          "pageOlder",
+          "openTimeline",
+          "closeTimeline",
+          "uploadFile",
+          "send",
+          "regenerate",
+          "cancelRequest",
+          "readSelection",
+          "saveSelection",
+          "readModelSelection",
+          "readTrajectory",
+          "exportArchive",
+          "importArchive",
+          "revealFile",
+          "selectModel",
+          "selectOpening",
+          "updateOpening",
+          "rememberSession",
+          "preferredSession",
+          "forgetSession"
+        ]
+      },
+      {
+        "id": "eleckoi.conversation.list",
+        "kind": "ui-slot",
+        "title": "聊天列表",
+        "description": "包装或替换聊天列表。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      }
+    ]
   }
 }

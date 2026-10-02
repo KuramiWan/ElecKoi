@@ -1,24 +1,20 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, protocol, screen, session, shell, type BrowserWindowConstructorOptions, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, protocol, screen, session, shell, type BrowserWindowConstructorOptions } from 'electron'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
-import type { AppearanceMode } from '@shared/contracts/settings/schemas'
-import { assertTrustedDshClientBoot, isAllowedExternalUrl, isAppRendererUrl, isDshAppUrl, isDshChildUrl } from './validateSender'
+import { assertTrustedDshClientFrame, isAllowedExternalUrl, isAppRendererUrl, isDshAppUrl, isDshChildUrl } from './validateSender'
 import { ElectronWindowHost } from './ElectronWindowHost'
 import { installWindowsNativeFrame } from './windowsNativeFrame'
 import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, isDshClientAsset, resolveElecKoiClientAssets, serveDshClientAsset, serveElecKoiClientAsset } from './dshClientDocument'
+import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
-  inject: ['appPaths', 'appLog', 'desktopGateway', 'agentSessions', 'pluginHost', 'userSettings', 'creatorProjects'],
+  inject: ['appPaths', 'appLog', 'pluginHost'],
   provide: 'electronWindows',
   async apply(ctx: Context) {
     const appPaths = ctx.appPaths
     const appLog = ctx.appLog
-    const desktopGateway = ctx.desktopGateway
     const pluginHost = ctx.pluginHost
-    const userSettings = ctx.userSettings
-    const creatorProjects = ctx.creatorProjects
-    let appearanceMode = userSettings.read('appearance.mode')
     nativeTheme.themeSource = 'system'
 
     const windows = new ElectronWindowHost()
@@ -86,7 +82,7 @@ export const mainWindowPlugin = {
       }
     })
     ipcMain.handle('eleckoi:dsh-client-boot', (event) => {
-      assertTrustedDshClientBoot(
+      assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
         event.senderFrame === event.sender.mainFrame,
@@ -103,7 +99,7 @@ export const mainWindowPlugin = {
       }
     })
     ipcMain.handle('eleckoi:dsh-client-boot-failed', (event, message: unknown) => {
-      assertTrustedDshClientBoot(
+      assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
         event.senderFrame === event.sender.mainFrame,
@@ -111,7 +107,6 @@ export const mainWindowPlugin = {
       )
       if (typeof message !== 'string') throw new Error('DSH 插件页面错误格式不正确。')
       appLog.error({ message }, 'DSH plugin client boot failed')
-      desktopGateway.broadcast('plugins.host.failed', { message: `插件页面加载失败：${message}` })
     })
     const syncNativeTheme = (event: Electron.IpcMainEvent, source: unknown) => {
       const mainContents = mainWindow?.webContents
@@ -134,86 +129,44 @@ export const mainWindowPlugin = {
     const focusMainWindow = () => { void windows.open('main') }
     app.on('activate', focusMainWindow)
     app.on('second-instance', focusMainWindow)
-
-    const unregisterControl = desktopGateway.register(
-      'command.window.control',
-      ({ action }, request) => {
-        const target = request.windowId === undefined ? undefined : BrowserWindow.fromId(request.windowId)
-        if (target != null && !target.isDestroyed()) {
-          if (action === 'minimize') target.minimize()
-          if (action === 'maximize') {
-            if (target.isMaximized()) target.unmaximize()
-            else target.maximize()
-          }
-          if (action === 'close') target.close()
-        }
-        return { ok: true as const }
-      }
-    )
-    const unregisterCreatorProjectDirectory = desktopGateway.register(
-      'command.creator_studio.projects.select_directory',
-      async (_input, request) => {
-        const target = request.windowId === undefined ? undefined : BrowserWindow.fromId(request.windowId)
-        const options: OpenDialogOptions = {
-          title: '选择创作项目保存位置',
-          buttonLabel: '选择文件夹',
-          properties: ['openDirectory', 'createDirectory']
-        }
-        const result = target != null && !target.isDestroyed()
-          ? await dialog.showOpenDialog(target, options)
-          : await dialog.showOpenDialog(options)
-        return { directory: result.canceled ? null : result.filePaths[0] ?? null }
-      }
-    )
-
-    const unregisterOpenCreatorProjectLocation = desktopGateway.register(
-      'command.creator_studio.projects.open_location',
-      async ({ projectId }) => {
-        const project = creatorProjects.require(projectId)
-        const error = await shell.openPath(project.rootPath)
-        if (error) throw new Error(error)
-        return { ok: true as const }
-      }
-    )
-
-    const publishAppearanceMode = () => {
-      desktopGateway.broadcast('settings.changed', {
-        key: 'appearance.mode',
-        value: appearanceMode
-      })
-    }
-    const handleNativeThemeUpdated = () => {
-      if (appearanceMode === 'system') publishAppearanceMode()
-    }
-    nativeTheme.on('updated', handleNativeThemeUpdated)
-
-    const unregisterAppearanceMode = desktopGateway.register(
-      'command.appearance.set_mode',
-      ({ mode }) => {
-        appearanceMode = userSettings.write('appearance.mode', mode)
-        nativeTheme.themeSource = appearanceMode
-        publishAppearanceMode()
-        return {
-          mode: appearanceMode,
-          resolved: resolveAppearanceMode(appearanceMode)
+    const detachPluginFailure = pluginHost.onFailure(() => {
+      for (const window of windows.all()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(DESKTOP_SHELL_IPC.hostFailure, '插件服务意外退出，请重新打开插件中心。')
         }
       }
-    )
+    })
 
+    ipcMain.handle(DESKTOP_SHELL_IPC.windowControl, (event, action: unknown) => {
+      assertTrustedDshClientFrame(
+        event.sender,
+        event.senderFrame?.url ?? '',
+        event.senderFrame === event.sender.mainFrame,
+        windows.all().map(window => window.webContents)
+      )
+      if (action !== 'minimize' && action !== 'maximize' && action !== 'close') {
+        throw new TypeError('桌面窗口操作不受支持。')
+      }
+      const target = BrowserWindow.fromWebContents(event.sender)
+      if (target === null || target.isDestroyed()) return
+      if (action === 'minimize') target.minimize()
+      if (action === 'maximize') {
+        if (target.isMaximized()) target.unmaximize()
+        else target.maximize()
+      }
+      if (action === 'close') target.close()
+    })
     const ready = await pluginHost.start()
     pluginHostReady = { ...ready, cookie: await authenticateDshClientHost(ready.url) }
     await windows.open('main')
     return () => {
-      unregisterControl()
+      ipcMain.removeHandler(DESKTOP_SHELL_IPC.windowControl)
+      detachPluginFailure()
       ipcMain.removeHandler('eleckoi:dsh-client-boot')
       ipcMain.removeHandler('eleckoi:dsh-client-boot-failed')
       ipcMain.removeListener('eleckoi:dsh-native-theme', syncNativeTheme)
       session.defaultSession.webRequest.onBeforeSendHeaders(null)
       protocol.unhandle('dsh-app')
-      unregisterCreatorProjectDirectory()
-      unregisterOpenCreatorProjectLocation()
-      unregisterAppearanceMode()
-      nativeTheme.removeListener('updated', handleNativeThemeUpdated)
       app.removeListener('activate', focusMainWindow)
       app.removeListener('second-instance', focusMainWindow)
       windows.close()
@@ -244,15 +197,18 @@ function windowOptions(appPaths: Context['appPaths'], child: boolean, payload?: 
   }
 }
 
-function resolveAppearanceMode(mode: AppearanceMode): 'light' | 'dark' {
-  if (mode === 'system') return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
-  return mode
-}
-
 function configureMainWindow(appPaths: Context['appPaths'], appLog: Context['appLog'], windows: ElectronWindowHost, window: BrowserWindow): void {
   configureWindowsAppDetails(appPaths, window)
   installWindowsNativeFrame(window)
   window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
+  window.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
+    if (level === 'error') {
+      appLog.error({ message, lineNumber, sourceId, url: window.webContents.getURL() }, 'DSH client renderer error')
+    }
+  })
+  window.webContents.on('did-fail-load', (_event, code, description, url) => {
+    appLog.error({ code, description, url }, 'DSH client renderer failed to load')
+  })
   window.once('ready-to-show', () => window.show())
   configureWindowNavigation(appLog, windows, window, true)
 }

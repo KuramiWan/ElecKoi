@@ -1,1 +1,1 @@
-export { name, inject, apply } from '@eleckoi/dsh-web-search-tavily'
+export { name, inject, Config, apply } from '@eleckoi/dsh-web-search-tavily'

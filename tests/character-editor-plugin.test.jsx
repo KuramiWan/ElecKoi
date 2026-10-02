@@ -7,7 +7,6 @@ const saveCharacter = vi.hoisted(() => vi.fn())
 
 vi.mock('../src/renderer/src/modules/persona/index.js', () => ({
   CharacterBasicInfoPanel: ({ character }) => <div data-testid="built-in-card">{character.name}</div>,
-  updateCharacter: saveCharacter,
 }))
 vi.mock('../src/renderer/src/modules/appearance/index.js', () => ({ applyAppearanceTheme: () => {} }))
 vi.mock('../src/renderer/src/modules/settingLibraries/index.js', () => ({
@@ -41,7 +40,7 @@ describe('character editor client extension', () => {
     const saved = { ...initial, name: '角色乙', persona: { assistant_name: '角色乙' } }
     const collection = { active_character_id: initial.id, groups: [], items: [initial] }
     const savedCollection = { ...collection, items: [saved] }
-    const characterCatalog = { refresh: vi.fn().mockResolvedValue(collection), adopt: vi.fn() }
+    const characterCatalog = { refresh: vi.fn().mockResolvedValue(collection), update: saveCharacter }
     saveCharacter.mockResolvedValue(savedCollection)
     const handoff = vi.fn((_section, _owner, fallback) => <div data-testid="extension-seat">{fallback}</div>)
     const container = document.createElement('div')
@@ -67,7 +66,7 @@ describe('character editor client extension', () => {
       await act(async () => { savedResult = await handoff.mock.lastCall[1].onSave(saved) })
       expect(savedResult).toBe(true)
       expect(saveCharacter).toHaveBeenCalledWith(saved)
-      expect(characterCatalog.adopt).toHaveBeenCalledWith(savedCollection)
+      expect(container.querySelector('[data-testid="built-in-card"]')?.textContent).toBe('角色乙')
     } finally {
       await act(async () => root.unmount())
     }

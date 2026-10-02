@@ -1,0 +1,480 @@
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { parse as parseYaml } from 'yaml'
+import { readSessionSnapshot, removeSessionSnapshot, snapshotPath, writeSessionSnapshot } from './session-snapshot.mjs'
+import { historicalRuntimeState } from './historical-runtime-state.mjs'
+import { historyStatsProjection } from './history-stats-projection.mjs'
+
+const resolveRuntimeModule = createRequire(import.meta.url).resolve
+
+export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
+  if (!process.env.ELECKOI_PRESET_TEMPLATE_PATH
+    || !process.env.ELECKOI_SESSION_BRIDGE_ROOT
+    || !process.env.ELECKOI_WORKSPACE_ROOT
+    || !ctx.eleckoiProductData
+    || !ctx.sessionController
+    || !ctx.sessionProjections
+    || !ctx.agentDefaultModel
+    || !ctx.llm) {
+    return () => {}
+  }
+  const snapshotRoot = requiredEnv('ELECKOI_SESSION_SNAPSHOT_ROOT')
+  const presetRoot = requiredEnv('ELECKOI_PRESET_ROOT')
+  const templatePath = requiredEnv('ELECKOI_PRESET_TEMPLATE_PATH')
+  const bridgeRoot = requiredEnv('ELECKOI_SESSION_BRIDGE_ROOT')
+  const workspaceRoot = requiredEnv('ELECKOI_WORKSPACE_ROOT')
+  const disposeHistoryStats = ctx.sessionProjections.register(historyStatsProjection)
+
+  const prepare = async (conversationId, text, creating = false, selection) => {
+    const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, text)
+    const previous = readOptionalSnapshot(snapshotRoot, runtime.runtimeSessionId)
+    const model = selection ?? (creating
+      ? ctx.agentDefaultModel.currentSelection()
+      : await currentModelSelection(ctx, runtime.runtimeSessionId))
+    const modelInfo = await ctx.llm.resolveModelInfo(model.provider, model.model)
+    const mainModel = requestSnapshot(ctx, model, modelInfo)
+    const subagentModel = await resolveSubagentModel(ctx, runtime.subagentModelSelection, mainModel)
+    const effectiveToolPolicy = sessionToolPolicy(
+      runtime.disabledToolGroupIds,
+      runtime.variableContext !== undefined,
+      runtime.conversationContext.settingLibrary !== undefined,
+      runtime.agentPreset.roleplayPlan.steps.length > 0
+    )
+    const requestedPresetId = materializeAgentPreset(
+      presetRoot,
+      templatePath,
+      runtime.agentPreset,
+      effectiveToolPolicy,
+      subagentModel,
+      mainModel
+    )
+    const mountedPresetId = previous?.mountedPresetId || requestedPresetId
+    if (mountedPresetId !== requestedPresetId
+      && !existsSync(join(presetRoot, mountedPresetId, 'preset.json'))) {
+      throw new Error(`DSH 会话原预设 ${mountedPresetId} 的组合文件不存在，不能安全切换配置。`)
+    }
+    const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
+    mkdirSync(sessionRoot, { recursive: true })
+    const nextTurn = creating ? 1 : await nextSessionTurn(ctx, runtime.runtimeSessionId)
+    writeRuntimeCheckpoint(
+      sessionRoot,
+      nextTurn,
+      ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
+    )
+    const variableStateFile = join(sessionRoot, 'eleckoi-variable-state.json')
+    const settingStateFile = join(sessionRoot, 'eleckoi-setting-library-state.json')
+    const contextFile = join(sessionRoot, 'eleckoi-conversation-context.json')
+    writeVariableBridge(variableStateFile, runtime.variableContext)
+    writeSettingBridge(
+      settingStateFile,
+      runtime.conversationContext.currentPromptText ?? text,
+      runtime.conversationContext
+    )
+    writeContextBridge(
+      contextFile,
+      runtime.conversationContext.currentPromptText ?? text,
+      runtime.conversationContext
+    )
+    writeSessionSnapshot(snapshotRoot, runtime.runtimeSessionId, {
+      conversationId,
+      runtimeThreadId: runtime.runtimeSessionId,
+      mountedPresetId,
+      ...(mountedPresetId === requestedPresetId ? {} : { pendingPresetId: requestedPresetId }),
+      model: mainModel,
+      subagentModel,
+      variableStateFile,
+      settingStateFile,
+      contextFile,
+      variablesEnabled: runtime.variableContext !== undefined,
+      settingLibraryEnabled: runtime.conversationContext.settingLibrary !== undefined,
+      settingLibraryBaseline: runtime.settingLibraryBaseline,
+      disabledToolGroupIds: effectiveToolPolicy.disabledGroupIds,
+      roleplayPlanSteps: runtime.agentPreset.roleplayPlan.steps,
+      historyCompactionInstructions: runtime.agentPreset.historyCompactionInstructions ?? ''
+    })
+    if (!creating) await presetRegistrar.selectForSession(runtime.runtimeSessionId)
+    return { runtimeSessionId: runtime.runtimeSessionId, presetId: requestedPresetId }
+  }
+
+  const service = {
+    async create(conversationId, selection) {
+      const prepared = await prepare(conversationId, '', true, selection)
+      await presetRegistrar.registerForSession(prepared.runtimeSessionId)
+      const created = await ctx.sessionController.create({
+        sessionId: prepared.runtimeSessionId,
+        cwd: workspaceRoot,
+        agentPreset: prepared.presetId
+      })
+      if (created.sessionId !== prepared.runtimeSessionId) {
+        throw new Error('DSH Session 标识与聊天记录不一致。')
+      }
+      if (selection) await ctx.sessionController.selectModel({ sessionId: prepared.runtimeSessionId, ...selection })
+      return prepared.runtimeSessionId
+    },
+    async preparePrompt(conversationId, text) {
+      const prepared = await prepare(conversationId, text, false)
+      return prepared.runtimeSessionId
+    },
+    async prepareRegeneration(conversationId, text) {
+      const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
+      const selection = { ...await currentModelSelection(ctx, sessionId) }
+      const state = ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
+      const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
+      const files = [
+        snapshotPath(snapshotRoot, sessionId),
+        checkpointPath(sessionRoot),
+        ...['eleckoi-variable-state.json', 'eleckoi-setting-library-state.json', 'eleckoi-conversation-context.json']
+          .map(name => join(sessionRoot, name))
+      ].map(path => ({ path, content: existsSync(path) ? readFileSync(path) : undefined }))
+      const rollback = () => {
+        ctx.eleckoiProductData.restoreConversationRuntime(conversationId, state)
+        for (const file of files) {
+          if (file.content === undefined) rmSync(file.path, { force: true })
+          else writeAtomically(file.path, file.content)
+        }
+      }
+      try {
+        // Resolve the current configuration and mount before discarding a reply.
+        await ctx.llm.resolveCallConfig(selection)
+        await prepare(conversationId, text, false, selection)
+        return { selection, rollback }
+      } catch (error) {
+        rollback()
+        throw error
+      }
+    },
+    prepareRestoreBeforeTurn(conversationId, sessionId, fromTurn, beforeMessageId) {
+      const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
+      if (snapshot.conversationId !== conversationId) {
+        throw new Error('DSH Session 与当前聊天不匹配，不能回退运行状态。')
+      }
+      const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
+      const checkpoint = readRuntimeCheckpoint(sessionRoot, fromTurn)
+      const hasRoleplayHistory = (!checkpoint || beforeMessageId)
+        && ctx.eleckoiProductData.readConversationDetails(conversationId).metadata.characterId
+      const archive = hasRoleplayHistory
+        ? ctx.eleckoiProductData.exportConversationArchive(conversationId) : undefined
+      const historical = archive && beforeMessageId
+        ? historicalRuntimeState(archive, sessionId, fromTurn, beforeMessageId) : undefined
+      const exactHistoricalInput = archive?.tables.agent_turns.some(row => row.id === beforeMessageId && row.kind === 'user')
+      const state = exactHistoricalInput ? historical : checkpoint?.state
+        ?? (archive && historicalRuntimeState(archive, sessionId, fromTurn))
+      if (!state) throw new Error(`缺少第 ${fromTurn} 轮之前的历史运行状态，未修改聊天。`)
+      ctx.eleckoiProductData.validateConversationRuntimeSnapshot(state)
+      return () => {
+        ctx.eleckoiProductData.restoreConversationRuntime(conversationId, state)
+        mkdirSync(sessionRoot, { recursive: true })
+        writeRuntimeCheckpoint(sessionRoot, fromTurn, state)
+        trimRuntimeCheckpoints(sessionRoot, fromTurn)
+      }
+    },
+    removeArtifacts(conversationId, sessionId) {
+      removeSessionSnapshot(snapshotRoot, sessionId)
+      rmSync(join(bridgeRoot, safePathPart(conversationId)), { recursive: true, force: true })
+    }
+  }
+  ctx.provide('eleckoiRoleplaySessions', service)
+
+  const disposeCommit = ctx.on('session/event', (session, event) => {
+    if (event.type !== 'turn/end' || event.data?.reason?.kind !== 'completed') return
+    let snapshot
+    try {
+      snapshot = readSessionSnapshot(snapshotRoot, session.id)
+      if (snapshot.inheritedFromSessionId) return
+      const variableState = snapshot.variablesEnabled
+        ? readVariableBridgeState(snapshot.variableStateFile)
+        : undefined
+      const settingState = snapshot.settingLibraryEnabled
+        ? readSettingBridgeState(snapshot.settingStateFile)
+        : undefined
+      ctx.eleckoiProductData.commitConversationRuntime(
+        snapshot.conversationId,
+        variableState,
+        settingState,
+        snapshot.settingLibraryBaseline
+      )
+      const turn = Number(event.data?.turn)
+      if (!Number.isSafeInteger(turn) || turn < 1) {
+        throw new Error('DSH 完成事件缺少有效轮次。')
+      }
+      writeRuntimeCheckpoint(
+        join(bridgeRoot, safePathPart(snapshot.conversationId)),
+        turn + 1,
+        ctx.eleckoiProductData.snapshotConversationRuntime(snapshot.conversationId)
+      )
+    } catch (error) {
+      ctx.logger.error(`ElecKoi 会话运行状态提交失败：${String(error)}`)
+    }
+  })
+  return () => { disposeCommit(); disposeHistoryStats() }
+}
+
+async function nextSessionTurn(ctx, sessionId) {
+  const inspection = await ctx.sessionController.inspect(sessionId)
+  const lastTurn = inspection.events.reduce((latest, event) => (
+    event?.type === 'turn/start' && Number.isSafeInteger(event.data?.turn)
+      ? Math.max(latest, event.data.turn)
+      : latest
+  ), 0)
+  return lastTurn + 1
+}
+
+function checkpointPath(sessionRoot) {
+  return join(sessionRoot, 'eleckoi-runtime-checkpoints.json')
+}
+
+function readRuntimeCheckpoints(sessionRoot) {
+  const path = checkpointPath(sessionRoot)
+  if (!existsSync(path)) return []
+  const document = parsedObject(readFileSync(path, 'utf8'), '聊天运行状态检查点')
+  if (document.version !== 1 || !Array.isArray(document.checkpoints)) {
+    throw new Error('聊天运行状态检查点格式不正确。')
+  }
+  return document.checkpoints.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)
+      || !Number.isSafeInteger(item.beforeTurn) || item.beforeTurn < 1
+      || !item.state || typeof item.state !== 'object' || Array.isArray(item.state)
+      || typeof item.state.variableStateJson !== 'string'
+      || typeof item.state.settingLibraryStateJson !== 'string') {
+      throw new Error('聊天运行状态检查点内容不正确。')
+    }
+    JSON.parse(item.state.variableStateJson)
+    JSON.parse(item.state.settingLibraryStateJson)
+    return {
+      beforeTurn: item.beforeTurn,
+      state: {
+        variableStateJson: item.state.variableStateJson,
+        settingLibraryStateJson: item.state.settingLibraryStateJson
+      }
+    }
+  }).sort((left, right) => left.beforeTurn - right.beforeTurn)
+}
+
+function writeRuntimeCheckpoint(sessionRoot, beforeTurn, state) {
+  if (!Number.isSafeInteger(beforeTurn) || beforeTurn < 1) {
+    throw new Error('聊天运行状态检查点轮次不正确。')
+  }
+  JSON.parse(state.variableStateJson)
+  JSON.parse(state.settingLibraryStateJson)
+  const checkpoints = readRuntimeCheckpoints(sessionRoot)
+    .filter(item => item.beforeTurn !== beforeTurn)
+  checkpoints.push({ beforeTurn, state })
+  checkpoints.sort((left, right) => left.beforeTurn - right.beforeTurn)
+  writeAtomically(checkpointPath(sessionRoot), `${JSON.stringify({ version: 1, checkpoints }, null, 2)}\n`)
+}
+
+function readRuntimeCheckpoint(sessionRoot, fromTurn) {
+  if (!Number.isSafeInteger(fromTurn) || fromTurn < 1) throw new Error('聊天回退轮次不正确。')
+  const checkpoint = readRuntimeCheckpoints(sessionRoot)
+    .find(item => item.beforeTurn === fromTurn)
+  return checkpoint
+}
+
+function trimRuntimeCheckpoints(sessionRoot, fromTurn) {
+  const checkpoints = readRuntimeCheckpoints(sessionRoot)
+    .filter(item => item.beforeTurn <= fromTurn)
+  writeAtomically(checkpointPath(sessionRoot), `${JSON.stringify({ version: 1, checkpoints }, null, 2)}\n`)
+}
+
+async function currentModelSelection(ctx, sessionId) {
+  const resolved = await ctx.sessionController.resolveAgent(sessionId)
+  if ('error' in resolved) throw resolved.error
+  if (resolved.agent.status !== 'idle') throw new Error('当前聊天仍在生成，不能提交新的消息。')
+  const state = ctx.sessionProjections.stateOf(resolved.agent.session, 'modelSelection')
+  return state?.pending ?? state?.lastUsed ?? ctx.agentDefaultModel.currentSelection()
+}
+
+async function resolveSubagentModel(ctx, configured, fallback) {
+  const provider = configured?.configId?.trim()
+  const model = configured?.model?.trim()
+  if (!provider || !model) return fallback
+  const info = await ctx.llm.resolveModelInfo(provider, model)
+  return requestSnapshot(ctx, { provider, model }, info)
+}
+
+export function requestSnapshot(ctx, selection, info) {
+  const namespace = ctx.settings?.describe().find(row => row.ns === 'eleckoi-client-models')
+  const parameters = namespace?.value?.entries?.[selection.provider]?.parameters?.[selection.model] || {}
+  return {
+    configId: selection.provider,
+    provider: selection.provider,
+    model: selection.model,
+    ...(selection.reasoningEffort === undefined && parameters.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort ?? parameters.reasoningEffort }),
+    ...(parameters.temperature === undefined ? {} : { temperature: parameters.temperature }),
+    ...(parameters.topP === undefined ? {} : { topP: parameters.topP }),
+    ...(parameters.autoCompactTokenLimit === undefined ? {} : { autoCompactTokenLimit: parameters.autoCompactTokenLimit }),
+    ...(info?.defaultMaxTokens === undefined ? {} : { maxTokens: info.defaultMaxTokens }),
+    ...(info?.contextWindow === undefined ? {} : { contextWindow: info.contextWindow })
+  }
+}
+
+function sessionToolPolicy(disabledGroupIds, variablesEnabled, settingLibraryEnabled, roleplayWorkflowEnabled) {
+  const disabled = new Set(disabledGroupIds ?? [])
+  if (!variablesEnabled) disabled.add('builtin:variables')
+  if (!settingLibraryEnabled) disabled.add('builtin:setting-library')
+  if (!roleplayWorkflowEnabled) disabled.add('builtin:roleplay-workflow')
+  return { disabledGroupIds: [...disabled] }
+}
+
+function materializeAgentPreset(root, templatePath, preset, toolPolicy, subagentModel, mainModel) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(preset.id)) throw new Error('预设编号不能用于 DSH Agent Preset。')
+  const mountedPresetId = runtimePresetId(preset, toolPolicy, subagentModel, mainModel)
+  const directory = join(root, mountedPresetId)
+  mkdirSync(directory, { recursive: true })
+  const pluginRoot = join(dirname(templatePath), '..')
+  let composition = readFileSync(templatePath, 'utf8')
+    .replace('__ELECKOI_SETTING_LIBRARY_TOOLS_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'setting-library-tools.mjs')).href))
+    .replace('__ELECKOI_UPLOADED_FILE_TOOLS_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'uploaded-file-tools.mjs')).href))
+    .replace('__ELECKOI_VARIABLE_TOOLS_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'variable-tools.mjs')).href))
+    .replace('__ELECKOI_ROLEPLAY_PLAN_TOOL_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'roleplay-plan-tool.mjs')).href))
+    .replace('__ELECKOI_ROLEPLAY_PLAN_STEPS__', JSON.stringify(preset.roleplayPlan.steps))
+    .replace('__ELECKOI_WEB_SEARCH_MAX_RESULTS__', '8')
+    .replace('__ELECKOI_COMPACTION_THRESHOLD_RATIO__', String(compactionRatio(mainModel)))
+    .replace('__ELECKOI_COMPACTION_RETENTION__', 'retainTokens: 0')
+    .replaceAll('__ELECKOI_SUBAGENT_OPTIONS__', [
+      '    agentOptions:',
+      `      provider: ${JSON.stringify(subagentModel.provider)}`,
+      `      model: ${JSON.stringify(subagentModel.model)}`,
+      ...(subagentModel.maxTokens === undefined ? [] : [`      maxTokens: ${subagentModel.maxTokens}`])
+    ].join('\n'))
+  composition = resolvePresetPluginSpecifiers(composition)
+  composition = applyPresetToolPolicy(composition, new Set(toolPolicy.disabledGroupIds))
+  const plugins = parseYaml(composition)
+  if (!Array.isArray(plugins)) throw new Error('DSH Agent 预设组合必须是插件列表。')
+  writeAtomically(join(directory, 'preset.json'), `${JSON.stringify({
+    id: mountedPresetId,
+    name: preset.name,
+    description: `ElecKoi 预设版本 ${preset.versionId}`,
+    plugins
+  }, null, 2)}\n`)
+  return mountedPresetId
+}
+
+function runtimePresetId(preset, toolPolicy, subagentModel, mainModel) {
+  const fingerprint = createHash('sha256').update(JSON.stringify({
+    preset,
+    disabledToolGroupIds: [...toolPolicy.disabledGroupIds].sort(),
+    subagent: subagentModel,
+    compaction: {
+      thresholdRatio: compactionRatio(mainModel),
+      retainTokens: 0
+    }
+  })).digest('hex').slice(0, 16)
+  const prefix = preset.id.replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'preset'
+  return `${prefix}-${fingerprint}`
+}
+
+function compactionRatio(model) {
+  if (!Number.isFinite(model.autoCompactTokenLimit) || !Number.isFinite(model.contextWindow)) return 0.8
+  return Math.max(Number.EPSILON, Math.min(1, model.autoCompactTokenLimit / model.contextWindow))
+}
+
+function resolvePresetPluginSpecifiers(source) {
+  return source.replace(
+    /(^\s*name:\s*)(['"])(@deepseek-ai\/[^'"\r\n]+)\2\s*$/gm,
+    (_match, prefix, _quote, specifier) => `${prefix}${JSON.stringify(pathToFileURL(resolveRuntimeModule(specifier)).href)}`
+  )
+}
+
+function applyPresetToolPolicy(source, disabled) {
+  const sections = [
+    ['variables', 'builtin:variables'],
+    ['setting-library', 'builtin:setting-library'],
+    ['web', 'builtin:web'],
+    ['workspace', 'builtin:workspace'],
+    ['collaboration', 'builtin:collaboration'],
+    ['roleplay-workflow', 'builtin:roleplay-workflow'],
+    ['workflow', 'builtin:workflow']
+  ]
+  return sections.reduce((content, [section, groupId]) => (
+    disabled.has(groupId) ? removePresetSection(content, section) : content
+  ), source)
+}
+
+function removePresetSection(source, section) {
+  const begin = `# ELECKOI:${section}:BEGIN`
+  const end = `# ELECKOI:${section}:END`
+  const start = source.indexOf(begin)
+  const finish = source.indexOf(end)
+  if (start < 0 || finish < start) throw new Error(`DSH 预设模板缺少工具段：${section}`)
+  return `${source.slice(0, start)}${source.slice(finish + end.length).replace(/^\r?\n/, '')}`
+}
+
+function writeVariableBridge(path, context) {
+  const value = context === undefined
+    ? { enabled: false, config: null, state: {} }
+    : {
+        enabled: true,
+        config: {
+          initialState: parsedObject(context.initialStateJson, '变量初始状态'),
+          schemaCode: context.schemaCode,
+          objects: context.objects,
+          variables: context.variables
+        },
+        state: parsedObject(context.stateJson, '当前变量状态')
+      }
+  writeAtomically(path, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function writeContextBridge(path, currentUserInput, context) {
+  writeAtomically(path, `${JSON.stringify({ ...context, currentUserInput }, null, 2)}\n`)
+}
+
+function writeSettingBridge(path, currentUserInput, context) {
+  writeAtomically(path, `${JSON.stringify({
+    enabled: context.settingLibrary !== undefined,
+    library: context.settingLibrary ?? null,
+    frozenLibrary: context.settingLibrary ?? null,
+    history: [...(context.history ?? []), { role: 'user', content: currentUserInput }]
+  }, null, 2)}\n`)
+}
+
+function readVariableBridgeState(path) {
+  const bridge = parsedObject(readFileSync(path, 'utf8'), '变量运行时桥接文件')
+  const state = bridge.state
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('变量运行时返回的状态必须是 JSON object。')
+  return JSON.stringify(state, null, 2)
+}
+
+function readSettingBridgeState(path) {
+  const bridge = parsedObject(readFileSync(path, 'utf8'), '设定库运行时桥接文件')
+  return JSON.stringify(bridge.library ?? {}, null, 2)
+}
+
+function parsedObject(raw, label) {
+  let value
+  try { value = JSON.parse(raw || '{}') } catch (error) { throw new Error(`${label}不是合法 JSON。`, { cause: error }) }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label}必须是 JSON object。`)
+  return value
+}
+
+function readOptionalSnapshot(root, sessionId) {
+  try { return readSessionSnapshot(root, sessionId) } catch (error) {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+function writeAtomically(path, content) {
+  if (existsSync(path) && readFileSync(path, 'utf8') === content) return
+  const temporary = `${path}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(temporary, content, { encoding: 'utf8', flag: 'wx' })
+    renameSync(temporary, path)
+  } finally {
+    rmSync(temporary, { force: true })
+  }
+}
+
+function requiredEnv(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(`${name} is required`)
+  return value
+}
+
+function safePathPart(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'default'
+}

@@ -4,9 +4,6 @@ packages:
   - packages/sdk/*
   - packages/compatibility/*
 
-overrides:
-  '@earendil-works/pi-ai': 0.87.1
-
 onlyBuiltDependencies:
   - '@deepseek-ai/dsh-subprocess-local'
   - electron
@@ -16,8 +13,19 @@ onlyBuiltDependencies:
   - node-pty
   - sharp
 
+overrides:
+  '@earendil-works/pi-ai': 0.87.1
+
 patchedDependencies:
-  '@earendil-works/pi-ai': patches/@earendil-works__pi-ai.patch
-  '@deepseek-ai/dsh-llm@0.2.0-rc.2': patches/@deepseek-ai__dsh-llm@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-api-session-controller@0.2.0-rc.2': patches/@deepseek-ai__dsh-api-session-controller@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-client-ui-conversation@0.2.0-rc.2': patches/@deepseek-ai__dsh-client-ui-conversation@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-client-ui-plugin-manager@0.2.0-rc.2': patches/@deepseek-ai__dsh-client-ui-plugin-manager@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-llm-deepseek@0.2.0-rc.2': patches/@deepseek-ai__dsh-llm-deepseek@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2': patches/@deepseek-ai__dsh-llm-pi-ai@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-llm@0.2.0-rc.2': patches/@deepseek-ai__dsh-llm@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-plugin-manager@0.2.0-rc.2': patches/@deepseek-ai__dsh-plugin-manager@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-sdk-jsonrpc-server@0.2.0-rc.2': patches/@deepseek-ai__dsh-sdk-jsonrpc-server@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-session-persistence-jsonl@0.2.0-rc.2': patches/@deepseek-ai__dsh-session-persistence-jsonl@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-session@0.2.0-rc.2': patches/@deepseek-ai__dsh-session@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-typert-generator@0.2.0-rc.2': patches/@deepseek-ai__dsh-typert-generator@0.2.0-rc.2.patch
+  '@earendil-works/pi-ai': patches/@earendil-works__pi-ai.patch

@@ -6,6 +6,8 @@ namespace {
 
 constexpr UINT_PTR kElecKoiFrameSubclassId = 0x454B4F49;
 constexpr wchar_t kResizeOverlayClassName[] = L"ElecKoi.ResizeOverlay";
+// The right sizing strip shares the client's 2 DIP outer clearance.
+constexpr int kRightResizeInsetDip = 2;
 
 LRESULT HitTestResizeFrameAt(HWND hwnd, POINT cursor) {
   if (IsZoomed(hwnd)) {
@@ -29,7 +31,7 @@ LRESULT HitTestResizeFrameAt(HWND hwnd, POINT cursor) {
       native_resize_width > inner_resize_size
           ? native_resize_width
           : inner_resize_size;
-  const int right_resize_width = MulDiv(6, static_cast<int>(dpi), 96);
+  const int right_resize_width = MulDiv(kRightResizeInsetDip, static_cast<int>(dpi), 96);
   const int bottom_resize_height =
       native_resize_height > inner_resize_size
           ? native_resize_height
@@ -244,7 +246,7 @@ void LayoutResizeOverlays(HWND root) {
   const int width = client.right - client.left;
   const int height = client.bottom - client.top;
   const int edge = MulDiv(12, static_cast<int>(GetDpiForWindow(root)), 96);
-  const int right_edge = MulDiv(6, static_cast<int>(GetDpiForWindow(root)), 96);
+  const int right_edge = MulDiv(kRightResizeInsetDip, static_cast<int>(GetDpiForWindow(root)), 96);
   if (width <= edge + right_edge || height <= edge * 2) return;
 
   PositionResizeOverlay(root, HTTOPLEFT, 0, 0, edge, edge);

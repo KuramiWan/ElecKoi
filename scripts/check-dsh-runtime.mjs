@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
+import { OPTIONAL_BUNDLES } from '@deepseek-ai/dsh-app-boot'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(resolve(root, 'package.json'))
@@ -15,6 +16,13 @@ const config = readFileSync(resolve(root, 'resources/dsh', manifest.composition)
 const presetConfig = readFileSync(resolve(root, 'resources/dsh', manifest.presetComposition), 'utf8')
 const sdkServerSource = readFileSync(require.resolve('@deepseek-ai/dsh-sdk-jsonrpc-server'), 'utf8')
 
+for (const bundle of OPTIONAL_BUNDLES) {
+  if (runtime.dependencies?.[bundle] !== manifest.upstream.version
+    || desktop.dependencies?.[bundle] !== manifest.upstream.version) {
+    throw new Error(`${bundle} 必须由桌面安装和 Host 以锁定版本携带。`)
+  }
+}
+
 if (manifest.schemaVersion !== 1) throw new Error('DSH runtime manifest schemaVersion 必须为 1。')
 if (manifest.transport !== 'authenticated-web-host') throw new Error('DSH 桌面对话必须使用当前 Web Host 运行路径。')
 if (manifest.compositionRole !== 'sdk-compatibility') {
@@ -24,16 +32,50 @@ if (manifest.desktopProfile?.name !== 'desktop' || manifest.desktopProfile.base 
   throw new Error('DSH 桌面 profile 必须基于官方 Web 组合。')
 }
 if (!manifest.desktopProfile.bundles?.includes('@eleckoi/dsh-client-roleplay')
-  || !manifest.desktopProfile.bundles?.includes('@eleckoi/dsh-web-search-tavily')) {
-  throw new Error('DSH 桌面 profile 缺少 ElecKoi 角色或联网搜索组合包。')
+  || !manifest.desktopProfile.bundles?.includes('@eleckoi/dsh-client-display-preferences')
+  || !manifest.desktopProfile.bundles?.includes('@eleckoi/dsh-web-search-tavily')
+  || !manifest.desktopProfile.bundles?.includes('@eleckoi/dsh-product-api')) {
+  throw new Error('DSH 桌面 profile 缺少 ElecKoi 角色、产品 Remote 或联网搜索组合包。')
 }
 readFileSync(resolve(root, 'resources/dsh', manifest.desktopProfile.agentPatch))
+const developerInterfaceIds = new Set()
+const developerInterfaceKinds = new Set(['ui-slot', 'service', 'event', 'contribution', 'remote'])
+const developerInterfaceRelations = new Set(['provides', 'contributes'])
 for (const bundle of manifest.desktopProfile.bundles) {
-  if (desktop.dependencies?.[bundle] !== 'workspace:*' || runtime.dependencies?.[bundle] !== 'workspace:*') {
+  if (desktop.dependencies?.[bundle] !== 'workspace:*'
+    || (bundle !== runtime.name && runtime.dependencies?.[bundle] !== 'workspace:*')) {
     throw new Error(`${bundle} 必须由桌面运行时携带。`)
   }
   const bundleManifest = require(`${bundle}/package.json`)
   if (!bundleManifest.dsh?.bundle?.patch) throw new Error(`${bundle} 未声明 DSH 组合包。`)
+  const developerInterfaces = bundleManifest.eleckoi?.developerInterfaces
+  if (!Array.isArray(developerInterfaces) || developerInterfaces.length === 0) {
+    throw new Error(`${bundle} 未声明公开开发接口。`)
+  }
+  for (const contract of developerInterfaces) {
+    if (!contract || typeof contract.id !== 'string' || !contract.id
+      || typeof contract.title !== 'string' || !contract.title
+      || typeof contract.description !== 'string' || !contract.description
+      || typeof contract.mode !== 'string' || !contract.mode
+      || typeof contract.scope !== 'string' || !contract.scope
+      || !developerInterfaceKinds.has(contract.kind)
+      || !developerInterfaceRelations.has(contract.relation)) {
+      throw new Error(`${bundle} 含有无效的公开开发接口声明。`)
+    }
+    if (developerInterfaceIds.has(contract.id)) throw new Error(`公开开发接口 ID 重复：${contract.id}`)
+    developerInterfaceIds.add(contract.id)
+    if (contract.members !== undefined
+      && (!Array.isArray(contract.members) || contract.members.some(member => typeof member !== 'string' || !member))) {
+      throw new Error(`${bundle} 的开发接口 ${contract.id} 含有无效成员。`)
+    }
+    if (contract.relation === 'contributes' && (typeof contract.owner !== 'string' || !contract.owner)) {
+      throw new Error(`${bundle} 的能力接入 ${contract.id} 未声明所属扩展点。`)
+    }
+  }
+}
+const productApiManifest = require('@eleckoi/dsh-product-api/package.json')
+if (!productApiManifest.exports?.['./typert'] || !productApiManifest.exports?.['./remote']) {
+  throw new Error('@eleckoi/dsh-product-api 必须同时导出 Host Typert 与 Remote Client contribution。')
 }
 if (!/^[0-9a-f]{40}$/.test(manifest.upstream.commit)) {
   throw new Error('DSH upstream commit 必须固定为完整的 40 位 Git commit。')

@@ -4,11 +4,23 @@ import { CharacterEditorWindow } from "./CharacterEditorWindow.jsx";
 import { CharacterManagerWindow } from "./CharacterManagerWindow.jsx";
 import { CreatorStudioWindow } from "./CreatorStudioWindow.jsx";
 import { PresetManagerWindow } from "./PresetManagerWindow.jsx";
+import { WebSearchProvider } from "../../modules/agentTools/index.js";
+import { AppearanceProvider } from "../../modules/appearance/index.js";
+import { DisplayPreferencesProvider } from "../../modules/settings/index.js";
 
-export default function App({ conversations, characters, characterConfiguration, models, persona, presets, settingsSections, navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderCharacterEditorSection, renderCharacterManager, renderConversationList, renderPresetEditorSection, renderPresetManager, renderModelEditor, renderRoleplay } = {}) {
+export default function App(props = {}) {
+  return <AppearanceProvider model={props.appearance}>
+    <DisplayPreferencesProvider model={props.displayPreferences}>
+      <WebSearchProvider model={props.webSearch}><AppContent {...props} /></WebSearchProvider>
+    </DisplayPreferencesProvider>
+  </AppearanceProvider>;
+}
+
+function AppContent({ conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, settingsSections, navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderCharacterEditorSection, renderCharacterManager, renderConversationList, renderPresetEditorSection, renderPresetManager, renderRoleplay } = {}) {
   const params = new URLSearchParams(window.location.search);
   if (params.get("view") === "chat") {
-    return <ChatWindow conversations={conversations} characters={characters} models={models} persona={persona} renderRoleplay={renderRoleplay} />;
+    return <ChatWindow conversations={conversations} characters={characters} characterConfiguration={characterConfiguration}
+      models={models} persona={persona} presets={presets} renderRoleplay={renderRoleplay} />;
   }
   if (params.get("view") === "character-editor") {
     return <CharacterEditorWindow characterCatalog={characters} characterConfiguration={characterConfiguration} renderCharacterEditorSection={renderCharacterEditorSection} />;
@@ -20,12 +32,12 @@ export default function App({ conversations, characters, characterConfiguration,
     return <PresetManagerWindow presetCatalog={presets} renderPresetManager={renderPresetManager} />;
   }
   if (params.get("view") === "creator-studio") {
-    return <CreatorStudioWindow characterCatalog={characters} />;
+    return <CreatorStudioWindow characterCatalog={characters} projectCatalog={creatorStudio} />;
   }
 
-  return <MainWindow conversations={conversations} characters={characters} models={models} persona={persona} presets={presets}
+  return <MainWindow conversations={conversations} characters={characters} characterConfiguration={characterConfiguration} models={models} persona={persona} presets={presets}
     settingsSections={settingsSections} navigation={navigation} renderSettingsSection={renderSettingsSection}
     renderUserProfileEditor={renderUserProfileEditor} renderCharacterPageSection={renderCharacterPageSection}
     renderConversationList={renderConversationList} renderPresetEditorSection={renderPresetEditorSection}
-    renderModelEditor={renderModelEditor} renderRoleplay={renderRoleplay} />;
+    renderRoleplay={renderRoleplay} />;
 }

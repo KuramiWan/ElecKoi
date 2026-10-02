@@ -1,5 +1,3 @@
-import { desktopClient } from "../../bridge/desktopClient.ts";
-
 let resizeModeInstalled = false;
 
 export function installResizePerformanceMode() {
@@ -31,14 +29,14 @@ export async function showCurrentWindow() {
 
 export const appWindow = {
   async minimize() {
-    await desktopClient.request("command.window.control", { action: "minimize" });
+    await window.dshDesktop.windowControls?.minimize();
   },
 
   async maximizeToggle() {
-    await desktopClient.request("command.window.control", { action: "maximize" });
+    await window.dshDesktop.windowControls?.maximizeToggle();
   },
 
   async close() {
-    await desktopClient.request("command.window.control", { action: "close" });
+    await window.dshDesktop.windowControls?.close();
   },
 };

@@ -2,19 +2,18 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { decodeCharacterCard } from '../src/main/modules/characterTransfer/characterCardFormats'
-import { CharacterTransferService } from '../src/main/modules/characterTransfer/CharacterTransferService'
-import { CharacterRepository } from '../src/main/modules/personas/CharacterRepository'
-import { RegexRuleRepository } from '../src/main/modules/regexRules/RegexRuleRepository'
-import { AgentPresetRepository } from '../src/main/modules/agentPresets'
-import { SettingLibraryRepository } from '../src/main/modules/settingLibraries/SettingLibraryRepository'
-import { VariableConfigRepository } from '../src/main/modules/variables/VariableConfigRepository'
-import { SqliteDatabase } from '../src/main/platform/sqlite/SqliteDatabase'
-import { UserSettingsStore } from '../src/main/modules/settings/UserSettingsStore'
+import { decodeCharacterCard } from '../packages/dsh-product-data/src/domain/characterTransfer/characterCardFormats'
+import { CharacterTransferService } from '../packages/dsh-product-data/src/domain/characterTransfer/CharacterTransferService'
+import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
+import { RegexRuleRepository } from '../packages/dsh-product-data/src/domain/regexRules/RegexRuleRepository'
+import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
+import { SettingLibraryRepository } from '../packages/dsh-product-data/src/domain/settingLibraries/SettingLibraryRepository'
+import { VariableConfigRepository } from '../packages/dsh-product-data/src/domain/variables/VariableConfigRepository'
+import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
 import { APP_DEFAULT_CHAT_BACKGROUND } from '../src/shared/contracts/characters/chatBackground'
-import { LocalMediaStore } from '../src/main/platform/filesystem/LocalMediaStore'
-import { decodeSettingLibrarySnapshot } from '../src/main/modules/characterTransfer/portableSnapshots'
-import { readPngText } from '../src/main/platform/filesystem/PngTextChunkCodec'
+import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
+import { decodeSettingLibrarySnapshot } from '../packages/dsh-product-data/src/domain/characterTransfer/portableSnapshots'
+import { readPngText } from '@eleckoi/dsh-product-data/media'
 
 const encoder = new TextEncoder()
 const databases: SqliteDatabase[] = []
@@ -199,7 +198,6 @@ describe('character card import', () => {
     const media = new LocalMediaStore(join(directory, 'media'))
     const characters = new CharacterRepository(database, {
       deleteForCharacter() {},
-      flushCleanup() {},
       refreshCharacterIdentity() {}
     }, media)
     const settingLibraries = new SettingLibraryRepository(database)
@@ -300,7 +298,6 @@ describe('character card import', () => {
     const media = new LocalMediaStore(join(directory, 'media'))
     const characters = new CharacterRepository(database, {
       deleteForCharacter() {},
-      flushCleanup() {},
       refreshCharacterIdentity() {}
     }, media)
     const settingLibraries = new SettingLibraryRepository(database)
@@ -343,15 +340,10 @@ describe('character card import', () => {
     database.open()
     databases.push(database)
     const media = new LocalMediaStore(join(directory, 'media'))
-    const userSettings = new UserSettingsStore(database, media)
-    userSettings.write('appearance.ui', { new_character_background: 'app' })
     const characters = new CharacterRepository(database, {
       deleteForCharacter() {},
-      flushCleanup() {},
       refreshCharacterIdentity() {}
-    }, media, () => userSettings.read('appearance.ui').new_character_background === 'app'
-      ? APP_DEFAULT_CHAT_BACKGROUND
-      : '')
+    }, media, () => APP_DEFAULT_CHAT_BACKGROUND)
     const settingLibraries = new SettingLibraryRepository(database)
     const variables = new VariableConfigRepository(database)
     const agentPresets = new AgentPresetRepository(database)

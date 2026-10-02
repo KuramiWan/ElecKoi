@@ -1,20 +1,30 @@
+import z from '@deepseek-ai/schemastery'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { WebError } from '@deepseek-ai/dsh-web'
 
 export const name = 'eleckoi-web-search-tavily'
 export const inject = ['web']
+export const TAVILY_API_KEY_REF = 'TAVILY_API_KEY'
+
+export const Config = z.object({
+  apiKeyEnv: z.string().role('credential-ref').default(TAVILY_API_KEY_REF).volatile(),
+  maxResults: z.number().step(1).min(1).max(8).default(5).volatile()
+})
 
 const BASE_URL = 'https://api.tavily.com'
 const RESPONSE_LIMIT = 2 * 1024 * 1024
 const ERROR_LIMIT = 32 * 1024
 
-export function apply(ctx) {
+export function apply(ctx, config) {
   ctx.web.registerSearchProvider({
     id: 'tavily',
     available() {
-      return Boolean(process.env.ELECKOI_TAVILY_API_KEY?.trim())
+      return ctx.get('credentials') !== undefined
     },
     async search(request, signal) {
-      const apiKey = process.env.ELECKOI_TAVILY_API_KEY?.trim() ?? ''
+      const apiKeyRef = credentialRef(config.apiKeyEnv.get())
+      const maxResults = config.maxResults.get()
+      const apiKey = (await ctx.get('credentials')?.resolve(apiKeyRef))?.value?.trim() ?? ''
       if (!apiKey) throw new WebError('Tavily API Key 尚未配置', 'WEB_PROVIDER_CREDENTIAL_MISSING')
       let response
       try {
@@ -32,7 +42,10 @@ export function apply(ctx) {
             query: String(request.query ?? '').trim().slice(0, 1_000),
             topic: 'general',
             search_depth: 'basic',
-            max_results: integerInRange(request.maxResults, 1, 8, 5),
+            max_results: Math.min(
+              integerInRange(request.maxResults, 1, 8, maxResults),
+              maxResults
+            ),
             include_answer: false,
             include_raw_content: false,
             include_images: false,

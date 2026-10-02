@@ -1,0 +1,24 @@
+diff --git a/lib/index.js b/lib/index.js
+index cc8935eaa4d8a4a4ae544eb99e5654bfe5a10e9d..48ca7f86166e41b5c2ad5e97fa102953a7328efa 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1708,6 +1708,7 @@ function serialize(options, connection, history, images, access, onReplayDegrade
+ 		...effort === "off" ? {} : { output_config: { effort } },
+ 		...system.length === 0 ? {} : { system },
+ 		...options.temperature === void 0 ? {} : { temperature: options.temperature },
++		...options.topP === void 0 ? {} : { top_p: options.topP },
+ 		...options.stop === void 0 ? {} : { stop_sequences: options.stop },
+ 		...options.tools === void 0 ? {} : { tools: options.tools.map((tool) => ({
+ 			name: tool.name,
+diff --git a/lib/types/wire-types.d.ts b/lib/types/wire-types.d.ts
+index 516525d3bdad661083fbe4ac8b5481fb4c184962..3f4596d7dc176780a41207c2a1d1ddb24c54570c 100644
+--- a/lib/types/wire-types.d.ts
++++ b/lib/types/wire-types.d.ts
+@@ -60,6 +60,7 @@ export type WireRequest = {
+         effort: 'low' | 'high' | 'max';
+     };
+     temperature?: number;
++    top_p?: number;
+     stop_sequences?: string[];
+     tools?: {
+         name: string;

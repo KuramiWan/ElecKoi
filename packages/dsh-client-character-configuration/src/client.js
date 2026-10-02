@@ -3,13 +3,81 @@ window.__ModuleLoader__.load({
   factory() {
     const idle = { status: 'idle', value: null, error: '' }
 
+    class CharacterConfigurationBridge {
+      constructor(remote) {
+        this.remote = remote
+        this.listeners = new Set()
+        this.disposed = false
+        this.abort = null
+        this.stream = null
+      }
+
+      async request(method, args) {
+        const api = this.remote.eleckoiCharacterConfiguration
+        if (typeof api[method] !== 'function') throw new Error(`不支持的角色配置操作：${method}`)
+        const result = await api[method](...args)
+        if (!result?.ok) throw new Error(result?.error?.message || '角色配置操作失败。')
+        return result.value
+      }
+
+      subscribe(listener) {
+        this.listeners.add(listener)
+        return () => this.listeners.delete(listener)
+      }
+
+      start() {
+        const controller = new AbortController()
+        this.abort = controller
+        const stream = typeof this.remote?.$stream === 'function'
+          ? this.remote.$stream({
+            name: 'ElecKoi character configuration changes',
+            open: signal => this.remote.eleckoiCharacterConfiguration.changes(signal),
+            ended: () => new Error('ElecKoi 角色配置变更流意外结束。')
+          })
+          : this.remote.eleckoiCharacterConfiguration.changes(controller.signal)
+        this.stream = stream
+        void this.consume(stream)
+      }
+
+      async consume(stream) {
+        try {
+          for await (const item of stream) {
+            if (this.disposed) return
+            const change = item?.value ?? item
+            item?.accept?.()
+            for (const listener of this.listeners) listener(change)
+          }
+        } catch (error) {
+          if (!this.disposed && !this.abort?.signal.aborted) {
+            console.error('ElecKoi 角色配置变更流失败：', error)
+          }
+        }
+      }
+
+      dispose() {
+        if (this.disposed) return
+        this.disposed = true
+        this.abort?.abort()
+        if (typeof this.stream?.dispose === 'function') void this.stream.dispose()
+        this.listeners.clear()
+        this.abort = null
+        this.stream = null
+      }
+
+      async listCharacters() {
+        const result = await this.remote.eleckoiCharacters.list()
+        if (!result?.ok) throw new Error(result?.error?.message || '读取角色列表失败。')
+        return result.value
+      }
+    }
+
     class CharacterConfigurationModel {
-      constructor(bridge, moduleName, readRoute, saveRoute, viewStateRoute, validate) {
+      constructor(bridge, moduleName, readMethod, saveMethod, viewStateMethod, validate) {
         this.bridge = bridge
         this.moduleName = moduleName
-        this.readRoute = readRoute
-        this.saveRoute = saveRoute
-        this.viewStateRoute = viewStateRoute
+        this.readMethod = readMethod
+        this.saveMethod = saveMethod
+        this.viewStateMethod = viewStateMethod
         this.validate = validate
         this.snapshots = new Map()
         this.generations = new Map()
@@ -36,11 +104,9 @@ window.__ModuleLoader__.load({
         return generation
       }
 
-      async request(name, input) {
+      async request(method, ...args) {
         if (this.disposed) throw new Error('角色配置客户端模型已关闭。')
-        const result = await this.bridge.request(name, input)
-        if (!result?.ok) throw new Error(result?.error?.message || '读取角色配置失败。')
-        return result.data
+        return this.bridge.request(method, args)
       }
 
       async read(characterId) {
@@ -48,7 +114,7 @@ window.__ModuleLoader__.load({
         const previous = this.getSnapshot(characterId)
         this.publish('configuration', characterId, { ...previous, status: 'loading', error: '' })
         try {
-          const value = this.validate(await this.request(this.readRoute, { characterId }), characterId)
+          const value = this.validate(await this.request(this.readMethod, characterId), characterId)
           if (!this.disposed && this.generations.get(characterId) === generation) {
             this.publish('configuration', characterId, { status: 'ready', value, error: '' })
           }
@@ -65,13 +131,12 @@ window.__ModuleLoader__.load({
       }
 
       async readUntracked(characterId) {
-        return this.validate(await this.request(this.readRoute, { characterId }), characterId)
+        return this.validate(await this.request(this.readMethod, characterId), characterId)
       }
 
       async save(characterId, value) {
         const generation = this.nextGeneration(characterId)
-        const field = this.moduleName === 'settingLibraries' ? 'library' : 'config'
-        const saved = this.validate(await this.request(this.saveRoute, { characterId, [field]: value }), characterId)
+        const saved = this.validate(await this.request(this.saveMethod, characterId, value), characterId)
         if (!this.disposed && this.generations.get(characterId) === generation) {
           this.publish('configuration', characterId, { status: 'ready', value: saved, error: '' })
         }
@@ -80,7 +145,7 @@ window.__ModuleLoader__.load({
 
       async saveViewState(characterId, expandedIds) {
         const field = this.moduleName === 'settingLibraries' ? 'expandedGroupIds' : 'expandedObjectIds'
-        const saved = await this.request(this.viewStateRoute, { characterId, [field]: expandedIds })
+        const saved = await this.request(this.viewStateMethod, characterId, expandedIds)
         const snapshot = this.getSnapshot(characterId)
         if (snapshot.value) {
           this.publish('configuration', characterId, {
@@ -90,13 +155,20 @@ window.__ModuleLoader__.load({
         return saved
       }
 
-      refreshLoaded() {
-        for (const characterId of this.snapshots.keys()) void this.read(characterId).catch(() => {})
+      refreshLoaded(characterId) {
+        if (characterId) {
+          if (this.snapshots.has(characterId)) void this.read(characterId).catch(() => {})
+          return
+        }
+        for (const loadedId of this.snapshots.keys()) void this.read(loadedId).catch(() => {})
       }
 
       start() {
-        this.stopEvents = this.bridge.subscribe(event => {
-          if (event?.name === 'records.changed' && event.payload?.module === this.moduleName) this.refreshLoaded()
+        this.stopEvents = this.bridge.subscribe(change => {
+          if (change?.kind === 'snapshot') this.refreshLoaded()
+          else if (change?.kind === 'configuration' && change.domain === this.moduleName) {
+            this.refreshLoaded(change.characterId)
+          }
         })
       }
 
@@ -112,8 +184,8 @@ window.__ModuleLoader__.load({
 
     class SettingLibrariesModel extends CharacterConfigurationModel {
       constructor(bridge) {
-        super(bridge, 'settingLibraries', 'query.setting_library.read', 'command.setting_library.save',
-          'command.setting_library.view_state.save', (value, characterId) => {
+        super(bridge, 'settingLibraries', 'readSettingLibrary', 'saveSettingLibrary',
+          'saveSettingLibraryViewState', (value, characterId) => {
             if (!value || value.characterId !== characterId || !Array.isArray(value.entries)
               || !Array.isArray(value.groups) || !Array.isArray(value.versions)) {
               throw new Error('设定库返回的数据格式不正确。')
@@ -126,13 +198,17 @@ window.__ModuleLoader__.load({
 
       getConversationSnapshot = characterId => this.conversationSnapshots.get(characterId) || idle
 
+      listCharacters() {
+        return this.bridge.listCharacters()
+      }
+
       async readConversations(characterId) {
         const generation = (this.conversationGenerations.get(characterId) || 0) + 1
         this.conversationGenerations.set(characterId, generation)
         const previous = this.getConversationSnapshot(characterId)
         this.publishConversations(characterId, { ...previous, status: 'loading', error: '' })
         try {
-          const value = await this.request('query.setting_library.conversations', { characterId })
+          const value = await this.request('readConversationSettingLibraries', characterId)
           if (!Array.isArray(value) || value.some(item => !item || typeof item.sessionId !== 'string'
             || item.library?.characterId !== characterId)) {
             throw new Error('动态设定返回的数据格式不正确。')
@@ -158,21 +234,25 @@ window.__ModuleLoader__.load({
       }
 
       async saveConversation(characterId, sessionId, library) {
-        return this.request('command.setting_library.conversation.save', { characterId, sessionId, library })
+        return this.request('saveConversationSettingLibrary', characterId, sessionId, library)
       }
 
       async resetConversation(characterId, sessionId) {
-        return this.request('command.setting_library.conversation.reset', { characterId, sessionId })
+        return this.request('resetConversationSettingLibrary', characterId, sessionId)
       }
 
       async saveConversationVersion(characterId, sessionId, name) {
-        return this.request('command.setting_library.conversation.save_version', { characterId, sessionId, name })
+        return this.request('saveConversationSettingLibraryVersion', characterId, sessionId, name)
       }
 
-      refreshLoaded() {
-        super.refreshLoaded()
-        for (const characterId of this.conversationSnapshots.keys()) {
-          void this.readConversations(characterId).catch(() => {})
+      refreshLoaded(characterId) {
+        super.refreshLoaded(characterId)
+        if (characterId) {
+          if (this.conversationSnapshots.has(characterId)) void this.readConversations(characterId).catch(() => {})
+          return
+        }
+        for (const loadedId of this.conversationSnapshots.keys()) {
+          void this.readConversations(loadedId).catch(() => {})
         }
       }
 
@@ -185,7 +265,7 @@ window.__ModuleLoader__.load({
 
     class RegexRulesModel extends CharacterConfigurationModel {
       constructor(bridge) {
-        super(bridge, 'regexRules', 'query.regex_rules.read', 'command.regex_rules.save', null,
+        super(bridge, 'regexRules', 'readRegexRules', 'saveRegexRules', null,
           (value, characterId) => {
             if (!value || value.characterId !== characterId || !Array.isArray(value.globalRules)
               || !Array.isArray(value.agentPresetRules) || !Array.isArray(value.characterRules)
@@ -198,9 +278,9 @@ window.__ModuleLoader__.load({
 
       async save(characterId, collection) {
         const generation = this.nextGeneration(characterId)
-        const saved = this.validate(await this.request(this.saveRoute, {
-          characterId, collection, expectedRevision: collection.revision
-        }), characterId)
+        const saved = this.validate(await this.request(
+          this.saveMethod, characterId, collection, collection.revision
+        ), characterId)
         if (!this.disposed && this.generations.get(characterId) === generation) {
           this.publish('configuration', characterId, { status: 'ready', value: saved, error: '' })
         }
@@ -209,9 +289,9 @@ window.__ModuleLoader__.load({
 
       async import(characterId, collection, fallbackScope, documents) {
         const generation = this.nextGeneration(characterId)
-        const result = await this.request('command.regex_rules.import', {
-          characterId, fallbackScope, documents, expectedRevision: collection.revision
-        })
+        const result = await this.request(
+          'importRegexRules', characterId, fallbackScope, documents, collection.revision
+        )
         const saved = this.validate(result?.collection, characterId)
         if (!this.disposed && this.generations.get(characterId) === generation) {
           this.publish('configuration', characterId, { status: 'ready', value: saved, error: '' })
@@ -220,29 +300,30 @@ window.__ModuleLoader__.load({
       }
 
       export(characterId, ruleIds) {
-        return this.request('command.regex_rules.export', { characterId, ruleIds })
+        return this.request('exportRegexRules', characterId, ruleIds)
       }
 
       test(text, rule, target) {
-        return this.request('command.regex_rules.test', { text, rule, target })
+        return this.request('testRegexRule', text, rule, target)
       }
 
       start() {
-        this.stopEvents = this.bridge.subscribe(event => {
-          if (event?.name === 'records.changed'
-            && (event.payload?.module === 'regexRules' || event.payload?.module === 'agentPresets')) {
-            this.refreshLoaded()
+        this.stopEvents = this.bridge.subscribe(change => {
+          if (change?.kind === 'snapshot') this.refreshLoaded()
+          else if (change?.kind === 'configuration'
+            && (change.domain === 'regexRules' || change.domain === 'agentPresets')) {
+            this.refreshLoaded(change.characterId)
           }
         })
       }
     }
 
     function apply(ctx) {
-      const bridge = window.eleckoi
+      const bridge = new CharacterConfigurationBridge(ctx.remote)
       const settingLibraries = new SettingLibrariesModel(bridge)
       const variables = new CharacterConfigurationModel(
-        bridge, 'variables', 'query.variable_config.read', 'command.variable_config.save',
-        'command.variable_config.view_state.save', (value, characterId) => {
+        bridge, 'variables', 'readVariableConfig', 'saveVariableConfig',
+        'saveVariableConfigViewState', (value, characterId) => {
           if (!value || value.characterId !== characterId || !Array.isArray(value.objects)
             || !Array.isArray(value.variables) || !Array.isArray(value.versions)) {
             throw new Error('变量配置返回的数据格式不正确。')
@@ -258,6 +339,7 @@ window.__ModuleLoader__.load({
         settingLibraries.start()
         variables.start()
         regexRules.start()
+        bridge.start()
         const stopReset = ctx.on('connection/reset', () => {
           settingLibraries.refreshLoaded()
           variables.refreshLoaded()
@@ -265,6 +347,7 @@ window.__ModuleLoader__.load({
         })
         return () => {
           stopReset()
+          bridge.dispose()
           settingLibraries.dispose()
           variables.dispose()
           regexRules.dispose()
@@ -272,6 +355,6 @@ window.__ModuleLoader__.load({
       }, 'eleckoi: character configuration models')
     }
 
-    return { apply }
+    return { inject: ['remote', 'remote.eleckoiCharacters', 'remote.eleckoiCharacterConfiguration'], apply }
   }
 })

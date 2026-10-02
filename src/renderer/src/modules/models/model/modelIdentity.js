@@ -5,7 +5,6 @@ import geminiIcon from "../../../assets/model-icons/gemini.svg";
 import grokIcon from "../../../assets/model-icons/grok.svg";
 import kimiIcon from "../../../assets/model-icons/kimi.svg";
 import moonshotIcon from "../../../assets/model-icons/moonshot.svg";
-import novelAiIcon from "../../../assets/model-icons/novelai.svg";
 import openAiIcon from "../../../assets/model-icons/openai.svg";
 import zaiIcon from "../../../assets/model-icons/zai.svg";
 import zhipuIcon from "../../../assets/model-icons/zhipu.svg";
@@ -18,7 +17,6 @@ const modelIcons = {
   moonshot: { label: "月之暗面", icon: moonshotIcon, monochrome: true },
   kimi: { label: "Kimi", icon: kimiIcon, monochrome: true },
   openai: { label: "OpenAI", icon: openAiIcon, monochrome: true },
-  novelai: { label: "NovelAI", icon: novelAiIcon, monochrome: true },
   claude: { label: "Claude", icon: claudeIcon },
   gemini: { label: "Gemini", icon: geminiIcon },
   grok: { label: "Grok", icon: grokIcon, monochrome: true },
@@ -29,7 +27,6 @@ const modelNameRules = [
   ["zhipu", /(?:^|[-_.\s])(?:glm|chatglm|codegeex)(?:[-_.\s]|$)/i],
   ["kimi", /kimi/i],
   ["moonshot", /moonshot/i],
-  ["novelai", /(?:novelai|nai[-_.\s]?diffusion)/i],
   ["claude", /(?:claude|anthropic)/i],
   ["gemini", /(?:gemini|gemma)/i],
   ["grok", /(?:grok|(?:^|[-_.\s])xai(?:[-_.\s]|$))/i],
@@ -58,8 +55,6 @@ function normalizeProviderIconId(providerId) {
   if (["zhipuai", "bigmodel", "glm", "chatglm"].includes(id)) return "zhipu";
   if (id === "z_ai") return "zai";
   if (id === "moonshotai") return "moonshot";
-  if (["novelai", "nai", "novelai_image"].includes(id)) return "novelai";
-  if (["openai_image", "openai_images", "gpt_image"].includes(id)) return "openai";
   if (id === "anthropic") return "claude";
   if (id === "google") return "gemini";
   if (id === "xai") return "grok";

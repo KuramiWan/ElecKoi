@@ -4,7 +4,7 @@ import { TrashIcon } from '../../../ui/icons/index.jsx';
 import { RegexRuleInspector, newRegexId } from '../../regex/index.js';
 import { PresetContextMenu, usePresetContextMenu } from './PresetContextMenu.jsx';
 
-export function PresetRegexEditor({ preset, onChange, saveAction }) {
+export function PresetRegexEditor({ preset, onChange, saveAction, onTest }) {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const context = usePresetContextMenu();
@@ -65,6 +65,7 @@ export function PresetRegexEditor({ preset, onChange, saveAction }) {
         scope="AgentPreset"
         scopeLocked
         rule={selected}
+        onTest={onTest}
         onChange={updateRule}
         onMoveScope={() => {}}
         onClose={() => setSelectedId('')}

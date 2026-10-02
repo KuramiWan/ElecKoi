@@ -47,12 +47,12 @@
 
 - id: web
   config:
-    searchProvider: !!js process.env.DSH_WEB_SEARCH_PROVIDER ?? 'deepseek-official'
+    searchProvider: deepseek-official
     fetchProvider: http
 
 - id: web-search-deepseek
   config:
-    apiKeyEnv: ELECKOI_NATIVE_WEB_SEARCH_API_KEY
+    apiKeyEnv: DEEPSEEK_API_KEY
 
 - id: web-fetch-http
   config:
