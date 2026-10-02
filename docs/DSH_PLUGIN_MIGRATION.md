@@ -73,7 +73,7 @@ DSH 设置中的官方“内置插件”页继续保留一份完整运行清单�
 
 角色卡、用户资料和预设编辑入口会把当前数据、保存状态以及受控的修改、保存、取消等操作交给扩展。扩展可以包装原界面、替换该区域，或在保存前调整提交内容；用户资料写入使用 `ctx.remote.eleckoiPersona.save()`，其他领域按迁移状态使用各自的公开操作。模型配置使用 DSH 官方设置页，不另开 ElecKoi 编辑 slot。聊天扩展使用 Session 作用域，随当前 DSH Session 创建和释放。
 
-公开类型分别位于各包的 `./slots` 导出。开发说明见 [ElecKoi 插件开发](ELECKOI_PLUGIN_DEVELOPMENT.md)。
+公开类型分别位于各包的 `./slots` 导出。开发说明见 [ElecKoi 插件开发](plugins/README.md)。
 
 ## 已验证的安装生命周期
 

@@ -1,6 +1,6 @@
 # ADR 0015：内置功能统一登记为 DSH bundle
 
-状态：已采纳，2026-09-30。
+状态：已采纳，2026-09-30。bundle 登记决策保留；本文旧 Gateway 与 Main 数据边界已由 [ADR 0017](0017-dsh-remote-replaces-desktop-gateway.md) 和 [ADR 0018](0018-dsh-host-owns-product-data.md) 取代。
 
 ## 决定
 

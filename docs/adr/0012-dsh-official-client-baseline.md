@@ -26,4 +26,4 @@ ElecKoi 最初没有可参照的 DSH 官方桌面客户端，因此建立了自�
 
 具体基准、现状差异和实施顺序见 [DSH 官方客户端架构基准](../DSH_DESKTOP_ARCHITECTURE.md)。先校正文档与校验，再逐项审查上游扩展点和产品数据迁移；每一步都以实际 DSH Host、客户端和插件行为验证，完成前不得声称整体架构已经与官方一致。
 
-面向第三方的统一插件平台和现有产品数据的保留边界由 [ADR 0013](0013-dsh-plugin-platform-and-product-data.md) 继续规定。
+面向第三方的公开插件合同见 [插件开发文档](../plugins/README.md)；当前跨端调用与产品数据所有权分别由 [ADR 0017](0017-dsh-remote-replaces-desktop-gateway.md) 和 [ADR 0018](0018-dsh-host-owns-product-data.md) 规定。[ADR 0013](0013-dsh-plugin-platform-and-product-data.md) 仅保留历史决策。

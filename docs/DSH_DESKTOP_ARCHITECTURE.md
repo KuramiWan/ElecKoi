@@ -56,4 +56,4 @@
 4. Main 只保留窗口、资源协议、更新与 Host 进程管理；新业务进入 DSH Host/Client，现有数据库由 `@eleckoi/dsh-product-data` 独占。
 5. 以真实官方/第三方插件验收安装、启用、界面效果、停用、卸载、会话恢复和上游批次升级。当前临时插件探针已覆盖安装、中文元数据、真实角色卡编辑入口、重启、停用、启用和卸载。
 
-当前 `pnpm check:architecture` 检查目录、进程边界，并阻止已删除的 Desktop Gateway 业务桥回流；它仍不能代替真实 Host、Session 与插件生命周期验收。旧的 [桌面架构说明](ARCHITECTURE.md) 和私有知识库中的《ElecKoi Desktop 架构最终总纲》仅作历史索引。
+当前 `pnpm check:architecture` 检查目录、进程边界，并阻止已删除的 Desktop Gateway 业务桥回流；它仍不能代替真实 Host、Session 与插件生命周期验收。旧的 [桌面架构说明](history/ARCHITECTURE.md) 和私有知识库中的《ElecKoi Desktop 架构最终总纲》仅作历史索引。
