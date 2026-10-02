@@ -382,6 +382,7 @@ export interface ElecKoiAuthorApi {
     list(): Promise<AuthorMessage[]>
     get(id: string): Promise<AuthorMessage>
     current(): Promise<AuthorMessage>
+    setContent(id: string, text: string): Promise<AuthorMessage>
     deleteFrom(id: string): Promise<{ ok: true; deletedMessageCount: number; remainingMessageCount: number }>
     regenerate(id: string): Promise<AuthorRunAccepted>
     editAndRegenerate(id: string, text: string): Promise<AuthorRunAccepted>
@@ -409,6 +410,7 @@ export interface ElecKoiAuthorApi {
       entryCount: number
       groupCount: number
     } | null>
+    replace(library: AuthorSettingLibrary): Promise<AuthorSettingLibrary>
   }
   readonly media: {
     getMessageAttachments(messageId?: string): Promise<{ items: AuthorMediaResource[] }>

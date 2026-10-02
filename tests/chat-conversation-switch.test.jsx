@@ -114,4 +114,27 @@ describe('conversation switching', () => {
       expect.objectContaining({ overlay: true }),
     );
   });
+
+  it('places the official right-sidebar affordance immediately after new chat', () => {
+    const markup = renderToStaticMarkup(
+      <WithOfficialMarkdown>
+        <ChatPanel
+          hasActiveChat
+          currentTitle="角色乙"
+          conversationId="conversation-a"
+          persona={{ user_name: '用户', assistant_name: '角色甲' }}
+          messages={[]}
+          input=""
+          setInput={() => {}}
+          isSending={false}
+          modelConfigs={[]}
+          scrollRef={{ current: null }}
+          renderRoleplaySlot={(name) => name === 'eleckoi.roleplay.conversation.header.corner'
+            ? <button type="button" data-sidebar-right-expand="">右栏</button>
+            : null}
+        />
+      </WithOfficialMarkdown>,
+    );
+    expect(markup.indexOf('aria-label="新建对话"')).toBeLessThan(markup.indexOf('data-sidebar-right-expand'));
+  });
 });

@@ -4,7 +4,7 @@
 
 本表从桌面运行清单与各 bundle 的 `package.json.eleckoi.developerInterfaces` 生成。DSH 基准为 `0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 
-当前共 **14 个 bundle、80 个开发接口**：50 个界面插槽、13 个服务、0 个事件、1 个贡献点、16 个 Remote 合同。
+当前共 **14 个 bundle、81 个开发接口**：51 个界面插槽、13 个服务、0 个事件、1 个贡献点、16 个 Remote 合同。
 
 接口标题和说明用于插件中心展示；真实调用合同以对应类型导出和实现为准。使用方法见 [界面插槽](ui-slots.md)、[服务接口](services.md) 与 [能力贡献](contributions.md)。
 
@@ -22,7 +22,7 @@
 | `@eleckoi/dsh-client-presets` | 6 | 1 | 0 | 0 | 0 | 7 |
 | `@eleckoi/dsh-client-web-search` | 0 | 1 | 0 | 0 | 0 | 1 |
 | `@eleckoi/dsh-client-shell` | 15 | 1 | 0 | 0 | 0 | 16 |
-| `@eleckoi/dsh-client-roleplay` | 19 | 0 | 0 | 0 | 0 | 19 |
+| `@eleckoi/dsh-client-roleplay` | 20 | 0 | 0 | 0 | 0 | 20 |
 | `@eleckoi/dsh-product-api` | 0 | 0 | 0 | 0 | 16 | 16 |
 | `@eleckoi/dsh-runtime` | 0 | 1 | 0 | 0 | 0 | 1 |
 | `@eleckoi/dsh-web-search-tavily` | 0 | 0 | 0 | 1 | 0 | 1 |
@@ -171,6 +171,7 @@
 | `eleckoi.roleplay.message.content` | 消息正文 | 界面插槽 | 提供 | `replace` | `session` | 包装或替换角色聊天消息正文。 | — |
 | `eleckoi.roleplay.message.actions` | 消息操作 | 界面插槽 | 提供 | `append` | `session` | 在消息旁增加操作。 | — |
 | `eleckoi.roleplay.message.after` | 消息下方 | 界面插槽 | 提供 | `append` | `session` | 在消息下方增加内容。 | — |
+| `eleckoi.roleplay.conversation.header.corner` | 对话标题栏角落 | 界面插槽 | 提供 | `replace` | `session` | 在新建对话按钮右侧承接官方会话标题栏角落控件。 | — |
 | `eleckoi.roleplay.conversation.composer.bar` | 整体输入框 | 界面插槽 | 提供 | `replace` | `session-maybe` | 替换当前官方输入框，可读取扮演菜单、模型选择器和统计区的装配参数。 | — |
 | `eleckoi.roleplay.conversation.composer` | 输入区临时接管 | 界面插槽 | 提供 | `replace` | `session` | 按当前会话的审批或计划等状态临时接管输入区，释放后恢复原输入框。 | — |
 | `eleckoi.roleplay.conversation.input.left` | 输入框左侧 | 界面插槽 | 提供 | `append` | `session` | 在当前官方输入框的左侧工具区追加控件。 | — |

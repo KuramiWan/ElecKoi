@@ -57,6 +57,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: RoleplayMessageOwner
     }
+    'eleckoi.roleplay.conversation.header.corner': {
+      kind: 'single'
+      scope: 'session'
+      owner: Record<string, never>
+    }
     'eleckoi.roleplay.conversation.input.right': {
       kind: 'list'
       scope: 'session'

@@ -25,7 +25,7 @@ describe("message markdown presentation", () => {
 
     expect(html).toContain("<p>第一行\n第二行</p>");
     expect(readFileSync(resolve("src/renderer/src/modules/chat/styles/chat-panel.css"), "utf8"))
-      .toMatch(/\.markdown-message p\s*\{[^}]*white-space:\s*pre-wrap;/);
+      .toMatch(/\.markdown-message \.eleckoi-dsh-markdown p\s*\{[^}]*white-space:\s*pre-wrap;/);
   });
 
   it("strips protocol markers when an assistant has no display projection", () => {

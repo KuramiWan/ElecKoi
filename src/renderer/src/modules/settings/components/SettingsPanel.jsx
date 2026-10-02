@@ -323,7 +323,6 @@ function ChatDisplaySettings({
         <section className="chat-settings-group chat-display-section">
           <div className="setting-row-copy setting-row-title"><ArrowsOutLineVertical /><strong>间距与留白</strong></div>
           <div className="chat-display-tuners">
-            {slider("左右边距", "horizontal_padding", 0, 32)}
             {layout !== "social" ? slider("回复间距", "reply_spacing", 0, 32) : null}
             {slider(layout === "agent" ? "轮次间距" : "消息间距", "turn_spacing", 0, 32)}
           </div>

@@ -365,6 +365,7 @@ export function ChatPanel({
             <button className="chat-header-action chat-header-new" type="button" aria-label="新建对话" title="新建对话" onClick={onCreateChat}>
               <DshNewChatIcon size={20} />
             </button>
+            {renderRoleplaySlot?.("eleckoi.roleplay.conversation.header.corner", {})}
             {headerMenuOpen ? (
               <div
                 className="chat-header-menu"

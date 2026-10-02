@@ -17,6 +17,7 @@ export const authorApiPermissions = {
   chatWrite: 'chat.write',
   characterRead: 'character.read',
   settingLibraryRead: 'setting_library.read',
+  settingLibraryWrite: 'setting_library.write',
   inputRead: 'input.read',
   inputWrite: 'input.write',
   mediaRead: 'media.read',
@@ -59,6 +60,7 @@ export const authorApiDefinitions: readonly AuthorApiDefinition[] = [
   definition('messages.list', 'messages', '读取当前聊天的消息列表', authorApiPermissions.messagesRead),
   definition('messages.get', 'messages', '按消息 ID 读取一条消息', authorApiPermissions.messagesRead),
   definition('messages.current', 'messages', '读取当前最后一条消息', authorApiPermissions.messagesRead),
+  definition('messages.setContent', 'messages', '改写指定消息正文', authorApiPermissions.messagesWrite),
   definition('messages.deleteFrom', 'messages', '删除指定消息以及它之后的全部消息', authorApiPermissions.messagesWrite),
   definition('messages.regenerate', 'messages', '从指定 AI 消息重新生成', authorApiPermissions.messagesWrite),
   definition('messages.editAndRegenerate', 'messages', '修改用户消息并从该处重新生成', authorApiPermissions.messagesWrite),
@@ -76,6 +78,7 @@ export const authorApiDefinitions: readonly AuthorApiDefinition[] = [
   definition('character.current', 'character', '读取当前角色摘要', authorApiPermissions.characterRead),
   definition('settingLibrary.current', 'settingLibrary', '读取当前聊天实际生效的设定库内容', authorApiPermissions.settingLibraryRead),
   definition('settingLibrary.getSummary', 'settingLibrary', '读取当前角色设定库摘要', authorApiPermissions.settingLibraryRead),
+  definition('settingLibrary.replace', 'settingLibrary', '替换当前聊天实际生效的设定库内容', authorApiPermissions.settingLibraryWrite),
   definition('media.getMessageAttachments', 'media', '读取一条消息里的全部媒体附件', authorApiPermissions.mediaRead),
   definition('media.getMessageAttachment', 'media', '读取一条消息里的指定媒体附件', authorApiPermissions.mediaRead),
   definition('audio.play', 'audio', '播放背景音乐、环境音、语音或音效', authorApiPermissions.audioWrite),
@@ -111,6 +114,7 @@ export const characterConversationPermissions: ReadonlySet<AuthorApiPermission> 
   authorApiPermissions.chatWrite,
   authorApiPermissions.characterRead,
   authorApiPermissions.settingLibraryRead,
+  authorApiPermissions.settingLibraryWrite,
   authorApiPermissions.mediaRead,
   authorApiPermissions.audioRead,
   authorApiPermissions.audioWrite,
@@ -309,6 +313,7 @@ function installElecKoiAuthorApi(global: AuthorWindow): void {
     openings: Object.freeze({ list: () => call('openings.list'), current: () => call('openings.current'), select: (id: string) => call('openings.select', { id }) }),
     messages: Object.freeze({
       list: () => call('messages.list'), get: (id: string) => call('messages.get', { id }), current: () => call('messages.current'),
+      setContent: (id: string, text: string) => call('messages.setContent', { id, text }),
       deleteFrom: (id: string) => call('messages.deleteFrom', { id }),
       regenerate: (id: string) => call('messages.regenerate', { id }), editAndRegenerate: (id: string, text: string) => call('messages.editAndRegenerate', { id, text })
     }),
@@ -322,7 +327,10 @@ function installElecKoiAuthorApi(global: AuthorWindow): void {
       delete: (sessionId: string) => call('chat.delete', { sessionId }), selectModel: (options: Record<string, unknown>) => call('chat.selectModel', options)
     }),
     character: Object.freeze({ current: () => call('character.current') }),
-    settingLibrary: Object.freeze({ current: () => call('settingLibrary.current'), getSummary: () => call('settingLibrary.getSummary') }),
+    settingLibrary: Object.freeze({
+      current: () => call('settingLibrary.current'), getSummary: () => call('settingLibrary.getSummary'),
+      replace: (library: unknown) => call('settingLibrary.replace', { library })
+    }),
     media: Object.freeze({
       getMessageAttachments: (messageId?: string) => call('media.getMessageAttachments', { messageId }),
       getMessageAttachment: (messageId: string, attachmentId: string) => call('media.getMessageAttachment', { messageId, attachmentId })

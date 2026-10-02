@@ -1,4 +1,5 @@
 import { AUTHOR_FRONTEND_SOURCE } from '@eleckoi/author-sdk';
+import { createTavernHelperFrontendRuntimeSource } from '@eleckoi/compatibility-tavern-helper';
 import { AUTHOR_LIBRARY_HOST_KEY } from './authorRuntimeLibraries.js';
 
 function scriptString(value) {
@@ -35,7 +36,7 @@ function authorLibrariesBootstrap(runtime) {
 </script>`;
 }
 
-function hostBootstrap(channel, runtime) {
+function hostBootstrap(channel, runtime, hostSnapshot) {
   return `
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta charset="utf-8">
@@ -136,7 +137,8 @@ function hostBootstrap(channel, runtime) {
 })();
 </script>
 ${authorLibrariesBootstrap(runtime)}
-<script>${AUTHOR_FRONTEND_SOURCE}</script>`;
+<script>${AUTHOR_FRONTEND_SOURCE}</script>
+<script>${createTavernHelperFrontendRuntimeSource(hostSnapshot)}</script>`;
 }
 
 function injectIntoDocument(source, injection) {
@@ -156,8 +158,8 @@ function injectIntoDocument(source, injection) {
   return `<!doctype html><html><head>${injection}</head><body>${source}</body></html>`;
 }
 
-export function buildRichMessageHtml(document, channel, runtime) {
-  const injection = hostBootstrap(channel, runtime);
+export function buildRichMessageHtml(document, channel, runtime, hostSnapshot) {
+  const injection = hostBootstrap(channel, runtime, hostSnapshot);
   return document.kind === 'full-document'
     ? injectIntoDocument(document.source, injection)
     : `<!doctype html><html><head>${injection}</head><body>${document.source}</body></html>`;

@@ -29,12 +29,12 @@ const supportedMethods = new Set([
   'variables.getState', 'variables.getConfig', 'variables.setState', 'variables.merge',
   'variables.applyPatch', 'variables.reset',
   'openings.list', 'openings.current', 'openings.select',
-  'messages.list', 'messages.get', 'messages.current', 'messages.deleteFrom',
+  'messages.list', 'messages.get', 'messages.current', 'messages.setContent', 'messages.deleteFrom',
   'messages.regenerate', 'messages.editAndRegenerate',
   'chat.current', 'chat.list', 'chat.getGenerationState', 'chat.getAgentTrajectory',
   'chat.getModels', 'chat.send', 'chat.stopGeneration', 'chat.create', 'chat.open',
   'chat.delete', 'chat.selectModel', 'character.current',
-  'settingLibrary.current', 'settingLibrary.getSummary',
+  'settingLibrary.current', 'settingLibrary.getSummary', 'settingLibrary.replace',
   'media.getMessageAttachments', 'media.getMessageAttachment',
   'audio.play', 'audio.pause', 'audio.resume', 'audio.stop', 'audio.seek', 'audio.getState',
   'audio.getPlaylist', 'audio.setPlaylist', 'audio.appendPlaylist', 'audio.getSettings',
@@ -378,7 +378,7 @@ function modelItems(models) {
 }
 
 async function invokeMethod(context, method, params) {
-  const { conversationId, messageId, conversations, models } = context;
+  const { conversationId, messageId, conversations, characterConfiguration, models } = context;
   const details = await currentDetails(conversations, conversationId);
   const message = targetMessage(details, messageId);
   const messages = details.messages;
@@ -440,6 +440,21 @@ async function invokeMethod(context, method, params) {
       return publicMessage(conversations, targetMessage(details, id), macroValues);
     }
     case 'messages.current': return publicMessage(conversations, messages.at(-1) || message, macroValues);
+    case 'messages.setContent': {
+      const id = typeof params.id === 'string' ? params.id.trim() : '';
+      if (!id) throw new AuthorApiError('INVALID_PARAMS', '消息 id 不能为空');
+      if (typeof params.text !== 'string') throw new AuthorApiError('INVALID_PARAMS', '消息正文必须是文本');
+      if (params.text.length > 1_000_000) throw new AuthorApiError('INVALID_PARAMS', '消息正文过长');
+      const target = targetMessage(details, id);
+      const updated = target.id === 'opening'
+        ? await conversations.updateOpening(conversationId, params.text)
+        : Number.isInteger(target.sessionEventSeq)
+          ? await conversations.editMessage(conversationId, target.sessionEventSeq, target.role, params.text)
+          : null;
+      if (!updated) throw new AuthorApiError('INVALID_CONTEXT', '这条消息当前不能改写');
+      const updatedTarget = targetMessage(updated, id);
+      return publicMessage(conversations, updatedTarget, macroValues);
+    }
     case 'messages.deleteFrom': {
       const id = typeof params.id === 'string' ? params.id.trim() : '';
       const target = targetMessage(details, id);
@@ -543,6 +558,32 @@ async function invokeMethod(context, method, params) {
       avatar: metadata.characterAvatar, persona: metadata.characterPersona };
     case 'settingLibrary.getSummary': return (await readAuthorState()).settingLibrarySummary;
     case 'settingLibrary.current': return (await readAuthorState()).settingLibrary;
+    case 'settingLibrary.replace': {
+      const runtimeLibrary = jsonObject(params.library, '设定库内容必须是一个对象');
+      const settingLibraries = characterConfiguration?.settingLibraries;
+      if (!metadata.characterId || !settingLibraries?.readUntracked || !settingLibraries?.saveConversation) {
+        throw new AuthorApiError('INVALID_CONTEXT', '当前聊天的设定库尚未就绪');
+      }
+      if (runtimeLibrary.characterId !== metadata.characterId || !Array.isArray(runtimeLibrary.entries)
+        || !Array.isArray(runtimeLibrary.groups) || !Array.isArray(runtimeLibrary.promptPositions)) {
+        throw new AuthorApiError('INVALID_PARAMS', '设定库内容与当前角色不匹配');
+      }
+      const base = await settingLibraries.readUntracked(metadata.characterId);
+      const saved = await settingLibraries.saveConversation(metadata.characterId, conversationId, {
+        ...base,
+        name: typeof runtimeLibrary.name === 'string' ? runtimeLibrary.name : base.name,
+        entries: runtimeLibrary.entries,
+        groups: runtimeLibrary.groups,
+        promptPositions: runtimeLibrary.promptPositions,
+      });
+      return {
+        characterId: saved.characterId,
+        name: saved.name,
+        entries: saved.entries,
+        groups: saved.groups,
+        promptPositions: saved.promptPositions,
+      };
+    }
     case 'media.getMessageAttachments': {
       const target = typeof params.messageId === 'string' && params.messageId.trim()
         ? targetMessage(details, params.messageId.trim()) : message;

@@ -18,7 +18,7 @@ export default defineConfig({
       }
     },
     plugins: [externalizeDepsPlugin({
-      exclude: ['@eleckoi/author-sdk', '@eleckoi/compatibility-mvu', '@eleckoi/dsh-runtime', 'electron-updater']
+      exclude: ['@eleckoi/author-sdk', '@eleckoi/compatibility-mvu', '@eleckoi/compatibility-tavern-helper', '@eleckoi/dsh-runtime', 'electron-updater']
     })]
   },
   preload: {

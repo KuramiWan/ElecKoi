@@ -129,7 +129,17 @@ describe('ElecKoi built-in bundle details', () => {
                     run();
                 } },
             });
-            rootComponent({ slots, layout: { panelInfo: observable({ activePanelId: 'plugins' }) }, locale: observable({ revision: 0 }), renderSlot: () => null });
+            rootComponent({
+                slots,
+                layout: {
+                    panelInfo: observable({ activePanelId: 'plugins' }),
+                    rightbarInfo: observable({ shown: false }),
+                    setViewportWidth: () => { },
+                    setRightbar: () => { },
+                },
+                locale: observable({ revision: 0 }),
+                renderSlot: () => null,
+            });
             let published;
             const receive = (event) => { published = event.detail; };
             window.addEventListener('eleckoi:dsh-plugins:state', receive);

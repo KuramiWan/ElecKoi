@@ -13,16 +13,52 @@ function createChannel() {
   return globalThis.crypto?.randomUUID?.() || `rich-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function jsonObject(source) {
+  try {
+    const value = JSON.parse(source || '{}');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function createHostSnapshot(message, chat) {
+  const sourceMessages = Array.isArray(chat?.messages) && chat.messages.length ? chat.messages : [message];
+  const messages = sourceMessages.map((item, index) => ({
+    id: String(item.id || `message-${index}`),
+    messageId: Number.isInteger(item.messageIndex) ? item.messageIndex : index,
+    role: ['system', 'assistant', 'user'].includes(item.role) ? item.role : 'assistant',
+    name: String(item.speakerName || (item.role === 'user'
+      ? chat?.chatPersona?.user_name || chat?.chatPersona?.name || 'User'
+      : chat?.chatCharacter?.character_name || chat?.chatCharacter?.assistant_name || 'Assistant')),
+    content: String(item.content || ''),
+    variableState: jsonObject(item.variableStateJson),
+  }));
+  const current = messages.find((item) => item.id === String(message.id)) || messages.at(-1);
+  return {
+    currentMessageId: current?.messageId ?? 0,
+    userName: String(chat?.chatPersona?.user_name || chat?.chatPersona?.name || 'User'),
+    characterName: String(chat?.chatCharacter?.character_name || chat?.chatCharacter?.assistant_name || 'Assistant'),
+    worldbookName: String(chat?.chatCharacter?.character_name || chat?.chatCharacter?.assistant_name || '当前角色设定库'),
+    variableState: jsonObject(message.variableStateJson),
+    messages,
+  };
+}
+
 export function RichMessageFrame({ message, document, rootIndex = 0 }) {
-  const { conversations, models } = useMainPageView();
+  const { chat, conversations, characterConfiguration, models } = useMainPageView();
   const frameRef = useRef(null);
   const viewportWidthRef = useRef(0);
   const [height, setHeight] = useState(minimumHeight);
   const channel = useMemo(createChannel, [message.id, document.contentKey, rootIndex]);
   const runtimeLibraries = useMemo(prepareAuthorRuntimeLibraries, []);
+  const hostSnapshot = useMemo(
+    () => createHostSnapshot(message, chat),
+    [chat?.chatCharacter, chat?.chatPersona, chat?.messages, message],
+  );
   const source = useMemo(
-    () => buildRichMessageHtml(document, channel, runtimeLibraries),
-    [channel, document.kind, document.source, runtimeLibraries],
+    () => buildRichMessageHtml(document, channel, runtimeLibraries, hostSnapshot),
+    [channel, document.kind, document.source, hostSnapshot, runtimeLibraries],
   );
 
   useLayoutEffect(() => {
@@ -87,6 +123,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
           conversationId: message.conversationId,
           messageId: message.id,
           conversations,
+          characterConfiguration,
           models,
         });
       } catch (error) {
@@ -106,6 +143,8 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
           'variables.merge',
           'variables.applyPatch',
           'variables.reset',
+          'messages.setContent',
+          'settingLibrary.replace',
           'openings.select',
           'messages.deleteFrom',
           'messages.regenerate',
@@ -128,7 +167,7 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [channel, conversations, message.conversationId, message.id, models]);
+  }, [channel, characterConfiguration, conversations, message.conversationId, message.id, models]);
 
   return (
     <iframe

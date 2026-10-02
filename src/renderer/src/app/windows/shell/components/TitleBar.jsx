@@ -35,6 +35,7 @@ export function TitleBar({
   title = "ElecKoi",
   projectTitle = "",
   splitSurface = false,
+  showWindowControls = true,
   sidePanelCollapsed = false,
   onToggleSidePanel,
   onClose,
@@ -63,7 +64,7 @@ export function TitleBar({
             </div>
           ) : null}
         </div>
-        <WindowControls onClose={onClose} />
+        {showWindowControls ? <WindowControls onClose={onClose} /> : null}
       </header>
     );
   }
@@ -83,7 +84,7 @@ export function TitleBar({
         ) : null}
       </div>
 
-      <WindowControls onClose={onClose} />
+      {showWindowControls ? <WindowControls onClose={onClose} /> : null}
     </header>
   );
 }

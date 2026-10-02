@@ -169,7 +169,7 @@ window.__ModuleLoader__.load({
       const hasSidebarFooterActions = React.useMemo(() =>
         slots.entriesOfSlot('sidebar.footer.action').length > 0, [slots, footerVersion])
       React.useEffect(() => {
-        const selected = panelInfo.activePanelId
+        const selected = panelInfo.activePanelId ?? 'messages'
         const panels = slots.entriesOfSlot('main').map(entry => entry.options.key)
         if (selected && !panels.includes(selected) && panels.length > 0) {
           layout.selectPanel(panels.includes('messages') ? 'messages' : panels[0])
@@ -179,6 +179,13 @@ window.__ModuleLoader__.load({
         theme,
         subscribe: subscribeTheme
       }), [theme, subscribeTheme])
+      const rightbar = React.useMemo(() => ({
+        subscribe: layout.rightbarInfo.subscribe,
+        getSnapshot: layout.rightbarInfo.getSnapshot,
+        setViewportWidth: layout.setViewportWidth,
+        setWidth: layout.setRightbar,
+        render: owner => renderSlot('rightbar', owner)
+      }), [layout, renderSlot])
 
       React.useEffect(() => {
         const profileBundles = new Set([
@@ -346,12 +353,12 @@ window.__ModuleLoader__.load({
           style: { position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'auto' }
         }, ProductApp ? React.createElement(ProductApp, {
           markdownComponent: MarkdownText,
-          conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, displayPreferences, appearance, settingsSections,
+          conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, displayPreferences, appearance, settingsSections, rightbar,
           navigation: {
             items: navigationItems,
             productPanelIds,
             hasSidebarFooterActions,
-            selectedPanelId: panelInfo.activePanelId,
+            selectedPanelId: panelInfo.activePanelId ?? 'messages',
             selectPanel: id => layout.selectPanel(id),
             renderPanel: id => renderSlot('main', {}, { entryKey: id }),
             renderSidebar: renderContent => renderSlot('sidebar', { renderContent })
@@ -382,9 +389,18 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       {
-        let panelSnapshot = { activePanelId: 'messages' }
+        let panelSnapshot = { activePanelId: null }
+        let rightbarSnapshot = {
+          shown: false,
+          track: false,
+          fullscreen: false,
+          instant: false,
+          width: null,
+          viewportWidth: typeof window.innerWidth === 'number' ? window.innerWidth : 960
+        }
         let navigation = new AbortController()
         const listeners = new Set()
+        const rightbarListeners = new Set()
         const panelInfo = {
           getSnapshot: () => panelSnapshot,
           subscribe: listener => {
@@ -392,16 +408,31 @@ window.__ModuleLoader__.load({
             return () => listeners.delete(listener)
           }
         }
+        const rightbarInfo = {
+          getSnapshot: () => rightbarSnapshot,
+          subscribe: listener => {
+            rightbarListeners.add(listener)
+            return () => rightbarListeners.delete(listener)
+          }
+        }
+        const publishRightbar = patch => {
+          const next = { ...rightbarSnapshot, ...patch }
+          if (Object.keys(next).every(key => Object.is(next[key], rightbarSnapshot[key]))) return
+          rightbarSnapshot = next
+          for (const listener of rightbarListeners) listener()
+        }
         const layout = {
           panelInfo,
+          rightbarInfo,
           selectPanel: id => {
             if (id !== null && !ctx.slots.entriesOfSlot('main').some(entry => entry.options.key === id)) {
               throw new Error(`layout.selectPanel: main panel "${id}" is not registered`)
             }
-            if (panelSnapshot.activePanelId === id) return
+            const panelId = id === 'messages' ? null : id
+            if (panelSnapshot.activePanelId === panelId) return
             navigation.abort()
             navigation = new AbortController()
-            panelSnapshot = { activePanelId: id }
+            panelSnapshot = { activePanelId: panelId }
             for (const listener of listeners) listener()
           },
           beginNavigation: () => {
@@ -410,8 +441,32 @@ window.__ModuleLoader__.load({
             return navigation.signal
           },
           toggleSidebar: () => {},
-          openRightbar: () => {},
-          closeRightbar: () => {}
+          setViewportWidth: width => {
+            if (!Number.isFinite(width) || width <= 0 || rightbarSnapshot.viewportWidth === width) return
+            publishRightbar({ viewportWidth: width, instant: false })
+          },
+          setRightbar: width => {
+            if (!Number.isFinite(width)) return
+            const maximum = Math.max(300, rightbarSnapshot.viewportWidth * 0.7)
+            publishRightbar({ width: Math.min(maximum, Math.max(300, Math.round(width))), instant: false })
+          },
+          openRightbar: (track, fullscreen) => {
+            publishRightbar({
+              shown: true,
+              track: Boolean(track),
+              fullscreen: Boolean(fullscreen),
+              instant: rightbarSnapshot.fullscreen && !fullscreen,
+              width: rightbarSnapshot.width ?? Math.max(300, Math.round(rightbarSnapshot.viewportWidth * 0.45))
+            })
+          },
+          closeRightbar: () => {
+            publishRightbar({
+              shown: false,
+              track: false,
+              fullscreen: false,
+              instant: rightbarSnapshot.shown && rightbarSnapshot.fullscreen
+            })
+          }
         }
         const stopPanelInfo = ctx.slots.provideRoot({ hooks: { panelInfo } })
         const stopLayout = ctx.reflect.provide('layout', layout)

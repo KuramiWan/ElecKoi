@@ -72,6 +72,15 @@
         "relation": "provides"
       },
       {
+        "id": "eleckoi.roleplay.conversation.header.corner",
+        "kind": "ui-slot",
+        "title": "对话标题栏角落",
+        "description": "在新建对话按钮右侧承接官方会话标题栏角落控件。",
+        "mode": "replace",
+        "scope": "session",
+        "relation": "provides"
+      },
+      {
         "id": "eleckoi.roleplay.conversation.composer.bar",
         "kind": "ui-slot",
         "title": "整体输入框",

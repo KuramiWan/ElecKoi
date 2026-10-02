@@ -57,6 +57,8 @@ export function chatDisplayCssVariables(layout, profile) {
   const fontSize = clamp(profile.message_font_size, 9, 20);
   const nameSize = clamp(profile.name_font_size, 10, 18);
   const baseLineHeightRatio = layout === "roleplay" ? 23 / 15 : 1.4;
+  const fontWeight = clamp(profile.message_font_weight ?? 400, 400, 600);
+  const lineHeight = fontSize * baseLineHeightRatio * clamp(profile.line_height_multiplier, 0.8, 1.6);
 
   return {
     "--chat-avatar-width": `${avatarWidth}px`,
@@ -67,8 +69,9 @@ export function chatDisplayCssVariables(layout, profile) {
     "--chat-reply-gap": `${clamp(profile.reply_spacing, 0, 32)}px`,
     "--chat-turn-gap": `${clamp(profile.turn_spacing, 0, 32)}px`,
     "--chat-font-size": `${fontSize}px`,
-    "--chat-font-weight": clamp(profile.message_font_weight ?? 400, 400, 600),
-    "--chat-line-height": `${fontSize * baseLineHeightRatio * clamp(profile.line_height_multiplier, 0.8, 1.6)}px`,
+    "--chat-font-weight": fontWeight,
+    "--chat-line-height": `${lineHeight}px`,
+    "--dsw-font-markdown-base": `${fontWeight} ${fontSize}px/${lineHeight}px var(--dsw-font-family)`,
     "--chat-letter-spacing": `${clamp(profile.letter_spacing, -1, 4)}px`,
     "--chat-paragraph-gap": `${clamp(profile.paragraph_spacing, 0, 24)}px`,
     "--chat-name-size": `${nameSize}px`,

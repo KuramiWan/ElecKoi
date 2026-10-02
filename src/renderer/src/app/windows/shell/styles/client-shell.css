@@ -115,7 +115,42 @@
 .main-panel-shell {
   grid-column: 3;
   background: var(--list);
+}
+
+.dsh-rightbar-column {
+  position: relative;
+  grid-column: 4;
+  z-index: 10;
+  min-width: 0;
+  min-height: 0;
+  height: calc(100% - 40px);
+  margin-top: 40px;
+  overflow: visible;
+  background: var(--chat);
+}
+
+.dsh-rightbar-column::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: 0;
+  left: 0;
   z-index: 1;
+  height: 40px;
+  -webkit-app-region: drag;
+}
+
+.rightbar-resizer {
+  position: absolute;
+  top: 40px;
+  bottom: 0;
+  left: calc(100% - var(--rightbar-normal-width));
+  z-index: 16;
+  width: 8px;
+  margin-left: -4px;
+  cursor: col-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
 }
 
 .side-panel-footer-actions {

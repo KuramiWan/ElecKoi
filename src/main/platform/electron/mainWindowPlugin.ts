@@ -5,6 +5,7 @@ import type { Context, Plugin } from '@deepseek-ai/cordis'
 import { assertTrustedDshClientFrame, isAllowedExternalUrl, isAppRendererUrl, isDshAppUrl, isDshChildUrl } from './validateSender'
 import { ElectronWindowHost } from './ElectronWindowHost'
 import { installWindowsNativeFrame } from './windowsNativeFrame'
+import { DesktopBrowserGuests } from './desktopBrowserGuests'
 import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, isDshClientAsset, resolveElecKoiClientAssets, serveDshClientAsset, serveElecKoiClientAsset } from './dshClientDocument'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
 
@@ -21,6 +22,8 @@ export const mainWindowPlugin = {
     const windows = new ElectronWindowHost()
     ctx.provide('electronWindows', windows)
     let mainWindow: BrowserWindow | undefined
+    let pluginHostReady: { url: string; injections: readonly unknown[]; cookie: string } | undefined
+    const browserGuests = new DesktopBrowserGuests(() => pluginHostReady?.url)
 
     windows.define('main', {
       singleton: true,
@@ -30,6 +33,7 @@ export const mainWindowPlugin = {
       afterCreate: (window) => {
         mainWindow = window
         window.once('closed', () => { if (mainWindow === window) mainWindow = undefined })
+        browserGuests.bind(window)
         configureMainWindow(appPaths, appLog, windows, window)
       }
     })
@@ -61,7 +65,6 @@ export const mainWindowPlugin = {
         configureWindowNavigation(appLog, windows, window, true)
       }
     })
-    let pluginHostReady: { url: string; injections: readonly unknown[]; cookie: string } | undefined
     const rendererDirectory = join(__dirname, '../renderer-dsh')
     const clientAssets = await resolveElecKoiClientAssets(rendererDirectory)
     protocol.handle('dsh-app', async (request) => {
@@ -157,11 +160,31 @@ export const mainWindowPlugin = {
       }
       if (action === 'close') target.close()
     })
+    ipcMain.handle(DESKTOP_SHELL_IPC.browserAcquire, (event, workspace: unknown) => {
+      assertTrustedDshClientFrame(
+        event.sender,
+        event.senderFrame?.url ?? '',
+        event.senderFrame === event.sender.mainFrame,
+        windows.all().map(window => window.webContents)
+      )
+      return browserGuests.acquire(event.sender, workspace)
+    })
+    ipcMain.handle(DESKTOP_SHELL_IPC.browserRelease, async (event, lease: unknown) => {
+      assertTrustedDshClientFrame(
+        event.sender,
+        event.senderFrame?.url ?? '',
+        event.senderFrame === event.sender.mainFrame,
+        windows.all().map(window => window.webContents)
+      )
+      await browserGuests.release(event.sender, lease)
+    })
     const ready = await pluginHost.start()
     pluginHostReady = { ...ready, cookie: await authenticateDshClientHost(ready.url) }
     await windows.open('main')
     return () => {
       ipcMain.removeHandler(DESKTOP_SHELL_IPC.windowControl)
+      ipcMain.removeHandler(DESKTOP_SHELL_IPC.browserAcquire)
+      ipcMain.removeHandler(DESKTOP_SHELL_IPC.browserRelease)
       detachPluginFailure()
       ipcMain.removeHandler('eleckoi:dsh-client-boot')
       ipcMain.removeHandler('eleckoi:dsh-client-boot-failed')
@@ -193,7 +216,8 @@ function windowOptions(appPaths: Context['appPaths'], child: boolean, payload?: 
       preload: join(__dirname, '../preload/preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      webviewTag: !child
     }
   }
 }

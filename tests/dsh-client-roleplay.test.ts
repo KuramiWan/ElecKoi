@@ -276,6 +276,7 @@ describe('ElecKoi roleplay client contribution', () => {
       name: 'root',
       children: {
         'eleckoi.roleplay': { kind: 'chain', scope: 'root' },
+        'conversation.session.header.corner': { kind: 'single', scope: 'session' },
         'conversation.composer': { kind: 'chain', scope: 'session' },
         'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
         'conversation.input.dock': { kind: 'list', scope: 'session' },
@@ -315,6 +316,7 @@ describe('ElecKoi roleplay client contribution', () => {
     const extensionDock = () => null
     const extensionImage = () => null
     const officialComposer = () => null
+    const officialRightbarButton = () => null
     const skinComposer = () => null
     const losingComposer = () => null
     const takeoverComposer = () => null
@@ -324,6 +326,13 @@ describe('ElecKoi roleplay client contribution', () => {
       name: 'conversation.composer.bar',
       registrant: '@deepseek-ai/dsh-client-ui-conversation'
     }, officialComposer)
+    const releaseOfficialRightbarButton = slots.register({
+      name: 'conversation.session.header.corner',
+      inject,
+      store,
+      locale: 'sidebarRight',
+      registrant: '@deepseek-ai/dsh-client-ui-sidebar-right'
+    }, officialRightbarButton)
     const releaseLosingComposer = slots.register({
       name: 'conversation.composer.bar', priority: 10, registrant: 'sample-losing-skin'
     }, losingComposer)
@@ -388,9 +397,17 @@ describe('ElecKoi roleplay client contribution', () => {
       .toBe('bridged-child')
 
     const button = slots.entriesOfSlot('eleckoi.roleplay.conversation.input.right')[0]
+    const rightbarButton = slots.entriesOfSlot('eleckoi.roleplay.conversation.header.corner')[0]
     const dock = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')[0]
     const inputDock = slots.entriesOfSlot('eleckoi.roleplay.conversation.input.dock')[0]
     expect(button?.component({ marker: 'button' })).toEqual({ type: extensionButton, props: { marker: 'button' } })
+    expect(rightbarButton?.component({ marker: 'rightbar' })).toEqual({
+      type: officialRightbarButton,
+      props: { marker: 'rightbar' }
+    })
+    expect(rightbarButton?.inject).toBe(inject)
+    expect(rightbarButton?.store).toBe(store)
+    expect(rightbarButton?.locale).toBe('sidebarRight')
     expect(button?.options).toMatchObject({ id: 'dsh:conversation.input.right:sample-button', order: 12 })
     expect(button?.inject).toBe(inject)
     expect(button?.store).toBe(store)
@@ -440,6 +457,7 @@ describe('ElecKoi roleplay client contribution', () => {
       .toEqual({ type: extensionImage, props: { marker: 'image' } })
     expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.left')).toHaveLength(1)
     expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.overlay')).toHaveLength(1)
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.header.corner')).toHaveLength(1)
 
     releaseSkinComposer()
     releaseTakeover()
@@ -462,6 +480,9 @@ describe('ElecKoi roleplay client contribution', () => {
     expect(slots.entriesOfSlot('conversation.trajectory.images')).toHaveLength(0)
     expect(slots.entriesOfSlot('eleckoi.roleplay.trajectory.images')).toHaveLength(0)
     expect(slots.entriesOfSlot('eleckoi.roleplay.trajectory')).toHaveLength(0)
+    releaseOfficialRightbarButton()
+    await Promise.resolve()
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.header.corner')).toHaveLength(0)
     releaseLosingComposer()
     releaseOfficialComposer()
     await Promise.resolve()

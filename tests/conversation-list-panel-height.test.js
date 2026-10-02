@@ -11,7 +11,6 @@
 //
 // 于是直接子代规则只够到内层锚点，面板退化成内容高度（实测 54px），
 // `.conversation-scroll` 拿不到有界高度、会话多了列表不再内部滚动。
-//
 // 作者对其余侧栏面板（character-list-panel、plugin-list-panel）的写法是面板自己声明
 // `height: 100%; max-height: 100%; overflow: hidden`；会话列表漏了这一处，这里补齐并钉住。
 import { readFileSync } from 'node:fs';

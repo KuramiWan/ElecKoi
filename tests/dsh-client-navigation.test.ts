@@ -82,6 +82,16 @@ describe('ElecKoi DSH client navigation', () => {
     slots.register({ name: 'main', key: 'extension-page' }, () => null)
     layout.selectPanel('extension-page')
     expect(layout.panelInfo.getSnapshot().activePanelId).toBe('extension-page')
+    layout.selectPanel('messages')
+    expect(layout.panelInfo.getSnapshot().activePanelId).toBeNull()
+    layout.openRightbar(true, false)
+    expect(layout.rightbarInfo.getSnapshot()).toMatchObject({
+      shown: true, track: true, fullscreen: false, width: expect.any(Number)
+    })
+    layout.closeRightbar()
+    expect(layout.rightbarInfo.getSnapshot()).toMatchObject({
+      shown: false, track: false, fullscreen: false
+    })
     expect(() => layout.selectPanel('missing-page')).toThrow('not registered')
   })
 
@@ -145,8 +155,14 @@ describe('ElecKoi DSH client navigation', () => {
     })
     const render = () => {
       stateIndex = 0
+      const rightbarInfo = { subscribe: () => () => {}, getSnapshot: () => ({ shown: false }) }
       const tree = rootComponent({
-        layout: { panelInfo: { subscribe: () => () => {}, getSnapshot: () => ({ activePanelId: 'messages' }) } },
+        layout: {
+          panelInfo: { subscribe: () => () => {}, getSnapshot: () => ({ activePanelId: null }) },
+          rightbarInfo,
+          setViewportWidth: () => {},
+          setRightbar: () => {},
+        },
         slots,
         locale: { subscribe: () => () => {}, getSnapshot: () => ({ revision: 0 }) },
         renderSlot: (name: string, owner: any) => {
@@ -163,6 +179,8 @@ describe('ElecKoi DSH client navigation', () => {
     expect(sidebarOptions.children['sidebar.panellist']).toEqual({ kind: 'list', scope: 'root' })
     expect(sidebarOptions.children['sidebar.footer.action']).toEqual({ kind: 'list', scope: 'root' })
     expect(render().navigation.hasSidebarFooterActions).toBe(true)
+    expect(render().navigation.selectedPanelId).toBe('messages')
+    expect(render().rightbar.render({ width: 360, viewportWidth: 1200, canShow: true })).toEqual({ slot: 'rightbar' })
     const content = (renderSidebarSlot: any) => renderSidebarSlot('sidebar.footer.action', { wide: true })
     expect(render().navigation.renderSidebar(content)).toEqual({ slot: 'sidebar' })
     expect(slotCalls.some(call => call.name === 'sidebar' && call.owner.renderContent === content)).toBe(true)

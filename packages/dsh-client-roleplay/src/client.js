@@ -221,6 +221,7 @@ window.__ModuleLoader__.load({
             'eleckoi.roleplay.message.content': { kind: 'chain', scope: 'session' },
             'eleckoi.roleplay.message.actions': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.message.after': { kind: 'list', scope: 'session' },
+            'eleckoi.roleplay.conversation.header.corner': { kind: 'single', scope: 'session' },
             'eleckoi.roleplay.conversation.input.left': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.conversation.input.right': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.conversation.input.overlay': { kind: 'list', scope: 'session' },
@@ -239,6 +240,9 @@ window.__ModuleLoader__.load({
             'eleckoi.roleplay.trajectory': { kind: 'single', scope: 'session' }
           }
         }, RoleplaySessionView))
+        projectConversationSeat('conversation.session.header.corner', 'eleckoi.roleplay.conversation.header.corner', {
+          winnerOnly: true
+        })
         projectConversationSeat('conversation.composer', 'eleckoi.roleplay.conversation.composer')
         projectConversationSeat('conversation.composer.bar', 'eleckoi.roleplay.conversation.composer.bar', {
           winnerOnly: true

@@ -19,7 +19,7 @@ export default function App(props = {}) {
   </OfficialMarkdownProvider>;
 }
 
-function AppContent({ conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, settingsSections, navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderCharacterEditorSection, renderCharacterManager, renderConversationList, renderPresetEditorSection, renderPresetManager, renderRoleplay } = {}) {
+function AppContent({ conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, settingsSections, navigation, rightbar, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderCharacterEditorSection, renderCharacterManager, renderConversationList, renderPresetEditorSection, renderPresetManager, renderRoleplay } = {}) {
   const params = new URLSearchParams(window.location.search);
   if (params.get("view") === "chat") {
     return <ChatWindow conversations={conversations} characters={characters} characterConfiguration={characterConfiguration}
@@ -39,7 +39,7 @@ function AppContent({ conversations, characters, characterConfiguration, creator
   }
 
   return <MainWindow conversations={conversations} characters={characters} characterConfiguration={characterConfiguration} models={models} persona={persona} presets={presets}
-    settingsSections={settingsSections} navigation={navigation} renderSettingsSection={renderSettingsSection}
+    settingsSections={settingsSections} navigation={navigation} rightbar={rightbar} renderSettingsSection={renderSettingsSection}
     renderUserProfileEditor={renderUserProfileEditor} renderCharacterPageSection={renderCharacterPageSection}
     renderConversationList={renderConversationList} renderPresetEditorSection={renderPresetEditorSection}
     renderRoleplay={renderRoleplay} />;

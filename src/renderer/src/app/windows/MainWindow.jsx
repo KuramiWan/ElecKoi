@@ -9,7 +9,8 @@ import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
 import { SidePanelShell } from "./shell/components/SidePanelShell.jsx";
 import { PluginCenterSurface, PluginListPanel } from "./shell/components/PluginCenter.jsx";
 import { SidePanelResizeHandle } from "./shell/components/SidePanelResizeHandle.jsx";
-import { TitleBar } from "./shell/components/TitleBar.jsx";
+import { TitleBar, WindowControls } from "./shell/components/TitleBar.jsx";
+import { useRightbarLayout } from "./shell/hooks/useRightbarLayout.js";
 import { useSidePanelLayout } from "./shell/hooks/useSidePanelLayout.js";
 import { AppUpdateController, useAppUpdates } from "../../modules/updates/index.js";
 import { openCreatorStudioWindow } from "../../modules/creatorStudio/index.js";
@@ -27,10 +28,16 @@ class MainPageErrorBoundary extends Component {
   }
 }
 
-export function MainWindow({ conversations, characters, characterConfiguration, models, persona, presets, settingsSections = [], navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderConversationList, renderPresetEditorSection, renderRoleplay }) {
+export function MainWindow({ conversations, characters, characterConfiguration, models, persona, presets, settingsSections = [], navigation, rightbar, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderConversationList, renderPresetEditorSection, renderRoleplay }) {
   const chat = useChatClient({ conversations, characters, models, persona, navigation });
   const appearance = useWindowAppearance({ notify: chat.notify });
   const sidePanelLayout = useSidePanelLayout();
+  const rightbarLayout = useRightbarLayout({
+    model: rightbar,
+    shellRef: sidePanelLayout.shellRef,
+    sidePanelCollapsed: sidePanelLayout.sidePanelCollapsed,
+    collapseSidePanel: sidePanelLayout.collapseSidePanel,
+  });
   const appUpdates = useAppUpdates();
   const isPluginPanel = Boolean(navigation && !navigation.productPanelIds?.includes(chat.activeSection) && chat.activeSection !== "plugins");
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
@@ -117,11 +124,19 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
         <section className="main-panel-shell" aria-label="主功能界面">
           <TitleBar
             splitSurface
+            showWindowControls={false}
             sidePanelCollapsed={sidePanelLayout.sidePanelCollapsed && !isPluginPanel}
             onToggleSidePanel={sidePanelLayout.expandSidePanel}
           />
           <div className="main-panel-content">{mainPanel}</div>
         </section>
+        <div className="dsh-rightbar-column">
+          {rightbar?.render?.({
+            width: rightbarLayout.width,
+            viewportWidth: rightbarLayout.viewportWidth,
+            canShow: rightbarLayout.canShow,
+          })}
+        </div>
         {overlays}
       </>
     );
@@ -183,8 +198,15 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
     <main
       ref={sidePanelLayout.shellRef}
       className={`qq-shell main-window-shell section-${isPluginPanel ? "plugin" : chat.activeSection}${showChatWallpaper ? " has-chat-wallpaper" : ""}${sidePanelLayout.sidePanelCollapsed || isPluginPanel ? " side-panel-collapsed" : ""}`}
-      style={isPluginPanel ? { ...sidePanelLayout.shellStyle, "--side-panel-width": "0px" } : sidePanelLayout.shellStyle}
+      style={{
+        ...(isPluginPanel ? { ...sidePanelLayout.shellStyle, "--side-panel-width": "0px" } : sidePanelLayout.shellStyle),
+        ...rightbarLayout.shellStyle,
+      }}
       data-side-panel-dragging={sidePanelLayout.sidePanelDragging || undefined}
+      data-rightbar-animating={rightbarLayout.animating || undefined}
+      data-rightbar-dragging={rightbarLayout.dragging || undefined}
+      data-rightbar-fullscreen={rightbarLayout.fullscreen || undefined}
+      data-rightbar-instant={rightbarLayout.instant || undefined}
     >
       {showChatWallpaper ? <ChatWallpaperLayer wallpaper={chatWallpaper} /> : null}
       <MainPageContext.Provider value={pageView}>
@@ -207,6 +229,10 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
           onEnd={sidePanelLayout.endSidePanelResize}
         />
       ) : null}
+      {rightbarLayout.showResizeHandle ? rightbarLayout.resizeHandle : null}
+      <div className="main-window-controls">
+        <WindowControls />
+      </div>
       <HistoryModal
         open={chat.historyOpen}
         sessions={chat.sessions}

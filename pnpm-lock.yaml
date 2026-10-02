@@ -928,6 +928,9 @@ importers:
       '@eleckoi/compatibility-mvu':
         specifier: workspace:*
         version: link:packages/compatibility/mvu
+      '@eleckoi/compatibility-tavern-helper':
+        specifier: workspace:*
+        version: link:packages/compatibility/tavern-helper
       '@eleckoi/dsh-client-character-configuration':
         specifier: workspace:*
         version: link:packages/dsh-client-character-configuration
@@ -1123,6 +1126,15 @@ importers:
         version: 4.6.3(vue@3.5.42(typescript@7.0.2))
 
   packages/compatibility/mvu:
+    devDependencies:
+      tsdown:
+        specifier: 0.16.6
+        version: 0.16.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.11.3)(typescript@5.9.3)
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/compatibility/tavern-helper:
     devDependencies:
       tsdown:
         specifier: 0.16.6
