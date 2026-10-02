@@ -49,7 +49,11 @@ export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, ch
   const disposeCompaction = agentCtx.on('llm/stream', (options, next) => {
     if (reroutedCompactions.has(options)) return next()
     const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
-    const projected = projectCompactionRequest(options, snapshot.historyCompactionInstructions)
+    const projected = projectCompactionRequest(
+      options,
+      snapshot.historyCompactionInstructions,
+      snapshot.model?.reasoningEffort
+    )
     if (!projected) return next()
     // DSH deep-freezes requests before the waterfall. Route a fresh one-shot request through the
     // public LLM service, and let its nested waterfall pass through to the adapter exactly once.
@@ -63,21 +67,31 @@ export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, ch
   }
 }
 
-export function projectCompactionRequest(options, customInstructions) {
+export function projectCompactionRequest(options, customInstructions, defaultReasoningEffort) {
   const instructions = typeof customInstructions === 'string' ? customInstructions.trim() : ''
   if (options?.purpose !== 'compaction' || !Array.isArray(options.messages) || !options.messages.length) {
     return undefined
   }
+  const configuredReasoningEffort = typeof defaultReasoningEffort === 'string' && defaultReasoningEffort.trim()
+    ? defaultReasoningEffort.trim()
+    : undefined
+  const reasoningEffort = options.reasoningEffort ?? configuredReasoningEffort
+  const reasoningChanged = reasoningEffort !== undefined && options.reasoningEffort !== reasoningEffort
   const messages = options.messages.filter((message) => !isProjectionEnvelope(message))
   const removedProjection = messages.length !== options.messages.length
   const last = messages.at(-1)
   if (!instructions || !last || last.role !== 'user') {
-    if (!removedProjection) return undefined
-    return { ...options, messages }
+    if (!removedProjection && !reasoningChanged) return undefined
+    return {
+      ...options,
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      messages
+    }
   }
-  const { tools: _tools, reasoningEffort: _reasoningEffort, ...rest } = options
+  const { tools: _tools, ...rest } = options
   return {
     ...rest,
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     messages: [
       ...messages.slice(0, -1),
       {

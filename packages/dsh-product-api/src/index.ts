@@ -158,6 +158,7 @@ declare module '@deepseek-ai/cordis' {
         selection: ConversationModelSelection
         rollback(): void
       }>
+      variableStatesByTurn(conversationId: string): Record<string, string>
       prepareRestoreBeforeTurn(conversationId: string, sessionId: string, fromTurn: number, beforeMessageId?: string): () => void
       removeArtifacts(conversationId: string, sessionId: string): void
     }
@@ -417,7 +418,10 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
 
   @Remote
   details(conversationId: string, beforeSequence?: number, limit?: number): ConversationDetailsMetadata {
-    return this.productData.readConversationDetails(conversationId, beforeSequence, limit)
+    return {
+      ...this.productData.readConversationDetails(conversationId, beforeSequence, limit),
+      runtimeVariableStateByTurn: this.ownerContext.eleckoiRoleplaySessions.variableStatesByTurn(conversationId)
+    }
   }
 
   @Remote
@@ -826,6 +830,10 @@ function sessionMessageTurn(events: readonly unknown[], index: number): number {
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
     const event = jsonRecord(events[cursor])
     if (event.type === 'turn/end') break
+    if (event.type === 'assistant/message') {
+      const turn = jsonRecord(event.data).turn
+      if (Number.isSafeInteger(turn) && Number(turn) > 0) return Number(turn)
+    }
     if (event.type !== 'turn/start') continue
     const turn = jsonRecord(event.data).turn
     if (Number.isSafeInteger(turn) && Number(turn) > 0) return Number(turn)
@@ -833,11 +841,33 @@ function sessionMessageTurn(events: readonly unknown[], index: number): number {
   for (let cursor = index + 1; cursor < events.length; cursor += 1) {
     const event = jsonRecord(events[cursor])
     if (event.type === 'turn/end') break
+    if (event.type === 'assistant/message') {
+      const turn = jsonRecord(event.data).turn
+      if (Number.isSafeInteger(turn) && Number(turn) > 0) return Number(turn)
+    }
     if (event.type !== 'turn/start') continue
     const turn = jsonRecord(event.data).turn
     if (Number.isSafeInteger(turn) && Number(turn) > 0) return Number(turn)
   }
-  throw new Error('找不到消息对应的 DSH 轮次。')
+  // The official Session accepts a direct user message before the next
+  // turn/start is written. Its rewind contract names that queued input as the
+  // next turn, so keep the product command aligned with the Session instead of
+  // rejecting a message which is already visible and rewindable.
+  const target = jsonRecord(events[index])
+  if (target.type === 'user/message' && target.surfaceOp === 'append'
+    && jsonRecord(jsonRecord(target.data).source).kind === 'user') {
+    let lastStartedTurn = 0
+    let lastEndedTurn = 0
+    for (let cursor = 0; cursor < index; cursor += 1) {
+      const event = jsonRecord(events[cursor])
+      const turn = jsonRecord(event.data).turn
+      if (!Number.isSafeInteger(turn) || Number(turn) <= 0) continue
+      if (event.type === 'turn/start') lastStartedTurn = Math.max(lastStartedTurn, Number(turn))
+      if (event.type === 'turn/end') lastEndedTurn = Math.max(lastEndedTurn, Number(turn))
+    }
+    if (lastStartedTurn === lastEndedTurn) return lastStartedTurn + 1
+  }
+  throw new Error('找不到这条消息所属的 DSH 轮次。')
 }
 
 function directUserMessageBeforeTurn(

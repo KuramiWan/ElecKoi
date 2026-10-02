@@ -8,6 +8,7 @@ const packages = [
 ]
 
 const uiPrimitives = {
+  MarkdownText: 'OfficialMarkdownText',
   PluginArtworkDefault: 'PluginArtworkDefault',
   StateDot: 'StateDot',
   Tag: 'Tag',
@@ -158,6 +159,7 @@ describe('ElecKoi DSH client navigation', () => {
     }
 
     expect(rootOptions.children.sidebar).toEqual({ kind: 'single', scope: 'root' })
+    expect(render().markdownComponent).toBe(uiPrimitives.MarkdownText)
     expect(sidebarOptions.children['sidebar.panellist']).toEqual({ kind: 'list', scope: 'root' })
     expect(sidebarOptions.children['sidebar.footer.action']).toEqual({ kind: 'list', scope: 'root' })
     expect(render().navigation.hasSidebarFooterActions).toBe(true)

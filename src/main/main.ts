@@ -5,6 +5,7 @@ import { StartupProfileStore } from '@main/host/startup/StartupProfileStore'
 import { configureElectron, configureRuntimeUserData } from '@main/host/startup/configureElectron'
 import { getBootstrapLogger } from '@main/platform/logging/AppLog'
 import { localMediaScheme } from '@main/platform/electron/mediaProtocol'
+import { windowsAppUserModelId } from '@main/platform/electron/windowsAppIdentity'
 
 const logger = getBootstrapLogger()
 protocol.registerSchemesAsPrivileged([localMediaScheme, {
@@ -39,7 +40,7 @@ async function startDesktop(): Promise<void> {
   try {
     await host.mountFoundation()
     await app.whenReady()
-    app.setAppUserModelId('com.eleckoi.desktop')
+    app.setAppUserModelId(windowsAppUserModelId)
     await host.mountInteractive()
   } catch (error) {
     logger.error({ err: error, effects: host.diagnostics() }, 'ElecKoi Desktop 启动失败')

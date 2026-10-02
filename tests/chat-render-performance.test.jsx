@@ -5,9 +5,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MessageList } from '../src/renderer/src/modules/chat/components/ChatPanel.jsx'
 import { RunningWhaleTail } from '../src/renderer/src/modules/chat/components/RunningWhaleTail.jsx'
-import { MessageBubble } from '../src/renderer/src/ui/messages/MessageBubble.jsx'
+import { MessageBubble, MessageList } from './helpers/officialMarkdown.jsx'
 
 vi.stubGlobal('React', React)
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
@@ -124,6 +123,44 @@ describe('chat rendering performance', () => {
     }
   })
 
+  it('keeps regeneration available when an older reply has an event sequence but no projected turn', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const onRegenerate = vi.fn()
+    const props = {
+      conversationId: 'chat-legacy', entering: false, scrollElement: null,
+      scrollRequest: { revision: 0, behavior: 'auto' },
+      onFollowingTailChange: vi.fn(), returnToBottomRef: { current: null },
+      layoutMode: 'agent', profile: { reply_spacing: 10, turn_spacing: 10 },
+      avatarShape: 'portrait', userAvatar: '', assistantAvatar: '',
+      userPinImage: '', assistantPinImage: '', userName: '用户', assistantName: '角色',
+      showRoleplayTimestamp: false, showRoleplayFloor: false,
+      onOpenProcess: vi.fn(), onEditMessage: vi.fn(), onEditOpening: vi.fn(),
+      onSelectOpening: vi.fn(), onRegenerate, deleteMode: false,
+      deleteFromMessageId: '', onSelectDeleteFrom: vi.fn(), runtimeSessionId: 'session-legacy',
+    }
+
+    try {
+      await act(async () => root.render(<MessageList {...props} messages={[
+        {
+          id: 'user-legacy', role: 'user', content: '旧输入', sessionEventSeq: 7, dshTurn: null,
+          conversationId: 'chat-legacy', runtimeSessionId: 'session-legacy',
+        },
+        {
+          id: 'assistant-legacy', role: 'assistant', content: '旧回复', sessionEventSeq: 11, dshTurn: null,
+          conversationId: 'chat-legacy', runtimeSessionId: 'session-legacy',
+        },
+      ]} />))
+      const button = container.querySelector('[aria-label="重新生成"]')
+      expect(button).not.toBeNull()
+      await act(async () => button.click())
+      expect(onRegenerate).toHaveBeenCalledWith({ targetMessageId: 'assistant-legacy' })
+    } finally {
+      await act(async () => root.unmount())
+    }
+  })
+
   it('keeps settled message rows mounted while only the streaming tail changes', async () => {
     const container = document.createElement('div')
     document.body.append(container)
@@ -140,11 +177,11 @@ describe('chat rendering performance', () => {
 
     try {
       await act(async () => render('尾部一'))
-      const firstParagraph = container.querySelector('.eleckoi-markdown-fallback p')
+      const firstParagraph = container.querySelector('.eleckoi-dsh-markdown p')
       expect(firstParagraph?.textContent).toBe('第一段。')
 
       await act(async () => render('尾部一继续增长'))
-      expect(container.querySelector('.eleckoi-markdown-fallback p')).toBe(firstParagraph)
+      expect(container.querySelector('.eleckoi-dsh-markdown p')).toBe(firstParagraph)
       expect(container.textContent).toContain('尾部一继续增长')
     } finally {
       await act(async () => root.unmount())

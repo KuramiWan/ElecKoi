@@ -3,18 +3,21 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SettingsPanel } from "../src/renderer/src/modules/settings/components/SettingsPanel.jsx";
 import { DEFAULT_CHAT_DISPLAY_PREFERENCES } from "../src/shared/contracts/settings/schemas.ts";
+import { WithOfficialMarkdown } from "./helpers/officialMarkdown.jsx";
 
 globalThis.React = React;
 
 describe("chat display preview", () => {
   it("uses the active persona without a fixed conversation title", () => {
-    const html = renderToStaticMarkup(React.createElement(SettingsPanel, {
-      activePage: "chat",
-      persona: { user_name: "访客乙", assistant_name: "角色甲" },
-      chatDisplay: { ...DEFAULT_CHAT_DISPLAY_PREFERENCES, layout: "agent" },
-      onChatDisplayChange: () => {},
-      renderLayout: ({ mainPanel }) => mainPanel,
-    }));
+    const html = renderToStaticMarkup(React.createElement(WithOfficialMarkdown, null,
+      React.createElement(SettingsPanel, {
+        activePage: "chat",
+        persona: { user_name: "访客乙", assistant_name: "角色甲" },
+        chatDisplay: { ...DEFAULT_CHAT_DISPLAY_PREFERENCES, layout: "agent" },
+        onChatDisplayChange: () => {},
+        renderLayout: ({ mainPanel }) => mainPanel,
+      }),
+    ));
 
     expect(html).toContain("访客乙");
     expect(html).toContain("角色甲");
@@ -22,12 +25,14 @@ describe("chat display preview", () => {
   });
 
   it("places roleplay message switches in their own settings section", () => {
-    const html = renderToStaticMarkup(React.createElement(SettingsPanel, {
-      activePage: "chat",
-      chatDisplay: DEFAULT_CHAT_DISPLAY_PREFERENCES,
-      onChatDisplayChange: () => {},
-      renderLayout: ({ mainPanel }) => mainPanel,
-    }));
+    const html = renderToStaticMarkup(React.createElement(WithOfficialMarkdown, null,
+      React.createElement(SettingsPanel, {
+        activePage: "chat",
+        chatDisplay: DEFAULT_CHAT_DISPLAY_PREFERENCES,
+        onChatDisplayChange: () => {},
+        renderLayout: ({ mainPanel }) => mainPanel,
+      }),
+    ));
     const sectionContaining = (label) => {
       const heading = html.indexOf(`<strong>${label}</strong>`);
       return html.slice(html.lastIndexOf("<section", heading), html.indexOf("</section>", heading));

@@ -59,6 +59,27 @@ window.__ModuleLoader__.load({
       ? snapshot.order.map(key => snapshot.nodes?.get(key)).filter(Boolean)
       : []
 
+    function nodeTurn(node) {
+      const turn = node?.location?.kind === 'step' || node?.location?.kind === 'turn'
+        ? node.location.turn?.turn : node?.data?.turn
+      return Number.isSafeInteger(turn) && turn > 0 ? Number(turn) : undefined
+    }
+
+    function projectedUserTurn(nodes, index) {
+      const direct = nodeTurn(nodes[index])
+      if (direct !== undefined) return direct
+      // User nodes are not stamped with a turn by DSH. A completed tail is
+      // the authoritative boundary for the queued inputs immediately before
+      // it; if there is no later tail, the input is still outside a turn.
+      for (let cursor = index + 1; cursor < nodes.length; cursor += 1) {
+        const candidate = nodes[cursor]
+        if (candidate?.kind !== 'turn-tail') continue
+        const turn = nodeTurn(candidate)
+        if (turn !== undefined) return turn
+      }
+      return undefined
+    }
+
     function toolProcess(block, parentId = '') {
       if (!block?.callId) return []
       const settled = block.kind === 'tool-result'
@@ -185,13 +206,19 @@ window.__ModuleLoader__.load({
 
     function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map()) {
       if (!snapshot) return details?.messages || []
-      const projected = orderedChatNodes(snapshot).flatMap(node => {
+      const nodes = orderedChatNodes(snapshot)
+      const projected = nodes.flatMap((node, nodeIndex) => {
         if (node.kind === 'user' || node.kind === 'steering') {
           const input = node.data
+          const dshTurn = projectedUserTurn(nodes, nodeIndex)
           return [{
             role: 'user', seq: input.seq, time: input.time, content: contentText(input.content),
             images: inputImages(input.content), files: inputFiles(input.content), dshMessageId: input.messageId || '',
-            sessionEventSeq: input.seq
+            sessionEventSeq: input.seq,
+            // `null` is intentional: this official user node is still outside
+            // a DSH turn. An omitted field remains compatible with legacy
+            // product-only fixtures until their session is rebound.
+            dshTurn: dshTurn ?? null
           }]
         }
         if (node.kind !== 'turn-tail' || !node.data?.closing) return []
@@ -231,18 +258,29 @@ window.__ModuleLoader__.load({
       for (let index = 0; index < projected.length; index += 1) {
         if (matched.has(index)) continue
         const source = candidates.find(candidate => !claimedCandidates.has(candidate)
-          && !candidate.dshMessageId && candidate.role === projected[index].role)
+          && !candidate.dshMessageId
+          && candidate.role === projected[index].role
+          // Older product rows may not have a DSH id yet. Content equality is
+          // the only safe fallback; role-only matching attaches an old row to
+          // an unrelated current DSH event and makes rewind target the wrong
+          // message.
+          && typeof candidate.content === 'string'
+          && candidate.content === projected[index].content)
         if (source) { claimedCandidates.add(source); matched.set(index, source) }
       }
       const visible = projected.map((item, index) => {
         const source = matched.get(index)
         const id = source?.id || item.dshMessageId || `dsh-${runtimeSessionId}-${item.seq}-${item.role}`
+        const runtimeVariableState = item.role === 'assistant' && Number.isSafeInteger(item.dshTurn)
+          ? details?.runtimeVariableStateByTurn?.[String(item.dshTurn)]
+          : undefined
         const message = {
           ...(source || {}), id, conversationId: details?.conversation?.id || source?.conversationId || '',
           ...(Number.isInteger(source?.productSequence ?? source?.sequence) ? { productSequence: source.productSequence ?? source.sequence } : {}),
           runtimeSessionId, dshMessageId: item.dshMessageId || source?.dshMessageId || '',
           sessionEventSeq: item.sessionEventSeq,
-          ...(Number.isSafeInteger(item.dshTurn) ? {
+          ...(Object.prototype.hasOwnProperty.call(item, 'dshTurn') && item.dshTurn === null ? { dshTurn: null } : {}),
+          ...(item.role === 'assistant' && Number.isSafeInteger(item.dshTurn) ? {
             dshTurn: item.dshTurn,
             renderKey: `dsh-reply-${runtimeSessionId}-${item.dshTurn}`
           } : {}),
@@ -255,7 +293,10 @@ window.__ModuleLoader__.load({
           displayContent: source?.content === item.content && typeof source.displayContent === 'string'
             ? source.displayContent
             : item.displayContent ?? item.content,
-          variableStateJson: source?.variableStateJson || '{}',
+          // The DSH turn is the stable identity after regeneration. Its
+          // checkpoint is the exact post-reply state used by the old renderer;
+          // product-row metadata is only a fallback for pre-checkpoint history.
+          variableStateJson: runtimeVariableState || source?.variableStateJson || '{}',
           createdAt: source?.createdAt || new Date(item.time || Date.now()).toISOString(),
           status: item.pending ? 'streaming' : item.interrupted ? 'cancelled' : 'complete',
           process: mergedProcess(source?.process, processByTurn.get(item.dshTurn)),
@@ -316,6 +357,7 @@ window.__ModuleLoader__.load({
         this.displayProjectionKey = ''
         this.displayProjectionGeneration = 0
         this.displayProjectionResults = null
+        this.officialProjectionSignature = null
       }
 
       getSnapshot = () => this.snapshot
@@ -499,7 +541,7 @@ window.__ModuleLoader__.load({
         for (const listener of this.listeners) listener()
       }
 
-      publishDetails(next) {
+      publishDetails(next, officialProjectionSignature = null) {
         const request = this.activeRequests.get(next.id)
         if (Number.isSafeInteger(request?.rewindEventSeq) && next.details) {
           // The selected input owns the visible branch while the Host rewinds.
@@ -514,6 +556,7 @@ window.__ModuleLoader__.load({
         }
         next = this.applyDisplayProjection(next)
         this.detailsSnapshot = next
+        this.officialProjectionSignature = officialProjectionSignature
         for (const listener of this.detailsListeners) listener()
         if (next.status === 'ready' && next.details) this.scheduleDisplayProjection(next.id, next.details)
       }
@@ -833,8 +876,32 @@ window.__ModuleLoader__.load({
         this.stopSessionState = () => {}
         this.stopProjections = () => {}
         this.sessionTarget = null
+        this.officialProjectionSignature = null
         this.sessionReference?.release()
         this.sessionReference = null
+      }
+
+      createOfficialProjectionSignature(chat, runtimeSessionId, hasMore) {
+        const nodes = orderedChatNodes(chat)
+        const closedTurns = new Set(nodes.filter(node => node.kind === 'turn-tail' && node.data?.closing)
+          .map(node => nodeTurn(node)).filter(Number.isSafeInteger))
+        return {
+          runtimeSessionId,
+          hasMore,
+          // Live assistant/tool nodes belong only to the stream snapshot. They
+          // must not invalidate the settled transcript until their turn closes.
+          nodes: nodes.filter(node => node.kind === 'user' || node.kind === 'steering'
+            || (node.kind === 'turn-tail' && node.data?.closing)
+            || ((node.kind === 'assistant-step' || node.kind === 'tool-call')
+              && closedTurns.has(nodeTurn(node))))
+        }
+      }
+
+      sameOfficialProjection(left, right) {
+        return left?.runtimeSessionId === right?.runtimeSessionId
+          && left?.hasMore === right?.hasMore
+          && left?.nodes?.length === right?.nodes?.length
+          && left.nodes.every((node, index) => node === right.nodes[index])
       }
 
       async mutateSession(conversationId, operation) {
@@ -942,13 +1009,16 @@ window.__ModuleLoader__.load({
         const processByTurn = officialProcess(chat)
         if (details) {
           const hasMore = Boolean(this.sessionReference?.binding.eventSource.getSnapshot().hasMore)
-          const next = {
-            ...details, runtimeSessionId,
-            messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn),
-            hasMore,
+          const signature = this.createOfficialProjectionSignature(chat, runtimeSessionId, hasMore)
+          if (!this.sameOfficialProjection(signature, this.officialProjectionSignature)) {
+            const next = {
+              ...details, runtimeSessionId,
+              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn),
+              hasMore,
+            }
+            next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
+            this.publishDetails({ id, status: 'ready', details: next, runtimeSessionId, error: '' }, signature)
           }
-          next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
-          this.publishDetails({ id, status: 'ready', details: next, runtimeSessionId, error: '' })
         }
         const runningAssistant = orderedChatNodes(chat)
           .findLast(node => node.kind === 'assistant-step' && node.data?.status === 'running')

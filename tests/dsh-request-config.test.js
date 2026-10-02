@@ -15,20 +15,29 @@ describe('DSH request configuration', () => {
       reasoningEffort: 'high',
       tools: [{ name: 'read', description: 'read', parameters: {} }],
       messages: [first, upstream],
-    }, '请用中文保留角色状态和未完成剧情。');
+    }, '请用中文保留角色状态和未完成剧情。', 'low');
 
     expect(projected.messages[0]).toBe(first);
     expect(projected.messages[1]).toMatchObject({ id: 'upstream', role: 'user' });
     expect(projected.messages[1].content[0].text).toContain('请用中文保留角色状态和未完成剧情。');
     expect(projected.messages[1].content[0].text).not.toContain('DSH 默认英文压缩模板');
     expect(projected).not.toHaveProperty('tools');
-    expect(projected).not.toHaveProperty('reasoningEffort');
+    expect(projected.reasoningEffort).toBe('high');
   });
 
   it('leaves ordinary requests and blank preset templates untouched', () => {
     const messages = [{ role: 'user', content: [{ type: 'text', text: '你好' }] }];
     expect(projectCompactionRequest({ purpose: undefined, messages }, '模板')).toBeUndefined();
     expect(projectCompactionRequest({ purpose: 'compaction', messages }, '   ')).toBeUndefined();
+  });
+
+  it('inherits the active main-model reasoning effort when compaction has no explicit override', () => {
+    const messages = [{ role: 'user', content: [{ type: 'text', text: '上游默认模板' }] }];
+    const projected = projectCompactionRequest({
+      provider: 'example-provider', model: 'always-thinking-model', purpose: 'compaction', messages,
+    }, '   ', 'low');
+
+    expect(projected).toMatchObject({ reasoningEffort: 'low', messages });
   });
 
   it('keeps the durable prompt definition out of compaction input', () => {
@@ -61,7 +70,7 @@ describe('DSH request configuration', () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-request-config-'));
     try {
       writeFileSync(join(root, 'session-a.json'), JSON.stringify({
-        model: { provider: 'deepseek-official', model: 'deepseek-flash' },
+        model: { provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'low' },
         historyCompactionInstructions: '只保留角色状态与剧情伏笔。',
       }));
       const listeners = new Map();
@@ -85,7 +94,6 @@ describe('DSH request configuration', () => {
       const dispose = installRequestConfig(agentCtx, root, 'session-a');
       const options = deepFreeze({
         provider: 'deepseek-official', model: 'deepseek-flash', purpose: 'compaction',
-        reasoningEffort: 'high',
         tools: [{ name: 'read', description: 'read', parameters: {} }],
         messages: [{ role: 'user', content: [{ type: 'text', text: '上游默认模板' }] }],
       });
@@ -101,7 +109,7 @@ describe('DSH request configuration', () => {
       expect(projected).not.toBe(options);
       expect(projected.messages[0].content[0].text).toContain('只保留角色状态与剧情伏笔。');
       expect(projected).not.toHaveProperty('tools');
-      expect(projected).not.toHaveProperty('reasoningEffort');
+      expect(projected.reasoningEffort).toBe('low');
 
       dispose();
       expect(disposers.every((entry) => entry.mock.calls.length === 1)).toBe(true);

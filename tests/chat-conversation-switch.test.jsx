@@ -2,6 +2,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatPanel } from '../src/renderer/src/modules/chat/components/ChatPanel.jsx';
+import { WithOfficialMarkdown } from './helpers/officialMarkdown.jsx';
 
 globalThis.React = React;
 
@@ -19,8 +20,8 @@ describe('conversation switching', () => {
       modelConfigs: [],
       scrollRef: { current: null },
     };
-    const previous = renderToStaticMarkup(<ChatPanel {...props} />);
-    const switching = renderToStaticMarkup(<ChatPanel {...props} isSwitchingChat />);
+    const previous = renderToStaticMarkup(<WithOfficialMarkdown><ChatPanel {...props} /></WithOfficialMarkdown>);
+    const switching = renderToStaticMarkup(<WithOfficialMarkdown><ChatPanel {...props} isSwitchingChat /></WithOfficialMarkdown>);
 
     expect(previous).toContain('旧会话前端内容');
     expect(switching).not.toContain('旧会话前端内容');
@@ -56,7 +57,9 @@ describe('conversation switching', () => {
           {owner.leadingAccessory}
           <textarea placeholder={owner.placeholder} />
           {owner.modelAccessory}
-          {owner.dockAccessory}
+          {owner.dockAccessory !== undefined
+            ? owner.dockAccessory
+            : owner.renderBridgeSlot?.('eleckoi.roleplay.conversation.composer.dock', {})}
         </div>;
       }
       if (name === 'eleckoi.roleplay.conversation.composer.dock') {
@@ -66,11 +69,13 @@ describe('conversation switching', () => {
     });
     const fallbackChain = (_name, _owner, options) => options?.fallback ?? null;
     const nativeMarkup = renderToStaticMarkup(
-      <ChatPanel
-        {...props}
-        renderRoleplaySlot={nativeSlot}
-        renderRoleplaySlotChain={fallbackChain}
-      />,
+      <WithOfficialMarkdown>
+        <ChatPanel
+          {...props}
+          renderRoleplaySlot={nativeSlot}
+          renderRoleplaySlotChain={fallbackChain}
+        />
+      </WithOfficialMarkdown>,
     );
     expect(nativeMarkup).toContain('data-dsh-input-bar="native"');
     expect(nativeMarkup).toContain('aria-label="DSH 命令"');
@@ -92,11 +97,13 @@ describe('conversation switching', () => {
     });
     const renderSlotChain = vi.fn((_name, _owner, options) => options?.fallback ?? null);
     const skinMarkup = renderToStaticMarkup(
-      <ChatPanel
-        {...props}
-        renderRoleplaySlot={renderSlot}
-        renderRoleplaySlotChain={renderSlotChain}
-      />,
+      <WithOfficialMarkdown>
+        <ChatPanel
+          {...props}
+          renderRoleplaySlot={renderSlot}
+          renderRoleplaySlotChain={renderSlotChain}
+        />
+      </WithOfficialMarkdown>,
     );
     expect(skinMarkup).toContain('data-dsh-input-skin="active"');
     expect(skinMarkup).toContain('data-dsh-input-dock="active"');

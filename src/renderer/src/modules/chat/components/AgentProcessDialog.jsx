@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { OfficialMarkdown } from '../../../ui/messages/OfficialMarkdown.jsx';
 import { DshCloseIcon } from '../../../ui/icons/dshComposerIcons.jsx';
 import { MessageChevronLeftIcon, MessageChevronRightIcon } from '../../../ui/icons/elecKoiMessageIcons.jsx';
 import { isSubagentItem, processBlocks, processItemDetails, subagentDetailPresentation } from '../model/agentProcessDetails.js';
@@ -277,7 +276,7 @@ function ChildAgentReply({ item }) {
       <strong>{item.status === 'running' ? '子 Agent 正在回复' : '子 Agent 回复'}</strong>
     </div>
     <div className="agent-process-child-reply-content markdown-message">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.summary || item.detail}</ReactMarkdown>
+      <OfficialMarkdown content={item.summary || item.detail} streaming={item.status === 'running'} />
     </div>
   </div>;
 }

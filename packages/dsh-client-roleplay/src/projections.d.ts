@@ -40,6 +40,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
     eleckoiRequestContexts: RoleplayRequestContexts
     eleckoiHistoryStatsAdjustment: { steps: number; turns: number }
+    eleckoiTurnOutcomes: { abortedTurns: number[] }
   }
   interface SessionProjectionStateMap {
     eleckoiRequestContexts: RoleplayRequestContextState

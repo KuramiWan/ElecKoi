@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { MessageBubble } from "../src/renderer/src/ui/messages/MessageBubble.jsx";
+import { MessageBubble } from "./helpers/officialMarkdown.jsx";
 import {
   prepareMarkdownTextTones,
   registerMarkdownTextToneHighlights,
@@ -13,7 +13,7 @@ import {
 globalThis.React = React;
 
 describe("message markdown presentation", () => {
-  it("keeps roleplay source line breaks in the renderer fallback", () => {
+  it("keeps roleplay source line breaks in the official renderer", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
         id: "message-1",
@@ -92,7 +92,10 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html).toContain('<pre><code class="language-json">');
+    expect(html).toContain('md-code-block');
+    expect(html).toContain('data-code-block-banner="true"');
+    expect(html).toMatch(/<span[^>]*>json<\/span>/);
+    expect(html).toMatch(/<pre[^>]*><code>第一行\n第二行<\/code><\/pre>/);
     expect(html).not.toContain("```json");
     expect(html).not.toContain("&lt;status&gt;");
     expect(html).not.toContain("&lt;combat_driver&gt;");
@@ -179,7 +182,9 @@ describe("message markdown presentation", () => {
       name: "角色",
     }));
 
-    expect(html).toContain('<pre><code class="language-xml">');
+    expect(html).toContain('md-code-block');
+    expect(html).toMatch(/<span[^>]*>xml<\/span>/);
+    expect(html).toMatch(/<pre[^>]*><code>/);
     expect(html).toContain("&lt;combat_driver&gt;");
     expect(html).toContain("&lt;/combat_driver&gt;");
   });
@@ -198,7 +203,7 @@ describe("message markdown presentation", () => {
     expect(html).toMatch(/<code[^>]*>&quot;code&quot;<\/code>/);
   });
 
-  it("keeps the fallback safe from authored HTML while preserving Markdown emphasis", () => {
+  it("keeps the official renderer safe from authored HTML while preserving Markdown emphasis", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
         id: "message-text-styles",
@@ -237,7 +242,7 @@ describe("message markdown presentation", () => {
     root.remove();
   });
 
-  it("keeps opening navigation below the content and within the pencil column", () => {
+  it("keeps roleplay controls outside the official content width and on shared side axes", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {
         id: "opening",
@@ -259,8 +264,15 @@ describe("message markdown presentation", () => {
     expect(html).toContain('data-prefix="fas"');
     expect(html).toContain('data-icon="chevron-left"');
     expect(html).toContain('data-icon="chevron-right"');
-    expect(html).toMatch(/<\/div><div class="opening-pager"/);
+    expect(html).toContain('class="message-tools-leading"');
+    expect(html.indexOf('class="message-tools')).toBeLessThan(html.indexOf('class="opening-pager"'));
     expect(html.indexOf('opening-pager-next')).toBeLessThan(html.indexOf('opening-pager-index'));
+
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    const article = root.querySelector("article.message-roleplay");
+    expect(article?.querySelector(":scope > .message-tools")).not.toBeNull();
+    expect(article?.querySelector(":scope > .message-content > .message-tools")).toBeNull();
 
     const chatStyles = readFileSync(
       resolve("src/renderer/src/modules/chat/styles/chat-panel.css"),
@@ -270,8 +282,24 @@ describe("message markdown presentation", () => {
       /\.opening-pager\s*\{[^}]*position:\s*static;/,
     );
     expect(chatStyles).toMatch(
-      /\.message-roleplay > \.opening-pager\s*\{[^}]*grid-column:\s*1\s*\/\s*3;[^}]*grid-row:\s*2;/,
+      /\.message-roleplay > \.opening-pager\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*grid-row:\s*1;[^}]*grid-template-columns:\s*var\(--chat-roleplay-side-rail\)\s*minmax\(0,\s*1fr\)\s*var\(--chat-roleplay-side-rail\);/,
     );
+    expect(chatStyles).toMatch(
+      /\.message-roleplay > \.message-tools\s*\{[^}]*grid-column:\s*3;[^}]*grid-row:\s*1;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*26px\s*minmax\(0,\s*1fr\);/,
+    );
+    expect(chatStyles).toMatch(
+      /\.message-roleplay > \.opening-pager \.opening-pager-prev\s*\{[^}]*grid-column:\s*1;[^}]*justify-self:\s*center;[^}]*margin-left:\s*0;/,
+    );
+    expect(chatStyles).toMatch(
+      /\.message-roleplay > \.opening-pager :is\(\.opening-pager-next, \.opening-pager-index\)\s*\{[^}]*grid-column:\s*3;[^}]*justify-self:\s*center;/,
+    );
+    expect(chatStyles).toMatch(
+      /\.message-roleplay \.message-content,[^}]*\.message-roleplay\.mine \.message-content\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/,
+    );
+    const officialContentColumn = chatStyles.match(
+      /\.message-roleplay \.message-content,[^}]*\.message-roleplay\.mine \.message-content\s*\{([^}]*)\}/,
+    )?.[1] || "";
+    expect(officialContentColumn).not.toMatch(/(?:max-)?width|padding-inline/);
   });
 
   it("places Agent response actions below the answer and keeps the opening pager with them", () => {

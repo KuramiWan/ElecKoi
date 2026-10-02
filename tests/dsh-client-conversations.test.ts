@@ -589,8 +589,9 @@ describe('DSH ElecKoi conversation client model', () => {
         }
         if (name === 'query.conversations.details') return { ok: true, data: {
           conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', hasMore: false, beforeSequence: 1,
+          runtimeVariableStateByTurn: { 1: '{"score":7}' },
           messages: [
-            { id: 'product-user', role: 'user', sequence: 3, messageIndex: 17, variableStateJson: '{}' },
+            { id: 'product-user', role: 'user', sequence: 3, messageIndex: 17, content: 'official user', variableStateJson: '{}' },
             { id: 'product-assistant', role: 'assistant', sequence: 4, messageIndex: 22, dshMessageId: 'assistant-dsh', variableStateJson: '{}', displayContent: '<FINAL>official reply</FINAL>' },
             { id: 'metadata-user-extra', role: 'user', sequence: 6, variableStateJson: '{}' }
           ]
@@ -633,6 +634,7 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(catalog.getDetailsSnapshot().details.messages.map((message: any) => message.displayContent))
       .toEqual(['official user', 'projected:official reply'])
     expect(opened.messages.map((message: any) => message.messageIndex)).toEqual([0, 1])
+    expect(opened.messages[1].variableStateJson).toBe('{"score":7}')
     expect(catalog.getDetailsSnapshot().details.messages).toMatchObject([
       { id: 'product-user', content: 'official user', runtimeSessionId: 'runtime-1' },
       { id: 'product-assistant', content: '<FINAL>official reply</FINAL>', dshMessageId: 'assistant-dsh' }
@@ -733,6 +735,8 @@ describe('DSH ElecKoi conversation client model', () => {
       renderKey: 'dsh-reply-runtime-1-2', dshTurn: 2,
       process: [{ kind: 'reasoning', status: 'running', detail: '先读取资料' }]
     })
+    const settledDetailsDuringStream = catalog.getDetailsSnapshot()
+    const settledMessagesDuringStream = settledDetailsDuringStream.details.messages
     allLiveNodes.set('assistant-live', {
       ...allLiveNodes.get('assistant-live'),
       data: { ...allLiveNodes.get('assistant-live').data, status: 'settled', blocks: [
@@ -750,6 +754,8 @@ describe('DSH ElecKoi conversation client model', () => {
     targetSnapshot = { ...targetSnapshot, order: [...allLiveNodes.keys()] }
     targetListener()
     sessionListener()
+    expect(catalog.getDetailsSnapshot()).toBe(settledDetailsDuringStream)
+    expect(catalog.getDetailsSnapshot().details.messages).toBe(settledMessagesDuringStream)
     expect(catalog.getDetailsSnapshot().details.messages.map((message: any) => message.content)).toEqual([
       'earlier user', 'earlier reply', 'official user', '<FINAL>official reply</FINAL>'
     ])
@@ -774,6 +780,7 @@ describe('DSH ElecKoi conversation client model', () => {
       }
     })
     targetListener()
+    expect(catalog.getDetailsSnapshot()).toBe(settledDetailsDuringStream)
     expect(catalog.getStreamSnapshot()).toMatchObject({
       status: 'running', messageId: 'dsh-live-runtime-1', content: '第一段', runId: 'runtime-1',
       renderKey: 'dsh-reply-runtime-1-2'
@@ -790,6 +797,7 @@ describe('DSH ElecKoi conversation client model', () => {
       }
     })
     targetListener()
+    expect(catalog.getDetailsSnapshot()).toBe(settledDetailsDuringStream)
     expect(catalog.getStreamSnapshot()).toMatchObject({
       status: 'running', messageId: 'dsh-live-runtime-1', content: '第一段正文。', runId: 'runtime-1'
     })

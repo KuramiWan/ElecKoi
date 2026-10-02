@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { TrajectoryView as ProductTrajectoryView, zh } from "@eleckoi/dsh-client-trajectory/client";
+import { adaptTrajectorySnapshot } from "../model/trajectorySnapshotAdapter.js";
 
 const noop = () => {};
 
@@ -18,14 +19,11 @@ export function TrajectoryView({ renderSlot }) {
 export function SessionTrajectoryView(props) {
   const official = props.useTrajectory((value) => value);
   const contexts = props.useProjection("eleckoiRequestContexts");
-  const snapshot = useMemo(() => ({
-    ...official,
-    eventNodes: official.eventNodes.filter((node) => node.source?.kind !== "plugin:eleckoi-request-projection"),
-    requests: official.requests.map((request) => ({
-      ...request,
-      context: contexts?.[request.startSeq] ?? [],
-    })),
-  }), [official, contexts]);
+  const outcomes = props.useProjection("eleckoiTurnOutcomes");
+  const snapshot = useMemo(
+    () => adaptTrajectorySnapshot(official, contexts, outcomes),
+    [official, contexts, outcomes],
+  );
   const useTrajectory = useCallback((selector) => selector(snapshot), [snapshot]);
   const translate = useCallback((key, values = {}) => {
     let text = zh[key];

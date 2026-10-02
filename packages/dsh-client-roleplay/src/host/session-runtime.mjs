@@ -7,6 +7,7 @@ import { parse as parseYaml } from 'yaml'
 import { readSessionSnapshot, removeSessionSnapshot, snapshotPath, writeSessionSnapshot } from './session-snapshot.mjs'
 import { historicalRuntimeState } from './historical-runtime-state.mjs'
 import { historyStatsProjection } from './history-stats-projection.mjs'
+import { turnOutcomesProjection } from './turn-outcomes-projection.mjs'
 
 const resolveRuntimeModule = createRequire(import.meta.url).resolve
 
@@ -27,6 +28,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   const bridgeRoot = requiredEnv('ELECKOI_SESSION_BRIDGE_ROOT')
   const workspaceRoot = requiredEnv('ELECKOI_WORKSPACE_ROOT')
   const disposeHistoryStats = ctx.sessionProjections.register(historyStatsProjection)
+  const disposeTurnOutcomes = ctx.sessionProjections.register(turnOutcomesProjection)
 
   const prepare = async (conversationId, text, creating = false, selection) => {
     const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, text)
@@ -146,6 +148,13 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         throw error
       }
     },
+    variableStatesByTurn(conversationId) {
+      const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
+      return Object.fromEntries(readRuntimeCheckpoints(sessionRoot)
+        // `beforeTurn: N + 1` is the committed state after DSH turn N.
+        .filter(item => item.beforeTurn > 1)
+        .map(item => [String(item.beforeTurn - 1), item.state.variableStateJson]))
+    },
     prepareRestoreBeforeTurn(conversationId, sessionId, fromTurn, beforeMessageId) {
       const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
       if (snapshot.conversationId !== conversationId) {
@@ -209,7 +218,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       ctx.logger.error(`ElecKoi 会话运行状态提交失败：${String(error)}`)
     }
   })
-  return () => { disposeCommit(); disposeHistoryStats() }
+  return () => { disposeCommit(); disposeHistoryStats(); disposeTurnOutcomes() }
 }
 
 async function nextSessionTurn(ctx, sessionId) {

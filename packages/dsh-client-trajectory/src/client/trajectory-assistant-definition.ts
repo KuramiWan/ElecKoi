@@ -37,6 +37,8 @@ interface AssistantState {
   readonly startSeq: number
   readonly startTime: number
   readonly started: boolean
+  /** A model request actually began inside this Step. */
+  readonly requested: boolean
   readonly sawChunk: boolean
   readonly blocks: readonly (AssistantBlock | undefined)[]
   readonly visibleBlocks: number
@@ -62,6 +64,7 @@ function initialState(
     startSeq,
     startTime,
     started,
+    requested: false,
     sawChunk: false,
     blocks: [],
     visibleBlocks: 0,
@@ -121,7 +124,7 @@ function updateChunk(
   time: number,
 ): AssistantState {
   if (chunk.type === 'usage') {
-    return { ...state, sawChunk: true, usage: addUsage(state.usage, chunk.usage) }
+    return { ...state, requested: true, sawChunk: true, usage: addUsage(state.usage, chunk.usage) }
   }
   const blocks = [...state.blocks]
   let changedIndex = -1
@@ -180,6 +183,7 @@ function updateChunk(
     + Number(blockIsVisible(blocks[changedIndex]))
   return {
     ...state,
+    requested: true,
     sawChunk: true,
     blocks,
     visibleBlocks,
@@ -199,6 +203,7 @@ function settleTiming(
 ): AssistantState {
   return {
     ...state,
+    requested: true,
     firstTokenTime: state.firstTokenTime ?? assistantStreamFirstTokenTime(event.data.stream),
   }
 }
@@ -299,7 +304,11 @@ function assistantRequest(
   node: AssistantMessageNode | undefined,
   boundary: { seq: number; time: number } | undefined,
 ): Extract<RequestView, { purpose: 'assistant' }> | undefined {
-  if (!state.started) return undefined
+  // A Step is also used for Session bootstrap/history recovery. Those Steps
+  // deliberately have no LLM attempt, chunk, retry, or assistant message and
+  // therefore are not requests. Treating every closed Step as a failed request
+  // produces a false red "request #1" in the trajectory.
+  if (!state.started || !state.requested) return undefined
   const status = node !== undefined && node.interrupted !== true
     ? 'complete'
     : state.retry !== undefined || boundary !== undefined ? 'error' : 'running'
@@ -331,7 +340,7 @@ function assistantRequest(
 }
 
 /** Trajectory-owned Assistant streaming, settlement, and request lifecycle. */
-const trajectoryAssistantDefinition: ConversationNodeDefinition<AssistantState> = {
+export const trajectoryAssistantDefinition: ConversationNodeDefinition<AssistantState> = {
   kind: 'trajectory-assistant-step',
   target: 'trajectory',
   match: (event) => {
@@ -379,6 +388,7 @@ const trajectoryAssistantDefinition: ConversationNodeDefinition<AssistantState> 
       ),
       firstTokenTime: context.state.firstTokenTime,
       usage: context.state.usage,
+      requested: true,
       retry: {
         message: failure.message,
         ...(failure.code === undefined ? {} : { code: failure.code }),

@@ -2,8 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import { createPortal } from "react-dom";
 import { faChevronLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { OfficialMarkdown } from "./OfficialMarkdown.jsx";
 import { Avatar } from "../ui/Avatar.jsx";
 import { AvatarPreviewDialog } from "./AvatarPreviewDialog.jsx";
 import { AgentPencilIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, MessagePencilIcon, MoreDotsIcon, RefreshMessageIcon, SpeakerIcon } from "../icons/elecKoiMessageIcons.jsx";
@@ -16,15 +15,6 @@ import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
 import { normalizeMarkdownForRendering } from "./normalizeMarkdownForRendering.js";
 import { prepareMarkdownTextTones, registerMarkdownTextToneHighlights } from "./markdownTextTones.js";
-
-const fallbackMarkdownComponents = {
-  a({ children, href, node: _node, ...props }) {
-    return <a href={href} target="_blank" rel="noreferrer" {...props}>{children}</a>;
-  },
-  table({ children, node: _node, ...props }) {
-    return <div className="message-table-scroll"><table {...props}>{children}</table></div>;
-  },
-};
 
 const OPENING_SWIPE_DURATION = 125;
 const timestampFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -72,20 +62,6 @@ async function animateOpeningSlide(article, fromX, toX, freezeAtEnd = false) {
   };
 }
 
-function MarkdownMessage({ content, streaming }) {
-  const renderContent = useMemo(
-    () => normalizeMarkdownForRendering(content || ""),
-    [content],
-  );
-  return (
-    <div className="eleckoi-markdown-fallback" data-streaming={streaming || undefined}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={fallbackMarkdownComponents} skipHtml>
-        {renderContent}
-      </ReactMarkdown>
-    </div>
-  );
-}
-
 function MessagePresentation({ message, content, streaming, renderMessageContent }) {
   const presentation = useMemo(
     () => message.role === "assistant" && !streaming
@@ -94,16 +70,17 @@ function MessagePresentation({ message, content, streaming, renderMessageContent
     [content, message.role, streaming],
   );
   const renderMarkdown = (source, key) => {
-    const fallback = <MarkdownMessage key={key} content={source} streaming={streaming} />;
-    if (!renderMessageContent) return fallback;
+    const markdown = normalizeMarkdownForRendering(source || "");
+    const content = <OfficialMarkdown key={key} content={markdown} streaming={streaming} />;
+    if (!renderMessageContent) return content;
     return renderMessageContent({
       conversationId: message.conversationId,
       productMessageId: message.id,
       messageId: message.dshMessageId || null,
       role: message.role,
-      content: source,
+      content: markdown,
       streaming,
-    }, fallback);
+    }, content);
   };
   if (message.role !== "assistant") return renderMarkdown(content, "message");
   if (!presentation) return renderMarkdown(content, "message");
@@ -263,6 +240,20 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
     <button type="button" className="opening-pager-next" disabled={openingSwitching || selectedIndex >= options.length - 1} onClick={() => { void selectOpeningAt(selectedIndex + 1); }} aria-label="下一条开场白"><FontAwesomeIcon icon={faChevronRight} /></button>
     <button ref={jumpTriggerRef} type="button" className="opening-pager-index" disabled={openingSwitching} onClick={() => { setPageInput(String(selectedIndex + 1)); setJumpOpen(true); }} aria-label={`第 ${selectedIndex + 1} 条，共 ${options.length} 条开场白，点击跳转`}>{selectedIndex + 1}/{options.length}</button>
   </div> : null;
+  const messageTools = !pending && layoutMode !== "agent" ? <div className={`message-tools${expanded ? ' expanded' : ''}`} ref={toolsRef}>
+    <div className="message-tools-leading">
+      {pluginActions}
+      {expanded ? <div className="message-tools-expanded">
+        {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
+        {!isUser ? <TurnUsage usage={message.turnUsage} compact /> : null}
+        <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || '')} aria-label="复制" title="复制"><CopyIcon /></button>
+        {!isUser && message.id !== 'opening' ? <button type="button" onClick={() => onRegenerate?.(message)} aria-label="重新生成" title="重新生成"><RefreshMessageIcon /></button> : null}
+        <button type="button" onClick={speak} aria-label="朗读" title="朗读"><SpeakerIcon /></button>
+      </div> : null}
+      <button type="button" onClick={() => setExpanded((value) => !value)} aria-label="更多" title="更多"><MoreDotsIcon /></button>
+    </div>
+    <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑"><MessagePencilIcon /></button>
+  </div> : null;
   return (
     <article
       ref={articleRef}
@@ -279,18 +270,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
             <header className="message-author">{name || (isUser ? "你" : "助手")}</header>
             {roleplayTimestamp ? <time className="message-timestamp" dateTime={message.created_at ?? message.createdAt}>{roleplayTimestamp}</time> : null}
           </div> : <header className="message-author">{name || (isUser ? "你" : "助手")}</header>}
-          {!pending && layoutMode !== "agent" ? <div className={`message-tools${expanded ? ' expanded' : ''}`} ref={toolsRef}>
-            {pluginActions}
-            {expanded ? <div className="message-tools-expanded">
-              {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
-              {!isUser ? <TurnUsage usage={message.turnUsage} compact /> : null}
-              <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || '')} aria-label="复制" title="复制"><CopyIcon /></button>
-              {!isUser && message.id !== 'opening' ? <button type="button" onClick={() => onRegenerate?.(message)} aria-label="重新生成" title="重新生成"><RefreshMessageIcon /></button> : null}
-              <button type="button" onClick={speak} aria-label="朗读" title="朗读"><SpeakerIcon /></button>
-            </div> : null}
-            <button type="button" onClick={() => setExpanded((value) => !value)} aria-label="更多" title="更多"><MoreDotsIcon /></button>
-            <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑"><MessagePencilIcon /></button>
-          </div> : null}
+          {layoutMode !== "roleplay" ? messageTools : null}
         </div>
         {isUser ? <ChatImageGallery images={message.inputImageAttachments || []} conversationId={message.conversationId} agentMessage={layoutMode === "agent"} loadImage={loadImage} /> : null}
         {isUser ? <ChatFileCards files={message.inputFileAttachments || []}
@@ -339,6 +319,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
           </div>
         </div> : null}
       </div>
+      {layoutMode === "roleplay" ? messageTools : null}
       {layoutMode !== "agent" ? openingPager : null}
       {avatarPreviewOpen && avatar ? <AvatarPreviewDialog src={avatar} name={name} onClose={() => setAvatarPreviewOpen(false)} onPin={onPinAvatar ? () => { onPinAvatar({ src: pinSrc || avatar, name }); setAvatarPreviewOpen(false); } : undefined} /> : null}
       {jumpOpen && typeof document !== "undefined" ? createPortal(

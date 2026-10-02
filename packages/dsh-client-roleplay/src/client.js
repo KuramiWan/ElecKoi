@@ -2,19 +2,6 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-roleplay',
   factory(require) {
     const React = require('react')
-    const { MarkdownText } = require('@deepseek-ai/dsh-client-ui-primitives')
-    const markdownLabels = Object.freeze({
-      code: Object.freeze({
-        copyLabel: '复制',
-        copiedLabel: '已复制',
-        toolbarLabels: Object.freeze({
-          codeLabel: '代码',
-          wrapLabel: '自动换行',
-          unwrapLabel: '不换行'
-        })
-      }),
-      footnotes: '脚注'
-    })
     const bridgedComposerChildren = Object.freeze({
       'conversation.approval.detail': 'eleckoi.roleplay.conversation.approval.detail',
       'conversation.plan-review.actions': 'eleckoi.roleplay.conversation.plan-review.actions',
@@ -29,24 +16,15 @@ window.__ModuleLoader__.load({
       'conversation.composer.dock': 'eleckoi.roleplay.conversation.composer.dock'
     })
 
-    function OfficialMarkdownMessage({ content, streaming }) {
-      return React.createElement('div', { className: 'eleckoi-dsh-markdown' },
-        React.createElement(MarkdownText, {
-          text: content || '',
-          streaming: Boolean(streaming),
-          labels: markdownLabels
-        }))
-    }
-
     function RoleplaySessionView({
       matched, sessionId, useSession, useSessionStatus, useInput, renderSlot, renderSlotChain
     }) {
       const session = useSession(snapshot => snapshot)
       const input = useInput(snapshot => snapshot)
       const pendingInteraction = useSessionStatus(snapshot => snapshot.get(sessionId)?.pendingInteraction)
-      const renderRoleplayMessage = React.useCallback((owner) => renderSlotChain(
+      const renderRoleplayMessage = React.useCallback((owner, content) => renderSlotChain(
         'eleckoi.roleplay.message.content', owner, {
-          fallback: React.createElement(OfficialMarkdownMessage, owner)
+          fallback: content
         }
       ), [renderSlotChain])
       return React.createElement(matched.component, {
@@ -150,6 +128,22 @@ window.__ModuleLoader__.load({
           ctx.slots.inject(target, () => {
             const projected = new Map()
             const adapt = entry => function ConversationSeatEntry(ownerProps) {
+              if (source === 'conversation.composer.dock' && entry.options.id === 'stats') {
+                const adjustment = ownerProps.useProjection('eleckoiHistoryStatsAdjustment')
+                if (ownerProps.generationStatsEnabled === false) return null
+                const upstreamUseProjection = ownerProps.useProjection
+                const useProjection = key => {
+                  const value = upstreamUseProjection(key)
+                  if (key !== 'sessionStats' || !value) return value
+                  if (!adjustment) return value
+                  return {
+                    ...value,
+                    steps: Math.max(0, value.steps - (Number(adjustment.steps) || 0)),
+                    turns: Math.max(0, value.turns - (Number(adjustment.turns) || 0))
+                  }
+                }
+                return React.createElement(entry.component, { ...ownerProps, useProjection })
+              }
               if (source === 'conversation.composer' || source === 'conversation.composer.bar') {
                 const { renderBridgeSlot, ...props } = ownerProps
                 const renderSlot = (name, owner, renderOptions) => {
@@ -258,10 +252,7 @@ window.__ModuleLoader__.load({
         projectConversationSeat('conversation.input.plan', 'eleckoi.roleplay.conversation.input.plan', { leafOnly: true })
         projectConversationSeat('conversation.input.model', 'eleckoi.roleplay.conversation.input.model', { leafOnly: true })
         projectConversationSeat('conversation.input.activity', 'eleckoi.roleplay.conversation.input.activity', { leafOnly: true })
-        projectConversationSeat('conversation.composer.dock', 'eleckoi.roleplay.conversation.composer.dock', {
-          leafOnly: true,
-          include: entry => entry.options.id !== 'stats'
-        })
+        projectConversationSeat('conversation.composer.dock', 'eleckoi.roleplay.conversation.composer.dock', { leafOnly: true })
         projectConversationSeat('conversation.approval.detail', 'eleckoi.roleplay.conversation.approval.detail', { leafOnly: true })
         projectConversationSeat('conversation.plan-review.actions', 'eleckoi.roleplay.conversation.plan-review.actions', { leafOnly: true })
         projectConversationSeat('conversation.trajectory.images', 'eleckoi.roleplay.trajectory.images')

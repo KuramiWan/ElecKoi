@@ -10,7 +10,8 @@ export async function runChatMessageSend(options) {
     event, input, inputImagesRef, inputFilesRef, isSending, modelConfig, modelSupportsImages, setStatus,
     requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
     setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
-    requestScrollToEnd, reconcileChatMessages, notify, restoreChatEntry, conversationModel,
+    setMessages, updatePendingReply, requestScrollToEnd, reconcileChatMessages, commitPendingError,
+    notify, restoreChatEntry, conversationModel,
   } = options;
   event.preventDefault();
   const text = input.trim();
@@ -39,6 +40,7 @@ export async function runChatMessageSend(options) {
   requestRef.current = activeRequest;
   setIsSending(true);
   setStatus(draftImages.length ? "正在处理图片..." : "正在回复...");
+  let assistantId = "";
   let targetSessionId = sessionId;
 
   try {
@@ -62,6 +64,18 @@ export async function runChatMessageSend(options) {
     activeRequest.conversationId = targetSessionId;
 
     setInput("");
+    const createdAt = new Date().toISOString();
+    const userMessage = {
+      id: `local-${Date.now()}`, conversationId: targetSessionId, role: "user", content: text,
+      variableStateJson: '{}', created_at: createdAt,
+      inputImageAttachments: draftImages.map((image, index) => ({
+        attachmentId: image.localId, mediaType: encodedImages[index].mediaType, bytes: image.bytes, name: image.name,
+        dataUrl: `data:${encodedImages[index].mediaType};base64,${encodedImages[index].data}`,
+      })),
+      inputFileAttachments: draftFiles.map((file) => ({
+        attachmentId: file.attachmentId, name: file.name, bytes: file.bytes,
+      })),
+    };
     clearInputImages();
     clearInputFiles();
     const payload = {
@@ -71,9 +85,15 @@ export async function runChatMessageSend(options) {
       session_id: targetSessionId,
     };
 
+    assistantId = `pending-${Date.now()}`;
     const requestId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     activeRequest.requestId = requestId;
     throwIfAborted(controller.signal);
+    setMessages?.((items) => [...items, userMessage]);
+    updatePendingReply?.({
+      id: assistantId, conversationId: targetSessionId, role: "assistant", content: "",
+      variableStateJson: '{}', pending: true, created_at: createdAt,
+    });
     requestScrollToEnd("auto");
     const result = await sendChatMessage(payload, requestId, { model: conversationModel, signal: controller.signal });
     if (result.cancelled) {
@@ -96,18 +116,21 @@ export async function runChatMessageSend(options) {
       setIsSending(false);
       setStatus(message);
       notify?.("error", message);
+      let reconciled = false;
       if (targetSessionId) {
         try {
           const durable = await getChat(targetSessionId, { model: conversationModel });
           if (requestRef.current === activeRequest) {
             reconcileChatMessages(durable.chat);
             setChatCharacter(normalizeLatestChatCharacter(durable.chat || {}));
+            reconciled = true;
           }
         } catch {
           // Keep the original send failure visible if refreshing durable state also fails.
         }
       }
       if (requestRef.current !== activeRequest) return;
+      if (!reconciled) commitPendingError?.(assistantId);
     }
   } finally {
     if (requestRef.current === activeRequest) {
@@ -121,6 +144,7 @@ export function stopChatMessageSend({
   requestRef,
   setIsSending,
   setStatus,
+  settlePendingReply,
   notify,
   cancelRequest,
 }) {
@@ -130,6 +154,7 @@ export function stopChatMessageSend({
   activeRequest.stopping = true;
   requestRef.current = null;
   activeRequest.controller?.abort?.();
+  settlePendingReply?.();
   setIsSending?.(false);
   setStatus("已停止");
   if (!activeRequest.requestId || typeof cancelRequest !== "function") {

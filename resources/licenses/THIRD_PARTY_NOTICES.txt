@@ -3314,12 +3314,6 @@ Author: Yusuke Wada
 Homepage: https://hono.dev
 Bundled notice text: 2e0a854a11062f91
 
-html-url-attributes@3.0.1
-License: MIT
-Author: Titus Wormer
-Homepage: https://github.com/rehypejs/rehype-minify/tree/main#readme
-Bundled notice text: 2cf2d507c76caa8f
-
 html-void-elements@3.0.0
 License: MIT
 Author: Titus Wormer
@@ -4419,12 +4413,6 @@ react-is@16.13.1
 License: MIT
 Homepage: https://reactjs.org/
 Bundled notice text: a80c79b8f80e824c
-
-react-markdown@10.1.0
-License: MIT
-Author: Espen Hovlandsdal
-Homepage: https://github.com/remarkjs/react-markdown#readme
-Bundled notice text: b7972f57b949d275
 
 react-resizable@3.2.0
 License: MIT
@@ -6846,7 +6834,6 @@ NOTICE TEXT 2cf2d507c76caa8f
 ------------------------------------
 Source filenames: license
 Applies to:
-- html-url-attributes@3.0.1
 - recma-build-jsx@1.0.0
 - recma-jsx@1.0.1
 - recma-parse@1.0.0
@@ -13549,34 +13536,6 @@ Applies to:
 MIT License
 
 Copyright (c) 2023 Promplate Dev Team
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-NOTICE TEXT b7972f57b949d275
-------------------------------------
-Source filenames: license
-Applies to:
-- react-markdown@10.1.0
-
-The MIT License (MIT)
-
-Copyright (c) Espen Hovlandsdal
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

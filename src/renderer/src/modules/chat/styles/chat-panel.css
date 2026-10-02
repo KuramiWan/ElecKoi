@@ -768,10 +768,6 @@
   min-height: calc(var(--chat-avatar-height, 86.67px) + var(--chat-font-size, 15px) * 1.035 + 2px);
 }
 
-.message-roleplay.has-opening-pager {
-  min-height: calc(var(--chat-avatar-height, 86.67px) * 2);
-}
-
 .message-roleplay.mine {
   justify-content: initial;
 }
@@ -1036,6 +1032,7 @@
 .message-roleplay .message-content,
 .message-roleplay.mine .message-content {
   grid-column: 2;
+  grid-row: 1;
   display: grid;
   justify-items: stretch;
   align-content: start;
@@ -1054,7 +1051,38 @@
   color: color-mix(in srgb, var(--bubble-fg) 54%, #8d929b);
 }
 
+.message-tools-leading {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.message-roleplay > .message-tools {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  justify-self: stretch;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr);
+  gap: 0;
+  width: 100%;
+}
+
+.message-roleplay > .message-tools > .message-tools-leading {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.message-roleplay > .message-tools > button:last-child {
+  grid-column: 2;
+  grid-row: 1;
+}
+
 .message-tools > button,
+.message-tools-leading > button,
 .message-tools-expanded > button,
 .opening-pager button,
 .agent-process-back,
@@ -1071,6 +1099,7 @@
 }
 
 .message-tools > button:hover,
+.message-tools-leading > button:hover,
 .message-tools-expanded > button:hover,
 .opening-pager button:hover:not(:disabled) { background: color-mix(in srgb, currentColor 9%, transparent); }
 .message-tools-expanded { display: flex; align-items: center; gap: 2px; }
@@ -1118,10 +1147,13 @@
   pointer-events: none;
 }
 .message-roleplay > .opening-pager {
-  grid-column: 1 / 3;
-  grid-row: 2;
+  grid-column: 1 / -1;
+  grid-row: 1;
   align-self: end;
-  grid-template-columns: minmax(0, 1fr) 26px;
+  grid-template-columns:
+    var(--chat-roleplay-side-rail)
+    minmax(0, 1fr)
+    var(--chat-roleplay-side-rail);
 }
 .message:not(.message-roleplay) { flex-wrap: wrap; }
 .opening-pager button {
@@ -1156,7 +1188,16 @@
   padding: 0;
   font: 400 12px/18px "Noto Sans", sans-serif;
 }
+.message-roleplay > .opening-pager .opening-pager-prev {
+  grid-column: 1;
+  justify-self: center;
+  margin-left: 0;
+}
+.message-roleplay > .opening-pager .opening-pager-prev svg {
+  justify-self: center;
+}
 .message-roleplay > .opening-pager :is(.opening-pager-next, .opening-pager-index) {
+  grid-column: 3;
   justify-self: center;
 }
 .opening-pager button:hover:not(:disabled),
@@ -1663,13 +1704,13 @@
   margin-bottom: 0;
 }
 
-.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :first-child,
-.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :first-child > :first-child {
+.markdown-message .eleckoi-dsh-markdown > :first-child,
+.markdown-message .eleckoi-dsh-markdown > :first-child > :first-child {
   margin-top: 0;
 }
 
-.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :last-child,
-.markdown-message :is(.eleckoi-dsh-markdown, .eleckoi-markdown-fallback) > :last-child > :last-child {
+.markdown-message .eleckoi-dsh-markdown > :last-child,
+.markdown-message .eleckoi-dsh-markdown > :last-child > :last-child {
   margin-bottom: 0;
 }
 
@@ -1704,7 +1745,7 @@
 .markdown-message blockquote {
   margin: 8px 0;
   padding: 2px 0 2px 10px;
-  border-left: 3px solid var(--chat-quote-color, #f2a65a);
+  border-left: 3px solid var(--chat-quote-color, #4176e6);
 }
 
 .markdown-message pre {
@@ -2577,6 +2618,22 @@ button.chat-file-card:hover { border-color: var(--blue); }
   .message-roleplay .message-content,
   .message-roleplay.mine .message-content {
     grid-column: 2;
+  }
+
+  .message-roleplay > .message-tools {
+    grid-column: 2;
+    justify-self: end;
+    display: flex;
+    width: auto;
+  }
+
+  .message-roleplay > .opening-pager {
+    grid-template-columns: var(--chat-avatar-width, 65px) minmax(0, 1fr) 26px;
+  }
+
+  .message-roleplay .message-author-line {
+    box-sizing: border-box;
+    padding-right: 56px;
   }
 
   .chat-panel.layout-roleplay .chat-waiting-reply {

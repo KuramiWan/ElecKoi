@@ -113,6 +113,9 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     setMessages,
     setMessagesWithScroll,
     reconcileMessages,
+    updatePendingReply,
+    settlePendingReply,
+    commitPendingError,
     prependMessages,
     historyPage,
     requestScrollToEnd,
@@ -120,19 +123,22 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     scrollRef,
   } = useConversationMessages();
   const visibleMessages = useMemo(() => {
-    // The settled transcript and live reply must be read in the same render.
-    // Mirroring the transcript through an effect leaves an empty frame between them.
-    const transcript = detailsSnapshot.details?.conversation.id === sessionId
-      ? mapChatDetails(detailsSnapshot.details).messages
-      : displayedMessages;
-    if (!liveRun || !streamSnapshot.messageId) return transcript;
-    const index = transcript.findIndex((message) => message.id === streamSnapshot.messageId
+    // Match the stable pre-migration rendering contract: one local list owns
+    // the whole request from optimistic input through final reconciliation.
+    // The official Session projection replaces that list only after the
+    // request settles; it must not take the transcript away mid-generation.
+    const stableMessages = displayedMessages.filter((message) => !message.pending
+      || String(message.content || "").length > 0
+      || (message.process || []).length > 0);
+    if (!restoredRun || !streamSnapshot.messageId) return stableMessages;
+    const index = stableMessages.findIndex((message) => message.id === streamSnapshot.messageId
       || (streamSnapshot.renderKey && message.renderKey === streamSnapshot.renderKey));
-    if (index >= 0 && transcript[index].status !== "streaming") return transcript;
-    if (index < 0) return [...transcript, {
+    if (index < 0) return [...stableMessages, {
       id: streamSnapshot.messageId,
       renderKey: streamSnapshot.renderKey,
       conversationId: sessionId,
+      runtimeSessionId: streamSnapshot.runId,
+      dshTurn: streamSnapshot.dshTurn,
       role: "assistant",
       content: streamSnapshot.content,
       variableStateJson: '{}',
@@ -141,14 +147,16 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       process: streamSnapshot.process,
       created_at: "",
     }];
-    return transcript.map((message, messageIndex) => messageIndex === index ? {
+    return stableMessages.map((message, messageIndex) => messageIndex === index ? {
       ...message,
+      runtimeSessionId: streamSnapshot.runId,
+      dshTurn: streamSnapshot.dshTurn,
       content: streamSnapshot.content,
       status: "streaming",
       pending: true,
       process: mergeProcessItems(message.process, streamSnapshot.process),
     } : message);
-  }, [detailsSnapshot.details, displayedMessages, liveRun, sessionId, streamSnapshot]);
+  }, [displayedMessages, restoredRun, sessionId, streamSnapshot]);
   const { isLoadingOlderMessages, loadOlderMessages } = useChatHistoryPaging({
     sessionId,
     historyPage,
@@ -229,11 +237,24 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
 
   useEffect(() => {
     const details = detailsSnapshot.details;
-    if (!conversations || !details || details.conversation.id !== sessionId) return;
+    if (!conversations || !details || details.conversation.id !== sessionId || isSending) return;
     const chat = mapChatDetails(details);
     reconcileChatMessages(chat);
     setChatCharacter(normalizeLatestChatCharacter(chat));
-  }, [conversations, detailsSnapshot.details, sessionId]);
+  }, [conversations, detailsSnapshot.details, isSending, sessionId]);
+
+  useEffect(() => {
+    if (!conversations || !isSending || streamSnapshot.id !== sessionId
+      || streamSnapshot.status !== "running") return;
+    updatePendingReply((current) => current ? {
+      ...current,
+      renderKey: streamSnapshot.renderKey || current.renderKey,
+      runtimeSessionId: streamSnapshot.runId || current.runtimeSessionId,
+      dshTurn: streamSnapshot.dshTurn ?? current.dshTurn,
+      content: streamSnapshot.content,
+      process: mergeProcessItems(current.process, streamSnapshot.process),
+    } : current);
+  }, [conversations, isSending, sessionId, streamSnapshot]);
 
   async function readSessions() {
     if (!conversations) throw new Error("DSH 聊天服务尚未就绪");
@@ -533,7 +554,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     }
     const activeRequest = requestRef.current;
     stopChatMessageSend({
-      requestRef, setIsSending, setStatus, notify,
+      requestRef, setIsSending, setStatus, settlePendingReply, notify,
       cancelRequest: (requestId) => conversations.cancelRequest(activeRequest?.conversationId || sessionId, requestId),
     });
   }
@@ -543,7 +564,8 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       event, input: inputOverride ?? input, inputImagesRef, inputFilesRef, isSending: chatBusy || filesUploading, modelConfig, modelSupportsImages, setStatus,
       requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
       setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
-      requestScrollToEnd, reconcileChatMessages, notify, restoreChatEntry, conversationModel: conversations,
+      setMessages, updatePendingReply, requestScrollToEnd, reconcileChatMessages, commitPendingError,
+      notify, restoreChatEntry, conversationModel: conversations,
     });
   }
 
@@ -626,12 +648,28 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     requestRef.current = activeRequest;
     setIsSending(true);
     setStatus("正在重新生成...");
+    let assistantId = "";
     try {
+      const createdAt = new Date().toISOString();
+      assistantId = `regen-${Date.now()}`;
       const payload = {
         target_message_id: targetMessageId,
         session_event_seq: branchUser.sessionEventSeq,
         replacement_message: hasReplacementMessage ? replacementMessage : null,
       };
+      setMessages((items) => {
+        const userIndex = findRegenerateBranchUserIndex(items, targetMessageId, hasReplacementMessage);
+        if (userIndex < 0) return items;
+        return items.slice(0, userIndex + 1).map((item, index) => (
+          index === userIndex && hasReplacementMessage
+            ? { ...item, content: replacementMessage, displayContent: replacementMessage }
+            : item
+        ));
+      });
+      updatePendingReply({
+        id: assistantId, conversationId: sessionId, role: "assistant", content: "",
+        variableStateJson: '{}', pending: true, created_at: createdAt,
+      });
       requestScrollToEnd("auto");
 
       const requestId = `regen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -659,17 +697,20 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
         setIsSending(false);
         setStatus(message);
         notify?.("error", message);
+        let reconciled = false;
         try {
           const durable = await getChat(sessionId, { model: conversations });
           if (requestRef.current === activeRequest) {
             replaceChatMessages(durable.chat);
             conversations?.invalidateDetails(sessionId);
             setChatCharacter(normalizeLatestChatCharacter(durable.chat || {}));
+            reconciled = true;
           }
         } catch {
           // Preserve the original regeneration failure when durable refresh also fails.
         }
         if (requestRef.current !== activeRequest) return;
+        if (!reconciled) commitPendingError(assistantId);
       }
     } finally {
       if (requestRef.current === activeRequest) {

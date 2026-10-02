@@ -21,7 +21,7 @@ function ensureHighlightStyles(document) {
 }
 .markdown-message::highlight(${HIGHLIGHT_NAMES.quote}),
 .markdown-message *::highlight(${HIGHLIGHT_NAMES.quote}) {
-  color: var(--chat-quote-color, #f2a65a);
+  color: var(--chat-quote-color, #4176e6);
 }`;
   document.head.append(style);
 }

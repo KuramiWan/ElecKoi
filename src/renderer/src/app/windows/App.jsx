@@ -7,13 +7,16 @@ import { PresetManagerWindow } from "./PresetManagerWindow.jsx";
 import { WebSearchProvider } from "../../modules/agentTools/index.js";
 import { AppearanceProvider } from "../../modules/appearance/index.js";
 import { DisplayPreferencesProvider } from "../../modules/settings/index.js";
+import { OfficialMarkdownProvider } from "../../ui/messages/OfficialMarkdown.jsx";
 
 export default function App(props = {}) {
-  return <AppearanceProvider model={props.appearance}>
+  return <OfficialMarkdownProvider component={props.markdownComponent}>
+    <AppearanceProvider model={props.appearance}>
     <DisplayPreferencesProvider model={props.displayPreferences}>
       <WebSearchProvider model={props.webSearch}><AppContent {...props} /></WebSearchProvider>
     </DisplayPreferencesProvider>
-  </AppearanceProvider>;
+    </AppearanceProvider>
+  </OfficialMarkdownProvider>;
 }
 
 function AppContent({ conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, settingsSections, navigation, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderCharacterEditorSection, renderCharacterManager, renderConversationList, renderPresetEditorSection, renderPresetManager, renderRoleplay } = {}) {

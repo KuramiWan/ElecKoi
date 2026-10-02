@@ -119,12 +119,12 @@ describe("chat display preferences", () => {
     expect(DEFAULT_CHAT_DISPLAY_PREFERENCES.text_colors).toEqual({
       italics: "#919191",
       underline: "#bce7cf",
-      quote: "#f2a65a",
+      quote: "#4176e6",
     });
     expect(chatTextColorCssVariables(DEFAULT_CHAT_DISPLAY_PREFERENCES.text_colors)).toEqual({
       "--chat-italics-color": "#919191",
       "--chat-underline-color": "#bce7cf",
-      "--chat-quote-color": "#f2a65a",
+      "--chat-quote-color": "#4176e6",
     });
   });
 });

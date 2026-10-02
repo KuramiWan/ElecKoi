@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -111,6 +111,21 @@ describe('saved old runtime state', () => {
     restore()
     expect(f.ctx.eleckoiProductData.restoreConversationRuntime).toHaveBeenLastCalledWith('chat', {
       variableStateJson: '{"score":2}', settingLibraryStateJson: '[]'
+    })
+  })
+
+  it('exposes the exact committed variable snapshot for each DSH reply turn', () => {
+    const f = runtime()
+    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1)()
+    writeFileSync(f.checkpoints, JSON.stringify({ version: 1, checkpoints: [
+      { beforeTurn: 1, state: { variableStateJson: '{"score":0}', settingLibraryStateJson: '[]' } },
+      { beforeTurn: 2, state: { variableStateJson: '{"score":1}', settingLibraryStateJson: '[]' } },
+      { beforeTurn: 3, state: { variableStateJson: '{"score":2}', settingLibraryStateJson: '[]' } }
+    ] }))
+
+    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toEqual({
+      1: '{"score":1}',
+      2: '{"score":2}'
     })
   })
 })

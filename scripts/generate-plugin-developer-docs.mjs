@@ -113,7 +113,7 @@ lines.push('', '## 完整性规则', '',
   '- 桌面清单中的每个 ElecKoi bundle 必须声明 `eleckoi.developerInterfaces`。',
   '- 接口 ID 在整个桌面组合内必须唯一。',
   '- manifest 变化后必须运行 `pnpm generate:plugin-docs` 更新本表。',
-  '- `pnpm check:plugin-docs` 与 `pnpm build` 会拒绝过期或不完整的总表。', '')
+  '- `pnpm check:plugin-docs` 与 `pnpm build` 会拒绝过期或不完整的总表。')
 
 const generated = `${lines.join('\n')}\n`
 if (checkOnly) {

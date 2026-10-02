@@ -146,6 +146,8 @@ export interface ConversationDetailsMetadata {
   messages: ConversationMessageMetadata[]
   hasMore: boolean
   beforeSequence: number | null
+  /** Committed post-turn variable snapshots keyed by the authoritative DSH turn. */
+  runtimeVariableStateByTurn?: Record<string, string>
 }
 
 /** DSH-owned message text submitted to the product display projection. */

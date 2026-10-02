@@ -32,7 +32,7 @@ const cssHexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 export const DEFAULT_CHAT_TEXT_COLORS = {
   italics: '#919191',
   underline: '#bce7cf',
-  quote: '#f2a65a'
+  quote: '#4176e6'
 } as const
 
 export const chatTextColorsSchema = z.object({

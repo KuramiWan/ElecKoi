@@ -9,12 +9,10 @@ const source = readFileSync(new URL('../packages/dsh-client-roleplay/src/client.
 const slotTypes = readFileSync(new URL('../packages/dsh-client-roleplay/src/slots.d.ts', import.meta.url), 'utf8')
 const manifest = JSON.parse(readFileSync(new URL('../packages/dsh-client-roleplay/package.json', import.meta.url), 'utf8'))
 const rowId = 'eleckoi-client-roleplay'
-const OfficialMarkdownText = 'OfficialMarkdownText'
 
 function clientRequire(React: unknown) {
   return (name: string) => {
     if (name === 'react') return React
-    if (name === '@deepseek-ai/dsh-client-ui-primitives') return { MarkdownText: OfficialMarkdownText }
     throw new Error(`Unexpected client module: ${name}`)
   }
 }
@@ -144,16 +142,11 @@ describe('ElecKoi roleplay client contribution', () => {
     })
     expect(sessionResult.props.dshInputZone).toEqual({ session: sessionSnapshot, input: inputSnapshot })
     const messageOwner = { productMessageId: 'm1', content: '流式正文', streaming: true }
-    const rendered = sessionResult.props.renderRoleplayMessage(messageOwner, 'unused fallback')
+    const content = { type: 'official-markdown', props: { text: '流式正文', streaming: true } }
+    const rendered = sessionResult.props.renderRoleplayMessage(messageOwner, content)
     expect(rendered.name).toBe('eleckoi.roleplay.message.content')
     expect(rendered.owner).toEqual(messageOwner)
-    expect(rendered.options.fallback.type.name).toBe('OfficialMarkdownMessage')
-    const officialWrapper = rendered.options.fallback.type(rendered.options.fallback.props)
-    expect(officialWrapper.type).toBe('div')
-    expect(officialWrapper.props.className).toBe('eleckoi-dsh-markdown')
-    expect(officialWrapper.child.type).toBe(OfficialMarkdownText)
-    expect(officialWrapper.child.props).toMatchObject({ text: '流式正文', streaming: true })
-    expect(officialWrapper.child.props.labels.code.copyLabel).toBe('复制')
+    expect(rendered.options.fallback).toBe(content)
   })
 
   it('refreshes an unknown Session and releases its reference when the chat closes', async () => {
@@ -417,7 +410,16 @@ describe('ElecKoi roleplay client contribution', () => {
     await Promise.resolve()
     const statsEntry = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')
       .find((entry: any) => entry.options.id === 'dsh:conversation.composer.dock:stats')
-    expect(statsEntry).toBeUndefined()
+    expect(statsEntry).toBeDefined()
+    const statsProjection = (key: string) => key === 'sessionStats'
+      ? { turns: 3, steps: 5, llmMs: 1 }
+      : key === 'eleckoiHistoryStatsAdjustment' ? { turns: 1, steps: 2 }
+        : `official:${key}`
+    const statsRender = statsEntry?.component({ useProjection: statsProjection })
+    expect(statsRender.type).toBe(extensionDock)
+    expect(statsRender.props.useProjection('sessionStats')).toEqual({ turns: 2, steps: 3, llmMs: 1 })
+    expect(statsRender.props.useProjection('tokenUsage')).toBe('official:tokenUsage')
+    expect(statsEntry?.component({ useProjection: statsProjection, generationStatsEnabled: false })).toBeNull()
     releaseStats()
     const seat = slots.entriesOfSlot('eleckoi.roleplay.trajectory')[0]
     expect(seat?.inject).toBe(inject)

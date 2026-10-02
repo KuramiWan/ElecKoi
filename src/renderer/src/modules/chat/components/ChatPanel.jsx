@@ -12,7 +12,7 @@ import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
 import { DshAgentPresetIcon, DshNewChatIcon, DshToBottomIcon } from "../../../ui/icons/dshComposerIcons.jsx";
 import { SlidersHorizontal } from "@phosphor-icons/react";
-import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   chatDisplayCssVariables,
   chatTextColorCssVariables,
@@ -22,7 +22,6 @@ import {
   resolveChatDisplayProfile,
 } from "../../appearance/index.js";
 import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.js";
-import { GenerationStatsLine } from "./GenerationStats.jsx";
 import { useChatTailReading } from "../hooks/useChatTailReading.js";
 import { useChatHistoryAnchor } from "../hooks/useChatHistoryAnchor.js";
 import { revealChatFile } from "../api/chatApi.js";
@@ -30,10 +29,6 @@ import { revealChatFile } from "../api/chatApi.js";
 const TrajectoryView = lazy(() => import("./TrajectoryDialog.jsx").then((module) => ({
   default: module.TrajectoryView,
 })));
-const emptyStats = Object.freeze({ id: '', stats: null });
-const readEmptyStats = () => emptyStats;
-const subscribeEmptyStats = () => () => {};
-
 export function ChatPanel({
   hasActiveChat,
   hasCharacters,
@@ -98,12 +93,6 @@ export function ChatPanel({
   const [toolsOpen, setToolsOpen] = useState(false);
   const [messageScrollElement, setMessageScrollElement] = useState(null);
   const [followingTail, setFollowingTail] = useState(true);
-  const statsSnapshot = useSyncExternalStore(
-    conversationModel?.subscribeStats || subscribeEmptyStats,
-    conversationModel?.getStatsSnapshot || readEmptyStats,
-    readEmptyStats,
-  );
-  const generationStats = statsSnapshot.id === conversationId ? statsSnapshot.stats : null;
   const loadImage = useCallback((id, image) => {
     if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
     return conversationModel.readImage(id, image);
@@ -332,10 +321,9 @@ export function ChatPanel({
     onSelect={onSelectModel}
     onNotify={onNotify}
   />;
-  const roleplayDock = <>
-    {chatDisplay?.generation_stats_enabled !== false ? <GenerationStatsLine stats={generationStats} /> : null}
-    {renderRoleplaySlot?.("eleckoi.roleplay.conversation.composer.dock", {})}
-  </>;
+  const roleplayDock = chatDisplay?.generation_stats_enabled === false
+    ? renderRoleplaySlot?.("eleckoi.roleplay.conversation.composer.dock", { generationStatsEnabled: false })
+    : undefined;
   const residentComposer = renderRoleplaySlot?.(
     "eleckoi.roleplay.conversation.composer.bar",
     {
@@ -735,6 +723,9 @@ const MessageRow = memo(function MessageRow({
       messageId: item.dshMessageId || null, role: item.role,
     }) : null;
   const renderMessageContent = pluginScopeActive ? renderRoleplayMessage : undefined;
+  // Rewind/edit/delete target the durable Session event. Historical rows can
+  // legitimately have no projected turn until a closing tail is rebound.
+  const canMutate = item.id === "opening" || Number.isSafeInteger(item.sessionEventSeq);
   const bubble = <MessageBubble
     message={item}
     avatar={item.role === "user" ? userAvatar : assistantAvatar}
@@ -748,9 +739,9 @@ const MessageRow = memo(function MessageRow({
     showRoleplayFloor={showRoleplayFloor}
     onOpenProcess={onOpenProcess}
     onPinAvatar={onPinAvatar}
-    onEdit={deleteMode ? undefined : item.id === "opening" ? onEditOpening : onEditMessage}
+    onEdit={deleteMode || !canMutate ? undefined : item.id === "opening" ? onEditOpening : onEditMessage}
     onSelectOpening={onSelectOpening}
-    onRegenerate={deleteMode ? undefined : onRegenerate}
+    onRegenerate={deleteMode || !canMutate ? undefined : onRegenerate}
     pluginActions={pluginActions}
     pluginAfter={pluginAfter}
     renderMessageContent={renderMessageContent}
@@ -772,7 +763,7 @@ const MessageRow = memo(function MessageRow({
             className="message-delete-checkbox"
             type="checkbox"
             checked={selectedForDelete}
-            disabled={item.id === "opening"}
+            disabled={item.id === "opening" || !canMutate}
             aria-label={`从这条消息开始删除${selectedForDelete ? "，已选中" : ""}`}
             onChange={() => onSelectDeleteFrom(item.id)}
           />

@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { OfficialMarkdown } from "../../../ui/messages/OfficialMarkdown.jsx";
 import { ArrowsInSimple, ArrowsOutSimple, Eye, PencilSimple } from "@phosphor-icons/react";
 
 export function MarkdownTextareaField({ label, value, placeholder, onChange, preview = true, labelAction = null }) {
@@ -53,7 +52,7 @@ export function MarkdownTextareaField({ label, value, placeholder, onChange, pre
       <div className="immersive-markdown-body">
         {mode === "preview" && preview ? (
           <article className="immersive-markdown-preview">
-            {value.trim() ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown> : <p className="is-empty">暂无内容</p>}
+            {value.trim() ? <OfficialMarkdown content={value} /> : <p className="is-empty">暂无内容</p>}
           </article>
         ) : (
           <textarea

@@ -39,6 +39,17 @@ function forbidImports(path, patterns, description) {
   }
 }
 
+for (const path of ['src', 'packages']) {
+  forbidImports(path, [/['"]react-markdown(?:\/[^'"]*)?['"]/, /\bReactMarkdown\b/],
+    '禁止恢复 ReactMarkdown；文字渲染必须使用 Client 装配的官方组件。')
+}
+const rendererDependencies = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+for (const key of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+  if (Object.hasOwn(rendererDependencies[key] ?? {}, 'react-markdown')) {
+    failures.push('package.json 禁止恢复 react-markdown 依赖。')
+  }
+}
+
 assertClosedSet(
   'src/main',
   new Set(['host', 'i18n', 'modules', 'platform']),

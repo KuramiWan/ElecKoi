@@ -2,7 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChatImageGallery, agentMessageImageSize } from "../src/renderer/src/modules/chat/components/ChatImageGallery.jsx";
-import { MessageBubble } from "../src/renderer/src/ui/messages/MessageBubble.jsx";
+import { MessageBubble } from "./helpers/officialMarkdown.jsx";
 
 globalThis.React = React;
 

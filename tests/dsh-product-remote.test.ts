@@ -525,6 +525,7 @@ describe('ElecKoi DSH Remote contract', () => {
               return conversationId
             },
             prepareRegeneration: async () => ({ selection: { provider: 'test', model: 'test' }, rollback() {} }),
+            variableStatesByTurn: () => ({ 1: '{"score":1}' }),
             prepareRestoreBeforeTurn: (conversationId: string, sessionId: string, fromTurn: number) => {
               preparedRestores.push({ conversationId, sessionId, fromTurn })
               return () => { restoredTurns.push(fromTurn) }
@@ -759,6 +760,42 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(regeneratedMessages.at(-1)).toMatchObject({
         role: 'user', source: { kind: 'user', rpcId: 'request-before-turn-start' },
         content: [{ type: 'text', text: '第二问' }]
+      })
+
+      sessionEvents = [
+        { type: 'turn/start', seq: 1, data: { turn: 1 } },
+        {
+          type: 'user/message', seq: 2, surfaceOp: 'append',
+          data: { id: 'user-message-1', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '第一问' }] }
+        },
+        {
+          type: 'assistant/message', seq: 3, surfaceOp: 'append',
+          data: { turn: 1, message: { id: 'assistant-message-1', role: 'assistant', source: { kind: 'model' }, content: [{ type: 'text', text: '第一答' }] } }
+        },
+        { type: 'turn/end', seq: 4, data: { turn: 1, reason: { kind: 'completed' } } },
+        {
+          type: 'user/message', seq: 5, surfaceOp: 'append',
+          data: { id: 'queued-user-message', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '尚未开始的第二问' }] }
+        }
+      ]
+      await ctx.typertGateway.invoke({
+        namespace: 'eleckoiConversations',
+        method: 'regenerateMessage',
+        args: {
+          conversationId: createdConversation.conversation.id,
+          eventSeq: 5,
+          requestId: 'request-queued-before-next-turn'
+        }
+      })
+      await ctx.typertGateway.invoke({
+        namespace: 'eleckoiConversations',
+        method: 'startRegeneration',
+        args: { conversationId: createdConversation.conversation.id, requestId: 'request-queued-before-next-turn', cancelled: false }
+      })
+      expect(rewoundTurns.at(-1)).toEqual({ sessionId: createdConversation.runtimeSessionId, fromTurn: 2 })
+      expect(regeneratedMessages.at(-1)).toMatchObject({
+        role: 'user', source: { kind: 'user', rpcId: 'request-queued-before-next-turn' },
+        content: [{ type: 'text', text: '尚未开始的第二问' }]
       })
 
       await ctx.typertGateway.invoke({

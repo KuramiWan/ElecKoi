@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, protocol, screen, session, shell, type BrowserWindowConstructorOptions } from 'electron'
+import { windowsAppUserModelId } from './windowsAppIdentity'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import { assertTrustedDshClientFrame, isAllowedExternalUrl, isAppRendererUrl, isDshAppUrl, isDshChildUrl } from './validateSender'
 import { ElectronWindowHost } from './ElectronWindowHost'
@@ -233,12 +234,14 @@ function configureWindowsAppDetails(appPaths: Context['appPaths'], window: Brows
   if (process.platform !== 'win32') return
 
   const executable = `"${process.execPath}"`
+  const windowIconPath = appPaths.resolveResource('icons', 'eleckoi-app-icon.png')
   const relaunchCommand = process.defaultApp
     ? `${executable} "${app.getAppPath()}"`
     : executable
 
+  window.setIcon(windowIconPath)
   window.setAppDetails({
-    appId: 'com.eleckoi.desktop',
+    appId: windowsAppUserModelId,
     appIconPath: process.defaultApp
       ? appPaths.resolveResource('icons', 'eleckoi-app-icon.ico')
       : process.execPath,

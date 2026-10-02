@@ -3,6 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     const {
+      MarkdownText,
       PluginArtworkDefault,
       SegmentedTabs,
       StateDot,
@@ -344,6 +345,7 @@ window.__ModuleLoader__.load({
           id: 'eleckoi-root',
           style: { position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'auto' }
         }, ProductApp ? React.createElement(ProductApp, {
+          markdownComponent: MarkdownText,
           conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, displayPreferences, appearance, settingsSections,
           navigation: {
             items: navigationItems,
