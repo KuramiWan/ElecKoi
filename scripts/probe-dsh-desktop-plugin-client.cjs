@@ -19,6 +19,8 @@ async function main() {
   host = new DshDesktopPluginHost({
     runtimeDataRoot: root,
     workspaceRoot: join(root, 'workspace'),
+    productDatabasePath: join(root, 'product.sqlite'),
+    productMediaRoot: join(root, 'media'),
     presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
     agentPatchPath: resolve('resources/dsh/desktop-agent.patch.yml'),
     executablePath: process.execPath,

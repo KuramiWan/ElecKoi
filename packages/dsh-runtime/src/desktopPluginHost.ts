@@ -32,8 +32,8 @@ export interface DshDesktopPluginHostReady {
 export interface DshDesktopPluginHostOptions {
   runtimeDataRoot: string
   workspaceRoot: string
-  productDatabasePath?: string
-  productMediaRoot?: string
+  productDatabasePath: string
+  productMediaRoot: string
   presetTemplatePath: string
   agentPatchPath: string
   executablePath: string
@@ -65,7 +65,14 @@ export class DshDesktopPluginHost {
   private stopping = false
   private readonly controls = new Map<string, PendingControl>()
 
-  constructor(private readonly options: DshDesktopPluginHostOptions) {}
+  constructor(private readonly options: DshDesktopPluginHostOptions) {
+    if (typeof options.productDatabasePath !== 'string' || options.productDatabasePath.trim().length === 0) {
+      throw new Error('DSH 插件宿主必须提供产品数据库路径。')
+    }
+    if (typeof options.productMediaRoot !== 'string' || options.productMediaRoot.trim().length === 0) {
+      throw new Error('DSH 插件宿主必须提供产品媒体目录。')
+    }
+  }
 
   start(): Promise<DshDesktopPluginHostReady> {
     if (this.readyTask !== undefined) return this.readyTask
@@ -115,8 +122,8 @@ export class DshDesktopPluginHost {
         ELECKOI_PRESET_ROOT: join(this.options.runtimeDataRoot, 'generated-presets'),
         ELECKOI_PRESET_TEMPLATE_PATH: this.options.presetTemplatePath,
         ELECKOI_SESSION_BRIDGE_ROOT: join(this.options.runtimeDataRoot, 'session-bridges'),
-        ELECKOI_DATABASE_PATH: this.options.productDatabasePath ?? '',
-        ELECKOI_MEDIA_ROOT: this.options.productMediaRoot ?? '',
+        ELECKOI_DATABASE_PATH: this.options.productDatabasePath,
+        ELECKOI_MEDIA_ROOT: this.options.productMediaRoot,
         ELECKOI_WORKSPACE_ROOT: this.options.workspaceRoot,
         DSH_TELEMETRY_DISABLED: '1',
         ELECTRON_RUN_AS_NODE: '1'

@@ -14,6 +14,7 @@ const manifest = readJson('resources/dsh/runtime-manifest.json')
 const builderConfig = readFileSync(resolve(root, 'electron-builder.yml'), 'utf8')
 const config = readFileSync(resolve(root, 'resources/dsh', manifest.composition), 'utf8')
 const presetConfig = readFileSync(resolve(root, 'resources/dsh', manifest.presetComposition), 'utf8')
+const packagedRuntimeProbe = readFileSync(resolve(root, 'scripts/verify-packaged-dsh-runtime.mjs'), 'utf8')
 const sdkServerSource = readFileSync(require.resolve('@deepseek-ai/dsh-sdk-jsonrpc-server'), 'utf8')
 
 for (const bundle of OPTIONAL_BUNDLES) {
@@ -85,6 +86,16 @@ if (!builderConfig.includes("- '!node_modules/pnpm/**/*'")) {
 }
 if (!/^\s*- from: node_modules\/pnpm\s*$[\s\S]*?^\s*to: dsh\/pnpm\s*$/m.test(builderConfig)) {
   throw new Error('electron-builder 必须把唯一的 pnpm Runtime 发布到 resources/dsh/pnpm。')
+}
+for (const [option, leaf] of [
+  ['productDatabasePath', 'product.sqlite'],
+  ['productMediaRoot', 'media']
+]) {
+  const escapedLeaf = leaf.replace('.', '\\.')
+  const pattern = new RegExp(`${option}\\s*:\\s*join\\(pluginRoot,\\s*['\"]${escapedLeaf}['\"]\\)`)
+  if (!pattern.test(packagedRuntimeProbe)) {
+    throw new Error(`打包态 DSH Host 探针必须提供 ${option}，避免安装包生成后才发现产品数据路径缺失。`)
+  }
 }
 
 const configuredPlugins = [...new Set(

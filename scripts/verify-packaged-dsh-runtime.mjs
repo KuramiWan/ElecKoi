@@ -115,6 +115,8 @@ const probe = `
     const pluginHost = new DshDesktopPluginHost({
       runtimeDataRoot: pluginRoot,
       workspaceRoot: join(pluginRoot, 'workspace'),
+      productDatabasePath: join(pluginRoot, 'product.sqlite'),
+      productMediaRoot: join(pluginRoot, 'media'),
       presetTemplatePath: join(appAsar, 'resources', 'dsh', 'agent-preset-template', 'agent.cordis.yml'),
       agentPatchPath: join(appAsar, 'resources', 'dsh', 'desktop-agent.patch.yml'),
       executablePath: process.execPath,
