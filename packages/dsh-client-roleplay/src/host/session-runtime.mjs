@@ -29,7 +29,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   const disposeHistoryStats = ctx.sessionProjections.register(historyStatsProjection)
   const disposeTurnOutcomes = ctx.sessionProjections.register(turnOutcomesProjection)
 
-  const prepareCurrentPreset = async (conversationId, text) => {
+  const prepareCurrentPreset = async (conversationId, text, creating = false) => {
     const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, text)
     const previous = readOptionalSnapshot(snapshotRoot, runtime.runtimeSessionId)
     const model = ctx.agentDefaultModel.currentSelection()
@@ -45,7 +45,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       subagentModel,
       mainModel
     )
-    await presetRegistrar.prepareForSession(runtime.runtimeSessionId, requestedPreset.id)
+    if (!creating) await presetRegistrar.prepareForSession(runtime.runtimeSessionId, requestedPreset.id)
     return { runtime, previous, mainModel, subagentModel, effectiveToolPolicy, requestedPreset }
   }
 
@@ -57,7 +57,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       subagentModel,
       effectiveToolPolicy,
       requestedPreset
-    } = await prepareCurrentPreset(conversationId, text)
+    } = await prepareCurrentPreset(conversationId, text, creating)
     const mountedPresetId = previous?.mountedPresetId ?? requestedPreset.id
     const mountedPresetRevision = previous?.mountedPresetRevision ?? requestedPreset.revision
     const presetChanged = mountedPresetId !== requestedPreset.id
