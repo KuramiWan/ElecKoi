@@ -1,6 +1,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { normalizeLineEndings } from './lib/normalize-line-endings.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const outputPath = join(root, 'docs', 'plugins', 'api-reference.md')
@@ -123,7 +124,7 @@ if (checkOnly) {
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error
   }
-  if (current !== generated) {
+  if (normalizeLineEndings(current) !== normalizeLineEndings(generated)) {
     throw new Error('插件开发接口文档已过期，请运行 pnpm generate:plugin-docs')
   }
   console.log(`Plugin developer API documentation is current: ${bundles.length} bundles, ${rows.length} interfaces.`)
