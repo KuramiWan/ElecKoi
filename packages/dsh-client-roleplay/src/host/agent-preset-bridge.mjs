@@ -9,9 +9,10 @@ import { readRuntimePresetDefinition } from './preset-definition.mjs'
 import { commitSessionPreset, inheritSessionSnapshot, readSessionSnapshot, removeSessionSnapshot } from './session-snapshot.mjs'
 import { applyDisabledPolicy } from './tool-policy.mjs'
 import { ACTIVE_RUNTIME_PRESET_ID, installRoleplaySessionRuntime } from './session-runtime.mjs'
+import { refreshSessionModelSnapshot } from './model-selection-migration.mjs'
 
 export const name = 'eleckoi-agent-preset-bridge'
-export const inject = ['agents', 'agentPresets', 'sessionController']
+export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'llm', 'settings', 'sessionController']
 
 export async function apply(ctx) {
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
@@ -165,7 +166,7 @@ export async function apply(ctx) {
   const disposeRuntime = installRoleplaySessionRuntime(ctx, presetRegistrar)
   const originalCreate = ctx.agents.create
   const originalResume = ctx.agents.resume
-  const wrappedCreate = function (options) {
+  const wrappedCreate = async function (options) {
     const child = options.parentAgent !== undefined || options.meta?.origin === 'subagent'
     const sourceSessionId = child
       ? options.parentAgent?.session?.id ?? options.meta?.parentSession
@@ -175,7 +176,7 @@ export async function apply(ctx) {
     if (!targetSessionId) throw new Error('ElecKoi subagent is missing its child Session id')
     const snapshot = child
       ? inheritSessionSnapshot(snapshotRoot, sourceSessionId, targetSessionId)
-      : readSessionSnapshot(snapshotRoot, sourceSessionId)
+      : await refreshSessionModelSnapshot(ctx, snapshotRoot, sourceSessionId)
     const nextOptions = composeSessionOptions(ctx, options, snapshotRoot, targetSessionId, snapshot, child, false)
     return withSessionLock(targetSessionId, () => rollbackInheritedSnapshot(
       async () => {
@@ -188,13 +189,15 @@ export async function apply(ctx) {
       child ? targetSessionId : undefined
     ))
   }
-  const wrappedResume = function (options) {
+  const wrappedResume = async function (options) {
     const child = options.parentAgent !== undefined
     const sourceSessionId = child ? options.parentAgent?.session?.id : options.resumeSessionId
     if (!sourceSessionId) return originalResume.call(ctx.agents, options)
     let snapshot
     try {
-      snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
+      snapshot = child
+        ? readSessionSnapshot(snapshotRoot, sourceSessionId)
+        : await refreshSessionModelSnapshot(ctx, snapshotRoot, sourceSessionId)
     } catch (error) {
       if (error?.code === 'ENOENT') return originalResume.call(ctx.agents, options)
       throw error

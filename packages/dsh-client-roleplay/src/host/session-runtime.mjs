@@ -7,6 +7,9 @@ import { historicalRuntimeState } from './historical-runtime-state.mjs'
 import { historyStatsProjection } from './history-stats-projection.mjs'
 import { durableProductPluginSpecifier } from './preset-definition.mjs'
 import { turnOutcomesProjection } from './turn-outcomes-projection.mjs'
+import { currentRequestSnapshot, requestSnapshot } from './model-selection-migration.mjs'
+
+export { requestSnapshot } from './model-selection-migration.mjs'
 
 export const ACTIVE_RUNTIME_PRESET_ID = 'eleckoi-active'
 
@@ -32,9 +35,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   const prepareCurrentPreset = async (conversationId, text, creating = false) => {
     const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, text)
     const previous = readOptionalSnapshot(snapshotRoot, runtime.runtimeSessionId)
-    const model = ctx.agentDefaultModel.currentSelection()
-    const modelInfo = await ctx.llm.resolveModelInfo(model.provider, model.model)
-    const mainModel = requestSnapshot(ctx, model, modelInfo)
+    const mainModel = await currentRequestSnapshot(ctx)
     const subagentModel = await resolveSubagentModel(ctx, runtime.subagentModelSelection, mainModel)
     const effectiveToolPolicy = { disabledGroupIds: [...(runtime.disabledToolGroupIds ?? [])] }
     const requestedPreset = materializeAgentPreset(
@@ -309,23 +310,6 @@ async function resolveSubagentModel(ctx, configured, fallback) {
   if (!provider || !model) return fallback
   const info = await ctx.llm.resolveModelInfo(provider, model)
   return requestSnapshot(ctx, { provider, model }, info)
-}
-
-export function requestSnapshot(ctx, selection, info) {
-  const namespace = ctx.settings?.describe().find(row => row.ns === 'eleckoi-client-models')
-  const parameters = namespace?.value?.entries?.[selection.provider]?.parameters?.[selection.model] || {}
-  const reasoningEffort = parameters.reasoningEffort ?? selection.reasoningEffort
-  return {
-    configId: selection.provider,
-    provider: selection.provider,
-    model: selection.model,
-    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-    ...(parameters.temperature === undefined ? {} : { temperature: parameters.temperature }),
-    ...(parameters.topP === undefined ? {} : { topP: parameters.topP }),
-    ...(parameters.autoCompactTokenLimit === undefined ? {} : { autoCompactTokenLimit: parameters.autoCompactTokenLimit }),
-    ...(info?.defaultMaxTokens === undefined ? {} : { maxTokens: info.defaultMaxTokens }),
-    ...(info?.contextWindow === undefined ? {} : { contextWindow: info.contextWindow })
-  }
 }
 
 export function materializeAgentPreset(root, templatePath, preset, toolPolicy, subagentModel, mainModel) {

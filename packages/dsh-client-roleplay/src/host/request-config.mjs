@@ -4,29 +4,32 @@ import { isProjectionEnvelope } from './conversation-context.mjs'
 const COMPACTION_GUARD = '你当前只执行内部历史压缩。只返回非空的纯文本摘要正文；不要调用工具，不要输出推理过程，也不要使用主对话的输出协议标签。'
 
 /**
- * Installs a request configuration on one Agent scope. A complete immutable
- * value is captured at prompt assembly, then applied through DSH's official
- * agent/request waterfall for that exact model step.
+ * Installs a request configuration on one Agent scope. The top-level turn
+ * preparation freezes the global selection into the product snapshot; every
+ * model step then reads that frozen value through DSH's official
+ * agent/request waterfall. Persisted DSH request headers are history, not the
+ * authority for a new turn.
  */
 export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, child = false) {
-  let assembled
   const reroutedCompactions = new WeakSet()
   const disposeAssembly = agentCtx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
-    assembled = structuredClone(child ? snapshot.subagentModel : snapshot.model)
+    const model = child ? snapshot.subagentModel : snapshot.model
     const result = await next()
-    return assembled === undefined ? result : {
+    return model === undefined ? result : {
       ...result,
       variables: {
         ...result.variables,
-        provider: assembled.provider,
-        model: assembled.model
+        provider: model.provider,
+        model: model.model
       }
     }
   })
   const disposeRequest = agentCtx.on('agent/request', async (_payload, next) => {
     const inherited = await next()
-    if (!assembled) return inherited
+    const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
+    const model = structuredClone(child ? snapshot.subagentModel : snapshot.model)
+    if (!model?.provider || !model?.model) return inherited
     const {
       provider: _provider,
       model: _model,
@@ -38,12 +41,12 @@ export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, ch
     } = inherited
     return {
       ...rest,
-      provider: assembled.provider,
-      model: assembled.model,
-      ...(assembled.reasoningEffort === undefined ? {} : { reasoningEffort: assembled.reasoningEffort }),
-      ...(assembled.temperature === undefined ? {} : { temperature: assembled.temperature }),
-      ...(assembled.topP === undefined ? {} : { topP: assembled.topP }),
-      ...(assembled.maxTokens === undefined ? {} : { maxTokens: assembled.maxTokens })
+      provider: model.provider,
+      model: model.model,
+      ...(model.reasoningEffort === undefined ? {} : { reasoningEffort: model.reasoningEffort }),
+      ...(model.temperature === undefined ? {} : { temperature: model.temperature }),
+      ...(model.topP === undefined ? {} : { topP: model.topP }),
+      ...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens })
     }
   })
   const disposeCompaction = agentCtx.on('llm/stream', (options, next) => {

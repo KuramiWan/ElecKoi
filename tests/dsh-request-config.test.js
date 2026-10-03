@@ -5,6 +5,44 @@ import { describe, expect, it, vi } from 'vitest';
 import { installRequestConfig, projectCompactionRequest } from '../resources/dsh/request-config.mjs';
 
 describe('DSH request configuration', () => {
+  it('overrides a persisted legacy route with the model frozen for the current turn', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-request-route-'));
+    try {
+      const path = join(root, 'session-a.json');
+      writeFileSync(path, JSON.stringify({
+        model: { provider: 'legacy-provider-label', model: 'synthetic-model' },
+      }));
+      const listeners = new Map();
+      const agentCtx = {
+        on(name, listener) {
+          listeners.set(name, listener);
+          return () => undefined;
+        },
+        llm: { stream: vi.fn() },
+      };
+      installRequestConfig(agentCtx, root, 'session-a');
+      await listeners.get('system-prompt/assemble')({}, {}, async () => ({ variables: {} }));
+
+      writeFileSync(path, JSON.stringify({
+        model: {
+          provider: 'current-provider-route', model: 'synthetic-model',
+          reasoningEffort: 'high', temperature: 0.4, topP: 0.9, maxTokens: 8_000,
+        },
+      }));
+      const resolved = await listeners.get('agent/request')({}, async () => ({
+        provider: 'legacy-provider-label', model: 'synthetic-model', reasoningEffort: 'low',
+        temperature: 0.1, topP: 0.2, maxTokens: 1_000, purpose: 'agent',
+      }));
+
+      expect(resolved).toEqual({
+        provider: 'current-provider-route', model: 'synthetic-model', reasoningEffort: 'high',
+        temperature: 0.4, topP: 0.9, maxTokens: 8_000, purpose: 'agent',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('replaces only the final compaction instruction with the active preset template', () => {
     const first = { id: 'earlier', role: 'user', content: [{ type: 'text', text: '较早对话' }] };
     const upstream = { id: 'upstream', role: 'user', content: [{ type: 'text', text: 'DSH 默认英文压缩模板' }] };
