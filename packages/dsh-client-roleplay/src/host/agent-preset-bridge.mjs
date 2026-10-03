@@ -1,22 +1,27 @@
 /** Composes each ElecKoi Agent from its immutable Session snapshot. */
 
 import { installConversationContext } from './conversation-context.mjs'
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { installRequestConfig } from './request-config.mjs'
+import { readRuntimePresetDefinition } from './preset-definition.mjs'
 import { commitSessionPreset, inheritSessionSnapshot, readSessionSnapshot, removeSessionSnapshot } from './session-snapshot.mjs'
 import { applyDisabledPolicy } from './tool-policy.mjs'
-import { installRoleplaySessionRuntime } from './session-runtime.mjs'
+import { ACTIVE_RUNTIME_PRESET_ID, installRoleplaySessionRuntime } from './session-runtime.mjs'
 
 export const name = 'eleckoi-agent-preset-bridge'
-export const inject = ['agents', 'agentPresets']
+export const inject = ['agents', 'agentPresets', 'sessionController']
 
 export async function apply(ctx) {
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
   const presetRoot = process.env.ELECKOI_PRESET_ROOT
+  const templatePath = process.env.ELECKOI_PRESET_TEMPLATE_PATH
   if (!snapshotRoot) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
   if (!presetRoot) throw new Error('ELECKOI_PRESET_ROOT is required')
-  const registrations = new Map()
+  let activeRegistration
+  let registrationQueue = Promise.resolve()
+  const legacyRegistrations = new Map()
   const sessionHandles = new Map()
   const sessionLocks = new Map()
   const withSessionLock = async (sessionId, action) => {
@@ -57,40 +62,76 @@ export async function apply(ctx) {
     sessionHandles.set(handle.agent.id, handle)
     return handle
   }
-  const registerPreset = (id) => {
-    if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(id)) {
-      throw new Error('ElecKoi Agent preset id is invalid')
-    }
-    const existing = registrations.get(id)
-    if (existing) return existing
-    const registration = Promise.resolve().then(() => {
-      const definition = JSON.parse(readFileSync(join(presetRoot, id, 'preset.json'), 'utf8'))
-      if (definition?.id !== id || !Array.isArray(definition.plugins)) {
-        throw new Error(`ElecKoi Agent preset ${id} has an invalid composition`)
+  const registerActivePreset = () => {
+    const id = ACTIVE_RUNTIME_PRESET_ID
+    const path = join(presetRoot, id, 'preset.json')
+    const revision = presetRevision(path)
+    const operation = registrationQueue.then(async () => {
+      if (activeRegistration?.revision === revision) return activeRegistration
+      const definition = readRuntimePresetDefinition(path, id, templatePath)
+      if (activeRegistration) {
+        const previous = activeRegistration
+        activeRegistration = undefined
+        await previous.dispose()
       }
-      return ctx.agentPresets.register(definition)
+      const dispose = await ctx.agentPresets.register(definition)
+      activeRegistration = { revision, dispose }
+      return activeRegistration
+    })
+    registrationQueue = operation.catch(() => undefined)
+    return operation
+  }
+
+  const registerLegacyPreset = (id) => {
+    const existing = legacyRegistrations.get(id)
+    if (existing) return existing
+    const operation = Promise.resolve().then(async () => {
+      const legacyPath = join(presetRoot, id, 'preset.json')
+      const definition = existsSync(legacyPath)
+        ? readRuntimePresetDefinition(legacyPath, id, templatePath)
+        : legacyAliasDefinition(presetRoot, id, templatePath)
+      const dispose = await ctx.agentPresets.register(definition)
+      return { dispose }
     }).catch((error) => {
-      registrations.delete(id)
+      legacyRegistrations.delete(id)
       throw error
     })
-    registrations.set(id, registration)
-    return registration
+    legacyRegistrations.set(id, operation)
+    return operation
   }
-  // SessionController resolves the durable preset before calling agents.resume.
-  // The generated declaration catalogue owns registrations; snapshots may outlive
-  // a deleted declaration and must not become Host startup dependencies.
+
+  const registerPreset = (id) => id === ACTIVE_RUNTIME_PRESET_ID
+    ? registerActivePreset()
+    : registerLegacyPreset(id)
+
+  // TODO(remove legacy preset migration after the supported upgrade window):
+  // remove legacyRegistrations, legacyAliasDefinition, and their migration tests
+  // together once every supported release has durably selected eleckoi-active.
+  // Until then old declarations must remain registered long enough for an old
+  // Session log to resume once and persist the single current preset selection.
   if (existsSync(presetRoot)) {
     const ids = readdirSync(presetRoot, { withFileTypes: true })
       .filter(entry => entry.isDirectory() && existsSync(join(presetRoot, entry.name, 'preset.json')))
       .map(entry => entry.name)
-    try {
-      await Promise.all(ids.map(registerPreset))
-    } catch (error) {
-      await Promise.allSettled([...registrations.values()].map(async task => (await task)()))
-      throw error
-    }
+      .sort()
+    await Promise.all(ids.map(registerPreset))
   }
   const presetRegistrar = {
+    async prepareForSession(sessionId, requestedPresetId) {
+      await registerPreset(requestedPresetId)
+      const inspection = await ctx.sessionController.inspect(sessionId)
+      const storedPresetId = storedPresetForInspection(inspection)
+      if (storedPresetId) await registerPreset(storedPresetId)
+      let snapshot
+      try {
+        snapshot = readSessionSnapshot(snapshotRoot, sessionId)
+      } catch (error) {
+        if (error?.code === 'ENOENT') return storedPresetId ?? requestedPresetId
+        throw error
+      }
+      await registerPreset(snapshot.mountedPresetId)
+      return storedPresetId ?? snapshot.mountedPresetId
+    },
     async registerForSession(sessionId) {
       const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
       await registerPreset(snapshot.mountedPresetId)
@@ -100,19 +141,21 @@ export async function apply(ctx) {
       return withSessionLock(sessionId, async () => {
         const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
         const requested = snapshot.pendingPresetId
-        if (!requested || requested === snapshot.mountedPresetId) return snapshot.mountedPresetId
+        const requestedRevision = snapshot.pendingPresetRevision
+        if (!requested || !requestedRevision) return snapshot.mountedPresetId
+        if (requested === snapshot.mountedPresetId
+          && requestedRevision === snapshot.mountedPresetRevision) return snapshot.mountedPresetId
         const agent = ctx.agents.get(sessionId)
         if (!agent) throw new Error(`DSH 会话 ${sessionId} 尚未激活，不能切换预设。`)
         if (agent.status !== 'idle') throw new Error(`DSH 会话 ${sessionId} 正在生成，不能切换预设。`)
-        await registerPreset(requested)
+        const current = await registerPreset(requested)
         try {
           await ctx.agentPresets.recompose(agent.ctx, requested)
           agent.session.append('agent-preset/selected', { agentPreset: requested })
         } catch (error) {
-          await ctx.agentPresets.recompose(agent.ctx, snapshot.mountedPresetId).catch(() => undefined)
           throw error
         }
-        commitSessionPreset(snapshotRoot, sessionId, requested)
+        commitSessionPreset(snapshotRoot, sessionId, requested, current.revision)
         applyDisabledPolicy(agent.ctx, snapshot.disabledToolGroupIds)
         return requested
       })
@@ -180,11 +223,35 @@ export async function apply(ctx) {
     disposeRuntime()
     if (ctx.agents.create === wrappedCreate) ctx.agents.create = originalCreate
     if (ctx.agents.resume === wrappedResume) ctx.agents.resume = originalResume
-    await Promise.allSettled([...registrations.values()].map(async (task) => {
-      const dispose = await task
-      await dispose()
+    await registrationQueue
+    await activeRegistration?.dispose()
+    await Promise.allSettled([...legacyRegistrations.values()].map(async task => {
+      const legacy = await task
+      await legacy.dispose()
     }))
   }
+}
+
+function presetRevision(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex')
+}
+
+function legacyAliasDefinition(presetRoot, id, templatePath) {
+  const activePath = join(presetRoot, ACTIVE_RUNTIME_PRESET_ID, 'preset.json')
+  const active = readRuntimePresetDefinition(activePath, ACTIVE_RUNTIME_PRESET_ID, templatePath)
+  return { ...active, id }
+}
+
+function storedPresetForInspection(inspection) {
+  let selected = typeof inspection?.meta?.agentPreset === 'string'
+    ? inspection.meta.agentPreset
+    : undefined
+  for (const event of inspection?.events ?? []) {
+    if (event?.type === 'agent-preset/selected' && typeof event.data?.agentPreset === 'string') {
+      selected = event.data.agentPreset
+    }
+  }
+  return selected
 }
 
 async function rollbackInheritedSnapshot(start, snapshotRoot, childSessionId) {

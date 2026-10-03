@@ -37,9 +37,8 @@ export function useActiveChatModel({ conversations, conversationId, modelConfigs
     const previous = modelSelection;
     const next = normalizeModelSelection(nextSelection);
     setModelSelection(next);
-    if (!conversationId) return;
     try {
-      const selected = await conversations.selectModel(conversationId, {
+      const selected = await conversations.selectModel("", {
         provider: next.configId,
         model: next.model,
       });
@@ -59,26 +58,33 @@ export function useActiveChatModel({ conversations, conversationId, modelConfigs
       && config.credentialConfigured !== false && (config.model || config.model_options?.[0]?.id));
     const defaultSelection = fallback ? normalizeModelSelection({ configId: fallback.id,
       model: fallback.model || fallback.model_options[0].id }) : DEFAULT_SELECTION;
-    if (!conversations || !conversationId) {
+    if (!conversations) {
       setModelSelection(defaultSelection);
       return;
     }
     setModelSelection(DEFAULT_SELECTION);
-    conversations.readModelSelection(conversationId).then(async (selection) => {
+    conversations.readModelSelection("").then(async (selection) => {
       if (generation !== generationRef.current) return;
       const current = fromDshSelection(selection);
       if (resolveModelConfig(modelConfigs, current) || !fallback) {
         setModelSelection(current);
         return;
       }
-      const selected = await conversations.selectModel(conversationId, {
+      const selected = await conversations.selectModel("", {
         provider: defaultSelection.configId, model: defaultSelection.model,
       });
       if (generation === generationRef.current) setModelSelection(fromDshSelection(selected));
     }).catch((error) => {
       if (generation === generationRef.current) setStatus(errorMessage(error, "模型选择读取失败"));
     });
-  }, [conversations, conversationId, setStatus, configKey]);
+  }, [conversations, setStatus, configKey]);
+
+  useEffect(() => {
+    if (!conversations?.subscribeModelSelection) return undefined;
+    return conversations.subscribeModelSelection(() => {
+      setModelSelection(fromDshSelection(conversations.getModelSelectionSnapshot()));
+    });
+  }, [conversations]);
 
   return { modelConfig, modelSelection, selectChatModel };
 }

@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ReasoningEffortId, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, type SessionEvent, type SessionHeader, type SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -152,10 +152,10 @@ declare module '@deepseek-ai/cordis' {
     eleckoiProductRecordChanges: ProductRecordChangeFeed
     eleckoiProductData: ElecKoiProductDataStore
     eleckoiRoleplaySessions: {
-      create(conversationId: string, selection?: ConversationModelSelection): Promise<string>
+      create(conversationId: string): Promise<string>
+      prepareSessionAccess(conversationId: string): Promise<string>
       preparePrompt(conversationId: string, text: string): Promise<string>
       prepareRegeneration(conversationId: string, text: string): Promise<{
-        selection: ConversationModelSelection
         rollback(): void
       }>
       variableStatesByTurn(conversationId: string): Record<string, string>
@@ -342,32 +342,42 @@ export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
 }
 
 export class ElecKoiConversationModelsApi extends TypertRemoteService {
-  static inject = ['typert', 'sessionController', 'sessionProjections', 'agentDefaultModel', 'eleckoiProductData']
+  static inject = ['typert', 'llm', 'agentDefaultModel']
 
   private readonly ownerContext: Context
-  private readonly productData: ElecKoiProductDataStore
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiConversationModelsApi', { namespace: 'eleckoiConversationModels' })
     this.ownerContext = ctx
-    this.productData = ctx.eleckoiProductData
   }
 
   @Remote
   async current(conversationId: string): Promise<ConversationModelSelection> {
-    const sessionId = this.productData.runtimeSessionId(conversationId) as SessionId
-    const resolved = await this.ownerContext.sessionController.resolveAgent(sessionId)
-    if ('error' in resolved) throw resolved.error
-    const state = this.ownerContext.sessionProjections.stateOf(resolved.agent.session, 'modelSelection')
-    const selected = state?.pending ?? state?.lastUsed ?? this.ownerContext.agentDefaultModel.currentSelection()
-    return { ...selected }
+    void conversationId
+    const selected = this.ownerContext.agentDefaultModel.currentSelection()
+    return {
+      provider: selected.provider,
+      model: selected.model,
+      ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: String(selected.reasoningEffort) })
+    }
   }
 
   @Remote
   async select(conversationId: string, selection: ConversationModelSelection): Promise<ConversationModelSelection> {
-    const sessionId = this.productData.runtimeSessionId(conversationId) as SessionId
-    const result = await this.ownerContext.sessionController.selectModel({ sessionId, ...selection })
-    return { ...result.selected }
+    void conversationId
+    const selected = await this.ownerContext.llm.resolveCallConfig({
+      provider: selection.provider,
+      model: selection.model,
+      ...(selection.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) })
+    })
+    await this.ownerContext.agentDefaultModel.saveSelection(selected)
+    return {
+      provider: selected.provider,
+      model: selected.model,
+      ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: String(selected.reasoningEffort) })
+    }
   }
 }
 
@@ -569,7 +579,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   async create(input: ConversationCreateInput): Promise<ConversationDetailsMetadata> {
     const details = this.productData.createConversation(input)
     try {
-      await this.ownerContext.eleckoiRoleplaySessions.create(details.conversation.id, input.modelSelection)
+      await this.ownerContext.eleckoiRoleplaySessions.create(details.conversation.id)
       this.changeFeed.publish({ kind: 'catalog', conversationId: details.conversation.id, reason: 'created' })
       return this.productData.readConversationDetails(details.conversation.id)
     } catch (error) {
@@ -622,6 +632,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     remainingMessageCount: number
   }> {
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+    await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
     const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
     const target = requireSessionMessage(inspection, eventSeq, role)
     const fromTurn = sessionMessageTurn(inspection.events, target.index)
@@ -667,6 +678,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   ): Promise<{ runtimeSessionId: string; prepared: true }> {
     if (!requestId.trim()) throw new Error('重新生成请求缺少有效标识。')
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+    await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
     const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
     const target = requireSessionMessage(inspection, eventSeq, 'user')
     const fromTurn = sessionMessageTurn(inspection.events, target.index)
@@ -686,10 +698,6 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
         const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq)
         if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
         restoreRuntime()
-        await this.ownerContext.sessionController.selectModel({
-          sessionId: runtimeSessionId as SessionId,
-          ...preparation.selection
-        })
         await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
       })
     } catch (error) {

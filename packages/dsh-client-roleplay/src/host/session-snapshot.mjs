@@ -23,13 +23,21 @@ export function writeSessionSnapshot(root, sessionId, value) {
   }
 }
 
-export function commitSessionPreset(root, sessionId, mountedPresetId) {
+export function commitSessionPreset(root, sessionId, mountedPresetId, mountedPresetRevision) {
   const snapshot = readSessionSnapshot(root, sessionId)
-  const { pendingPresetId: _pending, ...rest } = snapshot
+  const {
+    pendingPresetId: _pendingId,
+    pendingPresetRevision: _pendingRevision,
+    ...rest
+  } = snapshot
   const path = snapshotPath(root, sessionId)
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
   try {
-    writeFileSync(temporary, `${JSON.stringify({ ...rest, mountedPresetId }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+    writeFileSync(temporary, `${JSON.stringify({
+      ...rest,
+      mountedPresetId,
+      mountedPresetRevision
+    }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
     renameSync(temporary, path)
   } finally {
     rmSync(temporary, { force: true })

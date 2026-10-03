@@ -261,8 +261,8 @@
       {
         "id": "eleckoiConversationModelsRemote",
         "kind": "remote",
-        "title": "聊天模型选择",
-        "description": "通过 DSH Session 读取并选择每个聊天使用的模型。",
+        "title": "全局模型选择",
+        "description": "读取并选择全部聊天下一轮共同使用的模型。",
         "mode": "call",
         "scope": "host",
         "relation": "provides",

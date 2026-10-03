@@ -208,7 +208,7 @@ ElecKoi 产品能力的 DSH Host Remote 接口。
 | `eleckoiCreatorStudioRemote` | 创作项目数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取、创建和删除创作工作室项目。 | `list`、`create`、`delete` |
 | `eleckoiCreatorStudioChangesRemote` | 创作项目变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知创作项目目录发生变化。 | `changes` |
 | `eleckoiDisplayPreferencesRemote` | 显示偏好配置 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和保存显示偏好，并将本地壁纸写入媒体库。 | `read`、`updateUi`、`setChatDisplay` |
-| `eleckoiConversationModelsRemote` | 聊天模型选择 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Session 读取并选择每个聊天使用的模型。 | `current`、`select` |
+| `eleckoiConversationModelsRemote` | 全局模型选择 | Remote 合同 | 提供 | `call` | `host` | 读取并选择全部聊天下一轮共同使用的模型。 | `current`、`select` |
 | `eleckoiConversationsRemote` | 聊天记录目录 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取聊天目录与角色关联元数据；消息正文、分页和运行状态由 DSH Session 协议提供。 | `list`、`details`、`projectDisplay`、`variableTimeline`、`authorState`、`replaceVariableState`、`exportArchive`、`importArchive`、`revealFile`、`create`、`delete`、`preparePrompt`、`editMessage`、`deleteMessagesFrom`、`regenerateMessage`、`selectOpening`、`updateOpening` |
 | `eleckoiConversationChangesRemote` | 聊天变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知聊天目录和消息投影发生变化；消息正文仍由 DSH Session 协议读取。 | `changes` |
 | `eleckoiWebSearchRemote` | 联网搜索配置 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 选择搜索提供商并验证 Tavily 连接。密钥由 DSH Credentials 独立管理。 | `selection`、`select`、`testTavily` |

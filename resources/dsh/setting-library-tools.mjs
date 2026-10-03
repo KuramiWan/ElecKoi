@@ -29,7 +29,9 @@ function globTool() {
     output: output(),
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
-      const catalog = await runtimeCatalogOf(readBridge(bridgeFile, exec), bridgeFile)
+      const bridge = readBridge(bridgeFile, exec)
+      if (!bridge.enabled) return { status: 'ok', path: '', required_entries: [], files: [] }
+      const catalog = await runtimeCatalogOf(bridge, bridgeFile)
       const scope = normalizePath(args.path || '', true)
       if (scope === null || !directoryExists(catalog, scope)) return fail('invalid_path', 'path 必须是当前虚拟设定库中真实存在的目录。')
       let matcher
@@ -61,7 +63,9 @@ function grepTool() {
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
       if (!String(args.pattern || '')) return fail('invalid_arguments', 'pattern 不能为空。')
-      const catalog = await runtimeCatalogOf(readBridge(bridgeFile, exec), bridgeFile)
+      const bridge = readBridge(bridgeFile, exec)
+      if (!bridge.enabled) return { status: 'no_matches', required_entries: [], matches: [], omitted: 0 }
+      const catalog = await runtimeCatalogOf(bridge, bridgeFile)
       const scope = normalizePath(args.path || '', true)
       if (scope === null || !directoryExists(catalog, scope)) return fail('invalid_path', 'path 必须是当前虚拟设定库中真实存在的目录。')
       let expression, pathMatcher
@@ -101,7 +105,9 @@ function readTool() {
       const bridgeFile = settingBridgeFor(exec)
       const paths = [...new Set((args.paths || []).map((path) => normalizePath(path, false)).filter(Boolean))]
       if (!paths.length) return fail('invalid_arguments', '至少需要读取一个文件。')
-      const catalog = await runtimeCatalogOf(readBridge(bridgeFile, exec), bridgeFile)
+      const bridge = readBridge(bridgeFile, exec)
+      if (!bridge.enabled) return { status: 'ok', files: [] }
+      const catalog = await runtimeCatalogOf(bridge, bridgeFile)
       const byPath = new Map(catalog.entries.map((entry) => [entry.path, entry]))
       const missing = paths.filter((path) => !byPath.has(path))
       if (missing.length) return { ...fail('not_found', '存在当前虚拟设定库没有的路径，请重新使用 Glob 或 Grep。'), paths: missing }
@@ -136,6 +142,7 @@ function patchTool() {
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
       const bridge = readBridge(bridgeFile, exec)
+      if (!bridge.enabled) return { status: 'ok', scope: 'current_conversation', changed: false }
       const original = structuredClone(bridge.library)
       try {
         const result = applyOperation(bridge.library, args)
@@ -626,7 +633,9 @@ function requireEntry(library, path) {
 
 function readBridge(bridgeFile, exec) {
   const bridge = JSON.parse(readFileSync(bridgeFile, 'utf8'))
-  if (!bridge?.enabled || !bridge.library) throw new Error('设定库运行时尚未准备好。')
+  if (!bridge || typeof bridge !== 'object' || Array.isArray(bridge)) throw new Error('设定库运行时尚未准备好。')
+  if (!bridge.enabled) return bridge
+  if (!bridge.library) throw new Error('设定库运行时配置不正确。')
   const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
   if (snapshot.variablesEnabled && snapshot.variableStateFile) {
     const variableBridge = JSON.parse(readFileSync(snapshot.variableStateFile, 'utf8'))
@@ -641,7 +650,7 @@ function readBridge(bridgeFile, exec) {
 function writeBridge(bridgeFile, value) { writeFileSync(bridgeFile, JSON.stringify(value, null, 2), 'utf8') }
 function settingBridgeFor(exec) {
   const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-  if (!snapshot.settingLibraryEnabled || !snapshot.settingStateFile) throw new Error('当前 Session 未启用设定库工具。')
+  if (!snapshot.settingStateFile) throw new Error('当前 Session 缺少设定库运行时文件。')
   return snapshot.settingStateFile
 }
 function output() { return { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] } }

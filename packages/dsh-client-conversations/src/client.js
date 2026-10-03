@@ -326,6 +326,8 @@ window.__ModuleLoader__.load({
         this.listeners = new Set()
         this.detailsSnapshot = { id: '', status: 'idle', details: null, error: '' }
         this.detailsListeners = new Set()
+        this.modelSelectionSnapshot = { provider: '', model: '' }
+        this.modelSelectionListeners = new Set()
         this.detailGeneration = 0
         this.timelineSnapshot = { id: '', status: 'idle', timeline: null, error: '' }
         this.timelineListeners = new Set()
@@ -447,11 +449,12 @@ window.__ModuleLoader__.load({
       }
 
       async readModelSelection(conversationId) {
-        if (!conversationId) return { provider: '', model: '' }
-        return this.unwrap(
+        const selected = this.unwrap(
           await this.remote.eleckoiConversationModels.current(conversationId),
-          '读取聊天模型失败。'
+          '读取全局模型失败。'
         )
+        this.publishModelSelection(selected)
+        return selected
       }
 
       async readAuthorState(conversationId) {
@@ -510,11 +513,24 @@ window.__ModuleLoader__.load({
       }
 
       async selectModel(conversationId, selection) {
-        if (!conversationId) throw new Error('请先打开一个聊天。')
-        return this.unwrap(
+        const selected = this.unwrap(
           await this.remote.eleckoiConversationModels.select(conversationId, selection),
-          '保存聊天模型失败。'
+          '保存全局模型失败。'
         )
+        this.publishModelSelection(selected)
+        return selected
+      }
+
+      getModelSelectionSnapshot = () => this.modelSelectionSnapshot
+
+      subscribeModelSelection = listener => {
+        this.modelSelectionListeners.add(listener)
+        return () => this.modelSelectionListeners.delete(listener)
+      }
+
+      publishModelSelection(selection) {
+        this.modelSelectionSnapshot = { ...selection }
+        for (const listener of this.modelSelectionListeners) listener()
       }
 
       subscribeDetails = listener => {
@@ -1453,6 +1469,7 @@ window.__ModuleLoader__.load({
         this.changeFeedAbort = null
         this.listeners.clear()
         this.detailsListeners.clear()
+        this.modelSelectionListeners.clear()
         this.timelineListeners.clear()
         this.streamListeners.clear()
         this.statsListeners.clear()

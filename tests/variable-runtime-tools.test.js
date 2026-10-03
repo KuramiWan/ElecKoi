@@ -11,7 +11,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools({ extraCount = 0, mapMarkerCount = 0 } = {}) {
+async function tools({ extraCount = 0, mapMarkerCount = 0, configured = true } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-variable-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
@@ -20,7 +20,7 @@ async function tools({ extraCount = 0, mapMarkerCount = 0 } = {}) {
     `marker-${index}`,
     { title: `地点 ${index}`, description: `地点说明 ${index} `.repeat(900), image: `https://example.invalid/${index}.webp` },
   ]));
-  writeFileSync(file, JSON.stringify({
+  writeFileSync(file, JSON.stringify(configured ? {
     enabled: true,
     config: {
       initialState: {
@@ -42,13 +42,13 @@ async function tools({ extraCount = 0, mapMarkerCount = 0 } = {}) {
       状态: { 好感度: 10, 称呼: "朋友" },
       ...(mapMarkerCount ? { 地图标记: mapMarkers } : {}),
     },
-  }, null, 2));
+  } : { enabled: false, config: null, state: {} }, null, 2));
   const sessionId = "variable-tool-test-session";
   const snapshotRoot = join(directory, "session-snapshots");
   mkdirSync(snapshotRoot);
   writeFileSync(join(snapshotRoot, `${sessionId}.json`), JSON.stringify({
     variableStateFile: file,
-    variablesEnabled: true,
+    variablesEnabled: configured,
   }));
   process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
   const registered = [];
@@ -64,6 +64,20 @@ async function tools({ extraCount = 0, mapMarkerCount = 0 } = {}) {
 }
 
 describe("DSH character variable tools", () => {
+  it("keeps every enabled preset tool registered when the character has no variable configuration", async () => {
+    const runtime = await tools({ configured: false });
+    const calls = [
+      ["eleckoi_glob_variables", {}, { status: "ok", paths: [] }],
+      ["eleckoi_grep_variables", { pattern: "状态" }, { status: "no_matches", matches: [] }],
+      ["eleckoi_read_variables", { paths: ["/状态"] }, { status: "ok", variables: [] }],
+      ["eleckoi_apply_variable_patch", { operations: [{ op: "replace", path: "/状态", value: {} }] }, { status: "ok", applied_operations: 0 }],
+    ];
+    expect([...runtime.byName.keys()]).toHaveLength(4);
+    for (const [name, args, expected] of calls) {
+      await expect(runtime.byName.get(name).execute(args)).resolves.toMatchObject(expected);
+    }
+  });
+
   it("discovers required variables and reads complete author metadata", async () => {
     const runtime = await tools();
     const found = await runtime.byName.get("eleckoi_glob_variables").execute({ pattern: "**" });

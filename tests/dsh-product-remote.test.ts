@@ -524,7 +524,8 @@ describe('ElecKoi DSH Remote contract', () => {
               preparedPrompts.push({ conversationId, text })
               return conversationId
             },
-            prepareRegeneration: async () => ({ selection: { provider: 'test', model: 'test' }, rollback() {} }),
+            prepareSessionAccess: async () => {},
+            prepareRegeneration: async () => ({ rollback() {} }),
             variableStatesByTurn: () => ({ 1: '{"score":1}' }),
             prepareRestoreBeforeTurn: (conversationId: string, sessionId: string, fromTurn: number) => {
               preparedRestores.push({ conversationId, sessionId, fromTurn })

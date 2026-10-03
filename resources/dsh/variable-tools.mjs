@@ -42,6 +42,10 @@ function globTool() {
     async execute(args, exec) {
       const bridgeFile = variableBridgeFor(exec)
       const bridge = readBridge(bridgeFile)
+      if (!bridge.enabled) return {
+        status: 'ok', pattern: String(args.pattern || '**').trim() || '**', path: '',
+        required_variables: [], paths: [], truncated: false, omitted: 0
+      }
       const catalog = variableCatalog(bridge)
       const scope = normalizeScope(args.path)
       if (scope === null || !validScope(catalog, scope)) return failure('invalid_path', 'path 必须是当前变量配置中真实存在的 JSON Pointer 变量组。')
@@ -82,6 +86,10 @@ function grepTool() {
       const pattern = String(args.pattern || '')
       if (!pattern) return failure('invalid_arguments', 'pattern 不能为空。')
       const bridge = readBridge(bridgeFile)
+      if (!bridge.enabled) return {
+        status: 'no_matches', pattern, path: '', output_mode: args.output_mode || 'files_with_matches',
+        required_variables: [], matches: [], omitted: 0
+      }
       const catalog = variableCatalog(bridge)
       const scope = normalizeScope(args.path)
       if (scope === null || !validScope(catalog, scope)) return failure('invalid_path', 'path 必须是当前变量配置中真实存在的 JSON Pointer 变量组。')
@@ -140,6 +148,7 @@ function readTool() {
       const paths = [...new Set(args.paths.filter((path) => typeof path === 'string' && path.startsWith('/')))]
       if (!paths.length) return failure('invalid_arguments', '至少需要读取一个变量路径。')
       const bridge = readBridge(bridgeFile)
+      if (!bridge.enabled) return { status: 'ok', variables: [] }
       const catalog = variableCatalog(bridge)
       const options = {
         offset: nonnegativeInteger(args.offset, 0),
@@ -203,6 +212,9 @@ function patchTool() {
       const bridgeFile = variableBridgeFor(exec)
       if (!args.operations.length || args.operations.length > 200) return failure('invalid_arguments', 'operations 必须包含 1 到 200 项。')
       const bridge = readBridge(bridgeFile)
+      if (!bridge.enabled) return {
+        status: 'ok', applied_operations: 0, paths: [], state_unchanged: true
+      }
       let next
       try { next = applyOperations(bridge.state, args.operations) } catch (error) {
         return { ...failure('patch_error', errorMessage(error)), paths: operationPaths(args.operations), state_unchanged: true }
@@ -239,8 +251,11 @@ function patchTool() {
 
 function readBridge(bridgeFile) {
   const value = JSON.parse(readFileSync(bridgeFile, 'utf8'))
-  if (!value?.enabled || !isObject(value.config) || !isObject(value.state) || !isObject(value.config.initialState)) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !isObject(value.state)) {
     throw new Error('变量运行时尚未准备好。')
+  }
+  if (value.enabled && (!isObject(value.config) || !isObject(value.config.initialState))) {
+    throw new Error('变量运行时配置不正确。')
   }
   return value
 }
@@ -251,7 +266,7 @@ function writeBridge(bridgeFile, value) {
 
 function variableBridgeFor(exec) {
   const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-  if (!snapshot.variablesEnabled || !snapshot.variableStateFile) throw new Error('当前 Session 未启用变量工具。')
+  if (!snapshot.variableStateFile) throw new Error('当前 Session 缺少变量运行时文件。')
   return snapshot.variableStateFile
 }
 

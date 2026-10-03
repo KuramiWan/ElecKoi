@@ -12,13 +12,13 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false } = {}) {
+async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false, configured = true } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-setting-library-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
   const variableFile = join(directory, "variables.json");
   if (liveVariableState) writeFileSync(variableFile, JSON.stringify({ enabled: true, state: variableState }));
-  writeFileSync(file, JSON.stringify({
+  writeFileSync(file, JSON.stringify(configured ? {
     enabled: true,
     library: {
       groups: [
@@ -35,13 +35,13 @@ async function tools({ extraEntries = [], history = [], variableState = {}, live
     },
     history,
     variableState,
-  }, null, 2));
+  } : { enabled: false, library: null, frozenLibrary: null, history: [] }, null, 2));
   const sessionId = "setting-tool-test-session";
   const snapshotRoot = join(directory, "session-snapshots");
   mkdirSync(snapshotRoot);
   writeFileSync(join(snapshotRoot, `${sessionId}.json`), JSON.stringify({
     settingStateFile: file,
-    settingLibraryEnabled: true,
+    settingLibraryEnabled: configured,
     ...(liveVariableState ? { variableStateFile: variableFile, variablesEnabled: true } : {}),
   }));
   process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
@@ -78,6 +78,20 @@ function entry(overrides) {
 }
 
 describe("DSH character setting-library tools", () => {
+  it("keeps every enabled preset tool registered when the character has no setting library", async () => {
+    const runtime = await tools({ configured: false });
+    const calls = [
+      ["eleckoi_glob_setting_files", {}, { status: "ok", files: [] }],
+      ["eleckoi_grep_setting_files", { pattern: "世界" }, { status: "no_matches", matches: [] }],
+      ["eleckoi_read_setting_files", { paths: ["世界"] }, { status: "ok", files: [] }],
+      ["eleckoi_apply_setting_patch", { operation: "make_directory", path: "世界" }, { status: "ok", changed: false }],
+    ];
+    expect([...runtime.byName.keys()]).toHaveLength(4);
+    for (const [name, args, expected] of calls) {
+      await expect(runtime.byName.get(name).execute(args)).resolves.toMatchObject(expected);
+    }
+  });
+
   it("caches only readable fixed required bodies in directory order", () => {
     const cache = requiredSettingCache({ entries: [
       entry({ id: "regular", title: "正文", content: "正文内容", agentReadStrategy: "required", treeViewOrder: 2 }),

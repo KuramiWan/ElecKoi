@@ -8,14 +8,13 @@ export function apply(ctx, config = {}) {
   const steps = Array.isArray(config.steps)
     ? config.steps.map((step) => String(step).trim()).filter(Boolean).slice(0, 20)
     : []
-  if (!steps.length) return
   return ctx.tools.register(defineTool({
     name: 'update_roleplay_plan',
-    description: [
+    description: steps.length ? [
       '更新本轮角色扮演计划。必须复述完整任务列表并填写状态；任务文字和顺序由作者固定。',
       ...steps.map((step, index) => `${index + 1}. ${step}`),
       '最后一项由应用在检测到 FINAL 正文后完成，模型不要主动将其标记为 completed。'
-    ].join('\n'),
+    ].join('\n') : '读取当前空的角色扮演计划。',
     parameters: {
       explanation: { type: 'string', description: '可选的简短进度说明。' },
       plan: {
@@ -37,6 +36,7 @@ export function apply(ctx, config = {}) {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }]
     },
     async execute(args) {
+      if (!steps.length) return { status: 'ok', plan: [] }
       return canonicalizePlan(args, steps)
     }
   }))

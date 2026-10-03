@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -15,31 +16,61 @@ afterEach(() => {
 })
 
 describe('DSH subagent runtime context inheritance', () => {
-  it('restores owned declarations without treating orphan snapshots as Host dependencies', async () => {
+  it('keeps legacy declarations available and aliases a missing one until its Session selects the current preset', async () => {
     const fixture = runtimeFixture()
     writeFileSync(join(fixture.snapshotRoot, 'orphan-session.json'), JSON.stringify({
       ...JSON.parse(readFileSync(join(fixture.snapshotRoot, 'root-session.json'), 'utf8')),
-      mountedPresetId: 'deleted-preset'
+      mountedPresetId: 'snapshot-preset'
     }))
     writeFileSync(join(fixture.snapshotRoot, 'unused-snapshot.json'), '{')
-    mkdirSync(join(process.env.ELECKOI_PRESET_ROOT, 'preset-b'))
-    writeFileSync(join(process.env.ELECKOI_PRESET_ROOT, 'preset-b', 'preset.json'),
-      JSON.stringify({ id: 'preset-b', plugins: [] }))
+    mkdirSync(join(process.env.ELECKOI_PRESET_ROOT, 'obsolete-preset'))
+    writeFileSync(join(process.env.ELECKOI_PRESET_ROOT, 'obsolete-preset', 'preset.json'),
+      JSON.stringify({ id: 'obsolete-preset', plugins: [] }))
     const unregister = vi.fn()
+    const append = vi.fn()
+    const agent = { id: 'orphan-session', status: 'idle', ctx: {}, session: { append } }
+    const originalResume = vi.fn(async () => ({ agent, dispose: vi.fn() }))
     const ctx = {
       provide: vi.fn(),
       on: vi.fn(),
-      agents: { create: vi.fn(), resume: vi.fn() },
-      agentPresets: { register: vi.fn(async () => unregister) }
+      agents: { create: vi.fn(), resume: originalResume, get: vi.fn(() => agent) },
+      sessionController: { inspect: vi.fn(async () => ({
+        meta: { agentPreset: 'agent-preset-from-header' },
+        events: [{ type: 'agent-preset/selected', data: { agentPreset: 'deleted-preset' } }]
+      })) },
+      agentPresets: { register: vi.fn(async () => unregister), recompose: vi.fn() }
     }
     const dispose = await applyAgentPresetBridge(ctx)
-    expect(ctx.agentPresets.register.mock.calls.map(([definition]) => definition.id).sort())
-      .toEqual(['preset-a', 'preset-b'])
+    expect(ctx.agentPresets.register.mock.calls.map(([definition]) => definition.id))
+      .toEqual(['eleckoi-active', 'obsolete-preset'])
+    expect(existsSync(join(process.env.ELECKOI_PRESET_ROOT, 'obsolete-preset'))).toBe(true)
     expect(ctx.provide).toHaveBeenCalledWith('eleckoiPresetRegistrar', expect.any(Object))
-    await expect(ctx.agents.resume({ resumeSessionId: 'orphan-session' }))
-      .rejects.toThrow('deleted-preset')
+    await expect(ctx.agents.resume({ resumeSessionId: 'orphan-session' })).resolves.toMatchObject({ agent })
+    expect(ctx.agentPresets.register.mock.calls.map(([definition]) => definition.id))
+      .toEqual(['eleckoi-active', 'obsolete-preset', 'snapshot-preset'])
+
+    const activeSource = readFileSync(join(process.env.ELECKOI_PRESET_ROOT, 'eleckoi-active', 'preset.json'))
+    const activeRevision = createHash('sha256').update(activeSource).digest('hex')
+    const snapshotPath = join(fixture.snapshotRoot, 'orphan-session.json')
+    writeFileSync(snapshotPath, JSON.stringify({
+      ...JSON.parse(readFileSync(snapshotPath, 'utf8')),
+      pendingPresetId: 'eleckoi-active',
+      pendingPresetRevision: activeRevision
+    }))
+    const registrar = ctx.provide.mock.calls.find(([name]) => name === 'eleckoiPresetRegistrar')[1]
+    await expect(registrar.prepareForSession('orphan-session', 'eleckoi-active'))
+      .resolves.toBe('deleted-preset')
+    expect(ctx.agentPresets.register.mock.calls.map(([definition]) => definition.id))
+      .toEqual(['eleckoi-active', 'obsolete-preset', 'snapshot-preset', 'deleted-preset'])
+    await expect(registrar.selectForSession('orphan-session')).resolves.toBe('eleckoi-active')
+    expect(ctx.agentPresets.recompose).toHaveBeenCalledWith(agent.ctx, 'eleckoi-active')
+    expect(append).toHaveBeenCalledWith('agent-preset/selected', { agentPreset: 'eleckoi-active' })
+    expect(JSON.parse(readFileSync(snapshotPath, 'utf8'))).toMatchObject({
+      mountedPresetId: 'eleckoi-active',
+      mountedPresetRevision: activeRevision
+    })
     await dispose()
-    expect(unregister).toHaveBeenCalledTimes(2)
+    expect(unregister).toHaveBeenCalledTimes(4)
     expect(existsSync(join(fixture.snapshotRoot, 'orphan-session.json'))).toBe(true)
   })
 
@@ -51,10 +82,11 @@ describe('DSH subagent runtime context inheritance', () => {
       provide: vi.fn(),
       on: vi.fn(() => () => undefined),
       agents: { create: originalCreate, resume: originalResume },
+      sessionController: { inspect: vi.fn(async () => ({ meta: {}, events: [] })) },
       agentPresets: { mount: vi.fn(), register: vi.fn(async () => async () => undefined) }
     }
     const dispose = await applyAgentPresetBridge(ctx)
-    expect(ctx.agentPresets.register).toHaveBeenCalledWith(expect.objectContaining({ id: 'preset-a' }))
+    expect(ctx.agentPresets.register).toHaveBeenCalledWith(expect.objectContaining({ id: 'eleckoi-active' }))
     expect(originalResume).not.toHaveBeenCalled()
 
     await ctx.agents.create(childCreateOptions('child-a', 'root-session'))
@@ -104,6 +136,7 @@ describe('DSH subagent runtime context inheritance', () => {
         create: vi.fn(async () => { throw failure }),
         resume: vi.fn()
       },
+      sessionController: { inspect: vi.fn(async () => ({ meta: {}, events: [] })) },
       agentPresets: { mount: vi.fn(), register: vi.fn(async () => async () => undefined) }
     }
     await applyAgentPresetBridge(ctx)
@@ -131,8 +164,8 @@ function runtimeFixture() {
   const presetRoot = join(directory, 'generated-presets')
   process.env.ELECKOI_PRESET_ROOT = presetRoot
   mkdirSync(snapshotRoot)
-  mkdirSync(join(presetRoot, 'preset-a'), { recursive: true })
-  writeFileSync(join(presetRoot, 'preset-a', 'preset.json'), JSON.stringify({ id: 'preset-a', plugins: [] }))
+  mkdirSync(join(presetRoot, 'eleckoi-active'), { recursive: true })
+  writeFileSync(join(presetRoot, 'eleckoi-active', 'preset.json'), JSON.stringify({ id: 'eleckoi-active', plugins: [] }))
 
   writeFileSync(settingStateFile, JSON.stringify({
     enabled: true,
@@ -166,7 +199,8 @@ function runtimeFixture() {
   writeFileSync(join(snapshotRoot, 'root-session.json'), JSON.stringify({
     conversationId: 'conversation-a',
     runtimeThreadId: 'root-session',
-    mountedPresetId: 'preset-a',
+    mountedPresetId: 'eleckoi-active',
+    mountedPresetRevision: 'fixture-revision',
     model: { provider: 'provider-main', model: 'model-main' },
     subagentModel: { provider: 'provider-child', model: 'model-child' },
     settingStateFile,

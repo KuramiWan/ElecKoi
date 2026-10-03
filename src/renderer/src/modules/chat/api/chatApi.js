@@ -72,11 +72,10 @@ export async function getChatMessages(sessionId, options = {}) {
   };
 }
 
-export async function createChat(title, role = {}, { model, modelSelection } = {}) {
+export async function createChat(title, role = {}, { model } = {}) {
   if (!model) throw new Error("DSH 聊天服务尚未就绪");
   const input = {
     title: title || "新对话",
-    ...(modelSelection ? { modelSelection } : {}),
     metadata: {
       characterId: role.id || role.character_id || "",
       characterName: role.name || role.character_name || role.assistant_name || title || "未命名角色",

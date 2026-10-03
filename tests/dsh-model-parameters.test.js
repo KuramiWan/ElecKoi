@@ -13,6 +13,8 @@ describe('model request parameters', () => {
     } } }] } }
     expect(requestSnapshot(ctx, { provider: 'example-provider', model: 'example-model' }, { contextWindow: 65536, defaultMaxTokens: 8192 }))
       .toMatchObject({ temperature: 0, topP: 0.96, autoCompactTokenLimit: 32000, maxTokens: 8192, contextWindow: 65536, reasoningEffort: 'high' })
+    expect(requestSnapshot(ctx, { provider: 'example-provider', model: 'example-model', reasoningEffort: 'low' },
+      { contextWindow: 65536, defaultMaxTokens: 8192 })).toMatchObject({ reasoningEffort: 'high' })
   })
 
   it.each(['deepseek_messages', 'openai-completions', 'openai-responses'])('sends Top P through the official %s serializer', async api => {

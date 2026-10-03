@@ -54,7 +54,6 @@ export interface ConversationMetadata {
 export interface ConversationCreateInput {
   title?: string
   metadata?: Partial<ConversationMetadata>
-  modelSelection?: ConversationModelSelection
 }
 
 export interface ConversationSummary extends ConversationRecord {

@@ -49,8 +49,7 @@ export async function runChatMessageSend(options) {
     if (!targetSessionId) {
       if (!chatCharacter.character_id) throw new Error("请先从角色设定中双击角色进入聊天");
       const characterName = chatCharacter.assistant_name || chatCharacter.character_name || "新对话";
-      const created = await createChatSession(characterName, chatCharacter, { model: conversationModel,
-        modelSelection: { provider: modelConfig.id, model: modelConfig.model } });
+      const created = await createChatSession(characterName, chatCharacter, { model: conversationModel });
       throwIfAborted(controller.signal);
       targetSessionId = created.chat.id;
       setSessionId(targetSessionId);

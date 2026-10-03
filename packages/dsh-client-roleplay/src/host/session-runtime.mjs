@@ -1,15 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { readSessionSnapshot, removeSessionSnapshot, snapshotPath, writeSessionSnapshot } from './session-snapshot.mjs'
 import { historicalRuntimeState } from './historical-runtime-state.mjs'
 import { historyStatsProjection } from './history-stats-projection.mjs'
+import { durableProductPluginSpecifier } from './preset-definition.mjs'
 import { turnOutcomesProjection } from './turn-outcomes-projection.mjs'
 
-const resolveRuntimeModule = createRequire(import.meta.url).resolve
+export const ACTIVE_RUNTIME_PRESET_ID = 'eleckoi-active'
 
 export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   if (!process.env.ELECKOI_PRESET_TEMPLATE_PATH
@@ -30,22 +29,15 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   const disposeHistoryStats = ctx.sessionProjections.register(historyStatsProjection)
   const disposeTurnOutcomes = ctx.sessionProjections.register(turnOutcomesProjection)
 
-  const prepare = async (conversationId, text, creating = false, selection) => {
+  const prepareCurrentPreset = async (conversationId, text) => {
     const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, text)
     const previous = readOptionalSnapshot(snapshotRoot, runtime.runtimeSessionId)
-    const model = selection ?? (creating
-      ? ctx.agentDefaultModel.currentSelection()
-      : await currentModelSelection(ctx, runtime.runtimeSessionId))
+    const model = ctx.agentDefaultModel.currentSelection()
     const modelInfo = await ctx.llm.resolveModelInfo(model.provider, model.model)
     const mainModel = requestSnapshot(ctx, model, modelInfo)
     const subagentModel = await resolveSubagentModel(ctx, runtime.subagentModelSelection, mainModel)
-    const effectiveToolPolicy = sessionToolPolicy(
-      runtime.disabledToolGroupIds,
-      runtime.variableContext !== undefined,
-      runtime.conversationContext.settingLibrary !== undefined,
-      runtime.agentPreset.roleplayPlan.steps.length > 0
-    )
-    const requestedPresetId = materializeAgentPreset(
+    const effectiveToolPolicy = { disabledGroupIds: [...(runtime.disabledToolGroupIds ?? [])] }
+    const requestedPreset = materializeAgentPreset(
       presetRoot,
       templatePath,
       runtime.agentPreset,
@@ -53,11 +45,24 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       subagentModel,
       mainModel
     )
-    const mountedPresetId = previous?.mountedPresetId || requestedPresetId
-    if (mountedPresetId !== requestedPresetId
-      && !existsSync(join(presetRoot, mountedPresetId, 'preset.json'))) {
-      throw new Error(`DSH 会话原预设 ${mountedPresetId} 的组合文件不存在，不能安全切换配置。`)
-    }
+    await presetRegistrar.prepareForSession(runtime.runtimeSessionId, requestedPreset.id)
+    return { runtime, previous, mainModel, subagentModel, effectiveToolPolicy, requestedPreset }
+  }
+
+  const prepare = async (conversationId, text, creating = false) => {
+    const {
+      runtime,
+      previous,
+      mainModel,
+      subagentModel,
+      effectiveToolPolicy,
+      requestedPreset
+    } = await prepareCurrentPreset(conversationId, text)
+    const mountedPresetId = previous?.mountedPresetId ?? requestedPreset.id
+    const mountedPresetRevision = previous?.mountedPresetRevision ?? requestedPreset.revision
+    const presetChanged = mountedPresetId !== requestedPreset.id
+      || mountedPresetRevision !== requestedPreset.revision
+    if (!creating) await requireIdleSession(ctx, runtime.runtimeSessionId)
     const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
     mkdirSync(sessionRoot, { recursive: true })
     const nextTurn = creating ? 1 : await nextSessionTurn(ctx, runtime.runtimeSessionId)
@@ -84,7 +89,11 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       conversationId,
       runtimeThreadId: runtime.runtimeSessionId,
       mountedPresetId,
-      ...(mountedPresetId === requestedPresetId ? {} : { pendingPresetId: requestedPresetId }),
+      mountedPresetRevision,
+      ...(presetChanged ? {
+        pendingPresetId: requestedPreset.id,
+        pendingPresetRevision: requestedPreset.revision
+      } : {}),
       model: mainModel,
       subagentModel,
       variableStateFile,
@@ -98,12 +107,16 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       historyCompactionInstructions: runtime.agentPreset.historyCompactionInstructions ?? ''
     })
     if (!creating) await presetRegistrar.selectForSession(runtime.runtimeSessionId)
-    return { runtimeSessionId: runtime.runtimeSessionId, presetId: requestedPresetId }
+    return { runtimeSessionId: runtime.runtimeSessionId, presetId: requestedPreset.id }
   }
 
   const service = {
-    async create(conversationId, selection) {
-      const prepared = await prepare(conversationId, '', true, selection)
+    async prepareSessionAccess(conversationId) {
+      const prepared = await prepareCurrentPreset(conversationId, '')
+      return prepared.runtime.runtimeSessionId
+    },
+    async create(conversationId) {
+      const prepared = await prepare(conversationId, '', true)
       await presetRegistrar.registerForSession(prepared.runtimeSessionId)
       const created = await ctx.sessionController.create({
         sessionId: prepared.runtimeSessionId,
@@ -113,7 +126,6 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       if (created.sessionId !== prepared.runtimeSessionId) {
         throw new Error('DSH Session 标识与聊天记录不一致。')
       }
-      if (selection) await ctx.sessionController.selectModel({ sessionId: prepared.runtimeSessionId, ...selection })
       return prepared.runtimeSessionId
     },
     async preparePrompt(conversationId, text) {
@@ -122,7 +134,6 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     },
     async prepareRegeneration(conversationId, text) {
       const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
-      const selection = { ...await currentModelSelection(ctx, sessionId) }
       const state = ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
       const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
       const files = [
@@ -139,10 +150,8 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         }
       }
       try {
-        // Resolve the current configuration and mount before discarding a reply.
-        await ctx.llm.resolveCallConfig(selection)
-        await prepare(conversationId, text, false, selection)
-        return { selection, rollback }
+        await prepare(conversationId, text, false)
+        return { rollback }
       } catch (error) {
         rollback()
         throw error
@@ -288,12 +297,10 @@ function trimRuntimeCheckpoints(sessionRoot, fromTurn) {
   writeAtomically(checkpointPath(sessionRoot), `${JSON.stringify({ version: 1, checkpoints }, null, 2)}\n`)
 }
 
-async function currentModelSelection(ctx, sessionId) {
+async function requireIdleSession(ctx, sessionId) {
   const resolved = await ctx.sessionController.resolveAgent(sessionId)
   if ('error' in resolved) throw resolved.error
   if (resolved.agent.status !== 'idle') throw new Error('当前聊天仍在生成，不能提交新的消息。')
-  const state = ctx.sessionProjections.stateOf(resolved.agent.session, 'modelSelection')
-  return state?.pending ?? state?.lastUsed ?? ctx.agentDefaultModel.currentSelection()
 }
 
 async function resolveSubagentModel(ctx, configured, fallback) {
@@ -307,11 +314,12 @@ async function resolveSubagentModel(ctx, configured, fallback) {
 export function requestSnapshot(ctx, selection, info) {
   const namespace = ctx.settings?.describe().find(row => row.ns === 'eleckoi-client-models')
   const parameters = namespace?.value?.entries?.[selection.provider]?.parameters?.[selection.model] || {}
+  const reasoningEffort = parameters.reasoningEffort ?? selection.reasoningEffort
   return {
     configId: selection.provider,
     provider: selection.provider,
     model: selection.model,
-    ...(selection.reasoningEffort === undefined && parameters.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort ?? parameters.reasoningEffort }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...(parameters.temperature === undefined ? {} : { temperature: parameters.temperature }),
     ...(parameters.topP === undefined ? {} : { topP: parameters.topP }),
     ...(parameters.autoCompactTokenLimit === undefined ? {} : { autoCompactTokenLimit: parameters.autoCompactTokenLimit }),
@@ -320,25 +328,16 @@ export function requestSnapshot(ctx, selection, info) {
   }
 }
 
-function sessionToolPolicy(disabledGroupIds, variablesEnabled, settingLibraryEnabled, roleplayWorkflowEnabled) {
-  const disabled = new Set(disabledGroupIds ?? [])
-  if (!variablesEnabled) disabled.add('builtin:variables')
-  if (!settingLibraryEnabled) disabled.add('builtin:setting-library')
-  if (!roleplayWorkflowEnabled) disabled.add('builtin:roleplay-workflow')
-  return { disabledGroupIds: [...disabled] }
-}
-
-function materializeAgentPreset(root, templatePath, preset, toolPolicy, subagentModel, mainModel) {
+export function materializeAgentPreset(root, templatePath, preset, toolPolicy, subagentModel, mainModel) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(preset.id)) throw new Error('预设编号不能用于 DSH Agent Preset。')
-  const mountedPresetId = runtimePresetId(preset, toolPolicy, subagentModel, mainModel)
+  const mountedPresetId = ACTIVE_RUNTIME_PRESET_ID
   const directory = join(root, mountedPresetId)
   mkdirSync(directory, { recursive: true })
-  const pluginRoot = join(dirname(templatePath), '..')
   let composition = readFileSync(templatePath, 'utf8')
-    .replace('__ELECKOI_SETTING_LIBRARY_TOOLS_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'setting-library-tools.mjs')).href))
-    .replace('__ELECKOI_UPLOADED_FILE_TOOLS_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'uploaded-file-tools.mjs')).href))
-    .replace('__ELECKOI_VARIABLE_TOOLS_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'variable-tools.mjs')).href))
-    .replace('__ELECKOI_ROLEPLAY_PLAN_TOOL_PLUGIN__', JSON.stringify(pathToFileURL(join(pluginRoot, 'roleplay-plan-tool.mjs')).href))
+    .replace('__ELECKOI_SETTING_LIBRARY_TOOLS_PLUGIN__', JSON.stringify(durableProductPluginSpecifier('setting-library-tools')))
+    .replace('__ELECKOI_UPLOADED_FILE_TOOLS_PLUGIN__', JSON.stringify(durableProductPluginSpecifier('uploaded-file-tools')))
+    .replace('__ELECKOI_VARIABLE_TOOLS_PLUGIN__', JSON.stringify(durableProductPluginSpecifier('variable-tools')))
+    .replace('__ELECKOI_ROLEPLAY_PLAN_TOOL_PLUGIN__', JSON.stringify(durableProductPluginSpecifier('roleplay-plan-tool')))
     .replace('__ELECKOI_ROLEPLAY_PLAN_STEPS__', JSON.stringify(preset.roleplayPlan.steps))
     .replace('__ELECKOI_WEB_SEARCH_MAX_RESULTS__', '8')
     .replace('__ELECKOI_COMPACTION_THRESHOLD_RATIO__', String(compactionRatio(mainModel)))
@@ -349,43 +348,26 @@ function materializeAgentPreset(root, templatePath, preset, toolPolicy, subagent
       `      model: ${JSON.stringify(subagentModel.model)}`,
       ...(subagentModel.maxTokens === undefined ? [] : [`      maxTokens: ${subagentModel.maxTokens}`])
     ].join('\n'))
-  composition = resolvePresetPluginSpecifiers(composition)
   composition = applyPresetToolPolicy(composition, new Set(toolPolicy.disabledGroupIds))
   const plugins = parseYaml(composition)
   if (!Array.isArray(plugins)) throw new Error('DSH Agent 预设组合必须是插件列表。')
-  writeAtomically(join(directory, 'preset.json'), `${JSON.stringify({
+  const definition = {
     id: mountedPresetId,
     name: preset.name,
     description: `ElecKoi 预设版本 ${preset.versionId}`,
     plugins
-  }, null, 2)}\n`)
-  return mountedPresetId
-}
-
-function runtimePresetId(preset, toolPolicy, subagentModel, mainModel) {
-  const fingerprint = createHash('sha256').update(JSON.stringify({
-    preset,
-    disabledToolGroupIds: [...toolPolicy.disabledGroupIds].sort(),
-    subagent: subagentModel,
-    compaction: {
-      thresholdRatio: compactionRatio(mainModel),
-      retainTokens: 0
-    }
-  })).digest('hex').slice(0, 16)
-  const prefix = preset.id.replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'preset'
-  return `${prefix}-${fingerprint}`
+  }
+  const content = `${JSON.stringify(definition, null, 2)}\n`
+  writeAtomically(join(directory, 'preset.json'), content)
+  return {
+    id: mountedPresetId,
+    revision: createHash('sha256').update(content).digest('hex')
+  }
 }
 
 function compactionRatio(model) {
   if (!Number.isFinite(model.autoCompactTokenLimit) || !Number.isFinite(model.contextWindow)) return 0.8
   return Math.max(Number.EPSILON, Math.min(1, model.autoCompactTokenLimit / model.contextWindow))
-}
-
-function resolvePresetPluginSpecifiers(source) {
-  return source.replace(
-    /(^\s*name:\s*)(['"])(@deepseek-ai\/[^'"\r\n]+)\2\s*$/gm,
-    (_match, prefix, _quote, specifier) => `${prefix}${JSON.stringify(pathToFileURL(resolveRuntimeModule(specifier)).href)}`
-  )
 }
 
 function applyPresetToolPolicy(source, disabled) {

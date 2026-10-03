@@ -369,8 +369,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
         await loadChat(existing.id, { bumpToTop: true, transition: true });
         return;
       }
-      const created = await createChatSession(characterName, characterData, { model: conversations,
-        modelSelection: modelConfig ? { provider: modelConfig.id, model: modelConfig.model } : undefined });
+      const created = await createChatSession(characterName, characterData, { model: conversations });
       if (selectionGeneration !== loadGenerationRef.current) return;
       rememberPreferredSession(characterId, created.chat.id);
       setSessionId(created.chat.id);
@@ -414,8 +413,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     setIsSwitchingChat(true);
     const characterName = chatCharacter.assistant_name || chatCharacter.character_name || "新对话";
     try {
-      const created = await createChatSession(characterName, chatCharacter, { model: conversations,
-        modelSelection: modelConfig ? { provider: modelConfig.id, model: modelConfig.model } : undefined });
+      const created = await createChatSession(characterName, chatCharacter, { model: conversations });
       if (creationGeneration !== loadGenerationRef.current) return;
       const chat = created.chat;
       rememberPreferredSession(chatCharacter.character_id, chat.id);
@@ -507,8 +505,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
         assistant_avatar: target?.character_avatar || chatCharacter.assistant_avatar || chatCharacter.character_avatar || "",
       });
       const characterName = replacementCharacter.assistant_name || replacementCharacter.character_name || "新对话";
-      const created = await createChatSession(characterName, replacementCharacter, { model: conversations,
-        modelSelection: modelConfig ? { provider: modelConfig.id, model: modelConfig.model } : undefined });
+      const created = await createChatSession(characterName, replacementCharacter, { model: conversations });
       rememberPreferredSession(targetCharacterId, created.chat.id);
       setSessionId(created.chat.id);
       replaceChatMessages(created.chat, "auto");

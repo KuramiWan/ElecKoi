@@ -103,6 +103,7 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
     return { id: SessionId(conversationId), ctx: scope, session: current, status: 'idle', followup: message => followed.push(message) }
   }
   let agent = createAgent(session)
+  let globalModelSelection = { provider: 'test', model: 'test' }
   const flush = async () => {
     const logged = readDshSessionLog(sessionRoot, conversationId)
     const writer = await ctx.sessionPersistence.open(SessionId(conversationId), 'write')
@@ -118,7 +119,10 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
     provide: ['agentDefaultModel', 'agents', 'eleckoiSessionHandles', 'eleckoiConversationChanges',
       'attachments', 'fileUploads', 'fs', 'sessions', 'sessionQuery', 'workspaceRegistry', 'sessionProjectionCache', 'credentials', 'settings'],
     apply(owner) {
-      owner.provide('agentDefaultModel', { currentSelection: () => ({ provider: 'test', model: 'test' }), saveSelection: async () => {} })
+      owner.provide('agentDefaultModel', {
+        currentSelection: () => ({ ...globalModelSelection }),
+        saveSelection: async (selection) => { globalModelSelection = { ...selection } }
+      })
       owner.provide('agents', { get: () => agent })
       owner.provide('sessions', { get: () => agent.session })
       owner.provide('attachments', { imageLimits: { maxImageBytes: 1000000, maxImagesPerMessage: 4,
@@ -151,15 +155,17 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
   await ctx.plugin(SessionController, {})
   await ctx.plugin(sessionEditPlugin)
   let preparationCount = 0
-  cleanups.push(installRoleplaySessionRuntime(ctx, { selectForSession: async () => {
-    if (failPreparation && ++preparationCount === 2) throw new Error('Synthetic preparation failure')
-  } }))
+  cleanups.push(installRoleplaySessionRuntime(ctx, {
+    prepareForSession: async () => undefined,
+    selectForSession: async () => {
+      if (failPreparation && ++preparationCount === 2) throw new Error('Synthetic preparation failure')
+    }
+  }))
   cleanups.push(ctx.typert.register(TYPERT))
   await ctx.plugin(TypertGatewayService)
   await ctx.plugin(ElecKoiConversationsApi)
   const select = async (selection = { provider: 'test', model: 'test' }) => {
-    await ctx.sessionController.selectModel({ sessionId: SessionId(conversationId), ...selection })
-    await flush()
+    globalModelSelection = { ...selection }
   }
   await select()
   return { ctx, env, conversationId, userEvent, sessionRoot, followed, select, flush, getAgent: () => agent }
@@ -191,8 +197,6 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
       .filter(event => event.type === 'assistant/message')).toHaveLength(0)
     expect(contextBridge(f)).toMatchObject({ historyMode: 'prefix', currentUserInput: '合成替换输入',
       history: [{ role: 'assistant', content: '合成开场白' }] })
-    expect(f.ctx.sessionProjections.stateOf(f.getAgent().session, 'modelSelection').pending)
-      .toEqual({ provider: 'test', model: 'test' })
     expect(JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, `${f.conversationId}.json`), 'utf8')).model)
       .toMatchObject({ provider: 'test', model: 'test', temperature: 0.6, topP: 0.8 })
     await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'startRegeneration',
@@ -203,10 +207,9 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
       source: { kind: 'user', rpcId: 'synthetic-regeneration' } })
   })
 
-  it('rejects an unavailable current model repeatedly without discarding messages', async () => {
+  it('rejects an unavailable global model repeatedly without discarding messages', async () => {
     const f = await fixture()
-    f.getAgent().session.append('model/selection', { provider: 'unavailable-current', model: 'test' })
-    await f.flush()
+    await f.select({ provider: 'unavailable-current', model: 'test' })
     const before = readFileSync(readDshSessionLog(f.sessionRoot, f.conversationId).path, 'utf8')
     for (let attempt = 0; attempt < 2; attempt++) {
       await expect(f.ctx.eleckoiConversationsApi.regenerateMessage(f.conversationId, f.userEvent.seq, `retry-${attempt}`))
