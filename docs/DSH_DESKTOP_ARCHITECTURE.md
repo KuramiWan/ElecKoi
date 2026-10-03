@@ -29,7 +29,7 @@
 | `packages/dsh-runtime` 启动同一个 DSH Web Host，并经官方 SessionController 驱动角色会话 | 已采用官方运行路径 | 按精确版本验证会话和插件生命周期 |
 | `@eleckoi/dsh-product-data` 在 DSH Host 打开产品数据库、执行迁移并持有全部领域 Repository | 产品 Client 调用全部使用生成的 Typert Remote；数据库唯一写入权、迁移链与媒体写入均已移交 Host | 保持 Host 单一所有权，禁止把 Repository、迁移或第二套跨端业务协议放回 Main |
 | `@eleckoi/dsh-client-*` 在官方 Web Client 运行代内贡献界面和受控产品接入点 | 已使用官方 Client model、Slots、Renderer 与 Session 作用域 | 按公开类型和安装探针持续验证第三方插件行为 |
-| `patches/` 对锁定官方包进行最小适配；预设桥接通过官方 `agent/created` 生命周期装配 Session 作用域，并以 `agent/request` waterfall 覆盖当前全局模型；Session 信息性记录补丁见 ADR 0019 | 与上游实现紧耦合，补丁清单以 `pnpm-workspace.yaml` 为准 | 对照同版本公开扩展点；可替代则迁移，不能替代则记录例外和升级测试 |
+| `patches/` 对锁定官方包进行最小适配；预设桥接通过官方 `agent/created` 生命周期装配顶层 Session 作用域，并以 `agent/request` waterfall 覆盖当前全局模型；子 Agent 模型只由 DSH 官方子智能体设置决定；Session 信息性记录补丁见 ADR 0019 | 与上游实现紧耦合，补丁清单以 `pnpm-workspace.yaml` 为准 | 对照同版本公开扩展点；可替代则迁移，不能替代则记录例外和升级测试 |
 | Runtime Manifest 已将桌面对话主路径标为 Web Host，并区分旧 SDK 兼容组合 | 事实源已校正；仍不能仅凭静态检查认定全体产品插件迁移完成 | 用实际桌面 Host 探针和插件安装探针继续验收 |
 
 聊天正文以 DSH Session 日志为持久来源；SQLite 只保存仍属于 ElecKoi 的关系型产品数据。已经废弃的模型、搜索配置和运行流水表只在版本化迁移中删除，不再有运行时读写路径。

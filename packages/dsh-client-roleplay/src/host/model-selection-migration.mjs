@@ -1,7 +1,8 @@
 import { readSessionSnapshot, writeSessionSnapshot } from './session-snapshot.mjs'
 
 /**
- * TODO(remove after the v0.2.1 -> current upgrade window):
+ * TODO(remove only after direct upgrades from v0.2.1 and older are no longer
+ * supported): remove this function and its legacy-route tests together.
  * Older ElecKoi releases stored a display label such as `deepseek-default` as
  * the selected provider even though the generated DSH route had a hashed id.
  * Convert that one persisted value to the unique current route. Runtime model
@@ -124,12 +125,14 @@ export function requestSnapshot(ctx, selection, info) {
   }
 }
 
+// Permanent runtime path: freeze the one global model at turn preparation so a
+// settings change made during generation takes effect on the next turn only.
 export async function currentRequestSnapshot(ctx) {
   const { selection, info } = await migrateLegacyGlobalModelSelection(ctx, { required: true })
   return requestSnapshot(ctx, selection, info)
 }
 
-/** Keep a resumed top-level Session aligned with ElecKoi's single global model. */
+/** Permanent runtime path: align a resumed top-level Session before its next turn. */
 export async function refreshSessionModelSnapshot(ctx, root, sessionId) {
   const snapshot = readSessionSnapshot(root, sessionId)
   const model = await currentRequestSnapshot(ctx)

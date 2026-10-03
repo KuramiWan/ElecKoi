@@ -15,7 +15,7 @@ window.__ModuleLoader__.load({
       .then(module => ({ default: module.CreatorStudioNavigationIcon })))
     const CommunityNavigationIcon = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-settings.js')
       .then(module => ({ default: module.CommunityNavigationIcon })))
-    const nativeSettingsSections = new Set(['account', 'general', 'agent-presets'])
+    const nativeSettingsSections = new Set(['account', 'general', 'models', 'agent-presets'])
     const shellActions = new Set(['creatorStudio', 'community'])
     const builtInBundles = [
       "@eleckoi/dsh-client-characters",

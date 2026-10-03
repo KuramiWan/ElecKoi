@@ -2,14 +2,11 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, CaretRight, X } from '@phosphor-icons/react';
 import { AgentToolGroupIcon } from '../../../ui/icons/index.jsx';
-import { RoleplayPlanEditor, SubagentModelSelect, WebSearchSettings } from '../../agentTools/index.js';
-import { loadAgentTools, setAgentToolGroupEnabled, setRoleplayPlanSettings, setSubagentModelSelection } from '../api/agentToolsApi.js';
+import { RoleplayPlanEditor, SubagentSettingsLink, WebSearchSettings } from '../../agentTools/index.js';
+import { loadAgentTools, setAgentToolGroupEnabled, setRoleplayPlanSettings } from '../api/agentToolsApi.js';
 
 export function AgentToolsDialog({
   presetCatalog,
-  modelConfigs = [],
-  modelOptionsByKey,
-  onLoadModels,
   onClose,
   onManage,
   onNotify,
@@ -18,19 +15,18 @@ export function AgentToolsDialog({
   const [selectedId, setSelectedId] = useState('');
   const [loading, setLoading] = useState(true);
   const [changingId, setChangingId] = useState('');
-  const [savingSubagentModel, setSavingSubagentModel] = useState(false);
   const [savingRoleplayPlan, setSavingRoleplayPlan] = useState(false);
   const selected = catalog?.groups.find((item) => item.id === selectedId);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    loadAgentTools(presetCatalog, modelConfigs)
+    loadAgentTools(presetCatalog)
       .then((value) => { if (active) setCatalog(value); })
       .catch(() => { if (active) onNotify?.('error', '读取工具失败'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [modelConfigs, onNotify, presetCatalog]);
+  }, [onNotify, presetCatalog]);
 
   useEffect(() => {
     const closeOnEscape = (event) => {
@@ -50,7 +46,7 @@ export function AgentToolsDialog({
       groups: current.groups.map((item) => item.id === group.id ? { ...item, enabled } : item),
     } : current);
     try {
-      setCatalog(await setAgentToolGroupEnabled(presetCatalog, group.id, enabled, modelConfigs));
+      setCatalog(await setAgentToolGroupEnabled(presetCatalog, group.id, enabled));
     } catch {
       setCatalog((current) => current ? {
         ...current,
@@ -62,21 +58,6 @@ export function AgentToolsDialog({
     }
   }
 
-  async function changeSubagentModel(selection) {
-    if (savingSubagentModel) return;
-    setSavingSubagentModel(true);
-    const previous = catalog?.subagentModelSelection;
-    setCatalog((current) => current ? { ...current, subagentModelSelection: selection } : current);
-    try {
-      setCatalog(await setSubagentModelSelection(presetCatalog, selection, modelConfigs));
-    } catch {
-      setCatalog((current) => current ? { ...current, subagentModelSelection: previous } : current);
-      onNotify?.('error', '保存子 Agent 模型失败');
-    } finally {
-      setSavingSubagentModel(false);
-    }
-  }
-
   function changeRoleplayPlan(roleplayPlan) {
     setCatalog((current) => current ? { ...current, roleplayPlan } : current);
   }
@@ -85,7 +66,7 @@ export function AgentToolsDialog({
     if (savingRoleplayPlan) return;
     setSavingRoleplayPlan(true);
     try {
-      setCatalog(await setRoleplayPlanSettings(presetCatalog, roleplayPlan, modelConfigs));
+      setCatalog(await setRoleplayPlanSettings(presetCatalog, roleplayPlan));
       onNotify?.('success', '角色扮演计划已保存');
     } catch {
       onNotify?.('error', '保存角色扮演计划失败');
@@ -105,16 +86,11 @@ export function AgentToolsDialog({
         {selected ? <ToolDetail
           group={selected}
           changing={changingId === selected.id}
-          modelConfigs={modelConfigs.length ? modelConfigs : catalog?.modelConfigs || []}
-          modelOptionsByKey={modelOptionsByKey}
-          subagentModelSelection={catalog?.subagentModelSelection || { configId: '', model: '' }}
-          savingSubagentModel={savingSubagentModel}
           roleplayPlan={catalog?.roleplayPlan}
           savingRoleplayPlan={savingRoleplayPlan}
           onChange={(enabled) => changeEnabled(selected, enabled)}
-          onLoadModels={onLoadModels}
           onNotify={onNotify}
-          onSubagentModelChange={changeSubagentModel}
+          onOpenSubagentSettings={onClose}
           onRoleplayPlanChange={changeRoleplayPlan}
           onRoleplayPlanSave={saveRoleplayPlan}
         /> : (
@@ -149,16 +125,11 @@ function ToolRow({ group, changing, onOpen, onChange }) {
 function ToolDetail({
   group,
   changing,
-  modelConfigs,
-  modelOptionsByKey,
-  subagentModelSelection,
-  savingSubagentModel,
   roleplayPlan,
   savingRoleplayPlan,
   onChange,
-  onLoadModels,
   onNotify,
-  onSubagentModelChange,
+  onOpenSubagentSettings,
   onRoleplayPlanChange,
   onRoleplayPlanSave,
 }) {
@@ -168,13 +139,8 @@ function ToolDetail({
       <ToolSwitch name={group.name} checked={group.enabled} disabled={changing} onChange={onChange} />
     </div>
     {group.description ? <p className="agent-tool-detail-description">{group.description}</p> : null}
-    {group.id === 'builtin:collaboration' ? <SubagentModelSelect
-      configs={modelConfigs}
-      selection={subagentModelSelection}
-      modelOptionsByKey={modelOptionsByKey}
-      disabled={savingSubagentModel}
-      onChange={onSubagentModelChange}
-      onLoadModels={onLoadModels}
+    {group.id === 'builtin:collaboration' ? <SubagentSettingsLink
+      onOpen={onOpenSubagentSettings}
       onNotify={onNotify}
     /> : null}
     {group.id === 'builtin:web' ? <div className="agent-tool-web-config"><WebSearchSettings /></div> : <>

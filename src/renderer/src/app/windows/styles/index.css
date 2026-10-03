@@ -25,7 +25,7 @@
 @import "../../../modules/regex/styles/regex-manager.css";
 @import "../../../modules/presets/styles/preset-panel.css";
 @import "../../../modules/agentTools/styles/web-search-settings.css";
-@import "../../../modules/agentTools/styles/subagent-model-select.css";
+@import "../../../modules/agentTools/styles/subagent-settings-link.css";
 @import "../../../modules/agentTools/styles/roleplay-plan-editor.css";
 @import "../../../modules/updates/styles/app-update.css";
 @import "../../../modules/creatorStudio/styles/creator-studio-shell.css";

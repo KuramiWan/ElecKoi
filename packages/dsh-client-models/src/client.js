@@ -122,8 +122,28 @@ window.__ModuleLoader__.load({
             byId.set(route.provider, { id: route.provider, name: route.displayName, model_options: [] })
           }
         }
+        const piAiProfiles = namespaces.get('llm-pi-ai')?.value?.providers || {}
+        // pi-ai is the source of truth for generic provider profiles. Older
+        // ElecKoi releases could persist a complete profile there while the
+        // product metadata still labelled it as a dedicated provider (or was
+        // missing altogether). Expose every persisted profile as a custom
+        // configuration version even when the configurable-provider directory
+        // has not listed the route yet.
+        for (const [id, profile] of Object.entries(piAiProfiles)) {
+          if (!byId.has(id)) {
+            byId.set(id, {
+              id,
+              name: profile.displayName || id,
+              provider: 'custom',
+              model: profile.models?.[0]?.id || '',
+              model_options: [],
+            })
+          }
+        }
         for (const [id, entry] of Object.entries(entries)) {
-          if (imageProvider(entry.provider)) byId.set(id, { id, model_options: [], ...entry })
+          if (imageProvider(entry.provider) || piAiProfiles[id]) {
+            if (!byId.has(id)) byId.set(id, { id, model_options: [], ...entry })
+          }
         }
         const configs = [...byId.values()].map(config => {
           const route = directory.get(config.id)
@@ -134,7 +154,9 @@ window.__ModuleLoader__.load({
           const models = new Map((profile.models || []).map(model => [model.id, model]))
           const options = new Map((config.model_options || []).map(model => [model.id, model]))
           for (const model of models.values()) if (!options.has(model.id)) options.set(model.id, { id: model.id, name: model.name || model.id })
-          const provider = extra.provider || (config.id === 'deepseek-official' ? 'deepseek' : 'custom')
+          const provider = ns === 'llm-deepseek'
+            ? 'deepseek'
+            : extra.provider === 'deepseek' ? 'custom' : extra.provider || 'custom'
           const credentialRef = extra.credentialRef || profile.apiKeyEnv || (ns === 'llm-deepseek' ? 'DEEPSEEK_API_KEY' : keyRef(config.id))
           return { ...config, ...extra, provider, credentialRef, api_key: '',
             name: extra.name || profile.displayName || config.name || '',
@@ -155,7 +177,6 @@ window.__ModuleLoader__.load({
         })
         const credentials = valueOf(await this.remote.credentials.describe(configs.map(config => config.credentialRef)), '读取密钥状态失败。')
         return configs.map(config => ({ ...config, credentialConfigured: credentials[config.credentialRef]?.configured === true }))
-          .filter(config => !entries[config.id]?.hidden && (config.settingsNs !== 'llm-deepseek' || config.credentialConfigured || entries[config.id]))
       }
 
       async revealApiKey(configId) {
@@ -166,6 +187,10 @@ window.__ModuleLoader__.load({
         return this.enqueue(async () => {
           if (!config.id || !/^[a-z][a-z0-9-]*$/.test(config.id)) throw new Error('模型配置编号不正确。')
           if (config.proxy_url?.trim()) throw new Error('当前 DSH 适配器不支持每个模型单独设置代理，请使用系统代理。')
+          if (config.provider === 'deepseek'
+            && (config.id !== 'deepseek-official' || config.api_format !== 'deepseek_messages')) {
+            throw new Error('DeepSeek 官方 API 固定使用 DSH 的 Messages 专用适配器；其他协议请使用自定义模型提供商。')
+          }
           await this.settings()
           const previous = this.snapshot.configs.find(item => item.id === config.id)
           const ref = previous?.credentialRef || (config.id === 'deepseek-official' ? this.namespaces.get('llm-deepseek')?.value?.apiKeyEnv || 'DEEPSEEK_API_KEY' : keyRef(config.id))
@@ -184,11 +209,6 @@ window.__ModuleLoader__.load({
             await this.refresh()
             return this.snapshot.configs.find(item => item.id === config.id)
               || { ...config, api_key: '', credentialConfigured: false, clearConfiguration: undefined }
-          }
-          // A dedicated provider route stays owned by its official adapter.
-          // A different protocol creates an explicit pi-ai route instead.
-          if (config.id === 'deepseek-official' && config.api_format !== 'deepseek_messages') {
-            config = { ...config, id: `config-${window.crypto.randomUUID().replace(/-/g, '').slice(0, 12)}` }
           }
           const ns = config.api_format === 'deepseek_messages' ? 'llm-deepseek' : 'llm-pi-ai'
           if (ns === 'llm-deepseek' && config.id !== 'deepseek-official') throw new Error('DeepSeek Messages 使用内置 DeepSeek 专用配置；其他配置请选择对应的通用协议。')
@@ -243,9 +263,7 @@ window.__ModuleLoader__.load({
               await this.mutate(config.settingsNs, [{ op: 'unset', path: config.settingsPath }])
             }
           }
-          await this.mutate(SETTINGS_NAMESPACE, [config.settingsNs === 'llm-deepseek'
-            ? { op: 'set', path: ['entries', id], value: { hidden: true } }
-            : { op: 'unset', path: ['entries', id] }])
+          await this.mutate(SETTINGS_NAMESPACE, [{ op: 'unset', path: ['entries', id] }])
           if (!this.snapshot.configs.some(item => item.id !== id && item.credentialRef === config.credentialRef)) {
             valueOf(await this.remote.credentials.unset(config.credentialRef), '删除密钥失败。')
           }

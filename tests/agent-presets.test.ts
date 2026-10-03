@@ -120,7 +120,6 @@ describe('agent preset repository', () => {
         viewOrder: 1, groupViewOrder: 0, treeViewOrder: 1, createdAt: timestamp, updatedAt: timestamp
       }],
       toolGroups: initial.toolGroups.map((group) => ({ ...group, enabled: group.id === 'builtin:web' })),
-      subagentModelSelection: { configId: 'child-config', model: 'child-model' },
       roleplayPlan: { steps: ['读取当前设定', '输出最终正文'] },
       regexRules: [{
         id: 'regex-1', name: '清理', pattern: '/x/g', replacement: '', targets: ['AiOutput'], enabled: true,
@@ -132,8 +131,6 @@ describe('agent preset repository', () => {
     expect(saved.profile.usageInstructions).toBe('保持角色设定一致，并按需启用工具。')
     expect(saved.regexRules).toHaveLength(1)
     expect(saved.toolGroups.filter((group) => group.enabled).map((group) => group.id)).toEqual(['builtin:web'])
-    expect(saved.subagentModelSelection).toEqual({ configId: 'child-config', model: 'child-model' })
-    expect(repository.subagentModelSelection()).toEqual({ configId: 'child-config', model: 'child-model' })
     expect(saved.roleplayPlan.steps).toEqual(['读取当前设定', '输出最终正文'])
     expect(repository.runtimeSelection().roleplayPlan.steps).toEqual(['读取当前设定', '输出最终正文'])
     expect(repository.disabledToolGroupIds()).not.toContain('builtin:web')
@@ -289,7 +286,6 @@ describe('agent preset repository', () => {
         included: group.id === 'builtin:variables' || group.id === 'builtin:web',
         enabled: group.id === 'builtin:web'
       })),
-      subagentModelSelection: { configId: 'local-config-must-not-export', model: 'local-model' },
       roleplayPlan: { steps: ['读取设定', '输出正文'] }
     })
     const jsonExport = repository.export(repository.active().id, 'json')
@@ -308,8 +304,6 @@ describe('agent preset repository', () => {
     expect(root.preset.roleplay_plan).toEqual({ steps: ['读取设定', '输出正文'] })
     expect(root.preset.active_version_number).toBe(2)
     expect(root.preset.versions).toHaveLength(2)
-    expect(json).not.toContain('local-config-must-not-export')
-    expect(json).not.toContain('local-model')
     expect(root.preset).not.toHaveProperty('chat_background')
 
     const pngExport = repository.export(repository.active().id, 'png')
@@ -341,7 +335,6 @@ describe('agent preset repository', () => {
       'builtin:web'
     ])
     expect(fromJson.preset.toolGroups.filter((group) => group.enabled).map((group) => group.id)).toEqual(['builtin:web'])
-    expect(fromJson.preset.subagentModelSelection).toEqual({ configId: '', model: '' })
     expect(fromJson.preset.profile.authorAvatarPath).toMatch(/^eleckoi-media:\/\/asset\/v1\//)
     expect(fromPng.preset.name).toBe('默认 Agent 预设 3')
     expect(fromPng.preset.profile.authorAvatarPath).toMatch(/^eleckoi-media:\/\/asset\/v1\//)

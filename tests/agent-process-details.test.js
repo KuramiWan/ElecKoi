@@ -190,8 +190,22 @@ describe('agent process detail presentation', () => {
       description: '查看设定库',
       prompt: '读取完整设定',
       model: 'deepseek-flash',
-      execution: '等待子 Agent 返回',
       reply: '子 Agent 真正回复',
+      returnResult: '',
+    });
+  });
+
+  it('uses the completed foreground tool result when the child Session projection is unavailable', () => {
+    const root = item({
+      kind: 'subagent',
+      toolName: 'subagent',
+      status: 'complete',
+      summary: 'subagent',
+      detail: '这是子 Agent 已经返回的完整结果。',
+    });
+
+    expect(subagentDetailPresentation(root, [])).toMatchObject({
+      reply: '这是子 Agent 已经返回的完整结果。',
       returnResult: '',
     });
   });

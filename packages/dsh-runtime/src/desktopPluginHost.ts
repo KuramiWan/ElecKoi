@@ -42,6 +42,8 @@ export interface DshDesktopPluginHostOptions {
   onFailure?: (error: Error) => void
 }
 
+export type DshDesktopPluginHostEnvironment = Readonly<Record<string, string>>
+
 function isChildMessage(value: unknown): value is ChildHostMessage {
   if (typeof value !== 'object' || value === null || !('type' in value)) return false
   const message = value as Record<string, unknown>
@@ -74,7 +76,7 @@ export class DshDesktopPluginHost {
     }
   }
 
-  start(): Promise<DshDesktopPluginHostReady> {
+  start(environment: DshDesktopPluginHostEnvironment = {}): Promise<DshDesktopPluginHostReady> {
     if (this.readyTask !== undefined) return this.readyTask
     if (this.stopping) return Promise.reject(new Error('DSH 插件宿主正在停止。'))
     const home = join(this.options.runtimeDataRoot, 'home')
@@ -100,8 +102,7 @@ export class DshDesktopPluginHost {
       '- id: ui-settings-general',
       '  disabled: true',
       '- id: ui-settings-models',
-      '  config:',
-      '    credentialOnboarding: false',
+      '  disabled: true',
       ''
     ].join('\n'))
     const child = spawn(this.options.executablePath, [
@@ -115,6 +116,7 @@ export class DshDesktopPluginHost {
       cwd: profile,
       env: {
         ...process.env,
+        ...environment,
         DSH_HOME: home,
         DSH_SESSION_ROOT: sessionRoot,
         DSH_CWD: this.options.workspaceRoot,

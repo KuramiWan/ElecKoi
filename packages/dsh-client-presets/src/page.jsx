@@ -9,9 +9,6 @@ export function PresetsPage() {
     {renderLayout({
       sidePanel: <PresetListPanel />,
       mainPanel: <PresetWorkspace
-        modelConfigs={chat.chatModelConfigs}
-        modelOptionsByKey={chat.modelOptionsByKey}
-        onLoadModels={chat.loadModelOptions}
         onNotify={chat.notify}
         onTestRegex={(text, rule, target) => characterConfiguration.regexRules.test(text, rule, target)}
         requestedTab={presetRequestedTab}

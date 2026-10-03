@@ -55,7 +55,6 @@ import {
   agentPresetModelTagSchema,
   agentPresetProfileSchema,
   agentPresetSchema,
-  subagentModelSelectionSchema,
   agentPresetTimelineItemSchema
 } from '@shared/contracts/presets/schemas'
 import {
@@ -92,12 +91,11 @@ const CONTENT_USAGE_INSTRUCTIONS = 'usage_instructions'
 const CONTENT_PROMPT_POSITIONS = 'prompt_positions'
 const CONTENT_REGEX_RULES = 'regex_rules'
 const CONTENT_TOOL_CONFIGURATION = 'tool_configuration'
-const TOOL_CONFIGURATION_VERSION = 4
+const TOOL_CONFIGURATION_VERSION = 5
 const toolConfigurationSchema = z.object({
   version: z.literal(TOOL_CONFIGURATION_VERSION),
   includedGroupIds: z.array(z.string()),
   enabledGroupIds: z.array(z.string()),
-  subagentModelSelection: subagentModelSelectionSchema,
   roleplayPlan: roleplayPlanSettingsSchema
 })
 
@@ -229,7 +227,6 @@ export class AgentPresetRepository {
       groups,
       promptPositions: prompts.promptPositions,
       toolGroups: toolConfiguration.toolGroups,
-      subagentModelSelection: toolConfiguration.subagentModelSelection,
       roleplayPlan: toolConfiguration.roleplayPlan,
       regexRules: parseList(contents.get(CONTENT_REGEX_RULES) ?? '[]', regexRuleSchema, '预设正则'),
       expandedGroupIds: parseStrings(row.expandedGroupIdsJson, '预设展开状态')
@@ -377,7 +374,6 @@ export class AgentPresetRepository {
         groups: activeVersion.groups,
         promptPositions: activeVersion.promptPositions,
         toolGroups: activeVersion.toolGroups,
-        subagentModelSelection: { configId: '', model: '' },
         roleplayPlan: activeVersion.roleplayPlan,
         regexRules: activeVersion.regexRules,
         expandedGroupIds: activeVersion.expandedGroupIds
@@ -569,10 +565,6 @@ export class AgentPresetRepository {
     return projectAgentPresetRuntimeSelection(this.active())
   }
 
-  subagentModelSelection(): AgentPreset['subagentModelSelection'] {
-    return this.active().subagentModelSelection
-  }
-
   private ensureRequiredEntries(): void {
     const presets = this.store.db.select({ id: agentPresets.id, versionId: agentPresets.activeVersionId }).from(agentPresets).all()
     this.store.withWriteTx((db) => {
@@ -690,7 +682,6 @@ export class AgentPresetRepository {
 
   private readToolConfiguration(raw: string | undefined): {
     toolGroups: AgentToolGroup[]
-    subagentModelSelection: AgentPreset['subagentModelSelection']
     roleplayPlan: AgentPreset['roleplayPlan']
   } {
     if (!raw) throw new Error('预设缺少工具配置。')
@@ -698,7 +689,6 @@ export class AgentPresetRepository {
       const value = toolConfigurationSchema.parse(JSON.parse(raw))
       return {
         toolGroups: presetToolGroups(new Set(value.includedGroupIds), new Set(value.enabledGroupIds)),
-        subagentModelSelection: value.subagentModelSelection,
         roleplayPlan: value.roleplayPlan
       }
     } catch (error) {
@@ -793,7 +783,6 @@ function presetWithTransferContent(base: AgentPreset, content: AgentPresetTransf
     groups: content.groups,
     promptPositions: content.promptPositions,
     toolGroups: content.toolGroups,
-    subagentModelSelection: { configId: '', model: '' },
     roleplayPlan: content.roleplayPlan,
     regexRules: content.regexRules,
     expandedGroupIds: content.expandedGroupIds
@@ -866,10 +855,6 @@ function normalizePreset(input: AgentPreset): AgentPreset {
       ...group,
       included: group.included
     })),
-    subagentModelSelection: {
-      configId: input.subagentModelSelection.configId.trim(),
-      model: input.subagentModelSelection.model.trim()
-    },
     roleplayPlan: roleplayPlanSettingsSchema.parse(input.roleplayPlan),
     regexRules: input.regexRules.map((rule, index) => regexRuleSchema.parse({ ...rule, order: index })),
     expandedGroupIds: [...new Set(input.expandedGroupIds)].filter((id) => validGroupIds.has(id))
@@ -891,7 +876,6 @@ function emptyPreset(id: string, name: string, versionId: string, libraryGroupId
     groups: [],
     promptPositions: prompts.promptPositions,
     toolGroups: agentToolGroups(),
-    subagentModelSelection: { configId: '', model: '' },
     roleplayPlan: defaultRoleplayPlanSettings(),
     regexRules: [],
     expandedGroupIds: []
@@ -908,7 +892,6 @@ function defaultContents(): Array<[string, string]> {
       version: TOOL_CONFIGURATION_VERSION,
       includedGroupIds: [...DEFAULT_AGENT_TOOL_GROUP_IDS],
       enabledGroupIds: [...DEFAULT_AGENT_TOOL_GROUP_IDS],
-      subagentModelSelection: { configId: '', model: '' },
       roleplayPlan: defaultRoleplayPlanSettings()
     })]
   ]
@@ -924,7 +907,6 @@ function contentRows(preset: AgentPreset): Array<[string, string]> {
       version: TOOL_CONFIGURATION_VERSION,
       includedGroupIds: preset.toolGroups.filter((group) => group.included).map((group) => group.id),
       enabledGroupIds: preset.toolGroups.filter((group) => group.enabled).map((group) => group.id),
-      subagentModelSelection: preset.subagentModelSelection,
       roleplayPlan: preset.roleplayPlan
     })]
   ]

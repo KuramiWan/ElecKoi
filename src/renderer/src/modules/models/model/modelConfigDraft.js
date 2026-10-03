@@ -1,9 +1,13 @@
 import { blankConfigForProvider, normalizeProviderId } from "./modelProviderCatalog.js";
 
 export function initialConfigForProvider(providerId) {
+  const provider = normalizeProviderId(providerId);
+  if (provider === "deepseek") {
+    return { ...blankConfigForProvider(provider), id: "deepseek-official" };
+  }
   const randomId = window.crypto?.randomUUID?.().replace(/-/g, "").slice(0, 12)
     || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  return { ...blankConfigForProvider(providerId), id: `config-${randomId}` };
+  return { ...blankConfigForProvider(provider), id: `config-${randomId}` };
 }
 
 export function normalizedConfigs(configs) {

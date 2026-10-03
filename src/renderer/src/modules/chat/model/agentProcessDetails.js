@@ -122,18 +122,19 @@ export function subagentDetailPresentation(item, delegatedItems = []) {
   const relayed = directChildren.findLast((child) => child?.toolName === 'send_message');
   const relayedArgs = parseValue(relayed?.arguments);
   const relayedText = stringValue(relayedArgs?.message).trim();
-  const replyText = stringValue(finalReply?.summary).trim();
+  const toolResult = stringValue(item?.detail).trim();
+  const replyText = stringValue(finalReply?.summary).trim()
+    || (item?.status === 'complete' && !launchReceipt(toolResult) ? toolResult : '');
   const differentRelayedResult = relayedText && normalizeText(relayedText) !== normalizeText(replyText)
     ? relayedText
     : '';
   const rawFailure = item?.status === 'error'
-    ? firstText(item?.summary, item?.detail).trim()
+    ? firstText(item?.detail, item?.summary).trim()
     : '';
   return {
     description: stringValue(values.description).trim(),
     prompt: stringValue(values.prompt).trim(),
     model: stringValue(item?.delegatedModel).trim() || '跟随主模型',
-    execution: values.run_in_background === true || values.background === true ? '后台运行' : '等待子 Agent 返回',
     reply: replyText,
     returnResult: differentRelayedResult || (replyText ? '' : launchReceipt(rawFailure) ? '' : rawFailure),
   };

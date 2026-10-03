@@ -59,6 +59,7 @@ export function ModelBasicConfigSection({ editor }) {
     onRevealApiKey,
     onCredentialError,
   } = editor;
+  const isDedicatedDeepSeek = activeProvider.id === "deepseek";
 
   useEffect(() => {
     revealGeneration.current += 1;
@@ -159,8 +160,9 @@ export function ModelBasicConfigSection({ editor }) {
         <label>
           <span>接口格式</span>
           <div className="model-api-format-control">
-            <select value={form.api_format === "deepseek_messages" ? "anthropic_messages" : form.api_format || "responses"} onChange={(event) => updateField("api_format", form.id === "deepseek-official" && event.target.value === "anthropic_messages" ? "deepseek_messages" : event.target.value)}>
-              {API_FORMATS.map((format) => <option key={format.id} value={format.id}>{format.label}</option>)}
+            <select disabled={isDedicatedDeepSeek} value={form.api_format === "deepseek_messages" ? "anthropic_messages" : form.api_format || "responses"} onChange={(event) => updateField("api_format", event.target.value)}>
+              {(isDedicatedDeepSeek ? API_FORMATS.filter((format) => format.id === "anthropic_messages") : API_FORMATS)
+                .map((format) => <option key={format.id} value={format.id}>{format.label}</option>)}
             </select>
             <ChevronRightIcon />
           </div>

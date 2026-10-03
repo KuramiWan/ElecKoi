@@ -185,6 +185,55 @@ function currentV2Database(): Database.Database {
 }
 
 describe('shared SQLite baseline', () => {
+  it('removes child-model routing from current and versioned preset tool configuration', () => {
+    const database = new Database(':memory:')
+    try {
+      database.exec(commonSchemaSql)
+      database.exec(`
+        INSERT INTO agent_presets(
+          id,name,modelFamily,modelTagsJson,libraryGroupId,activeVersionId,authorName,
+          authorAvatarPath,sortIndex,expandedGroupIdsJson
+        ) VALUES ('synthetic-preset','合成预设','general','[]','','synthetic-v1','','',0,'[]');
+        INSERT INTO agent_preset_versions(
+          presetId,versionId,versionNumber,name,createdAtEpochMs,expandedGroupIdsJson
+        ) VALUES ('synthetic-preset','synthetic-v1',1,'合成版本',1,'[]');
+        PRAGMA user_version = 6;
+      `)
+      const legacyConfiguration = JSON.stringify({
+        version: 4,
+        includedGroupIds: ['synthetic:tool'],
+        enabledGroupIds: ['synthetic:tool'],
+        subagentModelSelection: { configId: 'deepseek-default', model: 'synthetic-model' },
+        roleplayPlan: { steps: ['合成步骤'] },
+        futureField: { preserved: true }
+      })
+      database.prepare('INSERT INTO agent_preset_contents VALUES (?,?,?)')
+        .run('synthetic-preset', 'tool_configuration', legacyConfiguration)
+      database.prepare('INSERT INTO agent_preset_version_contents VALUES (?,?,?,?)')
+        .run('synthetic-preset', 'synthetic-v1', 'tool_configuration', legacyConfiguration)
+
+      installSchema(database)
+
+      expect(database.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+      for (const row of database.prepare(`
+        SELECT content FROM agent_preset_contents WHERE kind='tool_configuration'
+        UNION ALL
+        SELECT content FROM agent_preset_version_contents WHERE kind='tool_configuration'
+      `).all() as Array<{ content: string }>) {
+        expect(JSON.parse(row.content)).toMatchObject({
+          version: 5,
+          includedGroupIds: ['synthetic:tool'],
+          enabledGroupIds: ['synthetic:tool'],
+          roleplayPlan: { steps: ['合成步骤'] },
+          futureField: { preserved: true }
+        })
+        expect(JSON.parse(row.content)).not.toHaveProperty('subagentModelSelection')
+      }
+      expect(database.pragma('foreign_key_check')).toEqual([])
+      expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally { database.close() }
+  })
+
   it('removes DSH-owned configuration in the v5 to v6 migration without a handoff', () => {
     const database = new Database(':memory:')
     try {
@@ -601,10 +650,9 @@ describe('shared SQLite baseline', () => {
       const configuration = database.prepare(`SELECT content FROM agent_preset_contents
         WHERE presetId = 'preset-current-v2' AND kind = 'tool_configuration'`).get() as { content: string }
       expect(JSON.parse(configuration.content)).toEqual({
-        version: 4,
+        version: 5,
         includedGroupIds: ['builtin:variables'],
         enabledGroupIds: ['builtin:variables'],
-        subagentModelSelection: { configId: '', model: '' },
         roleplayPlan: { steps: ['读取变量', '生成正文'] }
       })
       expect(database.prepare("SELECT kind FROM agent_preset_contents WHERE kind='tool_policy'").all()).toEqual([])

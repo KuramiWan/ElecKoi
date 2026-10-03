@@ -205,7 +205,6 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array): 
       groups: content.groups,
       promptPositions: content.promptPositions,
       toolGroups: content.toolGroups,
-      subagentModelSelection: { configId: '', model: '' },
       roleplayPlan: content.roleplayPlan,
       regexRules: content.regexRules,
       expandedGroupIds: content.expandedGroupIds
@@ -277,7 +276,7 @@ function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject
         id: SILLY_TAVERN_PROMPT_GROUP_ID, name: '酒馆提示词', parentId: '', order: 1,
         treeViewOrder: 1, createdAt: timestamp, updatedAt: timestamp
       }],
-      promptPositions: [], toolGroups: agentToolGroups(), subagentModelSelection: { configId: '', model: '' },
+      promptPositions: [], toolGroups: agentToolGroups(),
       roleplayPlan: defaultRoleplayPlanSettings(), regexRules,
       expandedGroupIds: [SILLY_TAVERN_PROMPT_GROUP_ID]
     }

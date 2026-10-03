@@ -60,8 +60,7 @@ describe('legacy global model upgrade', () => {
     cleanups.push(() => rmSync(root, { recursive: true, force: true }))
     writeSessionSnapshot(root, 'synthetic-session', {
       conversationId: 'synthetic-conversation',
-      model: { provider: 'legacy-label', model: 'synthetic-model' },
-      subagentModel: { provider: 'explicit-subagent', model: 'synthetic-subagent' }
+      model: { provider: 'legacy-label', model: 'synthetic-model' }
     })
     await refreshSessionModelSnapshot(f.ctx, root, 'synthetic-session')
     const snapshot = JSON.parse(readFileSync(join(root, 'synthetic-session.json'), 'utf8'))
@@ -69,7 +68,6 @@ describe('legacy global model upgrade', () => {
       configId: 'current-route-a1b2', provider: 'current-route-a1b2', model: 'synthetic-model',
       temperature: 0.4, maxTokens: 8_000, contextWindow: 64_000
     })
-    expect(snapshot.subagentModel).toEqual({ provider: 'explicit-subagent', model: 'synthetic-subagent' })
   })
 
   it('uses the only current configured route when an old generated route no longer exists', async () => {

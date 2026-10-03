@@ -57,9 +57,10 @@
   config:
     provider: spawn
     toolName: subagent
-    backgroundMode: continuable
+    backgroundMode: one-shot
+    enableRunInBackground: false
     maxDepth: 2
-__ELECKOI_SUBAGENT_OPTIONS__
+    modelSelectionSettings: true
 
 - id: tool-subagent-fork
   name: '@deepseek-ai/dsh-tool-subagent'
@@ -69,7 +70,6 @@ __ELECKOI_SUBAGENT_OPTIONS__
     backgroundMode: one-shot
     enableRunInBackground: false
     maxDepth: 2
-__ELECKOI_SUBAGENT_OPTIONS__
 # ELECKOI:collaboration:END
 
 # ELECKOI:roleplay-workflow:BEGIN

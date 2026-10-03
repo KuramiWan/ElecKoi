@@ -201,6 +201,9 @@ function normalizeToolConfiguration(raw?: string, previousPlan?: string[]): stri
   const included = source.version === 2 && source.includedGroupIds === undefined
     ? enabled
     : currentToolIds(source.includedGroupIds, '已收录工具组')
+  // Historical v2 -> v3 output must stay byte-compatible with the published
+  // migration chain. Schema v7 removes this retired field immediately after
+  // the intervening migrations; current runtime code never reads it.
   const selection = source.version === CURRENT_TOOL_CONFIGURATION_VERSION
     ? readSubagentSelection(source.subagentModelSelection)
     : undefined

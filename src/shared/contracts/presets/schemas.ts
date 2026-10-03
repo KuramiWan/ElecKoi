@@ -61,11 +61,6 @@ export const agentPresetCatalogSchema = z.object({
   presets: z.array(agentPresetSummarySchema)
 })
 
-export const subagentModelSelectionSchema = z.object({
-  configId: z.string(),
-  model: z.string()
-})
-
 export const agentPresetSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(60),
@@ -79,7 +74,6 @@ export const agentPresetSchema = z.object({
   groups: z.array(settingLibraryGroupSchema),
   promptPositions: z.array(settingLibraryPromptPositionSchema),
   toolGroups: z.array(agentToolGroupSchema),
-  subagentModelSelection: subagentModelSelectionSchema,
   roleplayPlan: roleplayPlanSettingsSchema,
   regexRules: z.array(regexRuleSchema),
   expandedGroupIds: z.array(z.string())
@@ -118,4 +112,3 @@ export type AgentPresetImportSource = z.output<typeof agentPresetImportSourceSch
 export type AgentPresetLibraryGroup = z.output<typeof agentPresetLibraryGroupSchema>
 export type AgentPresetProfile = z.output<typeof agentPresetProfileSchema>
 export type AgentPresetSummary = z.output<typeof agentPresetSummarySchema>
-export type SubagentModelSelection = z.output<typeof subagentModelSelectionSchema>

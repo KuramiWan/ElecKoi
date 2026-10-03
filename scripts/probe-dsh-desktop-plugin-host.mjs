@@ -56,8 +56,8 @@ try {
   const onboarding = ready.injections.find(row =>
     typeof row === 'object' && row !== null && row.kind === 'global' && row.name === '__DSH_MODELS_ONBOARDING__'
   )
-  if (onboarding?.value?.credentialOnboarding !== false) {
-    throw new Error('Embedded plugin center still enables automatic API-key onboarding')
+  if (onboarding) {
+    throw new Error('Embedded DSH model settings remain enabled beside ElecKoi model management')
   }
   const boot = ready.injections.find(row =>
     typeof row === 'object' && row !== null && row.kind === 'global' && row.name === '__DSH_BOOT__'

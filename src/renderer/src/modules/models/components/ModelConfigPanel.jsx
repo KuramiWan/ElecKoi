@@ -160,6 +160,16 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     () => configItems.filter((item) => normalizeProviderId(item.provider) === activeProviderId),
     [activeProviderId, configItems],
   );
+
+  useEffect(() => {
+    const current = formRef.current || {};
+    if (isDirtyRef.current || !current.id) return;
+    const latest = configItems.find((item) => item.id === current.id);
+    if (!latest) return;
+    formRef.current = latest;
+    setForm(latest);
+  }, [configItems]);
+
   const hasUnsavedChanges = isDirty;
   const providerVersionItems = useMemo(
     () => providerVersions(form, providerConfigItems, activeProviderId),
@@ -233,13 +243,6 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
         ...current,
         [key]: value,
       };
-      if (key === "api_format" && current.provider === "deepseek") {
-        const address = String(current.base_url || "").replace(/\/+$/, "");
-        if (["https://api.deepseek.com", "https://api.deepseek.com/anthropic"].includes(address)) {
-          next.base_url = value === "deepseek_messages" || value === "anthropic_messages"
-            ? "https://api.deepseek.com/anthropic" : "https://api.deepseek.com";
-        }
-      }
       formRef.current = next;
       return next;
     });

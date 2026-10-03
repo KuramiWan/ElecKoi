@@ -506,9 +506,6 @@ export function ChatPanel({
       {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
       {toolsOpen ? <AgentToolsDialog
         presetCatalog={presetCatalog}
-        modelConfigs={modelConfigs}
-        modelOptionsByKey={modelOptionsByKey}
-        onLoadModels={onLoadModelOptions}
         onClose={() => setToolsOpen(false)}
         onManage={onOpenPresetTools}
         onNotify={onNotify}

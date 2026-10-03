@@ -10,11 +10,11 @@ const COMPACTION_GUARD = '你当前只执行内部历史压缩。只返回非空
  * agent/request waterfall. Persisted DSH request headers are history, not the
  * authority for a new turn.
  */
-export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, child = false) {
+export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId) {
   const reroutedCompactions = new WeakSet()
   const disposeAssembly = agentCtx.on('system-prompt/assemble', async (_assembly, _context, next) => {
     const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
-    const model = child ? snapshot.subagentModel : snapshot.model
+    const model = snapshot.model
     const result = await next()
     return model === undefined ? result : {
       ...result,
@@ -28,7 +28,7 @@ export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, ch
   const disposeRequest = agentCtx.on('agent/request', async (_payload, next) => {
     const inherited = await next()
     const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
-    const model = structuredClone(child ? snapshot.subagentModel : snapshot.model)
+    const model = structuredClone(snapshot.model)
     if (!model?.provider || !model?.model) return inherited
     const {
       provider: _provider,

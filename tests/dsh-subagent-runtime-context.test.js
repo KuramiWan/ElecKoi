@@ -140,7 +140,9 @@ describe('DSH subagent runtime context inheritance', () => {
     expect(ctx.agentPresets.register).toHaveBeenCalledWith(expect.objectContaining({ id: 'eleckoi-active' }))
     const created = agentCreatedListener(ctx)
 
-    await created({ agent: runtimeAgent('child-a', { origin: 'subagent', parentSession: 'root-session' }) })
+    const childA = runtimeAgent('child-a', { origin: 'subagent', parentSession: 'root-session' })
+    await created({ agent: childA })
+    expect(childA.ctx.on).not.toHaveBeenCalled()
     await expect(toolResultFor('child-a', 'eleckoi_glob_setting_files', { pattern: '**' }))
       .resolves.toMatchObject({ files: [{ path: '世界/港口', title: '港口' }] })
     await expect(toolResultFor('child-a', 'eleckoi_grep_setting_files', {
@@ -159,13 +161,17 @@ describe('DSH subagent runtime context inheritance', () => {
       operations: [{ op: 'delta', path: '/状态/好感度', value: 5 }]
     })).resolves.toMatchObject({ status: 'ok', applied_operations: 1 })
 
-    await created({ agent: runtimeAgent('child-b', { origin: 'subagent', parentSession: 'child-a' }) })
+    const childB = runtimeAgent('child-b', { origin: 'subagent', parentSession: 'child-a' })
+    await created({ agent: childB })
+    expect(childB.ctx.on).not.toHaveBeenCalled()
     await expect(toolResultFor('child-b', 'eleckoi_read_setting_files', { paths: ['世界/港口'] }))
       .resolves.toMatchObject({ files: [{ content: '港口终年晴朗。' }] })
     await expect(toolResultFor('child-b', 'eleckoi_read_variables', { paths: ['/状态/好感度'] }))
       .resolves.toMatchObject({ variables: [{ current: 15 }] })
 
-    await created({ agent: runtimeAgent('child-resumed', { origin: 'subagent', parentSession: 'root-session' }) })
+    const resumedChild = runtimeAgent('child-resumed', { origin: 'subagent', parentSession: 'root-session' })
+    await created({ agent: resumedChild })
+    expect(resumedChild.ctx.on).not.toHaveBeenCalled()
     expect(JSON.parse(readFileSync(join(fixture.snapshotRoot, 'child-resumed.json'), 'utf8')))
       .toMatchObject({ inheritedFromSessionId: 'root-session', rootRuntimeThreadId: 'root-session' })
 
@@ -177,6 +183,11 @@ describe('DSH subagent runtime context inheritance', () => {
   it('removes the inherited snapshot when child creation fails', async () => {
     const fixture = runtimeFixture()
     const failure = new Error('child setup failed')
+    const rootSnapshotPath = join(fixture.snapshotRoot, 'root-session.json')
+    writeFileSync(rootSnapshotPath, JSON.stringify({
+      ...JSON.parse(readFileSync(rootSnapshotPath, 'utf8')),
+      disabledToolGroupIds: ['builtin:web']
+    }))
     const ctx = {
       provide: vi.fn(),
       on: vi.fn(() => () => undefined),
@@ -190,7 +201,7 @@ describe('DSH subagent runtime context inheritance', () => {
     await applyAgentPresetBridge(ctx)
 
     const failed = runtimeAgent('failed-child', { origin: 'subagent', parentSession: 'root-session' })
-    failed.ctx.on = vi.fn(() => { throw failure })
+    failed.ctx.tools.schemas = vi.fn(() => { throw failure })
     await expect(agentCreatedListener(ctx)({ agent: failed })).rejects.toThrow(failure)
     expect(existsSync(join(fixture.snapshotRoot, 'failed-child.json'))).toBe(false)
   })
@@ -267,7 +278,6 @@ function runtimeFixture() {
     mountedPresetId: 'eleckoi-active',
     mountedPresetRevision: 'fixture-revision',
     model: { provider: 'provider-main', model: 'model-main' },
-    subagentModel: { provider: 'provider-child', model: 'model-child' },
     settingStateFile,
     variableStateFile,
     settingLibraryEnabled: true,

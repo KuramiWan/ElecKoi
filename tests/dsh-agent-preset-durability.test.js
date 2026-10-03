@@ -30,7 +30,6 @@ describe('DSH Agent preset durability', () => {
         roleplayPlan: { steps: [] }
       },
       { disabledGroupIds: [] },
-      { provider: 'provider-a', model: 'model-a' },
       { provider: 'provider-a', model: 'model-a', contextWindow: 100_000, autoCompactTokenLimit: 80_000 }
     )
     expect(preset.id).toBe('eleckoi-active')
@@ -43,6 +42,14 @@ describe('DSH Agent preset durability', () => {
       .toBe('@deepseek-ai/dsh-agent-instructions')
     expect(pluginById(definition.plugins, 'variable-tools')?.name)
       .toBe('eleckoi:agent-preset/variable-tools')
+    expect(pluginById(definition.plugins, 'tool-subagent')?.config).toMatchObject({
+      provider: 'spawn',
+      backgroundMode: 'one-shot',
+      enableRunInBackground: false,
+      modelSelectionSettings: true
+    })
+    expect(pluginById(definition.plugins, 'tool-subagent')?.config).not.toHaveProperty('agentOptions')
+    expect(pluginById(definition.plugins, 'tool-subagent-fork')?.config).not.toHaveProperty('agentOptions')
 
     const updated = materializeAgentPreset(
       presetRoot,
@@ -54,7 +61,6 @@ describe('DSH Agent preset durability', () => {
         roleplayPlan: { steps: ['完成正文'] }
       },
       { disabledGroupIds: [] },
-      { provider: 'provider-a', model: 'model-a' },
       { provider: 'provider-a', model: 'model-a', contextWindow: 100_000, autoCompactTokenLimit: 20_000 }
     )
     expect(updated.id).toBe(preset.id)

@@ -7,7 +7,7 @@ import { historicalRuntimeState } from './historical-runtime-state.mjs'
 import { historyStatsProjection } from './history-stats-projection.mjs'
 import { durableProductPluginSpecifier } from './preset-definition.mjs'
 import { turnOutcomesProjection } from './turn-outcomes-projection.mjs'
-import { currentRequestSnapshot, requestSnapshot } from './model-selection-migration.mjs'
+import { currentRequestSnapshot } from './model-selection-migration.mjs'
 
 export { requestSnapshot } from './model-selection-migration.mjs'
 
@@ -36,18 +36,16 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, text)
     const previous = readOptionalSnapshot(snapshotRoot, runtime.runtimeSessionId)
     const mainModel = await currentRequestSnapshot(ctx)
-    const subagentModel = await resolveSubagentModel(ctx, runtime.subagentModelSelection, mainModel)
     const effectiveToolPolicy = { disabledGroupIds: [...(runtime.disabledToolGroupIds ?? [])] }
     const requestedPreset = materializeAgentPreset(
       presetRoot,
       templatePath,
       runtime.agentPreset,
       effectiveToolPolicy,
-      subagentModel,
       mainModel
     )
     if (!creating) await presetRegistrar.prepareForSession(runtime.runtimeSessionId, requestedPreset.id)
-    return { runtime, previous, mainModel, subagentModel, effectiveToolPolicy, requestedPreset }
+    return { runtime, previous, mainModel, effectiveToolPolicy, requestedPreset }
   }
 
   const prepare = async (conversationId, text, creating = false) => {
@@ -55,7 +53,6 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       runtime,
       previous,
       mainModel,
-      subagentModel,
       effectiveToolPolicy,
       requestedPreset
     } = await prepareCurrentPreset(conversationId, text, creating)
@@ -96,7 +93,6 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         pendingPresetRevision: requestedPreset.revision
       } : {}),
       model: mainModel,
-      subagentModel,
       variableStateFile,
       settingStateFile,
       contextFile,
@@ -304,15 +300,7 @@ async function requireIdleSession(ctx, sessionId) {
   if (resolved.agent.status !== 'idle') throw new Error('当前聊天仍在生成，不能提交新的消息。')
 }
 
-async function resolveSubagentModel(ctx, configured, fallback) {
-  const provider = configured?.configId?.trim()
-  const model = configured?.model?.trim()
-  if (!provider || !model) return fallback
-  const info = await ctx.llm.resolveModelInfo(provider, model)
-  return requestSnapshot(ctx, { provider, model }, info)
-}
-
-export function materializeAgentPreset(root, templatePath, preset, toolPolicy, subagentModel, mainModel) {
+export function materializeAgentPreset(root, templatePath, preset, toolPolicy, mainModel) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(preset.id)) throw new Error('预设编号不能用于 DSH Agent Preset。')
   const mountedPresetId = ACTIVE_RUNTIME_PRESET_ID
   const directory = join(root, mountedPresetId)
@@ -326,12 +314,6 @@ export function materializeAgentPreset(root, templatePath, preset, toolPolicy, s
     .replace('__ELECKOI_WEB_SEARCH_MAX_RESULTS__', '8')
     .replace('__ELECKOI_COMPACTION_THRESHOLD_RATIO__', String(compactionRatio(mainModel)))
     .replace('__ELECKOI_COMPACTION_RETENTION__', 'retainTokens: 0')
-    .replaceAll('__ELECKOI_SUBAGENT_OPTIONS__', [
-      '    agentOptions:',
-      `      provider: ${JSON.stringify(subagentModel.provider)}`,
-      `      model: ${JSON.stringify(subagentModel.model)}`,
-      ...(subagentModel.maxTokens === undefined ? [] : [`      maxTokens: ${subagentModel.maxTokens}`])
-    ].join('\n'))
   composition = applyPresetToolPolicy(composition, new Set(toolPolicy.disabledGroupIds))
   const plugins = parseYaml(composition)
   if (!Array.isArray(plugins)) throw new Error('DSH Agent 预设组合必须是插件列表。')

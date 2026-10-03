@@ -586,7 +586,6 @@ class ProductDataStore {
       },
       disabledToolGroupIds,
       agentPreset: preset.runtimeSelection(),
-      subagentModelSelection: preset.subagentModelSelection(),
       settingLibraryBaseline: rawSettingLibrary && settingLibrary
         ? { source: rawSettingLibrary, projected: settingLibrary }
         : undefined

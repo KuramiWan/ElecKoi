@@ -12,8 +12,18 @@ describe('DSH ElecKoi model catalog', () => {
     let catalog: any
     let cleanup = () => {}
     const rows: any[] = [
-      { ns: 'llm-pi-ai', value: { providers: {} }, revision: 0 },
-      { ns: 'eleckoi-client-models', value: { entries: {} }, revision: 0 },
+      { ns: 'llm-pi-ai', value: { providers: {
+        'config-orphan': {
+          apiKeyEnv: 'CONFIG_ORPHAN_API_KEY',
+          displayName: '历史配置',
+          api: 'openai-responses',
+          baseURL: 'https://legacy.example/v1',
+          models: [{ id: 'legacy-model', name: 'Legacy Model' }],
+        },
+      } }, revision: 0 },
+      { ns: 'eleckoi-client-models', value: { entries: {
+        'config-orphan': { name: '历史配置', provider: 'deepseek', model: 'legacy-model', credentialRef: 'CONFIG_ORPHAN_API_KEY' },
+      } }, revision: 0 },
     ]
     const keys = new Map<string, string>()
     const remote = {
@@ -34,9 +44,7 @@ describe('DSH ElecKoi model catalog', () => {
       llm: {
         listConfigurableProviders: async () => ({ ok: true, value: [{ provider: 'deepseek-account', displayName: 'Account', settingsNs: 'llm-deepseek-account', settingsPath: [] },
           ...(rows.some(row => row.ns === 'llm-deepseek') ? [{ provider: 'deepseek-official', settingsNs: 'llm-deepseek', settingsPath: [] }] : []),
-          ...Object.keys(rows[0].value.providers).map(provider => ({
-          provider, displayName: provider, settingsNs: 'llm-pi-ai', settingsPath: ['providers', provider],
-        }))] }),
+        ] }),
       },
       eleckoiModels: { discoverModels: vi.fn(async () => ({ ok: true, value: [{ id: 'example-model' }] })),
         revealApiKey: vi.fn(async () => ({ ok: true, value: 'synthetic-stored-value' })) },
@@ -56,13 +64,26 @@ describe('DSH ElecKoi model catalog', () => {
       effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {},
     })
     await settle()
+    expect(catalog.getSnapshot().configs).toContainEqual(expect.objectContaining({
+      id: 'config-orphan',
+      provider: 'custom',
+      name: '历史配置',
+      model: 'legacy-model',
+      api_format: 'responses',
+      base_url: 'https://legacy.example/v1',
+    }))
+    await catalog.deleteConfig('config-orphan')
     expect(catalog.getSnapshot().configs).toEqual([])
+    remote.credentials.unset.mockClear()
     const draft = { id: 'config-example', provider: 'custom', name: 'Example', model: 'example-model',
       api_format: 'chat_completions', base_url: 'https://models.example/v1', api_key: 'synthetic-probe-value',
       model_options: [{ id: 'example-model', contextWindowTokens: 65536, temperature: 0.6, topP: 0.96, autoCompactTokenLimit: 30000 }],
     }
     const saved = await catalog.save(draft)
     expect(saved).toMatchObject({ id: draft.id, api_key: '', credentialConfigured: true, model: draft.model })
+    expect(catalog.getSnapshot().configs).toContainEqual(expect.objectContaining({
+      id: draft.id, provider: 'custom', name: 'Example', model: 'example-model',
+    }))
     await expect(catalog.revealApiKey(draft.id)).resolves.toBe('synthetic-stored-value');
     expect(remote.eleckoiModels.revealApiKey).toHaveBeenCalledExactlyOnceWith(draft.id);
     expect(JSON.stringify(catalog.getSnapshot())).not.toContain('synthetic-stored-value');
@@ -93,20 +114,17 @@ describe('DSH ElecKoi model catalog', () => {
     const dedicated = { ...saved, id: 'deepseek-official', provider: 'deepseek', credentialRef: 'CONFIRMED_KEY',
       api_format: 'deepseek_messages', model_options: [{ id: 'example-model', reasoningEfforts: { off: null, high: 'high', max: 'max' }, reasoningEffort: 'high', topP: 0.96 }] }
     catalog.adopt([dedicated])
-    const switched = await catalog.save({ ...dedicated, api_format: 'responses' })
-    expect(switched.id).not.toBe('deepseek-official')
-    expect(switched.credentialRef).toBe('CONFIRMED_KEY')
-    expect(switched.model_options[0]).toMatchObject({ reasoningEfforts: { off: null, high: 'high', max: 'max' }, reasoningEffort: 'high', topP: 0.96 })
-    expect(rows[0].value.providers[switched.id]).toMatchObject({ api: 'openai-responses', apiKeyEnv: 'CONFIRMED_KEY' })
+    await expect(catalog.save({ ...dedicated, api_format: 'responses' }))
+      .rejects.toThrow('DeepSeek 官方 API 固定使用 DSH 的 Messages 专用适配器')
     rows.push({ ns: 'llm-deepseek', value: { baseURL: 'https://models.example/anthropic', models: [{ id: 'example-model' }] }, revision: 0 })
     rows[1].value.entries['deepseek-official'] = { provider: 'deepseek', model: 'example-model', credentialRef: 'CONFIRMED_KEY' }
     keys.set('CONFIRMED_KEY', 'synthetic-shared-value')
     await catalog.refresh()
     expect(catalog.getSnapshot().configs.some((config: any) => config.id === 'deepseek-official')).toBe(true)
     await catalog.deleteConfig('deepseek-official')
-    expect(catalog.getSnapshot().configs.some((config: any) => config.id === 'deepseek-official')).toBe(false)
-    expect(catalog.getSnapshot().configs.find((config: any) => config.id === switched.id).credentialConfigured).toBe(true)
-    expect(keys.get('CONFIRMED_KEY')).toBe('synthetic-shared-value')
+    expect(catalog.getSnapshot().configs.find((config: any) => config.id === 'deepseek-official'))
+      .toMatchObject({ credentialConfigured: false })
+    expect(keys.get('CONFIRMED_KEY')).toBeUndefined()
     expect(rows[2].value).toEqual({})
     cleanup()
   })

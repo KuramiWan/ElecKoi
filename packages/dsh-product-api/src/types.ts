@@ -623,7 +623,6 @@ export interface AgentPreset {
   groups: SettingLibraryGroup[]
   promptPositions: SettingLibraryPromptPosition[]
   toolGroups: AgentToolGroup[]
-  subagentModelSelection: { configId: string; model: string }
   roleplayPlan: { steps: string[] }
   regexRules: RegexRule[]
   expandedGroupIds: string[]
@@ -683,7 +682,6 @@ export interface ConversationRuntimePreparation {
     roleplayPlan: { steps: string[] }
     historyCompactionInstructions?: string
   }
-  subagentModelSelection: { configId: string; model: string }
   settingLibraryBaseline?: {
     source: ConversationRuntimeSettingLibrary
     projected: ConversationRuntimeSettingLibrary

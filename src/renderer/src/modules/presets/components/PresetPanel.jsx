@@ -296,9 +296,6 @@ export function PresetListRow({ preset, selected, active, onClick, onContextMenu
 export function PresetWorkspace({
   requestedTab = '',
   onRequestedTabHandled,
-  modelConfigs = [],
-  modelOptionsByKey,
-  onLoadModels,
   onNotify,
   onTestRegex,
   renderEditorSection,
@@ -330,6 +327,13 @@ export function PresetWorkspace({
     if (introductionRef.current) introductionRef.current.requestLeave(action);
     else if (dirty) setPendingAction({ action });
     else action();
+  }
+
+  function confirmPresetSavedBeforeSubagentSettings() {
+    if (savingRef.current) return false;
+    if (!dirty) return true;
+    setPendingAction({ reminderOnly: true });
+    return false;
   }
 
   useEffect(() => {
@@ -464,10 +468,16 @@ export function PresetWorkspace({
   const leaveDialog = <UnsavedChangesDialog
     open={Boolean(pendingAction)}
     title="保存修改？"
-    description="离开前是否保存当前预设的修改？"
+    description={pendingAction?.reminderOnly
+      ? '前往子智能体设置前是否先保存当前预设的修改？'
+      : '离开前是否保存当前预设的修改？'}
     saving={saving}
     onCancel={() => setPendingAction(null)}
     onDiscard={() => {
+      if (pendingAction?.reminderOnly) {
+        setPendingAction(null);
+        return;
+      }
       const action = pendingAction?.action;
       discardChanges();
       setPendingAction(null);
@@ -477,7 +487,7 @@ export function PresetWorkspace({
       const action = pendingAction?.action;
       if (await save()) {
         setPendingAction(null);
-        action?.();
+        if (!pendingAction?.reminderOnly) action?.();
       }
     }}
   />;
@@ -524,11 +534,10 @@ export function PresetWorkspace({
   } else if (tab === 'tools') {
     tabEditor = <PresetToolsEditor
       preset={preset}
-      modelConfigs={modelConfigs}
-      modelOptionsByKey={modelOptionsByKey}
       onChange={setPreset}
-      onLoadModels={onLoadModels}
       onNotify={onNotify}
+      onBeforeOpenSubagentSettings={confirmPresetSavedBeforeSubagentSettings}
+      savePromptOpen={Boolean(pendingAction?.reminderOnly)}
       saveAction={saveAction}
     />;
   } else if (tab === 'regex') {

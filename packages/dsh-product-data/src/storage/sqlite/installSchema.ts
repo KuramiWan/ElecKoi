@@ -10,13 +10,18 @@ import { migration0003 } from './migrations/0003SettingPlacements'
 import { migration0004 } from './migrations/0004DshTurnBinding'
 import { migration0005 } from './migrations/0005RemoveRichMessageHeights'
 import { migration0006 } from './migrations/0006RemoveDshOwnedConfiguration'
+import { migration0007 } from './migrations/0007RemovePresetSubagentModelSelection'
 import { commonSchemaSql } from './migrations/commonSchemaSql'
 import { BASELINE_ID, CURRENT_SCHEMA_VERSION } from './schemaVersion'
 
 export { BASELINE_ID, CURRENT_SCHEMA_VERSION } from './schemaVersion'
 const PRE_RELEASE_V2_SCHEMA_VERSION = 2
 const PRE_RELEASE_V2_BASELINES = [BASELINE_ID, 'eleckoi-common-v1-2026-09-14-runtime-clean'] as const
-const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006] as const
+const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007] as const
+
+function hasTable(database: Database.Database, name: string): boolean {
+  return Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name))
+}
 
 function normalized(sql: string): string {
   return sql.replace(/\bIF NOT EXISTS\s+/gi, '').replace(/\s+/g, ' ').replace(/;$/, '').trim()
@@ -57,7 +62,7 @@ function migrate(database: Database.Database, baseline: string, version: number)
     }
     database.transaction(() => {
       step.apply(database)
-      if (step.toVersion < CURRENT_SCHEMA_VERSION) {
+      if (step.toVersion < CURRENT_SCHEMA_VERSION && hasTable(database, 'desktop_schema')) {
         database.prepare('UPDATE desktop_schema SET baseline = ? WHERE id = 1').run(BASELINE_ID)
       }
       database.pragma(`user_version = ${step.toVersion}`)
@@ -88,13 +93,17 @@ function normalizePreReleaseV2(database: Database.Database, baseline: string, ve
 }
 
 /**
- * Schema v6 has not shipped yet. Early development databases may still carry
+ * Legacy schema-v6 databases may still carry
  * execution and file-cleanup tables that are now owned by DSH Session/Agent
  * services, plus retired preference and schema-marker tables. Consolidate
  * that development baseline in place without touching current product data.
+ *
+ * TODO(remove only when direct upgrades from schema v6 are no longer
+ * supported): remove this normalizer together with the dedicated v6 branch
+ * below. It is upgrade-only code and is never used by a schema-v7 database.
  */
 function normalizePreReleaseV6(database: Database.Database, version: number): void {
-  if (version !== CURRENT_SCHEMA_VERSION) return
+  if (version !== 6) return
   const retired = ['generation_attempts', 'cleanup_operations', 'desktop_preferences', 'desktop_schema'].filter((name) => database.prepare(
     "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?"
   ).get(name))
@@ -110,13 +119,19 @@ export function installSchema(database: Database.Database): void {
   if (tables.length > 0) {
     const version = database.pragma('user_version', { simple: true }) as number
     if (version < CURRENT_SCHEMA_VERSION) {
-      if (!tables.some(({ name }) => name === 'desktop_schema')) throw new Error('此文件不是 ElecKoi 数据库的可迁移版本，拒绝修改数据。')
-      const registration = database.prepare('SELECT baseline FROM desktop_schema WHERE id = 1').get() as { baseline: string } | undefined
-      if (!registration) throw new Error('旧版 ElecKoi 数据库缺少结构登记，拒绝修改数据。')
-      normalizePreReleaseV2(database, registration.baseline, version)
-      migrate(database, registration.baseline, version)
+      if (version === 6) {
+        normalizePreReleaseV6(database, version)
+        validateTableInventory(database)
+        validateSchema(database)
+        migrate(database, BASELINE_ID, version)
+      } else {
+        if (!tables.some(({ name }) => name === 'desktop_schema')) throw new Error('此文件不是 ElecKoi 数据库的可迁移版本，拒绝修改数据。')
+        const registration = database.prepare('SELECT baseline FROM desktop_schema WHERE id = 1').get() as { baseline: string } | undefined
+        if (!registration) throw new Error('旧版 ElecKoi 数据库缺少结构登记，拒绝修改数据。')
+        normalizePreReleaseV2(database, registration.baseline, version)
+        migrate(database, registration.baseline, version)
+      }
     }
-    normalizePreReleaseV6(database, version)
     if (database.pragma('user_version', { simple: true }) !== CURRENT_SCHEMA_VERSION) {
       throw new Error(`数据库迁移未到达当前版本 ${CURRENT_SCHEMA_VERSION}。`)
     }

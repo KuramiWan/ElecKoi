@@ -104,7 +104,8 @@ export async function apply(ctx) {
     ? registerActivePreset()
     : registerLegacyPreset(id)
 
-  // TODO(remove legacy preset migration after the supported upgrade window):
+  // TODO(remove only after direct upgrades from releases that persisted
+  // materialized preset ids are no longer supported):
   // remove legacyRegistrations, legacyAliasDefinition, and their migration tests
   // together once every supported release has durably selected eleckoi-active.
   // Until then old declarations must remain registered long enough for an old
@@ -173,8 +174,10 @@ export async function apply(ctx) {
         : await refreshSessionModelSnapshot(ctx, snapshotRoot, agent.id)
       inherited = child
       await registerPreset(snapshot.mountedPresetId)
-      installRequestConfig(agent.ctx, snapshotRoot, agent.id, child)
-      if (!child) installConversationContext(agent.ctx, snapshotRoot, agent.id)
+      if (!child) {
+        installRequestConfig(agent.ctx, snapshotRoot, agent.id)
+        installConversationContext(agent.ctx, snapshotRoot, agent.id)
+      }
       applyDisabledPolicy(agent.ctx, snapshot.disabledToolGroupIds)
     } catch (error) {
       if (inherited) removeSessionSnapshot(snapshotRoot, agent.id)

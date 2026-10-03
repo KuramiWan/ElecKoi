@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { app } from 'electron'
+import { app, session } from 'electron'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import { DshDesktopPluginHost, resolveDshWebFrontendDirectory } from '@eleckoi/dsh-runtime'
+import { resolveDshSystemProxyEnvironment } from '@main/platform/electron/systemProxy'
 
 const require = createRequire(import.meta.url)
 
@@ -36,7 +37,14 @@ export const dshHostPlugin = {
       }
     })
     ctx.provide('pluginHost', {
-      start: () => host.start(),
+      async start() {
+        const proxyEnvironment = await resolveDshSystemProxyEnvironment(
+          url => session.defaultSession.resolveProxy(url),
+          process.env,
+          message => ctx.appLog.warn(message)
+        )
+        return host.start(proxyEnvironment)
+      },
       frontendDirectory: resolveDshWebFrontendDirectory,
       updateTasks: (action) => host.updateTasks(action),
       onFailure(listener) {

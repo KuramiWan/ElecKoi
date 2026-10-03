@@ -53,7 +53,6 @@ export function projectAgentPresetRuntimeSelection(preset: AgentPreset): {
     groups: preset.groups,
     promptPositions: preset.promptPositions,
     toolGroups: preset.toolGroups,
-    subagentModelSelection: preset.subagentModelSelection,
     roleplayPlan: preset.roleplayPlan,
     regexRules: preset.regexRules
   })).digest('hex').slice(0, 12)

@@ -236,6 +236,20 @@ function ProcessDetail({ item, details, delegatedItems, reasoningDisplayMode, sc
 
 function SubagentProcessDetail({ item, details, delegatedItems, reasoningDisplayMode, scrollKey, scrollPositions, onSelectItem }) {
   const presentation = subagentDetailPresentation(item, delegatedItems);
+  const hasProjectedReply = delegatedItems.some((child) => child?.toolName === 'assistant_final' && child?.parentId === item.id);
+  const visibleDelegatedItems = presentation.reply && !hasProjectedReply
+    ? [...delegatedItems, {
+        id: `subagent-result:${item.id}`,
+        parentId: item.id,
+        kind: 'narrative',
+        toolName: 'assistant_final',
+        status: item.status,
+        summary: presentation.reply,
+        detail: presentation.reply,
+        startedAtMillis: item.completedAtMillis || item.startedAtMillis || 0,
+        completedAtMillis: item.completedAtMillis || 0,
+      }]
+    : delegatedItems;
   return <ProcessScrollPane className="agent-process-detail agent-process-subagent-detail" scrollKey={scrollKey} scrollPositions={scrollPositions}>
     <div className="agent-process-detail-intro">
       <div><h3>{details.title}</h3>{presentation.description ? <p className="target">{presentation.description}</p> : null}</div>
@@ -243,10 +257,9 @@ function SubagentProcessDetail({ item, details, delegatedItems, reasoningDisplay
     </div>
     {presentation.prompt ? <DetailTextBlock label="委派指令" value={presentation.prompt} /> : null}
     <DetailTextBlock label="使用模型" value={presentation.model} />
-    <DetailTextBlock label="执行方式" value={presentation.execution} />
-    {delegatedItems.length
-      ? <DelegatedTimeline parentId={item.id} items={delegatedItems} reasoningDisplayMode={reasoningDisplayMode} onSelectItem={onSelectItem} />
-      : item.status === 'running' ? <p className="agent-process-waiting">正在等待子 Agent 返回执行事件</p> : null}
+    {visibleDelegatedItems.length
+      ? <DelegatedTimeline parentId={item.id} items={visibleDelegatedItems} reasoningDisplayMode={reasoningDisplayMode} onSelectItem={onSelectItem} />
+      : item.status === 'running' ? <p className="agent-process-waiting">正在启动子 Agent…</p> : null}
     {presentation.returnResult
       ? <DetailTextBlock label={item.status === 'error' ? '失败原因' : '返回结果'} value={presentation.returnResult} />
       : null}

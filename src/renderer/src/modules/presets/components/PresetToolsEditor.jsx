@@ -3,16 +3,15 @@ import { createPortal } from 'react-dom';
 import { CaretRight, MagnifyingGlass, MinusCircle, Plus, X } from '@phosphor-icons/react';
 import { normalizeRoleplayPlanDraft } from '@shared/contracts/presets/roleplayPlan';
 import { AgentToolGroupIcon } from '../../../ui/icons/index.jsx';
-import { RoleplayPlanEditor, SubagentModelSelect, WebSearchSettings } from '../../agentTools/index.js';
+import { RoleplayPlanEditor, SubagentSettingsLink, WebSearchSettings } from '../../agentTools/index.js';
 import { PresetContextMenu, usePresetContextMenu } from './PresetContextMenu.jsx';
 
 export function PresetToolsEditor({
   preset,
-  modelConfigs = [],
-  modelOptionsByKey,
   onChange,
-  onLoadModels,
   onNotify,
+  onBeforeOpenSubagentSettings,
+  savePromptOpen = false,
   saveAction,
 }) {
   const [query, setQuery] = useState('');
@@ -101,15 +100,12 @@ export function PresetToolsEditor({
       ]} /> : null}
       {configGroup ? <PresetToolConfigDialog
         group={configGroup}
-        modelConfigs={modelConfigs}
-        modelOptionsByKey={modelOptionsByKey}
-        subagentModelSelection={preset.subagentModelSelection}
         roleplayPlan={preset.roleplayPlan}
+        closeBlocked={savePromptOpen}
         onClose={closeConfig}
         onEnabledChange={(enabled) => updateGroup(configGroup.id, { enabled })}
-        onLoadModels={onLoadModels}
         onNotify={onNotify}
-        onSubagentModelChange={(subagentModelSelection) => onChange({ ...preset, subagentModelSelection })}
+        onBeforeOpenSubagentSettings={onBeforeOpenSubagentSettings}
         onRoleplayPlanChange={(roleplayPlan) => onChange({ ...preset, roleplayPlan })}
       /> : null}
     </section>
@@ -118,24 +114,21 @@ export function PresetToolsEditor({
 
 function PresetToolConfigDialog({
   group,
-  modelConfigs,
-  modelOptionsByKey,
-  subagentModelSelection,
   roleplayPlan,
+  closeBlocked,
   onClose,
   onEnabledChange,
-  onLoadModels,
   onNotify,
-  onSubagentModelChange,
+  onBeforeOpenSubagentSettings,
   onRoleplayPlanChange,
 }) {
   useEffect(() => {
     function closeOnEscape(event) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && !closeBlocked) onClose();
     }
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose]);
+  }, [closeBlocked, onClose]);
 
   return createPortal(<div className="preset-tool-config-backdrop" role="presentation" onMouseDown={onClose}>
     <section className="preset-tool-config-dialog" role="dialog" aria-modal="true" aria-label={`${group.name}配置`} onMouseDown={(event) => event.stopPropagation()}>
@@ -157,12 +150,9 @@ function PresetToolConfigDialog({
           ><i /></button>
         </section>
         {group.description ? <p className="preset-tool-config-description">{group.description}</p> : null}
-        {group.id === 'builtin:collaboration' ? <SubagentModelSelect
-          configs={modelConfigs}
-          selection={subagentModelSelection}
-          modelOptionsByKey={modelOptionsByKey}
-          onChange={onSubagentModelChange}
-          onLoadModels={onLoadModels}
+        {group.id === 'builtin:collaboration' ? <SubagentSettingsLink
+          onBeforeOpen={onBeforeOpenSubagentSettings}
+          onOpen={onClose}
           onNotify={onNotify}
         /> : null}
         {group.id === 'builtin:web' ? <div className="preset-tool-web-config"><WebSearchSettings /></div> : <>
