@@ -70,6 +70,8 @@
           "openTimeline",
           "closeTimeline",
           "uploadFile",
+          "registerNativeInputHandler",
+          "sendNativeInput",
           "send",
           "regenerate",
           "cancelRequest",

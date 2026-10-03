@@ -89,6 +89,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   const [chatCharacter, setChatCharacter] = useState(() => createEmptyChatCharacter());
 
   const requestRef = useRef(null);
+  const nativeInputHandlerRef = useRef(null);
   const {
     pinnedIds,
     hiddenIds,
@@ -237,11 +238,15 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
 
   useEffect(() => {
     const details = detailsSnapshot.details;
-    if (!conversations || !details || details.conversation.id !== sessionId || isSending) return;
+    // A send can briefly release the local request flag while the official
+    // DSH Session is still running. Keep the optimistic transcript in charge
+    // until both sides are idle; otherwise an intermediate durable snapshot
+    // without the current turn hides the just-submitted user message.
+    if (!conversations || !details || details.conversation.id !== sessionId || chatBusy) return;
     const chat = mapChatDetails(details);
     reconcileChatMessages(chat);
     setChatCharacter(normalizeLatestChatCharacter(chat));
-  }, [conversations, detailsSnapshot.details, isSending, sessionId]);
+  }, [chatBusy, conversations, detailsSnapshot.details, sessionId]);
 
   useEffect(() => {
     if (!conversations || !isSending || streamSnapshot.id !== sessionId
@@ -556,15 +561,29 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     });
   }
 
-  function sendMessage(event, inputOverride) {
+  function sendMessage(event, inputOverride, nativeSubmission = null) {
     return runChatMessageSend({
       event, input: inputOverride ?? input, inputImagesRef, inputFilesRef, isSending: chatBusy || filesUploading, modelConfig, modelSupportsImages, setStatus,
       requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
       setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
       setMessages, updatePendingReply, requestScrollToEnd, reconcileChatMessages, commitPendingError,
       notify, restoreChatEntry, conversationModel: conversations,
+      nativeAttachments: nativeSubmission?.attachments,
+      externalSignal: nativeSubmission?.signal,
+      submitMode: nativeSubmission?.mode,
     });
   }
+
+  nativeInputHandlerRef.current = (submission) => sendMessage(
+    { preventDefault() {} },
+    submission?.text || "",
+    submission,
+  );
+
+  useEffect(() => {
+    if (!conversations?.registerNativeInputHandler) return undefined;
+    return conversations.registerNativeInputHandler((submission) => nativeInputHandlerRef.current?.(submission));
+  }, [conversations]);
 
   async function deleteMessagesFrom(messageId) {
     if (!sessionId || !messageId || chatBusy) return false;
@@ -745,7 +764,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   useAuthorFrontendActions({ sessionId, setIsSending, setStatus, reconcileChatMessages,
     replaceChatMessages, conversations,
     setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, requestScrollToEnd, loadChat,
-    input, inputImages, setInput, sendMessage });
+    input, inputImages, setInput, sendMessage, requestRef });
 
   return {
     sessions: displaySessions,

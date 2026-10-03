@@ -349,6 +349,7 @@ window.__ModuleLoader__.load({
         this.statsListeners = new Set()
         this.sessionBindingGeneration = 0
         this.activeRequests = new Map()
+        this.nativeInputHandler = null
         this.sessionMutations = new Map()
         this.generation = 0
         this.disposed = false
@@ -1095,6 +1096,33 @@ window.__ModuleLoader__.load({
         return this.runRequest(input, request => this.runOfficialPrompt(input, request))
       }
 
+      registerNativeInputHandler(handler) {
+        if (this.disposed || typeof handler !== 'function') return () => {}
+        this.nativeInputHandler = handler
+        return () => {
+          if (this.nativeInputHandler === handler) this.nativeInputHandler = null
+        }
+      }
+
+      async sendNativeInput(input) {
+        if (input?.signal?.aborted) {
+          const error = new Error('生成请求已取消。')
+          error.name = 'AbortError'
+          throw error
+        }
+        const conversationId = this.detailsSnapshot.id
+        if (!conversationId || this.runtimeSessionId(conversationId) !== input?.sessionId) {
+          return { kind: 'error', text: '当前聊天与输入框会话不一致。' }
+        }
+        if (typeof this.nativeInputHandler !== 'function') {
+          return { kind: 'error', text: 'ElecKoi 发送服务尚未就绪。' }
+        }
+        const outcome = await this.nativeInputHandler({ ...input, conversationId })
+        return outcome?.kind === 'success'
+          ? outcome
+          : { kind: 'error', ...(outcome?.text ? { text: outcome.text } : {}) }
+      }
+
       async regenerate(input) {
         if (this.disposed || !input?.conversationId || !input.requestId) throw new Error('无法重新生成这次回复。')
         if (!this.sessions || !this.uiConversation || !this.remote?.session) {
@@ -1154,7 +1182,7 @@ window.__ModuleLoader__.load({
           if (typeof file !== 'string' || !file) continue
           content.push({ type: 'file', receiptId: file })
         }
-        const accepted = await session.prompt(content, 'queue', input.signal, input.requestId)
+        const accepted = await session.prompt(content, input.mode === 'steer' ? 'steer' : 'queue', input.signal, input.requestId)
         if (!accepted?.ok) throw new Error(accepted?.error?.message || '生成请求失败。')
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
@@ -1165,20 +1193,6 @@ window.__ModuleLoader__.load({
           details: this.assertDetails(details, conversationId),
           cancelled: completed.cancelled || request.cancelled
         }
-      }
-
-      async prepareNativeInput({ sessionId, text, signal }) {
-        if (signal?.aborted) {
-          const error = new Error('生成请求已取消。')
-          error.name = 'AbortError'
-          throw error
-        }
-        const conversationId = this.detailsSnapshot.id
-        if (!conversationId || this.runtimeSessionId(conversationId) !== sessionId) return
-        await this.unwrap(
-          await this.remote.eleckoiConversations.preparePrompt(conversationId, text || ''),
-          '准备 DSH 会话失败。'
-        )
       }
 
       async uploadFile(conversationId, file, options = {}) {
@@ -1467,6 +1481,7 @@ window.__ModuleLoader__.load({
         this.stopRegexRules()
         this.changeFeed = null
         this.changeFeedAbort = null
+        this.nativeInputHandler = null
         this.listeners.clear()
         this.detailsListeners.clear()
         this.modelSelectionListeners.clear()

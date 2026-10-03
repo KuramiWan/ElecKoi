@@ -148,6 +148,7 @@ export async function sendChatMessage(payload, requestId = "", { model, signal }
     text: payload.message,
     images: payload.images || [],
     files: payload.files || [],
+    ...(payload.mode ? { mode: payload.mode } : {}),
     ...(signal ? { signal } : {}),
   });
   return { session_id: payload.session_id, chat: mapChatDetails(result.details), cancelled: result.cancelled };

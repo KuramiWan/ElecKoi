@@ -2,17 +2,30 @@ diff --git a/lib/client.js b/lib/client.js
 index 7f3f791e8aaa8691f085c472f915bde295ac7ec1..226259ad95bd8eadc412cb9817083f33cbecddc4 100644
 --- a/lib/client.js
 +++ b/lib/client.js
-@@ -14331,7 +14331,8 @@ window.__ModuleLoader__.load({
+@@ -14331,7 +14331,20 @@ window.__ModuleLoader__.load({
  			*/
- 			sink(session, text, attachmentIds, mode, signal) {
+-			sink(session, text, attachmentIds, mode, signal) {
++			async sink(session, text, attachmentIds, mode, signal) {
  				if (text === "" && attachmentIds.length === 0) return Promise.resolve({ kind: "success" });
 -				return this.conversation().sendSession(session, text, attachmentIds, mode, signal);
 +				const product = this.rootCtx.get("eleckoiConversations");
-+				return Promise.resolve(product?.prepareNativeInput?.({ sessionId: session.sessionId, text, signal })).then(() => this.conversation().sendSession(session, text, attachmentIds, mode, signal));
++				if (typeof product?.sendNativeInput !== "function") return { kind: "error", text: "ElecKoi 发送服务尚未就绪。" };
++				const conversation = this.conversation();
++				const drafts = conversation.resolveDraftAttachments(attachmentIds);
++				const serialized = await conversation.serializeDraftAttachments(attachmentIds);
++				const attachments = serialized.attachments.map((attachment, index) => ({
++					...attachment,
++					draftId: attachmentIds[index],
++					name: drafts[index]?.file?.name ?? attachment.name ?? "",
++					bytes: drafts[index]?.file?.size ?? 0
++				}));
++				const outcome = await product.sendNativeInput({ sessionId: session.sessionId, text, attachments, mode, signal });
++				if (outcome?.kind === "success") for (const id of attachmentIds) conversation.releaseDraftAttachment(id);
++				return outcome;
  			}
  			/**
  			* Submit every still-pending queued message through QueueDock Steer, in FIFO
-@@ -17223,7 +17224,7 @@ window.__ModuleLoader__.load({
+@@ -17223,7 +17236,7 @@ window.__ModuleLoader__.load({
  		* The no-session state renders the SAME div inert as the Workspace-picker
  		* trigger instead of a parallel tree.
  		*/
@@ -21,7 +34,7 @@ index 7f3f791e8aaa8691f085c472f915bde295ac7ec1..226259ad95bd8eadc412cb9817083f33
  			const input = useInput((s) => s);
  			const notice = useNotices((s) => s);
  			const busyEnter = useBusyEnter((s) => s);
-@@ -17509,6 +17510,7 @@ window.__ModuleLoader__.load({
+@@ -17509,6 +17522,7 @@ window.__ModuleLoader__.load({
  												children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineMedium, { size: 14 })
  											})
  										}),
@@ -29,7 +42,7 @@ index 7f3f791e8aaa8691f085c472f915bde295ac7ec1..226259ad95bd8eadc412cb9817083f33
  										(0, react_jsx_runtime.jsx)("input", {
  											ref: fileInputRef,
  											type: "file",
-@@ -17529,7 +17531,7 @@ window.__ModuleLoader__.load({
+@@ -17529,7 +17543,7 @@ window.__ModuleLoader__.load({
  										(0, react_jsx_runtime.jsxs)("div", {
  											className: InputBar_module_css_default.standardControls,
  											hidden: activity,
@@ -38,7 +51,7 @@ index 7f3f791e8aaa8691f085c472f915bde295ac7ec1..226259ad95bd8eadc412cb9817083f33
  										}),
  										input === void 0 || sessionId === void 0 ? null : (0, react_jsx_runtime.jsx)("div", {
  											className: activity ? InputBar_module_css_default.activityExpanded : InputBar_module_css_default.activity,
-@@ -17612,7 +17614,7 @@ window.__ModuleLoader__.load({
+@@ -17612,7 +17626,7 @@ window.__ModuleLoader__.load({
  					}),
  					(0, react_jsx_runtime.jsxs)("div", {
  						className: InputBar_module_css_default.dock,

@@ -22,6 +22,7 @@ export function useAuthorFrontendActions({
   inputImages,
   setInput,
   sendMessage,
+  requestRef,
 }) {
   const pendingRunRef = useRef(null);
   const inputRef = useRef(input);
@@ -116,7 +117,10 @@ export function useAuthorFrontendActions({
       if (!terminal) return;
       const pending = pendingRunRef.current;
       pendingRunRef.current = null;
-      setIsSending(false);
+      // Product-owned sends keep the optimistic transcript and busy state
+      // until their own request promise has reconciled the durable result.
+      // Only externally started runs are settled by this observer.
+      if (!requestRef?.current) setIsSending(false);
       if (current.status === 'error') setStatus(current.error || '生成失败');
       refreshActiveChat(sessionId, pending?.resetWindow === true)
         .catch((error) => setStatus(publicError(error, '刷新聊天失败')));

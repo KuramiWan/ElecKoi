@@ -83,6 +83,7 @@ describe('DSH chat live rendering', () => {
     }
     let finishSend
     let finishRegenerate
+    let nativeInputHandler
     const model = {
       getSnapshot: () => catalog, subscribe: subscribe(catalogListeners),
       getDetailsSnapshot: () => details, subscribeDetails: subscribe(detailsListeners),
@@ -91,6 +92,10 @@ describe('DSH chat live rendering', () => {
       refresh: async () => catalog.items,
       send: vi.fn(() => new Promise(resolve => { finishSend = resolve })),
       regenerate: vi.fn(() => new Promise(resolve => { finishRegenerate = resolve })),
+      registerNativeInputHandler: vi.fn((handler) => {
+        nativeInputHandler = handler
+        return () => { if (nativeInputHandler === handler) nativeInputHandler = null }
+      }),
       invalidateDetails: vi.fn(),
       open: async () => details.details,
     }
@@ -109,11 +114,15 @@ describe('DSH chat live rendering', () => {
     }
     try {
       await act(async () => root.render(React.createElement(Probe)))
-      await act(async () => chat.setInput('读取文件'))
       let sending
-      await act(async () => { sending = chat.sendMessage({ preventDefault() {} }) })
+      await act(async () => {
+        sending = nativeInputHandler({
+          sessionId: 'session-1', text: '读取文件', attachments: [], mode: 'queue', signal: new AbortController().signal,
+        })
+      })
       expect(model.send).toHaveBeenCalledOnce()
       expect(chat.isSending).toBe(true)
+      expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件'])
       const reasoning = { id: 'reasoning-1', kind: 'reasoning', status: 'running', detail: '检查资料' }
       const search = { id: 'search-1', kind: 'tool', status: 'running', toolName: 'web_search', arguments: '{}' }
       await act(async () => {
@@ -150,10 +159,18 @@ describe('DSH chat live rendering', () => {
       expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '正在读取'])
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)
       await act(async () => {
-        emitStream('', 'idle')
         finishSend({ details: details.details, cancelled: false })
         await sending
       })
+      // The send promise may settle before the official DSH stream publishes
+      // its terminal state. A stale details refresh during that window must
+      // not erase the completed optimistic transcript.
+      await act(async () => emitDetails([]))
+      expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '正在读取'])
+      await act(async () => emitDetails([
+        makeMessage('user-1', 'user', '读取文件', 1), makeMessage('assistant-1', 'assistant', '读取完成', 4),
+      ]))
+      await act(async () => emitStream('', 'idle'))
       expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(1)
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)
       expect(chat.isSending).toBe(false)

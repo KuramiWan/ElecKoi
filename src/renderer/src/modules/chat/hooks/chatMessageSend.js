@@ -11,31 +11,54 @@ export async function runChatMessageSend(options) {
     requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
     setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
     setMessages, updatePendingReply, requestScrollToEnd, reconcileChatMessages, commitPendingError,
-    notify, restoreChatEntry, conversationModel,
+    notify, restoreChatEntry, conversationModel, nativeAttachments = null, externalSignal, submitMode,
   } = options;
-  event.preventDefault();
+  event?.preventDefault?.();
   const text = input.trim();
-  const draftImages = [...inputImagesRef.current];
-  const draftFiles = [...inputFilesRef.current];
-  if ((!text && !draftImages.length && !draftFiles.length) || isSending) return;
+  const suppliedAttachments = Array.isArray(nativeAttachments) ? nativeAttachments : null;
+  const draftImages = suppliedAttachments
+    ? suppliedAttachments.filter((attachment) => attachment?.type === "image").map((attachment) => ({
+      localId: attachment.draftId || `native-image-${Date.now()}`,
+      mediaType: attachment.mediaType,
+      bytes: Number(attachment.bytes) || 0,
+      name: attachment.name || "",
+      encodedData: attachment.data,
+    }))
+    : [...inputImagesRef.current];
+  const draftFiles = suppliedAttachments
+    ? suppliedAttachments.filter((attachment) => attachment?.type === "file").map((attachment) => ({
+      id: attachment.receiptId,
+      receiptId: attachment.receiptId,
+      attachmentId: attachment.draftId || attachment.receiptId,
+      name: attachment.name || "文件",
+      bytes: Number(attachment.bytes) || 0,
+    }))
+    : [...inputFilesRef.current];
+  if ((!text && !draftImages.length && !draftFiles.length) || isSending) {
+    return { kind: "error", text: isSending ? "当前聊天正在生成。" : "请输入消息。" };
+  }
   if (!modelConfig?.id || !modelConfig.model?.trim()) {
     const message = "未配置可用的对话模型，请先前往“模型配置”添加模型和 API 密钥。";
     setStatus(message);
     notify?.("error", message);
-    return;
+    return { kind: "error", text: message };
   }
   if (!conversationModel) {
     const message = "DSH 聊天服务尚未就绪";
     setStatus(message);
     notify?.("error", message);
-    return;
+    return { kind: "error", text: message };
   }
   if (draftImages.length && !modelSupportsImages) {
-    setStatus("当前模型未声明图片输入能力，请切换模型或在模型设置中开启。");
-    return;
+    const message = "当前模型未声明图片输入能力，请切换模型或在模型设置中开启。";
+    setStatus(message);
+    return { kind: "error", text: message };
   }
 
   const controller = new AbortController();
+  const abortFromExternal = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abortFromExternal();
+  else externalSignal?.addEventListener?.("abort", abortFromExternal, { once: true });
   const activeRequest = { controller };
   requestRef.current = activeRequest;
   setIsSending(true);
@@ -44,7 +67,9 @@ export async function runChatMessageSend(options) {
   let targetSessionId = sessionId;
 
   try {
-    const encodedImages = await Promise.all(draftImages.map(encodeImageDraft));
+    const encodedImages = suppliedAttachments
+      ? draftImages.map((image) => ({ mediaType: image.mediaType, data: image.encodedData, name: image.name }))
+      : await Promise.all(draftImages.map(encodeImageDraft));
     throwIfAborted(controller.signal);
     if (!targetSessionId) {
       if (!chatCharacter.character_id) throw new Error("请先从角色设定中双击角色进入聊天");
@@ -75,13 +100,16 @@ export async function runChatMessageSend(options) {
         attachmentId: file.attachmentId, name: file.name, bytes: file.bytes,
       })),
     };
-    clearInputImages();
-    clearInputFiles();
+    if (!suppliedAttachments) {
+      clearInputImages();
+      clearInputFiles();
+    }
     const payload = {
       message: text,
       images: encodedImages,
       files: draftFiles.map((file) => file.receiptId || file.id),
       session_id: targetSessionId,
+      ...(submitMode ? { mode: submitMode } : {}),
     };
 
     assistantId = `pending-${Date.now()}`;
@@ -100,15 +128,16 @@ export async function runChatMessageSend(options) {
         reconcileChatMessages(result.chat);
       }
       if (requestRef.current === activeRequest) setStatus("已停止");
-      return;
+      return { kind: "success" };
     }
-    if (requestRef.current !== activeRequest) return;
+    if (requestRef.current !== activeRequest) return { kind: "success" };
     setSessionId(result.session_id);
     reconcileChatMessages(result.chat);
     setChatCharacter(normalizeLatestChatCharacter(result.chat || {}));
     await refreshSessionsOnly();
-    if (requestRef.current !== activeRequest) return;
+    if (requestRef.current !== activeRequest) return { kind: "success" };
     setStatus("回复完成");
+    return { kind: "success" };
   } catch (error) {
     if (requestRef.current === activeRequest && !isAbortError(error)) {
       const message = getErrorMessage(error, "发送失败");
@@ -128,10 +157,14 @@ export async function runChatMessageSend(options) {
           // Keep the original send failure visible if refreshing durable state also fails.
         }
       }
-      if (requestRef.current !== activeRequest) return;
+      if (requestRef.current !== activeRequest) return { kind: "success" };
       if (!reconciled) commitPendingError?.(assistantId);
     }
+    return isAbortError(error)
+      ? { kind: "success" }
+      : { kind: "error", text: getErrorMessage(error, "发送失败") };
   } finally {
+    externalSignal?.removeEventListener?.("abort", abortFromExternal);
     if (requestRef.current === activeRequest) {
       requestRef.current = null;
       setIsSending(false);

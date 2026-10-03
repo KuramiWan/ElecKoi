@@ -2,8 +2,14 @@ import { useEffect, useState } from "react";
 import { RunningWhaleTail } from "./RunningWhaleTail.jsx";
 
 export function ChatWaitingReply({ startTime }) {
-  const [startedAt] = useState(() => startTime ?? Date.now());
+  const [startedAt, setStartedAt] = useState(() => startTime ?? Date.now());
   const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    const next = startTime ?? Date.now();
+    setStartedAt(next);
+    setNow(next);
+  }, [startTime]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
