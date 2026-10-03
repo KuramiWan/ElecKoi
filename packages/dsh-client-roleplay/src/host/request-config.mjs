@@ -48,7 +48,7 @@ export function installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, ch
       ...(model.topP === undefined ? {} : { topP: model.topP }),
       ...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens })
     }
-  })
+  }, { prepend: true })
   const disposeCompaction = agentCtx.on('llm/stream', (options, next) => {
     if (reroutedCompactions.has(options)) return next()
     const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)

@@ -13,9 +13,11 @@ describe('DSH request configuration', () => {
         model: { provider: 'legacy-provider-label', model: 'synthetic-model' },
       }));
       const listeners = new Map();
+      const registrations = [];
       const agentCtx = {
-        on(name, listener) {
+        on(name, listener, options) {
           listeners.set(name, listener);
+          registrations.push({ name, listener, options });
           return () => undefined;
         },
         llm: { stream: vi.fn() },
@@ -29,6 +31,8 @@ describe('DSH request configuration', () => {
           reasoningEffort: 'high', temperature: 0.4, topP: 0.9, maxTokens: 8_000,
         },
       }));
+      expect(registrations.find(({ name }) => name === 'agent/request')?.options)
+        .toEqual({ prepend: true });
       const resolved = await listeners.get('agent/request')({}, async () => ({
         provider: 'legacy-provider-label', model: 'synthetic-model', reasoningEffort: 'low',
         temperature: 0.1, topP: 0.2, maxTokens: 1_000, purpose: 'agent',
@@ -37,6 +41,41 @@ describe('DSH request configuration', () => {
       expect(resolved).toEqual({
         provider: 'current-provider-route', model: 'synthetic-model', reasoningEffort: 'high',
         temperature: 0.4, topP: 0.9, maxTokens: 8_000, purpose: 'agent',
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('wins after the official Session selection restores a legacy request header', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-request-waterfall-'));
+    try {
+      writeFileSync(join(root, 'session-a.json'), JSON.stringify({
+        model: { provider: 'current-provider-route', model: 'synthetic-model' },
+      }));
+      const listeners = [async (_payload, next) => ({
+        ...await next(),
+        provider: 'deepseek-default',
+        model: 'synthetic-model',
+      })];
+      const agentCtx = {
+        on(name, listener, options) {
+          if (name === 'agent/request') {
+            if (options?.prepend) listeners.unshift(listener);
+            else listeners.push(listener);
+          }
+          return () => undefined;
+        },
+        llm: { stream: vi.fn() },
+      };
+      installRequestConfig(agentCtx, root, 'session-a');
+      const dispatch = (index) => index === listeners.length
+        ? Promise.resolve({ provider: 'agent-options', model: 'synthetic-model' })
+        : listeners[index]({}, () => dispatch(index + 1));
+
+      await expect(dispatch(0)).resolves.toMatchObject({
+        provider: 'current-provider-route',
+        model: 'synthetic-model',
       });
     } finally {
       rmSync(root, { recursive: true, force: true });

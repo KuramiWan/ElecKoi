@@ -59,10 +59,9 @@ export async function apply(ctx) {
   ctx.on('agent/disposed', ({ agent }) => {
     if (sessionHandles.get(agent.id)?.agent === agent) sessionHandles.delete(agent.id)
   })
-  const trackHandle = (handle) => {
+  const disposeHandleTracking = installAgentHandleTracking(ctx.agents, (handle) => {
     sessionHandles.set(handle.agent.id, handle)
-    return handle
-  }
+  })
   const registerActivePreset = () => {
     const id = ACTIVE_RUNTIME_PRESET_ID
     const path = join(presetRoot, id, 'preset.json')
@@ -163,69 +162,30 @@ export async function apply(ctx) {
     }
   }
   ctx.provide('eleckoiPresetRegistrar', presetRegistrar)
-  const disposeRuntime = installRoleplaySessionRuntime(ctx, presetRegistrar)
-  const originalCreate = ctx.agents.create
-  const originalResume = ctx.agents.resume
-  const wrappedCreate = async function (options) {
-    const child = options.parentAgent !== undefined || options.meta?.origin === 'subagent'
-    const sourceSessionId = child
-      ? options.parentAgent?.session?.id ?? options.meta?.parentSession
-      : options.sessionId
-    if (!sourceSessionId) throw new Error('ElecKoi subagent is missing its parent Session id')
-    const targetSessionId = child ? options.sessionId : sourceSessionId
-    if (!targetSessionId) throw new Error('ElecKoi subagent is missing its child Session id')
-    const snapshot = child
-      ? inheritSessionSnapshot(snapshotRoot, sourceSessionId, targetSessionId)
-      : await refreshSessionModelSnapshot(ctx, snapshotRoot, sourceSessionId)
-    const nextOptions = composeSessionOptions(ctx, options, snapshotRoot, targetSessionId, snapshot, child, false)
-    return withSessionLock(targetSessionId, () => rollbackInheritedSnapshot(
-      async () => {
-        const existing = sessionHandles.get(targetSessionId)
-        if (existing) return existing
-        await registerPreset(snapshot.mountedPresetId)
-        return trackHandle(await originalCreate.call(ctx.agents, nextOptions))
-      },
-      snapshotRoot,
-      child ? targetSessionId : undefined
-    ))
-  }
-  const wrappedResume = async function (options) {
-    const child = options.parentAgent !== undefined
-    const sourceSessionId = child ? options.parentAgent?.session?.id : options.resumeSessionId
-    if (!sourceSessionId) return originalResume.call(ctx.agents, options)
-    let snapshot
+  ctx.on('agent/created', async ({ agent }) => {
+    const child = agent.session.header.origin === 'subagent'
+    const sourceSessionId = child ? agent.session.header.parentSession : agent.id
+    if (!sourceSessionId) return
+    let inherited = false
     try {
-      snapshot = child
-        ? readSessionSnapshot(snapshotRoot, sourceSessionId)
-        : await refreshSessionModelSnapshot(ctx, snapshotRoot, sourceSessionId)
+      const snapshot = child
+        ? inheritSessionSnapshot(snapshotRoot, sourceSessionId, agent.id)
+        : await refreshSessionModelSnapshot(ctx, snapshotRoot, agent.id)
+      inherited = child
+      await registerPreset(snapshot.mountedPresetId)
+      installRequestConfig(agent.ctx, snapshotRoot, agent.id, child)
+      if (!child) installConversationContext(agent.ctx, snapshotRoot, agent.id)
+      applyDisabledPolicy(agent.ctx, snapshot.disabledToolGroupIds)
     } catch (error) {
-      if (error?.code === 'ENOENT') return originalResume.call(ctx.agents, options)
+      if (inherited) removeSessionSnapshot(snapshotRoot, agent.id)
+      if (error?.code === 'ENOENT') return
       throw error
     }
-    const targetSessionId = child ? options.resumeSessionId : sourceSessionId
-    if (!targetSessionId) throw new Error('ElecKoi subagent is missing its resumed Session id')
-    if (child) snapshot = inheritSessionSnapshot(snapshotRoot, sourceSessionId, targetSessionId)
-    return withSessionLock(targetSessionId, () => rollbackInheritedSnapshot(
-      async () => {
-        const existing = sessionHandles.get(targetSessionId)
-        if (existing) return existing
-        await registerPreset(snapshot.mountedPresetId)
-        return trackHandle(await originalResume.call(
-          ctx.agents,
-          composeSessionOptions(ctx, options, snapshotRoot, targetSessionId, snapshot, child, true)
-        ))
-      },
-      snapshotRoot,
-      child ? targetSessionId : undefined
-    ))
-  }
-
-  ctx.agents.create = wrappedCreate
-  ctx.agents.resume = wrappedResume
+  })
+  const disposeRuntime = installRoleplaySessionRuntime(ctx, presetRegistrar)
   return async () => {
     disposeRuntime()
-    if (ctx.agents.create === wrappedCreate) ctx.agents.create = originalCreate
-    if (ctx.agents.resume === wrappedResume) ctx.agents.resume = originalResume
+    disposeHandleTracking()
     await registrationQueue
     await activeRegistration?.dispose()
     await Promise.allSettled([...legacyRegistrations.values()].map(async task => {
@@ -237,6 +197,31 @@ export async function apply(ctx) {
 
 function presetRevision(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
+}
+
+export function installAgentHandleTracking(agents, track) {
+  // Cordis services are caller-traced proxies. Patching the proxy only creates
+  // a caller-local shadow, so SessionController would bypass it. Patch the
+  // exported concrete service target and keep the original caller-bound `this`.
+  const target = agents[Symbol.for('cordis.original')] ?? agents
+  const originalCreate = target.create
+  const originalResume = target.resume
+  const wrappedCreate = async function (options) {
+    const handle = await Reflect.apply(originalCreate, this, [options])
+    track(handle)
+    return handle
+  }
+  const wrappedResume = async function (options) {
+    const handle = await Reflect.apply(originalResume, this, [options])
+    track(handle)
+    return handle
+  }
+  target.create = wrappedCreate
+  target.resume = wrappedResume
+  return () => {
+    if (target.create === wrappedCreate) target.create = originalCreate
+    if (target.resume === wrappedResume) target.resume = originalResume
+  }
 }
 
 function legacyAliasDefinition(presetRoot, id, templatePath) {
@@ -255,47 +240,4 @@ function storedPresetForInspection(inspection) {
     }
   }
   return selected
-}
-
-async function rollbackInheritedSnapshot(start, snapshotRoot, childSessionId) {
-  try {
-    return await start()
-  } catch (error) {
-    if (childSessionId) removeSessionSnapshot(snapshotRoot, childSessionId)
-    throw error
-  }
-}
-
-function composeSessionOptions(ctx, options, snapshotRoot, sourceSessionId, snapshot, child, resuming) {
-  const model = child ? snapshot.subagentModel : snapshot.model
-  if (!model?.provider || !model?.model) throw new Error(`Session ${sourceSessionId} has no model snapshot`)
-  const originalSetup = options.setup
-  return {
-    ...options,
-    agentOptions: requestAgentOptions(options.agentOptions, model),
-    ...resuming || child ? {} : {
-      meta: { ...(options.meta ?? {}), agentPreset: snapshot.mountedPresetId }
-    },
-    setup: async (agentCtx, agent) => {
-      // Mounting a preset changes the Agent scope. Register product request
-      // configuration and context before joining the preset composition.
-      installRequestConfig(agentCtx, snapshotRoot, sourceSessionId, child)
-      if (!child) installConversationContext(agentCtx, snapshotRoot, sourceSessionId)
-      applyDisabledPolicy(agentCtx, snapshot.disabledToolGroupIds)
-      const transaction = await originalSetup?.(agentCtx, agent)
-      if (!child) await ctx.agentPresets.mount(agentCtx, snapshot.mountedPresetId)
-      return transaction
-    }
-  }
-}
-
-function requestAgentOptions(inherited, model) {
-  const { maxTokens: _maxTokens, reasoningEffort: _reasoningEffort, ...rest } = inherited ?? {}
-  return {
-    ...rest,
-    provider: model.provider,
-    model: model.model,
-    ...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens }),
-    ...(model.reasoningEffort === undefined ? {} : { reasoningEffort: model.reasoningEffort })
-  }
 }

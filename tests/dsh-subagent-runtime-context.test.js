@@ -3,7 +3,12 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { apply as applyAgentPresetBridge } from '../resources/dsh/agent-preset-bridge.mjs'
+import { Context } from '@deepseek-ai/cordis'
+import { AgentRegistry } from '@deepseek-ai/dsh-agent'
+import {
+  apply as applyAgentPresetBridge,
+  installAgentHandleTracking
+} from '../resources/dsh/agent-preset-bridge.mjs'
 import { apply as applySettingLibraryTools } from '../resources/dsh/setting-library-tools.mjs'
 import { apply as applyVariableTools } from '../resources/dsh/variable-tools.mjs'
 
@@ -16,6 +21,39 @@ afterEach(() => {
 })
 
 describe('DSH subagent runtime context inheritance', () => {
+  it('tracks handles through the concrete Cordis service for every caller context', async () => {
+    const ctx = new Context()
+    const registry = ctx.plugin(AgentRegistry)
+    await registry
+    const createHandle = vi.fn(async (_ownerCtx, options) => ({
+      agent: { id: options.sessionId },
+      dispose: vi.fn()
+    }))
+    const resumeHandle = vi.fn(async (_ownerCtx, options) => ({
+      agent: { id: options.resumeSessionId },
+      dispose: vi.fn()
+    }))
+    const disposeFactory = ctx.agents.setFactory({
+      createAgent: createHandle,
+      resume: resumeHandle
+    })
+    const tracked = []
+    const disposeTracking = installAgentHandleTracking(ctx.agents, handle => tracked.push(handle))
+    const caller = ctx.extend()
+
+    await caller.agents.create({ sessionId: 'created-session' })
+    await caller.agents.resume({ resumeSessionId: 'resumed-session' })
+    expect(tracked.map(handle => handle.agent.id)).toEqual(['created-session', 'resumed-session'])
+    expect(createHandle).toHaveBeenCalledTimes(1)
+    expect(resumeHandle).toHaveBeenCalledTimes(1)
+
+    disposeTracking()
+    await caller.agents.create({ sessionId: 'untracked-session' })
+    expect(tracked).toHaveLength(2)
+    await disposeFactory()
+    await registry.dispose()
+  })
+
   it('keeps legacy declarations available and aliases a missing one until its Session selects the current preset', async () => {
     const fixture = runtimeFixture()
     writeFileSync(join(fixture.snapshotRoot, 'orphan-session.json'), JSON.stringify({
@@ -33,7 +71,7 @@ describe('DSH subagent runtime context inheritance', () => {
       JSON.stringify({ id: 'obsolete-preset', plugins: [] }))
     const unregister = vi.fn()
     const append = vi.fn()
-    const agent = { id: 'orphan-session', status: 'idle', ctx: {}, session: { append } }
+    const agent = runtimeAgent('orphan-session', {}, { append })
     const originalCreate = vi.fn(async options => ({ agent: { id: options.sessionId }, dispose: vi.fn() }))
     const originalResume = vi.fn(async () => ({ agent, dispose: vi.fn() }))
     const ctx = {
@@ -54,15 +92,13 @@ describe('DSH subagent runtime context inheritance', () => {
       .toEqual(['eleckoi-active', 'obsolete-preset'])
     expect(existsSync(join(process.env.ELECKOI_PRESET_ROOT, 'obsolete-preset'))).toBe(true)
     expect(ctx.provide).toHaveBeenCalledWith('eleckoiPresetRegistrar', expect.any(Object))
-    await expect(ctx.agents.resume({ resumeSessionId: 'orphan-session' })).resolves.toMatchObject({ agent })
+    await agentCreatedListener(ctx)({ agent })
     expect(JSON.parse(readFileSync(join(fixture.snapshotRoot, 'orphan-session.json'), 'utf8')).model)
       .toMatchObject({ configId: 'provider-main', provider: 'provider-main', model: 'model-main' })
     expect(ctx.agentPresets.register.mock.calls.map(([definition]) => definition.id))
       .toEqual(['eleckoi-active', 'obsolete-preset', 'snapshot-preset'])
-    await ctx.agents.create({ sessionId: 'new-session' })
-    expect(originalCreate).toHaveBeenCalledWith(expect.objectContaining({
-      agentOptions: expect.objectContaining({ provider: 'provider-main', model: 'model-main' })
-    }))
+    expect(originalCreate).not.toHaveBeenCalled()
+    expect(originalResume).not.toHaveBeenCalled()
 
     const activeSource = readFileSync(join(process.env.ELECKOI_PRESET_ROOT, 'eleckoi-active', 'preset.json'))
     const activeRevision = createHash('sha256').update(activeSource).digest('hex')
@@ -91,8 +127,8 @@ describe('DSH subagent runtime context inheritance', () => {
 
   it('gives created, nested, and resumed children the parent setting library and variables', async () => {
     const fixture = runtimeFixture()
-    const originalCreate = vi.fn(async (options) => ({ agent: { id: options.sessionId }, dispose: vi.fn() }))
-    const originalResume = vi.fn(async (options) => ({ agent: { id: options.resumeSessionId }, dispose: vi.fn() }))
+    const originalCreate = vi.fn()
+    const originalResume = vi.fn()
     const ctx = {
       provide: vi.fn(),
       on: vi.fn(() => () => undefined),
@@ -102,9 +138,9 @@ describe('DSH subagent runtime context inheritance', () => {
     }
     const dispose = await applyAgentPresetBridge(ctx)
     expect(ctx.agentPresets.register).toHaveBeenCalledWith(expect.objectContaining({ id: 'eleckoi-active' }))
-    expect(originalResume).not.toHaveBeenCalled()
+    const created = agentCreatedListener(ctx)
 
-    await ctx.agents.create(childCreateOptions('child-a', 'root-session'))
+    await created({ agent: runtimeAgent('child-a', { origin: 'subagent', parentSession: 'root-session' }) })
     await expect(toolResultFor('child-a', 'eleckoi_glob_setting_files', { pattern: '**' }))
       .resolves.toMatchObject({ files: [{ path: '世界/港口', title: '港口' }] })
     await expect(toolResultFor('child-a', 'eleckoi_grep_setting_files', {
@@ -123,21 +159,18 @@ describe('DSH subagent runtime context inheritance', () => {
       operations: [{ op: 'delta', path: '/状态/好感度', value: 5 }]
     })).resolves.toMatchObject({ status: 'ok', applied_operations: 1 })
 
-    await ctx.agents.create(childCreateOptions('child-b', 'child-a'))
+    await created({ agent: runtimeAgent('child-b', { origin: 'subagent', parentSession: 'child-a' }) })
     await expect(toolResultFor('child-b', 'eleckoi_read_setting_files', { paths: ['世界/港口'] }))
       .resolves.toMatchObject({ files: [{ content: '港口终年晴朗。' }] })
     await expect(toolResultFor('child-b', 'eleckoi_read_variables', { paths: ['/状态/好感度'] }))
       .resolves.toMatchObject({ variables: [{ current: 15 }] })
 
-    await ctx.agents.resume({
-      resumeSessionId: 'child-resumed',
-      parentAgent: { session: { id: 'root-session' } }
-    })
+    await created({ agent: runtimeAgent('child-resumed', { origin: 'subagent', parentSession: 'root-session' }) })
     expect(JSON.parse(readFileSync(join(fixture.snapshotRoot, 'child-resumed.json'), 'utf8')))
       .toMatchObject({ inheritedFromSessionId: 'root-session', rootRuntimeThreadId: 'root-session' })
 
-    expect(originalCreate).toHaveBeenCalledTimes(2)
-    expect(originalResume).toHaveBeenCalledTimes(1)
+    expect(originalCreate).not.toHaveBeenCalled()
+    expect(originalResume).not.toHaveBeenCalled()
     await dispose()
   })
 
@@ -156,16 +189,33 @@ describe('DSH subagent runtime context inheritance', () => {
     }
     await applyAgentPresetBridge(ctx)
 
-    await expect(ctx.agents.create(childCreateOptions('failed-child', 'root-session'))).rejects.toThrow(failure)
+    const failed = runtimeAgent('failed-child', { origin: 'subagent', parentSession: 'root-session' })
+    failed.ctx.on = vi.fn(() => { throw failure })
+    await expect(agentCreatedListener(ctx)({ agent: failed })).rejects.toThrow(failure)
     expect(existsSync(join(fixture.snapshotRoot, 'failed-child.json'))).toBe(false)
   })
 })
 
-function childCreateOptions(sessionId, parentSessionId) {
+function agentCreatedListener(ctx) {
+  return ctx.on.mock.calls.find(([name]) => name === 'agent/created')[1]
+}
+
+function runtimeAgent(id, header = {}, session = {}) {
   return {
-    sessionId,
-    parentAgent: { session: { id: parentSessionId } },
-    meta: { origin: 'subagent', parentSession: parentSessionId }
+    id,
+    status: 'idle',
+    ctx: {
+      on: vi.fn(() => () => undefined),
+      llm: { stream: vi.fn() },
+      sessions: { get: vi.fn() },
+      tools: { schemas: vi.fn(() => []), restrict: vi.fn(() => () => undefined) }
+    },
+    session: {
+      id,
+      header,
+      append: vi.fn(),
+      ...session
+    }
   }
 }
 
