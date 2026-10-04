@@ -5,7 +5,7 @@ import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
 
 export const name = 'eleckoi-setting-library-tools'
-export const inject = ['tools']
+export const inject = ['tools', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
 
 const requiredEntriesReadInstruction = '搜索结果的 required_entries 是本回合必读清单（固定必读及关键词、EJS 条件触发项），不受 pattern、path 或 files/matches 是否命中影响。若非空，回复用户前必须调用 eleckoi_read_setting_files，把本轮尚未读取或已失效的 path 一次传入 paths；已读取且正文未变化的条目无需重复读取，仅搜索不算读取。即使固定必读项标记为 cached_reference、正文已在前置缓存设定区，也必须读取，用工具回执的编号和标题核对前置正文。'
 
@@ -14,7 +14,7 @@ export function apply(ctx) {
     ctx.tools.register(globTool()),
     ctx.tools.register(grepTool()),
     ctx.tools.register(readTool()),
-    ctx.tools.register(patchTool())
+    ctx.tools.register(patchTool(ctx))
   ]
 }
 
@@ -133,7 +133,7 @@ function readTool() {
   })
 }
 
-function patchTool() {
+function patchTool(ctx) {
   return defineTool({
     name: 'eleckoi_apply_setting_patch',
     description: '对当前对话的虚拟设定执行一个结构化文件操作，修改只保存为当前对话差异，不会改动作者原设定。支持 write_file、edit_file、make_directory、move_file、move_directory、delete_file、delete_directory；路径使用 / 分隔且不带 .md 后缀。先用 Glob 或 Read 确认真实路径；一次调用只执行一个操作，失败时不提交。',
@@ -153,14 +153,38 @@ function patchTool() {
       const bridgeFile = settingBridgeFor(exec)
       const bridge = readBridge(bridgeFile, exec)
       if (!bridge.enabled) return { status: 'ok', scope: 'current_conversation', changed: false }
-      const original = structuredClone(bridge.library)
+      const original = readFileSync(bridgeFile, 'utf8')
+      let bridgeWritten = false
       try {
+        exec.signal?.throwIfAborted()
         const result = applyOperation(bridge.library, args)
+        if (!result.changed) return { status: 'ok', scope: 'current_conversation', ...result }
+        const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec.agent?.session?.id)
+        if (!snapshot.conversationId || !snapshot.settingLibraryBaseline) {
+          throw new Error('当前对话缺少设定持久化上下文。')
+        }
         delete bridge.runtimeResolution
         writeBridge(bridgeFile, bridge)
+        bridgeWritten = true
+        ctx.eleckoiProductData.commitConversationRuntime(
+          snapshot.conversationId,
+          undefined,
+          JSON.stringify(bridge.library),
+          snapshot.settingLibraryBaseline
+        )
+        // Notification failure must not turn a committed change into a failed tool result.
+        try {
+          ctx.eleckoiCharacterConfigurationChanges.publish({
+            kind: 'configuration', domain: 'settingLibraries',
+            characterId: snapshot.settingLibraryBaseline.source.characterId
+          })
+        } catch (error) {
+          ctx.logger?.warn(`分支设定刷新通知失败：${message(error)}`)
+        }
         return { status: 'ok', scope: 'current_conversation', ...result }
       } catch (error) {
-        bridge.library = original
+        if (bridgeWritten) writeFileSync(bridgeFile, original, 'utf8')
+        ctx.logger?.error(`分支设定修改未提交：${message(error)}`)
         return { ...fail('change_rejected', message(error)), state_unchanged: true }
       }
     }
@@ -188,18 +212,22 @@ function writeFile(library, path, args) {
   if (typeof args.content !== 'string') throw new Error('write_file 缺少 content。')
   const catalog = catalogOf(library)
   const current = catalog.byPath.get(path)
+  if (current) assertMutableEntry(current.raw)
   if (groupIdAt(library, path)) throw new Error(`无法写入文件：${path} 已是目录。`)
   const { parent, leaf } = splitPath(path)
   const groupId = ensureDirectory(library, parent)
   const timestamp = new Date().toISOString()
   if (current) {
+    const selectionHint = args.selection_hint === undefined
+      ? current.raw.agentSelectionHint : normalizeSelectionHint(args.selection_hint)
+    if (current.raw.content === args.content && current.raw.agentSelectionHint === selectionHint) {
+      return { operation: 'write_file', path, created: false, changed: false }
+    }
     Object.assign(current.raw, {
       title: leaf,
       groupId,
       content: args.content,
-      agentSelectionHint: args.selection_hint === undefined
-        ? current.raw.agentSelectionHint
-        : normalizeSelectionHint(args.selection_hint),
+      agentSelectionHint: selectionHint,
       updatedAt: timestamp
     })
     return { operation: 'write_file', path, created: false, changed: true }
@@ -207,7 +235,7 @@ function writeFile(library, path, args) {
   library.entries.push({
     id: randomUUID(), title: leaf, iconId: 'setting', kind: 'normal', groupId, content: args.content,
     openingMessages: [], defaultOpeningMessageId: '', agentSelectionHint: normalizeSelectionHint(args.selection_hint),
-    agentReadStrategy: 'normal', dynamicMode: 'standard', keywords: [], keywordScanDepth: 1,
+    agentReadStrategy: 'normal', dynamicMode: 'standard', contentMode: 'plain_text', keywords: [], keywordScanDepth: 1,
     conditionKeywords: [], keywordCondition: 'none', keywordUseRegex: false, keywordIgnoreCase: true, keywordWholeWord: false,
     keywordRecursionDepth: 0, triggerMode: 'agent_tool', enabled: true, position: null, promptPositionId: '', insertRole: 'user',
     order: Math.max(0, ...library.entries.map((entry) => Number(entry.order) || 0)) + 1,
@@ -238,6 +266,7 @@ function moveFile(library, source, destination, overwrite) {
   if (source === destination) return { operation: 'move_file', path: source, destination, changed: false }
   if (groupIdAt(library, destination)) throw new Error(`无法移动文件：目标 ${destination} 是目录。`)
   const target = catalogOf(library).byPath.get(destination)
+  if (target) assertMutableEntry(target.raw)
   if (target && target.raw.id !== entry.id && !overwrite) throw new Error('目标文件已存在。')
   if (target && target.raw.id !== entry.id) library.entries = library.entries.filter((item) => item.id !== target.raw.id)
   const { parent, leaf } = splitPath(destination)
@@ -249,6 +278,7 @@ function moveDirectory(library, source, destination) {
   if (!source) throw new Error('不能移动根目录。')
   const sourceId = groupIdAt(library, source)
   if (!sourceId) throw new Error('找不到源目录。')
+  assertMutableGroup(sourceId)
   if (destination === source) return { operation: 'move_directory', path: source, destination, changed: false }
   if (destination.startsWith(`${source}/`)) throw new Error('目录不能移动到自己的子目录。')
   if (catalogOf(library).byPath.has(destination) || groupIdAt(library, destination)) throw new Error('目标路径已存在。')
@@ -269,9 +299,12 @@ function deleteDirectory(library, path) {
   if (!path) throw new Error('不能删除根目录。')
   const groupId = groupIdAt(library, path)
   if (!groupId) throw new Error('找不到目录。')
+  assertMutableGroup(groupId)
   const ids = new Set([groupId])
   let changed = true
   while (changed) { changed = false; for (const group of library.groups) if (ids.has(group.parentId) && !ids.has(group.id)) { ids.add(group.id); changed = true } }
+  for (const id of ids) assertMutableGroup(id)
+  for (const entry of library.entries) if (ids.has(entry.groupId)) assertMutableEntry(entry)
   library.groups = library.groups.filter((group) => !ids.has(group.id))
   library.entries = library.entries.filter((entry) => !ids.has(entry.groupId))
   return { operation: 'delete_directory', path, changed: true }
@@ -664,6 +697,7 @@ function ensureDirectory(library, path) {
     currentPath = [currentPath, name].filter(Boolean).join('/')
     if (catalogOf(library).byPath.has(currentPath)) throw new Error(`无法创建目录：${currentPath} 已是文件。`)
     let group = library.groups.find((item) => item.parentId === parentId && safeSegment(item.name) === name)
+    if (group) assertMutableGroup(group.id)
     if (!group) {
       const timestamp = new Date().toISOString()
       group = { id: randomUUID(), name, parentId, order: library.groups.length + 1, treeViewOrder: library.groups.length + library.entries.length + 1, createdAt: timestamp, updatedAt: timestamp }
@@ -687,7 +721,18 @@ function groupIdAt(library, path) {
 function requireEntry(library, path) {
   const entry = catalogOf(library).byPath.get(path)?.raw
   if (!entry) throw new Error(`找不到设定文件：${path}`)
+  assertMutableEntry(entry)
   return entry
+}
+
+function assertMutableGroup(id) {
+  if (id.startsWith('agent-preset:')) throw new Error('Agent 预设只能读取，不能写入聊天分支。')
+}
+
+function assertMutableEntry(entry) {
+  if (entry.kind !== 'normal' || entry.id.startsWith('agent-preset:') || entry.groupId?.startsWith('agent-preset:')) {
+    throw new Error('固定设定和 Agent 预设只能读取，不能写入聊天分支。')
+  }
 }
 
 function readBridge(bridgeFile, exec) {

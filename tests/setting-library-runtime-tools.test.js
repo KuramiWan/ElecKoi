@@ -1,9 +1,10 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { apply as applySettingLibraryTools } from "../resources/dsh/setting-library-tools.mjs";
 import { requiredSettingCache } from "../resources/dsh/required-setting-cache.mjs";
+import { settingLibraryEntrySchema } from "../src/shared/contracts/settingLibrary/schemas.ts";
 
 const directories = [];
 
@@ -12,7 +13,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false, configured = true } = {}) {
+async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false, configured = true, commit } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-setting-library-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
@@ -21,6 +22,7 @@ async function tools({ extraEntries = [], history = [], variableState = {}, live
   writeFileSync(file, JSON.stringify(configured ? {
     enabled: true,
     library: {
+      characterId: 'synthetic-character',
       groups: [
         { id: "world", name: "世界", parentId: "", order: 1 },
         { id: "city", name: "城市", parentId: "world", order: 1 },
@@ -40,17 +42,28 @@ async function tools({ extraEntries = [], history = [], variableState = {}, live
   const snapshotRoot = join(directory, "session-snapshots");
   mkdirSync(snapshotRoot);
   writeFileSync(join(snapshotRoot, `${sessionId}.json`), JSON.stringify({
+    conversationId: 'synthetic-chat',
+    settingLibraryBaseline: { source: JSON.parse(readFileSync(file, 'utf8')).library,
+      projected: JSON.parse(readFileSync(file, 'utf8')).library },
     settingStateFile: file,
     settingLibraryEnabled: configured,
     ...(liveVariableState ? { variableStateFile: variableFile, variablesEnabled: true } : {}),
   }));
   process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
   const registered = [];
-  applySettingLibraryTools({ tools: { register: (definition) => { registered.push(definition); return () => undefined; } } });
+  const commitConversationRuntime = vi.fn(commit || (() => {}));
+  const publish = vi.fn();
+  applySettingLibraryTools({
+    tools: { register: (definition) => { registered.push(definition); return () => undefined; } },
+    eleckoiProductData: { commitConversationRuntime },
+    eleckoiCharacterConfigurationChanges: { publish },
+  });
   const execution = { agent: { session: { id: sessionId } } };
   return {
     file,
     variableFile,
+    commitConversationRuntime,
+    publish,
     byName: new Map(registered.map((definition) => [definition.name, {
       ...definition,
       execute: (args) => definition.execute(args, execution),
@@ -207,7 +220,7 @@ describe("DSH character setting-library tools", () => {
     expect(read.files.at(-1)).not.toHaveProperty("truncated");
   });
 
-  it("supports the complete Android patch operation set on the conversation snapshot", async () => {
+  it("supports the structured patch operation set on the conversation snapshot", async () => {
     const runtime = await tools();
     const patch = runtime.byName.get("eleckoi_apply_setting_patch");
 
@@ -234,6 +247,58 @@ describe("DSH character setting-library tools", () => {
     const finalState = JSON.parse(readFileSync(runtime.file, "utf8"));
     expect(finalState.library.entries.some((item) => item.title === "气候")).toBe(false);
     expect(finalState.library.groups.some((group) => group.name === "资料")).toBe(false);
+  });
+
+  it('commits a complete new entry before returning success and exposes it to search and read', async () => {
+    const runtime = await tools({ commit: (_chat, variables, raw, baseline) => {
+      expect(variables).toBeUndefined();
+      expect(baseline.source.characterId).toBe('synthetic-character');
+      const created = JSON.parse(raw).entries.find(item => item.title === '偏好');
+      expect(settingLibraryEntrySchema.parse(created).contentMode).toBe('plain_text');
+    } });
+    expect(runtime.commitConversationRuntime).not.toHaveBeenCalled();
+    const result = await runtime.byName.get('eleckoi_apply_setting_patch').execute({
+      operation: 'write_file', path: '偏好', content: '喜欢温热的茶。'
+    });
+    expect(result).toMatchObject({ status: 'ok', changed: true, created: true });
+    expect(runtime.commitConversationRuntime).toHaveBeenCalledTimes(1);
+    expect(runtime.publish).toHaveBeenCalledWith({
+      kind: 'configuration', domain: 'settingLibraries', characterId: 'synthetic-character'
+    });
+    const found = await runtime.byName.get('eleckoi_glob_setting_files').execute({});
+    expect(found.files.some(file => file.path === '偏好')).toBe(true);
+    const read = await runtime.byName.get('eleckoi_read_setting_files').execute({ paths: ['偏好'] });
+    expect(read.files[0].content).toBe('喜欢温热的茶。');
+  });
+
+  it('rolls back rejected persistence without publishing a phantom branch', async () => {
+    const runtime = await tools({ commit: () => { throw new Error('synthetic transaction failure'); } });
+    const before = readFileSync(runtime.file, 'utf8');
+    const result = await runtime.byName.get('eleckoi_apply_setting_patch').execute({
+      operation: 'write_file', path: '偏好', content: '喜欢茶。'
+    });
+    expect(result).toMatchObject({ status: 'change_rejected', state_unchanged: true });
+    expect(readFileSync(runtime.file, 'utf8')).toBe(before);
+    expect(runtime.publish).not.toHaveBeenCalled();
+    const found = await runtime.byName.get('eleckoi_glob_setting_files').execute({});
+    expect(found.files.some(file => file.path === '偏好')).toBe(false);
+  });
+
+  it('does not persist reads, no-op writes, existing directories or invalid edits', async () => {
+    const runtime = await tools();
+    const patch = runtime.byName.get('eleckoi_apply_setting_patch');
+    const before = readFileSync(runtime.file, 'utf8');
+    await runtime.byName.get('eleckoi_glob_setting_files').execute({});
+    await expect(patch.execute({ operation: 'write_file', path: '世界/城市/港口', content: '港口终年多雾。' }))
+      .resolves.toMatchObject({ status: 'ok', changed: false });
+    await expect(patch.execute({ operation: 'make_directory', path: '世界' }))
+      .resolves.toMatchObject({ status: 'ok', changed: false });
+    await expect(patch.execute({ operation: 'edit_file', path: '世界/城市/港口', old_string: '不存在', new_string: '替换' }))
+      .resolves.toMatchObject({ status: 'change_rejected' });
+    expect(runtime.commitConversationRuntime).not.toHaveBeenCalled();
+    expect(runtime.publish).not.toHaveBeenCalled();
+    // Search may resolve a cache, but no setting entry is changed.
+    expect(JSON.parse(readFileSync(runtime.file, 'utf8')).library).toEqual(JSON.parse(before).library);
   });
 
   it("treats a hidden timeline configured for Agent reading as a readable setting", async () => {

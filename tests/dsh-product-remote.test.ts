@@ -892,6 +892,15 @@ describe('ElecKoi DSH Remote contract', () => {
           defaultOpeningMessageId: ''
         }]
       }
+      await expect(ctx.typertGateway.invoke({
+        namespace: 'eleckoiCharacterConfiguration', method: 'saveConversationSettingLibrary',
+        args: { characterId: 'character-1', conversationId: 'conversation-1', library: conversationLibrary }
+      })).rejects.toThrow('只有设定修改工具成功提交变更')
+      const settingRuntime = ctx.eleckoiProductData.prepareConversationRuntime('conversation-1', '合成输入')
+      const projectedLibrary = settingRuntime.conversationContext.settingLibrary!
+      ctx.eleckoiProductData.commitConversationRuntime('conversation-1', undefined,
+        JSON.stringify({ ...projectedLibrary, entries: [...projectedLibrary.entries, conversationLibrary.entries.at(-1)!] }),
+        settingRuntime.settingLibraryBaseline)
       await ctx.typertGateway.invoke({
         namespace: 'eleckoiCharacterConfiguration',
         method: 'saveConversationSettingLibrary',

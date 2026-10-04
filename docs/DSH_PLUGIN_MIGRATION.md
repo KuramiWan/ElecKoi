@@ -35,7 +35,7 @@ DSH 设置中的官方“内置插件”页继续保留一份完整运行清单�
 | 中文名称 | 实际插件包 | 职责 |
 | --- | --- | --- |
 | 角色页面 | `@eleckoi/dsh-client-characters` | 角色目录、列表、资料与角色卡编辑入口 |
-| 角色配置 | `@eleckoi/dsh-client-character-configuration` | 设定库、变量、正则和动态设定的读取保存 |
+| 角色配置 | `@eleckoi/dsh-client-character-configuration` | 设定库、变量、正则和分支设定的读取保存 |
 | 聊天记录 | `@eleckoi/dsh-client-conversations` | 对话目录、状态与历史读取 |
 | 创作工作室 | `@eleckoi/dsh-client-creator-studio` | 创作项目目录、创建与删除 |
 | 模型选择 | `@eleckoi/dsh-client-models` | DSH 官方模型目录投影与对话模型选择入口 |

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -30,6 +30,7 @@ function runtime() {
     cleanups.push(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous })
   }
   const saved = archive()
+  const listeners = new Map()
   const ctx = {
     eleckoiProductData: {
       readConversationDetails: () => ({ metadata: { characterId: 'synthetic-character' } }),
@@ -39,14 +40,27 @@ function runtime() {
       snapshotConversationRuntime: vi.fn(() => { throw new Error('must not read current state') })
     },
     sessionController: {}, sessionProjections: { register: () => () => {} }, agentDefaultModel: {}, llm: {},
-    provide(name, service) { this[name] = service }, on() { return () => {} }
+    provide(name, service) { this[name] = service }, on(name, listener) { listeners.set(name, listener); return () => {} }
   }
   writeSessionSnapshot(root, 'session', { conversationId: 'chat' })
   installRoleplaySessionRuntime(ctx, {})
-  return { root, saved, ctx, checkpoints: join(root, 'chat', 'eleckoi-runtime-checkpoints.json') }
+  return { root, saved, ctx, listeners, checkpoints: join(root, 'chat', 'eleckoi-runtime-checkpoints.json') }
 }
 
 describe('saved old runtime state', () => {
+  it('does not create setting branches by committing the scratch library at turn completion', () => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    writeSessionSnapshot(f.root, 'session', { conversationId: 'chat',
+      settingLibraryEnabled: true, settingStateFile: join(f.root, 'not-a-persisted-setting.json') })
+    f.ctx.eleckoiProductData.commitConversationRuntime = vi.fn()
+    f.ctx.eleckoiProductData.snapshotConversationRuntime.mockReturnValue({
+      variableStateJson: '{}', settingLibraryStateJson: '[]'
+    })
+    f.listeners.get('session/event')({ id: 'session' }, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+    expect(f.ctx.eleckoiProductData.commitConversationRuntime).toHaveBeenCalledWith('chat', undefined, undefined, undefined)
+    expect(JSON.parse(readFileSync(f.checkpoints, 'utf8')).checkpoints[0].state.settingLibraryStateJson).toBe('[]')
+  })
   it('recovers the exact old pre-input variables and settings into the existing checkpoint file', () => {
     const f = runtime()
     const restore = f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1)

@@ -4,6 +4,7 @@ import { FIXED_ENTRY_IDS } from "../model/settingLibraryEditing.js";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
 import { OpeningEditor } from "./OpeningEditor.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
+import { SettingLibraryResizer } from "./SettingLibraryResizer.jsx";
 
 function EntryEditor({
   entry,
@@ -90,21 +91,15 @@ export function SettingLibraryInspector({
   return (
     <aside className="setting-library-inspector" aria-label="设定编辑器">
       {onResizeStart ? (
-        <div
-          className="setting-library-inspector-resizer"
-          role="separator"
+        <SettingLibraryResizer
           aria-label="调整编辑器宽度"
-          aria-orientation="vertical"
           aria-valuemin={420}
           aria-valuemax={760}
           aria-valuenow={Math.round(inspectorWidth)}
-          tabIndex={0}
           onPointerDown={onResizeStart}
           onKeyDown={onResizeKeyDown}
           onDoubleClick={onResetResize}
-        >
-          <span aria-hidden="true" />
-        </div>
+        />
       ) : null}
       <header className="setting-library-inspector-header">
         <div>

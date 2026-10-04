@@ -246,6 +246,7 @@ function runtimeFixture() {
   writeFileSync(settingStateFile, JSON.stringify({
     enabled: true,
     library: {
+      characterId: 'character-a',
       groups: [{ id: 'world', name: '世界', parentId: '', order: 1 }],
       entries: [{
         id: 'port', title: '港口', iconId: 'setting', kind: 'normal', groupId: 'world',
@@ -279,6 +280,8 @@ function runtimeFixture() {
     mountedPresetRevision: 'fixture-revision',
     model: { provider: 'provider-main', model: 'model-main' },
     settingStateFile,
+    settingLibraryBaseline: { source: JSON.parse(readFileSync(settingStateFile, 'utf8')).library,
+      projected: JSON.parse(readFileSync(settingStateFile, 'utf8')).library },
     variableStateFile,
     settingLibraryEnabled: true,
     variablesEnabled: true,
@@ -291,6 +294,11 @@ function runtimeFixture() {
 async function toolResultFor(sessionId, name, args) {
   const registered = []
   const context = {
+    eleckoiProductData: { commitConversationRuntime: vi.fn((conversationId, _variables, raw) => {
+      expect(conversationId).toBe('conversation-a')
+      expect(JSON.parse(raw).entries[0].content).toBe('港口终年晴朗。')
+    }) },
+    eleckoiCharacterConfigurationChanges: { publish: vi.fn() },
     tools: {
       register(definition) {
         registered.push(definition)

@@ -69,6 +69,15 @@ window.__ModuleLoader__.load({
         if (!result?.ok) throw new Error(result?.error?.message || '读取角色列表失败。')
         return result.value
       }
+
+      async listConversations() {
+        const result = await this.remote.eleckoiConversations.list()
+        if (!result?.ok) throw new Error(result?.error?.message || '读取聊天消息预览失败。')
+        if (!Array.isArray(result.value) || result.value.some(item => !item || typeof item.id !== 'string')) {
+          throw new Error('会话目录返回的数据格式不正确。')
+        }
+        return result.value
+      }
     }
 
     class CharacterConfigurationModel {
@@ -208,11 +217,14 @@ window.__ModuleLoader__.load({
         const previous = this.getConversationSnapshot(characterId)
         this.publishConversations(characterId, { ...previous, status: 'loading', error: '' })
         try {
-          const value = await this.request('readConversationSettingLibraries', characterId)
-          if (!Array.isArray(value) || value.some(item => !item || typeof item.sessionId !== 'string'
+          const branches = await this.request('readConversationSettingLibraries', characterId)
+          if (!Array.isArray(branches) || branches.some(item => !item || typeof item.sessionId !== 'string'
             || item.library?.characterId !== characterId)) {
-            throw new Error('动态设定返回的数据格式不正确。')
+            throw new Error('分支设定返回的数据格式不正确。')
           }
+          const conversations = branches.length ? await this.bridge.listConversations() : []
+          const previews = new Map(conversations.map(item => [item.id, item.preview]))
+          const value = branches.map(item => ({ ...item, summary: previews.get(item.sessionId) ?? item.summary }))
           if (!this.disposed && this.conversationGenerations.get(characterId) === generation) {
             this.publishConversations(characterId, { status: 'ready', value, error: '' })
           }
@@ -355,6 +367,6 @@ window.__ModuleLoader__.load({
       }, 'eleckoi: character configuration models')
     }
 
-    return { inject: ['remote', 'remote.eleckoiCharacters', 'remote.eleckoiCharacterConfiguration'], apply }
+    return { inject: ['remote', 'remote.eleckoiCharacters', 'remote.eleckoiConversations', 'remote.eleckoiCharacterConfiguration'], apply }
   }
 })

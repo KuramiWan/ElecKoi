@@ -68,7 +68,7 @@ resetConversation(characterId: string, sessionId: string): Promise<unknown>
 saveConversationVersion(characterId: string, sessionId: string, name: string): Promise<unknown>
 ```
 
-角色基础设定与具体聊天的动态设定分开存储；`sessionId` 必须是目标 DSH Session。
+角色母设定与聊天分支设定分开存储；`sessionId` 使用列表返回的目标聊天 ID。聊天不预建分支：只有修改设定工具产生真实变更且数据库提交成功后才自动出现，失败、无变化和只读调用都不会创建。界面保存只编辑已有分支。分支只保存条目、文件夹的变更及删除标记，工具搜索和读取使用母设定叠加当前聊天变更后的有效库，不读取轨迹日志来恢复设定。
 
 ### `eleckoiVariables`
 

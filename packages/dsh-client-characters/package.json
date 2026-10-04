@@ -110,8 +110,8 @@
       {
         "id": "eleckoi.character.editor.dynamic",
         "kind": "ui-slot",
-        "title": "动态设定编辑",
-        "description": "扩展动态设定编辑。",
+        "title": "分支设定编辑",
+        "description": "扩展分支设定编辑。",
         "mode": "replace",
         "scope": "root",
         "relation": "provides"

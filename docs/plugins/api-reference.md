@@ -42,12 +42,12 @@
 | `eleckoi.character.editor.lore` | 设定库编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色设定库编辑。 | — |
 | `eleckoi.character.editor.variables` | 变量编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色变量编辑。 | — |
 | `eleckoi.character.editor.regex` | 正则编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色正则规则编辑。 | — |
-| `eleckoi.character.editor.dynamic` | 动态设定编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展动态设定编辑。 | — |
+| `eleckoi.character.editor.dynamic` | 分支设定编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展分支设定编辑。 | — |
 | `eleckoi.character.manager` | 角色卡管理器 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换角色卡导入、导出和批量管理界面。 | — |
 
 ## `@eleckoi/dsh-client-character-configuration`
 
-读取、保存并更新设定库、变量、正则和动态设定。
+读取、保存并更新设定库、变量、正则和分支设定。
 
 来源：`packages/dsh-client-character-configuration/package.json`
 

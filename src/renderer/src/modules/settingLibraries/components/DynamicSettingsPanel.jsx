@@ -4,23 +4,27 @@ import {
   CaretRight,
   Code,
   Copy,
-  FilePlus,
   FileText,
-  FolderPlus,
+  GitBranch,
   LinkSimple,
   MagnifyingGlass,
+  PencilSimple,
   Plus,
   Trash,
   X,
 } from "@phosphor-icons/react";
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
+import { conversationPreviewText } from "../../../ui/messages/conversationPreviewText.js";
 import { UnsavedChangesDialog } from "../../../ui/ui/UnsavedChangesDialog.jsx";
 import { DshFolderClosedIcon, DshFolderOpenIcon, DshTriangleRightIcon } from "../../../ui/icons/dshTreeIcons.jsx";
-import { createEntryDraft, createGroupDraft, createId } from "../model/settingLibraryEditing.js";
+import { SETTING_LIBRARY_CREATE_ICONS } from "../../../ui/icons/settingLibraryCreateIcons.jsx";
+import { PINNED_ENTRY_IDS, createEntryDraft, createGroupDraft, createId, uniqueName } from "../model/settingLibraryEditing.js";
 import { descendants, findSelected, nodeKey } from "../model/settingLibraryTree.js";
 import { DynamicSettingsNameDialog } from "./DynamicSettingsDialogs.jsx";
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
-import { SettingEntryGlyph } from "./SettingLibraryEntryEditor.jsx";
+import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
+import { BranchSettingsSplitView } from "./BranchSettingsSplitView.jsx";
+import { DEFAULT_INSPECTOR_WIDTH } from "../model/settingLibraryInspectorSizing.js";
 
 function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -46,19 +50,7 @@ function versionName(item) {
 }
 
 function isEditableEntry(entry) {
-  return entry?.kind === "normal" && entry?.triggerMode === "agent_tool";
-}
-
-function dynamicEntryDraft(groupId, order, entries) {
-  return {
-    ...createEntryDraft(groupId, order, entries),
-    id: createId("session-setting"),
-    title: "新建动态设定",
-    triggerMode: "agent_tool",
-    agentReadStrategy: "normal",
-    enabled: true,
-    position: null,
-  };
+  return entry?.kind === "normal";
 }
 
 function treeChildren(library, parentId) {
@@ -121,6 +113,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [query, setQuery] = useState("");
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
   const [nameDialog, setNameDialog] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
@@ -129,6 +122,8 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
+  const branchNumbersRef = useRef(new Map());
   const libraryRef = useRef(null);
   const persistedRef = useRef(null);
   const dirtyRef = useRef(false);
@@ -146,6 +141,15 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     if (!normalizedQuery) return true;
     return `${item.characterName}\n${item.title}\n${item.summary}`.toLocaleLowerCase().includes(normalizedQuery);
   }), [items, normalizedQuery]);
+
+  function updateItems(loaded) {
+    for (const item of loaded) {
+      if (!branchNumbersRef.current.has(item.sessionId)) {
+        branchNumbersRef.current.set(item.sessionId, branchNumbersRef.current.size + 1);
+      }
+    }
+    setItems(loaded);
+  }
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
@@ -171,9 +175,15 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     setSelectedSessionId("");
     setLibrary(null);
     setPersisted(null);
-    void settingLibraries.readConversations(characterId).catch((cause) => {
+    setItems([]);
+    branchNumbersRef.current = new Map();
+    void settingLibraries.readConversations(characterId).then((loaded) => {
       if (!active) return;
-      setError(cause?.message || "读取动态设定失败");
+      updateItems(loaded);
+      setLoading(false);
+    }).catch((cause) => {
+      if (!active) return;
+      setError(cause?.message || "读取分支设定失败");
       setLoading(false);
     });
     return () => { active = false; };
@@ -181,11 +191,18 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
 
   useEffect(() => {
     return settingLibraries.subscribe((kind, id, snapshot) => {
-      if (kind !== "conversations" || id !== characterId || snapshot.status !== "ready"
+      if (kind !== "conversations" || id !== characterId
         || dirtyRef.current || savingRef.current) return;
+      if (snapshot.status === "error") {
+        setLoading(false);
+        setError(snapshot.error || "读取分支设定失败");
+        return;
+      }
+      if (snapshot.status !== "ready") return;
       const loaded = snapshot.value;
+      setError("");
       setLoading(false);
-      setItems(loaded);
+      updateItems(loaded);
       const sessionId = selectedSessionIdRef.current;
       if (!sessionId) return;
       const next = loaded.find((item) => item.sessionId === sessionId) || null;
@@ -218,7 +235,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     libraryRef.current = item.library;
     persistedRef.current = item.library;
     setSelectedKey("");
-    setExpandedIds(new Set());
+    setExpandedIds(new Set(item.library.expandedGroupIds || []));
     setQuery("");
     setError("");
     setNotice("");
@@ -236,7 +253,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
 
   async function refreshItems(preferredSessionId = "") {
     const loaded = await settingLibraries.readConversations(characterId);
-    setItems(loaded);
+    updateItems(loaded);
     const next = loaded.find((item) => item.sessionId === preferredSessionId) || null;
     if (!next) {
       setSelectedSessionId("");
@@ -265,7 +282,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       setNotice("saved");
       return true;
     } catch (cause) {
-      setError(cause?.message || "保存动态设定失败");
+      setError(cause?.message || "保存分支设定失败");
       return false;
     } finally {
       savingRef.current = false;
@@ -307,13 +324,14 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     );
   }
 
-  function createEntry() {
-    const parentId = targetGroupId();
-    const entry = dynamicEntryDraft(parentId, nextOrder(parentId), library.entries);
+  function createEntry(kind = "standard", parentOverride) {
+    const parentId = parentOverride ?? targetGroupId();
+    const entry = createEntryDraft(parentId, nextOrder(parentId), library.entries, kind);
     changeLibrary((current) => ({ ...current, entries: [...current.entries, entry] }));
     if (parentId) setExpandedIds((current) => new Set([...current, parentId]));
     setSelectedKey(nodeKey("entry", entry.id));
     setAddMenuOpen(false);
+    setContextMenu(null);
   }
 
   function createGroup(name) {
@@ -324,6 +342,42 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     if (parentId) setExpandedIds((current) => new Set([...current, parentId]));
     setSelectedKey(nodeKey("group", group.id));
     setNameDialog(null);
+    setContextMenu(null);
+  }
+
+  function duplicateEntry(id) {
+    const source = library.entries.find((entry) => entry.id === id);
+    if (!source || PINNED_ENTRY_IDS.has(id)) return;
+    const timestamp = new Date().toISOString();
+    const names = new Set(library.entries.filter((entry) => entry.groupId === source.groupId).map((entry) => entry.title));
+    const copy = {
+      ...source,
+      id: createId("session-setting"),
+      title: uniqueName(source.title ? `${source.title} 副本` : "新建设定", names),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      treeViewOrder: nextOrder(source.groupId || ""),
+    };
+    changeLibrary((current) => ({ ...current, entries: [...current.entries, copy] }));
+    setSelectedKey(nodeKey("entry", copy.id));
+    setContextMenu(null);
+  }
+
+  function openContextMenu(event, row = null) {
+    event.preventDefault();
+    event.stopPropagation();
+    setAddMenuOpen(false);
+    const kind = row?.kind || "background";
+    const id = row?.value?.id || "";
+    const parentId = kind === "group" ? id : kind === "entry" ? row.value.groupId || "" : "";
+    setContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 220),
+      y: Math.min(event.clientY, window.innerHeight - 230),
+      kind,
+      id,
+      parentId,
+    });
+    if (row) setSelectedKey(nodeKey(kind, id));
   }
 
   function requestDeleteSelected() {
@@ -365,7 +419,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       await settingLibraries.resetConversation(characterId, selectedSessionId);
       await refreshItems();
     } catch (cause) {
-      setError(cause?.message || "清空动态设定失败");
+      setError(cause?.message || "清空分支设定失败");
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -392,32 +446,45 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     }
   }
 
-  if (loading) return <div className="setting-library-loading">正在读取动态设定…</div>;
+  if (loading) return <div className="setting-library-loading">正在读取分支设定…</div>;
 
   if (!selectedItem || !library) {
     return (
-      <section className="dynamic-settings-list-page" aria-label="动态设定">
+      <section className="dynamic-settings-list-page" aria-label="分支设定">
         <header className="dynamic-settings-list-toolbar">
           <label className="setting-library-search">
             <MagnifyingGlass size={15} aria-hidden="true" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索对话" aria-label="搜索动态设定对话" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索对话" aria-label="搜索分支设定对话" />
           </label>
         </header>
         <div className="dynamic-settings-conversation-list">
           {error ? <p className="dynamic-settings-status is-error" role="alert">{error}</p> : null}
-          {!error && !filteredItems.length ? (
-            <p className="dynamic-settings-status">{normalizedQuery ? "没有找到相关对话" : "还没有动态设定"}</p>
-          ) : filteredItems.map((item) => (
-            <button type="button" className="dynamic-settings-conversation-row" key={item.sessionId} onClick={() => openConversation(item)}>
-              <Avatar src={item.characterAvatar} name={item.characterName || item.title} className="dynamic-settings-avatar" />
-              <span className="dynamic-settings-conversation-copy">
-                <strong>{item.characterName || item.title || "未命名角色"}</strong>
-                <span>{(item.summary || item.title || "新对话").replace(/\s+/g, " ").trim()}</span>
-              </span>
-              <time dateTime={item.updatedAt}>{conversationTime(item.updatedAt)}</time>
-              <CaretRight size={17} aria-hidden="true" />
-            </button>
-          ))}
+          {!filteredItems.length ? (
+            !error && <p className="dynamic-settings-status">{normalizedQuery ? "没有找到相关对话" : "还没有分支设定"}</p>
+          ) : (
+            <div className="dynamic-settings-conversation-records">
+              {filteredItems.map((item) => (
+                <button type="button" className="dynamic-settings-conversation-row" key={item.sessionId}
+                  aria-label={`分支 ${branchNumbersRef.current.get(item.sessionId)}：${item.title || "未命名聊天"}`}
+                  onClick={() => openConversation(item)}>
+                  <span className="dynamic-settings-conversation-identity">
+                    <Avatar src={item.characterAvatar} name={item.characterName || item.title} className="dynamic-settings-avatar" />
+                    <span className="dynamic-settings-conversation-copy">
+                      <strong title={item.title}>{item.title || "未命名聊天"}</strong>
+                      <span className="dynamic-settings-conversation-meta">
+                        <span className="dynamic-settings-branch-label"><GitBranch size={14} aria-hidden="true" />分支 {branchNumbersRef.current.get(item.sessionId)}</span>
+                      </span>
+                    </span>
+                  </span>
+                  <span className="dynamic-settings-conversation-summary">{conversationPreviewText(item.summary)}</span>
+                  <span className="dynamic-settings-conversation-activity">
+                    <time dateTime={item.updatedAt} title={`最近活动：${new Date(item.updatedAt).toLocaleString("zh-CN")}`}>{conversationTime(item.updatedAt)}</time>
+                    <CaretRight size={17} aria-hidden="true" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     );
@@ -427,13 +494,13 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   const editableEntry = selected.kind === "entry" && isEditableEntry(selected.value);
 
   return (
-    <section className="dynamic-settings-detail" aria-label={`动态设定：${selectedItem.title}`} onMouseDown={() => setAddMenuOpen(false)}>
+      <section className="dynamic-settings-detail" aria-label={`分支设定：${selectedItem.title}`} onMouseDown={() => { setAddMenuOpen(false); setContextMenu(null); }}>
       <header className="dynamic-settings-detail-toolbar" onMouseDown={(event) => event.stopPropagation()}>
         <button type="button" className="dynamic-settings-back" aria-label="返回对话列表" onClick={closeConversation}><ArrowLeft size={18} /></button>
-        <Avatar src={selectedItem.characterAvatar} name={selectedItem.characterName || selectedItem.title} className="dynamic-settings-toolbar-avatar" />
+        <span className="dynamic-settings-branch-label"><GitBranch size={18} aria-hidden="true" />分支 {branchNumbersRef.current.get(selectedItem.sessionId)}</span>
+        <CaretRight className="dynamic-settings-breadcrumb-divider" size={13} aria-hidden="true" />
         <div className="dynamic-settings-toolbar-copy">
-          <strong>{selectedItem.characterName || selectedItem.title}</strong>
-          <span>{(selectedItem.summary || selectedItem.title || "新对话").replace(/\s+/g, " ").trim()}</span>
+          <strong title={selectedItem.title}>{selectedItem.title || "未命名聊天"}</strong>
         </div>
         <button type="button" className="dynamic-settings-secondary-action" title="保存为设定版本" aria-label="保存为设定版本" disabled={saving} onClick={() => setNameDialog({
           type: "version",
@@ -443,34 +510,44 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
           confirmLabel: "保存",
           maxLength: 60,
         })}><Copy size={15} />另存版本</button>
-        <button type="button" className="dynamic-settings-danger-action" title="清空动态设定" aria-label="清空动态设定" disabled={saving} onClick={() => setResetTarget({
-          title: "清空这段对话的动态设定？",
+        <button type="button" className="dynamic-settings-danger-action" title="清空分支设定" aria-label="清空分支设定" disabled={saving} onClick={() => setResetTarget({
+          title: "清空这段对话的分支设定？",
           message: "将删除这段对话里由 AI 和你产生的全部设定改动，并回归母设定。母设定不会被修改。",
         })}><Trash size={15} />清空</button>
-        <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
       </header>
 
-      <div className="dynamic-settings-editor-layout">
+      <BranchSettingsSplitView preferredWidth={inspectorWidth} onWidthChange={setInspectorWidth}>
         <section className="dynamic-settings-tree-pane">
           <div className="dynamic-settings-tree-toolbar">
             <label className="setting-library-search">
               <MagnifyingGlass size={15} aria-hidden="true" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索设定" aria-label="搜索动态设定" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索设定" aria-label="搜索分支设定" />
             </label>
             <div className="setting-library-add-wrap">
-              <button type="button" className="setting-library-create-button" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><Plus size={16} />新建</button>
+              <button type="button" className="setting-library-create-button" aria-label="新建" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><Plus size={16} />新建</button>
               {addMenuOpen ? (
                 <div className="setting-library-popover" role="menu">
                   <button type="button" role="menuitem" onClick={() => {
                     setAddMenuOpen(false);
                     setNameDialog({ type: "group", title: "新建文件夹", label: "文件夹名称", value: "新建文件夹", confirmLabel: "创建", parentId: targetGroupId(), maxLength: 80 });
-                  }}><FolderPlus size={16} />文件夹</button>
-                  <button type="button" role="menuitem" onClick={createEntry}><FilePlus size={16} />动态设定</button>
+                  }}><SETTING_LIBRARY_CREATE_ICONS.group size={16} />文件夹</button>
+                  <button type="button" role="menuitem" onClick={() => createEntry("standard")}><SETTING_LIBRARY_CREATE_ICONS.entry size={16} />设定</button>
+                  <button type="button" role="menuitem" onClick={() => createEntry("reference")}><SETTING_LIBRARY_CREATE_ICONS.reference size={16} />EJS引用设定</button>
                 </div>
               ) : null}
             </div>
+            <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
           </div>
-          <div className="dynamic-settings-tree" role="tree" aria-label="当前对话有效设定">
+          <div className="dynamic-settings-tree" role="tree" aria-label="当前对话有效设定"
+            onContextMenu={(event) => openContextMenu(event)}
+            onMouseDown={(event) => {
+              const tree = event.currentTarget;
+              if (event.target !== tree) return;
+              const rect = tree.getBoundingClientRect();
+              const scrollbarWidth = Math.max(16, tree.offsetWidth - tree.clientWidth + 4);
+              if (event.clientX >= rect.right - scrollbarWidth && event.clientX <= rect.right + 2) return;
+              setSelectedKey("");
+            }}>
             {!rows.length ? <p className="dynamic-settings-status">没有匹配的设定</p> : rows.map((row) => {
               const key = nodeKey(row.kind, row.value.id);
               const expanded = row.kind === "group" && (normalizedQuery || expandedIds.has(row.value.id));
@@ -483,6 +560,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                   className={`dynamic-settings-tree-row${row.kind === "group" ? " is-folder" : ""}`}
                   style={{ paddingLeft: `${12 + row.level * 18}px` }}
                   key={key}
+                  onContextMenu={(event) => openContextMenu(event, row)}
                   onClick={() => {
                     setSelectedKey(key);
                     if (row.kind === "group" && !normalizedQuery) {
@@ -502,21 +580,32 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                         </>
                       : <EntryIcon entry={row.value} />}
                   </span>
-                  <span>{row.kind === "group" ? row.value.name : row.value.title || "未命名设定"}</span>
+                  <span title={row.kind === "group" ? row.value.name : row.value.title}>{row.kind === "group" ? row.value.name : row.value.title || "未命名设定"}</span>
                 </button>
               );
             })}
           </div>
+          {contextMenu ? (
+            <div className="setting-library-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" onMouseDown={(event) => event.stopPropagation()}>
+              {contextMenu.kind === "background" || contextMenu.kind === "group" ? (
+                <>
+                  <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setNameDialog({ type: "group", title: "新建文件夹", label: "文件夹名称", value: "新建文件夹", confirmLabel: "创建", parentId: contextMenu.parentId, maxLength: 80 }); }}><SETTING_LIBRARY_CREATE_ICONS.group size={15} />新建文件夹</button>
+                  <button type="button" role="menuitem" onClick={() => createEntry("standard", contextMenu.parentId)}><SETTING_LIBRARY_CREATE_ICONS.entry size={15} />新建设定</button>
+                  <button type="button" role="menuitem" onClick={() => createEntry("reference", contextMenu.parentId)}><SETTING_LIBRARY_CREATE_ICONS.reference size={15} />新建 EJS引用设定</button>
+                </>
+              ) : null}
+              {contextMenu.kind === "entry" ? <button type="button" role="menuitem" onClick={() => duplicateEntry(contextMenu.id)}><Copy size={15} />复制</button> : null}
+              {contextMenu.kind !== "background" ? <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setSelectedKey(nodeKey(contextMenu.kind, contextMenu.id)); }}><PencilSimple size={15} />重命名</button> : null}
+              {contextMenu.kind !== "background" ? <button type="button" role="menuitem" className="is-destructive" onClick={() => { setContextMenu(null); requestDeleteSelected(); }}><Trash size={15} />删除</button> : null}
+            </div>
+          ) : null}
         </section>
 
-        <aside className="dynamic-settings-inspector" aria-label="动态设定详情">
-          {!selected.value ? (
-            <p className="dynamic-settings-status">选择一条设定查看内容</p>
-          ) : (
+        {selected.value ? <aside className="dynamic-settings-inspector" aria-label="分支设定详情">
             <>
               <header>
                 <span aria-hidden="true">{selected.kind === "group" ? <DshFolderClosedIcon /> : <EntryIcon entry={selected.value} />}</span>
-                <strong>{selected.kind === "group" ? "文件夹" : editableEntry ? "编辑动态设定" : selected.value.title}</strong>
+                <strong>{selected.kind === "group" ? selected.value.name : selected.value.title || "未命名设定"}</strong>
                 <button type="button" aria-label="关闭详情" onClick={() => setSelectedKey("")}><X size={17} /></button>
               </header>
               <div className="dynamic-settings-inspector-body">
@@ -529,42 +618,39 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                     }))} />
                   </label>
                 ) : editableEntry ? (
-                  <>
-                    <label className="dynamic-settings-field">
-                      <span>设定标题</span>
-                      <input value={selected.value.title} maxLength={120} onChange={(event) => changeLibrary((current) => ({
-                        ...current,
-                        entries: current.entries.map((entry) => entry.id === selected.value.id ? { ...entry, title: event.target.value, updatedAt: new Date().toISOString() } : entry),
-                      }))} />
-                    </label>
-                    <label className="dynamic-settings-field is-content">
-                      <span>设定正文</span>
-                      <textarea value={selected.value.content} placeholder="写入这段对话使用的设定" onChange={(event) => changeLibrary((current) => ({
-                        ...current,
-                        entries: current.entries.map((entry) => entry.id === selected.value.id ? { ...entry, content: event.target.value, updatedAt: new Date().toISOString() } : entry),
-                      }))} />
-                    </label>
-                  </>
+                  <SettingLibraryEntryEditor
+                    key={selected.value.id}
+                    entry={selected.value}
+                    entries={library.entries}
+                    groups={library.groups}
+                    promptPositions={library.promptPositions}
+                    onChange={(patch) => changeLibrary((current) => ({
+                      ...current,
+                      entries: current.entries.map((entry) => entry.id === selected.value.id
+                        ? { ...entry, ...patch, updatedAt: new Date().toISOString() } : entry),
+                    }))}
+                    onEntriesChange={(entries) => changeLibrary((current) => ({ ...current, entries }))}
+                    onOpenEntry={(id) => setSelectedKey(nodeKey("entry", id))}
+                  />
                 ) : (
                   <div className="dynamic-settings-readonly-content">{selected.value.content || "暂无正文"}</div>
                 )}
                 {canDeleteSelected ? <button type="button" className="setting-library-delete-link" onClick={requestDeleteSelected}><Trash size={15} />{selected.kind === "group" ? "删除文件夹" : "删除设定"}</button> : null}
               </div>
             </>
-          )}
-        </aside>
-      </div>
+        </aside> : null}
+      </BranchSettingsSplitView>
 
       <DynamicSettingsNameDialog dialog={nameDialog} busy={saving} onCancel={() => setNameDialog(null)} onConfirm={(name) => {
         if (nameDialog.type === "group") createGroup(name);
         else void saveVersion(name);
       }} />
       <ConfirmationDialog target={deleteTarget} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteTarget(null)} onConfirm={confirmDeleteSelected} />
-      <ConfirmationDialog target={resetTarget} confirmLabel="清空动态设定" tone="destructive" onCancel={() => setResetTarget(null)} onConfirm={resetConversation} />
+      <ConfirmationDialog target={resetTarget} confirmLabel="清空分支设定" tone="destructive" onCancel={() => setResetTarget(null)} onConfirm={resetConversation} />
       <UnsavedChangesDialog
         open={pendingBack}
         title="保存修改？"
-        description="返回对话列表前是否保存当前动态设定？"
+        description="返回对话列表前是否保存当前分支设定？"
         saving={saving}
         onCancel={() => setPendingBack(false)}
         onDiscard={() => {

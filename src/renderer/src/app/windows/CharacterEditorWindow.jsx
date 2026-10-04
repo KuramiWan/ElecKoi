@@ -24,8 +24,12 @@ const EDITOR_SECTIONS = [
   { id: "lore", label: "设定库", Icon: BookOpenText },
   { id: "variables", label: "变量", Icon: TreeStructure },
   { id: "regex", label: "正则", Icon: BracketsCurly },
-  { id: "dynamic", label: "动态设定", Icon: FolderSimple },
+  { id: "dynamic", label: "分支设定", Icon: FolderSimple },
 ];
+
+const CHARACTER_EDITOR_SIDEBAR_DEFAULT_WIDTH = 220;
+const CHARACTER_EDITOR_SIDEBAR_MIN_WIDTH = 190;
+const CHARACTER_EDITOR_SIDEBAR_MAX_WIDTH = 340;
 
 function editableCharacterSnapshot(character) {
   if (!character) return "";
@@ -53,6 +57,8 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   const [variablesDirty, setVariablesDirty] = useState(false);
   const [regexDirty, setRegexDirty] = useState(false);
   const [dynamicDirty, setDynamicDirty] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(CHARACTER_EDITOR_SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarResize, setSidebarResize] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const collectionRef = useRef(null);
   const settingLibraryRef = useRef(null);
@@ -60,6 +66,26 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   const regexRulesRef = useRef(null);
   const dynamicSettingsRef = useRef(null);
   const allowCloseRef = useRef(false);
+
+  useEffect(() => {
+    if (!sidebarResize) return undefined;
+    const handlePointerMove = (event) => {
+      setSidebarWidth(Math.min(CHARACTER_EDITOR_SIDEBAR_MAX_WIDTH, Math.max(CHARACTER_EDITOR_SIDEBAR_MIN_WIDTH, sidebarResize.startWidth + event.clientX - sidebarResize.startX)));
+    };
+    const stopResize = () => setSidebarResize(null);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+  }, [sidebarResize]);
+
+  function adjustSidebarWidth(delta) {
+    setSidebarWidth((current) => Math.min(CHARACTER_EDITOR_SIDEBAR_MAX_WIDTH, Math.max(CHARACTER_EDITOR_SIDEBAR_MIN_WIDTH, current + delta)));
+  }
 
   const basicDirty = useMemo(
     () => editableCharacterSnapshot(character) !== editableCharacterSnapshot(persistedCharacter),
@@ -327,7 +353,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   }
 
   return (
-    <main className="qq-shell qq-character-editor-window-shell">
+    <main className="qq-shell qq-character-editor-window-shell" style={{ "--character-editor-sidebar-width": `${sidebarWidth}px` }}>
       <aside className="character-editor-side-panel">
         <header className="side-panel-header" data-tauri-drag-region>
           <div className="side-panel-brand">
@@ -343,11 +369,33 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
               aria-current={activeSection === id ? "page" : undefined}
               onClick={() => requestSection(id)}
             >
-              <Icon size={19} weight={activeSection === id ? "fill" : "regular"} aria-hidden="true" />
+              <Icon size={19} weight="fill" aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
         </nav>
+        <div
+          className={`character-editor-sidebar-resizer${sidebarResize ? " is-resizing" : ""}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调整侧边栏宽度"
+          aria-valuemin={CHARACTER_EDITOR_SIDEBAR_MIN_WIDTH}
+          aria-valuemax={CHARACTER_EDITOR_SIDEBAR_MAX_WIDTH}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            setSidebarResize({ startX: event.clientX, startWidth: sidebarWidth });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") { event.preventDefault(); adjustSidebarWidth(-16); }
+            if (event.key === "ArrowRight") { event.preventDefault(); adjustSidebarWidth(16); }
+            if (event.key === "Home") { event.preventDefault(); setSidebarWidth(CHARACTER_EDITOR_SIDEBAR_MIN_WIDTH); }
+            if (event.key === "End") { event.preventDefault(); setSidebarWidth(CHARACTER_EDITOR_SIDEBAR_MAX_WIDTH); }
+          }}
+        />
       </aside>
 
       <section className="character-editor-main-panel">

@@ -17,6 +17,7 @@ import { SettingLibraryManager } from "./SettingLibraryManager.jsx";
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingLibraryInspector } from "./SettingLibraryInspector.jsx";
 import { SettingLibraryTree, SettingTreeActionsContext } from "./SettingLibraryTree.jsx";
+import { DEFAULT_INSPECTOR_WIDTH, inspectorWidthBounds } from "../model/settingLibraryInspectorSizing.js";
 import {
   PINNED_ENTRY_IDS,
   createEntryDraft,
@@ -38,15 +39,6 @@ import {
 const CreateFolderIcon = SETTING_LIBRARY_CREATE_ICONS.group;
 const CreateEntryIcon = SETTING_LIBRARY_CREATE_ICONS.entry;
 const CreateReferenceIcon = SETTING_LIBRARY_CREATE_ICONS.reference;
-const DEFAULT_INSPECTOR_WIDTH = 560;
-const MIN_INSPECTOR_WIDTH = 420;
-const MAX_INSPECTOR_WIDTH = 760;
-
-function inspectorWidthBounds(containerWidth) {
-  const availableWidth = Math.max(280, Number(containerWidth) || window.innerWidth || 1280);
-  const max = Math.max(280, Math.min(MAX_INSPECTOR_WIDTH, Math.floor(availableWidth * 0.72)));
-  return { min: Math.min(MIN_INSPECTOR_WIDTH, max), max };
-}
 
 function nodeIcon(entry) {
   if (entry?.kind === "opening") return ChatCircleDots;

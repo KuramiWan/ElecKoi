@@ -1317,6 +1317,7 @@ describe('shared SQLite baseline', () => {
     expect(JSON.parse(persisted.payloadJson)).toMatchObject({ id: entry.id, content: '会话专属改写' })
   })
 
+
   it('manages conversation setting overlays without changing the author library', () => {
     const { characters, conversations, database } = harness()
     characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card()] })
@@ -1350,6 +1351,20 @@ describe('shared SQLite baseline', () => {
     expect(settingLibraries.get('card-a').entries.find((candidate) => candidate.id === entry.id)?.content).toBe('母设定')
     expect(settingLibraries.conversationLibrary('card-a', conversationId)?.entries.find((candidate) => candidate.id === entry.id)?.content)
       .toBe('只属于当前对话')
+
+    const configured = settingLibraries.replaceConversationLibrary('card-a', conversationId, {
+      ...effective,
+      entries: effective.entries.map(candidate => candidate.id === entry.id ? {
+        ...candidate, agentReadStrategy: 'keyword', contentMode: 'ejs', keywords: ['茶'],
+        keywordScanDepth: 3, conditionKeywords: ['雨'], keywordCondition: 'any',
+        agentSelectionHint: '到茶馆时读取', enabled: true
+      } : candidate)
+    })
+    expect(configured.entries.find(candidate => candidate.id === entry.id)).toMatchObject({
+      agentReadStrategy: 'keyword', contentMode: 'ejs', keywords: ['茶'], keywordScanDepth: 3,
+      conditionKeywords: ['雨'], keywordCondition: 'any'
+    })
+    expect(settingLibraries.get('card-a').entries.find(candidate => candidate.id === entry.id)?.agentReadStrategy).toBe('normal')
 
     const withVersion = settingLibraries.saveConversationAsVersion('card-a', conversationId, '第一段对话')
     expect(withVersion.versions.find((version) => version.name === '第一段对话')?.entries

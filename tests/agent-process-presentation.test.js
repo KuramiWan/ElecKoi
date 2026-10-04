@@ -8,6 +8,16 @@ const pendingAssistant = {
 };
 
 describe('inline agent process presentation', () => {
+  it('does not present rejected or unchanged setting tools as successful mutations', () => {
+    const tool = { toolName: 'eleckoi_apply_setting_patch', kind: 'file_change', status: 'complete',
+      arguments: JSON.stringify({ path: '合成设定' }) };
+    expect(processItemPresentation({ ...tool, summary: JSON.stringify({ status: 'change_rejected' }) }).title)
+      .toBe('修改对话设定失败');
+    expect(processItemPresentation({ ...tool, summary: JSON.stringify({ status: 'ok', changed: false }) }).title)
+      .toBe('设定未变化');
+    expect(processItemPresentation({ ...tool, summary: JSON.stringify({ status: 'ok', changed: true }) }).title)
+      .toBe('已修改对话设定');
+  });
   it('uses the dedicated reasoning mascot instead of a generic document glyph', () => {
     expect(processItemPresentation({ kind: 'reasoning', toolName: 'reasoning', status: 'running' })).toMatchObject({
       title: '正在思考',

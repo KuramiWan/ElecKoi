@@ -28,6 +28,10 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   const presetRoot = requiredEnv('ELECKOI_PRESET_ROOT')
   const templatePath = requiredEnv('ELECKOI_PRESET_TEMPLATE_PATH')
   const bridgeRoot = requiredEnv('ELECKOI_SESSION_BRIDGE_ROOT')
+  const refreshSettingBranches = () => {
+    try { ctx.eleckoiCharacterConfigurationChanges?.publish({ kind: 'snapshot' }) }
+    catch (error) { ctx.logger?.warn(`分支设定刷新通知失败：${String(error)}`) }
+  }
   const workspaceRoot = requiredEnv('ELECKOI_WORKSPACE_ROOT')
   const disposeHistoryStats = ctx.sessionProjections.register(historyStatsProjection)
   const disposeTurnOutcomes = ctx.sessionProjections.register(turnOutcomesProjection)
@@ -145,6 +149,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
           if (file.content === undefined) rmSync(file.path, { force: true })
           else writeAtomically(file.path, file.content)
         }
+        refreshSettingBranches()
       }
       try {
         await prepare(conversationId, text, false)
@@ -184,11 +189,13 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         mkdirSync(sessionRoot, { recursive: true })
         writeRuntimeCheckpoint(sessionRoot, fromTurn, state)
         trimRuntimeCheckpoints(sessionRoot, fromTurn)
+        refreshSettingBranches()
       }
     },
     removeArtifacts(conversationId, sessionId) {
       removeSessionSnapshot(snapshotRoot, sessionId)
       rmSync(join(bridgeRoot, safePathPart(conversationId)), { recursive: true, force: true })
+      refreshSettingBranches()
     }
   }
   ctx.provide('eleckoiRoleplaySessions', service)
@@ -202,14 +209,11 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       const variableState = snapshot.variablesEnabled
         ? readVariableBridgeState(snapshot.variableStateFile)
         : undefined
-      const settingState = snapshot.settingLibraryEnabled
-        ? readSettingBridgeState(snapshot.settingStateFile)
-        : undefined
       ctx.eleckoiProductData.commitConversationRuntime(
         snapshot.conversationId,
         variableState,
-        settingState,
-        snapshot.settingLibraryBaseline
+        undefined,
+        undefined
       )
       const turn = Number(event.data?.turn)
       if (!Number.isSafeInteger(turn) || turn < 1) {
@@ -394,11 +398,6 @@ function readVariableBridgeState(path) {
   const state = bridge.state
   if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('变量运行时返回的状态必须是 JSON object。')
   return JSON.stringify(state, null, 2)
-}
-
-function readSettingBridgeState(path) {
-  const bridge = parsedObject(readFileSync(path, 'utf8'), '设定库运行时桥接文件')
-  return JSON.stringify(bridge.library ?? {}, null, 2)
 }
 
 function parsedObject(raw, label) {

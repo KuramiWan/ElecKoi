@@ -1,5 +1,5 @@
 .qq-character-editor-window-shell {
-  grid-template-columns: 176px minmax(0, 1fr);
+  grid-template-columns: var(--character-editor-sidebar-width, 220px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   background: var(--list);
 }
@@ -15,6 +15,7 @@
 }
 
 .character-editor-side-panel {
+  position: relative;
   grid-template-columns: minmax(0, 1fr);
   background: var(--list);
 }
@@ -71,8 +72,46 @@
 }
 
 .character-editor-navigation button[aria-current="page"] {
-  color: var(--blue);
-  background: var(--active);
+  color: #fff;
+  background: var(--blue);
+}
+
+.character-editor-navigation button[aria-current="page"] svg {
+  color: #fff;
+}
+
+.character-editor-sidebar-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 40px;
+  right: -4px;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.character-editor-sidebar-resizer::after {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  width: 2px;
+  height: 34px;
+  content: "";
+  border-radius: 2px;
+  background: transparent;
+  transform: translateY(-50%);
+  transition: background-color 120ms ease-out;
+}
+
+.character-editor-sidebar-resizer:hover::after,
+.character-editor-sidebar-resizer:focus-visible::after,
+.character-editor-sidebar-resizer.is-resizing::after {
+  background: var(--blue);
+}
+
+.character-editor-sidebar-resizer:focus-visible {
+  outline: none;
 }
 
 .character-editor-navigation button:focus-visible {
@@ -437,12 +476,16 @@
 
 @media (max-width: 760px) {
   .qq-character-editor-window-shell {
-    grid-template-columns: 54px minmax(0, 1fr);
+    --character-editor-sidebar-width: 54px !important;
   }
 
   .character-editor-side-panel .side-panel-brand {
     justify-content: center;
     width: 100%;
+  }
+
+  .character-editor-sidebar-resizer {
+    display: none;
   }
 
   .character-editor-side-panel .side-panel-brand strong {

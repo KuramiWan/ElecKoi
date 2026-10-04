@@ -185,6 +185,7 @@ export class SettingLibraryRepository {
     while (changed) {
       changed = false
       for (const group of groups.values()) {
+        if (removedGroups.has(group.id)) continue
         if (group.parentId && !groupIds.has(group.parentId)) {
           removedGroups.add(group.id)
           changed = true
@@ -229,7 +230,7 @@ export class SettingLibraryRepository {
   ): SettingLibrary {
     return this.store.withWriteTx((db) => {
       const desired = settingLibrarySchema.parse(input)
-      if (desired.characterId !== characterId) throw new Error('动态设定与当前角色不匹配。')
+      if (desired.characterId !== characterId) throw new Error('分支设定与当前角色不匹配。')
       const base = this.get(characterId, db)
       validateConversationLibrary(base, desired)
 
@@ -265,7 +266,7 @@ export class SettingLibraryRepository {
       const existing = db.select({ targetId: conversationSettingChanges.targetId })
         .from(conversationSettingChanges)
         .where(eq(conversationSettingChanges.sessionId, conversationId)).get()
-      if (!existing) throw new Error('找不到这段对话的动态设定。')
+      if (!existing) throw new Error('找不到这段对话的分支设定。')
       db.delete(conversationSettingChanges)
         .where(eq(conversationSettingChanges.sessionId, conversationId)).run()
     })
@@ -276,7 +277,7 @@ export class SettingLibraryRepository {
       const normalizedName = name.trim().slice(0, 60)
       if (!normalizedName) throw new Error('请输入版本名称。')
       const effective = this.conversationLibrary(characterId, conversationId, db)
-      if (!effective) throw new Error('找不到这段对话的动态设定。')
+      if (!effective) throw new Error('找不到这段对话的分支设定。')
       const base = this.get(characterId, db)
       if (base.versions.some((version) => version.name.trim() === normalizedName)) {
         throw new Error('版本名称已存在，请换一个名称。')
@@ -317,7 +318,7 @@ export class SettingLibraryRepository {
   ): SettingLibrary {
     const base = this.get(characterId, db)
     const effective = this.runtimeContext(conversationId, { characterId }, db)
-    if (!effective) throw new Error('无法读取这段对话的动态设定。')
+    if (!effective) throw new Error('无法读取这段对话的分支设定。')
     return settingLibrarySchema.parse({
       ...base,
       entries: effective.entries,
@@ -326,7 +327,7 @@ export class SettingLibraryRepository {
     })
   }
 
-  /** Commits a successful Agent turn as a conversation overlay, never into the author library. */
+  /** Commits a successful setting tool change as a conversation overlay, never into the author library. */
   replaceConversationRuntimeState(
     conversationId: string,
     raw: string,
@@ -349,17 +350,21 @@ export class SettingLibraryRepository {
     const baseEntries = new Map(base.entries.filter((entry) => entry.kind === 'normal').map((entry) => [entry.id, entry]))
     const baseGroups = new Map(base.groups.map((group) => [group.id, group]))
     const timestamp = new Date().toISOString()
+    const persistedChanges = db.select().from(conversationSettingChanges)
+      .where(eq(conversationSettingChanges.sessionId, conversationId)).all()
 
     const sourceEntries = new Map(baseline.source.entries.map((entry) => [entry.id, entry]))
     const projectedEntries = new Map(baseline.projected.entries.map((entry) => [entry.id, entry]))
     const finalEntries = new Map(entries.map((entry) => [entry.id, entry]))
-    for (const id of unionKeys(projectedEntries, finalEntries)) {
+    const entryIds = new Set([...unionKeys(projectedEntries, finalEntries),
+      ...persistedChanges.filter(row => row.targetType === 'entry').map(row => row.targetId)])
+    for (const id of entryIds) {
       const projected = projectedEntries.get(id)
       const final = finalEntries.get(id)
-      if (sameValue(projected, final) || isAgentPresetRuntimeId(id)) continue
+      if (isAgentPresetRuntimeId(id)) continue
       const source = sourceEntries.get(id)
       if (!final) {
-        if (source?.kind !== 'normal') continue
+        if (source && source.kind !== 'normal') continue
         if (baseEntries.has(id)) this.writeConversationChange(conversationId, 'entry', id, 'delete', null, timestamp, db)
         else this.deleteConversationChange(conversationId, 'entry', id, db)
         continue
@@ -375,12 +380,13 @@ export class SettingLibraryRepository {
     const sourceGroups = new Map(baseline.source.groups.map((group) => [group.id, group]))
     const projectedGroups = new Map(baseline.projected.groups.map((group) => [group.id, group]))
     const finalGroups = new Map(groups.map((group) => [group.id, group]))
-    for (const id of unionKeys(projectedGroups, finalGroups)) {
+    const groupIds = new Set([...unionKeys(projectedGroups, finalGroups),
+      ...persistedChanges.filter(row => row.targetType === 'group').map(row => row.targetId)])
+    for (const id of groupIds) {
       const projected = projectedGroups.get(id)
       const final = finalGroups.get(id)
-      if (sameValue(projected, final) || isAgentPresetRuntimeId(id)) continue
+      if (isAgentPresetRuntimeId(id)) continue
       if (!final) {
-        if (!sourceGroups.has(id)) continue
         if (baseGroups.has(id)) this.writeConversationChange(conversationId, 'group', id, 'delete', null, timestamp, db)
         else this.deleteConversationChange(conversationId, 'group', id, db)
         continue
@@ -597,17 +603,17 @@ function rebaseProjectedRecord(
 
 function validateConversationLibrary(base: SettingLibrary, desired: SettingLibrary): void {
   const groups = new Map(desired.groups.map((group) => [group.id, group]))
-  if (groups.size !== desired.groups.length) throw new Error('动态设定的文件夹编号不能重复。')
+  if (groups.size !== desired.groups.length) throw new Error('分支设定的文件夹编号不能重复。')
   if (new Set(desired.entries.map((entry) => entry.id)).size !== desired.entries.length) {
-    throw new Error('动态设定的条目编号不能重复。')
+    throw new Error('分支设定的条目编号不能重复。')
   }
   for (const group of desired.groups) {
-    if (!group.name.trim()) throw new Error('动态设定的文件夹名称不能为空。')
+    if (!group.name.trim()) throw new Error('分支设定的文件夹名称不能为空。')
     if (group.parentId && !groups.has(group.parentId)) throw new Error(`文件夹“${group.name}”的上级不存在。`)
     const visited = new Set([group.id])
     let parentId = group.parentId
     while (parentId) {
-      if (visited.has(parentId)) throw new Error('动态设定的文件夹不能形成循环。')
+      if (visited.has(parentId)) throw new Error('分支设定的文件夹不能形成循环。')
       visited.add(parentId)
       parentId = groups.get(parentId)?.parentId ?? ''
     }
@@ -639,18 +645,18 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
     }
     const baseline = base.entries.find((item) => item.id === entry.id)
     if (!baseline) {
-      if (!isConversationMutableEntry(entry)) throw new Error('动态设定只能新增供 Agent 读取的普通设定。')
-      if (!entry.title.trim() || !entry.content.trim()) throw new Error('动态设定的标题和正文不能为空。')
+      if (!isConversationMutableEntry(entry)) throw new Error('分支设定只能新增普通设定。')
+      if (!entry.title.trim() || !entry.content.trim()) throw new Error('分支设定的标题和正文不能为空。')
       continue
     }
     if (!isConversationMutableEntry(baseline)) {
-      if (!sameValue(baseline, entry)) throw new Error(`设定“${baseline.title}”只允许查看，不能在动态设定中修改。`)
+      if (!sameValue(baseline, entry)) throw new Error(`设定“${baseline.title}”只允许查看，不能在分支设定中修改。`)
       continue
     }
     if (!isConversationMutableEntry(entry)) throw new Error(`设定“${baseline.title}”不能更改类型。`)
-    if (!entry.title.trim() || !entry.content.trim()) throw new Error('动态设定的标题和正文不能为空。')
+    if (!entry.title.trim() || !entry.content.trim()) throw new Error('分支设定的标题和正文不能为空。')
     if (!sameValue(conversationImmutableEntryFields(baseline), conversationImmutableEntryFields(entry))) {
-      throw new Error(`设定“${baseline.title}”只能修改目录、标题、正文和读取提示。`)
+      throw new Error(`设定“${baseline.title}”不能修改条目身份或固定设定内容。`)
     }
   }
   for (const entry of base.entries) {
@@ -659,21 +665,18 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
       !isConversationMutableEntry(entry) &&
       !removedBaseGroupIds.has(entry.groupId)
     ) {
-      throw new Error(`设定“${entry.title}”只允许查看，不能从动态设定中删除。`)
+      throw new Error(`设定“${entry.title}”只允许查看，不能从分支设定中删除。`)
     }
   }
 }
 
 function isConversationMutableEntry(entry: SettingLibraryEntry): boolean {
-  return entry.kind === 'normal' && entry.triggerMode === 'agent_tool'
+  return entry.kind === 'normal'
 }
 
 function conversationImmutableEntryFields(entry: SettingLibraryEntry): Record<string, unknown> {
-  const record = { ...entry } as Record<string, unknown>
-  delete record.groupId
-  delete record.title
-  delete record.content
-  delete record.agentSelectionHint
-  delete record.updatedAt
-  return record
+  return {
+    id: entry.id, kind: entry.kind, createdAt: entry.createdAt,
+    openingMessages: entry.openingMessages, defaultOpeningMessageId: entry.defaultOpeningMessageId
+  }
 }

@@ -711,7 +711,11 @@ class ProductDataStore {
 
   saveConversationSettingLibrary(characterId: string, conversationId: string, library: SettingLibrary): SettingLibrary {
     this.requireStoryConversation(characterId, conversationId)
-    return this.databaseRepositories().settingLibraries.replaceConversationLibrary(characterId, conversationId, library)
+    const repository = this.databaseRepositories().settingLibraries
+    if (!repository.conversationLibrary(characterId, conversationId)) {
+      throw new Error('该聊天尚未产生分支设定。只有设定修改工具成功提交变更后才能编辑。')
+    }
+    return repository.replaceConversationLibrary(characterId, conversationId, library)
   }
 
   resetConversationSettingLibrary(characterId: string, conversationId: string): void {

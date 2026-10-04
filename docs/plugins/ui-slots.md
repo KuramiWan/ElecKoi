@@ -114,7 +114,7 @@ type CardProps = PropsRuntime<'eleckoi.character.editor.card'>
 | `eleckoi.character.editor.lore` | chain / root | `CharacterEditorConfigurationOwner` | 设定库编辑状态与保存控制器 |
 | `eleckoi.character.editor.variables` | chain / root | `CharacterEditorConfigurationOwner` | 变量编辑状态与保存控制器 |
 | `eleckoi.character.editor.regex` | chain / root | `CharacterEditorConfigurationOwner` | 正则编辑状态与保存控制器 |
-| `eleckoi.character.editor.dynamic` | chain / root | `CharacterEditorConfigurationOwner` | 动态设定编辑状态与保存控制器 |
+| `eleckoi.character.editor.dynamic` | chain / root | `CharacterEditorConfigurationOwner` | 分支设定编辑状态与保存控制器 |
 | `eleckoi.character.manager` | chain / root | `CharacterManagerOwner` | 刷新、分组、删除、导入、导出 |
 
 所有 owner 都包含 `fallback: ReactNode`。配置编辑 slot 通过 `setController()` 交给父页面统一处理保存和放弃；插件替换编辑器时必须正确报告 dirty 状态。

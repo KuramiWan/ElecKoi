@@ -52,6 +52,9 @@ describe('DSH ElecKoi character configuration models', () => {
     let onReset: (() => void) | undefined
     let cleanup = () => {}
     const services = new Map<string, any>()
+    let branches: unknown[] = []
+    let preview = '最新 AI 回复'
+    let previewFailure = false
     const changes = configurationChanges()
     runInNewContext(source, {
       AbortController,
@@ -60,6 +63,14 @@ describe('DSH ElecKoi character configuration models', () => {
     expect(registration?.id).toBe('@eleckoi/dsh-client-character-configuration')
     registration!.factory().apply({
       remote: {
+        eleckoiConversations: {
+          list: async () => {
+            calls.push('query.conversations.list')
+            return previewFailure ? { ok: false, error: { message: '消息预览读取失败' } } : {
+              ok: true, value: [{ id: 'conversation-1', preview }, { id: 'no-branch-chat', preview: '普通聊天' }]
+            }
+          }
+        },
         eleckoiCharacterConfiguration: {
           changes: (signal?: AbortSignal) => changes.open(signal),
           readSettingLibrary: async (characterId: string) => {
@@ -80,7 +91,7 @@ describe('DSH ElecKoi character configuration models', () => {
           readConversationSettingLibraries: async (characterId: string) => {
             calls.push('query.setting_library.conversations')
             inputs.push({ name: 'query.setting_library.conversations', input: { characterId } })
-            return { ok: true, value: [] }
+            return { ok: true, value: branches }
           },
           saveConversationSettingLibrary: async (characterId: string, sessionId: string, library: unknown) => {
             calls.push('command.setting_library.conversation.save')
@@ -150,6 +161,7 @@ describe('DSH ElecKoi character configuration models', () => {
 
     await Promise.all([libraries.read('character-1'), variables.read('character-1'), regexRules.read('character-1')])
     await libraries.readConversations('character-1')
+    expect(calls.filter(name => name === 'query.conversations.list')).toHaveLength(0)
     expect(libraries.getSnapshot('character-1').status).toBe('ready')
     expect(variables.getSnapshot('character-1').status).toBe('ready')
     expect(regexRules.getSnapshot('character-1').status).toBe('ready')
@@ -183,6 +195,20 @@ describe('DSH ElecKoi character configuration models', () => {
     expect(calls.filter(name => name === 'query.variable_config.read')).toHaveLength(3)
     expect(calls.filter(name => name === 'query.regex_rules.read')).toHaveLength(3)
     expect(calls.filter(name => name === 'query.setting_library.conversations')).toHaveLength(2)
+
+    branches = [{ sessionId: 'conversation-1', summary: '开场', library }]
+    expect(await libraries.readConversations('character-1')).toMatchObject([
+      { sessionId: 'conversation-1', summary: '最新 AI 回复' }
+    ])
+    expect(libraries.getConversationSnapshot('character-1').value).toHaveLength(1)
+    preview = '最后一条用户输入'
+    await libraries.readConversations('character-1')
+    expect(libraries.getConversationSnapshot('character-1').value[0].summary).toBe(preview)
+    previewFailure = true
+    await expect(libraries.readConversations('character-1')).rejects.toThrow('消息预览读取失败')
+    expect(libraries.getConversationSnapshot('character-1')).toMatchObject({
+      status: 'error', error: '消息预览读取失败', value: [{ summary: preview }]
+    })
     cleanup()
     expect(stopped).toEqual(['reset'])
     expect(changes.isStopped()).toBe(true)

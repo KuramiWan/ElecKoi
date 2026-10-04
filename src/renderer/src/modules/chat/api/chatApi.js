@@ -1,3 +1,5 @@
+import { conversationPreviewText } from "../../../ui/messages/conversationPreviewText.js";
+
 function mapMessage(message) {
   return {
     id: message.id,
@@ -24,13 +26,6 @@ function mapMessage(message) {
     openingOptions: message.openingOptions || [],
     selectedOpeningId: message.selectedOpeningId || '',
   };
-}
-
-function conversationPreviewText(value) {
-  return String(value || "")
-    .replace(/<\/?FINAL>/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function mapConversation(conversation, metadata = conversation.metadata || {}) {

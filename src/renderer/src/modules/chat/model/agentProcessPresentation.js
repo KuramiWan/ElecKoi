@@ -37,6 +37,13 @@ export function processItemPresentation(item) {
   }
   if (item.kind === 'compaction') return { title: stateTitle(item, '正在自动压缩', '上下文已自动压缩', '自动压缩失败'), target: targetOf(item), icon: 'description' };
   const action = settingMutations.has(item.toolName) ? '修改对话设定' : actions[item.toolName];
+  if (settingMutations.has(item.toolName) && item.status === 'complete') {
+    const result = object(item.summary);
+    if (result.status && result.status !== 'ok') {
+      return { title: `${action}失败`, target: targetOf(item), icon: 'edit' };
+    }
+    if (result.changed === false) return { title: '设定未变化', target: targetOf(item), icon: 'edit' };
+  }
   const title = action
     ? item.status === 'running' ? `正在${action}` : item.status === 'error' ? `${action}失败` : item.status === 'cancelled' ? `${action}已取消` : `已${action}`
     : genericTitle(item);

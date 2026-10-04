@@ -169,7 +169,7 @@ type RemoteResult<T> =
 - `ctx.remote.eleckoiSystem`：Host 与协议状态；
 - `ctx.remote.eleckoiPersona`：用户资料读取与保存；
 - `ctx.remote.eleckoiCharacters`：角色目录、资料、导入导出与管理；
-- `ctx.remote.eleckoiCharacterConfiguration`：设定库、变量、正则和动态设定的读取与保存；
+- `ctx.remote.eleckoiCharacterConfiguration`：设定库、变量、正则和分支设定的读取与保存；
 - `ctx.remote.eleckoiAgentPresets`：Agent 预设目录与编辑；
 - `ctx.remote.eleckoiCreatorStudio`：创作项目目录与文件；
 - `ctx.remote.eleckoiWebSearch`：联网搜索设置；
