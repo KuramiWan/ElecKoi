@@ -62,7 +62,7 @@
 .chat-empty-guide img {
   width: 82px;
   height: 82px;
-  opacity: 0.08;
+  opacity: 0.2;
   user-select: none;
   pointer-events: none;
   filter: grayscale(1);

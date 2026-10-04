@@ -15,6 +15,7 @@
 
 .character-profile-empty {
   grid-template-rows: 1fr;
+  align-content: center;
   place-items: center;
 }
 

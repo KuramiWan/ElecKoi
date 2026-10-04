@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRightIcon, NewChatIcon, PencilIcon, PlusIcon } from "../../../ui/icons/index.jsx";
+import { ChevronRightIcon, NewChatIcon, PencilIcon } from "../../../ui/icons/index.jsx";
+import logoIcon from "../../../assets/eleckoi-app-icon.png";
 import { assetSrc } from "../../../app/services/assets.js";
 import { characterCover, characterName } from "./characterUtils.js";
 import {
@@ -130,10 +131,12 @@ export function CharacterProfilePanel({
   if (!selectedCharacter) {
     return (
       <section className="character-profile-panel character-profile-empty" aria-label="角色简介">
-        <button type="button" className="character-profile-create" onMouseDown={preventPointerFocus} onClick={onCreateFirstCharacter}>
-          <PlusIcon />
-          新建角色
-        </button>
+        <div className="chat-empty-guide">
+          <img src={logoIcon} alt="" draggable="false" />
+          <strong>还没有角色</strong>
+          <span>先创建一个角色，再开始第一段对话。</span>
+          <button type="button" onMouseDown={preventPointerFocus} onClick={onCreateFirstCharacter}>新建角色</button>
+        </div>
       </section>
     );
   }
