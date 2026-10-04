@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/renderer/src/assets/model-icons/whale-maid-thinking.png" width="128" alt="电子爱思考鲸鱼娘">
+  <img src="resources/icons/eleckoi-app-icon.png" width="128" alt="电子爱">
 </p>
 
 <h1 align="center">电子爱</h1>
@@ -29,8 +29,13 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/eleckoi-windows-plugins.png" alt="电子爱 Windows 版插件管理界面" width="960">
-  <br><sub>电子爱 Windows 版插件管理界面</sub>
+  <img src="docs/screenshots/eleckoi-windows-characters.png" alt="电子爱 Windows 版角色卡列表" width="960">
+  <br><sub>电子爱 Windows 版角色卡列表</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/eleckoi-windows-character-editor.png" alt="电子爱 Windows 版角色卡编写" width="960">
+  <br><sub>电子爱 Windows 版角色卡编写</sub>
 </p>
 
 ## 接下来的开发目标

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/renderer/src/assets/model-icons/whale-maid-thinking.png" width="128" alt="ElecKoi thinking whale-maid mascot">
+  <img src="resources/icons/eleckoi-app-icon.png" width="128" alt="ElecKoi">
 </p>
 
 <h1 align="center">ElecKoi</h1>
@@ -29,8 +29,13 @@ ElecKoi aims to build a continuously improving creative flywheel: turn the commu
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/eleckoi-windows-plugins.png" alt="ElecKoi for Windows plugin management screen" width="960">
-  <br><sub>ElecKoi for Windows plugin management screen</sub>
+  <img src="docs/screenshots/eleckoi-windows-characters.png" alt="ElecKoi for Windows character-card list" width="960">
+  <br><sub>ElecKoi for Windows character-card list</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/eleckoi-windows-character-editor.png" alt="ElecKoi for Windows character-card authoring" width="960">
+  <br><sub>ElecKoi for Windows character-card authoring</sub>
 </p>
 
 ## Upcoming Development Goals
