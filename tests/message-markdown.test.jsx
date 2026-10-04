@@ -331,6 +331,16 @@ describe("message markdown presentation", () => {
     expect(html).not.toContain('class="message-tools');
   });
 
+  it("does not expose process viewing in a user message menu", () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, {
+      message: { id: "user-1", role: "user", content: "你好", process: [{ id: "step-1" }] },
+      name: "用户",
+      layoutMode: "roleplay",
+    }));
+
+    expect(html).not.toContain('aria-label="查看过程"');
+  });
+
   it("puts Agent regeneration immediately after copy in the persistent footer", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: { id: "assistant-1", role: "assistant", content: "你好" },

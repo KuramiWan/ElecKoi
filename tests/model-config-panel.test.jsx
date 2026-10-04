@@ -134,6 +134,7 @@ describe('model configuration form', () => {
     expect(select.value).toBe('anthropic_messages');
     expect(select.disabled).toBe(true);
     expect(field('API 地址').value).toBe('https://api.deepseek.com/anthropic');
+    expect(container.querySelector('.model-reasoning-profile')).toBeNull();
   });
   it('selects discovered models, enables parameters, and preserves values after saving and reopening', async () => {
     const onSave = vi.fn(async value => ({ ...value }));
@@ -157,6 +158,45 @@ describe('model configuration form', () => {
     expect(field('温度').value).toBe('0.4');
   });
 
+  it('lets a custom model explicitly declare and persist its pi-ai reasoning efforts', async () => {
+    const config = { ...draft(), model: 'example-manual-model', model_options: [{ id: 'example-manual-model', isUserAdded: true }] };
+    const onSave = vi.fn(async value => ({ ...value }));
+    await mount({ config, configs: [config], onSave });
+
+    const reasoning = field('推理强度');
+    expect(reasoning.disabled).toBe(true);
+    expect(container.querySelector('.model-reasoning-profile')).not.toBeNull();
+
+    await act(async () => container.querySelector('[aria-label="声明支持关闭档位"]').click());
+    expect(button('保存配置').disabled).toBe(true);
+    expect(container.querySelector('.model-parameter-error').textContent).toContain('至少选择一个非关闭档位');
+
+    await act(async () => container.querySelector('[aria-label="声明支持低档位"]').click());
+    await act(async () => container.querySelector('[aria-label="声明支持高档位"]').click());
+    expect(reasoning.disabled).toBe(false);
+    expect([...reasoning.options].map(option => option.value)).toEqual(['', 'off', 'low', 'high']);
+    await act(async () => {
+      reasoning.value = 'high';
+      reasoning.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => button('保存配置').click());
+
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.model_options[0]).toMatchObject({
+      id: 'example-manual-model',
+      reasoningEfforts: { off: null, low: 'low', high: 'high' },
+      reasoningEffort: 'high',
+    });
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => root.render(
+      <ModelConfigPanel config={saved} configs={[saved]} renderLayout={layout} onSave={onSave} />,
+    ));
+    expect(field('推理强度').value).toBe('high');
+    expect(container.querySelector('[aria-label="取消高档位"]')).not.toBeNull();
+  });
+
   it('does not overwrite a newer draft with a late discovery response', async () => {
     let finish;
     const discovery = new Promise(resolve => { finish = resolve; });
@@ -176,6 +216,7 @@ describe('model configuration form', () => {
     expect(field('Top P').value).toBe('0.95');
     expect(field('Top P').disabled).toBe(false);
     expect(field('推理强度').disabled).toBe(true);
+    expect(container.querySelector('.model-reasoning-profile')).not.toBeNull();
     expect(notify).toHaveBeenCalledWith('error', '未读取到模型，当前配置已保留。');
   });
 });

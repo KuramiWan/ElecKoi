@@ -244,7 +244,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
     <div className="message-tools-leading">
       {pluginActions}
       {expanded ? <div className="message-tools-expanded">
-        {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
+        {!isUser && message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
         {!isUser ? <TurnUsage usage={message.turnUsage} compact /> : null}
         <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || '')} aria-label="复制" title="复制"><CopyIcon /></button>
         {!isUser && message.id !== 'opening' ? <button type="button" onClick={() => onRegenerate?.(message)} aria-label="重新生成" title="重新生成"><RefreshMessageIcon /></button> : null}

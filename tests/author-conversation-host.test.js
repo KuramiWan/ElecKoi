@@ -33,7 +33,8 @@ function harness() {
     getSnapshot: () => ({ status: 'ready', items, error: '' }),
     getStreamSnapshot: () => ({ id: 'chat-1', status: 'idle', runId: 'session-1', messageId: '', sequence: 0, content: '', process: [], error: '' }),
     getStatsSnapshot: () => ({ id: 'chat-1', stats: null }),
-    open: async () => details,
+    open: vi.fn(async () => details),
+    refreshDetails: vi.fn(async () => details),
     refresh: async () => items,
     readAuthorState: async () => ({
       initialVariableStateJson: '{"hp":1}', currentVariableStateJson: JSON.stringify(state),
@@ -77,7 +78,7 @@ function harness() {
   }] }) };
   const context = { bridgeKey: crypto.randomUUID(), conversationId: 'chat-1', messageId: 'assistant-1', conversations, models };
   const invoke = async (method, params) => JSON.parse(await routeAuthorConversationRequest(request(method, params), context));
-  return { invoke, conversations, send, regenerate, deleteMessagesFrom, replaceAuthorVariableState };
+  return { invoke, conversations, context, send, regenerate, deleteMessagesFrom, replaceAuthorVariableState };
 }
 
 describe('DSH Client author conversation bridge', () => {
@@ -91,6 +92,27 @@ describe('DSH Client author conversation bridge', () => {
     expect(await invoke('variables.applyPatch', { patch: [{ op: 'replace', path: '/hp', value: 10 }] }))
       .toMatchObject({ ok: true, result: { hp: 10 } });
     expect(replaceAuthorVariableState).toHaveBeenCalledWith('chat-1', { hp: 10 });
+  });
+
+  it('does not reopen a deleted conversation for a late author frontend request', async () => {
+    const { invoke, conversations } = harness();
+    conversations.getDetailsSnapshot = () => ({ id: '', status: 'idle', details: null });
+    const result = await invoke('variables.getState');
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_CONTEXT', message: '当前消息所属聊天已关闭' },
+    });
+    expect(conversations.open).not.toHaveBeenCalled();
+    expect(conversations.refreshDetails).not.toHaveBeenCalled();
+  });
+
+  it('allows global message listing after the iframe anchor message was rewound', async () => {
+    const { invoke, context } = harness();
+    context.messageId = 'rewound-message';
+    expect(await invoke('messages.list')).toMatchObject({ ok: true, result: [
+      { id: 'user-1', role: 'user', content: '问题' },
+      { id: 'assistant-1', role: 'assistant', content: '回答' },
+    ] });
   });
 
   it('uses the official conversation client for send, regeneration and deletion', async () => {

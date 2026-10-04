@@ -328,8 +328,11 @@ function sendImages(value) {
 
 async function currentDetails(conversations, conversationId) {
   const snapshot = conversations.getDetailsSnapshot();
-  if (snapshot.id === conversationId && snapshot.details) return snapshot.details;
-  const details = await conversations.open(conversationId);
+  if (snapshot.id !== conversationId) {
+    throw new AuthorApiError('INVALID_CONTEXT', '当前消息所属聊天已关闭');
+  }
+  if (snapshot.details) return snapshot.details;
+  const details = await conversations.refreshDetails();
   if (!details) throw new AuthorApiError('NOT_FOUND', '找不到当前聊天');
   return conversations.getDetailsSnapshot().details || details;
 }
@@ -380,7 +383,11 @@ function modelItems(models) {
 async function invokeMethod(context, method, params) {
   const { conversationId, messageId, conversations, characterConfiguration, models } = context;
   const details = await currentDetails(conversations, conversationId);
-  const message = targetMessage(details, messageId);
+  // A rich-message iframe can outlive the message node that created it. During
+  // rewind/regeneration it may still call global APIs such as messages.list;
+  // those APIs must not fail merely because the iframe's original message was
+  // removed from the current projection.
+  const requireMessage = () => targetMessage(details, messageId);
   const messages = details.messages;
   const metadata = details.metadata;
   const macroValues = characterCardMacroValues(metadata, metadata.characterPersona.user_name);
@@ -394,7 +401,7 @@ async function invokeMethod(context, method, params) {
     ));
     case 'context.current': return {
       surface: 'message-renderer', scope: 'current-character', conversationId,
-      conversationTitle: details.conversation.title, messageId: message.id, characterId: metadata.characterId,
+      conversationTitle: details.conversation.title, messageId, characterId: metadata.characterId,
     };
     case 'variables.getState': {
       const requestedId = typeof params.messageId === 'string' ? params.messageId.trim() : '';
@@ -422,9 +429,9 @@ async function invokeMethod(context, method, params) {
     case 'variables.reset': return conversations.replaceAuthorVariableState(
       conversationId, jsonObject(parsedJson((await readAuthorState()).initialVariableStateJson), '初始变量状态不正确'),
     );
-    case 'openings.list': return { items: (await publicMessage(conversations, opening || message, macroValues)).openingOptions };
+    case 'openings.list': return { items: (await publicMessage(conversations, opening || requireMessage(), macroValues)).openingOptions };
     case 'openings.current': {
-      const current = await publicMessage(conversations, opening || message, macroValues);
+      const current = await publicMessage(conversations, opening || requireMessage(), macroValues);
       return current.openingOptions.find((item) => item.id === current.selectedOpeningId) || null;
     }
     case 'openings.select': {
@@ -439,7 +446,7 @@ async function invokeMethod(context, method, params) {
       if (!id) throw new AuthorApiError('INVALID_PARAMS', '消息 id 不能为空');
       return publicMessage(conversations, targetMessage(details, id), macroValues);
     }
-    case 'messages.current': return publicMessage(conversations, messages.at(-1) || message, macroValues);
+    case 'messages.current': return publicMessage(conversations, messages.at(-1) || requireMessage(), macroValues);
     case 'messages.setContent': {
       const id = typeof params.id === 'string' ? params.id.trim() : '';
       if (!id) throw new AuthorApiError('INVALID_PARAMS', '消息 id 不能为空');
@@ -586,7 +593,7 @@ async function invokeMethod(context, method, params) {
     }
     case 'media.getMessageAttachments': {
       const target = typeof params.messageId === 'string' && params.messageId.trim()
-        ? targetMessage(details, params.messageId.trim()) : message;
+        ? targetMessage(details, params.messageId.trim()) : requireMessage();
       return { items: await Promise.all((target.inputImageAttachments || [])
         .map((item) => publicImageAttachment(conversations, conversationId, item))) };
     }

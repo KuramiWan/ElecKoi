@@ -10,30 +10,20 @@ export async function runChatMessageSend(options) {
     event, input, inputImagesRef, inputFilesRef, isSending, modelConfig, modelSupportsImages, setStatus,
     requestRef, setIsSending, sessionId, chatCharacter, setSessionId, replaceChatMessages,
     setChatCharacter, normalizeLatestChatCharacter, refreshSessionsOnly, setInput, clearInputImages, clearInputFiles,
-    setMessages, updatePendingReply, requestScrollToEnd, reconcileChatMessages, commitPendingError,
-    notify, restoreChatEntry, conversationModel, nativeAttachments = null, externalSignal, submitMode,
+    setMessages, requestScrollToEnd, reconcileChatMessages,
+    notify, restoreChatEntry, conversationModel,
   } = options;
   event?.preventDefault?.();
   const text = input.trim();
-  const suppliedAttachments = Array.isArray(nativeAttachments) ? nativeAttachments : null;
-  const draftImages = suppliedAttachments
-    ? suppliedAttachments.filter((attachment) => attachment?.type === "image").map((attachment) => ({
-      localId: attachment.draftId || `native-image-${Date.now()}`,
-      mediaType: attachment.mediaType,
-      bytes: Number(attachment.bytes) || 0,
-      name: attachment.name || "",
-      encodedData: attachment.data,
-    }))
-    : [...inputImagesRef.current];
-  const draftFiles = suppliedAttachments
-    ? suppliedAttachments.filter((attachment) => attachment?.type === "file").map((attachment) => ({
-      id: attachment.receiptId,
-      receiptId: attachment.receiptId,
-      attachmentId: attachment.draftId || attachment.receiptId,
-      name: attachment.name || "文件",
-      bytes: Number(attachment.bytes) || 0,
-    }))
-    : [...inputFilesRef.current];
+  const draftImages = [...inputImagesRef.current];
+  const draftFiles = [...inputFilesRef.current];
+  console.info("[ElecKoi][chat-send] product send entry", {
+    sessionId,
+    textLength: text.length,
+    imageCount: draftImages.length,
+    fileCount: draftFiles.length,
+    hasConversationModel: Boolean(conversationModel),
+  });
   if ((!text && !draftImages.length && !draftFiles.length) || isSending) {
     return { kind: "error", text: isSending ? "当前聊天正在生成。" : "请输入消息。" };
   }
@@ -56,20 +46,14 @@ export async function runChatMessageSend(options) {
   }
 
   const controller = new AbortController();
-  const abortFromExternal = () => controller.abort(externalSignal?.reason);
-  if (externalSignal?.aborted) abortFromExternal();
-  else externalSignal?.addEventListener?.("abort", abortFromExternal, { once: true });
   const activeRequest = { controller };
   requestRef.current = activeRequest;
   setIsSending(true);
   setStatus(draftImages.length ? "正在处理图片..." : "正在回复...");
-  let assistantId = "";
   let targetSessionId = sessionId;
 
   try {
-    const encodedImages = suppliedAttachments
-      ? draftImages.map((image) => ({ mediaType: image.mediaType, data: image.encodedData, name: image.name }))
-      : await Promise.all(draftImages.map(encodeImageDraft));
+    const encodedImages = await Promise.all(draftImages.map(encodeImageDraft));
     throwIfAborted(controller.signal);
     if (!targetSessionId) {
       if (!chatCharacter.character_id) throw new Error("请先从角色设定中双击角色进入聊天");
@@ -100,27 +84,19 @@ export async function runChatMessageSend(options) {
         attachmentId: file.attachmentId, name: file.name, bytes: file.bytes,
       })),
     };
-    if (!suppliedAttachments) {
-      clearInputImages();
-      clearInputFiles();
-    }
+    clearInputImages();
+    clearInputFiles();
     const payload = {
       message: text,
       images: encodedImages,
       files: draftFiles.map((file) => file.receiptId || file.id),
       session_id: targetSessionId,
-      ...(submitMode ? { mode: submitMode } : {}),
     };
 
-    assistantId = `pending-${Date.now()}`;
     const requestId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     activeRequest.requestId = requestId;
     throwIfAborted(controller.signal);
     setMessages?.((items) => [...items, userMessage]);
-    updatePendingReply?.({
-      id: assistantId, conversationId: targetSessionId, role: "assistant", content: "",
-      variableStateJson: '{}', pending: true, created_at: createdAt,
-    });
     requestScrollToEnd("auto");
     const result = await sendChatMessage(payload, requestId, { model: conversationModel, signal: controller.signal });
     if (result.cancelled) {
@@ -158,13 +134,12 @@ export async function runChatMessageSend(options) {
         }
       }
       if (requestRef.current !== activeRequest) return { kind: "success" };
-      if (!reconciled) commitPendingError?.(assistantId);
+      if (!reconciled) setStatus("发送失败，且无法刷新聊天记录");
     }
     return isAbortError(error)
       ? { kind: "success" }
       : { kind: "error", text: getErrorMessage(error, "发送失败") };
   } finally {
-    externalSignal?.removeEventListener?.("abort", abortFromExternal);
     if (requestRef.current === activeRequest) {
       requestRef.current = null;
       setIsSending(false);
@@ -176,7 +151,6 @@ export function stopChatMessageSend({
   requestRef,
   setIsSending,
   setStatus,
-  settlePendingReply,
   notify,
   cancelRequest,
 }) {
@@ -186,7 +160,6 @@ export function stopChatMessageSend({
   activeRequest.stopping = true;
   requestRef.current = null;
   activeRequest.controller?.abort?.();
-  settlePendingReply?.();
   setIsSending?.(false);
   setStatus("已停止");
   if (!activeRequest.requestId || typeof cancelRequest !== "function") {

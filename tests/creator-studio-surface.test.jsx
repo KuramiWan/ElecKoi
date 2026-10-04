@@ -21,32 +21,19 @@ import { CreatorStudioPagination, ProjectCollection, paginateCreatorProjects } f
 vi.stubGlobal("React", React);
 afterAll(() => vi.unstubAllGlobals());
 
+function renderCreatorStudio() {
+  vi.stubGlobal("window", { location: { search: "?view=creator-studio" } });
+  return renderToStaticMarkup(<CreatorStudioWindow />);
+}
+
 describe("AI creator studio surface", () => {
-  it("starts on an honest project entry page instead of a hard-coded canvas", () => {
-    const html = renderToStaticMarkup(<CreatorStudioWindow />);
+  it("starts with a development notice and a direct entry button", () => {
+    const html = renderCreatorStudio();
 
     expect(html).toContain("AI创作工作室");
-    expect(html).toContain('aria-label="AI创作工作室工作区"');
-    expect(html).toContain('aria-label="工作室侧边栏"');
-    expect(html).toContain("创作项目");
-    expect(html).toContain('aria-label="资产"');
-    expect(html).toContain('aria-label="技能"');
-    expect(html).toContain("新建项目");
-    expect(html).toContain("搜索项目");
-    expect(html).toContain("列表视图");
-    expect(html).toContain("网格视图");
-    expect(html).toContain("还没有创作项目");
-    expect(html).not.toContain("全部项目");
-    expect(html).not.toContain("最近项目");
-    expect(html).not.toContain("存储接入后");
-    expect(html).not.toContain("9:16");
-    expect(html).not.toContain("风格库");
-    expect(html).not.toContain("3D导演");
-    expect(html).not.toContain("多轨道");
-    expect(html).not.toContain("资产管理");
-    expect(html).not.toContain("AI创作助手");
-    expect(html).not.toContain("未命名项目");
-    expect(html).not.toContain("关闭AI创作工作室");
+    expect(html).toContain("正在开发");
+    expect(html).toContain("别点别进，是空壳，暂时用不了。");
+    expect(html).toContain("进入创作工作室");
   });
 
   it("paginates the same project collection used by both views", () => {

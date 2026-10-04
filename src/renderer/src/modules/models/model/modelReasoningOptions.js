@@ -8,6 +8,8 @@ const labels = {
   max: "最高",
 };
 
+export const reasoningEffortIds = Object.freeze(Object.keys(labels));
+
 export function reasoningEffortLabel(effort) {
   return labels[effort] || effort;
 }

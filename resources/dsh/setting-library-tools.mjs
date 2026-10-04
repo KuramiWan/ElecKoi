@@ -111,14 +111,24 @@ function readTool() {
       const byPath = new Map(catalog.entries.map((entry) => [entry.path, entry]))
       const missing = paths.filter((path) => !byPath.has(path))
       if (missing.length) return { ...fail('not_found', '存在当前虚拟设定库没有的路径，请重新使用 Glob 或 Grep。'), paths: missing }
-      return { status: 'ok', files: paths.map((path) => {
+      const files = paths.map((path) => {
         const entry = byPath.get(path)
         const cached = cachedReference(entry, catalog)
+        if (entry.renderError) return {
+          ...summary(entry, catalog),
+          group_path: entry.groupPath,
+          selection_hint: entry.selectionHint,
+          read_strategy: entry.readStrategy,
+          content_delivery: 'error',
+          error: entry.renderError
+        }
         return { ...summary(entry, catalog), group_path: entry.groupPath, selection_hint: entry.selectionHint,
           read_strategy: entry.readStrategy, content_delivery: cached ? 'cached_reference' : 'tool_result',
           resolved_references: (entry.resolvedReferences || []).map((reference) => ({ title: reference.title })),
           ...(cached ? { cached_reference: cached.reference } : {}), content: cached ? cached.receipt : entry.content }
-      }) }
+      })
+      const errors = files.filter((file) => file.content_delivery === 'error')
+      return { status: errors.length ? 'partial' : 'ok', files, ...(errors.length ? { errors } : {}) }
     }
   })
 }
@@ -308,10 +318,15 @@ async function runtimeCatalogOf(bridge, bridgeFile) {
   const messages = runtimeMessages(bridge.history)
   entries = (await Promise.all(entries.map(async (entry) => {
     if (entry.raw.contentMode !== 'ejs' || entry.readStrategy === 'required') return entry
-    const rendered = await renderEjsController(entry, ejsCandidates, variableState, messages)
-    return { ...entry, content: rendered.content, resolvedReferences: rendered.references,
-      promotedToRequiredThisTurn: true }
-  }))).filter((entry) => entry.content.trim())
+    try {
+      const rendered = await renderEjsController(entry, ejsCandidates, variableState, messages)
+      return { ...entry, content: rendered.content, resolvedReferences: rendered.references,
+        promotedToRequiredThisTurn: true }
+    } catch (error) {
+      return { ...entry, content: '', renderError: { code: 'ejs_render_failed', message: message(error) },
+        promotedToRequiredThisTurn: true }
+    }
+  }))).filter((entry) => entry.content.trim() || entry.renderError)
 
   const resolution = {
     version: 1,
@@ -320,6 +335,9 @@ async function runtimeCatalogOf(bridge, bridgeFile) {
     renderedContents: Object.fromEntries(entries
       .filter((entry) => entry.raw.contentMode === 'ejs')
       .map((entry) => [entry.raw.id, entry.content])),
+    renderErrors: Object.fromEntries(entries
+      .filter((entry) => entry.renderError)
+      .map((entry) => [entry.raw.id, entry.renderError])),
     resolvedReferences: Object.fromEntries(entries
       .filter((entry) => entry.resolvedReferences?.length)
       .map((entry) => [entry.raw.id, entry.resolvedReferences]))
@@ -333,15 +351,21 @@ function applyRuntimeResolution(catalog, resolution) {
   const visible = new Set(resolution.visibleEntryIds)
   const promoted = new Set(resolution.promotedEntryIds)
   const rendered = objectValue(resolution.renderedContents)
+  const renderErrors = objectValue(resolution.renderErrors)
   const references = objectValue(resolution.resolvedReferences)
   const entries = catalog.entries
     .filter((entry) => visible.has(entry.raw.id))
-    .map((entry) => ({
-      ...entry,
-      content: Object.hasOwn(rendered, entry.raw.id) ? String(rendered[entry.raw.id]) : entry.content,
-      promotedToRequiredThisTurn: promoted.has(entry.raw.id),
-      resolvedReferences: Array.isArray(references[entry.raw.id]) ? references[entry.raw.id] : []
-    }))
+    .map((entry) => {
+      const renderError = renderErrors[entry.raw.id]
+      return {
+        ...entry,
+        content: renderError ? '' : Object.hasOwn(rendered, entry.raw.id) ? String(rendered[entry.raw.id]) : entry.content,
+        ...(renderError ? { renderError } : {}),
+        promotedToRequiredThisTurn: promoted.has(entry.raw.id),
+        resolvedReferences: Array.isArray(references[entry.raw.id]) ? references[entry.raw.id] : []
+      }
+    })
+    .filter((entry) => entry.content.trim() || entry.renderError)
   return { ...catalog, entries, byPath: new Map(entries.map((entry) => [entry.path, entry])) }
 }
 
@@ -440,14 +464,20 @@ async function renderEjsController(target, candidates, state, messages) {
     if (source.path) sourceByName.set(source.path, source)
   }
   const getvar = createGetvar(state)
+  const getLocalVar = (key, options = {}) => getvar(key, options)
+  const getMessageVar = createMessageVarReader(messages, state)
   const lastMessageId = messages.length ? messages.at(-1).id : 0
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content || ''
   const context = {
     getvar,
+    getLocalVar,
+    getMessageVar,
     variables: state,
     stat_data: state,
     matchChatMessages: createMessageMatcher(messages),
     _: createLodashCompat(),
     lastMessageId,
+    lastUserMessage,
     TavernHelper: { getLastMessageId: () => lastMessageId }
   }
 
@@ -566,6 +596,30 @@ function createGetvar(state) {
   }
 }
 
+function createMessageVarReader(messages, fallbackState) {
+  return (key, options = {}) => {
+    const requested = options?.withMsg ?? options?.message ?? options?.messageId ?? options?.message_id
+    const message = requested === undefined
+      ? messages.at(-1)
+      : selectRuntimeMessage(messages, requested)
+    const state = message?.variableState || fallbackState
+    return createGetvar(state)(key, options)
+  }
+}
+
+function selectRuntimeMessage(messages, requested) {
+  if (requested && typeof requested === 'object') {
+    if (requested.id !== undefined) return selectRuntimeMessage(messages, requested.id)
+    if (requested.message_id !== undefined) return selectRuntimeMessage(messages, requested.message_id)
+  }
+  if (requested === 'latest' || requested === undefined) return messages.at(-1)
+  const text = String(requested)
+  const byId = messages.find((message) => String(message.id) === text)
+  if (byId) return byId
+  const index = Number(requested)
+  return Number.isInteger(index) ? messages.at(index < 0 ? index : index - 1) : undefined
+}
+
 function readPath(root, path) {
   const segments = Array.isArray(path) ? path : pathSegments(path)
   let value = root
@@ -587,7 +641,12 @@ function pathSegments(path) {
 function runtimeMessages(rawHistory) {
   return (Array.isArray(rawHistory) ? rawHistory : [])
     .filter((item) => item && (item.role === 'user' || item.role === 'assistant'))
-    .map((item, index) => ({ id: item.id ?? index + 1, role: item.role, content: String(item.content || '') }))
+    .map((item, index) => ({
+      id: item.id ?? index + 1,
+      role: item.role,
+      content: String(item.content || ''),
+      variableState: objectValue(item.variableState)
+    }))
 }
 
 function stringList(value) { return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [] }
@@ -656,7 +715,18 @@ function settingBridgeFor(exec) {
 function output() { return { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] } }
 function requiredFiles(catalog) { return catalog.entries.filter((entry) => entry.readStrategy === 'required' || entry.promotedToRequiredThisTurn === true).map((entry) => summary(entry, catalog)) }
 function cachedReference(entry, catalog) { return catalog.requiredCache?.find((item) => item.id === entry.raw.id && item.path === entry.path && item.title === (String(entry.raw.title || '').trim() || '未命名设定') && item.content === entry.content && entry.readStrategy === 'required') }
-function summary(entry, catalog) { const cached = cachedReference(entry, catalog); return { path: entry.path, title: entry.raw.title, read_strategy: entry.readStrategy, selection_hint: entry.selectionHint, content_delivery: cached ? 'cached_reference' : 'tool_result', ...(cached ? { cached_reference: cached.reference } : {}) } }
+function summary(entry, catalog) {
+  const cached = cachedReference(entry, catalog)
+  return {
+    path: entry.path,
+    title: entry.raw.title,
+    read_strategy: entry.readStrategy,
+    selection_hint: entry.selectionHint,
+    content_delivery: entry.renderError ? 'error' : cached ? 'cached_reference' : 'tool_result',
+    ...(entry.renderError ? { error: entry.renderError } : {}),
+    ...(cached && !entry.renderError ? { cached_reference: cached.reference } : {})
+  }
+}
 function directoryExists(catalog, path) { return !path || catalog.groups.some((group) => catalog.groupPath(group.id) === path) }
 function inScope(path, scope) { return !scope || path.startsWith(`${scope}/`) }
 function relative(path, scope) { return scope ? path.slice(scope.length + 1) : path }

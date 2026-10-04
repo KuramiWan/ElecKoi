@@ -144,6 +144,23 @@ export class MessageRepository {
     } while (true)
   }
 
+  /**
+   * Returns the active branch ledger without requiring every completed response
+   * to still have a readable DSH transcript.  Relationship fields and the
+   * per-turn variable snapshots are stored in the product database; callers
+   * that only need those fields must not force a full transcript read.
+   */
+  listMetadata(conversationId: string): ChatMessage[] {
+    const result: ChatMessage[] = []
+    let cursor: number | undefined
+    do {
+      const page = this.pageMetadata(conversationId, cursor, 200)
+      result.unshift(...page.messages)
+      if (!page.hasMore || page.beforeSequence === null) return result
+      cursor = page.beforeSequence
+    } while (true)
+  }
+
   latestPreview(conversationId: string): string | undefined {
     return this.page(conversationId, undefined, 1).messages.at(-1)?.content
   }

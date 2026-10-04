@@ -57,7 +57,7 @@ export function chatDisplayCssVariables(layout, profile) {
   const fontSize = clamp(profile.message_font_size, 9, 20);
   const nameSize = clamp(profile.name_font_size, 10, 18);
   const baseLineHeightRatio = layout === "roleplay" ? 23 / 15 : 1.4;
-  const fontWeight = clamp(profile.message_font_weight ?? 400, 400, 600);
+  const fontWeight = clamp(profile.message_font_weight ?? 400, 100, 600);
   const lineHeight = fontSize * baseLineHeightRatio * clamp(profile.line_height_multiplier, 0.8, 1.6);
 
   return {

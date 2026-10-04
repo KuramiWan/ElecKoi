@@ -457,8 +457,17 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   }
 
   @Remote
-  variableTimeline(conversationId: string): VariableViewerTimeline {
-    return this.productData.readVariableTimeline(conversationId)
+  async variableTimeline(conversationId: string): Promise<VariableViewerTimeline> {
+    const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+    const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
+    const variableStateByTurn = this.ownerContext.eleckoiRoleplaySessions.variableStatesByTurn(conversationId)
+    const sessionMessages = sessionAssistantMessages(
+      conversationId,
+      runtimeSessionId,
+      inspection.events,
+      variableStateByTurn
+    )
+    return this.productData.readVariableTimeline(conversationId, sessionMessages)
   }
 
   @Remote
@@ -917,6 +926,77 @@ function visibleSessionMessages(events: readonly unknown[]): Array<{ seq: number
     }
   }
   return messages
+}
+
+function sessionAssistantMessages(
+  conversationId: string,
+  runtimeSessionId: string,
+  events: readonly unknown[],
+  variableStateByTurn: Record<string, string>
+): Array<{
+  id: string
+  conversationId: string
+  role: 'assistant'
+  content: string
+  variableStateJson: string
+  status: 'complete'
+  createdAt: string
+  runtimeSessionId: string
+  sessionEventSeq: number
+  dshTurn: number
+}> {
+  // The Session contains several assistant/message events for one turn
+  // (reasoning/tool steps plus the settled reply).  The official conversation
+  // projection exposes only the settled reply after the current final-boundary
+  // marker, so the variable viewer must use that same one-per-turn boundary.
+  const finalByTurn = new Map<number, {
+    event: Record<string, unknown>
+    index: number
+    content: string
+    turn: number
+  }>()
+  for (const [index, candidate] of events.entries()) {
+    const event = jsonRecord(candidate)
+    if (event.type !== 'assistant/message' || event.surfaceOp !== 'append'
+      || !Number.isSafeInteger(event.seq)) continue
+    const content = sessionMessageText(event)
+    if (!officialFinalReplyText(content).trim()) continue
+    const turn = sessionMessageTurn(events, index)
+    finalByTurn.set(turn, { event, index, content, turn })
+  }
+  return [...finalByTurn.values()].sort((left, right) => Number(left.event.seq) - Number(right.event.seq)).flatMap(({ event, content, turn }) => {
+    const state = variableStateByTurn[String(turn)] || '{}'
+    const rawTime = event.time ?? jsonRecord(event.data).time
+    const time = Number(rawTime)
+    const createdAt = Number.isFinite(time) && time > 0
+      ? new Date(time).toISOString()
+      : new Date().toISOString()
+    return [{
+      id: `dsh-${String(event.seq)}`,
+      conversationId,
+      role: 'assistant' as const,
+      content,
+      variableStateJson: state,
+      status: 'complete' as const,
+      createdAt,
+      runtimeSessionId,
+      sessionEventSeq: Number(event.seq),
+      dshTurn: turn
+    }]
+  })
+}
+
+const FinalOpenTag = '<FINAL>'
+const FinalCloseTag = '</FINAL>'
+
+/** The current DSH assistant projection boundary; internal text before it is not a floor. */
+function officialFinalReplyText(value: string): string {
+  const markerIndex = value.indexOf(FinalOpenTag)
+  if (markerIndex < 0) return ''
+  const content = value.slice(markerIndex + FinalOpenTag.length).replace(/^(?:\r\n|\r|\n)/, '')
+  const closingIndex = content.indexOf(FinalCloseTag)
+  return (closingIndex < 0 ? content : content.slice(0, closingIndex))
+    .replace(/(?:\r\n|\r|\n)$/, '')
 }
 
 function sessionMessageText(event: Record<string, unknown>): string {

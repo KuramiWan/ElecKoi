@@ -226,13 +226,26 @@ function configureMainWindow(appPaths: Context['appPaths'], appLog: Context['app
   configureWindowsAppDetails(appPaths, window)
   installWindowsNativeFrame(window)
   window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
-  window.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
-    if (level === 'error') {
-      appLog.error({ message, lineNumber, sourceId, url: window.webContents.getURL() }, 'DSH client renderer error')
-    }
+  window.webContents.on('console-message', (details) => {
+    if (details.level !== 'error') return
+    // Rich character cards run in srcDoc iframes. Their compatibility API
+    // errors are author-card diagnostics, not failures of the DSH application
+    // renderer. Electron forwards both frames through this one WebContents
+    // event, so only the main frame belongs in the DSH renderer error stream.
+    if (details.frame && details.frame !== window.webContents.mainFrame) return
+    appLog.error({
+      message: details.message,
+      lineNumber: details.lineNumber,
+      sourceId: details.sourceId,
+      url: window.webContents.getURL()
+    }, 'DSH client renderer error')
   })
-  window.webContents.on('did-fail-load', (_event, code, description, url) => {
-    appLog.error({ code, description, url }, 'DSH client renderer failed to load')
+  window.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+    // Rich author cards use srcDoc iframes. Replacing their document while a
+    // message changes reports ERR_ABORTED (-3) for about:srcdoc; it is an
+    // expected subframe lifecycle event, not a failed DSH application load.
+    if (!isMainFrame && code === -3) return
+    appLog.error({ code, description, url, isMainFrame }, 'DSH client renderer failed to load')
   })
   window.once('ready-to-show', () => window.show())
   configureWindowNavigation(appLog, windows, window, true)

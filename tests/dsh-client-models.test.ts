@@ -77,7 +77,8 @@ describe('DSH ElecKoi model catalog', () => {
     remote.credentials.unset.mockClear()
     const draft = { id: 'config-example', provider: 'custom', name: 'Example', model: 'example-model',
       api_format: 'chat_completions', base_url: 'https://models.example/v1', api_key: 'synthetic-probe-value',
-      model_options: [{ id: 'example-model', contextWindowTokens: 65536, temperature: 0.6, topP: 0.96, autoCompactTokenLimit: 30000 }],
+      model_options: [{ id: 'example-model', contextWindowTokens: 65536, temperature: 0.6, topP: 0.96,
+        autoCompactTokenLimit: 30000, reasoningEfforts: { off: null, low: 'low', high: 'high' }, reasoningEffort: 'high' }],
     }
     const saved = await catalog.save(draft)
     expect(saved).toMatchObject({ id: draft.id, api_key: '', credentialConfigured: true, model: draft.model })
@@ -87,9 +88,10 @@ describe('DSH ElecKoi model catalog', () => {
     await expect(catalog.revealApiKey(draft.id)).resolves.toBe('synthetic-stored-value');
     expect(remote.eleckoiModels.revealApiKey).toHaveBeenCalledExactlyOnceWith(draft.id);
     expect(JSON.stringify(catalog.getSnapshot())).not.toContain('synthetic-stored-value');
-    expect(saved.model_options[0]).toMatchObject({ temperature: 0.6, topP: 0.96, autoCompactTokenLimit: 30000, contextWindowTokens: 65536 })
+    expect(saved.model_options[0]).toMatchObject({ temperature: 0.6, topP: 0.96, autoCompactTokenLimit: 30000,
+      contextWindowTokens: 65536, reasoningEfforts: { off: null, low: 'low', high: 'high' }, reasoningEffort: 'high' })
     expect(rows[0].value.providers[draft.id]).toMatchObject({ api: 'openai-completions', apiKeyEnv: 'CONFIG_EXAMPLE_API_KEY',
-      models: [{ id: 'example-model', contextWindow: 65536 }] })
+      models: [{ id: 'example-model', contextWindow: 65536, reasoningEfforts: { off: null, low: 'low', high: 'high' } }] })
     expect(JSON.stringify(rows)).not.toContain(draft.api_key)
     expect(remote.credentials.set).toHaveBeenCalledExactlyOnceWith('CONFIG_EXAMPLE_API_KEY', draft.api_key)
     await catalog.save({ ...saved, api_key: '', name: 'Renamed' })

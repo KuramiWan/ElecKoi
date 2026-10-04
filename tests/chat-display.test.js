@@ -57,6 +57,16 @@ describe("chat display preferences", () => {
     expect(css["--chat-turn-gap"]).toBe("10px");
   });
 
+  it("allows lighter message weights below normal text", () => {
+    const preferences = structuredClone(DEFAULT_CHAT_DISPLAY_PREFERENCES);
+    preferences.profiles.roleplay.message_font_weight = 100;
+    const parsed = chatDisplayPreferencesSchema.parse(preferences);
+    const { layout, profile } = resolveChatDisplayProfile(parsed);
+
+    expect(profile.message_font_weight).toBe(100);
+    expect(chatDisplayCssVariables(layout, profile)["--chat-font-weight"]).toBe(100);
+  });
+
   it("uses portrait assets only in roleplay and falls back safely", () => {
     const persona = {
       user_avatar: "user-avatar",

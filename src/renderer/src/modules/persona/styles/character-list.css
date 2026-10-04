@@ -123,7 +123,7 @@
   overscroll-behavior: contain;
   padding: 0 0 16px;
   scrollbar-color: var(--dsw-alias-scrollbar-bg-l2, color-mix(in srgb, var(--muted) 42%, transparent)) transparent;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
   scrollbar-width: thin;
 }
 
@@ -153,7 +153,7 @@
 }
 
 .character-group-row {
-  --character-list-item-inset: 2px;
+  --character-list-item-inset: 0px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -215,7 +215,7 @@ button.character-group-row:hover {
 }
 
 .character-contact-row {
-  --character-list-item-inset: 2px;
+  --character-list-item-inset: 0px;
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr);
   align-items: center;

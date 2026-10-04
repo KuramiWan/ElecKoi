@@ -81,10 +81,31 @@ export function SettingLibraryInspector({
   onRequestDeleteOpening,
   onPromptPositionsChange,
   allowCustomPromptPositions = false,
+  inspectorWidth = 480,
+  onResizeStart,
+  onResizeKeyDown,
+  onResetResize,
 }) {
   if (!selected.value) return null;
   return (
     <aside className="setting-library-inspector" aria-label="设定编辑器">
+      {onResizeStart ? (
+        <div
+          className="setting-library-inspector-resizer"
+          role="separator"
+          aria-label="调整编辑器宽度"
+          aria-orientation="vertical"
+          aria-valuemin={420}
+          aria-valuemax={760}
+          aria-valuenow={Math.round(inspectorWidth)}
+          tabIndex={0}
+          onPointerDown={onResizeStart}
+          onKeyDown={onResizeKeyDown}
+          onDoubleClick={onResetResize}
+        >
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
       <header className="setting-library-inspector-header">
         <div>
           {selected.kind === "entry" && !FIXED_ENTRY_IDS.has(selected.value.id) && selected.value.contentMode !== "ejs" && selected.value.dynamicMode !== "ejs_reference"

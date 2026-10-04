@@ -74,6 +74,10 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
       VALUES (?,'turn',?,'[]')`).run(conversationId, userId)
     // A newly opened ledger cannot supply DSH-owned response bodies.
     expect(() => new MessageRepository(database).list(conversationId)).toThrow('会话日志无法读取')
+    // Variable inspection uses the product ledger snapshots and remains
+    // available even when a historical DSH transcript is unavailable.
+    expect(new MessageRepository(database).listMetadata(conversationId).map((message) => message.id))
+      .toEqual(expect.arrayContaining([userId, reply.id]))
   } finally { database.close() }
 
   const ctx = new Context()

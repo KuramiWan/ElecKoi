@@ -313,7 +313,7 @@ function ChatDisplaySettings({
           <div className="setting-row-copy setting-row-title"><TextT /><strong>正文文字</strong></div>
           <div className="chat-display-tuners">
             {slider("字号", "message_font_size", 9, 20, 0.5)}
-            {slider("字重", "message_font_weight", 400, 600, 100, "")}
+            {slider("字重", "message_font_weight", 100, 600, 100, "")}
             {slider("行距", "line_height_multiplier", 0.8, 1.6, 0.05, "×")}
             {slider("字距", "letter_spacing", -1, 4, 0.5)}
             {slider("段距", "paragraph_spacing", 0, 24)}

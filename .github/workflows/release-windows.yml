@@ -7,6 +7,12 @@ on:
         description: Release tag, for example v0.1.2
         required: true
         type: string
+      prerelease:
+        description: Publish as a GitHub pre-release
+        required: true
+        default: true
+        type: boolean
+
 permissions:
   contents: write
 
@@ -74,7 +80,7 @@ jobs:
       - name: Verify packaged DSH runtime
         run: pnpm verify:packaged-dsh
 
-      - name: Publish verified GitHub prerelease
+      - name: Publish verified GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag }}
@@ -84,7 +90,6 @@ jobs:
             (Get-ChildItem release -File -Filter '*-setup.exe.blockmap').FullName
             (Resolve-Path release/latest.yml).Path
           )
-          # Release builds are published as prereleases first so they can be
-          # installed manually without entering the stable auto-update channel.
-          # Promote the same verified release after manual acceptance; do not rebuild it.
-          gh release create $env:RELEASE_TAG @assets --verify-tag --generate-notes --prerelease --title "ElecKoi $env:RELEASE_TAG"
+          $releaseOptions = @('--verify-tag', '--generate-notes', '--title', "ElecKoi $env:RELEASE_TAG")
+          if ('${{ inputs.prerelease }}' -eq 'true') { $releaseOptions += '--prerelease' }
+          gh release create $env:RELEASE_TAG @assets @releaseOptions

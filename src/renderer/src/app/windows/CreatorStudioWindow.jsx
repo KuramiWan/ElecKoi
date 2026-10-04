@@ -12,7 +12,30 @@ import { DshPanelLeftIcon } from "../../ui/icons/dshComposerIcons.jsx";
 import { showCurrentWindow } from "../services/windowControls.js";
 import { WindowControls } from "./shell/components/TitleBar.jsx";
 
+function CreatorStudioDevelopmentNotice({ onEnter }) {
+  return <main className="qq-shell creator-studio-shell creator-studio-development-shell" aria-label="AI创作工作室">
+    <header className="creator-studio-development-header" data-tauri-drag-region>
+      <div className="creator-studio-development-brand" data-tauri-drag-region>
+        <img src={logoIcon} alt="" draggable="false" />
+        <strong>AI创作工作室</strong>
+      </div>
+      <div data-tauri-drag-region />
+      <WindowControls />
+    </header>
+    <section className="creator-studio-development-content" aria-label="AI创作工作室开发状态">
+      <div className="creator-studio-development-card">
+        <h1>正在开发</h1>
+        <p>别点别进，是空壳，暂时用不了。</p>
+        <button className="creator-studio-development-enter" type="button" onClick={onEnter}>
+          进入创作工作室
+        </button>
+      </div>
+    </section>
+  </main>;
+}
+
 export function CreatorStudioWindow({ characterCatalog, projectCatalog }) {
+  const [showDevelopmentNotice, setShowDevelopmentNotice] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -26,6 +49,8 @@ export function CreatorStudioWindow({ characterCatalog, projectCatalog }) {
     document.title = "AI创作工作室 - ElecKoi";
     showCurrentWindow().catch(() => {});
   }, []);
+
+  if (showDevelopmentNotice) return <CreatorStudioDevelopmentNotice onEnter={() => setShowDevelopmentNotice(false)} />;
 
   const openProject = (project) => {
     setActiveProject(project);

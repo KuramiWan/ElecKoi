@@ -4,6 +4,7 @@ function mapMessage(message) {
     renderKey: message.renderKey,
     runtimeSessionId: message.runtimeSessionId || '',
     dshMessageId: message.dshMessageId || '',
+    dshNodeKey: message.dshNodeKey || '',
     sessionEventSeq: message.sessionEventSeq,
     dshTurn: message.dshTurn,
     conversationId: message.conversationId,
@@ -25,12 +26,19 @@ function mapMessage(message) {
   };
 }
 
+function conversationPreviewText(value) {
+  return String(value || "")
+    .replace(/<\/?FINAL>/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function mapConversation(conversation, metadata = conversation.metadata || {}) {
   const characterPersona = metadata.characterPersona || {};
   return {
     id: conversation.id,
     title: conversation.title,
-    summary: conversation.preview || "",
+    summary: conversationPreviewText(conversation.preview),
     created_at: conversation.createdAt,
     updated_at: conversation.updatedAt,
     character_id: metadata.characterId || "",

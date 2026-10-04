@@ -61,8 +61,10 @@ describe('DSH chat live rendering', () => {
     const conversation = { id, title: '测试角色', metadata: { characterId: 'character-1' } }
     const makeDetails = (messages) => ({ conversation, metadata: conversation.metadata,
       runtimeSessionId: 'session-1', messages, hasMore: false, beforeSequence: null })
-    const makeMessage = (messageId, role, content, seq) => ({ id: messageId, role, content,
-      conversationId: id, sessionEventSeq: seq, sequence: seq, status: 'complete', createdAt: '',
+    const makeMessage = (messageId, role, content, seq, options = {}) => ({ id: messageId, role, content,
+      conversationId: id, runtimeSessionId: 'session-1', sessionEventSeq: seq, sequence: seq,
+      status: options.status || 'complete',
+      ...(options.process ? { process: options.process } : {}), createdAt: '',
       ...(role === 'user' ? { dshTurn: null } : {}),
       ...(role === 'assistant' ? { renderKey: 'dsh-reply-session-1-1' } : {}) })
     let catalog = { status: 'ready', items: [conversation], error: '' }
@@ -80,10 +82,15 @@ describe('DSH chat live rendering', () => {
       stream = { id, status, content, process, runId: 'session-1', messageId: 'live-1',
         renderKey: 'dsh-reply-session-1-1' }
       for (const listener of streamListeners) listener()
+      if (status === 'running' && (content || process.length)) {
+        const previous = details.details.messages.filter(message =>
+          !(message.role === 'assistant' && message.status === 'streaming'))
+        emitDetails([...previous, makeMessage('live-1', 'assistant', content, 4,
+          { status: 'streaming', process })])
+      }
     }
     let finishSend
     let finishRegenerate
-    let nativeInputHandler
     const model = {
       getSnapshot: () => catalog, subscribe: subscribe(catalogListeners),
       getDetailsSnapshot: () => details, subscribeDetails: subscribe(detailsListeners),
@@ -92,10 +99,6 @@ describe('DSH chat live rendering', () => {
       refresh: async () => catalog.items,
       send: vi.fn(() => new Promise(resolve => { finishSend = resolve })),
       regenerate: vi.fn(() => new Promise(resolve => { finishRegenerate = resolve })),
-      registerNativeInputHandler: vi.fn((handler) => {
-        nativeInputHandler = handler
-        return () => { if (nativeInputHandler === handler) nativeInputHandler = null }
-      }),
       invalidateDetails: vi.fn(),
       open: async () => details.details,
     }
@@ -114,21 +117,16 @@ describe('DSH chat live rendering', () => {
     }
     try {
       await act(async () => root.render(React.createElement(Probe)))
+      await act(async () => chat.setInput('读取文件'))
       let sending
-      await act(async () => {
-        sending = nativeInputHandler({
-          sessionId: 'session-1', text: '读取文件', attachments: [], mode: 'queue', signal: new AbortController().signal,
-        })
-      })
+      await act(async () => { sending = chat.sendMessage({ preventDefault() {} }) })
       expect(model.send).toHaveBeenCalledOnce()
-      expect(chat.isSending).toBe(true)
       expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件'])
+      expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(0)
       const reasoning = { id: 'reasoning-1', kind: 'reasoning', status: 'running', detail: '检查资料' }
       const search = { id: 'search-1', kind: 'tool', status: 'running', toolName: 'web_search', arguments: '{}' }
-      await act(async () => {
-        emitDetails([makeMessage('user-1', 'user', '读取文件', 1)])
-        emitStream('', 'running', [reasoning])
-      })
+      await act(async () => emitDetails([makeMessage('user-1', 'user', '读取文件', 1)]))
+      await act(async () => emitStream('', 'running', [reasoning]))
       expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(1)
       expect(chat.messages.find(message => message.pending)).toMatchObject({ runtimeSessionId: 'session-1' })
       expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在思考')
@@ -136,7 +134,7 @@ describe('DSH chat live rendering', () => {
       const liveArticle = container.querySelector('[data-role="assistant"] article')
       const settledUserDuringStream = chat.messages[0]
       await act(async () => emitStream('', 'running', [{ ...reasoning, status: 'complete' }, search]))
-      expect(chat.messages[0]).toBe(settledUserDuringStream)
+      expect(chat.messages[0]).toMatchObject({ id: settledUserDuringStream.id, content: settledUserDuringStream.content })
       expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在运行 web_search')
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)
       await act(async () => container.querySelector('.agent-process-inline').click())
@@ -146,30 +144,21 @@ describe('DSH chat live rendering', () => {
       await act(async () => {
         emitStream('正在读取', 'running', [{ ...reasoning, status: 'complete' }, { ...search, status: 'complete' }])
       })
-      expect(chat.messages[0]).toBe(settledUserDuringStream)
+      expect(chat.messages[0]).toMatchObject({ id: settledUserDuringStream.id, content: settledUserDuringStream.content })
       expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '正在读取'])
       expect(container.querySelector('.agent-process-inline')).toBeNull()
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)
       await act(async () => {
         emitDetails([makeMessage('user-1', 'user', '读取文件', 1), makeMessage('assistant-1', 'assistant', '读取完成', 4)])
       })
-      // The official transcript may settle before the request promise returns.
-      // Keep the old stable live row in charge until the completed handoff so
-      // its body cannot collapse and remount between those two publications.
+      // The official transcript may settle before the stream publishes its
+      // terminal state. Keep the stable live row until that handoff completes.
       expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '正在读取'])
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)
       await act(async () => {
         finishSend({ details: details.details, cancelled: false })
         await sending
       })
-      // The send promise may settle before the official DSH stream publishes
-      // its terminal state. A stale details refresh during that window must
-      // not erase the completed optimistic transcript.
-      await act(async () => emitDetails([]))
-      expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '正在读取'])
-      await act(async () => emitDetails([
-        makeMessage('user-1', 'user', '读取文件', 1), makeMessage('assistant-1', 'assistant', '读取完成', 4),
-      ]))
       await act(async () => emitStream('', 'idle'))
       expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(1)
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)

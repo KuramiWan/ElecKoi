@@ -232,7 +232,7 @@ describe('regeneration with the official Session client projection', () => {
         expect(text()).toEqual(['前轮输入', '前轮回复', '本轮输入'])
         expect(statsRow.textContent).toBe(previousStats)
         await act(async () => runtime.live('内部处理<FIN'))
-        expect(text()).toEqual(['前轮输入', '前轮回复', '本轮输入'])
+        expect(text()).toEqual(['前轮输入', '前轮回复', '本轮输入', ''])
         await act(async () => runtime.live('内部处理<FINAL>\n新版'))
         expect(text()).toEqual(['前轮输入', '前轮回复', '本轮输入', '新版'])
         const liveRow = container.querySelector('div').lastElementChild

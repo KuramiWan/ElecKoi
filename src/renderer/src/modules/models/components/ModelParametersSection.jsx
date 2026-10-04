@@ -1,4 +1,4 @@
-import { reasoningOptions } from "../model/modelReasoningOptions.js";
+import { reasoningEffortIds, reasoningEffortLabel, reasoningOptions } from "../model/modelReasoningOptions.js";
 
 function optionalNumber(value) {
   const text = String(value).trim();
@@ -7,7 +7,7 @@ function optionalNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-export function ModelParametersSection({ form, activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError, modelCapabilities, onChange }) {
+export function ModelParametersSection({ form, activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError, modelCapabilities, showReasoningProfileEditor = false, onChange }) {
   const options = reasoningOptions(modelCapabilities.reasoningEfforts);
   const selectedEffort = options.some((item) => item.id === activeModelOption?.reasoningEffort)
     ? activeModelOption.reasoningEffort
@@ -17,6 +17,20 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
   function updateReasoningEffort(value) {
     onChange({
       reasoningEffort: value || null,
+    });
+  }
+
+  function toggleReasoningEffort(effort) {
+    const current = activeModelOption?.reasoningEfforts && typeof activeModelOption.reasoningEfforts === "object"
+      ? activeModelOption.reasoningEfforts
+      : {};
+    const next = { ...current };
+    if (Object.hasOwn(next, effort)) delete next[effort];
+    else next[effort] = effort === "off" ? null : effort;
+    const selectedRemoved = activeModelOption?.reasoningEffort === effort && !Object.hasOwn(next, effort);
+    onChange({
+      reasoningEfforts: Object.keys(next).length ? next : undefined,
+      ...(selectedRemoved ? { reasoningEffort: null } : {}),
     });
   }
   return (
@@ -39,7 +53,7 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
           <input type="number" min="1" max="4000000" disabled={!form.model} value={activeModelOption?.maxOutputTokens ?? ""} onChange={(event) => onChange({ maxOutputTokens: optionalNumber(event.target.value) })} placeholder="自动" />
         </label>
         <label>
-          <span>推理强度 <small>DSH / pi-ai</small></span>
+          <span>推理强度 <small>当前请求 · DSH / pi-ai</small></span>
           <select disabled={!form.model || !reasoningAvailable} value={selectedEffort} onChange={(event) => updateReasoningEffort(event.target.value)}>
             {options.map((effort) => <option key={effort.id} value={effort.id}>{effort.label}</option>)}
           </select>
@@ -56,8 +70,33 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
           <span>图片输入 <small>声明当前模型接受图片</small></span>
           <input type="checkbox" disabled={!form.model} checked={activeModelOption?.supportsImageInput === true} onChange={(event) => onChange({ supportsImageInput: event.target.checked })} />
         </label>
+        {showReasoningProfileEditor && modelCapabilities.canDeclareReasoning ? (
+          <fieldset className="model-reasoning-profile" disabled={!form.model}>
+            <legend>
+              <span>接口支持档位</span>
+              <small>按当前模型实际能力声明</small>
+            </legend>
+            <div className="model-reasoning-efforts">
+              {reasoningEffortIds.map((effort) => {
+                const selected = modelCapabilities.reasoningEfforts.includes(effort);
+                return (
+                  <button
+                    key={effort}
+                    className={selected ? "selected" : ""}
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={`${selected ? "取消" : "声明支持"}${reasoningEffortLabel(effort)}档位`}
+                    onClick={() => toggleReasoningEffort(effort)}
+                  >
+                    {reasoningEffortLabel(effort)}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        ) : null}
       </div>
-      {parameterError ? <p className="model-parameter-error">上下文需为 4,096–4,000,000；压缩不能超过上下文；输出需为 1–4,000,000；温度为 0–2，Top P 为 0–1。</p> : null}
+      {parameterError ? <p className="model-parameter-error">上下文需为 4,096–4,000,000；压缩不能超过上下文；输出需为 1–4,000,000；温度为 0–2，Top P 为 0–1；已声明推理能力时至少选择一个非关闭档位。</p> : null}
     </section>
   );
 }

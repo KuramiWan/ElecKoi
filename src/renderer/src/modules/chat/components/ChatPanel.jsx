@@ -130,7 +130,7 @@ export function ChatPanel({
     };
   }, []);
   const displayedMessages = useMemo(() => messages.filter((item) => !(
-    item.role === "assistant" && !String(item.content || "").trim() && !(item.process || []).length
+    item.role === "assistant" && !item.pending && !String(item.content || "").trim() && !(item.process || []).length
   )), [messages]);
   const regenerateFrom = useCallback(async (message) => {
     const result = await onRegenerate?.(message);

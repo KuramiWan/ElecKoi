@@ -239,6 +239,54 @@ describe('DSH ElecKoi conversation client model', () => {
     } finally { cleanup() }
   })
 
+  it('keeps prior message projections visible while a changed tail is being projected', async () => {
+    let registration: any
+    let catalog: any
+    let cleanup = () => {}
+    let messages = [{ id: 'assistant-1', role: 'assistant', content: '[PANEL] previous',
+      variableStateJson: '{}', status: 'complete', createdAt: '2026-10-04T00:00:00.000Z' }]
+    let deferProjection = false
+    let finishProjection: ((results: any[]) => void) | undefined
+    const project = (input: any[]) => input.map(message => ({
+      id: message.id,
+      sourceContent: message.content,
+      displayContent: `<section>${message.content.replace('[PANEL] ', '')}</section>`,
+      variableStateJson: message.variableStateJson,
+    }))
+    const projectDisplay = vi.fn(async (_conversationId: string, input: any[]) => {
+      if (!deferProjection) return project(input)
+      return new Promise<any[]>(resolve => { finishProjection = resolve })
+    })
+    const remote = conversationRemote(async name => name === 'query.conversations.list'
+      ? { ok: true, data: [{ id: 'chat-1' }] }
+      : { ok: true, data: { conversation: { id: 'chat-1' }, metadata: { characterId: 'character-1' },
+        runtimeSessionId: '', messages, hasMore: false, beforeSequence: null } },
+    conversationChangeFeed(), projectDisplay)
+    runInNewContext(source, { AbortController,
+      window: { __ModuleLoader__: { load: (item: any) => { registration = item } } } })
+    dshClientPlugin(registration).apply({ remote,
+      provide: (_name: string, value: unknown) => { catalog = value },
+      effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {} })
+    try {
+      await settle()
+      await catalog.open('chat-1')
+      expect(catalog.getDetailsSnapshot().details.messages[0].displayContent)
+        .toBe('<section>previous</section>')
+
+      messages = [...messages, { id: 'user-2', role: 'user', content: '你好',
+        variableStateJson: '{}', status: 'complete', createdAt: '2026-10-04T00:01:00.000Z' }]
+      deferProjection = true
+      const refresh = catalog.refreshDetails()
+      await settle()
+      expect(catalog.getDetailsSnapshot().details.messages[0].displayContent)
+        .toBe('<section>previous</section>')
+      finishProjection?.(project(messages))
+      await refresh
+      expect(catalog.getDetailsSnapshot().details.messages.map((message: any) => message.displayContent))
+        .toEqual(['<section>previous</section>', '<section>你好</section>'])
+    } finally { cleanup() }
+  })
+
   it.each(['delayed', 'fast', 'cancelled', 'failed', 'live-error', 'pre-turn-error'])('waits for the matching official request completion (%s)', async (mode) => {
     let registration: any
     let catalog: any
@@ -501,6 +549,7 @@ describe('DSH ElecKoi conversation client model', () => {
     const tokenUsage = { uncachedInputTokens: 12, outputTokens: 8, cacheReadTokens: 3, cacheWriteTokens: 0 }
     let historyStatsAdjustment = { steps: 0, turns: 0 }
     let running = false
+    let pendingSubmissions: any[] = []
     const userNode = { kind: 'user', anchorSeq: 2, data: {
       kind: 'user', seq: 2, time: 10, content: [{ type: 'text', text: 'official user' }], source: { kind: 'user' }
     } }
@@ -530,7 +579,7 @@ describe('DSH ElecKoi conversation client model', () => {
           return () => { projectionListeners.delete(key) }
         }
       }) },
-      getSnapshot: () => ({ running }),
+      getSnapshot: () => ({ running, pendingSubmissions }),
       subscribe: (listener: () => void) => { sessionListener = listener; return () => { sessionListener = () => {} } },
       cancel: async () => ({ ok: true, value: { accepted: true } }),
       loadOlder: vi.fn(async () => {
@@ -639,6 +688,38 @@ describe('DSH ElecKoi conversation client model', () => {
       { id: 'product-user', content: 'official user', runtimeSessionId: 'runtime-1' },
       { id: 'product-assistant', content: '<FINAL>official reply</FINAL>', dshMessageId: 'assistant-dsh' }
     ])
+    pendingSubmissions = [{
+      requestId: 'request-new', placement: 'transcript', time: 30, text: '你好', attachments: []
+    }]
+    sessionListener()
+    const optimistic = catalog.getDetailsSnapshot().details.messages
+    expect(optimistic.filter((message: any) => message.content === '你好')).toHaveLength(1)
+    expect(optimistic.at(-1)).toMatchObject({
+      id: 'dsh-pending-request-new', requestId: 'request-new', content: '你好', status: 'streaming'
+    })
+    const admittedUser = { kind: 'user', anchorSeq: 7, data: {
+      kind: 'user', seq: 7, time: 31, content: [{ type: 'text', text: '你好' }],
+      source: { kind: 'user', rpcId: 'request-new' }
+    } }
+    targetSnapshot = { ...targetSnapshot,
+      order: [...targetSnapshot.order, 'user-7'],
+      nodes: new Map([...targetSnapshot.nodes, ['user-7', admittedUser]]) }
+    targetListener()
+    const admitted = catalog.getDetailsSnapshot().details.messages
+    expect(admitted.filter((message: any) => message.content === '你好')).toHaveLength(1)
+    expect(admitted.at(-1)).toMatchObject({
+      id: 'dsh-pending-request-new', requestId: 'request-new', sessionEventSeq: 7, status: 'complete'
+    })
+    pendingSubmissions = []
+    sessionListener()
+    expect(catalog.getDetailsSnapshot().details.messages
+      .filter((message: any) => message.content === '你好')).toHaveLength(1)
+    targetSnapshot = {
+      order: [...settledNodes.keys()], nodes: settledNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] },
+    }
+    targetListener()
     const stepNodes = new Map<string, any>([
       ['reasoning-1', { kind: 'assistant-step', location: { kind: 'step', turn: { turn: 1 } },
         data: { turn: 1, step: 1, status: 'complete', time: 12, blocks: [{ kind: 'reasoning', text: '检查资料' }] } }],
@@ -731,12 +812,17 @@ describe('DSH ElecKoi conversation client model', () => {
     }
     targetListener()
     expect(catalog.getStreamSnapshot()).toMatchObject({
-      status: 'running', messageId: 'dsh-live-runtime-1', content: '',
+      status: 'running', messageId: '', content: '',
       renderKey: 'dsh-reply-runtime-1-2', dshTurn: 2,
       process: [{ kind: 'reasoning', status: 'running', detail: '先读取资料' }]
     })
+    let streamPublications = 0
+    const stopStreamObserver = catalog.subscribeStream(() => { streamPublications += 1 })
+    const unchangedStreamPublications = streamPublications
+    sessionListener()
+    targetListener()
+    expect(streamPublications).toBe(unchangedStreamPublications)
     const settledDetailsDuringStream = catalog.getDetailsSnapshot()
-    const settledMessagesDuringStream = settledDetailsDuringStream.details.messages
     allLiveNodes.set('assistant-live', {
       ...allLiveNodes.get('assistant-live'),
       data: { ...allLiveNodes.get('assistant-live').data, status: 'settled', blocks: [
@@ -754,13 +840,17 @@ describe('DSH ElecKoi conversation client model', () => {
     targetSnapshot = { ...targetSnapshot, order: [...allLiveNodes.keys()] }
     targetListener()
     sessionListener()
-    expect(catalog.getDetailsSnapshot()).toBe(settledDetailsDuringStream)
-    expect(catalog.getDetailsSnapshot().details.messages).toBe(settledMessagesDuringStream)
-    expect(catalog.getDetailsSnapshot().details.messages.map((message: any) => message.content)).toEqual([
-      'earlier user', 'earlier reply', 'official user', '<FINAL>official reply</FINAL>'
-    ])
+    const detailsWithTool = catalog.getDetailsSnapshot()
+    expect(detailsWithTool).not.toBe(settledDetailsDuringStream)
+    expect(detailsWithTool.details.messages.map((message: any) => message.content)).toContain('official user')
+    expect(detailsWithTool.details.messages.at(-1)).toMatchObject({
+      role: 'assistant', status: 'streaming', process: [
+        { kind: 'reasoning', status: 'complete', detail: '先读取资料' },
+        { kind: 'tool', status: 'running', toolName: 'read_file' }
+      ]
+    })
     expect(catalog.getStreamSnapshot()).toMatchObject({
-      status: 'running', messageId: 'dsh-live-runtime-1', content: '', runId: 'runtime-1',
+      status: 'running', messageId: '', content: '', runId: 'runtime-1',
       renderKey: 'dsh-reply-runtime-1-2', dshTurn: 2,
       process: [
         { kind: 'reasoning', status: 'complete', detail: '先读取资料' },
@@ -780,9 +870,12 @@ describe('DSH ElecKoi conversation client model', () => {
       }
     })
     targetListener()
-    expect(catalog.getDetailsSnapshot()).toBe(settledDetailsDuringStream)
+    expect(catalog.getDetailsSnapshot()).not.toBe(detailsWithTool)
+    expect(catalog.getDetailsSnapshot().details.messages.at(-1)).toMatchObject({
+      role: 'assistant', status: 'streaming', content: '第一段'
+    })
     expect(catalog.getStreamSnapshot()).toMatchObject({
-      status: 'running', messageId: 'dsh-live-runtime-1', content: '第一段', runId: 'runtime-1',
+      status: 'running', messageId: '', content: '第一段', runId: 'runtime-1',
       renderKey: 'dsh-reply-runtime-1-2'
     })
 
@@ -797,9 +890,11 @@ describe('DSH ElecKoi conversation client model', () => {
       }
     })
     targetListener()
-    expect(catalog.getDetailsSnapshot()).toBe(settledDetailsDuringStream)
+    expect(catalog.getDetailsSnapshot().details.messages.at(-1)).toMatchObject({
+      role: 'assistant', status: 'streaming', content: '第一段正文。'
+    })
     expect(catalog.getStreamSnapshot()).toMatchObject({
-      status: 'running', messageId: 'dsh-live-runtime-1', content: '第一段正文。', runId: 'runtime-1'
+      status: 'running', messageId: '', content: '第一段正文。', runId: 'runtime-1'
     })
 
     const liveFinalNode = { kind: 'assistant', turn: 2, step: 1, seq: 31, time: 40,
@@ -843,12 +938,13 @@ describe('DSH ElecKoi conversation client model', () => {
     targetSnapshot = { ...targetSnapshot, order: [...toolOnlyNodes.keys()], nodes: toolOnlyNodes }
     targetListener()
     expect(catalog.getStreamSnapshot()).toMatchObject({
-      status: 'running', messageId: 'dsh-live-runtime-1', content: '',
+      status: 'running', messageId: '', content: '',
       renderKey: 'dsh-reply-runtime-1-3', dshTurn: 3,
       process: [{ id: 'search-1', kind: 'tool', status: 'running', toolName: 'web_search' }]
     })
     expect(catalog.getStreamSnapshot().process).toHaveLength(1)
     cleanup()
+    stopStreamObserver()
     expect(released).toBe(true)
     expect(projectionListeners.size).toBe(0)
     expect(catalog.getStatsSnapshot()).toEqual({ id: '', stats: null })

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 function transientMessage(message) {
   return message?.pending
@@ -106,72 +106,16 @@ export function preserveMessageRenderKeys(currentMessages = [], incomingMessages
 
 export function useConversationMessages() {
   const [messages, setMessages] = useState([]);
-  const [pendingReply, setPendingReply] = useState(null);
-  const pendingReplyRef = useRef(null);
-  const pendingFrameRef = useRef(null);
   const scrollRef = useRef(null);
   const [historyPage, setHistoryPage] = useState({ hasMore: false, beforeSequence: null });
   const [scrollRequest, setScrollRequest] = useState({ revision: 0, behavior: "auto" });
-  const displayedMessages = useMemo(
-    () => pendingReply ? [...messages, pendingReply] : messages,
-    [messages, pendingReply],
-  );
-
-  function cancelPendingFrame() {
-    if (pendingFrameRef.current !== null && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(pendingFrameRef.current);
-    }
-    pendingFrameRef.current = null;
-  }
-
-  function schedulePendingReply() {
-    if (pendingFrameRef.current !== null) return;
-    if (typeof requestAnimationFrame !== "function") {
-      setPendingReply(pendingReplyRef.current);
-      return;
-    }
-    let frames = 3;
-    const tick = () => {
-      frames -= 1;
-      if (frames > 0) {
-        pendingFrameRef.current = requestAnimationFrame(tick);
-        return;
-      }
-      pendingFrameRef.current = null;
-      setPendingReply(pendingReplyRef.current);
-    };
-    pendingFrameRef.current = requestAnimationFrame(tick);
-  }
-
-  function updatePendingReply(updater, deferred = false) {
-    const current = pendingReplyRef.current;
-    const next = typeof updater === "function" ? updater(current) : updater;
-    pendingReplyRef.current = next;
-    if (deferred) schedulePendingReply();
-    else {
-      cancelPendingFrame();
-      setPendingReply(next);
-    }
-  }
-
-  function updatePendingReplyDeferred(updater) {
-    updatePendingReply(updater, true);
-  }
-
-  function clearPendingReply() {
-    cancelPendingFrame();
-    pendingReplyRef.current = null;
-    setPendingReply(null);
-  }
-
-  useEffect(() => () => cancelPendingFrame(), []);
+  const displayedMessages = messages;
 
   function requestScrollToEnd(behavior = "smooth") {
     setScrollRequest((current) => ({ revision: current.revision + 1, behavior }));
   }
 
   function setMessagesWithScroll(nextMessages, behavior = null, page = {}) {
-    clearPendingReply();
     setMessages(nextMessages);
     setHistoryPage({
       hasMore: Boolean(page.hasMore),
@@ -181,9 +125,7 @@ export function useConversationMessages() {
   }
 
   function reconcileMessages(nextMessages, page = {}) {
-    const pending = pendingReplyRef.current;
-    clearPendingReply();
-    setMessages((current) => preserveMessageRenderKeys(current, nextMessages, pending));
+    setMessages((current) => preserveMessageRenderKeys(current, nextMessages));
     setHistoryPage({
       hasMore: Boolean(page.hasMore),
       beforeSequence: page.beforeSequence ?? null,
@@ -202,32 +144,12 @@ export function useConversationMessages() {
     });
   }
 
-  function settlePendingReply() {
-    const pending = pendingReplyRef.current;
-    if (pending && String(pending.content || "").trim()) {
-      setMessages((items) => [...items, { ...pending, pending: false }]);
-    }
-    clearPendingReply();
-  }
-
-  function commitPendingError(assistantId) {
-    const pending = pendingReplyRef.current;
-    if (pending?.id === assistantId && (String(pending.content || "").trim() || (pending.process || []).length)) {
-      setMessages((items) => [...items, { ...pending, pending: false }]);
-    }
-    clearPendingReply();
-  }
-
   return {
     messages,
     displayedMessages,
     setMessages,
     setMessagesWithScroll,
     reconcileMessages,
-    updatePendingReply,
-    updatePendingReplyDeferred,
-    settlePendingReply,
-    commitPendingError,
     prependMessages,
     historyPage,
     requestScrollToEnd,

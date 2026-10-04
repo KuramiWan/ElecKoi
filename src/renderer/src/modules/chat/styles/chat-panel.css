@@ -537,6 +537,24 @@
   font-size: calc(var(--chat-avatar-width, 40px) * 0.34);
 }
 
+.message.message-social.avatar-shape-circle > .avatar,
+.message.message-agent.avatar-shape-circle > .avatar,
+.message.message-roleplay.avatar-shape-circle > .avatar {
+  border-radius: 999px;
+}
+
+.message.message-social.avatar-shape-rounded_square > .avatar,
+.message.message-agent.avatar-shape-rounded_square > .avatar,
+.message.message-roleplay.avatar-shape-rounded_square > .avatar {
+  border-radius: calc(var(--chat-avatar-width, 40px) * 0.28);
+}
+
+.message.message-social.avatar-shape-portrait > .avatar,
+.message.message-agent.avatar-shape-portrait > .avatar,
+.message.message-roleplay.avatar-shape-portrait > .avatar {
+  border-radius: calc(var(--chat-avatar-width, 40px) * 0.14);
+}
+
 .message-agent {
   display: grid;
   grid-template-columns: var(--chat-avatar-width, 48px) minmax(0, 1fr);

@@ -161,10 +161,17 @@
   min-height: 0;
   overflow-y: auto;
   padding: 0;
+  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+}
+
+.conversation-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
 .conversation-item {
-  --conversation-item-inset: 2px;
+  --conversation-item-inset: 0px;
   --conversation-item-y-gap: 2px;
   --conversation-item-avatar-text-gap: 12px;
   position: relative;

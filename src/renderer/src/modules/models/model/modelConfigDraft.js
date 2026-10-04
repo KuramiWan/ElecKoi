@@ -59,7 +59,10 @@ export function modelParameterState(form, activeProviderId) {
   const effectiveContextWindow = activeModelOption?.contextWindowTokens || automaticContextWindow;
   const reasoningProfileError = activeModelOption?.reasoningEfforts
     && typeof activeModelOption.reasoningEfforts === "object"
-    && Object.values(activeModelOption.reasoningEfforts).some((value) => value !== null && !String(value).trim());
+    && (
+      Object.values(activeModelOption.reasoningEfforts).some((value) => value !== null && !String(value).trim())
+      || !Object.keys(activeModelOption.reasoningEfforts).some((effort) => effort !== "off")
+    );
   const parameterError = activeModelOption && (
     (activeModelOption.contextWindowTokens != null && (activeModelOption.contextWindowTokens < 4096 || activeModelOption.contextWindowTokens > 4_000_000))
     || (activeModelOption.autoCompactTokenLimit != null && (activeModelOption.autoCompactTokenLimit < 1024 || activeModelOption.autoCompactTokenLimit > effectiveContextWindow))

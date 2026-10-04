@@ -6,6 +6,7 @@ const readStyles = (path) => readFileSync(new URL(path, import.meta.url), 'utf8'
 const shellStyles = readStyles('../src/renderer/src/app/windows/shell/styles/client-shell.css');
 const pluginStyles = readStyles('../src/renderer/src/app/windows/shell/styles/plugin-center.css');
 const characterStyles = readStyles('../src/renderer/src/modules/persona/styles/character-list.css');
+const modelStyles = readStyles('../src/renderer/src/modules/models/styles/model-config.css');
 const presetStyles = readStyles('../src/renderer/src/modules/presets/styles/preset-panel.css');
 const conversationStyles = readStyles('../src/renderer/src/modules/chat/styles/conversation-list.css');
 
@@ -22,12 +23,20 @@ describe('sidebar list scrolling', () => {
   });
 
   it('shows a dedicated scrollbar in every sidebar list', () => {
-    expect(pluginStyles).toMatch(/\.plugin-list-panel\s*>\s*\.character-list-scroll\s*\{[^}]*scrollbar-gutter:\s*stable;[^}]*scrollbar-width:\s*thin;/);
+    expect(pluginStyles).toMatch(/\.plugin-list-panel\s*>\s*\.character-list-scroll\s*\{[^}]*scrollbar-gutter:\s*auto;[^}]*scrollbar-width:\s*thin;/);
     expect(pluginStyles).toMatch(/\.plugin-list-panel\s*>\s*\.character-list-scroll::\-webkit-scrollbar\s*\{[^}]*width:\s*8px;/);
     expect(pluginStyles).toMatch(/\.plugin-list-panel\s*>\s*\.character-list-scroll::\-webkit-scrollbar-thumb\s*\{[^}]*background:/);
-    expect(characterStyles).toMatch(/\.character-list-scroll\s*\{[^}]*scrollbar-gutter:\s*stable;[^}]*scrollbar-width:\s*thin;/);
+    expect(characterStyles).toMatch(/\.character-list-scroll\s*\{[^}]*scrollbar-gutter:\s*auto;[^}]*scrollbar-width:\s*thin;/);
+    expect(characterStyles).toMatch(/\.character-list-scroll\s*\{[^}]*padding:\s*0 0 16px;/);
     expect(characterStyles).toMatch(/\.character-list-scroll::\-webkit-scrollbar\s*\{[^}]*width:\s*8px;/);
     expect(characterStyles).toMatch(/\.character-list-scroll::\-webkit-scrollbar-thumb\s*\{[^}]*background:/);
+    expect(modelStyles).toMatch(/\.model-config-list\s*\{[^}]*scrollbar-gutter:\s*auto;[^}]*scrollbar-width:\s*thin;/);
+    expect(conversationStyles).toMatch(/\.conversation-scroll\s*\{[^}]*scrollbar-gutter:\s*auto;[^}]*scrollbar-width:\s*thin;/);
+    expect(conversationStyles).toMatch(/\.conversation-scroll\s*\{[^}]*padding:\s*0;/);
+    expect(presetStyles).toMatch(/\.preset-list-scroll\s*\{[^}]*scrollbar-gutter:\s*auto;/);
+    expect(conversationStyles).toMatch(/\.conversation-scroll::\-webkit-scrollbar\s*\{[^}]*width:\s*8px;/);
+    expect(modelStyles).toMatch(/\.model-config-list::\-webkit-scrollbar\s*\{[^}]*width:\s*8px;/);
+    expect(modelStyles).toMatch(/\.model-config-list\s*\{[^}]*padding:\s*8px 0 18px;/);
   });
 
   it('keeps plugin, character, preset, and conversation lists wheel-scrollable', () => {

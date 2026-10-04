@@ -345,6 +345,97 @@ describe("DSH character setting-library tools", () => {
     expect(reread.files[0].content).toBe(read.files[0].content);
   });
 
+  it("exposes the latest user message to EJS setting controllers", async () => {
+    const runtime = await tools({
+      history: [
+        { role: "user", content: "上一轮用户消息" },
+        { role: "assistant", content: "上一轮助手回复" },
+        { role: "user", content: "当前轮用户消息" },
+      ],
+      extraEntries: [entry({
+        id: "message-controller",
+        title: "消息控制器",
+        content: "<%= lastUserMessage %>",
+        contentMode: "ejs",
+      })],
+    });
+
+    const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["消息控制器"] });
+    expect(read.files[0].content).toBe("当前轮用户消息");
+  });
+
+  it("maps the local-variable EJS helper to the current conversation state", async () => {
+    const runtime = await tools({
+      variableState: { 剧情: { 章节: 3 } },
+      extraEntries: [entry({
+        id: "local-variable-controller",
+        title: "本地变量控制器",
+        content: "<%= getLocalVar('剧情.章节') %>",
+        contentMode: "ejs",
+      })],
+    });
+
+    const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["本地变量控制器"] });
+    expect(read.files[0].content).toBe("3");
+  });
+
+  it("reads message-scoped EJS variables from the selected message snapshot", async () => {
+    const runtime = await tools({
+      variableState: { 剧情: { 章节: 9 } },
+      history: [
+        { id: "older", role: "assistant", content: "旧回复", variableState: { 剧情: { 章节: 2 } } },
+        { id: "latest", role: "user", content: "当前输入", variableState: { 剧情: { 章节: 3 } } },
+      ],
+      extraEntries: [entry({
+        id: "message-variable-controller",
+        title: "消息变量控制器",
+        content: "<%= getMessageVar('剧情.章节', { withMsg: { id: 'older' } }) %>",
+        contentMode: "ejs",
+      })],
+    });
+
+    const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["消息变量控制器"] });
+    expect(read.files[0].content).toBe("2");
+  });
+
+  it("isolates a failed EJS controller without blocking other required or keyword files", async () => {
+    const runtime = await tools({
+      history: [{ role: "user", content: "暴雨快来了。" }],
+      extraEntries: [
+        entry({
+          id: "broken-controller",
+          title: "坏掉的控制器",
+          content: "<%= missingCompatibilityHelper() %>",
+          contentMode: "ejs",
+        }),
+        entry({
+          id: "matched-keyword",
+          title: "暴雨设定",
+          content: "暴雨设定正文。",
+          agentReadStrategy: "keyword",
+          keywords: ["暴雨"],
+        }),
+      ],
+    });
+
+    const found = await runtime.byName.get("eleckoi_glob_setting_files").execute({});
+    expect(found.files.map((file) => file.path)).toContain("暴雨设定");
+    expect(found.files.find((file) => file.path === "坏掉的控制器")).toMatchObject({
+      content_delivery: "error",
+      error: { code: "ejs_render_failed" },
+    });
+
+    const read = await runtime.byName.get("eleckoi_read_setting_files").execute({
+      paths: ["坏掉的控制器", "暴雨设定"],
+    });
+    expect(read.status).toBe("partial");
+    expect(read.files.find((file) => file.path === "坏掉的控制器")).toMatchObject({
+      content_delivery: "error",
+      error: { code: "ejs_render_failed" },
+    });
+    expect(read.files.find((file) => file.path === "暴雨设定").content).toBe("暴雨设定正文。");
+  });
+
   it("refreshes the required list when a variable changes during the same turn", async () => {
     const runtime = await tools({
       variableState: { 剧情: { 章节: 1 } },

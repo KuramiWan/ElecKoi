@@ -448,7 +448,7 @@ class ProductDataStore {
     })
   }
 
-  readVariableTimeline(conversationId: string) {
+  readVariableTimeline(conversationId: string, sessionMessages: Array<Pick<ChatMessage, 'id' | 'conversationId' | 'role' | 'content' | 'variableStateJson' | 'status' | 'createdAt'>> = []) {
     this.databaseRepositories()
     this.conversations!.get(conversationId)
     const state = this.variableStates!.viewerStates(conversationId)
@@ -460,10 +460,20 @@ class ProductDataStore {
     const currentStateJson = macroValues
       ? resolveCharacterCardMacrosInJson(state.currentStateJson, macroValues)
       : state.currentStateJson
-    const messages = this.messages!.list(conversationId)
+    // Keep the product opening and its snapshots available even when the DSH
+    // transcript is unavailable; normal reply snapshots are supplied by the
+    // official Session projection above.
+    const ledgerMessages = this.messages!.listMetadata(conversationId)
+    // Normal DSH replies are authoritative in the Session log and are joined
+    // by the Client projection. Keep the product opening, then use that same
+    // official message projection for the later floors instead of expecting
+    // a response row that the DSH Session owns.
+    const messages = sessionMessages.length > 0
+      ? [...ledgerMessages.filter((message) => message.id === 'opening'), ...sessionMessages]
+      : ledgerMessages
     const projected = metadata.characterId
       ? messages.map((message) => this.messageDisplayProjector.project(
-          message,
+          { ...message, conversationId },
           this.requireRegexRules().get(metadata.characterId),
           macroValues
         ))

@@ -22,8 +22,8 @@ function jsonObject(source) {
   }
 }
 
-function createHostSnapshot(message, chat) {
-  const sourceMessages = Array.isArray(chat?.messages) && chat.messages.length ? chat.messages : [message];
+export function createHostSnapshot(message, chat) {
+  const sourceMessages = hostSnapshotMessages(message, chat);
   const messages = sourceMessages.map((item, index) => ({
     id: String(item.id || `message-${index}`),
     messageId: Number.isInteger(item.messageIndex) ? item.messageIndex : index,
@@ -45,6 +45,34 @@ function createHostSnapshot(message, chat) {
   };
 }
 
+export function hostSnapshotMessages(message, chat) {
+  const allMessages = Array.isArray(chat?.messages) && chat.messages.length ? chat.messages : [message];
+  const currentId = String(message?.id || '');
+  const currentRenderKey = String(message?.renderKey || '');
+  const currentIndex = allMessages.findIndex((item) => String(item?.id || '') === currentId
+    || (currentRenderKey && String(item?.renderKey || '') === currentRenderKey));
+  const history = currentIndex >= 0 ? allMessages.slice(0, currentIndex + 1) : [message];
+  const settledMessages = history.filter((item) => !item?.pending);
+  return settledMessages.length ? settledMessages : [message];
+}
+
+export function hostSnapshotKey(message, chat) {
+  const sourceMessages = hostSnapshotMessages(message, chat);
+  return JSON.stringify([
+    chat?.chatPersona?.user_name,
+    chat?.chatPersona?.name,
+    chat?.chatCharacter?.character_name,
+    chat?.chatCharacter?.assistant_name,
+    message?.id,
+    message?.messageIndex,
+    message?.variableStateJson,
+    sourceMessages.map((item) => [
+      item?.id, item?.messageIndex, item?.role, item?.speakerName,
+      item?.content, item?.variableStateJson,
+    ]),
+  ]);
+}
+
 export function RichMessageFrame({ message, document, rootIndex = 0 }) {
   const { chat, conversations, characterConfiguration, models } = useMainPageView();
   const frameRef = useRef(null);
@@ -52,10 +80,22 @@ export function RichMessageFrame({ message, document, rootIndex = 0 }) {
   const [height, setHeight] = useState(minimumHeight);
   const channel = useMemo(createChannel, [message.id, document.contentKey, rootIndex]);
   const runtimeLibraries = useMemo(prepareAuthorRuntimeLibraries, []);
-  const hostSnapshot = useMemo(
-    () => createHostSnapshot(message, chat),
-    [chat?.chatCharacter, chat?.chatPersona, chat?.messages, message],
-  );
+  const hostSnapshotInput = useMemo(() => ({
+    key: hostSnapshotKey(message, chat),
+    messages: hostSnapshotMessages(message, chat),
+  }), [chat?.chatCharacter, chat?.chatPersona, chat?.messages, message]);
+  const hostSnapshotCacheRef = useRef({ key: '', value: null });
+  const hostSnapshot = useMemo(() => {
+    if (hostSnapshotCacheRef.current.key === hostSnapshotInput.key) {
+      return hostSnapshotCacheRef.current.value;
+    }
+    const value = createHostSnapshot(message, {
+      ...chat,
+      messages: hostSnapshotInput.messages,
+    });
+    hostSnapshotCacheRef.current = { key: hostSnapshotInput.key, value };
+    return value;
+  }, [chat, hostSnapshotInput, message]);
   const source = useMemo(
     () => buildRichMessageHtml(document, channel, runtimeLibraries, hostSnapshot),
     [channel, document.kind, document.source, hostSnapshot, runtimeLibraries],

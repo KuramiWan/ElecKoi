@@ -236,6 +236,11 @@
   opacity: 0;
 }
 
+.rail-nav-button .creator-studio-star {
+  fill: currentColor;
+  stroke: none;
+}
+
 .rail-icon-layer.active-fill .nav-fill {
   opacity: 1;
 }

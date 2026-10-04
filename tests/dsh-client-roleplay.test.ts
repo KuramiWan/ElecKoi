@@ -360,6 +360,10 @@ describe('ElecKoi roleplay client contribution', () => {
       name: 'conversation.input.dock', id: 'sample-input-dock', order: 2,
       registrant: 'sample-extension'
     }, extensionDock)
+    const releaseQueueDock = slots.register({
+      name: 'conversation.input.dock', id: 'queue', order: 20,
+      registrant: '@deepseek-ai/dsh-client-ui-conversation'
+    }, extensionDock)
     const releaseLeft = slots.register({ name: 'conversation.input.left', id: 'left-button' }, extensionButton)
     const releaseOverlay = slots.register({ name: 'conversation.input.overlay', id: 'overlay' }, extensionButton)
     const releaseImage = slots.register({ name: 'conversation.trajectory.images', id: 'trajectory-images' }, extensionImage)
@@ -400,6 +404,8 @@ describe('ElecKoi roleplay client contribution', () => {
     const rightbarButton = slots.entriesOfSlot('eleckoi.roleplay.conversation.header.corner')[0]
     const dock = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')[0]
     const inputDock = slots.entriesOfSlot('eleckoi.roleplay.conversation.input.dock')[0]
+    expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.dock')
+      .some((entry: any) => entry.options.id === 'dsh:conversation.input.dock:queue')).toBe(false)
     expect(button?.component({ marker: 'button' })).toEqual({ type: extensionButton, props: { marker: 'button' } })
     expect(rightbarButton?.component({ marker: 'rightbar' })).toEqual({
       type: officialRightbarButton,
@@ -428,7 +434,8 @@ describe('ElecKoi roleplay client contribution', () => {
     const statsEntry = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')
       .find((entry: any) => entry.options.id === 'dsh:conversation.composer.dock:stats')
     expect(statsEntry).toBeDefined()
-    const statsProjection = (key: string) => key === 'sessionStats'
+    let statsAvailable = true
+    const statsProjection = (key: string) => !statsAvailable ? null : key === 'sessionStats'
       ? { turns: 3, steps: 5, llmMs: 1 }
       : key === 'eleckoiHistoryStatsAdjustment' ? { turns: 1, steps: 2 }
         : `official:${key}`
@@ -436,6 +443,10 @@ describe('ElecKoi roleplay client contribution', () => {
     expect(statsRender.type).toBe(extensionDock)
     expect(statsRender.props.useProjection('sessionStats')).toEqual({ turns: 2, steps: 3, llmMs: 1 })
     expect(statsRender.props.useProjection('tokenUsage')).toBe('official:tokenUsage')
+    statsAvailable = false
+    const statsDuringRebind = statsEntry?.component({ useProjection: statsProjection })
+    expect(statsDuringRebind.props.useProjection('sessionStats')).toEqual({ turns: 2, steps: 3, llmMs: 1 })
+    expect(statsDuringRebind.props.useProjection('tokenUsage')).toBe('official:tokenUsage')
     expect(statsEntry?.component({ useProjection: statsProjection, generationStatsEnabled: false })).toBeNull()
     releaseStats()
     const seat = slots.entriesOfSlot('eleckoi.roleplay.trajectory')[0]
@@ -464,6 +475,7 @@ describe('ElecKoi roleplay client contribution', () => {
     releaseButton()
     releaseDock()
     releaseInputDock()
+    releaseQueueDock()
     releaseLeft()
     releaseOverlay()
     releaseImage()

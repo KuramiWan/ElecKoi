@@ -52,7 +52,7 @@ export const chatLayoutProfileSchema = z.object({
   reply_spacing: z.number().min(0).max(32),
   turn_spacing: z.number().min(0).max(32),
   message_font_size: z.number().min(9).max(20),
-  message_font_weight: z.number().min(400).max(600).default(400),
+  message_font_weight: z.number().min(100).max(600).default(400),
   line_height_multiplier: z.number().min(0.8).max(1.6),
   letter_spacing: z.number().min(-1).max(4),
   paragraph_spacing: z.number().min(0).max(24)

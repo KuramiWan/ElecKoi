@@ -124,6 +124,22 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'sessions'],
       apply(ctx) {
+        const retainedStatsByProjection = new WeakMap()
+        const retainedStatsKeys = new Set(['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown'])
+        const hasVisibleStatsProjection = (key, value) => {
+          if (value == null) return false
+          if (typeof value !== 'object') return true
+          if (key === 'sessionStats') return Number(value.steps) > 0 || Number(value.turns) > 0
+          if (key === 'tokenUsage') {
+            return Number(value.uncachedInputTokens) > 0 || Number(value.cacheReadTokens) > 0
+              || Number(value.cacheWriteTokens) > 0 || Number(value.outputTokens) > 0
+          }
+          if (key === 'contextPressure') {
+            return value.contextWindow != null
+              && (value.projectedTokens != null || value.pressureTokens != null)
+          }
+          return Object.values(value).some(item => Number(item) > 0)
+        }
         const projectConversationSeat = (source, target, options = {}) => {
           ctx.slots.inject(target, () => {
             const projected = new Map()
@@ -132,17 +148,32 @@ window.__ModuleLoader__.load({
                 const adjustment = ownerProps.useProjection('eleckoiHistoryStatsAdjustment')
                 if (ownerProps.generationStatsEnabled === false) return null
                 const upstreamUseProjection = ownerProps.useProjection
+                let retained = retainedStatsByProjection.get(upstreamUseProjection)
+                if (!retained) {
+                  retained = new Map()
+                  retainedStatsByProjection.set(upstreamUseProjection, retained)
+                }
                 const useProjection = key => {
                   const value = upstreamUseProjection(key)
                   if (key !== 'sessionStats' || !value) return value
                   if (!adjustment) return value
-                  return {
+                  const adjusted = {
                     ...value,
                     steps: Math.max(0, value.steps - (Number(adjustment.steps) || 0)),
                     turns: Math.max(0, value.turns - (Number(adjustment.turns) || 0))
                   }
+                  return adjusted
                 }
-                return React.createElement(entry.component, { ...ownerProps, useProjection })
+                const stableUseProjection = key => {
+                  const value = useProjection(key)
+                  if (!retainedStatsKeys.has(key)) return value
+                  if (hasVisibleStatsProjection(key, value)) {
+                    retained.set(key, value)
+                    return value
+                  }
+                  return retained.get(key) ?? value
+                }
+                return React.createElement(entry.component, { ...ownerProps, useProjection: stableUseProjection })
               }
               if (source === 'conversation.composer' || source === 'conversation.composer.bar') {
                 const { renderBridgeSlot, ...props } = ownerProps
@@ -250,7 +281,10 @@ window.__ModuleLoader__.load({
         projectConversationSeat('conversation.input.left', 'eleckoi.roleplay.conversation.input.left', { leafOnly: true })
         projectConversationSeat('conversation.input.right', 'eleckoi.roleplay.conversation.input.right', { leafOnly: true })
         projectConversationSeat('conversation.input.overlay', 'eleckoi.roleplay.conversation.input.overlay', { leafOnly: true })
-        projectConversationSeat('conversation.input.dock', 'eleckoi.roleplay.conversation.input.dock', { leafOnly: true })
+        projectConversationSeat('conversation.input.dock', 'eleckoi.roleplay.conversation.input.dock', {
+          leafOnly: true,
+          include: entry => entry.options.id !== 'queue'
+        })
         projectConversationSeat('conversation.input.attachments', 'eleckoi.roleplay.conversation.input.attachments', { leafOnly: true })
         projectConversationSeat('conversation.input.permission', 'eleckoi.roleplay.conversation.input.permission', { leafOnly: true })
         projectConversationSeat('conversation.input.plan', 'eleckoi.roleplay.conversation.input.plan', { leafOnly: true })

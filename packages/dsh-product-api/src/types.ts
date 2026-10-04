@@ -167,6 +167,16 @@ export interface ConversationMessageDisplayResult {
   variableStateJson: string
 }
 
+export interface ConversationVariableTimelineMessage {
+  id: string
+  conversationId: string
+  role: 'user' | 'assistant'
+  content: string
+  variableStateJson: string
+  status: 'complete' | 'streaming' | 'error' | 'cancelled'
+  createdAt: string
+}
+
 export type VariableJsonValue = null | boolean | number | string
   | VariableJsonValue[] | { [key: string]: VariableJsonValue }
 
@@ -712,7 +722,7 @@ export interface ElecKoiProductDataStore {
     conversationId: string,
     messages: ConversationMessageDisplayInput[]
   ): ConversationMessageDisplayResult[]
-  readVariableTimeline(conversationId: string): VariableViewerTimeline
+  readVariableTimeline(conversationId: string, sessionMessages?: ConversationVariableTimelineMessage[]): VariableViewerTimeline
   readAuthorConversationState(conversationId: string): AuthorConversationState
   replaceConversationVariableState(conversationId: string, stateJson: string): string
   createConversation(input: ConversationCreateInput): ConversationDetailsMetadata

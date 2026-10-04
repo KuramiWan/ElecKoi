@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildRichMessageHtml } from '../src/renderer/src/modules/authorFrontend/model/buildRichMessageHtml.js';
+import { createHostSnapshot, hostSnapshotKey } from '../src/renderer/src/modules/authorFrontend/components/RichMessageFrame.jsx';
 
 describe('rich message sandbox document', () => {
   const runtime = {
@@ -35,5 +36,36 @@ describe('rich message sandbox document', () => {
     expect(output).toContain('</head><body><main>panel</main>')
     expect(output).not.toContain('<body><body>')
     expect(output.indexOf('ElecKoiNative')).toBeLessThan(output.indexOf('window.panelLoaded'))
+  });
+
+  it('does not rebuild settled rich-message state for a changing streaming tail', () => {
+    const message = { id: 'rich-1', role: 'assistant', content: '已完成的卡片', variableStateJson: '{}' };
+    const settled = { ...message, messageIndex: 1 };
+    const first = { ...settled, id: 'rich-1' };
+    const second = { ...settled, id: 'rich-1' };
+    const liveFirst = { id: 'pending-1', role: 'assistant', pending: true, content: '第一段' };
+    const liveSecond = { ...liveFirst, content: '第一段继续增长' };
+    const firstChat = { messages: [first, liveFirst] };
+    const secondChat = { messages: [second, liveSecond] };
+
+    expect(hostSnapshotKey(message, firstChat)).toBe(hostSnapshotKey(message, secondChat));
+    expect(createHostSnapshot(message, secondChat).messages).toEqual([
+      expect.objectContaining({ id: 'rich-1', content: '已完成的卡片' }),
+    ]);
+  });
+
+  it('does not rebuild an earlier rich message when a later user message becomes durable', () => {
+    const message = { id: 'rich-1', role: 'assistant', messageIndex: 1,
+      content: '已完成的卡片', variableStateJson: '{}' };
+    const firstChat = { messages: [message] };
+    const secondChat = { messages: [
+      { ...message },
+      { id: 'user-2', role: 'user', messageIndex: 2, content: '你好', variableStateJson: '{}' },
+    ] };
+
+    expect(hostSnapshotKey(message, firstChat)).toBe(hostSnapshotKey(message, secondChat));
+    expect(createHostSnapshot(message, secondChat).messages).toEqual([
+      expect.objectContaining({ id: 'rich-1', content: '已完成的卡片' }),
+    ]);
   });
 });

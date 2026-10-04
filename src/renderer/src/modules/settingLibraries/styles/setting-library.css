@@ -9,6 +9,16 @@
   background: var(--chat);
 }
 
+.setting-library-layout.is-inspector-open .setting-library-tree {
+  margin-inline-end: calc(min(var(--setting-library-inspector-width), calc(100% - 56px)) + 6px);
+}
+
+.setting-library-layout.is-resizing,
+.setting-library-layout.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
 .setting-library-browser {
   display: grid;
   grid-template-rows: 58px minmax(0, 1fr);
@@ -25,7 +35,7 @@
   gap: 12px;
   padding: 10px 22px 9px;
   background: color-mix(in srgb, var(--chat) 94%, var(--list));
-  box-shadow: inset 0 -1px color-mix(in srgb, var(--text) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
 }
 
 .setting-library-manage-button {
@@ -214,11 +224,35 @@
   padding: 0 18px;
   overflow: auto;
   --dsh-scrollbar-width: 8px;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2, color-mix(in srgb, var(--muted) 42%, transparent)) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.setting-library-tree::-webkit-scrollbar {
+  width: 10px;
+}
+
+.setting-library-tree::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .setting-library-tree::-webkit-scrollbar-thumb {
-  border: 1px solid transparent;
-  background-clip: content-box;
+  min-height: 28px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--dsw-alias-scrollbar-bg-l2, color-mix(in srgb, var(--muted) 42%, transparent));
+  background-clip: padding-box;
+}
+
+.setting-library-tree::-webkit-scrollbar-thumb:hover {
+  background: var(--dsw-alias-scrollbar-hover-l2, color-mix(in srgb, var(--muted) 64%, transparent));
+  background-clip: padding-box;
+}
+
+.setting-library-tree::-webkit-scrollbar-button,
+.setting-library-tree::-webkit-scrollbar-corner {
+  display: none;
 }
 
 .setting-library-tree [role="tree"] {
@@ -452,35 +486,72 @@
   z-index: 50;
   inset: 58px 0 0 auto;
   display: grid;
-  grid-template-rows: 50px minmax(0, 1fr);
-  width: min(480px, calc(100% - 56px));
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(var(--setting-library-inspector-width, 480px), calc(100% - 56px));
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--chat);
   border-left: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
 }
 
+.setting-library-inspector-resizer {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  display: grid;
+  width: 10px;
+  place-items: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.setting-library-inspector-resizer > span {
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.setting-library-inspector-resizer:hover > span,
+.setting-library-inspector-resizer:focus-visible > span {
+  background: color-mix(in srgb, var(--blue) 66%, transparent);
+}
+
+.setting-library-inspector-resizer:focus-visible {
+  outline: 0;
+}
+
 .setting-library-inspector-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px 4px 15px;
+  min-height: 50px;
+  padding: 9px 10px 8px 15px;
 }
 
 .setting-library-inspector-header > div {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 
+.setting-library-inspector-header > div > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
 .setting-library-inspector-header strong {
+  min-width: 0;
   overflow: hidden;
   font-size: 14px;
   font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .setting-library-inspector-header button,
@@ -507,6 +578,35 @@
   padding: 6px 12px 12px 16px;
   overflow: auto;
   --dsh-scrollbar-width: 8px;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l2, color-mix(in srgb, var(--muted) 42%, transparent)) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.setting-library-inspector-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.setting-library-inspector-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.setting-library-inspector-body::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--dsw-alias-scrollbar-bg-l2, color-mix(in srgb, var(--muted) 42%, transparent));
+  background-clip: padding-box;
+}
+
+.setting-library-inspector-body::-webkit-scrollbar-thumb:hover {
+  background: var(--dsw-alias-scrollbar-hover-l2, color-mix(in srgb, var(--muted) 64%, transparent));
+  background-clip: padding-box;
+}
+
+.setting-library-inspector-body::-webkit-scrollbar-button,
+.setting-library-inspector-body::-webkit-scrollbar-corner {
+  display: none;
 }
 
 .setting-library-inspector-body:has(> .setting-library-normal-entry-editor.is-content-editor > .setting-library-entry-section.has-references) {
@@ -2350,8 +2450,12 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
     padding-inline: 10px;
   }
 
+  .setting-library-layout.is-inspector-open .setting-library-tree {
+    margin-inline-end: calc(min(var(--setting-library-inspector-width), calc(100% - 28px)) + 6px);
+  }
+
   .setting-library-inspector {
-    width: calc(100% - 28px);
+    width: min(var(--setting-library-inspector-width, 480px), calc(100% - 28px));
   }
 }
 

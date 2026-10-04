@@ -38,6 +38,15 @@ import {
 const CreateFolderIcon = SETTING_LIBRARY_CREATE_ICONS.group;
 const CreateEntryIcon = SETTING_LIBRARY_CREATE_ICONS.entry;
 const CreateReferenceIcon = SETTING_LIBRARY_CREATE_ICONS.reference;
+const DEFAULT_INSPECTOR_WIDTH = 560;
+const MIN_INSPECTOR_WIDTH = 420;
+const MAX_INSPECTOR_WIDTH = 760;
+
+function inspectorWidthBounds(containerWidth) {
+  const availableWidth = Math.max(280, Number(containerWidth) || window.innerWidth || 1280);
+  const max = Math.max(280, Math.min(MAX_INSPECTOR_WIDTH, Math.floor(availableWidth * 0.72)));
+  return { min: Math.min(MIN_INSPECTOR_WIDTH, max), max };
+}
 
 function nodeIcon(entry) {
   if (entry?.kind === "opening") return ChatCircleDots;
@@ -59,6 +68,9 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saveNotice, setSaveNotice] = useState("");
+  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
+  const [resizeSession, setResizeSession] = useState(null);
+  const layoutRef = useRef(null);
   const nameInputRef = useRef(null);
   const libraryRef = useRef(null);
   const persistedRef = useRef(null);
@@ -68,6 +80,25 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const selected = useMemo(() => findSelected(library, selectedKey), [library, selectedKey]);
   const nodes = useMemo(() => treeNodes(library), [library]);
   const searchHasResults = useMemo(() => library ? hasSearchResults(library, query) : false, [library, query]);
+
+  useEffect(() => {
+    if (!resizeSession) return undefined;
+    const handlePointerMove = (event) => {
+      const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
+      const { min, max } = inspectorWidthBounds(containerWidth);
+      const nextWidth = Math.min(max, Math.max(min, resizeSession.startWidth + resizeSession.startX - event.clientX));
+      setInspectorWidth(nextWidth);
+    };
+    const stopResize = () => setResizeSession(null);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+  }, [resizeSession]);
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
@@ -430,7 +461,43 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   function handleTreeMouseDown(event) {
     setContextMenu(null);
     if (event.button !== 0 || event.target.closest('[role="treeitem"]')) return;
+    const tree = event.currentTarget;
+    const treeRect = tree.getBoundingClientRect();
+    const scrollbarHitWidth = Math.max(16, tree.offsetWidth - tree.clientWidth + 4);
+    if (event.clientX >= treeRect.right - scrollbarHitWidth && event.clientX <= treeRect.right + 2) return;
     requestCloseInspector();
+  }
+
+  function startInspectorResize(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setResizeSession({ startX: event.clientX, startWidth: inspectorWidth });
+  }
+
+  function adjustInspectorWidth(delta) {
+    const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
+    const { min, max } = inspectorWidthBounds(containerWidth);
+    setInspectorWidth((current) => Math.min(max, Math.max(min, current + delta)));
+  }
+
+  function handleInspectorResizeKeyDown(event) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      adjustInspectorWidth(24);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      adjustInspectorWidth(-24);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
+      setInspectorWidth(inspectorWidthBounds(containerWidth).min);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
+      setInspectorWidth(inspectorWidthBounds(containerWidth).max);
+    }
   }
 
   if (!library) return <div className="setting-library-loading">{error || "正在读取…"}</div>;
@@ -439,7 +506,13 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const SelectedIcon = selectedIcon || FileText;
 
   return (
-    <section className="setting-library-layout" aria-label="设定库" onMouseDown={() => setMenuOpen(false)}>
+    <section
+      ref={layoutRef}
+      className={`setting-library-layout${selected.value && !managerOpen ? " is-inspector-open" : ""}${resizeSession ? " is-resizing" : ""}`}
+      style={{ "--setting-library-inspector-width": `${inspectorWidth}px` }}
+      aria-label="设定库"
+      onMouseDown={() => setMenuOpen(false)}
+    >
       <div className="setting-library-browser">
         <div className="setting-library-toolbar" onMouseDown={(event) => event.stopPropagation()}>
           <label className="setting-library-search">
@@ -495,6 +568,10 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
           nameInputRef={nameInputRef}
           SelectedIcon={SelectedIcon}
           onClose={requestCloseInspector}
+          inspectorWidth={inspectorWidth}
+          onResizeStart={startInspectorResize}
+          onResizeKeyDown={handleInspectorResizeKeyDown}
+          onResetResize={() => setInspectorWidth(DEFAULT_INSPECTOR_WIDTH)}
           onUpdateGroup={updateGroup}
           onDeleteGroup={() => askDelete("group", selected.value.id)}
           onUpdateEntry={(entry) => updateEntryById(entry.id, entry)}

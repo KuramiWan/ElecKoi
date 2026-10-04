@@ -17,6 +17,7 @@
 
 .preset-list-scroll {
   padding-top: 0;
+  scrollbar-gutter: auto;
 }
 
 .preset-list-group + .preset-list-group {

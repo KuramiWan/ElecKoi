@@ -683,7 +683,7 @@ describe('shared SQLite baseline', () => {
     }
   })
 
-  it('migrates a closed v2 file to v3 and reopens every persisted setting placement', { timeout: 30_000 }, () => {
+  it('migrates a closed v2 file to v3 and reopens every persisted setting placement', () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-v2-placement-test-'))
     directories.push(directory)
     const path = join(directory, 'eleckoi.sqlite3')
@@ -849,7 +849,7 @@ describe('shared SQLite baseline', () => {
     }
   })
 
-  it('keeps a v2 file unchanged when the placement migration encounters damaged JSON', { timeout: 30_000 }, () => {
+  it('keeps a v2 file unchanged when the placement migration encounters damaged JSON', () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-v2-placement-rollback-'))
     directories.push(directory)
     const path = join(directory, 'eleckoi.sqlite3')
