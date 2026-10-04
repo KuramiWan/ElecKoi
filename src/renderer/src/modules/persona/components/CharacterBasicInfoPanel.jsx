@@ -62,6 +62,7 @@ function LocalImageUpload({ className, label, crop, disabled = false, onSelect, 
         cropWidth={crop.width}
         cropHeight={crop.height}
         cropRadius={crop.radius}
+        showCircleGuide={crop.showCircleGuide}
         outputShape={crop.outputShape}
         outputWidth={crop.outputWidth}
         onCancel={() => setCropFile(null)}
@@ -104,15 +105,16 @@ export function CharacterBasicInfoPanel({ character, dirty, saving, error, saveN
             className="character-basic-avatar-upload"
             label="选择头像"
             crop={{
-              title: "裁剪头像",
+              title: "调整圆形与方形头像",
               width: 250,
               height: 250,
-              radius: "999px",
-              outputShape: "circle",
+              radius: "8px",
+              showCircleGuide: true,
+              outputShape: "square",
               outputWidth: 420,
             }}
             disabled={saving}
-            onSelect={(value) => onChange({ persona: { assistant_avatar: value } })}
+            onSelect={(value) => onChange({ persona: { assistant_avatar: value, assistant_square: value } })}
           >
             <span className="character-basic-avatar-trigger">
               <Avatar

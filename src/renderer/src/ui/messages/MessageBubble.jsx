@@ -114,6 +114,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const [pageInput, setPageInput] = useState("");
   const [openingSwitching, setOpeningSwitching] = useState(false);
+  const [pagerOpeningId, setPagerOpeningId] = useState(message.selectedOpeningId);
   const articleRef = useRef(null);
   const toolsRef = useRef(null);
   const jumpDialogRef = useRef(null);
@@ -123,6 +124,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   selectedOpeningIdRef.current = message.selectedOpeningId;
   const options = message.openingOptions || [];
   const selectedIndex = Math.max(0, options.findIndex((option) => option.id === message.selectedOpeningId));
+  const pagerSelectedIndex = Math.max(0, options.findIndex((option) => option.id === pagerOpeningId));
   const liveProcess = shouldShowInlineAgentProcess(message, displayContent)
     ? liveProcessPresentation(message.process)
     : null;
@@ -136,6 +138,9 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   const requestedPageValid = requestedIndex >= 0 && requestedIndex < options.length;
 
   useEffect(() => setDraft(content || ""), [content]);
+  useEffect(() => {
+    if (!openingSwitchingRef.current) setPagerOpeningId(message.selectedOpeningId);
+  }, [message.selectedOpeningId]);
   useLayoutEffect(() => {
     if (!displayContent || editing || liveProcess) return undefined;
     return registerMarkdownTextToneHighlights(
@@ -213,11 +218,12 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
       }
 
       await Promise.resolve(onSelectOpening?.(message, targetOption.id));
-      clearExit();
       await nextPaint();
 
       if (!reduceMotion && selectedOpeningIdRef.current === targetOption.id && articleRef.current) {
         const range = articleRef.current.getBoundingClientRect().width + 30;
+        clearExit();
+        clearExit = () => {};
         const clearEntry = await animateOpeningSlide(articleRef.current, movingForward ? range : -range, 0);
         clearEntry();
       }
@@ -225,6 +231,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
       console.error("Failed to switch opening message", error);
     } finally {
       clearExit();
+      setPagerOpeningId(selectedOpeningIdRef.current);
       openingSwitchingRef.current = false;
       setOpeningSwitching(false);
     }
@@ -236,9 +243,9 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
     void selectOpeningAt(requestedIndex);
   }
   const openingPager = options.length > 1 ? <div className="opening-pager" aria-label="切换开场白" aria-busy={openingSwitching || undefined}>
-    <button type="button" className="opening-pager-prev" disabled={openingSwitching || selectedIndex <= 0} onClick={() => { void selectOpeningAt(selectedIndex - 1); }} aria-label="上一条开场白"><FontAwesomeIcon icon={faChevronLeft} /></button>
-    <button type="button" className="opening-pager-next" disabled={openingSwitching || selectedIndex >= options.length - 1} onClick={() => { void selectOpeningAt(selectedIndex + 1); }} aria-label="下一条开场白"><FontAwesomeIcon icon={faChevronRight} /></button>
-    <button ref={jumpTriggerRef} type="button" className="opening-pager-index" disabled={openingSwitching} onClick={() => { setPageInput(String(selectedIndex + 1)); setJumpOpen(true); }} aria-label={`第 ${selectedIndex + 1} 条，共 ${options.length} 条开场白，点击跳转`}>{selectedIndex + 1}/{options.length}</button>
+    <button type="button" className="opening-pager-prev" disabled={openingSwitching || pagerSelectedIndex <= 0} onClick={() => { void selectOpeningAt(selectedIndex - 1); }} aria-label="上一条开场白"><FontAwesomeIcon icon={faChevronLeft} /></button>
+    <button type="button" className="opening-pager-next" disabled={openingSwitching || pagerSelectedIndex >= options.length - 1} onClick={() => { void selectOpeningAt(selectedIndex + 1); }} aria-label="下一条开场白"><FontAwesomeIcon icon={faChevronRight} /></button>
+    <button ref={jumpTriggerRef} type="button" className="opening-pager-index" disabled={openingSwitching} onClick={() => { setPageInput(String(pagerSelectedIndex + 1)); setJumpOpen(true); }} aria-label={`第 ${pagerSelectedIndex + 1} 条，共 ${options.length} 条开场白，点击跳转`}>{pagerSelectedIndex + 1}/{options.length}</button>
   </div> : null;
   const messageTools = !pending && layoutMode !== "agent" ? <div className={`message-tools${expanded ? ' expanded' : ''}`} ref={toolsRef}>
     <div className="message-tools-leading">

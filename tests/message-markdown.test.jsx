@@ -285,6 +285,15 @@ describe("message markdown presentation", () => {
       /\.message-roleplay > \.opening-pager\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*grid-row:\s*1;[^}]*grid-template-columns:\s*var\(--chat-roleplay-side-rail\)\s*minmax\(0,\s*1fr\)\s*var\(--chat-roleplay-side-rail\);/,
     );
     expect(chatStyles).toMatch(
+      /\.message-roleplay\s*\{[^}]*--chat-roleplay-leading-stack-height:\s*var\(--chat-avatar-height,\s*86\.67px\);/,
+    );
+    expect(chatStyles).toMatch(
+      /\.message-roleplay:has\(> \.message-floor\)\s*\{[^}]*--chat-roleplay-leading-stack-height:\s*calc\([^;]+\);[^}]*min-height:\s*var\(--chat-roleplay-leading-stack-height\);/,
+    );
+    expect(chatStyles).toMatch(
+      /\.message-roleplay\.has-opening-pager\s*\{[^}]*min-height:\s*calc\(var\(--chat-roleplay-leading-stack-height\)\s*\+\s*62px\);/,
+    );
+    expect(chatStyles).toMatch(
       /\.message-roleplay > \.message-tools\s*\{[^}]*grid-column:\s*3;[^}]*grid-row:\s*1;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*26px\s*minmax\(0,\s*1fr\);/,
     );
     expect(chatStyles).toMatch(
@@ -329,6 +338,24 @@ describe("message markdown presentation", () => {
     expect(html).toContain('aria-label="编辑"');
     expect(html).not.toContain('aria-label="重新生成"');
     expect(html).not.toContain('class="message-tools');
+  });
+
+  it("keeps the outgoing opening frozen until the replacement is painted", () => {
+    const source = readFileSync(
+      resolve("src/renderer/src/ui/messages/MessageBubble.jsx"),
+      "utf8",
+    );
+    const switchBody = source.match(
+      /async function selectOpeningAt\(targetIndex\) \{([\s\S]*?)\r?\n  \}\r?\n  function submitPageJump/,
+    )?.[1] || "";
+
+    expect(switchBody).toMatch(
+      /await Promise\.resolve\(onSelectOpening\?\.\(message, targetOption\.id\)\);\s*await nextPaint\(\);/,
+    );
+    expect(switchBody).toMatch(
+      /const range = articleRef\.current\.getBoundingClientRect\(\)\.width \+ 30;\s*clearExit\(\);\s*clearExit = \(\) => \{\};\s*const clearEntry = await animateOpeningSlide/,
+    );
+    expect(source).toContain("setPagerOpeningId(selectedOpeningIdRef.current);");
   });
 
   it("does not expose process viewing in a user message menu", () => {

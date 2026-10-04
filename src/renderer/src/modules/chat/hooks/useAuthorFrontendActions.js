@@ -108,7 +108,8 @@ export function useAuthorFrontendActions({
       }
       if (current.status === 'running') {
         setIsSending(true);
-        requestScrollToEnd('auto');
+        // Stream publication updates busy state, not reader ownership.
+        // Explicit submissions request tail following in onAuthorAction.
       }
       const terminal = previousStream?.id === sessionId
         && previousStream.status === 'running'

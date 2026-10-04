@@ -797,6 +797,7 @@
 }
 
 .message-roleplay {
+  --chat-roleplay-leading-stack-height: var(--chat-avatar-height, 86.67px);
   display: grid;
   grid-template-columns:
     var(--chat-roleplay-side-rail)
@@ -817,7 +818,12 @@
 }
 
 .message-roleplay:has(> .message-floor) {
-  min-height: calc(var(--chat-avatar-height, 86.67px) + var(--chat-font-size, 15px) * 1.035 + 2px);
+  --chat-roleplay-leading-stack-height: calc(var(--chat-avatar-height, 86.67px) + var(--chat-font-size, 15px) * 1.035 + 2px);
+  min-height: var(--chat-roleplay-leading-stack-height);
+}
+
+.message-roleplay.has-opening-pager {
+  min-height: calc(var(--chat-roleplay-leading-stack-height) + 62px);
 }
 
 .message-roleplay.mine {
