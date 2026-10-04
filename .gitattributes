@@ -1,3 +1,4 @@
 # Unified diff context lines intentionally begin with a space followed by the
 # target file's indentation; do not report those nested patches as whitespace errors.
 patches/*.patch -whitespace
+docs/plugins/api-reference.md text eol=lf
