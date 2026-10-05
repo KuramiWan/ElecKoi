@@ -59,6 +59,8 @@
           "subscribe",
           "getDetailsSnapshot",
           "subscribeDetails",
+          "getChatSnapshot",
+          "subscribeChat",
           "getTimelineSnapshot",
           "subscribeTimeline",
           "getStreamSnapshot",

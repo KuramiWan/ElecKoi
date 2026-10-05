@@ -90,6 +90,9 @@ jobs:
             (Get-ChildItem release -File -Filter '*-setup.exe.blockmap').FullName
             (Resolve-Path release/latest.yml).Path
           )
-          $releaseOptions = @('--verify-tag', '--generate-notes', '--title', "ElecKoi $env:RELEASE_TAG")
+          $releaseOptions = @('--verify-tag', '--title', "ElecKoi $env:RELEASE_TAG")
+          $releaseNotes = "docs/releases/$env:RELEASE_TAG.md"
+          if (Test-Path -LiteralPath $releaseNotes) { $releaseOptions += @('--notes-file', $releaseNotes) }
+          else { $releaseOptions += '--generate-notes' }
           if ('${{ inputs.prerelease }}' -eq 'true') { $releaseOptions += '--prerelease' }
           gh release create $env:RELEASE_TAG @assets @releaseOptions

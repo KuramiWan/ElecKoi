@@ -1,23 +1,50 @@
 import { describe, expect, it } from 'vitest'
-import { mergeProcessItems, preserveMessageRenderKeys } from '../src/renderer/src/modules/chat/hooks/useConversationMessages.js'
+import { mergeProcessItems, preserveMessageRenderKeys, preserveRewindUser } from '../src/renderer/src/modules/chat/hooks/useConversationMessages.js'
 
 describe('chat message reconciliation', () => {
+  it.each([
+    ['conversation', 'conversation-b', 'session-a'],
+    ['runtime Session', 'conversation-a', 'session-b'],
+  ])('does not carry an opening display across a different %s', (_scope, conversationId, runtimeSessionId) => {
+    const current = [{
+      id: 'opening', conversationId: 'conversation-a', runtimeSessionId: 'session-a',
+      role: 'assistant', content: '合成开场 A',
+      displayContent: '<!-- eleckoi:rich-replacement:start --><section>合成展示 A</section><!-- eleckoi:rich-replacement:end -->',
+      renderKey: 'opening-a', process: [{ id: 'process-a', status: 'complete' }],
+    }]
+    const incoming = [{
+      id: 'opening', conversationId, runtimeSessionId,
+      role: 'assistant', content: '合成开场 B', displayContent: '合成开场 B',
+    }]
+
+    expect(preserveMessageRenderKeys(current, incoming)).toEqual(incoming)
+  })
+
+  it('does not match a reused request id outside its conversation', () => {
+    const current = [{ id: 'local-a', conversationId: 'conversation-a', requestId: 'request-1', role: 'user' }]
+    const incoming = [{ id: 'user-b', conversationId: 'conversation-b', requestId: 'request-1', role: 'user' }]
+    expect(preserveMessageRenderKeys(current, incoming)).toEqual(incoming)
+  })
+
   it('keeps optimistic image and streaming reply nodes mounted when durable ids arrive', () => {
     const current = [{
       id: 'local-1',
+      requestId: 'request-1',
       role: 'user',
       content: '这是谁',
       inputImageAttachments: [{ localId: 'draft-image-1', dataUrl: 'data:image/png;base64,draft' }]
     }]
-    const pending = { id: 'pending-1', role: 'assistant', content: '识别结果', pending: true }
+    const pending = { id: 'pending-1', runtimeSessionId: 'session-1', renderKey: 'dsh-reply-session-1-1', role: 'assistant', content: '识别结果', pending: true }
     const incoming = [{
       id: 'user-1',
+      requestId: 'request-1',
       sequence: 1,
       role: 'user',
       content: '这是谁',
       inputImageAttachments: [{ attachmentId: 'sha256:image-1', mediaType: 'image/png' }]
     }, {
       id: 'assistant-1',
+      runtimeSessionId: 'session-1', renderKey: 'dsh-reply-session-1-1',
       sequence: 2,
       role: 'assistant',
       content: '识别结果',
@@ -33,7 +60,7 @@ describe('chat message reconciliation', () => {
           renderKey: 'draft-image-1'
         })]
       }),
-      expect.objectContaining({ id: 'assistant-1', renderKey: 'pending-1', pending: false })
+      expect.objectContaining({ id: 'assistant-1', renderKey: 'dsh-reply-session-1-1', pending: false })
     ])
   })
 
@@ -44,9 +71,27 @@ describe('chat message reconciliation', () => {
     expect(preserveMessageRenderKeys(current, incoming)).toEqual(incoming)
   })
 
+  it('does not reinsert the pre-rewind user when DSH assigns the replacement a new identity', () => {
+    const previous = [{ id: 'user-old', sessionEventSeq: 12, role: 'user', content: '你还会啥' }]
+    const incoming = [{ id: 'user-replacement', requestId: 'regen-1', sessionEventSeq: 19, role: 'user', content: '你还会啥' }]
+
+    expect(preserveRewindUser(previous, incoming, { ...previous[0], requestId: 'regen-1' })).toEqual(incoming)
+  })
+
+  it('collapses the retiring and replacement user rows in one rewind snapshot', () => {
+    const previous = [{ id: 'user-old', sessionEventSeq: 12, role: 'user', content: '你还会啥' }]
+    const incoming = [
+      { id: 'user-old', sessionEventSeq: 12, role: 'user', content: '你还会啥' },
+      { id: 'user-replacement', requestId: 'regen-1', sessionEventSeq: 19, role: 'user', content: '你还会啥' },
+    ]
+
+    expect(preserveRewindUser(previous, incoming, { ...previous[0], requestId: 'regen-1' })).toEqual([incoming[1]])
+  })
+
   it('keeps live process events when the durable reply arrives one update behind', () => {
     const pending = {
       id: 'pending-1',
+      runtimeSessionId: 'session-1', renderKey: 'dsh-reply-session-1-1',
       role: 'assistant',
       content: '完成',
       pending: true,
@@ -58,6 +103,7 @@ describe('chat message reconciliation', () => {
     }
     const incoming = [{
       id: 'assistant-1',
+      runtimeSessionId: 'session-1', renderKey: 'dsh-reply-session-1-1',
       role: 'assistant',
       content: '完成',
       status: 'complete',
@@ -68,9 +114,60 @@ describe('chat message reconciliation', () => {
     }]
 
     const [message] = preserveMessageRenderKeys([], incoming, pending)
-    expect(message.renderKey).toBe('pending-1')
+    expect(message.renderKey).toBe('dsh-reply-session-1-1')
     expect(message.process.map((item) => item.id)).toEqual(['reasoning-1', 'tool-1', 'tool-2'])
     expect(message.process[0]).toMatchObject({ status: 'complete', detail: '完整思考' })
+  })
+
+  it('keeps a settled rich display while rewind briefly reopens the same assistant step', () => {
+    const current = [{
+      id: 'assistant-rich',
+      role: 'assistant',
+      content: '<FINAL>card source</FINAL>',
+      displayContent: '<!-- eleckoi:rich-replacement:start --><section>card</section><!-- eleckoi:rich-replacement:end -->',
+      status: 'complete',
+      pending: false,
+      renderKey: 'dsh-reply-turn-2',
+    }]
+    const reopened = [{
+      ...current[0],
+      displayContent: current[0].content,
+      status: 'complete',
+      pending: false,
+    }]
+
+    expect(preserveMessageRenderKeys(current, reopened)[0]).toMatchObject({
+      displayContent: current[0].displayContent,
+      status: 'complete',
+      pending: false,
+      renderKey: 'dsh-reply-turn-2',
+    })
+  })
+
+  it('keeps the rich display when the transient projection normalizes source text', () => {
+    const current = [{
+      id: 'assistant-rich-normalized',
+      role: 'assistant',
+      content: '<FINAL>card source with markers</FINAL>',
+      displayContent: '<!-- eleckoi:rich-replacement:start --><section>card</section><!-- eleckoi:rich-replacement:end -->',
+      status: 'complete',
+      pending: false,
+    }]
+    const transientProjection = [{
+      id: 'assistant-rich-normalized',
+      role: 'assistant',
+      content: '<FINAL>card source</FINAL>',
+      displayContent: 'card source',
+      status: 'complete',
+      pending: false,
+    }]
+
+    expect(preserveMessageRenderKeys(current, transientProjection)[0]).toMatchObject({
+      content: transientProjection[0].content,
+      displayContent: current[0].displayContent,
+      status: 'complete',
+      pending: false,
+    })
   })
 
   it('adds newly persisted process events without dropping live-only events', () => {
@@ -79,5 +176,18 @@ describe('chat message reconciliation', () => {
       [{ id: 'saved', kind: 'tool', status: 'complete' }],
     )
     expect(merged.map((item) => item.id)).toEqual(['live', 'saved'])
+  })
+
+  it('never pairs equal user text or unrelated assistants by role', () => {
+    const current = [
+      { id: 'local-1', requestId: 'request-old', role: 'user', content: '重复输入' },
+      { id: 'live-old', runtimeSessionId: 'session-1', renderKey: 'dsh-reply-session-1-1', role: 'assistant', pending: true, process: [{ id: 'old-trace' }] },
+    ]
+    const incoming = [
+      { id: 'user-new', requestId: 'request-new', role: 'user', content: '重复输入' },
+      { id: 'reply-new', runtimeSessionId: 'session-1', renderKey: 'dsh-reply-session-1-2', role: 'assistant', content: '回复' },
+    ]
+    expect(preserveMessageRenderKeys(current, incoming)).toEqual(incoming)
+    expect(preserveRewindUser(current, incoming, current[0])).toEqual([current[0], ...incoming])
   })
 })

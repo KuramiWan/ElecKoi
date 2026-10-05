@@ -355,7 +355,7 @@ window.__ModuleLoader__.load({
     }
 
     function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map(), pendingSubmissions = [], sessionRunning) {
-      if (!snapshot) return details?.messages || []
+      if (!snapshot) return (details?.messages || []).filter(message => message.id === 'opening')
       const entries = orderedChatEntries(snapshot)
       const nodes = entries.map(entry => entry.node)
       const closedTurns = new Set(nodes.filter(node => node.kind === 'turn-tail' && node.data?.closing)
@@ -370,7 +370,7 @@ window.__ModuleLoader__.load({
         // The official Session can publish the running assistant-step before
         // its first text/process event. Keep that real DSH node visible while
         // the Session is running; do not manufacture a product-only row.
-        if (hasActivity || (entry.node.data?.status === 'running' && sessionRunning !== false)) {
+        if (hasActivity || (entry.node.data?.status === 'running' && sessionRunning === true)) {
           latestOpenAssistantByTurn.set(turn, index)
         }
       })
@@ -384,9 +384,7 @@ window.__ModuleLoader__.load({
             images: inputImages(input.content), files: inputFiles(input.content), dshMessageId: input.messageId || '',
             sessionEventSeq: input.seq,
             requestId: input.source?.kind === 'user' ? input.source.rpcId || '' : '',
-            // `null` is intentional: this official user node is still outside
-            // a DSH turn. An omitted field remains compatible with legacy
-            // product-only fixtures until their session is rebound.
+            // `null` means this official input has not entered a DSH turn.
             dshTurn: dshTurn ?? null
           }]
         }
@@ -400,7 +398,11 @@ window.__ModuleLoader__.load({
             time: node.data?.time, content: live.started ? live.content : '',
             displayContent: live.started ? live.content : '',
             dshMessageId: node.data?.messageId || '', nodeKey: entry.key, dshTurn: turn,
-            pending: sessionRunning !== false,
+            // An unknown session state is not proof that generation is still
+            // running. During Session rebind DSH can publish the historical
+            // assistant-step before the new Session state arrives; treating
+            // that gap as streaming hides the normal message actions.
+            pending: sessionRunning === true,
           }]
         }
         if (node.kind !== 'turn-tail' || !node.data?.closing) return []
@@ -453,19 +455,6 @@ window.__ModuleLoader__.load({
           matched.set(index, source)
         }
       }
-      for (let index = 0; index < projected.length; index += 1) {
-        if (matched.has(index)) continue
-        const source = candidates.find(candidate => !claimedCandidates.has(candidate)
-          && !candidate.dshMessageId
-          && candidate.role === projected[index].role
-          // Older product rows may not have a DSH id yet. Content equality is
-          // the only safe fallback; role-only matching attaches an old row to
-          // an unrelated current DSH event and makes rewind target the wrong
-          // message.
-          && typeof candidate.content === 'string'
-          && candidate.content === projected[index].content)
-        if (source) { claimedCandidates.add(source); matched.set(index, source) }
-      }
       const visible = projected.map((item, index) => {
         const source = matched.get(index)
         const id = source?.id || item.dshMessageId || item.nodeKey || (item.requestId
@@ -480,7 +469,7 @@ window.__ModuleLoader__.load({
           runtimeSessionId, dshMessageId: item.dshMessageId || source?.dshMessageId || '',
           sessionEventSeq: item.sessionEventSeq,
           ...(item.requestId ? { requestId: item.requestId } : {}),
-          ...(Object.prototype.hasOwnProperty.call(item, 'dshTurn') && item.dshTurn === null ? { dshTurn: null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(item, 'dshTurn') ? { dshTurn: item.dshTurn } : {}),
           ...(item.role === 'assistant' && Number.isSafeInteger(item.dshTurn) ? {
             dshTurn: item.dshTurn,
             renderKey: `dsh-reply-${runtimeSessionId}-${item.dshTurn}`
@@ -528,6 +517,8 @@ window.__ModuleLoader__.load({
         this.listeners = new Set()
         this.detailsSnapshot = { id: '', status: 'idle', details: null, error: '' }
         this.detailsListeners = new Set()
+        this.chatSnapshot = { details: this.detailsSnapshot, stream: null }
+        this.chatListeners = new Set()
         this.modelSelectionSnapshot = { provider: '', model: '' }
         this.modelSelectionListeners = new Set()
         this.detailGeneration = 0
@@ -536,10 +527,16 @@ window.__ModuleLoader__.load({
         this.timelineGeneration = 0
         this.streamSnapshot = { id: '', status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '', sequence: 0, content: '', process: [], error: '' }
         this.streamState = this.streamSnapshot
+        this.chatSnapshot = { details: this.detailsSnapshot, stream: this.streamSnapshot }
         this.streamStateKey = streamSnapshotKey(this.streamState)
         this.streamListeners = new Set()
         this.streamGeneration = 0
         this.streamFrame = undefined
+        // A DSH cancel is asynchronous. Keep the run identity locally so
+        // late Session snapshots cannot reopen the renderer's live row while
+        // the official cancellation is settling.
+        this.cancelledStreamRuns = new Set()
+        this.cancelledStreamConversations = new Set()
         this.preferredSessions = new Map()
         this.selectionWriteQueue = Promise.resolve()
         this.sessionReference = null
@@ -556,6 +553,7 @@ window.__ModuleLoader__.load({
         this.sessionBindingGeneration = 0
         this.activeRequests = new Map()
         this.sessionMutations = new Map()
+        this.detailInvalidationFences = new Set()
         this.generation = 0
         this.disposed = false
         this.changeFeedAbort = null
@@ -567,7 +565,6 @@ window.__ModuleLoader__.load({
         this.displayProjectionResults = new Map()
         this.displayProjectionPromise = null
         this.officialProjectionSignature = null
-        this.officialDiagnosticKey = ''
       }
 
       getSnapshot = () => this.snapshot
@@ -746,6 +743,18 @@ window.__ModuleLoader__.load({
         return () => this.detailsListeners.delete(listener)
       }
 
+      getChatSnapshot = () => this.chatSnapshot
+
+      subscribeChat = listener => {
+        this.chatListeners.add(listener)
+        return () => this.chatListeners.delete(listener)
+      }
+
+      publishChatSnapshot() {
+        this.chatSnapshot = { details: this.detailsSnapshot, stream: this.streamSnapshot }
+        for (const listener of this.chatListeners) listener()
+      }
+
       getTimelineSnapshot = () => this.timelineSnapshot
 
       subscribeTimeline = listener => {
@@ -765,7 +774,7 @@ window.__ModuleLoader__.load({
         for (const listener of this.listeners) listener()
       }
 
-      publishDetails(next, officialProjectionSignature = null) {
+      prepareDetails(next, officialProjectionSignature = null) {
         const request = this.activeRequests.get(next.id)
         if (Number.isSafeInteger(request?.rewindEventSeq) && next.details) {
           // The selected input owns the visible branch while the Host rewinds.
@@ -778,11 +787,59 @@ window.__ModuleLoader__.load({
               : message)
           next = { ...next, details: { ...next.details, messages } }
         }
+        if (request?.retainRewindUser && request.rewindUserMessage && next.details) {
+          const rewindUser = request.rewindUserMessage
+          const messages = Array.isArray(next.details.messages) ? next.details.messages : []
+          const retainedContent = request.replacementMessage != null
+            ? request.replacementMessage
+            : rewindUser.content
+          const rewindEventSeq = Number(rewindUser.sessionEventSeq)
+          const rewindMessageId = rewindUser.dshMessageId || rewindUser.id || ''
+          const replacement = messages.find(message => message.role === 'user' && message.requestId === request.requestId)
+          if (replacement) {
+            next = { ...next, details: { ...next.details, messages: messages.filter(message => message === replacement
+              || !(message.role === 'user' && (message.id === rewindUser.id
+                || (rewindMessageId && message.dshMessageId === rewindMessageId)))) } }
+          }
+          const present = messages.some(message => message.role === 'user'
+            && (message.requestId === request.requestId
+              || (rewindMessageId && (message.dshMessageId === rewindMessageId || message.id === rewindMessageId))))
+          if (!present) {
+            const input = { ...rewindUser, requestId: request.requestId, content: retainedContent, displayContent: retainedContent }
+            const insertAt = messages.findIndex(message => message.id !== 'opening' && message.sequence > rewindEventSeq)
+            const index = insertAt < 0 ? messages.length : insertAt
+            next = { ...next, details: { ...next.details, messages: [...messages.slice(0, index), input, ...messages.slice(index)] } }
+          }
+        }
         next = this.applyDisplayProjection(next)
         this.detailsSnapshot = next
         this.officialProjectionSignature = officialProjectionSignature
+        return next
+      }
+
+      publishDetails(next, officialProjectionSignature = null) {
+        next = this.prepareDetails(next, officialProjectionSignature)
         for (const listener of this.detailsListeners) listener()
+        this.publishChatSnapshot()
         if (next.status === 'ready' && next.details) this.scheduleDisplayProjection(next.id, next.details)
+      }
+
+      // Commit the official DSH projection and the product's live status as one
+      // renderer-visible publication. The transcript remains ElecKoi-owned so
+      // the roleplay presentation can keep its one-line activity row and
+      // final-body marker while DSH remains the source of truth.
+      publishOfficialState(nextDetails, officialProjectionSignature, nextStream) {
+        const details = this.prepareDetails(nextDetails, officialProjectionSignature)
+        const nextKey = streamSnapshotKey(nextStream)
+        this.streamState = nextStream
+        this.streamStateKey = nextKey
+        this.cancelStreamFrame()
+        this.streamSnapshot = this.streamState
+        this.chatSnapshot = { details: this.detailsSnapshot, stream: this.streamSnapshot }
+        for (const listener of this.detailsListeners) listener()
+        for (const listener of this.streamListeners) listener()
+        for (const listener of this.chatListeners) listener()
+        if (details.status === 'ready' && details.details) this.scheduleDisplayProjection(details.id, details.details)
       }
 
       displayProjectionInput(messages) {
@@ -859,18 +916,6 @@ window.__ModuleLoader__.load({
       publishStream(next, publication = 'immediate') {
         const nextKey = streamSnapshotKey(next)
         if (nextKey === this.streamStateKey) return
-        console.info('[ElecKoi][dsh-stream]', {
-          id: next.id,
-          status: next.status,
-          runId: next.runId || '',
-          requestId: next.requestId || '',
-          messageId: next.messageId || '',
-          nodeKey: next.nodeKey || '',
-          renderKey: next.renderKey || '',
-          dshTurn: next.dshTurn,
-          contentLength: String(next.content || '').length,
-          processCount: Array.isArray(next.process) ? next.process.length : 0,
-        })
         this.streamState = next
         this.streamStateKey = nextKey
         if (publication === 'animation-frame' && typeof requestAnimationFrame === 'function') {
@@ -893,6 +938,7 @@ window.__ModuleLoader__.load({
         if (this.streamSnapshot === this.streamState) return
         this.streamSnapshot = this.streamState
         for (const listener of this.streamListeners) listener()
+        this.publishChatSnapshot()
       }
 
       cancelStreamFrame() {
@@ -954,7 +1000,8 @@ window.__ModuleLoader__.load({
             const available = new Set(items.map(item => item.id))
             if (selectedId && this.detailsSnapshot.id === selectedId) {
               if (available.has(selectedId)) void this.refreshDetails().catch(() => {})
-              else this.activate('')
+              else if (!this.sessionMutations.has(selectedId)
+                && !this.detailInvalidationFences.has(selectedId)) this.activate('')
             }
             if (timelineId && this.timelineSnapshot.id === timelineId) {
               if (available.has(timelineId)) void this.refreshTimeline().catch(() => {})
@@ -965,6 +1012,8 @@ window.__ModuleLoader__.load({
         }
         if (change.kind !== 'messages' || change.conversationId !== this.detailsSnapshot.id) return
         if (change.reason === 'deleted' || change.reason === 'regenerated' || change.reason === 'edited') {
+          if (this.sessionMutations.has(change.conversationId)
+            || this.detailInvalidationFences.has(change.conversationId)) return
           this.invalidateDetails(change.conversationId)
         } else {
           void this.refreshDetails().catch(() => {})
@@ -1066,15 +1115,29 @@ window.__ModuleLoader__.load({
 
       async deleteMessagesFrom(conversationId, eventSeq, role) {
         if (!this.sessions || !this.uiConversation) throw new Error('DSH 会话客户端尚未就绪。')
-        const result = await this.mutateSession(conversationId, async () => this.unwrap(
-          await this.remote.eleckoiConversations.deleteMessagesFrom(conversationId, eventSeq, role),
-          '删除消息失败。'
-        ))
-        await this.sessions.refresh()
-        await this.bindOfficialSession(conversationId)
-        await this.refreshDetails()
-        await this.refresh()
-        return { ...result, details: this.detailsSnapshot.details }
+        this.detailInvalidationFences.add(conversationId)
+        if (this.streamSnapshot.id === conversationId) {
+          this.publishStream({
+            ...this.streamSnapshot,
+            status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '',
+            sequence: 0, dshTurn: undefined, renderKey: '', content: '', process: [], error: ''
+          })
+        }
+        try {
+          const result = await this.mutateSession(conversationId, async () => this.unwrap(
+            await this.remote.eleckoiConversations.deleteMessagesFrom(conversationId, eventSeq, role),
+            '删除消息失败。'
+          ))
+          // The reloaded DSH event source replaces the transcript. The product
+          // result contains metadata, not a second authoritative message list.
+          await this.sessions.refresh()
+          await this.bindOfficialSession(conversationId)
+          await this.refreshDetails()
+          await this.refresh()
+          return { ...result, details: this.detailsSnapshot.details }
+        } finally {
+          this.detailInvalidationFences.delete(conversationId)
+        }
       }
 
       acceptMutationDetails(conversationId, details) {
@@ -1314,7 +1377,10 @@ window.__ModuleLoader__.load({
           if (this.sessionTarget) return
           const target = this.uiConversation.binding(binding).target('chat')
           this.sessionTarget = target
-          const publish = () => this.acceptOfficialSession(id, runtimeSessionId, binding.session, target)
+          const publish = () => {
+            if (generation !== this.sessionBindingGeneration || this.sessionReference !== reference || this.sessionTarget !== target) return
+            this.acceptOfficialSession(id, runtimeSessionId, binding.session, target)
+          }
           this.stopSessionTarget = target.subscribe(publish)
           this.stopSessionState = binding.session.subscribe(publish)
           const projections = ['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown', 'eleckoiHistoryStatsAdjustment']
@@ -1377,6 +1443,7 @@ window.__ModuleLoader__.load({
         const chat = target.getSnapshot()
         const details = this.detailsSnapshot.details
         const processByTurn = this.officialProcess(chat)
+        let pendingDetails = null
         if (details) {
           const hasMore = Boolean(this.sessionReference?.binding.eventSource.getSnapshot().hasMore)
           const pendingSubmissions = sessionState.pendingSubmissions || []
@@ -1389,7 +1456,10 @@ window.__ModuleLoader__.load({
               hasMore,
             }
             next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
-            this.publishDetails({ id, status: 'ready', details: next, runtimeSessionId, error: '' }, signature)
+            pendingDetails = {
+              snapshot: { id, status: 'ready', details: next, runtimeSessionId, error: '' },
+              signature,
+            }
           }
         }
         const liveTurn = [...(chat?.timeline?.turns?.values() || [])].findLast(turn => turn.status === 'open')?.turn
@@ -1409,35 +1479,67 @@ window.__ModuleLoader__.load({
           : ''
         const executionError = promptError || sessionState.lastAgentError || sessionState.openError?.message
           || (sessionState.removed ? 'DSH 会话已关闭。' : '')
-        const turnSettled = sameLiveTurn && Number.isSafeInteger(current.dshTurn)
-          && orderedChatNodes(chat).some(node => node.kind === 'turn-tail' && node.data?.turn === current.dshTurn)
-        const officialDiagnosticKey = [
-          id, sessionState.running ? 'running' : 'idle', openTurn ?? '',
-          runningAssistant?.key || '', runningAssistant?.data?.status || '',
-          runningAssistant?.data?.messageId || '', String(projectedReply.content || '').length,
-          processByTurn.get(openTurn)?.length || 0, current.messageId || '',
-          details?.messages?.filter(item => item.role === 'assistant').length || 0,
-        ].join('|')
-        if (officialDiagnosticKey !== this.officialDiagnosticKey) {
-          this.officialDiagnosticKey = officialDiagnosticKey
-          console.info('[ElecKoi][official-projection]', {
-            id, sessionRunning: sessionState.running === true, liveTurn, openTurn,
-            assistantNodeKey: runningAssistant?.key || '',
-            assistantNodeStatus: runningAssistant?.data?.status || '',
-            assistantMessageId: runningAssistant?.data?.messageId || '',
-            assistantContentLength: String(projectedReply.content || '').length,
-            processCount: processByTurn.get(openTurn)?.length || 0,
-            streamMessageId: current.messageId || '',
-            streamNodeKey: current.nodeKey || '',
-            streamRenderKey: current.renderKey || '',
-            detailAssistantCount: details?.messages?.filter(item => item.role === 'assistant').length || 0,
-          })
-        }
-        if (executionError) {
+        const cancellationSettling = this.cancelledStreamConversations.has(id)
+        // DSH publishes the turn-tail as soon as `turn/end` is observed. Its
+        // `closing` assistant can be populated on the following projection
+        // pass, so the presence of the tail alone is not a hand-off point.
+        // Dropping the live row at that boundary made a one-turn chat go
+        // blank for one render before the final assistant node arrived.
+        const turnTail = sameLiveTurn && Number.isSafeInteger(current.dshTurn)
+          ? orderedChatNodes(chat).find(node => node.kind === 'turn-tail' && node.data?.turn === current.dshTurn)
+          : null
+        // The official Session event stream is the authority for why a turn
+        // ended.  An aborted/interrupted turn has no closing assistant node,
+        // so it must not enter the normal delayed-final hand-off path below.
+        // That path is intentionally retained for a normally completed turn
+        // whose final assistant projection arrives one pass later.
+        const endedTurnReason = sameLiveTurn && Number.isSafeInteger(current.dshTurn)
+          ? (this.sessionReference?.binding.eventSource.getSnapshot().entries || [])
+            .filter(entry => entry.type === 'event')
+            .map(entry => entry.event)
+            .findLast(event => event.type === 'turn/end' && event.data?.turn === current.dshTurn)
+            ?.data?.reason?.kind
+          : undefined
+        const interruptedTurn = endedTurnReason === 'aborted' || endedTurnReason === 'interrupted'
+        const pendingFinal = sameLiveTurn && Boolean(pendingDetails?.snapshot?.details?.messages?.some(message =>
+          message.role === 'assistant'
+          && message.dshTurn === current.dshTurn
+          && message.status === 'complete'
+          && Number.isSafeInteger(message.sessionEventSeq)
+          && String(message.content || '').length > 0))
+        const turnSettled = Boolean(turnTail?.data?.closing?.finalNode) || pendingFinal
+        const awaitingFinal = sameLiveTurn && !turnSettled && (
+          projectedReply.started
+          || String(current.content || '').length > 0
+          || (Array.isArray(current.process) && current.process.length > 0)
+        )
+        if (cancellationSettling || interruptedTurn) {
+          if (pendingDetails) this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
+          if (!sessionState.running) this.cancelledStreamConversations.delete(id)
+          if (current.id === id && current.status === 'running') {
+            this.publishStream({
+              ...current,
+              status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '',
+              content: '', process: [], error: ''
+            })
+          }
+        } else if (executionError) {
+          if (pendingDetails) this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
           this.publishStream({ ...current, id, runId: runtimeSessionId, status: 'error', error: executionError })
         } else if (turnSettled) {
-          this.publishStream({ ...current, status: 'idle', error: '' })
+          const nextStream = { ...current, status: 'idle', error: '' }
+          if (pendingDetails) this.publishOfficialState(pendingDetails.snapshot, pendingDetails.signature, nextStream)
+          else this.publishStream(nextStream)
+        } else if (this.cancelledStreamRuns.has(current.runId)
+          && current.id === id && current.status === 'running') {
+          if (pendingDetails) this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
+          this.publishStream({
+            ...current,
+            status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '',
+            content: '', process: [], error: ''
+          })
         } else if (sessionState.running) {
+          if (pendingDetails) this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
           const message = details?.messages?.findLast(item => item.role === 'assistant'
             && item.status === 'streaming' && item.dshTurn === openTurn)
           const process = mergedProcess(message?.process || (sameLiveTurn ? current.process : []), processByTurn.get(openTurn))
@@ -1460,18 +1562,45 @@ window.__ModuleLoader__.load({
             sequence: current.id === id ? current.sequence + 1 : 1,
             content, process, error: ''
           })
+        } else if (!sessionState.running && current.id === id && current.status === 'running' && awaitingFinal) {
+          // Keep the already visible stream row while the official tail is
+          // waiting for its closing assistant. This is still DSH state, not a
+          // renderer placeholder; the next official snapshot atomically
+          // replaces it with the durable row.
+          if (pendingDetails) this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
+          const process = mergedProcess([], processByTurn.get(openTurn))
+          this.publishStream({
+            ...current,
+            status: 'running',
+            content: projectedReply.started ? projectedReply.content : current.content,
+            process,
+            error: '',
+          })
         } else if (!sessionState.running && current.id === id && current.status === 'running') {
+          if (pendingDetails) this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
           this.publishStream({ ...current, status: 'idle', error: '' })
+        } else if (pendingDetails) {
+          this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
         }
       }
 
       async cancelStream(expectedRunId) {
         const current = this.streamState
         if (this.disposed || current.status !== 'running' || !current.runId || current.runId !== expectedRunId) return false
+        this.cancelledStreamRuns.add(current.runId)
+        this.cancelledStreamConversations.add(current.id)
+        const request = this.activeRequests.get(current.id)
+        if (request) request.cancelled = true
         const session = this.sessionReference?.binding.session
-        if (!session) return false
-        const result = await session.cancel()
-        if (!result?.ok) throw new Error(result?.error?.message || '停止生成失败。')
+        this.publishStream({
+          ...current,
+          status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '',
+          content: '', process: [], error: ''
+        })
+        if (session) {
+          const result = await session.cancel()
+          if (!result?.ok) throw new Error(result?.error?.message || '停止生成失败。')
+        }
         return true
       }
 
@@ -1515,10 +1644,27 @@ window.__ModuleLoader__.load({
         return this.runRequest(input, request => this.runOfficialRegeneration(input, request))
       }
 
+      primeRewindRequest(input, request) {
+        if (!Number.isSafeInteger(input?.eventSeq)) return
+        request.rewindEventSeq = input.eventSeq
+        request.rewindUserMessage = this.detailsSnapshot.id === input.conversationId
+          ? this.detailsSnapshot.details?.messages?.find(message => message.role === 'user'
+            && Number(message.sessionEventSeq) === Number(input.eventSeq))
+          : null
+        request.retainRewindUser = Boolean(request.rewindUserMessage)
+        request.replacementMessage = input.replacementMessage
+      }
+
       async runRequest(input, run) {
         if (this.activeRequests.has(input.conversationId)) throw new Error('当前聊天正在生成。')
         const request = { requestId: input.requestId, cancelled: false, session: null }
         this.activeRequests.set(input.conversationId, request)
+        this.cancelledStreamRuns.delete(this.streamState.runId)
+        this.cancelledStreamConversations.delete(input.conversationId)
+        // Seed the rewind guard before the first idle publication. During
+        // regeneration DSH briefly publishes a snapshot without the selected
+        // input while it replaces that turn.
+        this.primeRewindRequest(input, request)
         this.publishStream({
           id: input.conversationId, status: 'idle', runId: '', requestId: input.requestId,
           messageId: '', nodeKey: '', sequence: 0, content: '', process: [], error: ''
@@ -1532,6 +1678,9 @@ window.__ModuleLoader__.load({
           throw error
         } finally {
           if (this.activeRequests.get(input.conversationId) === request) this.activeRequests.delete(input.conversationId)
+          request.rewindEventSeq = undefined
+          request.rewindUserMessage = null
+          request.retainRewindUser = false
           if (request.statsPending && this.detailsSnapshot.id === input.conversationId
             && this.latestStatsSnapshot.id === input.conversationId) {
             this.publishStats(input.conversationId, this.latestStatsSnapshot.stats)
@@ -1615,8 +1764,7 @@ window.__ModuleLoader__.load({
       async runOfficialRegeneration(input, request) {
         if (!Number.isSafeInteger(input.eventSeq)) throw new Error('找不到这条输入对应的 DSH 消息。')
         request.statsPending = this.statsSnapshot.id === input.conversationId && Boolean(this.statsSnapshot.stats)
-        request.rewindEventSeq = input.eventSeq
-        request.replacementMessage = input.replacementMessage
+        this.primeRewindRequest(input, request)
         this.detailGeneration += 1
         this.displayProjectionGeneration += 1
         this.displayProjectionKey = ''
@@ -1634,6 +1782,8 @@ window.__ModuleLoader__.load({
           ))
         } catch (error) {
           request.rewindEventSeq = undefined
+          request.rewindUserMessage = null
+          request.retainRewindUser = false
           await (async () => {
             await this.sessions.refresh()
             await this.bindOfficialSession(input.conversationId)
@@ -1670,7 +1820,20 @@ window.__ModuleLoader__.load({
         const request = this.activeRequests.get(conversationId)
         if (!request || request.requestId !== requestId) return false
         request.cancelled = true
-        if (request.session) this.unwrap(await request.session.cancel(), '停止生成失败。')
+        this.cancelledStreamConversations.add(conversationId)
+        const current = this.streamState
+        if (current.id === conversationId && current.status === 'running' && current.runId) {
+          this.cancelledStreamRuns.add(current.runId)
+          this.publishStream({
+            ...current,
+            status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '',
+            content: '', process: [], error: ''
+          })
+        }
+        if (request.session) {
+          const result = await request.session.cancel()
+          this.unwrap(result, '停止生成失败。')
+        }
         return true
       }
 
@@ -1678,7 +1841,12 @@ window.__ModuleLoader__.load({
         if (this.disposed || !id || id !== this.detailsSnapshot.id) return
         const runtimeSessionId = this.detailsSnapshot.details?.runtimeSessionId || this.detailsSnapshot.runtimeSessionId || ''
         this.detailGeneration += 1
-        this.publishDetails({ id, status: 'loading', details: null, runtimeSessionId, error: '' })
+        // Keep the last coherent projection mounted while the official
+        // Session is being rebound. Publishing `details: null` makes the
+        // renderer unmount the transcript, then mixes the returning DSH rows
+        // with stale React identities (avatars/floors remain while actions
+        // disappear).
+        this.publishDetails({ id, status: 'loading', details: this.detailsSnapshot.details, runtimeSessionId, error: '' })
         void this.refreshDetails().catch(() => {})
       }
 
@@ -1872,6 +2040,7 @@ window.__ModuleLoader__.load({
         this.nativeInputHandler = null
         this.listeners.clear()
         this.detailsListeners.clear()
+        this.chatListeners.clear()
         this.modelSelectionListeners.clear()
         this.timelineListeners.clear()
         this.streamListeners.clear()

@@ -232,7 +232,12 @@ function configureMainWindow(appPaths: Context['appPaths'], appLog: Context['app
     // errors are author-card diagnostics, not failures of the DSH application
     // renderer. Electron forwards both frames through this one WebContents
     // event, so only the main frame belongs in the DSH renderer error stream.
-    if (details.frame && details.frame !== window.webContents.mainFrame) return
+    // Older Electron builds can report the child frame as the main frame on
+    // this event. `about:srcdoc` is the explicit origin used by author cards,
+    // so use it as a second guard to keep card-local errors out of the DSH
+    // renderer error stream.
+    if (details.sourceId === 'about:srcdoc'
+      || (details.frame && details.frame !== window.webContents.mainFrame)) return
     appLog.error({
       message: details.message,
       lineNumber: details.lineNumber,

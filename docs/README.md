@@ -21,6 +21,8 @@
 
 ## 文档维护
 
+- [v0.2.7 发布说明](releases/v0.2.7.md)
+
 新增、改名、归档和同步规则见 [文档维护约定](MAINTENANCE.md)。运行 `pnpm check:docs` 检查本地链接、ADR 编号、标题和索引；接口总表由 `pnpm check:plugin-docs` 单独校验。
 
 ## 公开课题与产品截图

@@ -2,7 +2,7 @@
   --shell-backdrop: var(--dsw-alias-bg-base, #ffffff);
   --rail: var(--dsw-specific-sidebar-fill, #f9fafb);
   --list: var(--dsw-specific-sidebar-fill, #f9fafb);
-  --rail-fg: var(--dsw-alias-label-secondary, #252525);
+  --rail-fg: var(--dsw-alias-label-primary, #252525);
   --chat: var(--dsw-alias-bg-base, #ffffff);
   --rail-divider: var(--dsw-alias-border-l1, rgba(27, 37, 49, 0.08));
   --divider-core: var(--dsw-alias-border-l1, rgba(0, 0, 0, 0.045));

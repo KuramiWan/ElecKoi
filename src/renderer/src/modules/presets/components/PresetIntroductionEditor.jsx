@@ -133,7 +133,7 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
 
   const composer = draft ? <PresetContentComposer draft={draft} formRef={formRef} saving={saving} error={validation || error} onChange={(value) => { setDraft((current) => ({ ...current, value })); setValidation(''); }} onCancel={() => { if (!saving) { finish(); onClearError(); } }} onSave={saveDraft} /> : null;
   return <div className="preset-usage-content">
-    <section aria-label="使用说明">
+    <section className="preset-content-section preset-usage-section" aria-label="使用说明">
       <div className="preset-content-section-heading">
         <h2>使用说明</h2>
         {draft?.kind !== 'usage' ? <button ref={usageEditRef} type="button" className="preset-content-button is-section-action" disabled={saving} onClick={() => openDraft(createUsageDraft(profile))}>编辑</button> : null}
@@ -142,7 +142,7 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
         <p className={`preset-usage-copy${profile.usageInstructions ? '' : ' is-empty'}`}>{profile.usageInstructions || '暂无使用说明'}</p>
       </div>}
     </section>
-    <section className="preset-updates" aria-label="更新记录">
+    <section className="preset-content-section preset-updates" aria-label="更新记录">
       <div className="preset-content-section-heading"><h2>更新记录</h2><button ref={addRef} type="button" className="preset-content-button is-section-action" disabled={saving || Boolean(draft?.isNew)} onClick={() => openDraft(createTimelineDraft())}><Plus size={15} />添加更新</button></div>
       <ol ref={timelineRef} id={timelineId} className="preset-update-list" aria-label="更新时间线，最新记录在前">
         {draft?.kind === 'timeline' && draft.isNew ? <li className="preset-update-step is-editing"><i className="preset-update-node" aria-hidden="true" />{composer}</li> : null}

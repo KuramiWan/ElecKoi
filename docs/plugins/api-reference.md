@@ -65,7 +65,7 @@
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `eleckoiConversations` | 聊天记录服务 | 服务 | 提供 | `call` | `client` | 读取聊天列表、消息、轨迹和当前生成状态。 | `getSnapshot`、`subscribe`、`getDetailsSnapshot`、`subscribeDetails`、`getTimelineSnapshot`、`subscribeTimeline`、`getStreamSnapshot`、`subscribeStream`、`refresh`、`create`、`open`、`pageOlder`、`openTimeline`、`closeTimeline`、`uploadFile`、`prepareNativeInput`、`send`、`regenerate`、`cancelRequest`、`readSelection`、`saveSelection`、`readModelSelection`、`readTrajectory`、`exportArchive`、`importArchive`、`revealFile`、`selectModel`、`selectOpening`、`updateOpening`、`rememberSession`、`preferredSession`、`forgetSession` |
+| `eleckoiConversations` | 聊天记录服务 | 服务 | 提供 | `call` | `client` | 读取聊天列表、消息、轨迹和当前生成状态。 | `getSnapshot`、`subscribe`、`getDetailsSnapshot`、`subscribeDetails`、`getChatSnapshot`、`subscribeChat`、`getTimelineSnapshot`、`subscribeTimeline`、`getStreamSnapshot`、`subscribeStream`、`refresh`、`create`、`open`、`pageOlder`、`openTimeline`、`closeTimeline`、`uploadFile`、`prepareNativeInput`、`send`、`regenerate`、`cancelRequest`、`readSelection`、`saveSelection`、`readModelSelection`、`readTrajectory`、`exportArchive`、`importArchive`、`revealFile`、`selectModel`、`selectOpening`、`updateOpening`、`rememberSession`、`preferredSession`、`forgetSession` |
 | `eleckoi.conversation.list` | 聊天列表 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换聊天列表。 | — |
 
 ## `@eleckoi/dsh-client-creator-studio`

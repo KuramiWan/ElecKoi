@@ -8,7 +8,7 @@
 - 数据库文件：Electron `userData/eleckoi-common.sqlite3`，路径由桌面壳作为 Host 启动参数传入。
 - SQLite 打开、迁移、恢复和所有 Repository 写入均位于 `packages/dsh-product-data/src`。Electron Main、Client 和 Renderer 不打开数据库。
 - 公共 SQL：`resources/database/eleckoi-common-schema-v1.sql`。
-- 当前 `PRAGMA user_version`：`6`。
+- 当前 `PRAGMA user_version`：`7`。
 - 当前结构：43 张业务表、2 个视图；数据库物理结构版本只使用 SQLite `PRAGMA user_version`。
 
 `pnpm db:generate` 从固定 SQL 生成内嵌迁移 SQL与 Drizzle 查询映射；`pnpm check:database-schema` 校验生成内容。SQL 是公共结构权威，Drizzle 映射不反向生成迁移。
@@ -44,8 +44,9 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 4. v4：DSH Session/turn 绑定。
 5. v5：删除废弃消息高度字段。
 6. v6：删除已由 DSH 正式存储接管的模型与搜索配置表，并删除不再使用的 `generation_attempts`、`cleanup_operations`、`desktop_preferences` 与旧结构登记表 `desktop_schema`；旧设置不迁移，当前版本只以 `PRAGMA user_version` 标识。
+7. v7：原子移除当前预设及其历史版本中的子 Agent 模型选择字段，并更新预设工具配置版本；子 Agent 模型授权只由 DSH Host 设置负责。
 
-v6 尚未正式发布。较早开发构建已经创建 v6 时，启动器在同一 `user_version` 内原子检查并整理旧 v6 结构，保留仍有效的角色、预设、设定、变量、正则与聊天索引数据，不要求清库。正式发布后，任何结构变化必须提升版本并追加连续迁移。
+较早开发构建创建的 v6 数据库在升级至 v7 前，先原子整理已废弃的执行、偏好与结构登记表，再执行 v6 → v7 迁移。仍有效的角色、预设、设定、变量与聊天索引数据保留，不要求清库。后续结构变化必须提升版本并追加连续迁移。
 
 ## 删除与文件
 
@@ -57,7 +58,7 @@ v6 尚未正式发布。较早开发构建已经创建 v6 时，启动器在同�
 ## 验证
 
 - `pnpm check:database-schema`：43 张公共表、2 个视图与生成文件一致。
-- `pnpm test`：覆盖 v1 至 v6 迁移、开发 v6 整理、外键、重启持久化、角色与媒体、设定、变量、正则、预设、聊天索引和 Remote 写入。
-- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 43 张业务表、2 个视图、`user_version = 6`、外键和完整性。
+- `pnpm test`：覆盖 v1 至 v7 迁移、开发 v6 整理、外键、重启持久化、角色与媒体、设定、变量、正则、预设、聊天索引和 Remote 写入。
+- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 43 张业务表、2 个视图、`user_version = 7`、外键和完整性。
 
 架构决策见 [ADR 0018](adr/0018-dsh-host-owns-product-data.md)。

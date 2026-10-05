@@ -1,17 +1,43 @@
 import { useRef, useState } from "react";
+import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
 
-function transientMessage(message) {
-  return message?.pending
-    || String(message?.id || "").startsWith("local-")
-    || String(message?.id || "").startsWith("pending-")
-    || String(message?.id || "").startsWith("regen-");
+function sameMessageIdentity(current, incoming) {
+  if (!current || !incoming || current.role !== incoming.role) return false;
+  // Message ids such as "opening" are local to a conversation. Reuse of
+  // display state, row keys and process items must stay inside that owner.
+  if (current.conversationId !== incoming.conversationId) return false;
+  if (current.runtimeSessionId && incoming.runtimeSessionId
+    && current.runtimeSessionId !== incoming.runtimeSessionId) return false;
+  if (current.id && current.id === incoming.id) return true;
+  if (current.role === 'user' && current.requestId && current.requestId === incoming.requestId) return true;
+  if (!current.runtimeSessionId || current.runtimeSessionId !== incoming.runtimeSessionId) return false;
+  return Boolean((current.dshMessageId && current.dshMessageId === incoming.dshMessageId)
+    || (current.renderKey && current.renderKey === incoming.renderKey));
 }
 
-function sameOptimisticUserMessage(current, incoming) {
-  if (current?.role !== "user" || incoming?.role !== "user") return false;
-  if (String(current.content || "") !== String(incoming.content || "")) return false;
-  return (current.inputImageAttachments || []).length === (incoming.inputImageAttachments || []).length
-    && (current.inputFileAttachments || []).length === (incoming.inputFileAttachments || []).length;
+function preserveSettledDisplayDuringRewind(previous, incoming) {
+  if (previous?.role !== 'assistant' || incoming?.role !== 'assistant') return {};
+  // This helper is only called after reconciliation matched the same durable
+  // message id. The transient DSH projection can normalize the source text
+  // (and therefore change content/display lengths) while keeping that id.
+  // Matching on content here would let that intermediate snapshot replace a
+  // settled rich display with its raw fallback for one render.
+  if (!previous.id || String(previous.id) !== String(incoming.id)) return {};
+  const previousDisplay = previous.displayContent;
+  const incomingDisplay = incoming.displayContent;
+  // During regeneration DSH can briefly publish an already-settled assistant
+  // step without its projected frontend/regex display. Keep the last rich
+  // projection until the durable snapshot catches up; otherwise the card is
+  // replaced by raw source for one render.
+  if (typeof previousDisplay !== 'string' || previousDisplay === previous.content) return {};
+  if (!detectRichMessagePresentation(previousDisplay, false)?.parts?.some((part) => part.kind === 'rich')) return {};
+  if (typeof incomingDisplay !== 'string') return {};
+  if (detectRichMessagePresentation(incomingDisplay, false)?.parts?.some((part) => part.kind === 'rich')) return {};
+  if (incomingDisplay.length >= previousDisplay.length) return {};
+  return {
+    displayContent: previousDisplay,
+    ...(incoming.pending ? { pending: previous.pending, status: previous.status } : {}),
+  };
 }
 
 function preserveAttachmentRenderKeys(current = [], incoming = []) {
@@ -64,29 +90,13 @@ function longerText(left, right) {
 export function preserveMessageRenderKeys(currentMessages = [], incomingMessages = [], pendingMessage = null) {
   const current = pendingMessage ? [...currentMessages, pendingMessage] : currentMessages;
   const matches = new Map();
-  const claimedIncoming = new Set();
 
   incomingMessages.forEach((message, index) => {
-    const existing = current.find((candidate) => candidate?.id === message?.id);
+    const existing = current.find((candidate) => ![...matches.values()].includes(candidate)
+      && sameMessageIdentity(candidate, message));
     if (!existing) return;
     matches.set(index, existing);
-    claimedIncoming.add(index);
   });
-
-  for (const candidate of current.filter(transientMessage)) {
-    if ([...matches.values()].includes(candidate)) continue;
-    for (let index = incomingMessages.length - 1; index >= 0; index -= 1) {
-      if (claimedIncoming.has(index)) continue;
-      const incoming = incomingMessages[index];
-      const compatible = candidate.role === "user"
-        ? sameOptimisticUserMessage(candidate, incoming)
-        : candidate.role === "assistant" && incoming?.role === "assistant";
-      if (!compatible) continue;
-      matches.set(index, candidate);
-      claimedIncoming.add(index);
-      break;
-    }
-  }
 
   return incomingMessages.map((message, index) => {
     const previous = matches.get(index);
@@ -95,6 +105,7 @@ export function preserveMessageRenderKeys(currentMessages = [], incomingMessages
     return {
       ...message,
       ...(renderKey ? { renderKey } : {}),
+      ...preserveSettledDisplayDuringRewind(previous, message),
       process: mergeProcessItems(previous.process || [], message.process || []),
       inputImageAttachments: preserveAttachmentRenderKeys(
         previous.inputImageAttachments || [],
@@ -104,8 +115,28 @@ export function preserveMessageRenderKeys(currentMessages = [], incomingMessages
   });
 }
 
+export function preserveRewindUser(currentMessages, incomingMessages, rewindUser) {
+  if (!rewindUser || rewindUser.role !== "user") return incomingMessages;
+  // A regeneration replaces the selected input with the exact request's
+  // pending/admitted input. Equal text in other turns is never an identity.
+  const replacement = rewindUser.requestId && incomingMessages.find(message => message.role === 'user'
+    && message.requestId === rewindUser.requestId);
+  if (replacement) return incomingMessages.filter(message => message === replacement || message.id !== rewindUser.id);
+  if (incomingMessages.some(message => sameMessageIdentity(rewindUser, message))) return incomingMessages;
+  const previous = currentMessages.find(message => message.id === rewindUser.id);
+  if (!previous) return incomingMessages;
+  const previousIndex = currentMessages.indexOf(previous);
+  const insertAt = Math.min(Math.max(previousIndex, 0), incomingMessages.length);
+  return [
+    ...incomingMessages.slice(0, insertAt),
+    { ...previous, ...rewindUser },
+    ...incomingMessages.slice(insertAt),
+  ];
+}
+
 export function useConversationMessages() {
   const [messages, setMessages] = useState([]);
+  const rewindUserRef = useRef(null);
   const scrollRef = useRef(null);
   const [historyPage, setHistoryPage] = useState({ hasMore: false, beforeSequence: null });
   const [scrollRequest, setScrollRequest] = useState({ revision: 0, behavior: "auto" });
@@ -116,7 +147,13 @@ export function useConversationMessages() {
   }
 
   function setMessagesWithScroll(nextMessages, behavior = null, page = {}) {
-    setMessages(nextMessages);
+    // Keep the mounted row identity while an optimistic/streaming assistant
+    // message is replaced by the durable DSH message at turn completion.
+    // Empty arrays are intentional clears (session switch/reset) and must not
+    // retain the previous conversation.
+    setMessages((current) => nextMessages.length
+      ? preserveMessageRenderKeys(current, nextMessages)
+      : nextMessages);
     setHistoryPage({
       hasMore: Boolean(page.hasMore),
       beforeSequence: page.beforeSequence ?? null,
@@ -125,11 +162,19 @@ export function useConversationMessages() {
   }
 
   function reconcileMessages(nextMessages, page = {}) {
-    setMessages((current) => preserveMessageRenderKeys(current, nextMessages));
+    setMessages((current) => {
+      const merged = preserveMessageRenderKeys(current, nextMessages);
+      const rewound = preserveRewindUser(current, merged, page.preserveRewindUser || rewindUserRef.current);
+      return preserveRewindUser(current, rewound, page.preservePendingUser);
+    });
     setHistoryPage({
       hasMore: Boolean(page.hasMore),
       beforeSequence: page.beforeSequence ?? null,
     });
+  }
+
+  function setRewindUser(message) {
+    rewindUserRef.current = message || null;
   }
 
   function prependMessages(olderMessages, page = {}) {
@@ -148,6 +193,7 @@ export function useConversationMessages() {
     messages,
     displayedMessages,
     setMessages,
+    setRewindUser,
     setMessagesWithScroll,
     reconcileMessages,
     prependMessages,

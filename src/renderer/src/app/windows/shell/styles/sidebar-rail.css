@@ -1,4 +1,7 @@
 .qq-rail {
+  --rail-icon-stroke: 1.4;
+  --rail-hover-bg: color-mix(in srgb, var(--rail-fg) 6%, var(--rail));
+  --rail-pressed-bg: color-mix(in srgb, var(--rail-fg) 10%, var(--rail));
   position: relative;
   display: flex;
   flex-direction: column;
@@ -123,16 +126,22 @@
   transition: background-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
 }
 
-.rail-settings-trigger:hover {
-  background: var(--control-bg);
+.rail-settings-trigger:not(.active):hover,
+.rail-settings-trigger:not(.active):focus-visible {
+  background: var(--rail-hover-bg);
 }
 
 .rail-settings-trigger.active {
+  background: transparent;
   color: var(--blue);
 }
 
 .rail-settings-trigger:active {
-  transform: scale(0.94);
+  transform: scale(0.96);
+}
+
+.rail-settings-trigger:not(.active):active {
+  background: var(--rail-pressed-bg);
 }
 
 .rail-settings-trigger svg {
@@ -141,6 +150,8 @@
 }
 
 .rail-nav-button {
+  --rail-icon-active-fg: var(--blue);
+  --rail-icon-cutout: var(--on-accent);
   display: grid;
   place-items: center;
   position: relative;
@@ -149,20 +160,25 @@
   border-radius: 12px;
   color: var(--rail-fg);
   overflow: hidden;
-  transition: background 0.18s ease, transform 0.16s ease;
+  transition: background-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
 }
 
-.rail-nav-button:hover {
-  background: transparent;
+.rail-nav-button:not(.active):hover,
+.rail-nav-button:not(.active):focus-visible {
+  background: var(--rail-hover-bg);
 }
 
 .rail-nav-button.active {
   background: transparent;
-  color: var(--blue);
+  color: var(--rail-icon-active-fg);
 }
 
 .rail-nav-button:active {
-  transform: scale(0.92);
+  transform: scale(0.96);
+}
+
+.rail-nav-button:not(.active):active {
+  background: var(--rail-pressed-bg);
 }
 
 .rail-icon-layer {
@@ -174,8 +190,8 @@
 
 .rail-icon-layer.base {
   color: var(--rail-fg);
-  opacity: 0.96;
-  transition: opacity 280ms ease;
+  opacity: 1;
+  transition: opacity 160ms ease;
 }
 
 .rail-nav-button.active .rail-icon-layer.base {
@@ -183,20 +199,17 @@
 }
 
 .rail-icon-layer.active-fill {
-  color: var(--blue);
+  color: var(--rail-icon-active-fg);
   opacity: 0;
-  transform: scale(0.94);
-  transition: opacity 280ms ease, transform 280ms ease;
+  transition: opacity 160ms ease;
 }
 
 .rail-nav-button.active .rail-icon-layer.active-fill {
   opacity: 1;
-  transform: scale(1);
 }
 
 .rail-nav-button:not(.active) .rail-icon-layer.active-fill {
   opacity: 0;
-  transform: scale(0.94);
 }
 
 .rail-nav-button.is-product-icon svg {
@@ -204,7 +217,7 @@
   height: 25px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: var(--rail-icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -218,7 +231,7 @@
 .rail-nav-button .plugin-nav-icon {
   width: 25px;
   height: 25px;
-  stroke-width: 1.2;
+  stroke-width: calc(var(--rail-icon-stroke) * 2 / 3);
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: none;
@@ -246,16 +259,12 @@
 }
 
 .rail-icon-layer.active-fill .nav-cutout {
-  fill: #fff;
+  fill: var(--rail-icon-cutout);
   opacity: 1;
 }
 
 .rail-icon-layer.active-fill .model-nav-cube .model-cube-inner {
-  stroke: #fff;
-}
-
-.rail-nav-button .model-nav-cube .model-cube-inner {
-  stroke-width: 1.65;
+  stroke: var(--rail-icon-cutout);
 }
 
 @media (prefers-reduced-motion: reduce) {

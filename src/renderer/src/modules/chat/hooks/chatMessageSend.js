@@ -17,13 +17,6 @@ export async function runChatMessageSend(options) {
   const text = input.trim();
   const draftImages = [...inputImagesRef.current];
   const draftFiles = [...inputFilesRef.current];
-  console.info("[ElecKoi][chat-send] product send entry", {
-    sessionId,
-    textLength: text.length,
-    imageCount: draftImages.length,
-    fileCount: draftFiles.length,
-    hasConversationModel: Boolean(conversationModel),
-  });
   if ((!text && !draftImages.length && !draftFiles.length) || isSending) {
     return { kind: "error", text: isSending ? "当前聊天正在生成。" : "请输入消息。" };
   }
@@ -72,9 +65,12 @@ export async function runChatMessageSend(options) {
     activeRequest.conversationId = targetSessionId;
 
     setInput("");
+    const requestId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    activeRequest.requestId = requestId;
     const createdAt = new Date().toISOString();
     const userMessage = {
       id: `local-${Date.now()}`, conversationId: targetSessionId, role: "user", content: text,
+      requestId,
       variableStateJson: '{}', created_at: createdAt,
       inputImageAttachments: draftImages.map((image, index) => ({
         attachmentId: image.localId, mediaType: encodedImages[index].mediaType, bytes: image.bytes, name: image.name,
@@ -93,8 +89,7 @@ export async function runChatMessageSend(options) {
       session_id: targetSessionId,
     };
 
-    const requestId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    activeRequest.requestId = requestId;
+    activeRequest.pendingUserMessage = userMessage;
     throwIfAborted(controller.signal);
     setMessages?.((items) => [...items, userMessage]);
     requestScrollToEnd("auto");

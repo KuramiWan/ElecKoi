@@ -1965,15 +1965,19 @@
 
 .preset-profile-hero {
   --preset-hero-avatar-size: 88px;
+  box-sizing: border-box;
   display: grid;
-  grid-template-columns: var(--preset-hero-avatar-size) minmax(0, 720px) auto;
+  grid-template-columns: var(--preset-hero-avatar-size) minmax(0, 1fr);
+  width: min(960px, calc(100% - 68px));
   min-width: 0;
   min-height: 0;
   align-items: start;
-  justify-content: start;
   gap: 24px;
-  padding: 20px 34px;
-  background: var(--chat);
+  margin: 16px 0 12px 34px;
+  padding: 16px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--dsw-radius-xl, 16px);
+  background: var(--surface-raised);
 }
 
 .preset-profile-hero:not(:has(.preset-profile-hero-tags)) {
@@ -1997,9 +2001,27 @@
   gap: 8px;
 }
 
+.preset-profile-hero-heading {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.preset-profile-hero-actions {
+  display: flex;
+  min-width: 120px;
+  min-height: 32px;
+  flex: none;
+  align-items: center;
+}
+
 .preset-profile-hero-title {
   display: flex;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 8px;
 }
@@ -2030,7 +2052,11 @@
 .preset-profile-hero-title button:focus-visible {
   color: var(--text);
   background: var(--control-bg);
-  outline: 0;
+}
+
+.preset-profile-hero button:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--blue));
+  outline-offset: 3px;
 }
 
 .preset-profile-hero-meta {
@@ -2041,7 +2067,7 @@
   color: var(--muted);
   font-size: 13px;
   line-height: 20px;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .preset-profile-hero-meta > span:first-child {
@@ -2073,9 +2099,6 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  align-self: start;
-  justify-self: end;
-  margin-top: 1px;
   padding: 0 12px;
   color: var(--blue);
   border: 1px solid color-mix(in srgb, var(--blue) 24%, var(--line));
@@ -2089,18 +2112,22 @@
 .preset-profile-use:focus-visible {
   border-color: color-mix(in srgb, var(--blue) 42%, var(--line));
   background: color-mix(in srgb, var(--blue) 13%, var(--surface-raised));
-  outline: 0;
+}
+
+.preset-profile-use:active {
+  background: color-mix(in srgb, var(--blue) 18%, var(--surface-raised));
 }
 
 .preset-profile-active {
+  box-sizing: border-box;
   display: inline-flex;
   height: 32px;
   align-items: center;
   gap: 6px;
-  align-self: start;
-  justify-self: end;
-  margin-top: 1px;
   padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--blue) 16%, var(--line));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--blue) 8%, var(--surface-raised));
   color: var(--blue);
   font-size: 12px;
   font-weight: 550;
@@ -2108,9 +2135,10 @@
 
 @media (max-width: 900px) {
   .preset-profile-hero {
-    grid-template-columns: var(--preset-hero-avatar-size) minmax(0, 1fr) auto;
+    width: calc(100% - 48px);
     gap: 20px;
-    padding: 16px 24px;
+    margin: 16px 0 12px 24px;
+    padding: 16px 20px;
   }
 }
 

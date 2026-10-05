@@ -370,14 +370,6 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-:root[data-theme="dark"] .rail-nav-button .nav-cutout {
-  fill: var(--rail);
-}
-
-:root[data-theme="dark"] .rail-icon-layer.active-fill .model-nav-cube .model-cube-inner {
-  stroke: var(--rail);
-}
-
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme="dark"] * {
     transition-duration: 0.01ms !important;

@@ -7,6 +7,114 @@ import { useConversationMessages } from '../src/renderer/src/modules/chat/hooks/
 import { MessageBubble } from './helpers/officialMarkdown.jsx'
 
 describe('DSH chat live rendering', () => {
+  it.each(['delete-pair/send', 'delete-ai/regenerate'])('keeps history, input and completed reply visible after deletion (%s)', async scenario => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const id = 'chat-delete-cycle'
+    const runtimeSessionId = 'session-delete-cycle'
+    const conversation = { id, title: '合成角色', metadata: { characterId: 'synthetic-character' } }
+    const message = (id, role, content, seq, requestId = '') => ({ id, role, content,
+      runtimeSessionId, sessionEventSeq: seq, sequence: seq, status: 'complete', requestId,
+      dshTurn: role === 'user' ? seq + 3 : seq,
+      ...(role === 'assistant' ? { renderKey: `dsh-reply-${runtimeSessionId}-${seq}` } : {}) })
+    const prefix = [message('prefix-input', 'user', '相同输入', 2, 'prefix'),
+      message('prefix-reply', 'assistant', '保留正文', 5)]
+    const deletedUser = message('deleted-input', 'user', '相同输入', 9, 'deleted')
+    const deletedReply = message('deleted-reply', 'assistant', '被删除正文', 12)
+    const makeDetails = messages => ({ conversation, metadata: conversation.metadata,
+      runtimeSessionId, messages, hasMore: false, beforeSequence: 2 })
+    let snapshot = { details: { id, status: 'ready', details: makeDetails([...prefix, deletedUser, deletedReply]) },
+      stream: { id, status: 'idle', process: [], content: '' } }
+    const listeners = new Set()
+    const publish = (messages, stream = snapshot.stream) => {
+      snapshot = { details: { id, status: 'ready', details: makeDetails(messages) }, stream }
+      for (const listener of listeners) listener()
+    }
+    let finish, request
+    const pair = scenario.startsWith('delete-pair')
+    const start = vi.fn(input => {
+      request = input
+      if (!pair) publish([...prefix, snapshot.details.details.messages.find(item => item.role === 'user' && item.sequence === 9)],
+        { id, status: 'idle', content: '', process: [] })
+      return new Promise(resolve => { finish = resolve })
+    })
+    const model = {
+      getSnapshot: () => catalog, subscribe: () => () => {},
+      getDetailsSnapshot: () => snapshot.details,
+      getChatSnapshot: () => snapshot,
+      subscribeChat: listener => { listeners.add(listener); return () => listeners.delete(listener) },
+      readModelSelection: async () => ({ provider: 'test-provider', model: 'test-model' }),
+      refresh: async () => catalog.items, open: async () => snapshot.details.details,
+      send: start, regenerate: start, invalidateDetails: vi.fn(),
+      deleteMessagesFrom: vi.fn(async (_chatId, seq, role) => {
+        expect(seq).toBe(pair ? 9 : 12)
+        expect(role).toBe(pair ? 'user' : 'assistant')
+        // Idle Session state can retain the retired node. It must never
+        // synthesize an assistant row after the transcript replacement.
+        publish(pair ? prefix : [...prefix, deletedUser], { id, status: 'idle', runId: runtimeSessionId,
+          messageId: deletedReply.id, renderKey: deletedReply.renderKey, content: deletedReply.content, process: [] })
+        return { details: snapshot.details.details, deletedMessageCount: pair ? 2 : 1 }
+      }),
+    }
+    const catalog = { status: 'ready', items: [conversation], error: '' }
+    const props = { conversations: model, characters: [],
+      modelConfigs: [{ id: 'test-provider', model: 'test-model' }],
+      setStatus: vi.fn(), setActiveSectionState: vi.fn(), notify: vi.fn() }
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    let chat
+    function Probe() {
+      chat = useChatSessions(props)
+      return React.createElement('div', null, chat.messages.map(item =>
+        React.createElement('p', { key: item.renderKey || item.id, 'data-role': item.role }, item.content)))
+    }
+    const contents = () => [...container.querySelectorAll('p')].map(node => node.textContent)
+    try {
+      await act(async () => root.render(React.createElement(Probe)))
+      await act(async () => { expect(await chat.deleteMessagesFrom(pair ? deletedUser.id : deletedReply.id)).toBe(true) })
+      expect(contents()).toEqual(pair ? ['相同输入', '保留正文'] : ['相同输入', '保留正文', '相同输入'])
+      const afterDelete = snapshot.details.details.messages
+      await act(async () => publish(afterDelete, { ...snapshot.stream, status: 'running' }))
+      expect(contents()).toEqual(afterDelete.map(item => item.content))
+      await act(async () => publish(afterDelete, { ...snapshot.stream, status: 'idle' }))
+      for (let round = 0; round < 2; round++) {
+        let running
+        const before = pair ? snapshot.details.details.messages : prefix
+        if (pair) await act(async () => chat.setInput('相同输入'))
+        await act(async () => {
+          running = pair ? chat.sendMessage({ preventDefault() {} })
+            : chat.regenerateReply({ targetMessageId: chat.messages.at(-1).id })
+        })
+        expect(request.requestId).toBeTruthy()
+        const expectedInput = [...before.map(item => item.content), '相同输入']
+        expect(contents()).toEqual(expectedInput)
+        await act(async () => publish(before, { id, status: 'idle', content: '', process: [] }))
+        expect(contents()).toEqual(expectedInput)
+        const user = message(`input-${round}`, 'user', '相同输入', pair ? 15 + round * 10 : 9, request.requestId)
+        const reply = message(`reply-${round}`, 'assistant', '新正文', user.sequence + 3)
+        const live = { id, status: 'running', runId: runtimeSessionId, messageId: `live-${round}`,
+          renderKey: reply.renderKey, content: '新正文', process: [] }
+        await act(async () => publish([...before, user], { ...live, content: '', messageId: '' }))
+        expect(contents()).toEqual(expectedInput)
+        await act(async () => publish([...before, user, { ...reply, id: live.messageId, status: 'streaming' }], live))
+        expect(contents()).toEqual([...expectedInput, '新正文'])
+        await act(async () => {
+          publish([...before, user, reply], { ...live, status: 'idle' })
+          finish({ details: snapshot.details.details, cancelled: false })
+          await running
+        })
+        expect(contents()).toEqual([...expectedInput, '新正文'])
+        expect(chat.isSending).toBe(false)
+        expect(chat.sessionId).toBe(id)
+        expect(chat.runtimeSessionId).toBe(runtimeSessionId)
+      }
+    } finally {
+      await act(async () => root.unmount())
+      container.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('replaces metadata rows and revoked replies with the complete DSH transcript, including older pages', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const container = document.createElement('div')
@@ -65,8 +173,8 @@ describe('DSH chat live rendering', () => {
       conversationId: id, runtimeSessionId: 'session-1', sessionEventSeq: seq, sequence: seq,
       status: options.status || 'complete',
       ...(options.process ? { process: options.process } : {}), createdAt: '',
-      ...(role === 'user' ? { dshTurn: null } : {}),
-      ...(role === 'assistant' ? { renderKey: 'dsh-reply-session-1-1' } : {}) })
+      ...(role === 'user' ? { dshTurn: 1, requestId: model.send.mock.calls.at(-1)?.[0].requestId } : {}),
+      ...(role === 'assistant' ? { dshTurn: 1, renderKey: 'dsh-reply-session-1-1' } : {}) })
     let catalog = { status: 'ready', items: [conversation], error: '' }
     let details = { id, status: 'ready', details: makeDetails([]), error: '' }
     let stream = { id, status: 'idle', content: '', process: [] }
@@ -151,9 +259,9 @@ describe('DSH chat live rendering', () => {
       await act(async () => {
         emitDetails([makeMessage('user-1', 'user', '读取文件', 1), makeMessage('assistant-1', 'assistant', '读取完成', 4)])
       })
-      // The official transcript may settle before the stream publishes its
-      // terminal state. Keep the stable live row until that handoff completes.
-      expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '正在读取'])
+      // The transcript is authoritative even if the control state is delayed.
+      // A stale stream must not overwrite the settled body.
+      expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '读取完成'])
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)
       await act(async () => {
         finishSend({ details: details.details, cancelled: false })
@@ -168,14 +276,14 @@ describe('DSH chat live rendering', () => {
       await act(async () => { regenerating = chat.regenerateReply({ targetMessageId: 'assistant-1' }) })
       expect(model.regenerate).toHaveBeenCalledWith(expect.objectContaining({ conversationId: id, eventSeq: 1 }))
       await act(async () => {
-        emitDetails([makeMessage('user-2', 'user', '读取文件', 1)])
+        emitDetails([{ ...makeMessage('user-2', 'user', '读取文件', 1), requestId: model.regenerate.mock.calls.at(-1)[0].requestId }])
         emitStream('', 'running', [reasoning])
       })
       expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在思考')
       await act(async () => emitStream('重新读取中', 'running', [reasoning]))
       expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '重新读取中'])
       await act(async () => {
-        emitDetails([makeMessage('user-2', 'user', '读取文件', 1), makeMessage('assistant-2', 'assistant', '重新读取完成', 4)])
+        emitDetails([{ ...makeMessage('user-2', 'user', '读取文件', 1), requestId: model.regenerate.mock.calls.at(-1)[0].requestId }, makeMessage('assistant-2', 'assistant', '重新读取完成', 4)])
         emitStream('', 'idle')
         finishRegenerate({ details: details.details, cancelled: false })
         await regenerating
@@ -223,6 +331,7 @@ describe('DSH chat live rendering', () => {
     const id = 'chat-stop-send'
     const conversation = { id, title: '测试角色', metadata: { characterId: 'character-1' } }
     const makeMessage = (messageId, role, content, seq) => ({ id: messageId, role, content,
+      ...(role === 'user' ? { requestId: requests[messageId === 'user-1' ? 0 : 1]?.input.requestId } : {}),
       conversationId: id, sessionEventSeq: seq, sequence: seq, status: 'complete', createdAt: '' })
     const makeDetails = messages => ({ conversation, metadata: conversation.metadata,
       runtimeSessionId: 'session-stop-send', messages, hasMore: false, beforeSequence: null })

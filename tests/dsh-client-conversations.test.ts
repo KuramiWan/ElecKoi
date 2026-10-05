@@ -367,6 +367,167 @@ describe('DSH ElecKoi conversation client model', () => {
     } finally { cleanup() }
   })
 
+  it.each(['delete-pair/send', 'delete-ai/send', 'delete-ai/regenerate'])('keeps the rewritten Session authoritative through the next complete request (%s)', async (scenario) => {
+    let registration: any, catalog: any
+    let cleanup = () => {}
+    const changes = conversationChangeFeed()
+    // Product details deliberately have no transcript rows. DSH is the only
+    // source of both historical and newly generated message bodies.
+    const details = { conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', messages: [], hasMore: false }
+    const user = (seq: number, requestId: string) => ({ kind: 'user', anchorSeq: seq, data: {
+      seq, time: seq, messageId: `input-${requestId}`, source: { kind: 'user', rpcId: requestId },
+      content: [{ type: 'text', text: '重复的合成输入' }],
+    } })
+    const reply = (turn: number, seq: number, text: string) => ({ kind: 'turn-tail', anchorSeq: seq + 1, data: {
+      turn, seq: seq + 1, closing: { blocks: [{ kind: 'text', text: `<FINAL>${text}</FINAL>` }],
+        finalNode: { messageId: `reply-${turn}-${seq}`, seq, time: seq } },
+    } })
+    const prefix = new Map<string, any>([['user-2', user(2, 'prefix')], ['tail-1', reply(1, 5, '保留的回复')]])
+    let nodes = new Map([...prefix, ['user-9', user(9, 'deleted')], ['tail-2', reply(2, 12, '要删除的回复')]])
+    let turns = new Map<number, any>([[1, { turn: 1, status: 'closed' }], [2, { turn: 2, status: 'closed' }]])
+    let chat: any = { order: [...nodes.keys()], nodes, timeline: { turns } }
+    let events: any[] = []
+    let running = false, removed = false
+    let pendingSubmissions: any[] = []
+    const targetListeners = new Set<() => void>()
+    const sessionListeners = new Set<() => void>()
+    const subscribe = (listeners: Set<() => void>) => (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    }
+    const publish = () => {
+      chat = { order: [...nodes.keys()], nodes, timeline: { turns } }
+      for (const listener of targetListeners) listener()
+      for (const listener of sessionListeners) listener()
+    }
+    const retire = () => {
+      removed = true
+      for (const listener of sessionListeners) listener()
+    }
+    let activeRequestId = ''
+    const begin = (requestId: string) => {
+      activeRequestId = requestId
+      running = true
+      pendingSubmissions = [{ requestId, placement: 'transcript', time: 9, text: '重复的合成输入' }]
+      publish()
+    }
+    const session = {
+      getSnapshot: () => ({ running, removed, pendingSubmissions }), subscribe: subscribe(sessionListeners),
+      prompt: vi.fn(async (_content: unknown, _mode: unknown, _signal: unknown, requestId: string) => {
+        begin(requestId)
+        return { ok: true, value: { accepted: true } }
+      }),
+    }
+    const binding = { session, eventSource: {
+      getSnapshot: () => ({ entries: events, hasMore: false }), subscribe: subscribe(sessionListeners),
+    } }
+    const target = { getSnapshot: () => chat, subscribe: subscribe(targetListeners) }
+    const reloadHistory = vi.fn(async () => { removed = false; running = false; publish() })
+    runInNewContext(source, { setTimeout, clearTimeout, Date, AbortController,
+      window: { __ModuleLoader__: { load: (item: any) => { registration = item } } },
+    })
+    dshClientPlugin(registration).apply({
+      remote: { session: {}, eleckoiConversations: {
+        changes: (signal?: AbortSignal) => changes.open(signal),
+        list: async () => ({ ok: true, value: [{ id: 'chat-1', runtimeSessionId: 'runtime-1' }] }),
+        details: async () => ({ ok: true, value: details }),
+        preparePrompt: async () => ({ ok: true, value: { runtimeSessionId: 'runtime-1' } }),
+        deleteMessagesFrom: async (_id: string, eventSeq: number, role: string) => {
+          expect(eventSeq).toBe(role === 'user' ? 9 : 12)
+          nodes = new Map(prefix)
+          if (role === 'assistant') nodes.set('user-9', user(9, 'deleted'))
+          turns = new Map([[1, { turn: 1, status: 'closed' }]])
+          retire()
+          return { ok: true, value: { details, deletedMessageCount: role === 'user' ? 2 : 1 } }
+        },
+        regenerateMessage: async (_id: string, eventSeq: number) => {
+          expect(eventSeq).toBe(9)
+          nodes = new Map(prefix)
+          retire()
+          return { ok: true, value: { prepared: true } }
+        },
+        startRegeneration: async (_id: string, requestId: string) => {
+          begin(requestId)
+          return { ok: true, value: { accepted: true } }
+        },
+      } },
+      sessions: { list: { getSnapshot: () => ({ byId: { 'runtime-1': {} } }) },
+        refresh: async () => {}, reloadHistory,
+        retain: () => ({ sessionId: 'runtime-1', binding, ready: Promise.resolve(binding), release() {} }) },
+      uiConversation: { binding: () => ({ target: () => target }) },
+      provide: (_key: string, value: any) => { catalog = value },
+      effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {},
+    })
+    const messages = () => catalog.getDetailsSnapshot().details.messages
+    try {
+      await settle()
+      await catalog.open('chat-1')
+      expect(messages()).toHaveLength(4)
+      const retiredSnapshot = chat
+      const retiredCallbacks = [...targetListeners]
+      const pair = scenario.startsWith('delete-pair')
+      await catalog.deleteMessagesFrom('chat-1', pair ? 9 : 12, pair ? 'user' : 'assistant')
+      expect(messages().map((message: any) => message.dshMessageId))
+        .toEqual(pair ? ['input-prefix', 'reply-1-5'] : ['input-prefix', 'reply-1-5', 'input-deleted'])
+      expect(catalog.getStreamSnapshot()).toMatchObject({ status: 'idle', content: '', nodeKey: '' })
+      const reloadedSnapshot = chat
+      const settledDetails = catalog.getDetailsSnapshot()
+      chat = retiredSnapshot
+      for (const callback of retiredCallbacks) callback()
+      expect(catalog.getDetailsSnapshot()).toBe(settledDetails)
+      chat = reloadedSnapshot
+      for (let round = 0; round < 2; round++) {
+        const requestId = `next-${round}`
+        const regenerating = scenario.endsWith('regenerate')
+        const expectedInputCount = regenerating ? 2 : messages().filter((message: any) => message.role === 'user').length + 1
+        const request = regenerating
+          ? catalog.regenerate({ conversationId: 'chat-1', requestId, eventSeq: 9 })
+          : catalog.send({ conversationId: 'chat-1', requestId, text: '重复的合成输入' })
+        await settle()
+        expect(activeRequestId).toBe(requestId)
+        expect(messages().some((message: any) => message.requestId === requestId)).toBe(true)
+        expect(messages().filter((message: any) => message.role === 'user')).toHaveLength(expectedInputCount)
+        // Rewound logs reuse event positions and turn numbers. Neither is a
+        // permanent deletion tombstone or permission to hide later replies.
+        const inputSeq = regenerating ? 9 : 15 + round * 10
+        const turn = regenerating ? 2 : 3 + round
+        const assistantSeq = inputSeq + 3
+        nodes = new Map(nodes).set(`input-${requestId}`, user(inputSeq, requestId))
+        pendingSubmissions = []
+        turns = new Map(turns).set(turn, { turn, status: 'open' })
+        events = [
+          { type: 'event', event: { type: 'turn/start', seq: inputSeq - 1, data: { turn } } },
+          { type: 'event', event: { type: 'user/message', seq: inputSeq, data: { source: { kind: 'user', rpcId: requestId } } } },
+        ]
+        publish()
+        const inputCount = messages().filter((message: any) => message.role === 'user').length
+        const assistantKey = `step-${turn}`
+        nodes = new Map(nodes).set(assistantKey, { kind: 'assistant-step', data: {
+          turn, step: inputSeq + 1, seq: assistantSeq, status: 'running',
+          blocks: [{ kind: 'text', text: '<FINAL>新的合成回复' }],
+        } })
+        publish()
+        expect(messages().filter((message: any) => message.role === 'user')).toHaveLength(inputCount)
+        expect(messages().at(-1)).toMatchObject({ role: 'assistant', status: 'streaming', content: '新的合成回复' })
+        running = false
+        turns = new Map(turns).set(turn, { turn, status: 'closed' })
+        nodes = new Map(nodes).set(`tail-${turn}`, reply(turn, assistantSeq, '新的合成回复'))
+        events = [...events, { type: 'event', event: { type: 'turn/end', seq: assistantSeq + 1,
+          data: { turn, reason: { kind: 'completed' } } } }]
+        publish()
+        await request
+        expect(messages().filter((message: any) => message.role === 'user')).toHaveLength(inputCount)
+        expect(messages().at(-1)).toMatchObject({ role: 'assistant', status: 'complete', dshTurn: turn })
+        expect(messages().slice(0, 2).map((message: any) => message.dshMessageId)).toEqual(['input-prefix', 'reply-1-5'])
+        await catalog.refreshDetails()
+        expect(messages().at(-1).dshMessageId).toBe(`reply-${turn}-${assistantSeq}`)
+      }
+      expect(reloadHistory).toHaveBeenCalledTimes(scenario.endsWith('regenerate') ? 3 : 1)
+      expect(catalog.activeRequests.size).toBe(0)
+      expect(catalog.sessionMutations.size).toBe(0)
+    } finally { cleanup() }
+  })
+
   it('keeps the latest baseline when requests finish out of order and releases its listener', async () => {
     const pending: Array<(result: Result) => void> = []
     const mounted = mountCatalog(() => new Promise(resolve => pending.push(resolve)))
@@ -601,9 +762,10 @@ describe('DSH ElecKoi conversation client model', () => {
       })
     }
     let hasMore = false
+    let eventEntries: any[] = []
     const binding = {
       session,
-      eventSource: { getSnapshot: () => ({ hasMore }) }
+      eventSource: { getSnapshot: () => ({ hasMore, entries: eventEntries }) }
     }
     const target = {
       getSnapshot: () => targetSnapshot,
@@ -640,7 +802,7 @@ describe('DSH ElecKoi conversation client model', () => {
           conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', hasMore: false, beforeSequence: 1,
           runtimeVariableStateByTurn: { 1: '{"score":7}' },
           messages: [
-            { id: 'product-user', role: 'user', sequence: 3, messageIndex: 17, content: 'official user', variableStateJson: '{}' },
+            { id: 'product-user', role: 'user', sequence: 3, sessionEventSeq: 2, messageIndex: 17, content: 'official user', variableStateJson: '{}' },
             { id: 'product-assistant', role: 'assistant', sequence: 4, messageIndex: 22, dshMessageId: 'assistant-dsh', variableStateJson: '{}', displayContent: '<FINAL>official reply</FINAL>' },
             { id: 'metadata-user-extra', role: 'user', sequence: 6, variableStateJson: '{}' }
           ]
@@ -818,6 +980,21 @@ describe('DSH ElecKoi conversation client model', () => {
     })
     let streamPublications = 0
     const stopStreamObserver = catalog.subscribeStream(() => { streamPublications += 1 })
+    const completionStreamStates: string[] = []
+    const completionChatStates: string[] = []
+    const stopDetailsObserver = catalog.subscribeDetails(() => {
+      const messages = catalog.getDetailsSnapshot().details?.messages || []
+      if (messages.at(-1)?.content === '<FINAL>\n第一段正文。\n</FINAL>') {
+        completionStreamStates.push(catalog.getStreamSnapshot().status)
+      }
+    })
+    const stopChatObserver = catalog.subscribeChat(() => {
+      const snapshot = catalog.getChatSnapshot()
+      const messages = snapshot.details.details?.messages || []
+      if (messages.at(-1)?.content === '<FINAL>\n第一段正文。\n</FINAL>') {
+        completionChatStates.push(snapshot.stream.status)
+      }
+    })
     const unchangedStreamPublications = streamPublications
     sessionListener()
     targetListener()
@@ -858,6 +1035,41 @@ describe('DSH ElecKoi conversation client model', () => {
       ]
     })
 
+    // `turn/end` can publish a tail before its closing assistant is attached.
+    // That intermediate official snapshot must not make the visible stream
+    // row disappear.
+    const incompleteTailNodes = new Map([...allLiveNodes, ['turn-tail-2', {
+      kind: 'turn-tail', anchorSeq: 32, data: {
+        turn: 2, seq: 32, time: 41, branchUnavailable: true, closing: null
+      }
+    }]])
+    targetSnapshot = {
+      order: [...incompleteTailNodes.keys()], nodes: incompleteTailNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }], [2, { turn: 2, status: 'closed' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] }
+    }
+    running = false
+    targetListener()
+    sessionListener()
+    expect(catalog.getStreamSnapshot().status).toBe('running')
+
+    // An interrupted turn has the same incomplete tail shape as the normal
+    // delayed-final snapshot, but the official end reason must release the
+    // live stream immediately instead of leaving the chat locked.
+    eventEntries = [{ type: 'event', event: {
+      type: 'turn/end', data: { turn: 2, reason: { kind: 'aborted', reason: 'user' } }
+    } }]
+    targetListener()
+    sessionListener()
+    expect(catalog.getStreamSnapshot().status).toBe('idle')
+    eventEntries = []
+    running = true
+    targetSnapshot = {
+      order: [...allLiveNodes.keys()], nodes: allLiveNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }], [2, { turn: 2, status: 'open' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] }
+    }
+
     allLiveNodes.set('assistant-live', {
       ...allLiveNodes.get('assistant-live'),
       data: {
@@ -897,6 +1109,25 @@ describe('DSH ElecKoi conversation client model', () => {
       status: 'running', messageId: '', content: '第一段正文。', runId: 'runtime-1'
     })
 
+    // The assistant can already contain final-marked text while the Session
+    // has not published a turn-tail at all. Ending the Session here must also
+    // keep the live row until the durable detail arrives.
+    running = false
+    targetSnapshot = {
+      order: [...allLiveNodes.keys()], nodes: allLiveNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }], [2, { turn: 2, status: 'closed' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] }
+    }
+    targetListener()
+    sessionListener()
+    expect(catalog.getStreamSnapshot().status).toBe('running')
+    running = true
+    targetSnapshot = {
+      order: [...allLiveNodes.keys()], nodes: allLiveNodes,
+      timeline: { turns: new Map([[1, { turn: 1, status: 'closed' }], [2, { turn: 2, status: 'open' }]]) },
+      legacy: { nodes: [], partial: null, runningCalls: [] }
+    }
+
     const liveFinalNode = { kind: 'assistant', turn: 2, step: 1, seq: 31, time: 40,
       messageId: 'assistant-live-final', blocks: [{ kind: 'text', text: '<FINAL>\n第一段正文。\n</FINAL>' }] }
     const completedNodes = new Map([...settledNodes, ['turn-tail-2', {
@@ -916,9 +1147,13 @@ describe('DSH ElecKoi conversation client model', () => {
       content: '<FINAL>\n第一段正文。\n</FINAL>', displayContent: '第一段正文。'
     })
     expect(catalog.getStreamSnapshot().status).toBe('idle')
+    expect(completionStreamStates.at(-1)).toBe('idle')
+    expect(completionChatStates.at(-1)).toBe('idle')
 
     running = false
     sessionListener()
+    stopDetailsObserver()
+    stopChatObserver()
     expect(catalog.getStreamSnapshot().status).toBe('idle')
 
     // A new turn must not reuse the preceding reply or its activity.
@@ -1051,7 +1286,7 @@ describe('DSH ElecKoi conversation client model', () => {
     cleanup()
   })
 
-  it('retains loaded history across tail refreshes and clears it after a destructive change', async () => {
+  it('retains loaded history while a destructive refresh is pending', async () => {
     type Details = {
       conversation: { id: string }
       runtimeSessionId: string
@@ -1113,10 +1348,10 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(catalog.getDetailsSnapshot().details?.beforeSequence).toBe(1)
 
     catalog.invalidateDetails('first')
-    expect(catalog.getDetailsSnapshot().details).toBeNull()
+    expect(catalog.getDetailsSnapshot().details?.messages.map(message => message.sequence)).toEqual([1, 2, 3, 4, 5])
     expect(catalog.getDetailsSnapshot().runtimeSessionId).toBe('runtime-first')
     await settle()
-    expect(catalog.getDetailsSnapshot().details?.messages.map(message => message.sequence)).toEqual([5])
+    expect(catalog.getDetailsSnapshot().details?.messages.map(message => message.sequence)).toEqual([1, 2, 3, 4, 5])
     const stalePage = catalog.pageOlder('first', 5)
     catalog.activate('second')
     expect(catalog.getDetailsSnapshot().runtimeSessionId).toBe('')

@@ -58,7 +58,7 @@ function RailSettingsButton({ active, onOpenSettings }) {
       aria-current={active ? "page" : undefined}
       onClick={onOpenSettings}
     >
-      <SettingsIcon />
+      <SettingsIcon weight="light" />
     </button>
   );
 }

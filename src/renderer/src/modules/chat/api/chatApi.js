@@ -7,6 +7,7 @@ function mapMessage(message) {
     runtimeSessionId: message.runtimeSessionId || '',
     dshMessageId: message.dshMessageId || '',
     dshNodeKey: message.dshNodeKey || '',
+    requestId: message.requestId || '',
     sessionEventSeq: message.sessionEventSeq,
     dshTurn: message.dshTurn,
     conversationId: message.conversationId,

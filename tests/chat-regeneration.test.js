@@ -26,8 +26,8 @@ describe("chat regeneration targets", () => {
   it("keeps the normal assistant-reply regeneration path", () => {
     const messages = [
       { id: "opening", role: "assistant", content: "开场白" },
-      { id: "user-1", role: "user", content: "测试消息" },
-      { id: "assistant-1", role: "assistant", content: "测试回复" },
+      { id: "user-1", role: "user", content: "测试消息", runtimeSessionId: 'session-1', dshTurn: 1 },
+      { id: "assistant-1", role: "assistant", content: "测试回复", runtimeSessionId: 'session-1', dshTurn: 1 },
     ];
 
     expect(findLatestRegenerateTargetMessageId(messages)).toBe("assistant-1");
@@ -42,6 +42,19 @@ describe("chat regeneration targets", () => {
 
     expect(findLatestRegenerateTargetMessageId(messages)).toBe("turn-1");
     expect(findRegenerateBranchUserIndex(messages, "turn-1")).toBe(0);
+  });
+
+  it('never chooses the nearest user without the matching Session turn identity', () => {
+    const messages = [
+      { id: 'selected', role: 'user', runtimeSessionId: 'session-1', dshTurn: 1 },
+      { id: 'other', role: 'user', runtimeSessionId: 'session-1', dshTurn: 2 },
+      { id: 'reply', role: 'assistant', runtimeSessionId: 'session-1', dshTurn: 1 },
+    ];
+    expect(findRegenerateBranchUserIndex(messages, 'reply')).toBe(0);
+    expect(findRegenerateBranchUserIndex(messages.slice(1), 'reply')).toBe(-1);
+    expect(findRegenerateBranchUserIndex([
+      { id: 'input', role: 'user' }, { id: 'reply', role: 'assistant' },
+    ], 'reply')).toBe(-1);
   });
 
   it("ignores opening messages and pending replies", () => {
