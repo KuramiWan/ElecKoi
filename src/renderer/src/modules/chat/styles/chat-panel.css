@@ -2164,10 +2164,32 @@
 }
 
 .chat-composer-region {
+  /* The projected DSH InputBar keeps its own growing editor and scrollport,
+     but does not include the official composer seat that supplies this cap. */
+  --dsh-composer-text-max-height: 336px;
   position: relative;
   z-index: 7;
   display: grid;
   min-width: 0;
+}
+
+.chat-composer-region [data-input-scroll] {
+  --dsh-scrollbar-width: 8px;
+  scrollbar-gutter: stable;
+}
+
+.chat-composer-region [data-input-scroll]::-webkit-scrollbar {
+  width: var(--dsh-scrollbar-width);
+}
+
+.chat-composer-region [data-input-scroll]::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border-radius: 999px;
+  background: var(--dsh-scrollbar-thumb, #c8c8c8);
+}
+
+.chat-composer-region [data-input-scroll]::-webkit-scrollbar-thumb:hover {
+  background: var(--dsh-scrollbar-thumb-hover, #a6a6a6);
 }
 
 .chat-panel.view-trajectory .chat-composer-region {

@@ -8,6 +8,8 @@ import { releasedV3SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3
 import { projectDshTrajectory, readDshSessionLog, readDshTrajectory, removeDshSessionTree } from '@eleckoi/dsh-runtime'
 import { agentTrajectorySnapshotSchema } from '../src/shared/contracts/agent/trajectory'
 
+// Session codecs validate cwd with the host platform's path semantics.
+const fixtureWorkspace = join(tmpdir(), 'eleckoi-trajectory-workspace')
 const temporaryDirectories: string[] = []
 
 afterEach(() => {
@@ -26,7 +28,7 @@ describe('DSH trajectory projection', () => {
     const directory = join(root, 'project-a', sessionId)
     mkdirSync(directory, { recursive: true })
     const header = releasedV3SessionFormatCodec.encodeHeader({
-      version: 3, id: sessionId, createdAt: 1_000, cwd: 'D:/workspace',
+      version: 3, id: sessionId, createdAt: 1_000, cwd: fixtureWorkspace,
       isSeeded: false, delegationDepth: 0
     }, 0)
     const events = [
@@ -77,7 +79,7 @@ describe('DSH trajectory projection', () => {
     const childDirectory = join(root, 'project-a', 'child')
     mkdirSync(parentDirectory, { recursive: true })
     mkdirSync(childDirectory, { recursive: true })
-    const base = { version: 3, createdAt: 1_000, cwd: 'D:/workspace', isSeeded: false, delegationDepth: 0 }
+    const base = { version: 3, createdAt: 1_000, cwd: fixtureWorkspace, isSeeded: false, delegationDepth: 0 }
     const parent = releasedV3SessionFormatCodec.encodeHeader({ ...base, id: 'parent' }, 0)
     const child = releasedV3SessionFormatCodec.encodeHeader({
       ...base, id: 'child', createdAt: 1_010, parentSession: 'parent', origin: 'subagent', delegationDepth: 1
@@ -103,7 +105,7 @@ describe('DSH trajectory projection', () => {
       const row = releasedV3SessionFormatCodec.encodeHeader({
         version: 3,
         createdAt: 1_000,
-        cwd: 'D:/workspace',
+        cwd: fixtureWorkspace,
         isSeeded: false,
         ...header
       }, 0)
@@ -575,7 +577,7 @@ function currentSessionRows(
     version: sessionFormatCatalog.currentVersion,
     id,
     createdAt,
-    cwd: 'D:\\workspace',
+    cwd: fixtureWorkspace,
     isSeeded: false,
     delegationDepth: 0
   }
