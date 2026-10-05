@@ -1,342 +1,84 @@
 # 服务接口
 
-Service 是 Cordis Context 上的稳定能力。提供方用 `ctx.provide()` 或 `ctx.reflect.provide()` 注册，使用方用 `inject` 声明依赖，然后从 `ctx.<key>` 调用。
+服务是插件能直接调用的功能。提供方通过 Cordis 注册到 Context，使用方声明 inject 后通过 ctx 调用。Client 服务负责页面中的状态、订阅和调用 Host；保存产品数据的操作仍由 Host 完成。
 
-```js
-return {
-  inject: ['eleckoiCharacters'],
-  apply(ctx) {
-    const stop = ctx.eleckoiCharacters.subscribe(() => {
-      console.log(ctx.eleckoiCharacters.getSnapshot())
-    })
-    return stop
-  }
+完整方法、参数、返回值和字段由公开源码生成：
+
+- [Client 服务参考](api-client.md)：角色、设定库、变量、正则、聊天、项目、模型、资料、预设、搜索和显示偏好。
+- [Host 服务参考](api-host.md)：正式产品 API，以及同一个 Session 内的消息修改和回退。
+- [Client 数据类型](types-client.md)与 [Host 数据类型](types-host.md)：方法引用的完整数据结构。
+- [Remote 调用声明](api-remote.md)：Client 直接调用 Host 的正式写法。
+
+## 导入公开类型
+
+每个 Client 服务包的 /client 入口同时提供运行入口和公开类型，并合并 Cordis Context。插件应导入这些类型，不要复制本文里的接口定义。
+
+```ts
+import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@eleckoi/dsh-client-character-configuration/client'
+import type { SettingLibrary } from '@eleckoi/dsh-product-api/types'
+
+export const inject = ['eleckoiSettingLibraries']
+
+export function apply(ctx: Context) {
+  const stop = ctx.eleckoiSettingLibraries.subscribe((kind, characterId, state) => {
+    console.log(kind, characterId, state.status)
+  })
+  return stop
+}
+
+async function readLibrary(ctx: Context, characterId: string): Promise<SettingLibrary> {
+  return ctx.eleckoiSettingLibraries.read(characterId)
 }
 ```
 
-不要导入 service 的实现 class，也不要通过全局变量寻找 service。`getSnapshot`/`subscribe` 对遵循 React `useSyncExternalStore` 语义：snapshot 在无变化时保持同一引用，subscribe 返回取消订阅函数。
+Host 插件从 @eleckoi/dsh-product-api 导入 Context 贡献；业务数据类型从该包的 /types 导入。Client 不能注入 Host 服务，跨端使用 [DSH Remote](remote.md)。
 
-当前登记 **13 个 service**。
+## 各服务负责什么
 
-## `eleckoiCharacters`（Client）
+| 服务 | 公开类型入口 | 做什么 |
+| --- | --- | --- |
+| eleckoiCharacters | @eleckoi/dsh-client-characters/client | 角色增删改、分组、角色卡导入导出及页面状态 |
+| eleckoiSettingLibraries | @eleckoi/dsh-client-character-configuration/client | 读取和保存角色及聊天的完整设定库 |
+| eleckoiVariables | @eleckoi/dsh-client-character-configuration/client | 读取和保存变量定义、初始值、版本及展开状态 |
+| eleckoiRegexRules | @eleckoi/dsh-client-character-configuration/client | 读取、保存、导入导出和测试正则；没有 saveViewState |
+| eleckoiConversations | @eleckoi/dsh-client-conversations/client | 聊天目录、消息显示、提交、停止、回退、归档、作者资料和变量修改 |
+| eleckoiCreatorStudio | @eleckoi/dsh-client-creator-studio/client | 创作项目目录和官方目录选择器 |
+| eleckoiModels | @eleckoi/dsh-client-models/client | 模型目录、显式能力配置、连接测试和用户主动查看密钥 |
+| eleckoiPersona | @eleckoi/dsh-client-persona/client | 用户名称和头像资料 |
+| eleckoiPresets | @eleckoi/dsh-client-presets/client | 完整预设、预设分组、选择、导入导出 |
+| eleckoiWebSearch | @eleckoi/dsh-client-web-search/client | 搜索方式、Tavily 配置与连接测试 |
+| eleckoiDisplayPreferences | @eleckoi/dsh-client-display-preferences/client | 界面和聊天显示偏好 |
+| layout | @deepseek-ai/dsh-client-ui-layout/client | 官方主面板和右侧栏控制；当前桌面的 toggleSidebar 为空操作 |
+| eleckoiSessionEditor（Host） | @eleckoi/dsh-product-api | 修改消息和回退轮次，保持原 Session 编号 |
 
-角色目录的只读快照和刷新入口。
+这些 13 个服务对应插件中心的服务目录；Host 的产品 Remote 实现另外出现在完整 Host 参考中。
 
-```ts
-interface ElecKoiCharacters {
-  getSnapshot(): {
-    status: 'loading' | 'ready' | 'error'
-    collection: {
-      active_character_id: string
-      groups: string[]
-      items: Array<{ id: string; [key: string]: unknown }>
-    }
-    error: string
-  }
-  subscribe(listener: () => void): () => void
-  refresh(): Promise<ElecKoiCharacters['getSnapshot'] extends () => infer S
-    ? S extends { collection: infer C } ? C : never : never>
-}
-```
+## 设定、消息和保存行为
 
-写操作由角色页面 owner actions 或对应正式命令完成，目录 service 本身不提供任意写入。
+设定库返回完整对象，不会只提取设定文本。必读、选读、关键词、EJS 模式、触发方式和提示词插入位置仍在原有字段中。读取完整设定库不等于已经为某个 Agent 执行触发或注入；正式请求准备仍由产品运行插件处理。这些读取接口也没有自动增加成员之间的资料权限限制。
 
-## 角色配置服务（Client）
+角色设定与聊天设定分别保存。聊天只保存实际产生的设定改动和删除标记；读取时使用角色设定叠加聊天改动后的有效库。界面保存只编辑已有聊天设定，失败和只读操作不创建新的聊天设定分支。
 
-三个 service 都以 `characterId` 为 key 保存独立快照。公共模式：
+聊天消息正文、分页、正在运行的请求和轨迹来自官方 Session。文件上传返回当前 Session 使用的 receipt 编号，send 的 files 参数使用这些编号组成的字符串列表。消息元数据在正文投影就绪前可能没有 content。rememberSession 等偏好方法只修改当前页面中的选择；持久选择使用 readSelection/saveSelection。
 
-```ts
-interface CharacterConfigurationService<T> {
-  getSnapshot(characterId: string): { status: 'idle' | 'loading' | 'ready' | 'error'; value: T | null; error: string }
-  subscribe(listener: (kind: string, characterId: string, snapshot: unknown) => void): () => void
-  read(characterId: string): Promise<T>
-  readUntracked(characterId: string): Promise<T>
-  save(characterId: string, value: T): Promise<T>
-  saveViewState(characterId: string, expandedIds: string[]): Promise<unknown>
-}
-```
+模型参数、显示偏好和搜索设置使用官方 Settings，密钥使用 Credentials。模型目录中的推理档位来自官方能力或显式配置。普通模型状态不包含密钥正文；revealApiKey 供用户主动查看。模型配置可用 clearCredential 清除密钥，用 clearConfiguration 清除配置覆盖；模型参数和图片配置字段见完整类型。
 
-### `eleckoiSettingLibraries`
+正则保存使用 revision 校验并发修改。预设保存需要提交调用方看到的正则规则列表。Client 方法成功时返回类型声明中的值，异步失败时拒绝 Promise；直接 Remote 调用则返回官方 RemoteResult，需要检查 ok。
 
-在公共模式之外提供：
+订阅返回取消函数，应随插件停用或组件卸载释放。不要修改页面状态对象，不要把 Client 方法当作数据库事务。SessionEditor 的内部 transaction/deleteSession 方法不属于插件中心公开成员。
 
-```ts
-getConversationSnapshot(characterId: string): ConfigurationSnapshot<unknown[]>
-readConversations(characterId: string): Promise<unknown[]>
-saveConversation(characterId: string, sessionId: string, library: unknown): Promise<unknown>
-resetConversation(characterId: string, sessionId: string): Promise<unknown>
-saveConversationVersion(characterId: string, sessionId: string, name: string): Promise<unknown>
-```
+## 在运行时查接口
 
-角色母设定与聊天分支设定分开存储；`sessionId` 使用列表返回的目标聊天 ID。聊天不预建分支：只有修改设定工具产生真实变更且数据库提交成功后才自动出现，失败、无变化和只读调用都不会创建。界面保存只编辑已有分支。分支只保存条目、文件夹的变更及删除标记，工具搜索和读取使用母设定叠加当前聊天变更后的有效库，不读取轨迹日志来恢复设定。
+官方 cordis_inspect_list 会列出查询提供方。使用 cordis_inspect_query 的平台、provider、method 和 input 字段查询：
 
-### `eleckoiVariables`
+| platform / provider / method | input | 返回 |
+| --- | --- | --- |
+| host / ElecKoi.Service / api | {} | Host 产品服务目录 |
+| host / ElecKoi.Service / api | { "key": "eleckoiCharacterConfigurationApi" } | 该服务的参数、返回值和引用类型 |
+| client / ElecKoi.Service / api | { "key": "eleckoiConversations" } | 聊天服务的完整调用说明 |
+| client / ElecKoi.Remote / api | {} | 产品 Remote namespace 和方法目录 |
+| client / ElecKoi.Remote / api | { "namespace": "eleckoiCharacterConfiguration" } | 官方生成的调用声明和设定数据类型 |
+| client / Service / api | { "key": "layout" } | 官方已有的布局服务说明 |
 
-实现公共模式，用于角色变量对象、变量值、版本和展开状态。
-
-### `eleckoiRegexRules`
-
-`save()` 使用 collection 的 `revision` 做并发校验，并增加：
-
-```ts
-import(characterId: string, collection: unknown, fallbackScope: string, documents: unknown[]): Promise<unknown>
-export(characterId: string, ruleIds: string[]): Promise<unknown>
-test(text: string, rule: unknown, target: unknown): Promise<unknown>
-```
-
-## `eleckoiConversations`（Client）
-
-管理聊天目录、当前消息详情、轨迹和正在生成的临时状态。
-
-```ts
-interface ElecKoiConversations {
-  getSnapshot(): ConversationCatalogSnapshot
-  subscribe(listener: () => void): () => void
-  getDetailsSnapshot(): ConversationDetailsSnapshot
-  subscribeDetails(listener: () => void): () => void
-  getTimelineSnapshot(): ConversationTimelineSnapshot
-  subscribeTimeline(listener: () => void): () => void
-  getStreamSnapshot(): ConversationStreamSnapshot
-  subscribeStream(listener: () => void): () => void
-
-  refresh(): Promise<unknown[]>
-  open(conversationId: string): Promise<unknown | null>
-  pageOlder(expectedId: string, expectedBeforeSequence: number): Promise<unknown | null>
-  openTimeline(conversationId: string): Promise<unknown | null>
-  closeTimeline(conversationId: string): void
-
-  uploadFile(
-    conversationId: string,
-    file: File,
-    options?: { signal?: AbortSignal; onProgress?: (progress: { loaded: number; total?: number }) => void }
-  ): Promise<{ id: string; receiptId: string; attachmentId: string; name: string; bytes: number }>
-
-  send(input: { conversationId: string; requestId: string; text: string; [key: string]: unknown }): Promise<unknown>
-  regenerate(input: { conversationId: string; requestId: string; eventSeq: number; [key: string]: unknown }): Promise<unknown>
-  cancelRequest(conversationId: string, requestId: string): Promise<boolean>
-
-  rememberSession(characterId: string, sessionId: string): void
-  preferredSession(characterId: string): string
-  forgetSession(characterId: string, sessionId: string): void
-}
-```
-
-`uploadFile()` 使用 DSH 官方 `ctx.fileUpload`，返回仅限当前 DSH Session 使用的一次性 receipt；`send()` 把 receipt 交给同一 Session 的 prompt，文件的持久引用随后从正式 `user/message` 投影。上传中的操作可由 `AbortSignal` 取消，Client 不经过 Desktop Gateway 或本地文件草稿协议。`rememberSession` 只维护当前 Client 进程的角色偏好映射，不是聊天数据存储 API。
-
-## `eleckoiCreatorStudio`（Client）
-
-管理创作项目文件目录。项目清单和项目清单文件由 DSH Host 读写；Client 不访问本地文件系统，也不把项目目录保存到 SQLite。
-
-```ts
-interface ElecKoiCreatorStudio {
-  getSnapshot(): {
-    status: 'loading' | 'ready' | 'error'
-    collection: {
-      items: Array<{
-        id: string
-        name: string
-        mode: 'blank' | 'existing'
-        rootPath: string
-        sourceCharacterId: string
-        coverImage: string
-        createdAt: string
-        updatedAt: string
-      }>
-    }
-    error: string
-  }
-  subscribe(listener: () => void): () => void
-  refresh(): Promise<ReturnType<ElecKoiCreatorStudio['getSnapshot']>['collection']>
-  create(input: {
-    name: string
-    mode: 'blank' | 'existing'
-    parentDirectory: string
-    sourceCharacterId?: string
-  }): Promise<ReturnType<ElecKoiCreatorStudio['getSnapshot']>['collection']>
-  delete(projectId: string): Promise<ReturnType<ElecKoiCreatorStudio['getSnapshot']>['collection']>
-  selectDirectory(signal?: AbortSignal): Promise<string | null>
-}
-```
-
-`selectDirectory()` 调用锁定版本 DSH 的 `ctx.remote.directoryPicker.pick()`，返回 Host 上的绝对目录或取消后的 `null`。调用方应在窗口关闭时中止信号；Client 插件卸载也会取消所有未完成选择。项目页面不再依赖 Electron 私有业务桥。桌面 profile 由官方自适应目录选择插件提供本机选择器，远程 browse backend 不支持此本机操作时返回官方错误。
-
-## `eleckoiModels`（Client）
-
-```ts
-interface ElecKoiModels {
-  getSnapshot(): {
-    status: 'loading' | 'ready' | 'error'
-    configs: Array<{ id: string; provider: string; model: string; [key: string]: unknown }>
-    error: string
-  }
-  subscribe(listener: () => void): () => void
-  refresh(): Promise<unknown[]>
-  save(config: ModelConfigDraft): Promise<ModelConfig>
-  deleteConfig(id: string): Promise<ModelConfig | undefined>
-  deleteProvider(provider: string, preferredId?: string): Promise<ModelConfig | undefined>
-  discover(config: ModelConfigDraft): Promise<ModelOption[]>
-  testConnection(config: ModelConfigDraft): Promise<{ supported: true }>
-}
-```
-
-这个 service 挂载 ElecKoi 自定义模型配置界面，并调用官方 `ctx.remote.settings`、`ctx.remote.llm` 与 `ctx.remote.credentials`。通用协议保存在 `llm-pi-ai` 的显式 provider profile 中，DeepSeek 专用协议使用其官方 adapter 设置。密钥只进入 Credentials；Client 快照只返回是否已经配置密钥，不返回密钥正文。
-
-`ModelConfigDraft` 使用配置界面的字段：`id`、`provider`、`name`、`model`、`api_format`、`base_url`、`api_key`、`custom_headers` 和 `model_options`。`api_key` 留空保留现有密钥；仅清除密钥时传 `clearCredential: true`。清空整个配置时传 `clearConfiguration: true`：通用配置删除其 profile，内置 DeepSeek 配置撤销端点和模型覆盖，恢复官方默认值；同时删除产品参数及未被其他配置引用的密钥。模型参数包含 `temperature`、`autoCompactTokenLimit`、`reasoningEffort`、`contextWindowTokens`、`maxOutputTokens`、`supportsImageInput` 与官方能力或显式 profile 声明的 `reasoningEfforts`。`ModelConfig` 为上述字段加 `credentialConfigured`、`settingsNs`、`settingsPath` 的读取快照，`api_key` 始终为空。
-
-产品专有参数保存在该插件的 `eleckoi-client-models` Settings namespace，Host 请求插件读取并应用到官方 LLM 请求和压缩策略；不存入模型数据库。当前 DSH 合同不支持 Top P 和每个配置独立代理，保存非空值会明确报错。
-
-`discover` 使用官方模型发现接口；返回模型 ID 不表示已经确认推理档位。`testConnection` 经生成的 `ctx.remote.eleckoiModels.testConnection` 调用 Host 官方 LLM adapter，只验证本次指定工具的调用和参数，不创建 Agent、Session 或聊天日志，也不保存测试草稿。一次未调用工具不能据此断定模型不支持工具调用。
-
-## `eleckoiPersona`（Client）
-
-```ts
-interface ElecKoiPersona {
-  getSnapshot(): {
-    status: 'loading' | 'ready' | 'error'
-    profile: null | {
-      user_name: string
-      user_avatar: string
-      user_square: string
-      user_portrait: string
-      [key: string]: unknown
-    }
-    error: string
-  }
-  subscribe(listener: () => void): () => void
-  refresh(): Promise<NonNullable<ReturnType<ElecKoiPersona['getSnapshot']>['profile']>>
-  save(profile: NonNullable<ReturnType<ElecKoiPersona['getSnapshot']>['profile']>): Promise<NonNullable<ReturnType<ElecKoiPersona['getSnapshot']>['profile']>>
-}
-```
-
-资料界面可以通过 `eleckoi.persona.editor` owner actions 保存；Client service 内部使用生成的 `ctx.remote.eleckoiPersona.save()`，插件不接触 SQLite 或旧桥。
-
-## `eleckoiPresets`（Client）
-
-```ts
-interface ElecKoiPresets {
-  getSnapshot(): { status: string; catalog: unknown | null; error: string }
-  subscribe(listener: () => void): () => void
-  getDetailSnapshot(id: string): { status: string; preset: unknown | null; error: string }
-  subscribeDetail(id: string, listener: () => void): () => void
-  read(id: string): Promise<unknown>
-  save(preset: { id: string; [key: string]: unknown }, expectedRegexRules: unknown): Promise<unknown>
-  refresh(): Promise<unknown>
-}
-```
-
-`save()` 同时提交预设和调用方看到的正则规则基线，用于保持预设与正则更新一致。
-
-## `layout`（Client）
-
-该 key 对齐 DSH 官方布局 service。正式类型来自 `@deepseek-ai/dsh-client-ui-layout/client`；ElecKoi 公开使用以下成员：
-
-```ts
-interface LayoutService {
-  selectPanel(id: string | null): void
-  beginNavigation(): AbortSignal
-  toggleSidebar(): void
-  openRightbar(): void
-  closeRightbar(): void
-}
-```
-
-`selectPanel` 只接受已经注册到 `main` keyed slot 的面板 key。`beginNavigation` 会中止上一次导航信号，适合取消面板切换中的异步工作。
-
-## `eleckoiSessionEditor`（Host）
-
-通过正式 DSH Session 日志编辑消息与回退轮次：
-
-```ts
-interface ElecKoiSessionEditor {
-  editMessage(
-    sessionId: string,
-    messageId: string,
-    role: 'user' | 'assistant',
-    content: string
-  ): Promise<void>
-
-  rewind(sessionId: string, fromTurn: number): Promise<number | undefined>
-}
-```
-
-两项操作都会先关闭该 Session 的活动写句柄，再用当前 session-format 处理。`rewind()` 在 Session 不存在或当前日志无法回退时返回 `undefined`。
-
-它是 Host service，不能直接在 Client 中注入。需要 Client 调用的新增后台能力应建立 DSH Remote 合同，不要暴露 Node 对象或私有桥。
-
-## `theme`（Client）
-
-界面主题由 DSH 官方 `@deepseek-ai/dsh-client-ui-theme` 提供。Client 插件声明 `inject: ['theme']` 后，通过 `ctx.theme` 读取或切换主题，并通过 `theme/change` 事件持续同步：
-
-```ts
-const snapshot = ctx.theme.getTheme()
-ctx.theme.setTheme('system')
-ctx.on('theme/change', (next) => {
-  console.log(next.preference, next.active.colorScheme)
-})
-```
-
-`preference` 可以是 `light`、`dark`、`system` 或当前已注册的第三方主题 ID。持久化由 DSH 的 `ui-theme` settings namespace 负责。ElecKoi 不另存主题到 SQLite，也不提供桌面 Gateway 主题命令。Electron 壳只观察 DSH 写入的 `html[data-ds-theme-source]`，让原生窗口配色跟随同一主题状态。
-
-## `eleckoiWebSearch`（Client）
-
-由 `@eleckoi/dsh-client-web-search` 提供。调用方声明 `inject: ['eleckoiWebSearch']`，通过该 model 读取搜索方式、Tavily 设置和凭据状态。
-
-```ts
-interface WebSearchSettingsModel {
-  getSnapshot(): {
-    status: 'loading' | 'ready' | 'error'
-    mode: 'provider_native' | 'tavily'
-    maxResults: number
-    apiKeyRef: string
-    apiKeyConfigured: boolean
-    apiKeyWritable: boolean
-    writable: boolean
-    tavilyAvailable: boolean
-    revision?: number
-    error: string
-  }
-  subscribe(listener: () => void): () => void
-  refresh(): Promise<ReturnType<WebSearchSettingsModel['getSnapshot']>>
-  update(patch: { mode?: 'provider_native' | 'tavily'; maxResults?: number }): Promise<ReturnType<WebSearchSettingsModel['getSnapshot']>>
-  saveAndTest(apiKey: string): Promise<{ settings: ReturnType<WebSearchSettingsModel['getSnapshot']>; connection: TavilyConnection }>
-  test(apiKey?: string): Promise<{ connection: TavilyConnection }>
-  removeKey(): Promise<ReturnType<WebSearchSettingsModel['getSnapshot']>>
-}
-interface TavilyConnection { ok: true; plan: string; used: number; limit: number }
-```
-
-搜索提供商由 `ctx.remote.eleckoiWebSearch.selection/select` 读取和修改 profile。Tavily 的可热更新配置由官方 `ctx.remote.settings` 维护，命名空间为 `web-search-tavily`：`apiKeyEnv` 是凭据引用，默认 `TAVILY_API_KEY`；`maxResults` 为 1 到 8 的整数，默认 5。写入采用 namespace 的 revision，冲突由官方 Settings 拒绝。
-
-密钥通过官方 `ctx.remote.credentials` 保存和删除。snapshot 只包含引用、是否已配置和是否可写，不包含密钥内容。搜索操作由 Host 在每次请求开始时调用 `ctx.credentials.resolve()`；不能把密钥缓存到 model、SQLite 或请求快照。`saveAndTest()` 在测试成功后才保存新密钥；测试仅调用 Tavily 额度端点，不创建聊天或 Session 日志。
-
-## `eleckoiDisplayPreferences`（Client）
-
-由 `@eleckoi/dsh-client-display-preferences` 提供，统一读取和保存侧栏、聊天列表与消息显示偏好。
-
-```ts
-interface DisplayPreferencesModel {
-  getSnapshot(): {
-    status: 'loading' | 'ready' | 'error'
-    ui: Record<string, unknown>
-    chatDisplay: Record<string, unknown>
-    writable: boolean
-    revision?: number
-    error: string
-  }
-  subscribe(listener: () => void): () => void
-  refresh(): Promise<ReturnType<DisplayPreferencesModel['getSnapshot']>>
-  updateUi(update: Record<string, unknown> | ((current: Record<string, unknown>) => Record<string, unknown>)): Promise<ReturnType<DisplayPreferencesModel['getSnapshot']>>
-  setChatDisplay(value: Record<string, unknown>): Promise<ReturnType<DisplayPreferencesModel['getSnapshot']>>
-}
-```
-
-偏好值由 DSH Settings 的 `eleckoi-display-preferences` profile 条目持久化。写入使用生成的 `ctx.remote.eleckoiDisplayPreferences` 合同；Host 会先把 Base64 全局壁纸写入本地媒体库，再把 `eleckoi-media://` 引用交给 Settings，避免在 profile 中保存整张图片。Client 不访问本机文件系统或 SQLite。
-
-## 服务使用规则
-
-- 只调用 manifest `members` 列出的公开成员。
-- 订阅必须在组件卸载或插件停用时释放。
-- 不修改 snapshot 对象；把它当作只读值。
-- 不缓存具体 service 实现跨越插件 reload。
-- 不把 Client service 当数据库事务；复杂写入由权威 Host owner 提供原子命令。
-- 方法抛错时向用户显示可恢复错误，不把界面留在无限 loading。
+Client 查询需要连接中的页面。产品目录在官方 cordisInspect 就绪后注册，并随插件生命周期撤销；未启用官方查询能力时，正常产品功能继续运行。接口查询只返回调用说明和类型，不读取用户角色、聊天内容或密钥。

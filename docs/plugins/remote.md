@@ -2,6 +2,8 @@
 
 ElecKoi 的跨 Host/Client 业务调用只使用锁定版本 DSH 的 Typert Remote。权威规范是 [`api-gateway.zh.md`](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/docs/api-gateway.zh.md)；本文说明如何在 ElecKoi bundle 中落地该规范。
 
+全部产品 namespace 的实际参数、返回值和变更流见 [完整 Remote 调用声明](api-remote.md)。该文件直接由官方生成器从 Host 的 @Remote 生成，不手写另一套签名。
+
 ## 什么时候使用 Remote
 
 使用 Remote：
@@ -52,7 +54,7 @@ my-plugin/
     "./types": { "types": "./lib/types/types.d.ts", "default": "./lib/types/types.js" },
     "./typert": { "types": "./lib/typert.host.d.ts", "default": "./lib/typert.host.js" },
     "./remote": { "types": "./lib/typert.remote-client.d.ts", "default": "./lib/typert.remote-client.js" },
-    "./client": "./lib/client.js"
+    "./client": { "types": "./lib/types/client/index.d.ts", "default": "./lib/client.js" }
   }
 }
 ```

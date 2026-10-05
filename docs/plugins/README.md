@@ -4,7 +4,7 @@ ElecKoi 使用 DSH 官方 bundle、Cordis 生命周期和 Web Client Slots 作�
 
 本文档对应以下固定基准：
 
-- ElecKoi Desktop：`0.2.4`
+- ElecKoi Desktop：`0.2.7`
 - DSH：`0.2.0-rc.2`
 - DSH 提交：`c1b47e41fcd54d20a0f061df28683bfc29ee24e5`
 - 插件接口与数量：[自动生成的开发接口总表](api-reference.md)
@@ -28,7 +28,11 @@ ElecKoi 使用 DSH 官方 bundle、Cordis 生命周期和 Web Client Slots 作�
 | [DSH 与 Cordis 合规基准](upstream-compliance.md) | Cordis 入门、完整教程、DSH 开发指南和架构说明的要求与迁移差异 |
 | [Bundle manifest](manifest.md) | `package.json`、`cordis.patch.yml`、本地化和接口声明格式 |
 | [界面插槽](ui-slots.md) | 界面接入点、组合方式、作用域和 owner props |
-| [服务接口](services.md) | 13 个可注入服务的真实公开方法 |
+| [服务接口](services.md) | 如何导入公开类型、调用服务和查询接口 |
+| [Client 完整参考](api-client.md) | 客户端服务的全部公开方法与参数 |
+| [Host 完整参考](api-host.md) | Host 产品 API 和 Session 编辑服务 |
+| [Remote 完整声明](api-remote.md) | 官方生成的全部跨端调用声明 |
+| [Client 数据类型](types-client.md) / [Host 数据类型](types-host.md) | 方法引用的完整数据结构 |
 | [DSH Remote](remote.md) | 如何声明、生成、装配和调用类型化 Host API |
 | [能力贡献](contributions.md) | 如何为已有能力注册 provider，以及 `provides` 与 `contributes` 的区别 |
 | [生命周期、数据与安全](lifecycle-and-data.md) | 启停、卸载、存储、权限、失败隔离和桌面边界 |
@@ -44,14 +48,14 @@ ElecKoi 使用 DSH 官方 bundle、Cordis 生命周期和 Web Client Slots 作�
 2. **bundle manifest**：`package.json.eleckoi.developerInterfaces` 是插件中心的发现和说明元数据。
 3. **本目录文档**：解释如何正确使用运行合同，并给出跨包索引。
 
-`api-reference.md` 由运行清单与 bundle manifest 自动生成。新增、删除或改名接口后，运行：
+`api-reference.md` 是由运行清单与 bundle manifest 生成的导航表。完整服务参考、参数、返回类型和查询目录使用锁定 DSH 的官方 WorkspaceAnalyzer、CordisCatalogProjector、TypeGraphRenderer 和 Host-for-Client 生成器从公开源码生成。新增、删除或改名接口后，运行：
 
 ```powershell
 pnpm generate:plugin-docs
 pnpm check:plugin-docs
 ```
 
-`pnpm build` 已包含完整性检查。manifest 发生变化而总表未更新时，构建会失败。
+`pnpm build` 已包含完整性检查。公开成员未登记、成员不存在、JSDoc 缺少参数或返回说明、公开类型无法导入、参考过期时，构建会失败。查询方式见 [服务接口](services.md#在运行时查接口)。
 
 ## 稳定性约定
 

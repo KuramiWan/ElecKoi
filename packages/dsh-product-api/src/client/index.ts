@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import eleckoiRemote from '@eleckoi/dsh-product-api/remote'
+import { registerClientApiInspect } from './inspect.js'
 export type {} from '@eleckoi/dsh-product-api/remote'
 
 export const inject = ['remote']
@@ -19,8 +20,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     await disposeRemote()
     throw error
   }
+  const inspect = registerClientApiInspect(ctx)
   return async () => {
-    await verifier.dispose()
-    await disposeRemote()
+    try { await inspect.dispose() }
+    finally {
+      try { await verifier.dispose() }
+      finally { await disposeRemote() }
+    }
   }
 }

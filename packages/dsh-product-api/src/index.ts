@@ -1,4 +1,5 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
+import { registerHostApiInspect } from './hostInspect.js'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -62,6 +63,8 @@ import type {
   VariableViewerTimeline
 } from './types.js'
 import { testTavilyConnection } from './tavily.js'
+import type { ElecKoiSessionEditor } from './sessionEditor.js'
+export type { ElecKoiSessionEditor } from './sessionEditor.js'
 import { testModelConnection, discoverDraftModels, readModelApiKey } from './modelConnection.js'
 export { testModelConnection, discoverDraftModels, readModelApiKey } from './modelConnection.js'
 import type { ModelConnectionInput, ModelDiscoveryInput, ModelDiscoveryResult } from './types.js'
@@ -162,12 +165,7 @@ declare module '@deepseek-ai/cordis' {
       prepareRestoreBeforeTurn(conversationId: string, sessionId: string, fromTurn: number, beforeMessageId?: string): () => void
       removeArtifacts(conversationId: string, sessionId: string): void
     }
-    eleckoiSessionEditor: {
-      editMessage(sessionId: string, eventSeq: number, role: 'user' | 'assistant', content: string): Promise<void>
-      rewind(sessionId: string, fromTurn: number, fromEventSeq?: number): Promise<number | undefined>
-      transaction<T>(sessionId: string, operation: () => Promise<T>): Promise<T>
-      deleteSession(sessionId: string): Promise<void>
-    }
+    eleckoiSessionEditor: ElecKoiSessionEditor
   }
 }
 
@@ -276,6 +274,7 @@ function productRecordChanges(
   })()
 }
 
+/** 管理界面和聊天显示偏好，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
   static inject = ['typert', 'settings', 'eleckoiProductData']
 
@@ -288,11 +287,21 @@ export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
     this.productData = ctx.eleckoiProductData
   }
 
+  /**
+   * 读取完整保存数据。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   read(): DisplayPreferencesSnapshot {
     return this.snapshot()
   }
 
+  /**
+   * 保存界面偏好并处理需写入媒体库的壁纸。
+   * @param ui - 完整界面偏好。
+   * @param expectedRevision - 要求仍有效的配置版本；不匹配时拒绝保存。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async updateUi(
     ui: Record<string, DisplayPreferenceValue>,
@@ -314,6 +323,12 @@ export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
     }
   }
 
+  /**
+   * 保存聊天显示偏好。
+   * @param chatDisplay - 完整聊天显示偏好。
+   * @param expectedRevision - 要求仍有效的配置版本；不匹配时拒绝保存。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async setChatDisplay(
     chatDisplay: Record<string, DisplayPreferenceValue>,
@@ -341,6 +356,7 @@ export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
   }
 }
 
+/** 管理所有聊天下一轮共同使用的模型，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiConversationModelsApi extends TypertRemoteService {
   static inject = ['typert', 'llm', 'agentDefaultModel']
 
@@ -351,6 +367,11 @@ export class ElecKoiConversationModelsApi extends TypertRemoteService {
     this.ownerContext = ctx
   }
 
+  /**
+   * 读取下一轮使用的全局模型。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async current(conversationId: string): Promise<ConversationModelSelection> {
     void conversationId
@@ -362,6 +383,12 @@ export class ElecKoiConversationModelsApi extends TypertRemoteService {
     }
   }
 
+  /**
+   * 保存当前选择。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param selection - 模型提供商、模型编号和可选推理档位。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async select(conversationId: string, selection: ConversationModelSelection): Promise<ConversationModelSelection> {
     void conversationId
@@ -381,6 +408,7 @@ export class ElecKoiConversationModelsApi extends TypertRemoteService {
   }
 }
 
+/** 管理聊天目录、产品资料和官方 Session 消息修改，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiConversationsApi extends TypertRemoteService {
   private readonly pendingRegenerations = new Map<string, { requestId: string; message: ReturnType<typeof regeneratedUserMessage> }>()
   static inject = [
@@ -405,11 +433,21 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     this.changeFeed = ctx.eleckoiConversationChanges
   }
 
+  /**
+   * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 按发生顺序返回变更通知的异步流。
+   */
   @Remote({ mode: 'stream' })
   changes(signal: AbortSignal): AsyncIterable<ConversationChange> {
     return this.changeFeed.stream(signal)
   }
 
+  /**
+   * 读取目录。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async list(signal: AbortSignal): Promise<ConversationSummary[]> {
     const records = this.productData.readConversationCatalog()
@@ -426,6 +464,13 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }))
   }
 
+  /**
+   * 读取聊天关联资料和消息元数据；消息正文由官方 Session 读取。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param beforeSequence - 分页消息边界，读取该事件序号之前的消息。
+   * @param limit - 分页最多读取的消息数量。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   details(conversationId: string, beforeSequence?: number, limit?: number): ConversationDetailsMetadata {
     return {
@@ -434,6 +479,12 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }
   }
 
+  /**
+   * 根据正则和变量计算消息的显示正文。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param messages - 需要计算显示正文的消息列表。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   projectDisplay(
     conversationId: string,
@@ -456,6 +507,11 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     return this.productData.projectConversationMessages(conversationId, messages)
   }
 
+  /**
+   * 读取各聊天楼层的变量状态。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async variableTimeline(conversationId: string): Promise<VariableViewerTimeline> {
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
@@ -470,11 +526,22 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     return this.productData.readVariableTimeline(conversationId, sessionMessages)
   }
 
+  /**
+   * 读取当前聊天的有效设定库、变量配置和变量状态。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   authorState(conversationId: string): AuthorConversationState {
     return this.productData.readAuthorConversationState(conversationId)
   }
 
+  /**
+   * 替换聊天当前变量；生成期间拒绝修改。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param stateJson - 完整变量对象的 JSON 文本。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   replaceVariableState(conversationId: string, stateJson: string): string {
     const next = this.productData.replaceConversationVariableState(conversationId, stateJson)
@@ -482,6 +549,11 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     return next
   }
 
+  /**
+   * 导出聊天资料和官方 Session 日志的归档 JSON。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async exportArchive(conversationId: string): Promise<string> {
     const snapshot = this.productData.exportConversationArchive(conversationId)
@@ -517,6 +589,12 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }, null, 2)
   }
 
+  /**
+   * 导入归档，创建新的聊天和官方 Session。
+   * @param characterId - 角色编号。
+   * @param json - 完整聊天归档 JSON 文本。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async importArchive(characterId: string, json: string): Promise<string> {
     if (json.length > 100_000_000) throw new Error('聊天记录文件过大。')
@@ -568,6 +646,14 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }
   }
 
+  /**
+   * 在文件管理器中显示官方附件。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param attachmentId - 官方附件编号。
+   * @param name - 保存的名称或附件文件名。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async revealFile(
     conversationId: string,
@@ -584,6 +670,11 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     await this.ownerContext.sessionController.openWorkspacePath({ path, action: 'reveal' }, signal)
   }
 
+  /**
+   * 创建项目并返回更新后的数据。
+   * @param input - 本次操作的输入，字段见参数类型。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async create(input: ConversationCreateInput): Promise<ConversationDetailsMetadata> {
     const details = this.productData.createConversation(input)
@@ -597,6 +688,11 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }
   }
 
+  /**
+   * 删除指定项目及其关联数据。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async delete(conversationId: string): Promise<void> {
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
@@ -606,12 +702,26 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     this.changeFeed.publish({ kind: 'catalog', conversationId, reason: 'deleted' })
   }
 
+  /**
+   * 准备本次输入需要的产品配置和官方 Session，不直接生成回复。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param text - 本次输入或待测试文本。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async preparePrompt(conversationId: string, text: string): Promise<{ runtimeSessionId: string }> {
     const runtimeSessionId = await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, text)
     return { runtimeSessionId }
   }
 
+  /**
+   * 修改同一 Session 中指定消息并刷新投影。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param eventSeq - 官方 Session 中消息的事件序号。
+   * @param role - 消息角色。
+   * @param content - 要保存的完整文本。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async editMessage(
     conversationId: string,
@@ -630,6 +740,13 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     return this.productData.readConversationDetails(conversationId)
   }
 
+  /**
+   * 在同一 Session 中从指定消息回退，恢复相应变量。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param eventSeq - 官方 Session 中消息的事件序号。
+   * @param role - 消息角色。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async deleteMessagesFrom(
     conversationId: string,
@@ -678,6 +795,14 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }
   }
 
+  /**
+   * 准备指定用户输入的重新生成，返回待启动请求。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param eventSeq - 官方 Session 中消息的事件序号。
+   * @param requestId - 本次生成的唯一请求编号。
+   * @param replacementMessage - 可替换的用户输入；省略时保留原输入。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async regenerateMessage(
     conversationId: string,
@@ -719,6 +844,13 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     return { runtimeSessionId, prepared: true }
   }
 
+  /**
+   * 启动已准备的重新生成；取消时恢复准备阶段的改动。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param requestId - 本次生成的唯一请求编号。
+   * @param cancelled - 已准备的请求是否被取消。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean }> {
     const pending = this.pendingRegenerations.get(conversationId)
@@ -732,6 +864,12 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     return { accepted: true }
   }
 
+  /**
+   * 切换开场白。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param openingId - 开场白编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   selectOpening(conversationId: string, openingId: string): ConversationDetailsMetadata {
     const details = this.productData.selectConversationOpening(conversationId, openingId)
@@ -739,6 +877,12 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     return details
   }
 
+  /**
+   * 修改开场白文本。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param content - 要保存的完整文本。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   updateOpening(conversationId: string, content: string): ConversationDetailsMetadata {
     const details = this.productData.updateConversationOpening(conversationId, content)
@@ -1055,6 +1199,7 @@ function jsonObject(value: unknown): Record<string, DisplayPreferenceValue> {
     : {}
 }
 
+/** 管理模型目录、连接测试和用户主动查看的密钥，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiModelsApi extends TypertRemoteService {
   static inject = ['typert', 'settings', 'credentials']
   private readonly ownerContext: Context
@@ -1062,20 +1207,36 @@ export class ElecKoiModelsApi extends TypertRemoteService {
     super(ctx, 'eleckoiModelsApi', { namespace: 'eleckoiModels' })
     this.ownerContext = ctx
   }
+  /**
+   * 按模型配置编号读取密钥，供用户主动查看。
+   * @param configId - 模型配置编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   revealApiKey(configId: string): Promise<string> {
     return readModelApiKey(this.ownerContext, configId)
   }
+  /**
+   * 通过官方适配器测试工具调用，不创建聊天。
+   * @param input - 本次操作的输入，字段见参数类型。
+   * @returns 工具调用成功时返回 supported: true；失败抛出错误。
+   */
   @Remote
   testConnection(input: ModelConnectionInput): Promise<{ supported: true }> {
     return testModelConnection(this.ownerContext, input)
   }
+  /**
+   * 读取模型目录，能力来自官方目录或明确配置。
+   * @param input - 本次操作的输入，字段见参数类型。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   discoverModels(input: ModelDiscoveryInput): Promise<ModelDiscoveryResult[]> {
     return discoverDraftModels(this.ownerContext, input)
   }
 }
 
+/** 管理联网搜索方式和 Tavily 连接测试，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiWebSearchApi extends TypertRemoteService {
   static inject = ['typert', 'configEditor', 'settings', 'credentials']
 
@@ -1086,6 +1247,10 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     this.ownerContext = ctx
   }
 
+  /**
+   * 读取当前搜索提供商。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   selection(): WebSearchMode {
     const provider = this.webConfiguration().searchProvider
@@ -1094,6 +1259,11 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     throw new Error('当前搜索提供器未由 ElecKoi 设置页面管理。')
   }
 
+  /**
+   * 保存当前选择。
+   * @param mode - 联网搜索方式。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async select(mode: WebSearchMode): Promise<WebSearchMode> {
     if (mode !== 'provider_native' && mode !== 'tavily') throw new Error('不支持的联网搜索方式。')
@@ -1106,6 +1276,12 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     return mode
   }
 
+  /**
+   * 测试临时或已保存的密钥，不保存传入密钥。
+   * @param apiKey - 仅用于测试的密钥；省略时使用当前密钥。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async testTavily(apiKey?: string, signal?: AbortSignal): Promise<TavilyConnection> {
     const tavily = this.ownerContext.settings.describe().find(item => item.ns === 'web-search-tavily')
@@ -1129,6 +1305,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
   }
 }
 
+/** 管理角色目录、分组和角色卡导入导出，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiCharactersApi extends TypertRemoteService {
   static inject = [
     'typert',
@@ -1151,16 +1328,30 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
     this.recordChanges = ctx.eleckoiProductRecordChanges
   }
 
+  /**
+   * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 按发生顺序返回变更通知的异步流。
+   */
   @Remote({ mode: 'stream' })
   changes(signal: AbortSignal): AsyncIterable<ProductRecordChange> {
     return productRecordChanges(this.recordChanges, signal, 'characters')
   }
 
+  /**
+   * 读取目录。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   list(): CharacterCollection {
     return this.productData.readCharacters()
   }
 
+  /**
+   * 创建项目并返回更新后的数据。
+   * @param character - 完整角色数据。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   create(character: CharacterRecord): CharacterCollection {
     const collection = this.productData.createCharacter(character)
@@ -1168,6 +1359,11 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
     return collection
   }
 
+  /**
+   * 更新完整数据并通知相关页面刷新。
+   * @param character - 完整角色数据。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   update(character: CharacterRecord): CharacterCollection {
     const collection = this.productData.updateCharacter(character)
@@ -1176,6 +1372,11 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
     return collection
   }
 
+  /**
+   * 保存当前选择。
+   * @param characterId - 角色编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   select(characterId: string): CharacterCollection {
     const collection = this.productData.selectCharacter(characterId)
@@ -1183,6 +1384,12 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
     return collection
   }
 
+  /**
+   * 保存角色分组及角色所属分组。
+   * @param groups - 分组名称列表。
+   * @param assignments - 角色所属分组列表。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveGroups(groups: string[], assignments: CharacterGroupAssignment[]): CharacterCollection {
     const collection = this.productData.saveCharacterGroups(groups, assignments)
@@ -1190,6 +1397,11 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
     return collection
   }
 
+  /**
+   * 删除指定项目及其关联数据。
+   * @param characterIds - 待删除角色编号列表。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   async delete(characterIds: string[]): Promise<CharacterCollection> {
     const deleting = new Set(characterIds)
@@ -1206,16 +1418,33 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
     return collection
   }
 
+  /**
+   * 返回导出文件名、格式和文件内容。
+   * @param characterId - 角色编号。
+   * @param format - 支持的导出格式。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   export(characterId: string, format: CharacterExportFormat): CharacterExportResult {
     return this.productData.exportCharacter(characterId, format)
   }
 
+  /**
+   * 读取角色卡并生成等待确认的预览，不立即保存角色。
+   * @param files - 待导入文件的内容。
+   * @param source - 支持的导入格式。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   prepareImport(files: CharacterImportFile[], source: CharacterImportSource): CharacterImportPreview {
     return this.productData.prepareCharacterImports(files, source)
   }
 
+  /**
+   * 确认导入预览并保存角色。
+   * @param token - 导入预览编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   commitImport(token: string): CharacterImportResult {
     const result = this.productData.commitCharacterImports(token)
@@ -1224,6 +1453,11 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
     return result
   }
 
+  /**
+   * 取消导入预览并清理临时数据。
+   * @param token - 导入预览编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   discardImport(token: string): void {
     this.productData.discardCharacterImports(token)
@@ -1234,6 +1468,7 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
   }
 }
 
+/** 管理受管 Host 的架构和协议状态，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiSystemApi extends TypertRemoteService {
   static inject = ['typert']
 
@@ -1241,12 +1476,17 @@ export class ElecKoiSystemApi extends TypertRemoteService {
     super(ctx, 'eleckoiSystemApi', { namespace: 'eleckoiSystem' })
   }
 
+  /**
+   * 读取架构和协议版本。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   status(): ElecKoiHostStatus {
     return { architecture: 'dsh-remote', protocolVersion: 1 }
   }
 }
 
+/** 管理用户名称和头像资料，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiPersonaApi extends TypertRemoteService {
   static inject = ['typert', 'eleckoiProductData', 'eleckoiProductRecordChanges', 'eleckoiConversationChanges']
 
@@ -1261,16 +1501,30 @@ export class ElecKoiPersonaApi extends TypertRemoteService {
     this.recordChanges = ctx.eleckoiProductRecordChanges
   }
 
+  /**
+   * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 按发生顺序返回变更通知的异步流。
+   */
   @Remote({ mode: 'stream' })
   changes(signal: AbortSignal): AsyncIterable<ProductRecordChange> {
     return productRecordChanges(this.recordChanges, signal, 'persona')
   }
 
+  /**
+   * 读取完整保存数据。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   read(): PersonaProfile {
     return this.productData.readPersona()
   }
 
+  /**
+   * 保存完整数据并通知相关页面刷新。
+   * @param profile - 完整用户资料。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   save(profile: PersonaProfile): PersonaProfile {
     const saved = this.productData.savePersona(profile)
@@ -1280,6 +1534,7 @@ export class ElecKoiPersonaApi extends TypertRemoteService {
   }
 }
 
+/** 管理完整设定库、变量定义和正则配置，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
   static inject = ['typert', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
 
@@ -1292,16 +1547,32 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     this.changeFeed = ctx.eleckoiCharacterConfigurationChanges
   }
 
+  /**
+   * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 按发生顺序返回变更通知的异步流。
+   */
   @Remote({ mode: 'stream' })
   changes(signal: AbortSignal): AsyncIterable<CharacterConfigurationChange> {
     return this.changeFeed.stream(signal)
   }
 
+  /**
+   * 读取完整角色设定库，包含必读、选读、触发方式和插入位置。
+   * @param characterId - 角色编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   readSettingLibrary(characterId: string): SettingLibrary {
     return this.productData.readSettingLibrary(characterId)
   }
 
+  /**
+   * 保存完整角色设定库。
+   * @param characterId - 角色编号。
+   * @param library - 完整设定库，包含触发条件和插入位置。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveSettingLibrary(characterId: string, library: SettingLibrary): SettingLibrary {
     const saved = this.productData.saveSettingLibrary(characterId, library)
@@ -1309,6 +1580,12 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 保存已展开设定分组的编号。
+   * @param characterId - 角色编号。
+   * @param expandedGroupIds - 已展开分组编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveSettingLibraryViewState(characterId: string, expandedGroupIds: string[]): string[] {
     const saved = this.productData.saveSettingLibraryViewState(characterId, expandedGroupIds)
@@ -1316,11 +1593,23 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 读取角色各聊天的完整设定库。
+   * @param characterId - 角色编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   readConversationSettingLibraries(characterId: string): SettingLibraryConversation[] {
     return this.productData.readConversationSettingLibraries(characterId)
   }
 
+  /**
+   * 保存指定聊天的完整设定库。
+   * @param characterId - 角色编号。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param library - 完整设定库，包含触发条件和插入位置。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveConversationSettingLibrary(
     characterId: string,
@@ -1332,12 +1621,25 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 将聊天设定库恢复到角色设定。
+   * @param characterId - 角色编号。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   resetConversationSettingLibrary(characterId: string, conversationId: string): void {
     this.productData.resetConversationSettingLibrary(characterId, conversationId)
     this.publish('settingLibraries', characterId)
   }
 
+  /**
+   * 保存聊天设定库的命名版本。
+   * @param characterId - 角色编号。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param name - 保存的名称或附件文件名。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveConversationSettingLibraryVersion(
     characterId: string,
@@ -1349,11 +1651,22 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 读取变量定义和初始化配置。
+   * @param characterId - 角色编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   readVariableConfig(characterId: string): VariableConfig {
     return this.productData.readVariableConfig(characterId)
   }
 
+  /**
+   * 保存变量定义和初始化配置。
+   * @param characterId - 角色编号。
+   * @param config - 完整配置，字段见参数类型。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveVariableConfig(characterId: string, config: VariableConfig): VariableConfig {
     const saved = this.productData.saveVariableConfig(characterId, config)
@@ -1361,6 +1674,12 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 保存已展开变量对象的编号。
+   * @param characterId - 角色编号。
+   * @param expandedObjectIds - 已展开变量对象编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveVariableConfigViewState(characterId: string, expandedObjectIds: string[]): string[] {
     const saved = this.productData.saveVariableConfigViewState(characterId, expandedObjectIds)
@@ -1368,11 +1687,23 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 读取完整正则配置及其 revision。
+   * @param characterId - 角色编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   readRegexRules(characterId: string): RegexRuleCollection {
     return this.productData.readRegexRules(characterId)
   }
 
+  /**
+   * 校验 revision 后保存完整正则配置。
+   * @param characterId - 角色编号。
+   * @param collection - 完整正则配置。
+   * @param expectedRevision - 要求仍有效的配置版本；不匹配时拒绝保存。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   saveRegexRules(
     characterId: string,
@@ -1384,6 +1715,14 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 校验 revision 后导入正则文件。
+   * @param characterId - 角色编号。
+   * @param fallbackScope - 导入文件未指定归属时使用的范围。
+   * @param documents - 待导入文件列表。
+   * @param expectedRevision - 要求仍有效的配置版本；不匹配时拒绝保存。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   importRegexRules(
     characterId: string,
@@ -1396,11 +1735,24 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return imported
   }
 
+  /**
+   * 导出指定规则的 JSON 文本。
+   * @param characterId - 角色编号。
+   * @param ruleIds - 待导出规则编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   exportRegexRules(characterId: string, ruleIds: string[]): { fileName: string; json: string } {
     return this.productData.exportRegexRules(characterId, ruleIds)
   }
 
+  /**
+   * 测试规则对文本的作用，不保存规则。
+   * @param text - 本次输入或待测试文本。
+   * @param rule - 待测试规则。
+   * @param target - 规则作用的内容类别。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget): RegexRuleTestResult {
     return this.productData.testRegexRule(text, rule, target)
@@ -1414,6 +1766,7 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
   }
 }
 
+/** 管理 Agent 预设、分组和预设文件，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiAgentPresetsApi extends TypertRemoteService {
   static inject = ['typert', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
 
@@ -1426,16 +1779,31 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     this.configurationChanges = ctx.eleckoiCharacterConfigurationChanges
   }
 
+  /**
+   * 读取预设目录和当前预设。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   catalog(): AgentPresetCatalog {
     return this.productData.readAgentPresetCatalog()
   }
 
+  /**
+   * 读取完整保存数据。
+   * @param presetId - 预设编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   read(presetId: string): AgentPreset {
     return this.productData.readAgentPreset(presetId)
   }
 
+  /**
+   * 保存完整数据并通知相关页面刷新。
+   * @param preset - 完整预设数据。
+   * @param expectedRegexRules - 要求仍有效的正则配置。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   save(preset: AgentPreset, expectedRegexRules: RegexRule[]): AgentPreset {
     const saved = this.productData.saveAgentPreset(preset, expectedRegexRules)
@@ -1443,6 +1811,12 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return saved
   }
 
+  /**
+   * 创建预设并返回完整预设数据。
+   * @param name - 保存的名称或附件文件名。
+   * @param libraryGroupId - 预设分组编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   create(name: string, libraryGroupId: string): AgentPreset {
     const created = this.productData.createAgentPreset(name, libraryGroupId)
@@ -1450,6 +1824,12 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return created
   }
 
+  /**
+   * 导入文件并保存完整数据。
+   * @param source - 支持的导入格式。
+   * @param document - 待导入文件内容。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   import(source: AgentPresetImportSource, document: AgentPresetImportDocument): AgentPresetImportResult {
     const imported = this.productData.importAgentPreset(source, document)
@@ -1457,11 +1837,22 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return imported
   }
 
+  /**
+   * 返回导出文件名、格式和文件内容。
+   * @param presetId - 预设编号。
+   * @param format - 支持的导出格式。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   export(presetId: string, format: AgentPresetExportFormat): AgentPresetExportResult {
     return this.productData.exportAgentPreset(presetId, format)
   }
 
+  /**
+   * 设置当前使用的 Agent 预设。
+   * @param presetId - 预设编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   setActive(presetId: string): AgentPresetCatalog {
     const catalog = this.productData.setActiveAgentPreset(presetId)
@@ -1469,6 +1860,11 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return catalog
   }
 
+  /**
+   * 创建预设分组。
+   * @param name - 保存的名称或附件文件名。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   createGroup(name: string): AgentPresetCatalog {
     const catalog = this.productData.createAgentPresetGroup(name)
@@ -1476,6 +1872,12 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return catalog
   }
 
+  /**
+   * 重命名预设分组。
+   * @param groupId - 预设分组编号。
+   * @param name - 保存的名称或附件文件名。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   renameGroup(groupId: string, name: string): AgentPresetCatalog {
     const catalog = this.productData.renameAgentPresetGroup(groupId, name)
@@ -1483,6 +1885,12 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return catalog
   }
 
+  /**
+   * 设置预设所属分组。
+   * @param presetId - 预设编号。
+   * @param groupId - 预设分组编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   assignGroup(presetId: string, groupId: string): AgentPresetCatalog {
     const catalog = this.productData.assignAgentPresetGroup(presetId, groupId)
@@ -1490,6 +1898,11 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return catalog
   }
 
+  /**
+   * 删除预设分组。
+   * @param groupId - 预设分组编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   deleteGroup(groupId: string): AgentPresetCatalog {
     const catalog = this.productData.deleteAgentPresetGroup(groupId)
@@ -1497,6 +1910,11 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
     return catalog
   }
 
+  /**
+   * 删除指定预设并返回更新后的预设目录。
+   * @param presetId - 预设编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   delete(presetId: string): AgentPresetCatalog {
     const catalog = this.productData.deleteAgentPreset(presetId)
@@ -1509,6 +1927,7 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
   }
 }
 
+/** 管理创作项目目录，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiCreatorStudioApi extends TypertRemoteService {
   static inject = ['typert', 'eleckoiProductData', 'eleckoiProductRecordChanges']
 
@@ -1521,16 +1940,30 @@ export class ElecKoiCreatorStudioApi extends TypertRemoteService {
     this.recordChanges = ctx.eleckoiProductRecordChanges
   }
 
+  /**
+   * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
+   * @param signal - 取消调用或结束订阅流的信号。
+   * @returns 按发生顺序返回变更通知的异步流。
+   */
   @Remote({ mode: 'stream' })
   changes(signal: AbortSignal): AsyncIterable<ProductRecordChange> {
     return productRecordChanges(this.recordChanges, signal, 'creatorProjects')
   }
 
+  /**
+   * 读取目录。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   list(): CreatorProjectCollection {
     return this.productData.readCreatorProjects()
   }
 
+  /**
+   * 创建项目并返回更新后的数据。
+   * @param input - 本次操作的输入，字段见参数类型。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   create(input: CreateCreatorProjectInput): CreatorProjectCollection {
     const collection = this.productData.createCreatorProject(input)
@@ -1538,6 +1971,11 @@ export class ElecKoiCreatorStudioApi extends TypertRemoteService {
     return collection
   }
 
+  /**
+   * 删除指定项目及其关联数据。
+   * @param projectId - 创作项目编号。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
   @Remote
   delete(projectId: string): CreatorProjectCollection {
     const collection = this.productData.deleteCreatorProject(projectId)
@@ -1565,10 +2003,14 @@ const eleckoiProductApiPlugin = {
     await ctx.plugin(ElecKoiDisplayPreferencesApi)
     await ctx.plugin(ElecKoiConversationModelsApi)
     await ctx.plugin(ElecKoiConversationsApi)
-    return () => {
-      ctx.eleckoiConversationChanges.close()
-      ctx.eleckoiCharacterConfigurationChanges.close()
-      ctx.eleckoiProductRecordChanges.close()
+    const inspect = registerHostApiInspect(ctx)
+    return async () => {
+      try { await inspect.dispose() }
+      finally {
+        ctx.eleckoiConversationChanges.close()
+        ctx.eleckoiCharacterConfigurationChanges.close()
+        ctx.eleckoiProductRecordChanges.close()
+      }
     }
   }
 } satisfies Plugin.Object

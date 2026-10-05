@@ -1,8 +1,8 @@
 diff --git a/lib/index.js b/lib/index.js
-index abf9801..ca9b94d 100644
+index a76db65497322996bcd3e3536b053de42ec8ca47..fe1a0f83d1646ed2cf8d1a3740c419ddcf1ecd94 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -1397,6 +1397,8 @@ var WorkspaceAnalyzer = class {
+@@ -1399,6 +1399,8 @@ var FaceAnalyzer = class {
  		if (resolved.name !== name) return false;
  		const declaration = preferredDeclaration(resolved);
  		if (declaration === void 0) return false;
@@ -11,3 +11,52 @@ index abf9801..ca9b94d 100644
  		if (this.registrationForFile(declaration.getSourceFile().fileName)?.name === "@deepseek-ai/dsh-typert-protocol") return true;
  		for (let current = declaration; current !== void 0; current = optionalParent(current)) if (ts.isModuleDeclaration(current) && ts.isStringLiteral(current.name) && current.name.text === "@deepseek-ai/dsh-typert-protocol") return true;
  		return false;
+@@ -3653,8 +3655,8 @@ var CordisCatalogProjector = class {
+ 		const chosen = /* @__PURE__ */ new Map();
+ 		for (const packageModel of this.face.packages) for (const service of packageModel.services) {
+ 			const declaration = this.renderer.declaration(service.symbol);
+-			const owner = /^packages\/[^/]+\/[^/]+\/src\//.exec(service.location.file)?.[0];
+-			if (declaration.kind !== "class" && declaration.kind !== "interface" || owner === void 0 || (this.face.face === "host" ? !/^packages\/[^/]+\/[^/]+\/src\/[^/]+\.ts$/.test(service.location.file) : !/^packages\/[^/]+\/[^/]+\/src\/client\/.+\.tsx?$/.test(service.location.file)) || !declaration.location.file.startsWith(owner)) continue;
++			const owner = /^packages\/(?:[^/]+\/){1,2}src\//.exec(service.location.file)?.[0];
++			if (declaration.kind !== "class" && declaration.kind !== "interface" || owner === void 0 || (this.face.face === "host" ? !/^packages\/(?:[^/]+\/){1,2}src\/[^/]+\.ts$/.test(service.location.file) : !/^packages\/(?:[^/]+\/){1,2}src\/client\/.+\.tsx?$/.test(service.location.file)) || !declaration.location.file.startsWith(owner)) continue;
+ 			const current = chosen.get(service.key);
+ 			if (current !== void 0 && this.renderer.declaration(current.symbol).kind === "class") continue;
+ 			chosen.set(service.key, service);
+@@ -3721,7 +3723,7 @@ var CordisCatalogProjector = class {
+ 		const ambiguous = /* @__PURE__ */ new Set();
+ 		const maxDeclarationChars = this.policy.runtimeDeclarationMaxChars ?? DEFAULT_MAX_DECL_CHARS;
+ 		for (const declaration of this.sourceDeclarations) {
+-			if (declaration.face !== this.face.face || !/^packages\/[^/]+\/[^/]+\/src\/.+\.tsx?$/.test(declaration.location.file) && !(declaration.kind === "enum" && /^vendor\/[^/]+\/src\/.+\.ts$/.test(declaration.location.file))) continue;
++			if (declaration.face !== this.face.face || !/^packages\/(?:[^/]+\/){1,2}src\/.+\.tsx?$/.test(declaration.location.file) && !(declaration.kind === "enum" && /^vendor\/[^/]+\/src\/.+\.ts$/.test(declaration.location.file))) continue;
+ 			if (declarations.has(declaration.name)) {
+ 				ambiguous.add(declaration.name);
+ 				continue;
+diff --git a/lib/types/cordis-catalog.js b/lib/types/cordis-catalog.js
+index 8c561f58aafb422694e028201a2932cf16aaf4df..0609995b7f584574e4b20a8b325bda84f9147ecc 100644
+--- a/lib/types/cordis-catalog.js
++++ b/lib/types/cordis-catalog.js
+@@ -142,12 +142,12 @@ export class CordisCatalogProjector {
+         for (const packageModel of this.face.packages) {
+             for (const service of packageModel.services) {
+                 const declaration = this.renderer.declaration(service.symbol);
+-                const owner = /^packages\/[^/]+\/[^/]+\/src\//.exec(service.location.file)?.[0];
++                const owner = /^packages\/(?:[^/]+\/){1,2}src\//.exec(service.location.file)?.[0];
+                 if ((declaration.kind !== 'class' && declaration.kind !== 'interface')
+                     || owner === undefined
+                     || (this.face.face === 'host'
+-                        ? !/^packages\/[^/]+\/[^/]+\/src\/[^/]+\.ts$/.test(service.location.file)
+-                        : !/^packages\/[^/]+\/[^/]+\/src\/client\/.+\.tsx?$/.test(service.location.file))
++                        ? !/^packages\/(?:[^/]+\/){1,2}src\/[^/]+\.ts$/.test(service.location.file)
++                        : !/^packages\/(?:[^/]+\/){1,2}src\/client\/.+\.tsx?$/.test(service.location.file))
+                     || !declaration.location.file.startsWith(owner))
+                     continue;
+                 const current = chosen.get(service.key);
+@@ -221,7 +221,7 @@ export class CordisCatalogProjector {
+         const maxDeclarationChars = this.policy.runtimeDeclarationMaxChars ?? DEFAULT_MAX_DECL_CHARS;
+         for (const declaration of this.sourceDeclarations) {
+             if (declaration.face !== this.face.face
+-                || (!/^packages\/[^/]+\/[^/]+\/src\/.+\.tsx?$/.test(declaration.location.file)
++                || (!/^packages\/(?:[^/]+\/){1,2}src\/.+\.tsx?$/.test(declaration.location.file)
+                     && !(declaration.kind === 'enum' && /^vendor\/[^/]+\/src\/.+\.ts$/.test(declaration.location.file))))
+                 continue;
+             if (declarations.has(declaration.name)) {

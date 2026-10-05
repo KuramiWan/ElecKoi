@@ -1,6 +1,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { generatePluginApiReference } from './generate-plugin-api-reference.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const outputPath = join(root, 'docs', 'plugins', 'api-reference.md')
@@ -70,7 +71,7 @@ const lines = [
   '',
   `当前共 **${bundles.length} 个 bundle、${rows.length} 个开发接口**：${counts['ui-slot']} 个界面插槽、${counts.service} 个服务、${counts.event} 个事件、${counts.contribution} 个贡献点、${counts.remote} 个 Remote 合同。`,
   '',
-  '接口标题和说明用于插件中心展示；真实调用合同以对应类型导出和实现为准。使用方法见 [界面插槽](ui-slots.md)、[服务接口](services.md) 与 [能力贡献](contributions.md)。',
+  '接口标题和说明用于插件中心展示；真实调用合同以对应类型导出和实现为准。完整参数、返回值和数据字段见 [Client 参考](api-client.md)、[Host 参考](api-host.md) 与 [Remote 调用声明](api-remote.md)。使用方法见 [界面插槽](ui-slots.md)、[服务接口](services.md) 与 [能力贡献](contributions.md)。',
   '',
   '## 汇总',
   '',
@@ -116,6 +117,7 @@ lines.push('', '## 完整性规则', '',
   '- `pnpm check:plugin-docs` 与 `pnpm build` 会拒绝过期或不完整的总表。', '')
 
 const generated = `${lines.join('\n')}\n`
+const reference = await generatePluginApiReference(root, { check: checkOnly })
 if (checkOnly) {
   let current = ''
   try {
@@ -126,7 +128,7 @@ if (checkOnly) {
   if (current !== generated) {
     throw new Error('插件开发接口文档已过期，请运行 pnpm generate:plugin-docs')
   }
-  console.log(`Plugin developer API documentation is current: ${bundles.length} bundles, ${rows.length} interfaces.`)
+  console.log(`Plugin developer API documentation is current: ${bundles.length} bundles, ${rows.length} interfaces, ${reference.remoteMethods} Remote methods.`)
 } else {
   await writeFile(outputPath, generated, 'utf8')
   console.log(`Generated ${slash(relative(root, outputPath))}: ${bundles.length} bundles, ${rows.length} interfaces.`)
