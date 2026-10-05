@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 const FOLLOW_THRESHOLD = 24;
+const SCROLL_SAMPLE_INTERVAL_MS = 500;
 
 export function scrollMetrics(element) {
   const height = element.clientHeight;
@@ -116,10 +117,8 @@ export function useChatTailReading({ scrollElement, onFollowingTailChange }) {
       return undefined;
     }
 
+    let sampleTimer = null;
     let observationTop = scrollElement.scrollTop;
-    let readerDirection = 0;
-    let touchingY = null;
-    let pointerReading = false;
 
     const publish = (following) => {
       follow.setFollowing(following);
@@ -127,110 +126,65 @@ export function useChatTailReading({ scrollElement, onFollowingTailChange }) {
       followingRef.current = following;
       onFollowingTailChangeRef.current(following);
     };
-    const followTail = () => {
-      readerDirection = 0;
-      const landing = follow.toBottom(scrollElement, scrollMetrics(scrollElement), "instant");
-      observationTop = landing.top;
-      publish(true);
+    const cancelPending = () => {
+      if (sampleTimer !== null) window.clearTimeout(sampleTimer);
+      sampleTimer = null;
     };
     const readScroll = () => {
       const metrics = scrollMetrics(scrollElement);
-      // Content shrinking can clamp scrollTop without a reader moving upward.
-      const delta = metrics.top - Math.min(observationTop, metrics.floor);
-      observationTop = metrics.top;
-      if (delta < -0.5) {
-        publish(false);
-      } else if (delta > 0.5 && (readerDirection > 0 || pointerReading)
-        && follow.nearBottom(metrics)) {
-        publish(true);
+      return {
+        metrics,
+        movedByReader: Math.abs(metrics.top - Math.min(observationTop, metrics.floor)) > 0.5,
+      };
+    };
+    const followTail = () => {
+      const metrics = scrollMetrics(scrollElement);
+      const landing = follow.toBottom(scrollElement, metrics, "instant");
+      observationTop = landing.top;
+      cancelPending();
+      publish(true);
+    };
+    const flushSample = () => {
+      if (sampleTimer === null) return;
+      cancelPending();
+      const scroll = readScroll();
+      const following = follow.sample(scroll.metrics, scroll.movedByReader);
+      if (!scroll.movedByReader && following) {
+        followTail();
+        return;
       }
-      return metrics;
+      observationTop = scroll.metrics.top;
+      publish(following);
     };
-    const onScroll = () => { readScroll(); };
-    const onResize = () => {
-      // ResizeObserver may run before the scroll event for a reader's movement.
-      readScroll();
-      if (followingRef.current && !pointerReading && touchingY === null) followTail();
-    };
-    const canScrollInside = (target, direction) => {
-      for (let element = target; element && element !== scrollElement; element = element.parentElement) {
-        const { overflowY, overscrollBehaviorY } = getComputedStyle(element);
-        if (!/^(auto|scroll)$/.test(overflowY)) continue;
-        if (/^(contain|none)$/.test(overscrollBehaviorY)) return true;
-        const metrics = scrollMetrics(element);
-        if (direction < 0 ? metrics.top > 0 : metrics.top < metrics.floor) return true;
+    const onScroll = () => {
+      const scroll = readScroll();
+      if ((!scroll.movedByReader && followingRef.current)
+        || (scroll.movedByReader && scroll.metrics.top >= scroll.metrics.floor)) {
+        followTail();
+        return;
       }
-      return false;
-    };
-    const onDirection = (event, direction) => {
-      if (!direction || event.defaultPrevented || canScrollInside(event.target, direction)) return;
-      readerDirection = direction;
-      // Pause before the browser scrolls, even for a tiny trackpad movement inside
-      // the bottom tolerance. Only an intentional downward return can resume it.
-      if (direction < 0) publish(false);
-    };
-    const onWheel = (event) => {
-      if (!event.ctrlKey) onDirection(event, Math.sign(event.deltaY));
-    };
-    const onKeyDown = (event) => {
-      if (event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')
-        || event.altKey || event.metaKey
-        || (event.ctrlKey && !["Home", "End"].includes(event.key))) return;
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key) || (event.key === " " && event.shiftKey)) {
-        onDirection(event, -1);
-      } else if (["ArrowDown", "PageDown", "End", " "].includes(event.key)) {
-        onDirection(event, 1);
-      }
-    };
-    const onTouchStart = (event) => {
-      touchingY = event.touches.length === 1 ? event.touches[0].clientY : null;
-    };
-    const onTouchMove = (event) => {
-      const y = event.touches.length === 1 ? event.touches[0].clientY : null;
-      if (touchingY !== null && y !== null) onDirection(event, Math.sign(touchingY - y));
-      touchingY = y;
-    };
-    const onTouchEnd = () => {
-      touchingY = null;
-      onResize();
-    };
-    const onPointerDown = (event) => {
-      // Native scrollbar events target the scrolling element, not its content.
-      if (event.target === scrollElement && event.button === 0) pointerReading = true;
-    };
-    const onPointerUp = () => {
-      if (!pointerReading) return;
-      readScroll();
-      pointerReading = false;
-      onResize();
+      sampleTimer ??= window.setTimeout(flushSample, SCROLL_SAMPLE_INTERVAL_MS);
     };
     const onScrollEnd = (event) => {
-      if (event.target !== scrollElement) return;
-      readScroll();
-      readerDirection = 0;
+      if (event.target === scrollElement) flushSample();
     };
-    const listeners = {
-      scroll: onScroll, scrollend: onScrollEnd, wheel: onWheel, keydown: onKeyDown,
-      touchstart: onTouchStart, touchmove: onTouchMove, touchend: onTouchEnd,
-      touchcancel: onTouchEnd, pointerdown: onPointerDown,
+    const onResize = () => {
+      if (sampleTimer !== null) return;
+      if (followingRef.current) followTail();
     };
+
     controllerRef.current = { followTail };
-    for (const [type, listener] of Object.entries(listeners)) {
-      scrollElement.addEventListener(type, listener, { passive: true });
-    }
-    window.addEventListener("pointerup", onPointerUp, { passive: true });
-    window.addEventListener("pointercancel", onPointerUp, { passive: true });
+    scrollElement.addEventListener("scroll", onScroll, { passive: true });
+    scrollElement.addEventListener("scrollend", onScrollEnd, { passive: true, capture: true });
     const observer = typeof ResizeObserver === "function" ? new ResizeObserver(onResize) : null;
     observer?.observe(contentElement);
     observer?.observe(scrollElement);
 
     return () => {
+      cancelPending();
       observer?.disconnect();
-      for (const [type, listener] of Object.entries(listeners)) {
-        scrollElement.removeEventListener(type, listener);
-      }
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
+      scrollElement.removeEventListener("scroll", onScroll);
+      scrollElement.removeEventListener("scrollend", onScrollEnd, true);
       if (controllerRef.current?.followTail === followTail) controllerRef.current = null;
     };
   }, [follow, scrollElement]);
