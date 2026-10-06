@@ -1,4 +1,4 @@
-import { dirname } from 'node:path'
+import { win32 } from 'node:path'
 import { app, ipcMain } from 'electron'
 import electronUpdater, { type AppUpdater } from 'electron-updater'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
@@ -27,7 +27,7 @@ export function preserveWindowsUpdateInstallDirectory(
   platform: NodeJS.Platform
 ): void {
   if (!packaged || platform !== 'win32') return
-  ;(updater as AppUpdater & { installDirectory?: string }).installDirectory = dirname(executablePath)
+  ;(updater as AppUpdater & { installDirectory?: string }).installDirectory = win32.dirname(executablePath)
 }
 
 export const updatesPlugin = {

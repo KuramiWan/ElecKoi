@@ -19,38 +19,41 @@ class FakeUpdater extends EventEmitter {
 }
 
 describe('desktop updater', () => {
-  it('keeps app updates in the current Windows installation directory', () => {
+  it.each([
+    [String.raw`D:\Apps\ElecKoi\ElecKoi.exe`, String.raw`D:\Apps\ElecKoi`],
+    ['D:/Apps/ElecKoi/ElecKoi.exe', 'D:/Apps/ElecKoi'],
+    [String.raw`\\server\apps\ElecKoi\ElecKoi.exe`, String.raw`\\server\apps\ElecKoi`],
+    [String.raw`C:\ElecKoi.exe`, 'C:\\']
+  ])('keeps app updates beside the Windows executable %s', (executablePath, directory) => {
     const updater = new FakeUpdater()
 
     preserveWindowsUpdateInstallDirectory(
       updater as unknown as AppUpdater,
-      'D:\\Apps\\ElecKoi\\ElecKoi.exe',
+      executablePath,
       true,
       'win32'
     )
 
     expect((updater as FakeUpdater & { installDirectory?: string }).installDirectory)
-      .toBe('D:\\Apps\\ElecKoi')
+      .toBe(directory)
   })
 
-  it('does not set an NSIS install directory outside packaged Windows builds', () => {
-    const developmentUpdater = new FakeUpdater()
+  it.each([
+    { executablePath: String.raw`D:\Apps\ElecKoi\ElecKoi.exe`, packaged: false, platform: 'win32' },
+    { executablePath: '/Applications/ElecKoi.app/Contents/MacOS/ElecKoi', packaged: true, platform: 'darwin' },
+    { executablePath: '/opt/eleckoi/ElecKoi', packaged: true, platform: 'linux' }
+  ] as const)('does not set an NSIS install directory for $platform (packaged: $packaged)', ({
+    executablePath, packaged, platform
+  }) => {
+    const updater = new FakeUpdater()
     preserveWindowsUpdateInstallDirectory(
-      developmentUpdater as unknown as AppUpdater,
-      'D:\\Apps\\ElecKoi\\ElecKoi.exe',
-      false,
-      'win32'
-    )
-    const otherPlatformUpdater = new FakeUpdater()
-    preserveWindowsUpdateInstallDirectory(
-      otherPlatformUpdater as unknown as AppUpdater,
-      '/Applications/ElecKoi.app/Contents/MacOS/ElecKoi',
-      true,
-      'darwin'
+      updater as unknown as AppUpdater,
+      executablePath,
+      packaged,
+      platform
     )
 
-    expect((developmentUpdater as FakeUpdater & { installDirectory?: string }).installDirectory).toBeUndefined()
-    expect((otherPlatformUpdater as FakeUpdater & { installDirectory?: string }).installDirectory).toBeUndefined()
+    expect((updater as FakeUpdater & { installDirectory?: string }).installDirectory).toBeUndefined()
   })
 
   it('detaches updater logging before host services become inactive', () => {
