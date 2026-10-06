@@ -17,6 +17,8 @@
 ## 决策与历史
 
 - [架构决策索引](adr/README.md)：按编号查看决定、状态与替代关系。
+- [官方 ChatView 与角色消息座位](adr/0024-official-chat-view-roleplay-seats.md)：消息呈现、官方滚动与输入区布局边界。
+- [同一 Session 复用已有用户事件重新生成](adr/0025-same-session-existing-input-regeneration.md)：重新生成、编辑、轨迹与轮次统计的身份规则。
 - [历史资料](history/README.md)：旧架构说明，不作为当前实现指南。
 
 ## 文档维护

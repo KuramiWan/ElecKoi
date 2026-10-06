@@ -445,8 +445,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean }>',
-        description: '启动已准备的重新生成；取消时恢复准备阶段的改动。',
+        signature: '@Remote async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean; turn?: number }>',
+        description: '从已保留的用户事件启动重新生成；取消时保留用户输入，不启动新的回复。',
         parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'requestId', description: '本次生成的唯一请求编号。' }, { name: 'cancelled', description: '已准备的请求是否被取消。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
@@ -582,9 +582,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '消息修改和投影刷新完成。',
       },
       {
-        signature: 'rewind(sessionId: string, fromTurn: number, fromEventSeq?: number): Promise<number | undefined>',
+        signature: 'rewind(sessionId: string, fromTurn: number, fromEventSeq?: number, retainInput?: boolean): Promise<number | undefined>',
         description: '从指定轮次和可选事件位置回退，并刷新官方投影。',
-        parameters: [{ name: 'sessionId', description: '官方 Session 编号。' }, { name: 'fromTurn', description: '首个需要撤销的轮次。' }, { name: 'fromEventSeq', description: '可选消息事件边界。' }],
+        parameters: [{ name: 'sessionId', description: '官方 Session 编号。' }, { name: 'fromTurn', description: '首个需要撤销的轮次。' }, { name: 'fromEventSeq', description: '可选消息事件边界。' }, { name: 'retainInput', description: '保留该边界的直接用户事件并闭合其开放轮次。' }],
         returns: '移除的事件数；无法回退时返回 undefined。',
       },
     ],

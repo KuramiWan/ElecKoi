@@ -38,8 +38,8 @@
   --chat-composer-card-max-width: var(--dsh-composer-card-max-width);
   --chat-composer-side-clearance: var(--dsh-composer-side-clearance);
   position: relative;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
 }
@@ -314,54 +314,41 @@
 }
 
 .message-area {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
-  padding: 28px var(--chat-scroll-horizontal-padding) 34px;
-  padding-inline-end: max(0px, calc(var(--chat-scroll-horizontal-padding) - var(--chat-window-resize-edge-inset)));
+  margin-right: var(--chat-window-resize-edge-inset);
+  padding: 0;
+  scrollbar-gutter: stable;
 }
 
-.message-area::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.chat-transcript-region {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-height: auto;
 }
 
+.chat-panel.view-trajectory .message-area {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.chat-panel.view-trajectory .chat-transcript-region {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Width, thumb colors and hover behavior belong to the DSH theme sheet. */
 .message-area::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.message-area::-webkit-scrollbar-thumb {
-  min-height: 44px;
-  border: 1px solid transparent;
-  border-radius: 999px; corner-shape: round;
-  background: transparent;
-  background-clip: content-box;
-}
-
-.message-area.scrollbar-visible::-webkit-scrollbar-thumb,
-.message-area:hover::-webkit-scrollbar-thumb {
-  background: #d2d2d2;
-  background-clip: content-box;
-}
-
-.message-area::-webkit-scrollbar-thumb:hover {
-  background: #a9a9a9;
-  background-clip: content-box;
-}
-
-.message-area::-webkit-scrollbar-button,
-.message-area::-webkit-scrollbar-button:single-button,
-.message-area::-webkit-scrollbar-button:vertical:start:decrement,
-.message-area::-webkit-scrollbar-button:vertical:end:increment,
-.message-area::-webkit-scrollbar-button:horizontal:start:decrement,
-.message-area::-webkit-scrollbar-button:horizontal:end:increment,
-.message-area::-webkit-scrollbar-corner {
-  display: none;
-  width: 0;
-  height: 0;
-  background: transparent;
+  margin: 2px;
 }
 
 .message {
@@ -383,6 +370,48 @@
 
 .message-flow {
   width: 100%;
+}
+
+/* The official frame and turn rail stay full-bleed. Only the reading column
+   receives product clearance; the scroll owner must not inset floating controls. */
+.message-area [data-chat-scroll] {
+  padding: 28px var(--chat-scroll-horizontal-padding) 34px;
+}
+
+.message-area.layout-roleplay [data-chat-scroll] {
+  padding-top: 10px;
+}
+
+.message-area [data-chat-column] {
+  max-width: none;
+  --dsh-chat-flow-gap: 0px;
+}
+
+.message-area [data-chat-column] > [data-chat-flow-key] {
+  --dsh-chat-flow-gap: 0px;
+}
+
+/* DSH's running indicator remains the authoritative status/timer, but the
+   roleplay composer owns its visual seat. Keep it docked immediately above
+   the input instead of leaving it as a loose row in the transcript. */
+.chat-running-seat {
+  box-sizing: border-box;
+  width: min(var(--chat-reading-width), 100%);
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.chat-running-seat:empty {
+  display: none;
+}
+
+.chat-running-seat [data-chat-running] {
+  margin: 0;
+  padding: 6px 0 8px;
+}
+
+.chat-running-seat [data-chat-running] > [aria-hidden="true"] {
+  display: none !important;
 }
 
 .message-flow.is-conversation-entering {
@@ -790,11 +819,6 @@
 }
 
 .agent-message-footer .opening-pager .opening-pager-next { order: 2; }
-
-.message-area.layout-roleplay {
-  padding-top: 10px;
-  scrollbar-gutter: stable;
-}
 
 .message-roleplay {
   --chat-roleplay-leading-stack-height: var(--chat-avatar-height, 86.67px);
@@ -2164,10 +2188,22 @@
 }
 
 .chat-composer-region {
-  position: relative;
+  --dsh-composer-text-max-height: 336px;
+  position: sticky;
+  bottom: 0;
   z-index: 7;
   display: grid;
+  flex: none;
   min-width: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--dsw-alias-bg-base, var(--chat)) 0%, transparent) 0px,
+    var(--dsw-alias-bg-base, var(--chat)) 36px
+  );
+}
+
+.chat-composer-region:has([data-trigger-menu]) {
+  z-index: 9;
 }
 
 .chat-panel.view-trajectory .chat-composer-region {
@@ -2187,50 +2223,6 @@
 
 .chat-panel.view-trajectory .chat-composer-region > * {
   pointer-events: auto;
-}
-
-.chat-to-bottom-slot {
-  position: absolute;
-  z-index: 8;
-  top: -16px;
-  right: 0;
-  left: 0;
-  display: flex;
-  justify-content: flex-end;
-  height: 0;
-  padding-right: max(
-    calc(var(--chat-composer-side-clearance) + 16px),
-    calc((100% - var(--chat-reading-width)) / 2)
-  );
-  pointer-events: none;
-}
-
-.chat-to-bottom {
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l3, var(--line-strong));
-  display: flex;
-  width: 34px;
-  height: 34px;
-  align-items: center;
-  justify-content: center;
-  margin-top: -34px;
-  padding: 0;
-  border: 0;
-  border-radius: 100px;
-  corner-shape: round;
-  background: var(--dsw-alias-button-floating-fill, var(--surface-raised));
-  box-shadow: var(--dsw-elevation-panel, 0 8px 24px var(--shadow-color));
-  color: var(--dsw-alias-label-primary, var(--text));
-  cursor: pointer;
-  pointer-events: auto;
-}
-
-.chat-to-bottom:hover {
-  background: var(--dsw-alias-button-floating-hover, var(--control-bg-hover));
-}
-
-.chat-to-bottom:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 2px;
 }
 
 .chat-message-delete-bar {

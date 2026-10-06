@@ -193,6 +193,9 @@ window.__ModuleLoader__.load({
           '@deepseek-ai/dsh-sdk-app', '@deepseek-ai/dsh-acp-app', '@deepseek-ai/dsh-sdk-minimal',
         ])
         const eleckoiPackages = new Map([
+          ['@deepseek-ai/dsh-agent-loop', 'DSH 已有输入生成适配'],
+          ['@deepseek-ai/dsh-client-ui-chat', 'DSH 官方聊天视图适配'],
+          ['@deepseek-ai/dsh-client-ui-trajectory', 'DSH 轨迹请求身份适配'],
           ['@deepseek-ai/dsh-client-ui-plugin-manager', 'DSH 插件页面适配'],
           ['@deepseek-ai/dsh-client-ui-conversation', 'DSH 会话输入框适配'],
           ['@deepseek-ai/dsh-plugin-manager', 'DSH 插件管理适配'],

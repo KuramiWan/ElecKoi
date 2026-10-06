@@ -104,7 +104,13 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
   const createAgent = current => {
     const scope = new Context()
     cleanups.push(() => scope.fiber.dispose())
-    return { id: SessionId(conversationId), ctx: scope, session: current, status: 'idle', followup: message => followed.push(message) }
+    return { id: SessionId(conversationId), ctx: scope, session: current, status: 'idle',
+      continueFromInput: id => {
+        const input = current.deriveMessages().find(message => message.id === id)
+        if (!input) throw new Error('Selected input is not retained')
+        followed.push(input)
+        return 2
+      } }
   }
   let agent = createAgent(session)
   let globalModelSelection = { provider: 'test', model: 'test' }
@@ -205,10 +211,13 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
       .toMatchObject({ provider: 'test', model: 'test', temperature: 0.6, topP: 0.8 })
     await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'startRegeneration',
       args: { conversationId: f.conversationId, requestId: 'synthetic-regeneration', cancelled: false } }))
-      .resolves.toEqual({ accepted: true })
+      .resolves.toEqual({ accepted: true, turn: 2 })
     expect(f.followed).toHaveLength(1)
-    expect(f.followed[0]).toMatchObject({ content: [{ type: 'text', text: '合成替换输入' }],
-      source: { kind: 'user', rpcId: 'synthetic-regeneration' } })
+    expect(f.followed[0]).toMatchObject({ id: f.userEvent.data.id,
+      content: [{ type: 'text', text: '合成替换输入' }], source: f.userEvent.data.source })
+    const retained = readDshSessionLog(f.sessionRoot, f.conversationId).events.find(event => event.seq === f.userEvent.seq)
+    expect(retained).toMatchObject({ seq: f.userEvent.seq, time: f.userEvent.time,
+      data: { id: f.userEvent.data.id, source: f.userEvent.data.source } })
   })
 
   it('rejects an unavailable global model repeatedly without discarding messages', async () => {

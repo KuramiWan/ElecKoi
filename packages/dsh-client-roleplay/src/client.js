@@ -2,6 +2,66 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-roleplay',
   factory(require) {
     const React = require('react')
+
+    // User-event identities define chat rounds; execution Turn IDs remain untouched.
+    function createInputRoundIndex(identities) {
+      if (!Array.isArray(identities?.inputs)) return undefined
+      const inputs = new Map()
+      const turns = new Map()
+      for (const input of [...identities.inputs].sort((a, b) => a.eventSeq - b.eventSeq)) {
+        if (inputs.has(input.eventSeq)) continue
+        const indexed = { ...input, round: inputs.size + 1 }
+        inputs.set(input.eventSeq, indexed)
+        if (input.turn > 0) turns.set(input.turn, indexed)
+      }
+      for (const link of identities.links ?? []) {
+        const input = inputs.get(link.inputEventSeq)
+        if (input?.messageId === link.inputMessageId) turns.set(link.turn, input)
+      }
+      return { inputs, turns }
+    }
+
+    function presentChatTurnNavigation(navigation, index) {
+      if (!index) return navigation
+      const rounds = new Map()
+      for (const item of navigation.items) {
+        const input = index.turns.get(item.turn)
+        if (!input) continue
+        const previous = rounds.get(input.round)
+        // The original input Turn remains the official jump target. A newer
+        // execution supplies its preview, not another mark or a replacement anchor.
+        const target = !previous || item.turn === input.turn || item.turn < previous.target.turn
+          ? item : previous.target
+        const latest = !previous || item.turn > previous.latest.turn ? item : previous.latest
+        rounds.set(input.round, { target, latest, prompt: item.turn === input.turn
+          ? item.prompt : previous?.prompt || item.prompt })
+      }
+      const targetTurn = turn => {
+        const input = index.turns.get(turn)
+        return input ? rounds.get(input.round)?.target.turn ?? null : null
+      }
+      return {
+        items: [...rounds.entries()].sort(([a], [b]) => a - b).map(([round, group]) => ({
+          ...group.target, labelTurn: round, prompt: group.prompt || '', response: group.latest.response,
+        })),
+        activeTurn: targetTurn(navigation.activeTurn), busyTurn: targetTurn(navigation.busyTurn),
+      }
+    }
+
+    function adaptChatSessionStats(value, adjustment, index) {
+      if (!value || typeof value !== 'object') return value
+      return {
+        ...value,
+        steps: Math.max(0, value.steps - (Number(adjustment?.steps) || 0)),
+        turns: index ? index.inputs.size : Math.max(0, value.turns - (Number(adjustment?.turns) || 0)),
+      }
+    }
+    const bridgedChatChildren = Object.freeze({
+      'conversation.chat.node': 'eleckoi.roleplay.chat.node',
+      'conversation.message.images': 'eleckoi.roleplay.chat.images',
+      'conversation.chat.before': 'eleckoi.roleplay.chat.before',
+      'conversation.chat.pending-input': 'eleckoi.roleplay.chat.pending-input'
+    })
     const bridgedComposerChildren = Object.freeze({
       'conversation.approval.detail': 'eleckoi.roleplay.conversation.approval.detail',
       'conversation.plan-review.actions': 'eleckoi.roleplay.conversation.plan-review.actions',
@@ -126,26 +186,14 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         const retainedStatsByProjection = new WeakMap()
         const retainedStatsKeys = new Set(['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown'])
-        const hasVisibleStatsProjection = (key, value) => {
-          if (value == null) return false
-          if (typeof value !== 'object') return true
-          if (key === 'sessionStats') return Number(value.steps) > 0 || Number(value.turns) > 0
-          if (key === 'tokenUsage') {
-            return Number(value.uncachedInputTokens) > 0 || Number(value.cacheReadTokens) > 0
-              || Number(value.cacheWriteTokens) > 0 || Number(value.outputTokens) > 0
-          }
-          if (key === 'contextPressure') {
-            return value.contextWindow != null
-              && (value.projectedTokens != null || value.pressureTokens != null)
-          }
-          return Object.values(value).some(item => Number(item) > 0)
-        }
         const projectConversationSeat = (source, target, options = {}) => {
           ctx.slots.inject(target, () => {
             const projected = new Map()
             const adapt = entry => function ConversationSeatEntry(ownerProps) {
               if (source === 'conversation.composer.dock' && entry.options.id === 'stats') {
                 const adjustment = ownerProps.useProjection('eleckoiHistoryStatsAdjustment')
+                const identities = ownerProps.useProjection('eleckoiInputContinuations')
+                const roundIndex = React.useMemo(() => createInputRoundIndex(identities), [identities])
                 if (ownerProps.generationStatsEnabled === false) return null
                 const upstreamUseProjection = ownerProps.useProjection
                 let retained = retainedStatsByProjection.get(upstreamUseProjection)
@@ -155,19 +203,14 @@ window.__ModuleLoader__.load({
                 }
                 const useProjection = key => {
                   const value = upstreamUseProjection(key)
-                  if (key !== 'sessionStats' || !value) return value
-                  if (!adjustment) return value
-                  const adjusted = {
-                    ...value,
-                    steps: Math.max(0, value.steps - (Number(adjustment.steps) || 0)),
-                    turns: Math.max(0, value.turns - (Number(adjustment.turns) || 0))
-                  }
-                  return adjusted
+                  return key === 'sessionStats' ? adaptChatSessionStats(value, adjustment, roundIndex) : value
                 }
                 const stableUseProjection = key => {
                   const value = useProjection(key)
                   if (!retainedStatsKeys.has(key)) return value
-                  if (hasVisibleStatsProjection(key, value)) {
+                  // Only an absent rebind snapshot may retain the prior value.
+                  // An authoritative zero after deletion must clear it.
+                  if (value != null) {
                     retained.set(key, value)
                     return value
                   }
@@ -186,6 +229,31 @@ window.__ModuleLoader__.load({
                 return React.createElement(entry.component, { ...props, renderSlot })
               }
               if (source !== 'conversation.view') return React.createElement(entry.component, ownerProps)
+              if (options.entryId === 'chat') {
+                const { renderChatNode, renderPendingInput, before, ...props } = ownerProps
+                const identities = props.useProjection('eleckoiInputContinuations')
+                const roundIndex = React.useMemo(() => createInputRoundIndex(identities), [identities])
+                const presentTurnNavigation = React.useCallback(navigation => presentChatTurnNavigation(navigation, roundIndex), [roundIndex])
+                const renderSlot = React.useCallback((name, owner, renderOptions) => {
+                  if (name === 'conversation.chat.before') return props.renderSlot(bridgedChatChildren[name], owner, {
+                    ...renderOptions, fallback: before ?? null
+                  })
+                  if (name === 'conversation.chat.pending-input' && renderPendingInput) return props.renderSlot(bridgedChatChildren[name], owner, {
+                    ...renderOptions, fallback: renderPendingInput(owner)
+                  })
+                  if (name === 'conversation.chat.node' && renderChatNode) {
+                    const rendered = renderChatNode(owner)
+                    if (rendered !== undefined) return rendered
+                  }
+                  return props.renderSlot(bridgedChatChildren[name] || name, owner, renderOptions)
+                }, [props.renderSlot, before, renderChatNode, renderPendingInput])
+                // Roleplay owns process disclosure in its trajectory dialog.
+                // Keep the actual Turn seat visible throughout its lifecycle.
+                const usePresentation = React.useCallback(selector => props.usePresentation(policy => selector({
+                  ...policy, foldCompletedTurns: false, stepGrouping: 'expanded'
+                })), [props.usePresentation])
+                return React.createElement(entry.component, { ...props, renderSlot, usePresentation, presentTurnNavigation })
+              }
               const { component, ...props } = ownerProps
               const renderSlot = (name, owner) => name === 'conversation.trajectory.images'
                 ? ownerProps.renderSlot('eleckoi.roleplay.trajectory.images', owner) : null
@@ -224,6 +292,10 @@ window.__ModuleLoader__.load({
                   ...(entry.store ? { store: entry.store } : {}),
                   ...(entry.locale ? { locale: entry.locale } : {}),
                   ...(entry.registrant ? { registrant: entry.registrant } : {})
+                }
+                if (options.entryId === 'chat' && entry.children) {
+                  registrationOptions.children = Object.fromEntries(Object.entries(entry.children)
+                    .map(([name, spec]) => [bridgedChatChildren[name] || name, spec]))
                 }
                 projected.set(entry, ctx.slots.register(registrationOptions, adapt(entry)))
               }
@@ -268,7 +340,8 @@ window.__ModuleLoader__.load({
             'eleckoi.roleplay.conversation.approval.detail': { kind: 'single', scope: 'session' },
             'eleckoi.roleplay.conversation.plan-review.actions': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.trajectory.images': { kind: 'single', scope: 'session' },
-            'eleckoi.roleplay.trajectory': { kind: 'single', scope: 'session' }
+            'eleckoi.roleplay.trajectory': { kind: 'single', scope: 'session' },
+            'eleckoi.roleplay.chat': { kind: 'single', scope: 'session' }
           }
         }, RoleplaySessionView))
         projectConversationSeat('conversation.session.header.corner', 'eleckoi.roleplay.conversation.header.corner', {
@@ -295,6 +368,11 @@ window.__ModuleLoader__.load({
         projectConversationSeat('conversation.plan-review.actions', 'eleckoi.roleplay.conversation.plan-review.actions', { leafOnly: true })
         projectConversationSeat('conversation.trajectory.images', 'eleckoi.roleplay.trajectory.images')
         projectConversationSeat('conversation.view', 'eleckoi.roleplay.trajectory', { entryId: 'trajectory' })
+        projectConversationSeat('conversation.view', 'eleckoi.roleplay.chat', { entryId: 'chat' })
+        projectConversationSeat('conversation.chat.node', 'eleckoi.roleplay.chat.node', { leafOnly: true })
+        projectConversationSeat('conversation.message.images', 'eleckoi.roleplay.chat.images')
+        projectConversationSeat('conversation.chat.before', 'eleckoi.roleplay.chat.before')
+        projectConversationSeat('conversation.chat.pending-input', 'eleckoi.roleplay.chat.pending-input')
       }
     }
   }

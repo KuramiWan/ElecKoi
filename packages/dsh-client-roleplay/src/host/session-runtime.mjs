@@ -7,6 +7,7 @@ import { historicalRuntimeState } from './historical-runtime-state.mjs'
 import { historyStatsProjection } from './history-stats-projection.mjs'
 import { durableProductPluginSpecifier } from './preset-definition.mjs'
 import { turnOutcomesProjection } from './turn-outcomes-projection.mjs'
+import { inputContinuationsProjection } from './input-continuations-projection.mjs'
 import { currentRequestSnapshot } from './model-selection-migration.mjs'
 
 export { requestSnapshot } from './model-selection-migration.mjs'
@@ -35,6 +36,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   const workspaceRoot = requiredEnv('ELECKOI_WORKSPACE_ROOT')
   const disposeHistoryStats = ctx.sessionProjections.register(historyStatsProjection)
   const disposeTurnOutcomes = ctx.sessionProjections.register(turnOutcomesProjection)
+  const disposeInputContinuations = ctx.sessionProjections.register(inputContinuationsProjection)
 
   const prepareCurrentPreset = async (conversationId, text, creating = false) => {
     const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, text)
@@ -228,7 +230,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       ctx.logger.error(`ElecKoi 会话运行状态提交失败：${String(error)}`)
     }
   })
-  return () => { disposeCommit(); disposeHistoryStats(); disposeTurnOutcomes() }
+  return () => { disposeCommit(); disposeHistoryStats(); disposeTurnOutcomes(); disposeInputContinuations() }
 }
 
 async function nextSessionTurn(ctx, sessionId) {

@@ -5,6 +5,18 @@ import {
 } from "../src/renderer/src/modules/chat/model/chatRegeneration.js";
 
 describe("chat regeneration targets", () => {
+  it('uses the explicit continuation input identity instead of a later same-turn or same-content row', () => {
+    const messages = [
+      { id: 'original', role: 'user', runtimeSessionId: 'session-1', sessionEventSeq: 5, dshTurn: 1, content: '相同合成输入' },
+      { id: 'other-session', role: 'user', runtimeSessionId: 'session-2', sessionEventSeq: 5, dshTurn: 2, content: '相同合成输入' },
+      { id: 'later', role: 'user', runtimeSessionId: 'session-1', sessionEventSeq: 15, dshTurn: 2, content: '相同合成输入' },
+      { id: 'reply', role: 'assistant', runtimeSessionId: 'session-1', inputEventSeq: 5, dshTurn: 2 }
+    ];
+    expect(findRegenerateBranchUserIndex(messages, 'reply')).toBe(0);
+    expect(findRegenerateBranchUserIndex(messages.slice(1), 'reply')).toBe(-1);
+    expect(findRegenerateBranchUserIndex(messages, 'original', true)).toBe(0);
+  });
+
   it("allows regeneration directly from a sent user message without an assistant reply", () => {
     const messages = [{ id: "user-1", role: "user", content: "测试消息" }];
 

@@ -37,6 +37,7 @@ export interface TrajectoryTurnModel {
 
 /** Snapshot slice the trajectory view folds. */
 export interface TrajectoryLayoutInput {
+  inputTurns?: ReadonlyMap<number, number>
   systemPrompts?: TrajectorySnapshot['systemPrompts']
   nodes: TrajectorySnapshot['eventNodes']
   eventLocations?: ReadonlyMap<number, ConversationLocation>
@@ -258,9 +259,9 @@ export function deriveTrajectoryLayout(
   }
 
   const entries: OrderedLayoutEntry[] = [
-    ...(input.systemPrompts ?? []).map(prompt => ({
+    ...(input.systemPrompts ?? []).filter(prompt => !prompt.update).map(prompt => ({
       kind: 'system' as const, seq: prompt.seq, systemPrompt: prompt.text,
-      change: { seq: prompt.seq, time: prompt.time, kind: prompt.update ? 'system' as const : 'initial' as const },
+      change: { seq: prompt.seq, time: prompt.time, kind: 'initial' as const },
     })),
     ...nodes.map((node, nodeIndex) => ({
       kind: 'node' as const,
@@ -278,6 +279,7 @@ export function deriveTrajectoryLayout(
       })),
     ...requests.flatMap(request => request.purpose !== 'assistant'
       || request.promptChange === undefined
+      || request.promptChange.kind === 'system'
       || request.prompt === undefined
       ? []
       : [{
@@ -325,8 +327,8 @@ export function deriveTrajectoryLayout(
     if (entry.kind === 'system') {
       const { change, request } = entry
       const turn = change.kind === 'initial'
-        ? firstVisibleTurn(nodes, partial)
-        : enclosingPromptTurn(nodes, change.seq, partial)
+        ? firstVisibleTurn(nodes, partial, requests, input.inputTurns)
+        : request?.purpose === 'assistant' ? request.turn : enclosingPromptTurn(nodes, change.seq, partial)
       pushMessage(turn, {
         absTime: finiteTime(change.time),
         cell: {
@@ -401,9 +403,8 @@ export function deriveTrajectoryLayout(
     }
     const { node, nodeIndex: i } = entry
     if (node.kind === 'user') {
-      // user/message has no turn on the wire; enclose it in the next assistant
-      // (or partial) turn, else open the turn after the last assistant.
-      const turn = enclosingUserTurn(followingAssistants[i], partial, lastAssistantTurn)
+      const turn = input.inputTurns?.get(node.seq)
+        ?? enclosingUserTurn(followingAssistants[i], partial, lastAssistantTurn)
       pushMessage(turn, {
         absTime: finiteTime(node.time),
         cell: {
@@ -836,9 +837,7 @@ function summarizeAssistantActivity(
 
 function promptChangeLabel(change: RequestPromptChange, t: TrajectoryTranslate): string {
   if (change.kind === 'initial') return t('layout.initialSystemPrompt')
-  if (change.kind === 'system') return t('layout.systemPromptUpdated')
-  if (change.kind === 'tools') return t('layout.toolsUpdated')
-  return t('layout.systemPromptAndToolsUpdated')
+  return t('layout.toolsUpdated')
 }
 
 function assistantSourceBlock(block: AssistantBlock): TrajectorySourceBlock {
@@ -964,12 +963,21 @@ function enclosingPromptTurn(
 function firstVisibleTurn(
   nodes: TrajectorySnapshot['eventNodes'],
   partial: TrajectorySnapshot['partial'],
+  requests: readonly RequestView[],
+  inputTurns: ReadonlyMap<number, number> | undefined,
 ): number {
   const turns = nodes.flatMap(node =>
     node.kind === 'assistant' && node.turn > 0
       ? [node.turn]
       : [],
   )
+  for (const node of nodes) {
+    const inputTurn = node.kind === 'user' ? inputTurns?.get(node.seq) : undefined
+    if (inputTurn !== undefined && inputTurn > 0) turns.push(inputTurn)
+  }
+  for (const request of requests) {
+    if (request.purpose === 'assistant' && request.turn > 0) turns.push(request.turn)
+  }
   if (partial !== null && partial.turn > 0) turns.push(partial.turn)
   return turns.length === 0 ? 1 : Math.min(...turns)
 }

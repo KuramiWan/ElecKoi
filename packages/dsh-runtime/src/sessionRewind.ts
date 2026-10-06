@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+import { interruptedTurnClosers } from '@deepseek-ai/dsh-session'
 import { readDshSessionLog } from './trajectory'
 import { HISTORY_RESTORED_EVENT, historyRestoredSchema } from '@eleckoi/dsh-client-roleplay/host/history-stats-projection.mjs'
 
@@ -11,7 +12,9 @@ export class DshSessionRewindUnavailableError extends Error {}
  * Rewrite a closed root Session up to (but excluding) the requested turn.
  * The caller must first dispose every active DSH handle for this Session.
  */
-export function rewindDshSession(sessionRoot: string, sessionId: string, fromTurn: number, fromEventSeq?: number): number {
+export function rewindDshSession(
+  sessionRoot: string, sessionId: string, fromTurn: number, fromEventSeq?: number, retainInput = false
+): number {
   if (!Number.isSafeInteger(fromTurn) || fromTurn < 1) throw new Error('DSH 回退轮次必须是正整数。')
   const log = readDshSessionLog(sessionRoot, sessionId)
   if (log === undefined) throw new DshSessionRewindUnavailableError('找不到要回退的 DSH 会话。')
@@ -76,8 +79,19 @@ export function rewindDshSession(sessionRoot: string, sessionId: string, fromTur
       }
     }
   }
+  if (retainInput) {
+    const inputIndex = log.events.findIndex(event => event.seq === fromEventSeq)
+    const input = log.events[inputIndex]
+    if (!input || input.type !== 'user/message' || input.surfaceOp !== 'append'
+      || !isRecord(input.data) || !isRecord(input.data.source) || input.data.source.kind !== 'user') {
+      throw new Error('找不到要保留的明确用户事件。')
+    }
+    cut = inputIndex + 1
+    closePrefixStep = false
+  }
   if (log.events[cut - 1]?.type === HISTORY_RESTORED_EVENT) cut--
   const retained = log.events.slice(0, cut)
+  if (retainInput) retained.push(...interruptedTurnClosers(retained))
   if (closePrefixStep) {
     const stepEnd = log.events.find(event => event.type === 'step/end'
       && isRecord(event.data) && event.data.turn === 1 && event.data.step === 1)

@@ -92,7 +92,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     replaceVariableState: (conversationId: string, stateJson: string) => Promise<RemoteResult<string>>
     revealFile: (conversationId: string, attachmentId: string, name: string, signal?: AbortSignal) => Promise<RemoteResult<void>>
     selectOpening: (conversationId: string, openingId: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
-    startRegeneration: (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; }>>
+    startRegeneration: (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; turn?: number; }>>
     updateOpening: (conversationId: string, content: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     variableTimeline: (conversationId: string) => Promise<RemoteResult<VariableViewerTimeline>>
   }
@@ -183,7 +183,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'eleckoiConversations/replaceVariableState': (conversationId: string, stateJson: string) => Promise<RemoteResult<string>>
     'eleckoiConversations/revealFile': (conversationId: string, attachmentId: string, name: string, signal?: AbortSignal) => Promise<RemoteResult<void>>
     'eleckoiConversations/selectOpening': (conversationId: string, openingId: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
-    'eleckoiConversations/startRegeneration': (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; }>>
+    'eleckoiConversations/startRegeneration': (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; turn?: number; }>>
     'eleckoiConversations/updateOpening': (conversationId: string, content: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     'eleckoiConversations/variableTimeline': (conversationId: string) => Promise<RemoteResult<VariableViewerTimeline>>
     'eleckoiCreatorStudio/changes': (signal?: AbortSignal) => RemoteStreamHandle<ProductRecordChange, never>

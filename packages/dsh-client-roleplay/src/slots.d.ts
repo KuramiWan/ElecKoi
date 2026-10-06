@@ -9,6 +9,8 @@ import type {
   InputZone,
   MessageImagesOwnerProps,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ChatNodeOwnerProps, ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { SlotMap } from '@deepseek-ai/dsh-client-ui-slots'
 
 type BridgeSlotRenderer = (name: string, owner: unknown, options?: unknown) => ReactNode
 
@@ -21,6 +23,13 @@ export interface RoleplaySessionOwner {
 
 export interface ComposerBridgeOwner {
   renderBridgeSlot?: BridgeSlotRenderer
+}
+
+export interface RoleplayChatOwner extends ConvViewOwnerProps {
+  before?: ReactNode
+  transition?: ReactNode
+  renderChatNode?: (owner: ChatNodeOwnerProps & { node: ChatNode }) => ReactNode | undefined
+  renderPendingInput?: (owner: SlotMap['conversation.chat.pending-input']['owner']) => ReactNode
 }
 
 export interface RoleplayMessageOwner {
@@ -37,6 +46,34 @@ export interface RoleplayMessageContentOwner extends RoleplayMessageOwner {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    'eleckoi.roleplay.chat': {
+      kind: 'single'
+      scope: 'session'
+      owner: RoleplayChatOwner
+    }
+    'eleckoi.roleplay.chat.node': {
+      kind: 'keyed'
+      scope: 'session'
+      owner: SlotMap['conversation.chat.node']['owner']
+      keyProps: SlotMap['conversation.chat.node']['keyProps']
+      hookContext: SlotMap['conversation.chat.node']['hookContext']
+      inject: SlotMap['conversation.chat.node']['inject']
+    }
+    'eleckoi.roleplay.chat.images': {
+      kind: 'single'
+      scope: 'session'
+      owner: MessageImagesOwnerProps
+    }
+    'eleckoi.roleplay.chat.before': {
+      kind: 'single'
+      scope: 'session'
+      owner: SlotMap['conversation.chat.before']['owner']
+    }
+    'eleckoi.roleplay.chat.pending-input': {
+      kind: 'single'
+      scope: 'session'
+      owner: SlotMap['conversation.chat.pending-input']['owner']
+    }
     'eleckoi.roleplay.session': {
       kind: 'single'
       scope: 'session'

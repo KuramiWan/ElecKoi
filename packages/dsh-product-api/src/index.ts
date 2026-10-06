@@ -8,8 +8,14 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { createUserMessage, ReasoningEffortId, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, type SessionEvent, type SessionHeader, type SessionId } from '@deepseek-ai/dsh-session'
+
+declare module '@deepseek-ai/dsh-session' {
+  interface SessionEventMap {
+    'eleckoi/input-continuation': { turn: number; inputMessageId: string; inputEventSeq: number }
+  }
+}
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -410,7 +416,7 @@ export class ElecKoiConversationModelsApi extends TypertRemoteService {
 
 /** 管理聊天目录、产品资料和官方 Session 消息修改，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiConversationsApi extends TypertRemoteService {
-  private readonly pendingRegenerations = new Map<string, { requestId: string; message: ReturnType<typeof regeneratedUserMessage> }>()
+  private readonly pendingRegenerations = new Map<string, { requestId: string; inputMessageId: string; inputEventSeq: number }>()
   static inject = [
     'typert',
     'agents',
@@ -774,14 +780,12 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
       fromTurn,
       historicalInputId(inspection.events, target.index)
     )
-    const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq)
+    const retainedSeq = retainedUser?.seq
+    const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(
+      runtimeSessionId, fromTurn, retainedSeq === undefined ? eventSeq : Number(retainedSeq), retainedSeq !== undefined
+    )
     if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
     restoreRuntime()
-    if (retainedUser !== undefined) {
-      const resolved = await this.ownerContext.sessionController.resolveAgent(runtimeSessionId as SessionId)
-      if ('error' in resolved) throw resolved.error
-      resolved.agent.session.append('user/message', retainedUser as never, { surfaceOp: 'append' })
-    }
     this.changeFeed.publish({
       kind: 'messages',
       conversationId,
@@ -816,10 +820,10 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
     const target = requireSessionMessage(inspection, eventSeq, 'user')
     const fromTurn = sessionMessageTurn(inspection.events, target.index)
-    const userMessage = regeneratedUserMessage(target.event, requestId, replacementMessage)
-    const promptText = userMessage.content
-      .flatMap(part => part.type === 'text' ? [part.text] : [])
-      .join('')
+    const inputMessageId = String(jsonRecord(target.event.data).id ?? '')
+    if (!inputMessageId) throw new Error('重新生成的用户事件缺少消息标识。')
+    const promptText = replacementMessage ?? sessionMessageText(target.event)
+    if (replacementMessage !== undefined && !replacementMessage.trim()) throw new Error('重新生成的用户输入不能为空。')
     const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
       conversationId,
       runtimeSessionId,
@@ -829,7 +833,10 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     const preparation = await this.ownerContext.eleckoiRoleplaySessions.prepareRegeneration(conversationId, promptText)
     try {
       await this.ownerContext.eleckoiSessionEditor.transaction(runtimeSessionId, async () => {
-        const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq)
+        if (replacementMessage !== undefined) {
+          await this.ownerContext.eleckoiSessionEditor.editMessage(runtimeSessionId, eventSeq, 'user', replacementMessage)
+        }
+        const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq, true)
         if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
         restoreRuntime()
         await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
@@ -839,20 +846,20 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
       this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: [String(eventSeq)] })
       throw error
     }
-    this.pendingRegenerations.set(conversationId, { requestId, message: userMessage })
+    this.pendingRegenerations.set(conversationId, { requestId, inputMessageId, inputEventSeq: eventSeq })
     this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'regenerated', messageIds: [String(eventSeq)] })
     return { runtimeSessionId, prepared: true }
   }
 
   /**
-   * 启动已准备的重新生成；取消时恢复准备阶段的改动。
+   * 从已保留的用户事件启动重新生成；取消时保留用户输入，不启动新的回复。
    * @param conversationId - ElecKoi 聊天编号。
    * @param requestId - 本次生成的唯一请求编号。
    * @param cancelled - 已准备的请求是否被取消。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean }> {
+  async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean; turn?: number }> {
     const pending = this.pendingRegenerations.get(conversationId)
     if (!pending || pending.requestId !== requestId) throw new Error('重新生成请求已失效。')
     this.pendingRegenerations.delete(conversationId)
@@ -860,8 +867,13 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
     const resolved = await this.ownerContext.sessionController.resolveAgent(runtimeSessionId as SessionId)
     if ('error' in resolved) throw resolved.error
-    resolved.agent.followup(pending.message)
-    return { accepted: true }
+    const agent = resolved.agent as typeof resolved.agent & { continueFromInput?: (messageId: string) => number }
+    if (typeof agent.continueFromInput !== 'function') throw new Error('当前 DSH 运行时不支持复用已有用户事件。')
+    const turn = agent.continueFromInput(pending.inputMessageId)
+    agent.session.append('eleckoi/input-continuation', {
+      turn, inputMessageId: pending.inputMessageId, inputEventSeq: pending.inputEventSeq
+    }, { ignorable: true })
+    return { accepted: true, turn }
   }
 
   /**
@@ -1044,14 +1056,14 @@ function directUserMessageBeforeTurn(
     const event = jsonRecord(events[index])
     if (event.type !== 'user/message' || event.surfaceOp !== 'append') continue
     const data = jsonRecord(event.data)
-    if (jsonRecord(data.source).kind === 'user') return data
+    if (jsonRecord(data.source).kind === 'user') return event
   }
   for (let index = turnStart - 1; index >= 0; index -= 1) {
     const event = jsonRecord(events[index])
     if (event.type === 'turn/end') break
     if (event.type !== 'user/message' || event.surfaceOp !== 'append') continue
     const data = jsonRecord(event.data)
-    if (jsonRecord(data.source).kind === 'user') return data
+    if (jsonRecord(data.source).kind === 'user') return event
   }
   return undefined
 }
@@ -1152,39 +1164,6 @@ function sessionMessageText(event: Record<string, unknown>): string {
     const block = jsonRecord(part)
     return block.type === 'text' && typeof block.text === 'string' ? [block.text] : []
   }).join('')
-}
-
-function regeneratedUserMessage(
-  event: Record<string, unknown>,
-  requestId: string,
-  replacementMessage?: string
-) {
-  const sourceMessage = jsonRecord(event.data)
-  const originalContent = Array.isArray(sourceMessage.content) ? sourceMessage.content : []
-  let content = originalContent.map(part => structuredClone(part))
-  if (replacementMessage !== undefined) {
-    const text = replacementMessage.trim()
-    if (!text) throw new Error('重新生成的用户输入不能为空。')
-    let replaced = false
-    content = content.flatMap(part => {
-      const block = jsonRecord(part)
-      if (block.type !== 'text') return [part]
-      if (replaced) return []
-      replaced = true
-      return [{ ...block, text }]
-    })
-    if (!replaced) content.unshift({ type: 'text', text })
-  }
-  const hasContent = content.some(part => {
-    const block = jsonRecord(part)
-    return block.type === 'image' || block.type === 'file'
-      || (block.type === 'text' && typeof block.text === 'string' && block.text.trim().length > 0)
-  })
-  if (!hasContent) throw new Error('重新生成的用户输入不能为空。')
-  return createUserMessage({
-    content: content as ContentBlock[],
-    source: { kind: 'user', rpcId: requestId } as never
-  })
 }
 
 function jsonRecord(value: unknown): Record<string, unknown> {

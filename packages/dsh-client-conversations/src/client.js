@@ -281,7 +281,7 @@ window.__ModuleLoader__.load({
       return attachment?.attachmentId ? [{ ...attachment }] : []
     }) : []
 
-    async function waitForOfficialSession(session, eventSource, requestId) {
+    async function waitForOfficialSession(session, eventSource, requestId, executionTurn) {
       return new Promise((resolve, reject) => {
         let settled = false
         const disposers = []
@@ -317,8 +317,9 @@ window.__ModuleLoader__.load({
             .filter(entry => entry.type === 'event').map(entry => entry.event)
           const userIndex = events.findLastIndex(event => event.type === 'user/message'
             && event.data?.source?.kind === 'user' && event.data.source.rpcId === requestId)
-          if (userIndex < 0) return
-          const ended = events.slice(userIndex + 1).find(event => event.type === 'turn/end')
+          const ended = Number.isSafeInteger(executionTurn)
+            ? events.find(event => event.type === 'turn/end' && event.data?.turn === executionTurn)
+            : userIndex < 0 ? undefined : events.slice(userIndex + 1).find(event => event.type === 'turn/end')
           if (!ended) return
           const reason = ended.data?.reason
           if (reason?.kind === 'error') finish(new Error(reason.error?.message || snapshot.lastAgentError || '生成失败。'))
@@ -354,7 +355,7 @@ window.__ModuleLoader__.load({
       })
     }
 
-    function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map(), pendingSubmissions = [], sessionRunning) {
+    function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map(), pendingSubmissions = [], sessionRunning, inputLinks = []) {
       if (!snapshot) return (details?.messages || []).filter(message => message.id === 'opening')
       const entries = orderedChatEntries(snapshot)
       const nodes = entries.map(entry => entry.node)
@@ -472,6 +473,7 @@ window.__ModuleLoader__.load({
           ...(Object.prototype.hasOwnProperty.call(item, 'dshTurn') ? { dshTurn: item.dshTurn } : {}),
           ...(item.role === 'assistant' && Number.isSafeInteger(item.dshTurn) ? {
             dshTurn: item.dshTurn,
+            inputEventSeq: inputLinks.find(link => link.turn === item.dshTurn)?.inputEventSeq,
             renderKey: `dsh-reply-${runtimeSessionId}-${item.dshTurn}`
           } : {}),
           ...(item.nodeKey ? { dshNodeKey: item.nodeKey } : {}),
@@ -780,36 +782,8 @@ window.__ModuleLoader__.load({
           // The selected input owns the visible branch while the Host rewinds.
           // A refresh of the retiring Session must not put its old replies back.
           const messages = next.details.messages.filter(message => message.id === 'opening'
-            || message.sessionEventSeq <= request.rewindEventSeq).map(message =>
-            message.role === 'user' && message.sessionEventSeq === request.rewindEventSeq
-              && request.replacementMessage != null
-              ? { ...message, content: request.replacementMessage, displayContent: request.replacementMessage }
-              : message)
+            || message.sessionEventSeq <= request.rewindEventSeq)
           next = { ...next, details: { ...next.details, messages } }
-        }
-        if (request?.retainRewindUser && request.rewindUserMessage && next.details) {
-          const rewindUser = request.rewindUserMessage
-          const messages = Array.isArray(next.details.messages) ? next.details.messages : []
-          const retainedContent = request.replacementMessage != null
-            ? request.replacementMessage
-            : rewindUser.content
-          const rewindEventSeq = Number(rewindUser.sessionEventSeq)
-          const rewindMessageId = rewindUser.dshMessageId || rewindUser.id || ''
-          const replacement = messages.find(message => message.role === 'user' && message.requestId === request.requestId)
-          if (replacement) {
-            next = { ...next, details: { ...next.details, messages: messages.filter(message => message === replacement
-              || !(message.role === 'user' && (message.id === rewindUser.id
-                || (rewindMessageId && message.dshMessageId === rewindMessageId)))) } }
-          }
-          const present = messages.some(message => message.role === 'user'
-            && (message.requestId === request.requestId
-              || (rewindMessageId && (message.dshMessageId === rewindMessageId || message.id === rewindMessageId))))
-          if (!present) {
-            const input = { ...rewindUser, requestId: request.requestId, content: retainedContent, displayContent: retainedContent }
-            const insertAt = messages.findIndex(message => message.id !== 'opening' && message.sequence > rewindEventSeq)
-            const index = insertAt < 0 ? messages.length : insertAt
-            next = { ...next, details: { ...next.details, messages: [...messages.slice(0, index), input, ...messages.slice(index)] } }
-          }
         }
         next = this.applyDisplayProjection(next)
         this.detailsSnapshot = next
@@ -1149,7 +1123,7 @@ window.__ModuleLoader__.load({
         const session = this.sessionReference?.binding?.session
         const sessionRunning = session ? session.getSnapshot().running === true : undefined
         const next = { ...details, runtimeSessionId, hasMore,
-          messages: chat ? officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning)
+          messages: chat ? officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(runtimeSessionId))
             : details.messages.filter(message => message.id === 'opening') }
         if (chat) next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
         this.publishDetails({
@@ -1218,6 +1192,13 @@ window.__ModuleLoader__.load({
 
       officialProcess(chat) {
         return officialProcessWithSubagents(chat, this.subagentCatalog, this.subagentSessions)
+      }
+
+      inputContinuations(runtimeSessionId) {
+        const reference = this.sessionReference
+        if (reference?.sessionId !== runtimeSessionId) return []
+        const value = reference.binding.session.projections?.faceOf('eleckoiInputContinuations')?.getSnapshot()
+        return Array.isArray(value?.links) ? value.links : []
       }
 
       subagentCatalogEntries(runtimeSessionId, face) {
@@ -1289,6 +1270,7 @@ window.__ModuleLoader__.load({
           runtimeSessionId,
           hasMore,
           subagentProjectionRevision: this.subagentProjectionRevision,
+          inputContinuationsKey: JSON.stringify(this.inputContinuations(runtimeSessionId)),
           sessionRunning,
           pendingSubmissions,
           nodes: nodes.filter(node => node.kind === 'user' || node.kind === 'steering'
@@ -1301,6 +1283,7 @@ window.__ModuleLoader__.load({
         return left?.runtimeSessionId === right?.runtimeSessionId
           && left?.hasMore === right?.hasMore
           && left?.subagentProjectionRevision === right?.subagentProjectionRevision
+          && left?.inputContinuationsKey === right?.inputContinuationsKey
           && left?.sessionRunning === right?.sessionRunning
           && left?.pendingSubmissions?.length === right?.pendingSubmissions?.length
           && left.pendingSubmissions.every((submission, index) => submission === right.pendingSubmissions[index])
@@ -1386,15 +1369,18 @@ window.__ModuleLoader__.load({
           const projections = ['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown', 'eleckoiHistoryStatsAdjustment']
             .map(key => [key, binding.session.projections?.faceOf(key)])
           const subagentCatalogFace = binding.session.projections?.faceOf('subagentCatalog')
+          const inputContinuationsFace = binding.session.projections?.faceOf('eleckoiInputContinuations')
           const publishProjections = () => {
             if (this.disposed || generation !== this.sessionBindingGeneration || id !== this.detailsSnapshot.id) return
             const stats = Object.fromEntries(projections.map(([key, face]) => [key, face?.getSnapshot()]))
             const adjustment = stats.eleckoiHistoryStatsAdjustment
             delete stats.eleckoiHistoryStatsAdjustment
-            if (adjustment && stats.sessionStats) stats.sessionStats = {
+            const identities = inputContinuationsFace?.getSnapshot()
+            if (stats.sessionStats) stats.sessionStats = {
               ...stats.sessionStats,
-              steps: Math.max(0, stats.sessionStats.steps - (Number(adjustment.steps) || 0)),
-              turns: Math.max(0, stats.sessionStats.turns - (Number(adjustment.turns) || 0))
+              steps: Math.max(0, stats.sessionStats.steps - (Number(adjustment?.steps) || 0)),
+              turns: Array.isArray(identities?.inputs) ? new Set(identities.inputs.map(input => input.eventSeq)).size
+                : Math.max(0, stats.sessionStats.turns - (Number(adjustment?.turns) || 0))
             }
             this.publishStats(id, stats)
           }
@@ -1424,6 +1410,7 @@ window.__ModuleLoader__.load({
           const stops = [
             ...projections.map(([, face]) => face?.subscribe(publishProjections)),
             subagentCatalogFace?.subscribe(publishSubagents),
+            inputContinuationsFace?.subscribe(() => { publishProjections(); publish() }),
             this.sessions.list.subscribe?.(publishSubagents),
           ].filter(Boolean)
           this.stopProjections = () => { for (const stop of stops) stop() }
@@ -1452,7 +1439,7 @@ window.__ModuleLoader__.load({
           if (!this.sameOfficialProjection(signature, this.officialProjectionSignature)) {
             const next = {
               ...details, runtimeSessionId,
-              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn, pendingSubmissions, sessionRunning),
+              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn, pendingSubmissions, sessionRunning, this.inputContinuations(runtimeSessionId)),
               hasMore,
             }
             next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
@@ -1647,12 +1634,6 @@ window.__ModuleLoader__.load({
       primeRewindRequest(input, request) {
         if (!Number.isSafeInteger(input?.eventSeq)) return
         request.rewindEventSeq = input.eventSeq
-        request.rewindUserMessage = this.detailsSnapshot.id === input.conversationId
-          ? this.detailsSnapshot.details?.messages?.find(message => message.role === 'user'
-            && Number(message.sessionEventSeq) === Number(input.eventSeq))
-          : null
-        request.retainRewindUser = Boolean(request.rewindUserMessage)
-        request.replacementMessage = input.replacementMessage
       }
 
       async runRequest(input, run) {
@@ -1661,9 +1642,8 @@ window.__ModuleLoader__.load({
         this.activeRequests.set(input.conversationId, request)
         this.cancelledStreamRuns.delete(this.streamState.runId)
         this.cancelledStreamConversations.delete(input.conversationId)
-        // Seed the rewind guard before the first idle publication. During
-        // regeneration DSH briefly publishes a snapshot without the selected
-        // input while it replaces that turn.
+        // Hide only the retiring output until the new Session window arrives.
+        // The selected durable input is never removed or replaced by an echo.
         this.primeRewindRequest(input, request)
         this.publishStream({
           id: input.conversationId, status: 'idle', runId: '', requestId: input.requestId,
@@ -1679,8 +1659,6 @@ window.__ModuleLoader__.load({
         } finally {
           if (this.activeRequests.get(input.conversationId) === request) this.activeRequests.delete(input.conversationId)
           request.rewindEventSeq = undefined
-          request.rewindUserMessage = null
-          request.retainRewindUser = false
           if (request.statsPending && this.detailsSnapshot.id === input.conversationId
             && this.latestStatsSnapshot.id === input.conversationId) {
             this.publishStats(input.conversationId, this.latestStatsSnapshot.stats)
@@ -1782,8 +1760,6 @@ window.__ModuleLoader__.load({
           ))
         } catch (error) {
           request.rewindEventSeq = undefined
-          request.rewindUserMessage = null
-          request.retainRewindUser = false
           await (async () => {
             await this.sessions.refresh()
             await this.bindOfficialSession(input.conversationId)
@@ -1806,8 +1782,9 @@ window.__ModuleLoader__.load({
         )
         if (cancelled) return { details: await this.refreshDetails(), cancelled: true }
         if (accepted.accepted !== true) throw new Error('重新生成请求未被 DSH Session 接受。')
+        if (!Number.isSafeInteger(accepted.turn) || accepted.turn < 1) throw new Error('重新生成请求缺少 DSH 执行轮次。')
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
-        const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
+        const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId, accepted.turn)
         const details = await this.refreshDetails()
         return {
           details: this.assertDetails(details, input.conversationId),
@@ -1898,7 +1875,7 @@ window.__ModuleLoader__.load({
           const sessionRunning = session ? session.getSnapshot().running === true : undefined
           const projected = chat
             ? { ...details, runtimeSessionId, hasMore,
-              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning) }
+              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(runtimeSessionId)) }
             : details
           if (chat) projected.beforeSequence = projected.messages.find(message => message.id !== 'opening')?.sequence ?? null
           if (generation === this.detailGeneration) {
@@ -1960,7 +1937,7 @@ window.__ModuleLoader__.load({
           const metadata = { ...latest.details, messages: [...page.messages, ...latest.details.messages] }
           const hasMore = Boolean(this.sessionReference.binding.eventSource.getSnapshot().hasMore)
           const sessionRunning = session ? session.getSnapshot().running === true : undefined
-          const messages = officialMessages(chat, { ...metadata, hasMore }, latest.runtimeSessionId, this.officialProcess(chat), [], sessionRunning)
+          const messages = officialMessages(chat, { ...metadata, hasMore }, latest.runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(latest.runtimeSessionId))
           const next = { ...latest.details, messages, hasMore,
             beforeSequence: messages.find(message => message.id !== 'opening')?.sequence ?? null }
           this.publishDetails({ ...latest, status: 'ready', error: '', details: next })

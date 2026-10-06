@@ -11,7 +11,8 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
 function user(seq, text) {
   return { kind: 'user', anchorSeq: seq, data: { seq, time: seq,
-    content: [{ type: 'text', text }], source: { kind: 'user' } } }
+    content: [{ type: 'text', text }], source: { kind: 'user' } },
+    location: { kind: 'turn', turn: { turn: Math.ceil(seq / 4), status: 'closed' } } }
 }
 
 function tail(turn, seq, text) {
@@ -45,11 +46,16 @@ function runtimeFixture({ firstTurn = false } = {}) {
   let completePreparation
   let rejectPreparation
   let requestId
+  let replacementMessage
+  let inputLinks = []
+  const inputLinkListeners = new Set()
   const session = {
     getSnapshot: () => ({ running, removed }),
     subscribe: subscribe(sessionListeners),
     cancel: vi.fn(async () => ({ ok: true })),
-    projections: { faceOf: key => ({ getSnapshot: () => stats[key], subscribe: subscribe(statsListeners) }) },
+    projections: { faceOf: key => key === 'eleckoiInputContinuations'
+      ? { getSnapshot: () => ({ links: inputLinks }), subscribe: subscribe(inputLinkListeners) }
+      : { getSnapshot: () => stats[key], subscribe: subscribe(statsListeners) } },
   }
   const target = {
     getSnapshot: () => ({ nodes, order: [...nodes.keys()], timeline: { turns: new Map() } }),
@@ -73,9 +79,10 @@ function runtimeFixture({ firstTurn = false } = {}) {
       },
       list: async () => ({ ok: true, value: [conversation] }),
       details: async () => ({ ok: true, value: { conversation, runtimeSessionId: 'session-1', messages: [] } }),
-      regenerateMessage: vi.fn((_conversationId, eventSeq, id) => {
+      regenerateMessage: vi.fn((_conversationId, eventSeq, id, replacement) => {
         expect(eventSeq).toBe(5)
         requestId = id
+        replacementMessage = replacement
         return new Promise((resolve, reject) => {
           completePreparation = () => {
             rewound = true
@@ -89,12 +96,12 @@ function runtimeFixture({ firstTurn = false } = {}) {
       startRegeneration: vi.fn(async (_conversationId, id, cancelled) => {
         expect(id).toBe(requestId)
         if (cancelled) return { ok: true, value: { accepted: false } }
-        nodes = new Map([...prefix, ['user-2', user(5, '本轮输入')]])
-        events = [{ type: 'event', event: { type: 'user/message', seq: 5,
-          data: { source: { kind: 'user', rpcId: id } } } }]
+        inputLinks = [{ turn: 3, inputMessageId: 'synthetic-input-2', inputEventSeq: 5 }]
+        for (const listener of inputLinkListeners) listener()
+        events = [{ type: 'event', event: { type: 'turn/start', seq: 10, data: { turn: 3 } } }]
         running = true
         publish()
-        return { ok: true, value: { accepted: true } }
+        return { ok: true, value: { accepted: true, turn: 3 } }
       }),
     },
   }
@@ -104,7 +111,8 @@ function runtimeFixture({ firstTurn = false } = {}) {
       expect(id).toBe('session-1')
       if (!rewound) return
       rewound = false
-      nodes = new Map(prefix)
+      nodes = new Map([...prefix, ['user-2', user(5, replacementMessage ?? '本轮输入')]])
+      inputLinks = []
       removed = false
       events = []
       stats = {
@@ -126,7 +134,7 @@ function runtimeFixture({ firstTurn = false } = {}) {
     model, remote, sessions, dispose: () => dispose(),
     completePreparation: () => completePreparation(), rejectPreparation: () => rejectPreparation(),
     live(text) {
-      nodes.set('live-2', { kind: 'assistant-step', data: { turn: 2, step: 1, status: 'running',
+      nodes.set('live-3', { kind: 'assistant-step', data: { turn: 3, step: 1, status: 'running',
         blocks: [{ kind: 'text', text }] } })
       publish()
     },
@@ -137,18 +145,73 @@ function runtimeFixture({ firstTurn = false } = {}) {
         contextPressure: { projectedTokens: 680, contextWindow: 10000 },
       }
       for (const listener of statsListeners) listener()
-      nodes.delete('live-2')
-      nodes.set('tail-2', tail(2, 7, text))
+      nodes.delete('live-3')
+      nodes.set('tail-3', tail(3, 13, text))
       // Journal settlement can precede the control frame that clears running.
       publish()
       running = false
-      events.push({ type: 'event', event: { type: 'turn/end', seq: 8, data: { turn: 2, reason: { kind: 'completed' } } } })
+      events.push({ type: 'event', event: { type: 'turn/end', seq: 14, data: { turn: 3, reason: { kind: 'completed' } } } })
       publish()
     },
   }
 }
 
 describe('regeneration with the official Session client projection', () => {
+  it('edits the retained user event before generating without unmounting its row', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const runtime = runtimeFixture()
+    await runtime.model.open('chat-1')
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    let chat
+    const props = { conversations: runtime.model, characters: [],
+      modelConfigs: [{ id: 'test-provider', model: 'test-model' }],
+      setStatus: vi.fn(), setActiveSectionState: vi.fn(), notify: vi.fn() }
+    function Probe() {
+      chat = useChatSessions(props)
+      return <section>{chat.messages.map(message => <p key={message.renderKey || message.id}
+        data-input-seq={message.role === 'user' ? message.sessionEventSeq : undefined}>
+        {message.displayContent ?? message.content}</p>)}</section>
+    }
+    const selector = '[data-input-seq="5"]'
+    try {
+      await act(async () => { root.render(<Probe />); await flush() })
+      const row = container.querySelector(selector)
+      const original = chat.messages.find(message => message.sessionEventSeq === 5)
+      let regenerating
+      await act(async () => {
+        regenerating = chat.regenerateReply({ targetMessageId: original.id, replacementMessage: '合成编辑后的输入' })
+        await flush()
+      })
+      expect(container.querySelector(selector)).toBe(row)
+      expect(row.textContent).toBe('本轮输入')
+      await act(async () => { runtime.completePreparation(); await flush() })
+      expect(runtime.remote.eleckoiConversations.regenerateMessage).toHaveBeenCalledWith(
+        'chat-1', 5, expect.any(String), '合成编辑后的输入')
+      expect(container.querySelector(selector)).toBe(row)
+      expect(row.textContent).toBe('合成编辑后的输入')
+      for (const text of ['内部处理', '<FINAL>合成新回复']) {
+        await act(async () => runtime.live(text))
+        expect(container.querySelectorAll(selector)).toHaveLength(1)
+        expect(container.querySelector(selector)).toBe(row)
+        expect(chat.messages.find(message => message.sessionEventSeq === 5)).toMatchObject({
+          id: original.id, sessionEventSeq: original.sessionEventSeq, dshTurn: original.dshTurn,
+          created_at: original.created_at, content: '合成编辑后的输入'
+        })
+      }
+      await act(async () => { runtime.complete('<FINAL>合成新回复</FINAL>'); await regenerating })
+      expect(container.querySelector(selector)).toBe(row)
+      expect(chat.messages.at(-1).inputEventSeq).toBe(5)
+      expect(props.notify).not.toHaveBeenCalled()
+    } finally {
+      await act(async () => root.unmount())
+      runtime.dispose()
+      container.remove()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('holds the complete statistics snapshot through a zero-step rewind and adopts the new official result', async () => {
     const runtime = runtimeFixture({ firstTurn: true })
     await runtime.model.open('chat-1')
@@ -204,7 +267,7 @@ describe('regeneration with the official Session client projection', () => {
       for (let attempt = 0; attempt < (mode === 'complete' ? 2 : 1); attempt += 1) {
         const previousStats = statsRow.textContent
         let regenerating
-        await act(async () => { regenerating = chat.regenerateReply({ targetMessageId: 'reply-2-7' }); await flush() })
+        await act(async () => { regenerating = chat.regenerateReply({ targetMessageId: attempt === 0 ? 'reply-2-7' : chat.messages.at(-1).id }); await flush() })
         expect(text()).toEqual(['前轮输入', '前轮回复', '本轮输入'])
         expect(chat.isSending).toBe(true)
         expect(statsRow.textContent).toBe(previousStats)
@@ -225,7 +288,7 @@ describe('regeneration with the official Session client projection', () => {
         if (mode === 'cancelled') {
           await act(async () => { await regenerating })
           expect(runtime.remote.eleckoiConversations.startRegeneration).toHaveBeenCalledWith('chat-1', expect.any(String), true)
-          expect(text()).toEqual(['前轮输入', '前轮回复'])
+          expect(text()).toEqual(['前轮输入', '前轮回复', '本轮输入'])
           expect(statsRow.textContent).toBe('1:40:340')
           break
         }

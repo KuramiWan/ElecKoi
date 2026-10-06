@@ -337,12 +337,13 @@ export function TrajectoryView({
       runningCalls,
       requests,
       systemPrompts: inspection.systemPrompts,
+      inputTurns: inspection.inputTurns,
       callSchemas,
     }, t)
     return { turns, lastIndex: lastCellIndex(turns) }
   }, [
     nodes, eventLocations, partialTurn, partialStep,
-    runningCalls, requests, inspection.systemPrompts, callSchemas, t,
+    runningCalls, requests, inspection.systemPrompts, inspection.inputTurns, callSchemas, t,
   ])
   const timelinePartialSignature = partialStructureSignature(partial)
   const timelinePartial = useMemo<TrajectorySnapshot['partial']>(() => partial === null
@@ -565,6 +566,7 @@ export function TrajectoryView({
           renderImages={renderImages}
           requestNumbers={requestNumbers}
           turns={timelineTurns}
+          turnLabels={inspection.turnLabels}
           streamingCells={streamingCells}
           timelineFocusIndexes={timelineFocusIndexes}
           searchMatchIndexes={searchMatchIndexes}

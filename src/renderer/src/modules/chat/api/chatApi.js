@@ -10,6 +10,7 @@ function mapMessage(message) {
     requestId: message.requestId || '',
     sessionEventSeq: message.sessionEventSeq,
     dshTurn: message.dshTurn,
+    inputEventSeq: message.inputEventSeq,
     conversationId: message.conversationId,
     sequence: message.sequence,
     messageIndex: message.messageIndex,

@@ -18,6 +18,8 @@ export function findRegenerateBranchUserIndex(items, targetMessageId = "", editi
   if (targetIndex < 0) return -1;
   if (items[targetIndex]?.role === "assistant") {
     const target = items[targetIndex];
+    if (Number.isSafeInteger(target.inputEventSeq)) return items.findIndex(input => input?.role === 'user'
+      && input.runtimeSessionId === target.runtimeSessionId && input.sessionEventSeq === target.inputEventSeq);
     for (let index = targetIndex - 1; index >= 0; index -= 1) {
       const input = items[index];
       if (input?.role !== "user") continue;

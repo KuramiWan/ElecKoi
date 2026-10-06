@@ -1,6 +1,5 @@
 import { RoleplayInputMenu } from "./RoleplayInputMenu.jsx";
 import { ChatModelPicker } from "./ChatModelPicker.jsx";
-import { ChatWaitingReply } from "./ChatWaitingReply.jsx";
 import { ConversationWidthControls } from "./ConversationWidthControls.tsx";
 import conversationWidthCss from "./ConversationWidthControls.module.css";
 import { PinnedAvatar } from "./PinnedAvatar.jsx";
@@ -10,7 +9,7 @@ import { AgentToolsDialog } from "./AgentToolsDialog.jsx";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
-import { DshAgentPresetIcon, DshNewChatIcon, DshToBottomIcon } from "../../../ui/icons/dshComposerIcons.jsx";
+import { DshAgentPresetIcon, DshNewChatIcon } from "../../../ui/icons/dshComposerIcons.jsx";
 import { SlidersHorizontal } from "@phosphor-icons/react";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -22,8 +21,7 @@ import {
   resolveChatDisplayProfile,
 } from "../../appearance/index.js";
 import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.js";
-import { useChatTailReading } from "../hooks/useChatTailReading.js";
-import { useChatHistoryAnchor } from "../hooks/useChatHistoryAnchor.js";
+import { selectRoleplayChatSeat, selectRoleplayPendingInput } from "../model/chatViewSeats.js";
 import { revealChatFile } from "../api/chatApi.js";
 
 const TrajectoryView = lazy(() => import("./TrajectoryDialog.jsx").then((module) => ({
@@ -69,10 +67,7 @@ export function ChatPanel({
   onSelectOpening,
   onGoCharacterSettings,
   scrollRef,
-  scrollRequest = { revision: 0, behavior: "auto" },
-  hasOlderMessages = false,
   isLoadingOlderMessages = false,
-  onLoadOlderMessages,
   chatDisplay,
   runtimeSessionId = "",
   renderRoleplaySlot,
@@ -83,7 +78,6 @@ export function ChatPanel({
   isSwitchingChat = false,
   conversationTransitionRevision = 0,
 }) {
-  const [messageAreaHovered, setMessageAreaHovered] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [processMessage, setProcessMessage] = useState(null);
   const [activeView, setActiveView] = useState("chat");
@@ -91,8 +85,6 @@ export function ChatPanel({
   const [trajectoryRevision, setTrajectoryRevision] = useState(0);
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [messageScrollElement, setMessageScrollElement] = useState(null);
-  const [followingTail, setFollowingTail] = useState(true);
   const loadImage = useCallback((id, image) => {
     if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
     return conversationModel.readImage(id, image);
@@ -106,29 +98,30 @@ export function ChatPanel({
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [pinnedAvatar, setPinnedAvatar] = useState(null);
   const [conversationBody, setConversationBody] = useState(null);
+  const [runningStatusTarget, setRunningStatusTarget] = useState(null);
   const chatPanelRef = useRef(null);
   const composerRegionRef = useRef(null);
-  const returnToBottomRef = useRef(null);
-  const historyPagingRef = useRef(null);
   const headerMenuRef = useRef(null);
-  const previousMessageScrollTopRef = useRef(null);
 
   useLayoutEffect(() => {
     const panel = chatPanelRef.current;
     const composerRegion = composerRegionRef.current;
-    if (!panel || !composerRegion || typeof ResizeObserver === "undefined") return undefined;
+    const scroller = composerRegion?.parentElement;
+    if (!panel || !composerRegion || !scroller || typeof ResizeObserver === "undefined") return undefined;
     const updateComposerHeight = () => {
-      panel.style.setProperty("--dsh-composer-height", `${composerRegion.offsetHeight}px`);
+      scroller.style.setProperty("--dsh-composer-height", `${composerRegion.offsetHeight}px`);
+      scroller.style.setProperty("--dsh-conversation-viewport-height", `${scroller.clientHeight}px`);
     };
     const observer = new ResizeObserver(updateComposerHeight);
     observer.observe(composerRegion);
-    observer.observe(panel);
+    observer.observe(scroller);
     updateComposerHeight();
     return () => {
       observer.disconnect();
-      panel.style.removeProperty("--dsh-composer-height");
+      scroller.style.removeProperty("--dsh-composer-height");
+      scroller.style.removeProperty("--dsh-conversation-viewport-height");
     };
-  }, []);
+  }, [conversationBody]);
   const displayedMessages = useMemo(() => messages.filter((item) => !(
     item.role === "assistant" && !item.pending && !String(item.content || "").trim() && !(item.process || []).length
   )), [messages]);
@@ -139,14 +132,7 @@ export function ChatPanel({
   }, [onRegenerate]);
   const bindMessageScrollElement = useCallback((element) => {
     scrollRef.current = element;
-    setMessageScrollElement(element);
   }, [scrollRef]);
-
-  useEffect(() => {
-    previousMessageScrollTopRef.current = null;
-  }, [scrollRequest.revision]);
-
-  useEffect(() => setFollowingTail(true), [conversationId]);
 
   useEffect(() => {
     setActiveView("chat");
@@ -258,8 +244,6 @@ export function ChatPanel({
   const userAvatar = resolveChatAvatar(persona, "user", avatarShape);
   const assistantAvatar = resolveChatAvatar(persona, "assistant", avatarShape);
   const regenerateTargetMessageId = findLatestRegenerateTargetMessageId(messages);
-  const pendingStartedAt = messages.findLast((message) => message.role === "assistant" && message.pending)?.created_at;
-  const parsedStartedAt = pendingStartedAt ? Date.parse(pendingStartedAt) : NaN;
 
   function openChatBackground(event) {
     event.preventDefault();
@@ -343,6 +327,34 @@ export function ChatPanel({
     ) ?? residentComposer
     : residentComposer;
 
+  const rowProps = {
+    conversationId, messages: displayedMessages, layoutMode, profile, avatarShape,
+    userAvatar, assistantAvatar,
+    userPinImage: persona.user_portrait || persona.user_square || userAvatar,
+    assistantPinImage: persona.assistant_cover || persona.assistant_square || assistantAvatar,
+    onPinAvatar: setPinnedAvatar, userName: persona.user_name, assistantName: persona.assistant_name,
+    showRoleplayTimestamp: chatDisplay?.roleplay_timestamps_enabled !== false,
+    showRoleplayFloor: chatDisplay?.roleplay_message_floors_enabled !== false,
+    onOpenProcess: setProcessMessage, onEditMessage, onEditOpening, onSelectOpening,
+    onRegenerate: regenerateFrom, deleteMode, deleteFromMessageId,
+    onSelectDeleteFrom: setDeleteFromMessageId, runtimeSessionId,
+    renderRoleplaySlot, renderRoleplayMessage, loadImage, onOpenFile: openFile,
+  };
+  const opening = <MessageList {...rowProps} openingOnly />;
+  const officialChat = isSwitchingChat ? null : renderRoleplaySlot?.("eleckoi.roleplay.chat", {
+    before: opening,
+    runningStatusTarget,
+    renderChatNode: ({ node }) => {
+      const seat = selectRoleplayChatSeat(displayedMessages, runtimeSessionId, node);
+      if (seat && !seat.item.conversationId) seat.item = { ...seat.item, conversationId };
+      return seat === undefined ? undefined : seat ? <MessageList {...rowProps} seat={seat} officialNode /> : null;
+    },
+    renderPendingInput: ({ input: pendingInput }) => {
+      const seat = selectRoleplayPendingInput(displayedMessages, runtimeSessionId, pendingInput);
+      return <MessageList {...rowProps} seat={{ ...seat, item: { ...seat.item, conversationId } }} />;
+    },
+  });
+
   return (
     <section
       ref={chatPanelRef}
@@ -395,98 +407,48 @@ export function ChatPanel({
       </header>
 
       <div className={`chat-conversation-body ${conversationWidthCss.root}`} ref={setConversationBody}>
-        {activeView === "chat" ? <div
-          className={`message-area layout-${layoutMode} ${messageAreaHovered ? "scrollbar-visible" : ""}`}
+        <div
+          className={`message-area layout-${layoutMode}`}
           ref={bindMessageScrollElement}
           data-conversation-scroll=""
-          onPointerEnter={() => setMessageAreaHovered(true)}
-          onPointerLeave={() => setMessageAreaHovered(false)}
-          onScroll={(event) => {
-            const previousScrollTop = previousMessageScrollTopRef.current;
-            const scrollTop = event.currentTarget.scrollTop;
-            previousMessageScrollTopRef.current = scrollTop;
-            const movedUp = previousScrollTop !== null && scrollTop < previousScrollTop;
-            if (movedUp && scrollTop <= 240 && hasOlderMessages && !isLoadingOlderMessages) {
-              historyPagingRef.current?.();
-              onLoadOlderMessages?.();
-            }
-          }}
           aria-busy={isSwitchingChat || isLoadingOlderMessages || undefined}
         >
-          {isSwitchingChat ? null : <MessageList
-          key={`${conversationId}:${conversationTransitionRevision}`}
-          conversationId={conversationId}
-          entering={conversationTransitionRevision > 0}
-          messages={displayedMessages}
-          scrollElement={messageScrollElement}
-          scrollRequest={scrollRequest}
-          onFollowingTailChange={setFollowingTail}
-          returnToBottomRef={returnToBottomRef}
-          historyPagingRef={historyPagingRef}
-          layoutMode={layoutMode}
-          profile={profile}
-          avatarShape={avatarShape}
-          userAvatar={userAvatar}
-          assistantAvatar={assistantAvatar}
-          userPinImage={persona.user_portrait || persona.user_square || userAvatar}
-          assistantPinImage={persona.assistant_cover || persona.assistant_square || assistantAvatar}
-          onPinAvatar={setPinnedAvatar}
-          userName={persona.user_name}
-          assistantName={persona.assistant_name}
-          showRoleplayTimestamp={chatDisplay?.roleplay_timestamps_enabled !== false}
-          showRoleplayFloor={chatDisplay?.roleplay_message_floors_enabled !== false}
-          onOpenProcess={setProcessMessage}
-          onEditMessage={onEditMessage}
-          onEditOpening={onEditOpening}
-          onSelectOpening={onSelectOpening}
-          onRegenerate={regenerateFrom}
-          deleteMode={deleteMode}
-          deleteFromMessageId={deleteFromMessageId}
-          onSelectDeleteFrom={setDeleteFromMessageId}
-          runtimeSessionId={runtimeSessionId}
-          renderRoleplaySlot={renderRoleplaySlot}
-          renderRoleplayMessage={renderRoleplayMessage}
-          loadImage={loadImage}
-          onOpenFile={openFile}
-          />}
-        </div> : <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
-          <TrajectoryView
-            key={`${conversationId}:${trajectoryRevision}`}
-            conversationId={conversationId}
-            isSending={isSending}
-            refreshRevision={trajectoryRevision}
-            renderSlot={renderRoleplaySlot}
-          />
-        </Suspense>}
+          <div className="chat-transcript-region">
+            {activeView === "chat" ? officialChat ?? (isSwitchingChat ? null : opening) : <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
+              <TrajectoryView
+                key={`${conversationId}:${trajectoryRevision}`}
+                conversationId={conversationId}
+                isSending={isSending}
+                refreshRevision={trajectoryRevision}
+                renderSlot={renderRoleplaySlot}
+              />
+            </Suspense>}
+          </div>
 
-      <div className="chat-composer-region" ref={composerRegionRef}>
-        {activeView === "chat" && !followingTail ? (
-          <div className="chat-to-bottom-slot">
-            <button type="button" className="chat-to-bottom" aria-label="回到底部" onClick={() => returnToBottomRef.current?.()}><DshToBottomIcon /></button>
+          <div className="chat-composer-region" ref={composerRegionRef} data-composer-seat="">
+            {deleteMode ? (
+              <div className="chat-message-delete-bar" aria-label="删除消息">
+                <button
+                  className="delete-confirm"
+                  type="button"
+                  disabled={!deleteFromMessageId || deletingMessages}
+                  onClick={() => setDeleteConfirmationOpen(true)}
+                >
+                  {deletingMessages ? "删除中" : "删除"}
+                </button>
+                <button type="button" disabled={deletingMessages} onClick={cancelDeleteMode}>取消</button>
+              </div>
+            ) : (
+              <>
+                <div className="chat-running-seat" ref={setRunningStatusTarget} data-chat-running-seat="" />
+                {dshInputZone
+                  ? renderRoleplaySlot?.("eleckoi.roleplay.conversation.input.dock", dshInputZone)
+                  : null}
+                {composedInput}
+              </>
+            )}
           </div>
-        ) : null}
-        {deleteMode ? (
-          <div className="chat-message-delete-bar" aria-label="删除消息">
-            <button
-              className="delete-confirm"
-              type="button"
-              disabled={!deleteFromMessageId || deletingMessages}
-              onClick={() => setDeleteConfirmationOpen(true)}
-            >
-              {deletingMessages ? "删除中" : "删除"}
-            </button>
-            <button type="button" disabled={deletingMessages} onClick={cancelDeleteMode}>取消</button>
-          </div>
-        ) : (
-          <>
-            {isSending ? <ChatWaitingReply startTime={Number.isFinite(parsedStartedAt) ? parsedStartedAt : undefined} /> : null}
-            {dshInputZone
-              ? renderRoleplaySlot?.("eleckoi.roleplay.conversation.input.dock", dshInputZone)
-              : null}
-            {composedInput}
-          </>
-        )}
-      </div>
+        </div>
         <ConversationWidthControls
           container={conversationBody}
           phase={activeView === "chat" ? "active" : "hero"}
@@ -528,11 +490,9 @@ export function MessageList({
   conversationId,
   entering,
   messages,
-  scrollElement,
-  scrollRequest,
-  onFollowingTailChange,
-  returnToBottomRef,
-  historyPagingRef,
+  seat,
+  officialNode = false,
+  openingOnly = false,
   layoutMode,
   profile,
   avatarShape,
@@ -561,19 +521,6 @@ export function MessageList({
 }) {
   const [isEntering, setIsEntering] = useState(Boolean(entering));
   const latestAssistantIndex = messages.findLastIndex((message) => message.role === "assistant" && !message.pending);
-  const restoredConversationRef = useRef("");
-  const scrollRevisionRef = useRef(scrollRequest.revision);
-  const localHistoryPagingRef = useRef(null);
-  const pagingControlRef = historyPagingRef || localHistoryPagingRef;
-  const followTail = useChatTailReading({
-    scrollElement,
-    onFollowingTailChange,
-  });
-  const beginHistoryPaging = useChatHistoryAnchor({
-    conversationId,
-    messages,
-    scrollElement,
-  });
   const regenerateMessage = useCallback((message) => onRegenerate?.({
     targetMessageId: message.turnId || message.id,
   }), [onRegenerate]);
@@ -591,38 +538,6 @@ export function MessageList({
     return () => window.clearTimeout(timer);
   }, [conversationId, entering]);
 
-  useLayoutEffect(() => {
-    if (!scrollElement || !conversationId || messages.length === 0
-      || restoredConversationRef.current === conversationId) return;
-    restoredConversationRef.current = conversationId;
-    scrollRevisionRef.current = scrollRequest.revision;
-    followTail();
-  }, [conversationId, followTail, messages.length, scrollElement, scrollRequest.revision]);
-
-  useLayoutEffect(() => {
-    if (!scrollElement || scrollRevisionRef.current === scrollRequest.revision) return;
-    scrollRevisionRef.current = scrollRequest.revision;
-    followTail();
-  }, [followTail, scrollElement, scrollRequest.revision]);
-
-  useLayoutEffect(() => {
-    if (!scrollElement) return undefined;
-    const returnToBottom = () => {
-      followTail();
-    };
-    returnToBottomRef.current = returnToBottom;
-    return () => {
-      if (returnToBottomRef.current === returnToBottom) returnToBottomRef.current = null;
-    };
-  }, [followTail, returnToBottomRef, scrollElement]);
-
-  useLayoutEffect(() => {
-    pagingControlRef.current = beginHistoryPaging;
-    return () => {
-      if (pagingControlRef.current === beginHistoryPaging) pagingControlRef.current = null;
-    };
-  }, [beginHistoryPaging, pagingControlRef]);
-
   return (
     <div
       className={`message-flow${isEntering ? " is-conversation-entering" : ""}`}
@@ -630,7 +545,8 @@ export function MessageList({
         if (event.target === event.currentTarget) setIsEntering(false);
       }}
     >
-      {messages.map((item, index) => {
+      {(seat ? [seat] : messages.map((item, index) => ({ item, index }))
+        .filter(({ item }) => !openingOnly || item.id === "opening")).map(({ item, index }) => {
         const rowKey = item.renderKey || item.id || `${item.role || "message"}-${item.created_at || index}`;
         const selectedForDelete = deleteFromIndex >= 0 && index >= deleteFromIndex;
         const nextRole = messages[index + 1]?.role;
@@ -642,7 +558,7 @@ export function MessageList({
         return <MessageRow
           key={rowKey}
           item={item}
-          anchorKey={String(rowKey)}
+          anchorKey={officialNode ? undefined : String(rowKey)}
           index={index}
           spacingAfter={spacingAfter}
           selectedForDelete={selectedForDelete}
@@ -752,7 +668,7 @@ const MessageRow = memo(function MessageRow({
       className="message-flow-row"
       data-index={index}
       data-chat-anchor-key={anchorKey}
-      data-chat-paging-anchor="true"
+      data-chat-paging-anchor={anchorKey ? "true" : undefined}
       style={{ paddingBottom: `${spacingAfter}px` }}
     >
       {deleteMode ? (

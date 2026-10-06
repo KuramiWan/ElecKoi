@@ -20,9 +20,10 @@ export function SessionTrajectoryView(props) {
   const official = props.useTrajectory((value) => value);
   const contexts = props.useProjection("eleckoiRequestContexts");
   const outcomes = props.useProjection("eleckoiTurnOutcomes");
+  const inputIdentities = props.useProjection("eleckoiInputContinuations");
   const snapshot = useMemo(
-    () => adaptTrajectorySnapshot(official, contexts, outcomes),
-    [official, contexts, outcomes],
+    () => adaptTrajectorySnapshot(official, contexts, outcomes, inputIdentities),
+    [official, contexts, outcomes, inputIdentities],
   );
   const useTrajectory = useCallback((selector) => selector(snapshot), [snapshot]);
   const translate = useCallback((key, values = {}) => {

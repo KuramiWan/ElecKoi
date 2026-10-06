@@ -21,6 +21,21 @@ export interface RoleplayRequestContextState {
   contexts: RoleplayRequestContexts
 }
 
+export interface RoleplayInputContinuation {
+  turn: number
+  inputMessageId: string
+  inputEventSeq: number
+}
+
+export interface RoleplayInputContinuations {
+  links: RoleplayInputContinuation[]
+  inputs: Array<{ turn: number; eventSeq: number; messageId: string }>
+}
+
+export interface RoleplayInputContinuationsState extends RoleplayInputContinuations {
+  currentTurn: number
+}
+
 declare module '@deepseek-ai/dsh-session' {
   interface SessionEventMap {
     'eleckoi/request-context': {
@@ -41,8 +56,10 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     eleckoiRequestContexts: RoleplayRequestContexts
     eleckoiHistoryStatsAdjustment: { steps: number; turns: number }
     eleckoiTurnOutcomes: { abortedTurns: number[] }
+    eleckoiInputContinuations: RoleplayInputContinuations
   }
   interface SessionProjectionStateMap {
     eleckoiRequestContexts: RoleplayRequestContextState
+    eleckoiInputContinuations: RoleplayInputContinuationsState
   }
 }

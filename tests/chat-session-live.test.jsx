@@ -13,7 +13,7 @@ describe('DSH chat live rendering', () => {
     const runtimeSessionId = 'session-delete-cycle'
     const conversation = { id, title: '合成角色', metadata: { characterId: 'synthetic-character' } }
     const message = (id, role, content, seq, requestId = '') => ({ id, role, content,
-      runtimeSessionId, sessionEventSeq: seq, sequence: seq, status: 'complete', requestId,
+      conversationId: conversation.id, runtimeSessionId, sessionEventSeq: seq, sequence: seq, status: 'complete', requestId,
       dshTurn: role === 'user' ? seq + 3 : seq,
       ...(role === 'assistant' ? { renderKey: `dsh-reply-${runtimeSessionId}-${seq}` } : {}) })
     const prefix = [message('prefix-input', 'user', '相同输入', 2, 'prefix'),
@@ -88,9 +88,9 @@ describe('DSH chat live rendering', () => {
         expect(request.requestId).toBeTruthy()
         const expectedInput = [...before.map(item => item.content), '相同输入']
         expect(contents()).toEqual(expectedInput)
-        await act(async () => publish(before, { id, status: 'idle', content: '', process: [] }))
+        await act(async () => publish(pair ? before : [...before, deletedUser], { id, status: 'idle', content: '', process: [] }))
         expect(contents()).toEqual(expectedInput)
-        const user = message(`input-${round}`, 'user', '相同输入', pair ? 15 + round * 10 : 9, request.requestId)
+        const user = pair ? message(`input-${round}`, 'user', '相同输入', 15 + round * 10, request.requestId) : deletedUser
         const reply = message(`reply-${round}`, 'assistant', '新正文', user.sequence + 3)
         const live = { id, status: 'running', runId: runtimeSessionId, messageId: `live-${round}`,
           renderKey: reply.renderKey, content: '新正文', process: [] }
@@ -174,7 +174,8 @@ describe('DSH chat live rendering', () => {
       status: options.status || 'complete',
       ...(options.process ? { process: options.process } : {}), createdAt: '',
       ...(role === 'user' ? { dshTurn: 1, requestId: model.send.mock.calls.at(-1)?.[0].requestId } : {}),
-      ...(role === 'assistant' ? { dshTurn: 1, renderKey: 'dsh-reply-session-1-1' } : {}) })
+      ...(role === 'assistant' ? { dshTurn: executionTurn, renderKey: `dsh-reply-session-1-${executionTurn}`,
+        inputEventSeq: 1 } : {}) })
     let catalog = { status: 'ready', items: [conversation], error: '' }
     let details = { id, status: 'ready', details: makeDetails([]), error: '' }
     let stream = { id, status: 'idle', content: '', process: [] }
@@ -188,7 +189,7 @@ describe('DSH chat live rendering', () => {
     }
     const emitStream = (content, status = 'running', process = []) => {
       stream = { id, status, content, process, runId: 'session-1', messageId: 'live-1',
-        renderKey: 'dsh-reply-session-1-1' }
+        renderKey: `dsh-reply-session-1-${executionTurn}` }
       for (const listener of streamListeners) listener()
       if (status === 'running' && (content || process.length)) {
         const previous = details.details.messages.filter(message =>
@@ -197,6 +198,7 @@ describe('DSH chat live rendering', () => {
           { status: 'streaming', process })])
       }
     }
+    let executionTurn = 1
     let finishSend
     let finishRegenerate
     const model = {
@@ -206,7 +208,7 @@ describe('DSH chat live rendering', () => {
       readModelSelection: async () => ({ provider: 'test-provider', model: 'test-model' }),
       refresh: async () => catalog.items,
       send: vi.fn(() => new Promise(resolve => { finishSend = resolve })),
-      regenerate: vi.fn(() => new Promise(resolve => { finishRegenerate = resolve })),
+      regenerate: vi.fn(() => new Promise(resolve => { executionTurn = 2; finishRegenerate = resolve })),
       invalidateDetails: vi.fn(),
       open: async () => details.details,
     }
@@ -276,14 +278,14 @@ describe('DSH chat live rendering', () => {
       await act(async () => { regenerating = chat.regenerateReply({ targetMessageId: 'assistant-1' }) })
       expect(model.regenerate).toHaveBeenCalledWith(expect.objectContaining({ conversationId: id, eventSeq: 1 }))
       await act(async () => {
-        emitDetails([{ ...makeMessage('user-2', 'user', '读取文件', 1), requestId: model.regenerate.mock.calls.at(-1)[0].requestId }])
+        emitDetails([makeMessage('user-1', 'user', '读取文件', 1)])
         emitStream('', 'running', [reasoning])
       })
       expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在思考')
       await act(async () => emitStream('重新读取中', 'running', [reasoning]))
       expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '重新读取中'])
       await act(async () => {
-        emitDetails([{ ...makeMessage('user-2', 'user', '读取文件', 1), requestId: model.regenerate.mock.calls.at(-1)[0].requestId }, makeMessage('assistant-2', 'assistant', '重新读取完成', 4)])
+        emitDetails([makeMessage('user-1', 'user', '读取文件', 1), makeMessage('assistant-2', 'assistant', '重新读取完成', 4)])
         emitStream('', 'idle')
         finishRegenerate({ details: details.details, cancelled: false })
         await regenerating

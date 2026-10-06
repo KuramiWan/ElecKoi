@@ -62,6 +62,10 @@ export interface TrajectoryConversationViewNode extends ConversationViewNode {
 
 /** Stage-oriented Trajectory data assembled from registered business Contexts. */
 export interface TrajectorySnapshot {
+  /** Product round labels; all event and request identities retain their DSH turn. */
+  readonly turnLabels?: ReadonlyMap<number, number>
+  /** Explicit execution placement of canonical direct-user event sequences. */
+  readonly inputTurns?: ReadonlyMap<number, number>
   /** Complete loaded prompt text whose request header is outside the window. */
   readonly systemPrompts?: readonly SystemPromptNode[]
   readonly eventNodes: readonly ConversationNode[]

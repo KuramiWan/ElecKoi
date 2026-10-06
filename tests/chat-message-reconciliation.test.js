@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeProcessItems, preserveMessageRenderKeys, preserveRewindUser } from '../src/renderer/src/modules/chat/hooks/useConversationMessages.js'
+import { mergeProcessItems, preserveMessageRenderKeys, preservePendingUser } from '../src/renderer/src/modules/chat/hooks/useConversationMessages.js'
 
 describe('chat message reconciliation', () => {
   it.each([
@@ -71,21 +71,11 @@ describe('chat message reconciliation', () => {
     expect(preserveMessageRenderKeys(current, incoming)).toEqual(incoming)
   })
 
-  it('does not reinsert the pre-rewind user when DSH assigns the replacement a new identity', () => {
-    const previous = [{ id: 'user-old', sessionEventSeq: 12, role: 'user', content: '你还会啥' }]
-    const incoming = [{ id: 'user-replacement', requestId: 'regen-1', sessionEventSeq: 19, role: 'user', content: '你还会啥' }]
-
-    expect(preserveRewindUser(previous, incoming, { ...previous[0], requestId: 'regen-1' })).toEqual(incoming)
-  })
-
-  it('collapses the retiring and replacement user rows in one rewind snapshot', () => {
-    const previous = [{ id: 'user-old', sessionEventSeq: 12, role: 'user', content: '你还会啥' }]
-    const incoming = [
-      { id: 'user-old', sessionEventSeq: 12, role: 'user', content: '你还会啥' },
-      { id: 'user-replacement', requestId: 'regen-1', sessionEventSeq: 19, role: 'user', content: '你还会啥' },
-    ]
-
-    expect(preserveRewindUser(previous, incoming, { ...previous[0], requestId: 'regen-1' })).toEqual([incoming[1]])
+  it('preserves the same user row identity when its durable content is edited', () => {
+    const previous = [{ id: 'user-one', sessionEventSeq: 12, role: 'user', content: '合成输入' }]
+    const incoming = [{ ...previous[0], content: '合成编辑输入' }]
+    expect(preserveMessageRenderKeys(previous, incoming)).toMatchObject(incoming)
+    expect(preservePendingUser(previous, incoming, previous[0])).toEqual(incoming)
   })
 
   it('keeps live process events when the durable reply arrives one update behind', () => {
@@ -188,6 +178,6 @@ describe('chat message reconciliation', () => {
       { id: 'reply-new', runtimeSessionId: 'session-1', renderKey: 'dsh-reply-session-1-2', role: 'assistant', content: '回复' },
     ]
     expect(preserveMessageRenderKeys(current, incoming)).toEqual(incoming)
-    expect(preserveRewindUser(current, incoming, current[0])).toEqual([current[0], ...incoming])
+    expect(preservePendingUser(current, incoming, current[0])).toEqual([current[0], ...incoming])
   })
 })

@@ -115,28 +115,22 @@ export function preserveMessageRenderKeys(currentMessages = [], incomingMessages
   });
 }
 
-export function preserveRewindUser(currentMessages, incomingMessages, rewindUser) {
-  if (!rewindUser || rewindUser.role !== "user") return incomingMessages;
-  // A regeneration replaces the selected input with the exact request's
-  // pending/admitted input. Equal text in other turns is never an identity.
-  const replacement = rewindUser.requestId && incomingMessages.find(message => message.role === 'user'
-    && message.requestId === rewindUser.requestId);
-  if (replacement) return incomingMessages.filter(message => message === replacement || message.id !== rewindUser.id);
-  if (incomingMessages.some(message => sameMessageIdentity(rewindUser, message))) return incomingMessages;
-  const previous = currentMessages.find(message => message.id === rewindUser.id);
+export function preservePendingUser(currentMessages, incomingMessages, pendingUser) {
+  if (!pendingUser || pendingUser.role !== "user") return incomingMessages;
+  if (incomingMessages.some(message => sameMessageIdentity(pendingUser, message))) return incomingMessages;
+  const previous = currentMessages.find(message => message.id === pendingUser.id);
   if (!previous) return incomingMessages;
   const previousIndex = currentMessages.indexOf(previous);
   const insertAt = Math.min(Math.max(previousIndex, 0), incomingMessages.length);
   return [
     ...incomingMessages.slice(0, insertAt),
-    { ...previous, ...rewindUser },
+    { ...previous, ...pendingUser },
     ...incomingMessages.slice(insertAt),
   ];
 }
 
 export function useConversationMessages() {
   const [messages, setMessages] = useState([]);
-  const rewindUserRef = useRef(null);
   const scrollRef = useRef(null);
   const [historyPage, setHistoryPage] = useState({ hasMore: false, beforeSequence: null });
   const [scrollRequest, setScrollRequest] = useState({ revision: 0, behavior: "auto" });
@@ -164,17 +158,12 @@ export function useConversationMessages() {
   function reconcileMessages(nextMessages, page = {}) {
     setMessages((current) => {
       const merged = preserveMessageRenderKeys(current, nextMessages);
-      const rewound = preserveRewindUser(current, merged, page.preserveRewindUser || rewindUserRef.current);
-      return preserveRewindUser(current, rewound, page.preservePendingUser);
+      return preservePendingUser(current, merged, page.preservePendingUser);
     });
     setHistoryPage({
       hasMore: Boolean(page.hasMore),
       beforeSequence: page.beforeSequence ?? null,
     });
-  }
-
-  function setRewindUser(message) {
-    rewindUserRef.current = message || null;
   }
 
   function prependMessages(olderMessages, page = {}) {
@@ -193,7 +182,6 @@ export function useConversationMessages() {
     messages,
     displayedMessages,
     setMessages,
-    setRewindUser,
     setMessagesWithScroll,
     reconcileMessages,
     prependMessages,

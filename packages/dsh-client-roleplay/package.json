@@ -28,6 +28,7 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/dsh-client-ui-chat": "0.2.0-rc.2",
     "@deepseek-ai/dsh-agent-default-model": "0.2.0-rc.2",
     "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2",
     "@deepseek-ai/dsh-client-ui-conversation": "0.2.0-rc.2",
@@ -44,6 +45,41 @@
   },
   "eleckoi": {
     "developerInterfaces": [
+      {
+        "id": "eleckoi.roleplay.chat",
+        "kind": "ui-slot",
+        "title": "角色对话视图",
+        "description": "以官方 ChatView 承接角色消息座位、历史分页、导航与阅读位置。",
+        "mode": "replace", "scope": "session", "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.chat.node",
+        "kind": "ui-slot",
+        "title": "角色对话节点",
+        "description": "按正式 ChatNodeKind 替换角色对话的节点呈现。",
+        "mode": "replace", "scope": "session", "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.chat.images",
+        "kind": "ui-slot",
+        "title": "角色对话图片",
+        "description": "呈现角色对话中使用正式授权加载器读取的消息图片。",
+        "mode": "replace", "scope": "session", "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.chat.before",
+        "kind": "ui-slot",
+        "title": "角色对话开场区域",
+        "description": "呈现 Session 消息之前的产品开场内容，不创建 Session 事件。",
+        "mode": "replace", "scope": "session", "relation": "provides"
+      },
+      {
+        "id": "eleckoi.roleplay.chat.pending-input",
+        "kind": "ui-slot",
+        "title": "角色对话发送回显",
+        "description": "呈现官方等待正式 Session 消息接替的输入回显。",
+        "mode": "replace", "scope": "session", "relation": "provides"
+      },
       {
         "id": "eleckoi.roleplay.message.content",
         "kind": "ui-slot",

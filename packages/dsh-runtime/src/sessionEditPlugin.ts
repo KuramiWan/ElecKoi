@@ -32,7 +32,7 @@ export function apply(ctx: SessionProjectionRefreshContext & {
         } finally { await lease.release() }
       })
     },
-    async rewind(sessionId: string, fromTurn: number, fromEventSeq?: number): Promise<number | undefined> {
+    async rewind(sessionId: string, fromTurn: number, fromEventSeq?: number, retainInput = false): Promise<number | undefined> {
       return ctx.eleckoiSessionHandles.withClosed(sessionId, async () => {
         if (!readDshSessionLog(sessionRoot, sessionId)) return undefined
         const probe = await ctx.sessionPersistence.open(sessionId as SessionId, 'write')
@@ -41,7 +41,7 @@ export function apply(ctx: SessionProjectionRefreshContext & {
         if (!log) return undefined
         const lease = await SessionWriteLease.acquire(dirname(log.path), SessionId(sessionId))
         try {
-          const count = rewindDshSession(sessionRoot, sessionId, fromTurn, fromEventSeq)
+          const count = rewindDshSession(sessionRoot, sessionId, fromTurn, fromEventSeq, retainInput)
           await refreshSessionProjections(ctx, sessionId)
           return count
         } catch (error) {

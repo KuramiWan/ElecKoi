@@ -4,7 +4,7 @@
 
 本表从桌面运行清单与各 bundle 的 `package.json.eleckoi.developerInterfaces` 生成。DSH 基准为 `0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 
-当前共 **14 个 bundle、81 个开发接口**：51 个界面插槽、13 个服务、0 个事件、1 个贡献点、16 个 Remote 合同。
+当前共 **14 个 bundle、86 个开发接口**：56 个界面插槽、13 个服务、0 个事件、1 个贡献点、16 个 Remote 合同。
 
 接口标题和说明用于插件中心展示；真实调用合同以对应类型导出和实现为准。完整参数、返回值和数据字段见 [Client 参考](api-client.md)、[Host 参考](api-host.md) 与 [Remote 调用声明](api-remote.md)。使用方法见 [界面插槽](ui-slots.md)、[服务接口](services.md) 与 [能力贡献](contributions.md)。
 
@@ -22,7 +22,7 @@
 | `@eleckoi/dsh-client-presets` | 6 | 1 | 0 | 0 | 0 | 7 |
 | `@eleckoi/dsh-client-web-search` | 0 | 1 | 0 | 0 | 0 | 1 |
 | `@eleckoi/dsh-client-shell` | 15 | 1 | 0 | 0 | 0 | 16 |
-| `@eleckoi/dsh-client-roleplay` | 20 | 0 | 0 | 0 | 0 | 20 |
+| `@eleckoi/dsh-client-roleplay` | 25 | 0 | 0 | 0 | 0 | 25 |
 | `@eleckoi/dsh-product-api` | 0 | 0 | 0 | 0 | 16 | 16 |
 | `@eleckoi/dsh-runtime` | 0 | 1 | 0 | 0 | 0 | 1 |
 | `@eleckoi/dsh-web-search-tavily` | 0 | 0 | 0 | 1 | 0 | 1 |
@@ -168,6 +168,11 @@
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `eleckoi.roleplay.chat` | 角色对话视图 | 界面插槽 | 提供 | `replace` | `session` | 以官方 ChatView 承接角色消息座位、历史分页、导航与阅读位置。 | — |
+| `eleckoi.roleplay.chat.node` | 角色对话节点 | 界面插槽 | 提供 | `replace` | `session` | 按正式 ChatNodeKind 替换角色对话的节点呈现。 | — |
+| `eleckoi.roleplay.chat.images` | 角色对话图片 | 界面插槽 | 提供 | `replace` | `session` | 呈现角色对话中使用正式授权加载器读取的消息图片。 | — |
+| `eleckoi.roleplay.chat.before` | 角色对话开场区域 | 界面插槽 | 提供 | `replace` | `session` | 呈现 Session 消息之前的产品开场内容，不创建 Session 事件。 | — |
+| `eleckoi.roleplay.chat.pending-input` | 角色对话发送回显 | 界面插槽 | 提供 | `replace` | `session` | 呈现官方等待正式 Session 消息接替的输入回显。 | — |
 | `eleckoi.roleplay.message.content` | 消息正文 | 界面插槽 | 提供 | `replace` | `session` | 包装或替换角色聊天消息正文。 | — |
 | `eleckoi.roleplay.message.actions` | 消息操作 | 界面插槽 | 提供 | `append` | `session` | 在消息旁增加操作。 | — |
 | `eleckoi.roleplay.message.after` | 消息下方 | 界面插槽 | 提供 | `append` | `session` | 在消息下方增加内容。 | — |

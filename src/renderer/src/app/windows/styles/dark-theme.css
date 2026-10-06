@@ -201,17 +201,6 @@
   color: var(--muted);
 }
 
-:root[data-theme="dark"] .message-area:hover::-webkit-scrollbar-thumb,
-:root[data-theme="dark"] .message-area.scrollbar-visible::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
-  background-clip: content-box;
-}
-
-:root[data-theme="dark"] .message-area::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.32);
-  background-clip: content-box;
-}
-
 :root[data-theme="dark"] .markdown-message blockquote {
   border-color: var(--line-strong);
   color: var(--muted);

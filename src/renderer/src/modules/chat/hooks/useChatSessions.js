@@ -122,7 +122,6 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   const [chatCharacter, setChatCharacter] = useState(() => createEmptyChatCharacter());
 
   const requestRef = useRef(null);
-  const regenerationUserRef = useRef(null);
   const {
     pinnedIds,
     hiddenIds,
@@ -145,7 +144,6 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     messages,
     displayedMessages,
     setMessages,
-    setRewindUser,
     setMessagesWithScroll,
     reconcileMessages,
     prependMessages,
@@ -234,7 +232,6 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     reconcileMessages(nextMessages, {
       hasMore: chat?.messages_has_more,
       beforeSequence: chat?.messages_before_sequence,
-      preserveRewindUser: options.preserveRewindUser,
       preservePendingUser: requestRef.current?.pendingUserMessage,
     });
   }
@@ -246,7 +243,6 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     reconcileChatMessages(chat, {
       hasMore: chat?.messages_has_more,
       beforeSequence: chat?.messages_before_sequence,
-      preserveRewindUser: regenerationUserRef.current,
     });
     setChatCharacter(normalizeLatestChatCharacter(chat));
   }, [chatBusy, conversations, detailsSnapshot.details, sessionId]);
@@ -644,31 +640,15 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     requestRef.current = activeRequest;
     setIsSending(true);
     setStatus("正在重新生成...");
-    const rewindUser = hasReplacementMessage
-      ? { ...branchUser, content: replacementMessage, requestId }
-      : { ...branchUser, requestId };
-    regenerationUserRef.current = rewindUser;
-    setRewindUser(rewindUser);
     try {
       const payload = {
         target_message_id: targetMessageId,
         session_event_seq: branchUser.sessionEventSeq,
         replacement_message: hasReplacementMessage ? replacementMessage : null,
       };
-      setMessages((items) => {
-        const userIndex = findRegenerateBranchUserIndex(items, targetMessageId, hasReplacementMessage);
-        if (userIndex < 0) return items;
-        return items.slice(0, userIndex + 1).map((item, index) => (
-          index === userIndex && hasReplacementMessage
-            ? { ...item, content: replacementMessage, displayContent: replacementMessage }
-            : item
-        ));
-      });
       throwIfAborted(controller.signal);
       const result = await regenerateChatMessage(sessionId, payload, requestId, { model: conversations, signal: controller.signal });
       if (result.cancelled) {
-        regenerationUserRef.current = null;
-        setRewindUser(null);
         if (requestRef.current === null || requestRef.current === activeRequest) {
           replaceChatMessages(result.chat);
           conversations?.invalidateDetails(sessionId);
@@ -708,8 +688,6 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       if (requestRef.current === activeRequest) {
         requestRef.current = null;
         setIsSending(false);
-        regenerationUserRef.current = null;
-        setRewindUser(null);
       }
     }
   }

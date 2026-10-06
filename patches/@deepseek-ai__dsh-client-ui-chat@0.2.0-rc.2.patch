@@ -1,0 +1,191 @@
+diff --git a/lib/client.js b/lib/client.js
+index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0b32c2144 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -3613,7 +3613,7 @@ window.__ModuleLoader__.load({
+ 				"data-index": index,
+ 				type: "button",
+ 				className: classes.join(" "),
+-				"aria-label": t(item.anchor.kind === "loaded" ? "chat.turnNavigation.jump" : "chat.turnNavigation.jumpLoad", { turn: item.turn }),
++				"aria-label": t(item.anchor.kind === "loaded" ? "chat.turnNavigation.jump" : "chat.turnNavigation.jumpLoad", { turn: item.labelTurn ?? item.turn }),
+ 				"aria-current": active ? "true" : void 0,
+ 				"aria-busy": busy ? "true" : void 0,
+ 				"aria-describedby": previewId,
+@@ -3838,7 +3838,7 @@ window.__ModuleLoader__.load({
+ 						style: { "--turn-preview-center": `${String(previewPosition.start + previewPosition.size / 2 - scrollTop)}px` },
+ 						children: [(0, react_jsx_runtime.jsx)("div", {
+ 							className: TurnNavigator_module_css_default.previewPrompt,
+-							children: preview.prompt || t("chat.turnNavigation.turn", { turn: preview.turn })
++							children: preview.prompt || t("chat.turnNavigation.turn", { turn: preview.labelTurn ?? preview.turn })
+ 						}), preview.response !== "" && (0, react_jsx_runtime.jsx)("div", {
+ 							className: TurnNavigator_module_css_default.previewResponse,
+ 							children: preview.response
+@@ -5106,7 +5106,11 @@ window.__ModuleLoader__.load({
+ 					default: return assertNever(entry);
+ 				}
+ 			});
+-			const pendingRows = pendingInputs.map((item) => "requestId" in item ? (0, react_jsx_runtime.jsx)(PendingSubmissionBubble, {
++			const pendingRows = pendingInputs.map((item) => (0, react_jsx_runtime.jsx)(react.Fragment, {
++				children: seatProps.renderSlot("conversation.chat.pending-input", {
++					input: item,
++					renderMessageImages: seatProps.renderMessageImages
++				}, { fallback: "requestId" in item ? (0, react_jsx_runtime.jsx)(PendingSubmissionBubble, {
+ 				submission: item,
+ 				renderMessageImages: seatProps.renderMessageImages,
+ 				t: seatProps.t
+@@ -5114,7 +5118,8 @@ window.__ModuleLoader__.load({
+ 				content: item.content,
+ 				renderMessageImages: seatProps.renderMessageImages,
+ 				t: seatProps.t
+-			}, item.id));
++			}, item.id) })
++			}, "requestId" in item ? item.requestId : item.id));
+ 			const tail = entries.at(-1);
+ 			const node = tail?.kind === "node" ? seatProps.nodeStore.get(tail.key) : void 0;
+ 			if (node?.kind === "turn-process" && node.location.kind === "turn" && node.location.turn.status === "open" && node.location.turn.turn !== lastInputTurn) {
+@@ -5127,7 +5132,7 @@ window.__ModuleLoader__.load({
+ 		* The chat view slot entry: pure component over the composed props; each
+ 		* ordered business Node crosses the keyed renderer seat.
+ 		*/
+-		function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot, sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions, usePresentation, useProjection, t }) {
++		function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot, runningStatusTarget, presentTurnNavigation, sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions, usePresentation, useProjection, t }) {
+ 			const order = useChat((s) => s.order);
+ 			const groupedEntries = useConversation((snapshot) => snapshot.views.grouped("chat")?.entries);
+ 			const entries = (0, react.useMemo)(() => groupedEntries ?? order.map((key) => ({
+@@ -5236,13 +5241,18 @@ window.__ModuleLoader__.load({
+ 				submissionId: visibleSubmissions.at(-1)?.requestId ?? null,
+ 				loadedTurns: turnNavigationItems
+ 			});
++			const turnNavigation = (0, react.useMemo)(() => {
++				const navigation = { items: railItems, activeTurn: scroll.activeTurn, busyTurn: scroll.busyTurn };
++				return presentTurnNavigation ? presentTurnNavigation(navigation) : navigation;
++			}, [railItems, scroll.activeTurn, scroll.busyTurn, presentTurnNavigation]);
+ 			return (0, react_jsx_runtime.jsxs)("div", {
+ 				className: ChatView_module_css_default.frame,
++				"data-chat-view": "",
+ 				children: [
+ 					scroll.initialized && (0, react_jsx_runtime.jsx)(TurnNavigator, {
+-						items: railItems,
+-						activeTurn: scroll.activeTurn,
+-						busyTurn: scroll.busyTurn,
++						items: turnNavigation.items,
++						activeTurn: turnNavigation.activeTurn,
++						busyTurn: turnNavigation.busyTurn,
+ 						onNavigate: scroll.navigateToTurn,
+ 						t
+ 					}),
+@@ -5252,15 +5262,13 @@ window.__ModuleLoader__.load({
+ 						children: (0, react_jsx_runtime.jsx)("div", {
+ 							ref: scroll.listRef,
+ 							className: ChatView_module_css_default.scroll,
++							"data-chat-scroll": "",
+ 							children: (0, react_jsx_runtime.jsxs)("div", {
+ 								ref: scroll.columnRef,
+ 								className: ChatView_module_css_default.column,
++								"data-chat-column": "",
+ 								"data-chat-flow": "",
+ 								children: [
+-									openState === "loading" && (0, react_jsx_runtime.jsx)("div", {
+-										className: ChatView_module_css_default.hint,
+-										children: t("chat.loadingHistory")
+-									}),
+ 									openState === "error" && openError !== null && (0, react_jsx_runtime.jsx)("div", {
+ 										className: ChatView_module_css_default.openError,
+ 										children: t("chat.loadError", {
+@@ -5281,7 +5289,7 @@ window.__ModuleLoader__.load({
+ 										openExternalLink,
+ 										openFile: requestOpenFile,
+ 										fileImages,
+-										children: (0, react_jsx_runtime.jsx)(ChatNodeList, {
++										children: [(0, react_jsx_runtime.jsx)(react.Fragment, { children: renderSlot("conversation.chat.before", {}) }, "before"), (0, react_jsx_runtime.jsx)(ChatNodeList, {
+ 											entries,
+ 											pendingInputs,
+ 											lastInputTurn,
+@@ -5302,9 +5310,9 @@ window.__ModuleLoader__.load({
+ 											fileMentions,
+ 											renderSlot,
+ 											t
+-										})
++										}, "nodes")]
+ 									}),
+-									running && (0, react_jsx_runtime.jsx)(RunningStatus, {
++									running && runningStatusTarget === void 0 && (0, react_jsx_runtime.jsx)(RunningStatus, {
+ 										startTime: runningStartTime,
+ 										t
+ 									})
+@@ -5312,8 +5320,13 @@ window.__ModuleLoader__.load({
+ 							})
+ 						})
+ 					}),
++					running && runningStatusTarget && (0, react_dom.createPortal)((0, react_jsx_runtime.jsx)(RunningStatus, {
++						startTime: runningStartTime,
++						t
++					}), runningStatusTarget),
+ 					!scroll.followingTail && (0, react_jsx_runtime.jsx)("div", {
+ 						className: ChatView_module_css_default.toBottomSlot,
++						"data-chat-to-bottom": true,
+ 						children: (0, react_jsx_runtime.jsx)("button", {
+ 							type: "button",
+ 							className: ChatView_module_css_default.toBottom,
+@@ -12403,7 +12416,15 @@ window.__ModuleLoader__.load({
+ 						"conversation.message.images": {
+ 							kind: "single",
+ 							scope: "session"
+-						}
++						},
++						"conversation.chat.before": {
++							kind: "single",
++							scope: "session"
++						},
++						"conversation.chat.pending-input": {
++							kind: "single",
++							scope: "session"
++						},
+ 					},
+ 					store: chatStore,
+ 					inject: (sessionId) => {
+diff --git a/lib/types/client/contract/slots.d.ts b/lib/types/client/contract/slots.d.ts
+index a3f4a4246318a741b3049c2de50bed1cb41bd981..787a10c00248af22a6099cea9a8bef7fbe4ad24d 100644
+--- a/lib/types/client/contract/slots.d.ts
++++ b/lib/types/client/contract/slots.d.ts
+@@ -214,7 +214,17 @@ export interface ChatViewInjected {
+     fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined;
+ }
+ /** Full Chat view props. */
+-export type ChatViewSlotProps = PropsRuntime<'conversation.view'> & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images'> & PropsStore<ChatStore> & InjectFace<ChatViewInjected> & PropsLocale<'chat'>;
++export interface ChatTurnNavigationPresentation {
++    readonly items: readonly (import('../chat/turn-rail-items.js').TurnRailItem & { readonly labelTurn?: number })[];
++    readonly activeTurn: number | null;
++    readonly busyTurn: number | null;
++}
++export type ChatViewSlotProps = PropsRuntime<'conversation.view'> & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images' | 'conversation.chat.before' | 'conversation.chat.pending-input'> & PropsStore<ChatStore> & InjectFace<ChatViewInjected> & PropsLocale<'chat'> & {
++    /** Optional external seat for the official running indicator; null waits for its mount. */
++    runningStatusTarget?: Element | null;
++    /** Present the rail without changing execution IDs, anchors, or scroll/navigation behavior. */
++    presentTurnNavigation?: (navigation: ChatTurnNavigationPresentation) => ChatTurnNavigationPresentation;
++};
+ /** Full props of the durable-message image renderer. */
+ export type MessageImagesProps = PropsRuntime<'conversation.message.images'> & PropsLocale<'conversation'>;
+ declare module '@deepseek-ai/dsh-client-ui-slots' {
+@@ -227,6 +237,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
+         chat: import('../locale.ts').ChatKey;
+     }
+     interface SlotMap {
++        /** Product-owned content preceding the Session transcript; no synthetic Session events. */
++        'conversation.chat.before': {
++            kind: 'single';
++            scope: 'session';
++            owner: Record<string, never>;
++        };
++        /** Presentation of an input still awaiting its durable Session counterpart. */
++        'conversation.chat.pending-input': {
++            kind: 'single';
++            scope: 'session';
++            owner: {
++                input: import('@deepseek-ai/dsh-api-session-controller/client').PendingSubmission | import('@deepseek-ai/dsh-agent/types').InboxState['next-step'][number];
++                renderMessageImages: RenderMessageImages;
++            };
++        };
+         /**
+          * Final Chat node renderer, keyed by `ChatNodeKind`. The component receives
+          * the typed node, shared Chat actions, and Turn-data hook. Reusing a key

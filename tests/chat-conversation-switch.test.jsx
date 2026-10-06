@@ -1,24 +1,111 @@
-import React from 'react';
+// @vitest-environment jsdom
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatPanel } from '../src/renderer/src/modules/chat/components/ChatPanel.jsx';
 import { WithOfficialMarkdown } from './helpers/officialMarkdown.jsx';
+import { ChatView, chatFixture, turnNode, userNode } from './helpers/officialChatView.jsx';
 
 globalThis.React = React;
 
 describe('conversation switching', () => {
-  it('removes the previous conversation content while the new conversation loads', () => {
+  it('keeps the same official user node mounted through regeneration and editing', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      disconnect() {}
+    });
+    const fixture = chatFixture('session-a');
+    const requestId = 'original-request-1';
+    const existingUser = {
+      id: 'message-a', conversationId: 'conversation-a', runtimeSessionId: 'session-a',
+      sessionEventSeq: 7, requestId, role: 'user', content: '同一条输入', displayContent: '同一条输入',
+      created_at: '2026-10-06T04:41:00.000Z',
+    };
+    const formal = userNode('node-7', 7, requestId, 1, '同一条输入');
+    fixture.update({ order: [formal.key], nodes: new Map([[formal.key, formal]]) });
+    const renderRoleplaySlot = (name, owner, options) => name === 'eleckoi.roleplay.chat'
+      ? <ChatView {...fixture.props} runningStatusTarget={owner.runningStatusTarget} renderSlot={(child, childOwner, childOptions) => {
+        if (child === 'conversation.chat.before') return owner.before;
+        if (child === 'conversation.chat.node') return owner.renderChatNode(childOwner);
+        return childOptions?.fallback ?? null;
+      }} /> : options?.fallback ?? null;
     const props = {
       hasActiveChat: true,
       currentTitle: '角色乙',
       conversationId: 'conversation-a',
+      runtimeSessionId: 'session-a',
       persona: { user_name: '用户', assistant_name: '角色甲' },
-      messages: [{ id: 'message-a', conversationId: 'conversation-a', role: 'assistant', content: '旧会话前端内容' }],
+      messages: [existingUser],
+      input: '',
+      setInput: () => {},
+      isSending: true,
+      modelConfigs: [],
+      scrollRef: { current: null },
+      presetCatalog: { refresh: async () => ({ presets: [], activePresetId: '' }) },
+      renderRoleplaySlot,
+    };
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => { root.render(<WithOfficialMarkdown><ChatPanel {...props} /></WithOfficialMarkdown>); });
+      expect(container.textContent.match(/同一条输入/g)).toHaveLength(1);
+      const originalRow = container.querySelector('[data-chat-node-key="node-7"]');
+      expect(originalRow).not.toBeNull();
+      const next = turnNode('turn-2', 2);
+      await act(async () => { fixture.update({ order: [formal.key, next.key],
+        nodes: new Map([[formal.key, formal], [next.key, next]]), session: { ...fixture.state.session, running: true } }); });
+      expect(container.textContent.match(/同一条输入/g)).toHaveLength(1);
+      expect(container.querySelector('[data-chat-node-key="node-7"]')).toBe(originalRow);
+      expect(container.querySelector('[data-chat-running]')?.parentElement).toBe(container.querySelector('[data-chat-running-seat]'));
+      expect(container.querySelector('[data-chat-flow] [data-chat-running]')).toBeNull();
+      const scrollport = container.querySelector('[data-conversation-scroll]');
+      const composerSeat = container.querySelector('[data-composer-seat]');
+      expect(composerSeat.parentElement).toBe(scrollport);
+      expect(scrollport.querySelector('.chat-transcript-region [data-chat-view]')).not.toBeNull();
+      expect(scrollport.style.getPropertyValue('--dsh-conversation-viewport-height')).toBe('0px');
+      await act(async () => {
+        fixture.update({ nodes: new Map([[formal.key, userNode(formal.key, 7, requestId, 1, '修改后的输入')], [next.key, next]]) });
+        root.render(<WithOfficialMarkdown><ChatPanel {...props} messages={[{ ...existingUser,
+          content: '修改后的输入', displayContent: '修改后的输入' }]} /></WithOfficialMarkdown>);
+      });
+      expect(container.textContent).not.toContain('同一条输入');
+      expect(container.textContent.match(/修改后的输入/g)).toHaveLength(1);
+      expect(container.querySelector('[data-chat-node-key="node-7"]')).toBe(originalRow);
+      expect(originalRow.textContent).toContain('#0');
+      expect(originalRow.querySelector('time').dateTime).toBe(existingUser.created_at);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('removes the previous conversation content while the new conversation loads', () => {
+    const fixture = chatFixture('session-a');
+    const node = turnNode('turn-a', 1, 'closed');
+    fixture.update({ order: [node.key], nodes: new Map([[node.key, node]]) });
+    const props = {
+      hasActiveChat: true,
+      currentTitle: '角色乙',
+      conversationId: 'conversation-a',
+      runtimeSessionId: 'session-a',
+      persona: { user_name: '用户', assistant_name: '角色甲' },
+      messages: [{ id: 'message-a', conversationId: 'conversation-a', runtimeSessionId: 'session-a',
+        renderKey: 'dsh-reply-session-a-1', role: 'assistant', content: '旧会话前端内容' }],
       input: '',
       setInput: () => {},
       isSending: false,
       modelConfigs: [],
       scrollRef: { current: null },
+      renderRoleplaySlot: (name, owner, options) => name === 'eleckoi.roleplay.chat'
+        ? <ChatView {...fixture.props} runningStatusTarget={owner.runningStatusTarget} renderSlot={(child, childOwner, childOptions) => {
+          if (child === 'conversation.chat.before') return owner.before;
+          if (child === 'conversation.chat.node') return owner.renderChatNode(childOwner);
+          return childOptions?.fallback ?? null;
+        }} /> : options?.fallback ?? null,
     };
     const previous = renderToStaticMarkup(<WithOfficialMarkdown><ChatPanel {...props} /></WithOfficialMarkdown>);
     const switching = renderToStaticMarkup(<WithOfficialMarkdown><ChatPanel {...props} isSwitchingChat /></WithOfficialMarkdown>);

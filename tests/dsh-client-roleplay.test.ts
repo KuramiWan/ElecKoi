@@ -255,6 +255,7 @@ describe('ElecKoi roleplay client contribution', () => {
     const React = {
       createElement: (type: unknown, props: unknown) => ({ type, props }),
       useState: () => [null, () => {}], useEffect: () => {},
+      useMemo: (read: () => unknown) => read(),
       useCallback: (callback: unknown) => callback
     }
     const plugin = registration.factory(clientRequire(React))
@@ -297,14 +298,29 @@ describe('ElecKoi roleplay client contribution', () => {
     }, () => null)
     plugin.apply({ sessions: {}, slots: clientSlots })
 
+    const officialChat = () => null
+    const chatInject = () => ({ useChatNode: () => null })
+    const chatStore = () => null
+    const nodeInject = () => ({ useTurnData: () => null })
+    const releaseChat = slots.register({
+      name: 'conversation.view', id: 'chat', inject: chatInject, store: chatStore, locale: 'chat',
+      children: {
+        'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: nodeInject },
+        'conversation.message.images': { kind: 'single', scope: 'session' },
+        'conversation.chat.before': { kind: 'single', scope: 'session' },
+        'conversation.chat.pending-input': { kind: 'single', scope: 'session' },
+      },
+    }, officialChat)
+    await Promise.resolve()
+
     const typeDeclarations = [...slotTypes.matchAll(/'([^']+)':\s*\{\s*kind:\s*'([^']+)'\s*scope:\s*'([^']+)'/g)]
       .filter(([, id]) => id !== 'eleckoi.roleplay.session')
     expect(manifest.eleckoi.developerInterfaces.map((item: any) => item.id).sort())
       .toEqual(typeDeclarations.map(([, id]) => id).sort())
-    const modes: Record<string, string> = { single: 'replace', chain: 'replace', list: 'append' }
+    const modes: Record<string, string> = { single: 'replace', keyed: 'replace', chain: 'replace', list: 'append' }
     for (const [, id, kind, scope] of typeDeclarations) {
       const metadata = manifest.eleckoi.developerInterfaces.find((item: any) => item.id === id)
-      expect(slots.spec(id), id).toEqual({ kind, scope })
+      expect(slots.spec(id), id).toMatchObject({ kind, scope })
       expect(metadata, id).toMatchObject({ kind: 'ui-slot', mode: modes[kind!], scope })
     }
     for (const id of ['eleckoi.roleplay.input.left', 'eleckoi.roleplay.input.right',
@@ -470,6 +486,34 @@ describe('ElecKoi roleplay client contribution', () => {
     expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.input.overlay')).toHaveLength(1)
     expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.header.corner')).toHaveLength(1)
 
+    const chatEntry = slots.entriesOfSlot('eleckoi.roleplay.chat')[0]
+    expect(chatEntry.inject).toBe(chatInject)
+    expect(chatEntry.store).toBe(chatStore)
+    expect(chatEntry.locale).toBe('chat')
+    expect(slots.spec('eleckoi.roleplay.chat.node').inject).toBe(nodeInject)
+    const useChatNode = () => null
+    const renderedChat = chatEntry.component({
+      useChatNode, renderSlot: renderBridgeSlot, before: 'opening',
+      useProjection: () => undefined,
+      renderChatNode: ({ node }: any) => node.kind === 'user' ? 'roleplay-input' : node.kind === 'turn-process' ? null : undefined,
+      renderPendingInput: () => 'roleplay-pending',
+      usePresentation: (select: any) => select({ foldCompletedTurns: true, stepGrouping: 'collapsed', showImages: true }),
+    })
+    expect(renderedChat.type).toBe(officialChat)
+    expect(renderedChat.props.useChatNode).toBe(useChatNode)
+    expect(renderedChat.props.usePresentation((value: any) => value)).toEqual({
+      foldCompletedTurns: false, stepGrouping: 'expanded', showImages: true,
+    })
+    expect(renderedChat.props.renderSlot('conversation.chat.node', { node: { kind: 'user' } }, {})).toBe('roleplay-input')
+    expect(renderedChat.props.renderSlot('conversation.chat.node', { node: { kind: 'turn-process' } }, {})).toBeNull()
+    const nodeOptions = { entryKey: 'turn-error', hookContext: { exact: true } }
+    renderedChat.props.renderSlot('conversation.chat.node', { node: { kind: 'turn-error' } }, nodeOptions)
+    expect(childCalls.at(-1)).toEqual({ name: 'eleckoi.roleplay.chat.node', owner: { node: { kind: 'turn-error' } }, options: nodeOptions })
+    renderedChat.props.renderSlot('conversation.chat.pending-input', { input: {} }, {})
+    expect(childCalls.at(-1)).toMatchObject({ name: 'eleckoi.roleplay.chat.pending-input', options: { fallback: 'roleplay-pending' } })
+    renderedChat.props.renderSlot('conversation.chat.before', {}, {})
+    expect(childCalls.at(-1)).toMatchObject({ name: 'eleckoi.roleplay.chat.before', options: { fallback: 'opening' } })
+
     releaseSkinComposer()
     releaseTakeover()
     releaseButton()
@@ -499,6 +543,11 @@ describe('ElecKoi roleplay client contribution', () => {
     releaseOfficialComposer()
     await Promise.resolve()
     expect(slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.bar')).toHaveLength(0)
+    releaseChat()
+    await Promise.resolve()
+    expect(slots.entriesOfSlot('eleckoi.roleplay.chat')).toHaveLength(0)
+    expect(slots.spec('eleckoi.roleplay.chat.node')).toBeUndefined()
+    expect(slots.spec('conversation.chat.node')).toBeUndefined()
     for (const dispose of injectors.reverse()) dispose()
     releaseRoot()
   })

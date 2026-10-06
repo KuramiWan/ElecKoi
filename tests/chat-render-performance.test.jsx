@@ -188,7 +188,7 @@ describe('chat rendering performance', () => {
     }
   })
 
-  it('does not reclaim the scroll position while the reader moves up', async () => {
+  it('does not install a second scroll owner from the message presentation', async () => {
     vi.useFakeTimers()
     const scrollElement = document.createElement('div')
     document.body.append(scrollElement)
@@ -226,13 +226,14 @@ describe('chat rendering performance', () => {
 
       await act(async () => { vi.advanceTimersByTime(500) })
       expect(scrollElement.scrollTop).toBe(520)
-      expect(onFollowingTailChange).toHaveBeenCalledWith(false)
+      expect(onFollowingTailChange).not.toHaveBeenCalled()
+      expect(resizeCallbacks).toHaveLength(0)
     } finally {
       await act(async () => root.unmount())
     }
   })
 
-  it('preserves the first loaded message position when older history is prepended', async () => {
+  it('leaves history compensation to ChatView while presenting prepended messages', async () => {
     vi.useFakeTimers()
     const scrollElement = document.createElement('div')
     document.body.append(scrollElement)
@@ -271,7 +272,7 @@ describe('chat rendering performance', () => {
       scrollElement.scrollTop = 120
       scrollElement.dispatchEvent(new Event('scroll'))
       await act(async () => { vi.advanceTimersByTime(500) })
-      expect(historyPagingRef.current?.()).toBe(true)
+      expect(historyPagingRef.current).toBeNull()
 
       positions.set('older-1', 200)
       positions.set('current-1', 400)
@@ -284,7 +285,8 @@ describe('chat rendering performance', () => {
       }
       for (const callback of resizeCallbacks) callback([])
 
-      expect(scrollElement.scrollTop).toBe(320)
+      expect(scrollElement.scrollTop).toBe(120)
+      expect(scrollElement.textContent).toContain('更早消息')
     } finally {
       await act(async () => root.unmount())
     }

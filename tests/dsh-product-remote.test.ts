@@ -471,7 +471,7 @@ describe('ElecKoi DSH Remote contract', () => {
             resolveAgent: async () => ({
               agent: {
                 session: { append: (_type: string, message: unknown) => { appendedMessages.push(message) } },
-                followup: (message: unknown) => { regeneratedMessages.push(message) }
+                continueFromInput: (messageId: string) => { regeneratedMessages.push(messageId); return 2 }
               }
             }),
             selectModel: async ({ provider, model }: { provider: string; model: string }) => ({ selected: { provider, model } }),
@@ -679,7 +679,7 @@ describe('ElecKoi DSH Remote contract', () => {
         fromTurn: 1
       })
       expect(restoredTurns.at(-1)).toBe(1)
-      expect(appendedMessages.at(-1)).toMatchObject({ id: 'user-message-1', role: 'user' })
+      expect(appendedMessages).toHaveLength(0)
 
       await ctx.typertGateway.invoke({
         namespace: 'eleckoiConversations',
@@ -701,15 +701,8 @@ describe('ElecKoi DSH Remote contract', () => {
         conversationId: createdConversation.conversation.id,
         text: '替换后的问题'
       })
-      expect(regeneratedMessages.at(-1)).toMatchObject({
-        role: 'user',
-        source: { kind: 'user', rpcId: 'new-request' },
-        content: [
-          { type: 'text', text: '替换后的问题' },
-          { type: 'image', attachment: { attachmentId: 'image-1' } },
-          { type: 'file', attachment: { attachmentId: 'file-1' } }
-        ]
-      })
+      expect(regeneratedMessages.at(-1)).toBe('user-message-1')
+      expect(editedMessages.at(-1)).toMatchObject({ eventSeq: 2, role: 'user', content: '替换后的问题' })
 
       sessionEvents = [
         { type: 'turn/start', seq: 1, data: { turn: 1 } },
@@ -741,7 +734,7 @@ describe('ElecKoi DSH Remote contract', () => {
         args: { conversationId: createdConversation.conversation.id, eventSeq: 7, role: 'assistant' }
       })
       expect(rewoundTurns.at(-1)).toEqual({ sessionId: createdConversation.runtimeSessionId, fromTurn: 2 })
-      expect(appendedMessages.at(-1)).toMatchObject({ id: 'user-message-2', role: 'user' })
+      expect(appendedMessages).not.toContainEqual(expect.objectContaining({ role: 'user' }))
 
       await ctx.typertGateway.invoke({
         namespace: 'eleckoiConversations',
@@ -758,10 +751,7 @@ describe('ElecKoi DSH Remote contract', () => {
         args: { conversationId: createdConversation.conversation.id, requestId: 'request-before-turn-start', cancelled: false }
       })
       expect(rewoundTurns.at(-1)).toEqual({ sessionId: createdConversation.runtimeSessionId, fromTurn: 2 })
-      expect(regeneratedMessages.at(-1)).toMatchObject({
-        role: 'user', source: { kind: 'user', rpcId: 'request-before-turn-start' },
-        content: [{ type: 'text', text: '第二问' }]
-      })
+      expect(regeneratedMessages.at(-1)).toBe('user-message-2')
 
       sessionEvents = [
         { type: 'turn/start', seq: 1, data: { turn: 1 } },
@@ -794,10 +784,7 @@ describe('ElecKoi DSH Remote contract', () => {
         args: { conversationId: createdConversation.conversation.id, requestId: 'request-queued-before-next-turn', cancelled: false }
       })
       expect(rewoundTurns.at(-1)).toEqual({ sessionId: createdConversation.runtimeSessionId, fromTurn: 2 })
-      expect(regeneratedMessages.at(-1)).toMatchObject({
-        role: 'user', source: { kind: 'user', rpcId: 'request-queued-before-next-turn' },
-        content: [{ type: 'text', text: '尚未开始的第二问' }]
-      })
+      expect(regeneratedMessages.at(-1)).toBe('queued-user-message')
 
       await ctx.typertGateway.invoke({
         namespace: 'eleckoiConversations',

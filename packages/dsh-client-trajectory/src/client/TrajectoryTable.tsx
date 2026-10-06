@@ -399,6 +399,8 @@ export interface TrajectoryTableProps {
   requestNumbers?: readonly TrajectoryRequestNumber[]
   /** Grouped records in display order. */
   turns: readonly TrajectoryTurnModel[]
+  /** User-facing round labels without changing execution/request keys. */
+  turnLabels?: ReadonlyMap<number, number>
   /** In-flight cells whose content replaces the matching structural record index. */
   streamingCells?: readonly TrajectoryCellProps[]
   /** Record indexes emphasized by the active timeline focus. */
@@ -575,8 +577,8 @@ function indexRequestBoundaries(
   return boundaries
 }
 
-function sectionLabel(turn: number | null, t: TrajectoryTranslate): string {
-  return turn === null ? t('section.betweenTurns') : t('turn.label', { turn })
+function sectionLabel(turn: number | null, t: TrajectoryTranslate, labels?: ReadonlyMap<number, number>): string {
+  return turn === null ? t('section.betweenTurns') : t('turn.label', { turn: labels?.get(turn) ?? turn })
 }
 
 function indexRequestNumbers(
@@ -2159,6 +2161,7 @@ export function TrajectoryTable({
   renderImages,
   requestNumbers: sessionRequestNumbers,
   turns,
+  turnLabels,
   streamingCells = [],
   timelineFocusIndexes = null,
   searchMatchIndexes = null,
@@ -2905,17 +2908,17 @@ export function TrajectoryTable({
                             className={sectionActive
                               ? `${css.turnLabel} ${css.turnLabelActive}`
                               : css.turnLabel}
-                            aria-label={sectionLabel(record.turn, t)}
+                            aria-label={sectionLabel(record.turn, t, turnLabels)}
                           >
                             {record.turn === null
-                              ? sectionLabel(record.turn, t)
+                              ? sectionLabel(record.turn, t, turnLabels)
                               : (
                                 <>
                                   <span className={css.turnLabelFull} aria-hidden="true">
-                                    {sectionLabel(record.turn, t)}
+                                    {sectionLabel(record.turn, t, turnLabels)}
                                   </span>
                                   <span className={css.turnLabelCompact} aria-hidden="true">
-                                    #{record.turn}
+                                    #{turnLabels?.get(record.turn) ?? record.turn}
                                   </span>
                                 </>
                               )}
@@ -3112,8 +3115,8 @@ export function TrajectoryTable({
                     </span>
                     <span className={css.detailsLocation}>
                       {selectedRequestInfo.purpose === 'compaction'
-                        ? t('request.compaction', { section: sectionLabel(selectedRequestInfo.turn, t) })
-                        : sectionLabel(selectedRequestInfo.turn, t)}
+                        ? t('request.compaction', { section: sectionLabel(selectedRequestInfo.turn, t, turnLabels) })
+                        : sectionLabel(selectedRequestInfo.turn, t, turnLabels)}
                     </span>
                   </>
                 )
@@ -3144,8 +3147,8 @@ export function TrajectoryTable({
                       </span>
                       <span className={css.detailsLocation}>
                         {selected.cell.kind === 'compacted'
-                          ? sectionLabel(selected.turn, t)
-                          : `${sectionLabel(selected.turn, t)} · ${selected.group}`}
+                          ? sectionLabel(selected.turn, t, turnLabels)
+                          : `${sectionLabel(selected.turn, t, turnLabels)} · ${selected.group}`}
                       </span>
                     </>
                   )}

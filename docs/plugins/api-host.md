@@ -509,13 +509,13 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 @Remote async regenerateMessage( conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string ): Promise<{ runtimeSessionId: string; prepared: true }>
 
 /**
- * 启动已准备的重新生成；取消时恢复准备阶段的改动。
+ * 从已保留的用户事件启动重新生成；取消时保留用户输入，不启动新的回复。
  * @param conversationId - ElecKoi 聊天编号。
  * @param requestId - 本次生成的唯一请求编号。
  * @param cancelled - 已准备的请求是否被取消。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean }>
+@Remote async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean; turn?: number }>
 
 /**
  * 切换开场白。
@@ -698,9 +698,10 @@ editMessage(sessionId: string, eventSeq: number, role: 'user' | 'assistant', con
  * @param sessionId - 官方 Session 编号。
  * @param fromTurn - 首个需要撤销的轮次。
  * @param fromEventSeq - 可选消息事件边界。
+ * @param retainInput - 保留该边界的直接用户事件并闭合其开放轮次。
  * @returns 移除的事件数；无法回退时返回 undefined。
  */
-rewind(sessionId: string, fromTurn: number, fromEventSeq?: number): Promise<number | undefined>
+rewind(sessionId: string, fromTurn: number, fromEventSeq?: number, retainInput?: boolean): Promise<number | undefined>
 ```
 
 Source: [`packages/dsh-product-api/src/sessionEditor.ts`](../../packages/dsh-product-api/src/sessionEditor.ts)

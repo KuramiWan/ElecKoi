@@ -6,7 +6,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
-import { readDshSessionLog, rewindDshSession } from '@eleckoi/dsh-runtime'
+import { editDshSessionMessage, readDshSessionLog, rewindDshSession } from '@eleckoi/dsh-runtime'
 
 const temporaryDirectories: string[] = []
 
@@ -54,6 +54,23 @@ function fixture(queuedPrompts = false, trailingPrompt = false) {
 }
 
 describe('DSH Session physical rewind', () => {
+  it('retains the exact edited input event across repeated regeneration rewinds', () => {
+    const { root } = fixture()
+    const original = readDshSessionLog(root, 'session-a')!.events.find(event => event.seq === 7)!
+    expect(original.type).toBe('user/message')
+    editDshSessionMessage(root, 'session-a', original.seq, 'user', '合成编辑输入')
+    for (let attempt = 0; attempt < 2; attempt++) {
+      rewindDshSession(root, 'session-a', 2, original.seq, true)
+      const log = readDshSessionLog(root, 'session-a')!
+      const retained = log.events.filter(event => event.type === 'user/message' && event.seq === original.seq)
+      expect(retained).toHaveLength(1)
+      expect(retained[0]).toEqual({ ...original, data: { ...(original.data as Record<string, unknown>),
+        content: [{ type: 'text', text: '合成编辑输入' }] } })
+      expect(log.events.at(-1)).toMatchObject({ type: 'turn/end', data: { turn: 2, reason: { kind: 'interrupted' } } })
+      expect(log.events.map(event => event.seq)).toEqual(log.events.map((_, index) => index))
+    }
+  })
+
   it('drops queued prompts before the rewritten first turn', () => {
     const { root, path } = fixture(true)
     expect(rewindDshSession(root, 'session-a', 1)).toBe(0)

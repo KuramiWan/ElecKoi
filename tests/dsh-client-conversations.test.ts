@@ -443,12 +443,15 @@ describe('DSH ElecKoi conversation client model', () => {
         regenerateMessage: async (_id: string, eventSeq: number) => {
           expect(eventSeq).toBe(9)
           nodes = new Map(prefix)
+          nodes.set('user-9', user(9, 'deleted'))
           retire()
           return { ok: true, value: { prepared: true } }
         },
         startRegeneration: async (_id: string, requestId: string) => {
           begin(requestId)
-          return { ok: true, value: { accepted: true } }
+          pendingSubmissions = []
+          publish()
+          return { ok: true, value: { accepted: true, turn: 2 } }
         },
       } },
       sessions: { list: { getSnapshot: () => ({ byId: { 'runtime-1': {} } }) },
@@ -485,14 +488,14 @@ describe('DSH ElecKoi conversation client model', () => {
           : catalog.send({ conversationId: 'chat-1', requestId, text: '重复的合成输入' })
         await settle()
         expect(activeRequestId).toBe(requestId)
-        expect(messages().some((message: any) => message.requestId === requestId)).toBe(true)
+        expect(messages().some((message: any) => message.requestId === requestId)).toBe(!regenerating)
         expect(messages().filter((message: any) => message.role === 'user')).toHaveLength(expectedInputCount)
         // Rewound logs reuse event positions and turn numbers. Neither is a
         // permanent deletion tombstone or permission to hide later replies.
         const inputSeq = regenerating ? 9 : 15 + round * 10
         const turn = regenerating ? 2 : 3 + round
         const assistantSeq = inputSeq + 3
-        nodes = new Map(nodes).set(`input-${requestId}`, user(inputSeq, requestId))
+        if (!regenerating) nodes = new Map(nodes).set(`input-${requestId}`, user(inputSeq, requestId))
         pendingSubmissions = []
         turns = new Map(turns).set(turn, { turn, status: 'open' })
         events = [
@@ -709,6 +712,7 @@ describe('DSH ElecKoi conversation client model', () => {
     const sessionStats = { turns: 1, steps: 2, llmMs: 30, toolMs: 4, ttftMs: 5, ttftSteps: 1, decodeMs: 20, decodeTokens: 8 }
     const tokenUsage = { uncachedInputTokens: 12, outputTokens: 8, cacheReadTokens: 3, cacheWriteTokens: 0 }
     let historyStatsAdjustment = { steps: 0, turns: 0 }
+    let inputContinuations = { links: [] as Array<{ turn: number; inputMessageId: string; inputEventSeq: number }> }
     let running = false
     let pendingSubmissions: any[] = []
     const userNode = { kind: 'user', anchorSeq: 2, data: {
@@ -732,6 +736,7 @@ describe('DSH ElecKoi conversation client model', () => {
     const session = {
       projections: { faceOf: (key: string) => ({
         getSnapshot: () => key === 'contextPressure' ? pressure
+          : key === 'eleckoiInputContinuations' ? inputContinuations
           : key === 'contextBreakdown' ? breakdown
             : key === 'sessionStats' ? sessionStats
               : key === 'eleckoiHistoryStatsAdjustment' ? historyStatsAdjustment : tokenUsage,
@@ -850,6 +855,11 @@ describe('DSH ElecKoi conversation client model', () => {
       { id: 'product-user', content: 'official user', runtimeSessionId: 'runtime-1' },
       { id: 'product-assistant', content: '<FINAL>official reply</FINAL>', dshMessageId: 'assistant-dsh' }
     ])
+    // The relationship projection can hydrate after an unchanged chat tree.
+    inputContinuations = { links: [{ turn: 1, inputMessageId: 'synthetic-input', inputEventSeq: 2 }] }
+    projectionListeners.get('eleckoiInputContinuations')!()
+    await settle()
+    expect(catalog.getDetailsSnapshot().details.messages[1].inputEventSeq).toBe(2)
     pendingSubmissions = [{
       requestId: 'request-new', placement: 'transcript', time: 30, text: '你好', attachments: []
     }]
