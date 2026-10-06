@@ -1,6 +1,6 @@
-import { PresetListPanel, PresetProvider, PresetWorkspace } from "../../../src/renderer/src/modules/presets/index.js";
-import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
-export { PresetNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/icons/navIcons.jsx";
+import { PresetListPanel, PresetProvider, PresetWorkspace } from "../../../apps/web/src/modules/presets/index.js";
+import { useMainPageView } from "../../../apps/web/src/app/windows/MainPageContext.jsx";
+export { PresetNavIcon as NavigationIcon } from "../../../apps/web/src/ui/icons/navIcons.jsx";
 
 export function PresetsPage() {
   const view = useMainPageView();

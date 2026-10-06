@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { trajectoryAssistantDefinition, officialTrajectoryFixture } from './helpers/officialTrajectory.js'
-import { adaptTrajectorySnapshot } from '../src/renderer/src/modules/chat/model/trajectorySnapshotAdapter.js'
+import { adaptTrajectorySnapshot } from '../apps/web/src/modules/chat/model/trajectorySnapshotAdapter.js'
 import { deriveTrajectoryLayout } from '../packages/dsh-client-trajectory/src/client/layout.ts'
 import { inputContinuationsProjection } from '../packages/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
 import { zh } from '../packages/dsh-client-trajectory/src/client/locales.ts'

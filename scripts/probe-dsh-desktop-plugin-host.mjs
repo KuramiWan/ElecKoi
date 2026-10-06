@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { initProfile, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
-import { DshDesktopPluginHost, ELECKOI_DESKTOP_BUNDLES } from '@eleckoi/dsh-runtime'
+import { DshDesktopPluginHost, ELECKOI_DESKTOP_BUNDLES } from '@eleckoi/desktop-host'
 
 const require = createRequire(import.meta.url)
 const root = mkdtempSync(join(tmpdir(), 'eleckoi-dsh-desktop-'))
@@ -19,12 +19,12 @@ const hostOptions = {
   workspaceRoot: join(root, 'workspace'),
   productDatabasePath: join(root, 'product.sqlite'),
   productMediaRoot: join(root, 'media'),
-  presetTemplatePath: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
-  agentPatchPath: join(process.cwd(), 'resources', 'dsh', 'desktop-agent.patch.yml'),
+  presetTemplatePath: resolve('apps/desktop/resources/dsh/agent-preset-template/agent.cordis.yml'),
+  agentPatchPath: join(process.cwd(), 'apps', 'desktop', 'resources', 'dsh', 'desktop-agent.patch.yml'),
   executablePath: process.execPath,
   packageManager: {
     entryPath: join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.mjs'),
-    nodeBinPath: join(process.cwd(), 'resources', 'dsh', 'node-bin')
+    nodeBinPath: join(process.cwd(), 'apps', 'desktop', 'resources', 'dsh', 'node-bin')
   }
 }
 const host = new DshDesktopPluginHost(hostOptions)

@@ -2,7 +2,7 @@
 import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
-import { VariableConfigManager } from '../src/renderer/src/modules/variables/components/VariableConfigManager.jsx';
+import { VariableConfigManager } from '../apps/web/src/modules/variables/components/VariableConfigManager.jsx';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 vi.stubGlobal('React', React);

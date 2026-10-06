@@ -14,8 +14,8 @@ import { readDshSessionLog, rewindDshSession } from '@eleckoi/dsh-runtime'
 import { editDshSessionMessage } from '../packages/dsh-runtime/src/sessionMessageEdit'
 import { inputContinuationsProjection } from '../packages/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
 import { officialTrajectoryFixture } from './helpers/officialTrajectory.js'
-import { adaptTrajectorySnapshot } from '../src/renderer/src/modules/chat/model/trajectorySnapshotAdapter.js'
-import { findRegenerateBranchUserIndex } from '../src/renderer/src/modules/chat/model/chatRegeneration.js'
+import { adaptTrajectorySnapshot } from '../apps/web/src/modules/chat/model/trajectorySnapshotAdapter.js'
+import { findRegenerateBranchUserIndex } from '../apps/web/src/modules/chat/model/chatRegeneration.js'
 import { afterEach, describe, expect, it } from 'vitest'
 
 const contexts = []

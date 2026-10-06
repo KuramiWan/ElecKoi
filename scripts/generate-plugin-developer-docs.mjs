@@ -9,7 +9,7 @@ const checkOnly = process.argv.includes('--check')
 const allowedKinds = new Set(['ui-slot', 'service', 'event', 'contribution', 'remote'])
 const allowedRelations = new Set(['provides', 'contributes'])
 
-const runtimeManifest = JSON.parse(await readFile(join(root, 'resources', 'dsh', 'runtime-manifest.json'), 'utf8'))
+const runtimeManifest = JSON.parse(await readFile(join(root, 'apps', 'desktop', 'resources', 'dsh', 'runtime-manifest.json'), 'utf8'))
 const packageDirs = await readdir(join(root, 'packages'), { withFileTypes: true })
 const manifests = new Map()
 
@@ -30,7 +30,7 @@ for (const entry of packageDirs) {
 
 const bundles = runtimeManifest.desktopProfile?.bundles
 if (!Array.isArray(bundles) || bundles.length === 0) {
-  throw new Error('resources/dsh/runtime-manifest.json 没有 desktopProfile.bundles')
+  throw new Error('apps/desktop/resources/dsh/runtime-manifest.json 没有 desktopProfile.bundles')
 }
 
 const rows = []

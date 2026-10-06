@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { installRequestConfig, projectCompactionRequest } from '../resources/dsh/request-config.mjs';
+import { installRequestConfig, projectCompactionRequest } from '../apps/desktop/resources/dsh/request-config.mjs';
 
 describe('DSH request configuration', () => {
   it('overrides a persisted legacy route with the model frozen for the current turn', async () => {

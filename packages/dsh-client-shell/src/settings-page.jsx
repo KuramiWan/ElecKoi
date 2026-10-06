@@ -1,6 +1,6 @@
-import { SettingsPanel } from "../../../src/renderer/src/modules/settings/index.js";
-import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
-export { CreatorStudioNavIcon as CreatorStudioNavigationIcon, CommunityNavIcon as CommunityNavigationIcon } from "../../../src/renderer/src/ui/icons/navIcons.jsx";
+import { SettingsPanel } from "../../../apps/web/src/modules/settings/index.js";
+import { useMainPageView } from "../../../apps/web/src/app/windows/MainPageContext.jsx";
+export { CreatorStudioNavIcon as CreatorStudioNavigationIcon, CommunityNavIcon as CommunityNavigationIcon } from "../../../apps/web/src/ui/icons/navIcons.jsx";
 
 export function SettingsPage() {
   const view = useMainPageView();

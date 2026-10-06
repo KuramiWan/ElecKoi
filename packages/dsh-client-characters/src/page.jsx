@@ -1,6 +1,6 @@
-import { CharacterListPanel, CharacterProfilePanel, openCharacterEditorWindow } from "../../../src/renderer/src/modules/persona/index.js";
-import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
-export { PersonNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/icons/navIcons.jsx";
+import { CharacterListPanel, CharacterProfilePanel, openCharacterEditorWindow } from "../../../apps/web/src/modules/persona/index.js";
+import { useMainPageView } from "../../../apps/web/src/app/windows/MainPageContext.jsx";
+export { PersonNavIcon as NavigationIcon } from "../../../apps/web/src/ui/icons/navIcons.jsx";
 
 export function CharacterPage() {
   const view = useMainPageView();

@@ -8,14 +8,14 @@ import { CharacterRepository } from '../packages/dsh-product-data/src/domain/per
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 import { RegexRuleRepository } from '../packages/dsh-product-data/src/domain/regexRules/RegexRuleRepository'
 import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
-import { regexRuleCollectionSchema, type RegexRule } from '../src/shared/contracts/regex/schemas'
+import { regexRuleCollectionSchema, type RegexRule } from '../packages/product-shared/src/contracts/regex/schemas'
 import {
   includeImportedRulesInActiveVersion,
   rulesForSurface,
   transformCollectionSurface,
   transformWithRegexRules,
   validateRegexRule
-} from '../src/shared/foundation/regex/RegexRuleProcessor'
+} from '../packages/product-shared/src/foundation/regex/RegexRuleProcessor'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []

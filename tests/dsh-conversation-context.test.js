@@ -13,7 +13,7 @@ import {
   requestProjectionPlan,
   renderRuntimeContext,
   settingInjections
-} from '../resources/dsh/conversation-context.mjs'
+} from '../apps/desktop/resources/dsh/conversation-context.mjs'
 
 function text(message) {
   return message.content.filter((part) => part.type === 'text').map((part) => part.text).join('')

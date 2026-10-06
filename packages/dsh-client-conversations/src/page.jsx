@@ -1,7 +1,7 @@
-import { ConversationList } from "../../../src/renderer/src/modules/chat/index.js";
-import { RoleplayPanel } from "../../../src/renderer/src/app/windows/RoleplayPanel.jsx";
-import { useMainPageView } from "../../../src/renderer/src/app/windows/MainPageContext.jsx";
-export { MessageNavIcon as NavigationIcon } from "../../../src/renderer/src/ui/icons/navIcons.jsx";
+import { ConversationList } from "../../../apps/web/src/modules/chat/index.js";
+import { RoleplayPanel } from "../../../apps/web/src/app/windows/RoleplayPanel.jsx";
+import { useMainPageView } from "../../../apps/web/src/app/windows/MainPageContext.jsx";
+export { MessageNavIcon as NavigationIcon } from "../../../apps/web/src/ui/icons/navIcons.jsx";
 
 export function MessagesPage() {
   const view = useMainPageView();

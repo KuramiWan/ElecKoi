@@ -2,10 +2,10 @@
 import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OpeningEditor } from '../src/renderer/src/modules/settingLibraries/components/OpeningEditor.jsx';
-import { BranchSettingsSplitView } from '../src/renderer/src/modules/settingLibraries/components/BranchSettingsSplitView.jsx';
-import { SettingLibraryPanel } from '../src/renderer/src/modules/settingLibraries/components/SettingLibraryPanel.jsx';
-import { createEntryDraft } from '../src/renderer/src/modules/settingLibraries/model/settingLibraryEditing.js';
+import { OpeningEditor } from '../apps/web/src/modules/settingLibraries/components/OpeningEditor.jsx';
+import { BranchSettingsSplitView } from '../apps/web/src/modules/settingLibraries/components/BranchSettingsSplitView.jsx';
+import { SettingLibraryPanel } from '../apps/web/src/modules/settingLibraries/components/SettingLibraryPanel.jsx';
+import { createEntryDraft } from '../apps/web/src/modules/settingLibraries/model/settingLibraryEditing.js';
 
 vi.stubGlobal('React', React);
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);

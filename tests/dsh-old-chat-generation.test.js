@@ -39,7 +39,7 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
     ELECKOI_MEDIA_ROOT: join(root, 'media'),
     ELECKOI_WORKSPACE_ROOT: join(root, 'workspace'),
     ELECKOI_PRESET_ROOT: join(root, 'presets'),
-    ELECKOI_PRESET_TEMPLATE_PATH: resolve('resources/dsh/agent-preset-template/agent.cordis.yml'),
+    ELECKOI_PRESET_TEMPLATE_PATH: resolve('apps/desktop/resources/dsh/agent-preset-template/agent.cordis.yml'),
     ELECKOI_SESSION_SNAPSHOT_ROOT: join(root, 'snapshots'),
     ELECKOI_SESSION_BRIDGE_ROOT: join(root, 'bridges'),
     DSH_HOME: join(root, 'dsh-home'),

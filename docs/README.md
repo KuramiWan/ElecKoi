@@ -18,6 +18,8 @@
 
 ## 决策与历史
 
+- [多应用工作区目录](adr/0028-multi-application-workspace.md)：桌面壳、Host、Web Client、共享包与后续 Android 工程的归属。
+
 - [架构决策索引](adr/README.md)：按编号查看决定、状态与替代关系。
 - [官方 ChatView 与角色消息座位](adr/0024-official-chat-view-roleplay-seats.md)：消息呈现、官方滚动与输入区布局边界。
 - [同一 Session 复用已有用户事件重新生成](adr/0025-same-session-existing-input-regeneration.md)：重新生成、编辑、轨迹与轮次统计的身份规则。

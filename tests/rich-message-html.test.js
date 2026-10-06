@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildRichMessageHtml } from '../src/renderer/src/modules/authorFrontend/model/buildRichMessageHtml.js';
-import { createHostSnapshot, hostSnapshotKey } from '../src/renderer/src/modules/authorFrontend/components/RichMessageFrame.jsx';
+import { buildRichMessageHtml } from '../apps/web/src/modules/authorFrontend/model/buildRichMessageHtml.js';
+import { createHostSnapshot, hostSnapshotKey } from '../apps/web/src/modules/authorFrontend/components/RichMessageFrame.jsx';
 
 describe('rich message sandbox document', () => {
   const runtime = {

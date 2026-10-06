@@ -42,7 +42,7 @@ ctx.effect(() => {
 
 - 直接打开 ElecKoi SQLite；
 - 直接读写 DSH JSONL 文件；
-- 导入 `src/main` Repository；
+- 导入 `apps/desktop/src/main` Repository；
 - 恢复或调用已经删除的 Desktop Gateway、业务 Preload bridge 或 `window.eleckoi`；
 - 通过 DOM 查询或修改另一个插件的内部状态；
 - 修改 `ctx.llm`、`ctx.tools` 等 service 的内部注册表。

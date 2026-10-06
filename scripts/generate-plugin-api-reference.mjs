@@ -28,7 +28,7 @@ export function assertMembers(label, actual, expected) {
 }
 
 export async function generatePluginApiReference(root, { check = false } = {}) {
-  const runtime = JSON.parse(await readFile(resolve(root, 'resources/dsh/runtime-manifest.json'), 'utf8'))
+  const runtime = JSON.parse(await readFile(resolve(root, 'apps/desktop/resources/dsh/runtime-manifest.json'), 'utf8'))
   const upstream = `https://github.com/deepseek-ai/deepseek-harness/blob/${runtime.upstream.commit}`
   const manifests = []
   for (const entry of await readdir(resolve(root, 'packages'), { withFileTypes: true })) {

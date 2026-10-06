@@ -6,7 +6,7 @@ import type { SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/d
 import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { releasedV3SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import { projectDshTrajectory, readDshSessionLog, readDshTrajectory, removeDshSessionTree } from '@eleckoi/dsh-runtime'
-import { agentTrajectorySnapshotSchema } from '../src/shared/contracts/agent/trajectory'
+import { agentTrajectorySnapshotSchema } from '../packages/product-shared/src/contracts/agent/trajectory'
 
 // Session codecs validate cwd with the host platform's path semantics.
 const fixtureWorkspace = join(tmpdir(), 'eleckoi-trajectory-workspace')

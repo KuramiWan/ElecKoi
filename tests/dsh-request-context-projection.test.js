@@ -5,7 +5,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
 import { requestContextProjection } from '../packages/dsh-client-roleplay/src/host/request-context-projection.mjs'
 import { recordRequestContext, REQUEST_CONTEXT_PROJECTION } from '../packages/dsh-client-roleplay/src/host/request-context-record.mjs'
-import { requestContextItems } from '../resources/dsh/conversation-context.mjs'
+import { requestContextItems } from '../apps/desktop/resources/dsh/conversation-context.mjs'
 
 describe('roleplay request context projection', () => {
   it('records actual input outside the model surface and replays only retained requests under the same Session id', async () => {

@@ -2,7 +2,7 @@
 import React, { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BranchSettingsSplitView } from '../src/renderer/src/modules/settingLibraries/components/BranchSettingsSplitView.jsx'
+import { BranchSettingsSplitView } from '../apps/web/src/modules/settingLibraries/components/BranchSettingsSplitView.jsx'
 
 vi.stubGlobal('React', React)
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)

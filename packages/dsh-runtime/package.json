@@ -22,7 +22,6 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./desktop-plugin-host": "./dist/desktop-plugin-host.mjs",
     "./session-edit-plugin": "./dist/session-edit-plugin.mjs",
     "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json",
