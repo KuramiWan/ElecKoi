@@ -189,7 +189,7 @@ export function ChatPanel({
 
   const openingMessage = messages.find((item) => item.id === "opening" && item.openingOptions?.length > 1);
   useEffect(() => {
-    if (!openingMessage || isSending || deleteMode || String(input || "").length || processMessage || headerMenuOpen) return undefined;
+    if (!openingMessage?.canChangeOpening || isSending || deleteMode || String(input || "").length || processMessage || headerMenuOpen) return undefined;
     const options = openingMessage.openingOptions || [];
     const selectedIndex = options.findIndex((item) => item.id === openingMessage.selectedOpeningId);
     const switchOpening = (event) => {
@@ -203,8 +203,8 @@ export function ChatPanel({
       const pagerButton = scrollRef.current?.querySelector(
         event.key === "ArrowLeft" ? ".has-opening-pager .opening-pager-prev" : ".has-opening-pager .opening-pager-next",
       );
-      if (pagerButton instanceof HTMLButtonElement && !pagerButton.disabled) {
-        pagerButton.click();
+      if (pagerButton instanceof HTMLButtonElement) {
+        if (!pagerButton.disabled) pagerButton.click();
         return;
       }
       onSelectOpening?.(openingMessage, options[nextIndex].id);
@@ -335,7 +335,9 @@ export function ChatPanel({
     onPinAvatar: setPinnedAvatar, userName: persona.user_name, assistantName: persona.assistant_name,
     showRoleplayTimestamp: chatDisplay?.roleplay_timestamps_enabled !== false,
     showRoleplayFloor: chatDisplay?.roleplay_message_floors_enabled !== false,
-    onOpenProcess: setProcessMessage, onEditMessage, onEditOpening, onSelectOpening,
+    onOpenProcess: setProcessMessage, onEditMessage,
+    onEditOpening: isSending ? undefined : onEditOpening,
+    onSelectOpening: isSending ? undefined : onSelectOpening,
     onRegenerate: regenerateFrom, deleteMode, deleteFromMessageId,
     onSelectDeleteFrom: setDeleteFromMessageId, runtimeSessionId,
     renderRoleplaySlot, renderRoleplayMessage, loadImage, onOpenFile: openFile,
@@ -639,7 +641,7 @@ const MessageRow = memo(function MessageRow({
   const renderMessageContent = pluginScopeActive ? renderRoleplayMessage : undefined;
   // Rewind/edit/delete target the durable Session event. Historical rows can
   // legitimately have no projected turn until a closing tail is rebound.
-  const canMutate = item.id === "opening" || Number.isSafeInteger(item.sessionEventSeq);
+  const canMutate = item.id === "opening" ? item.canChangeOpening === true : Number.isSafeInteger(item.sessionEventSeq);
   const bubble = <MessageBubble
     message={item}
     avatar={item.role === "user" ? userAvatar : assistantAvatar}
@@ -654,7 +656,7 @@ const MessageRow = memo(function MessageRow({
     onOpenProcess={onOpenProcess}
     onPinAvatar={onPinAvatar}
     onEdit={deleteMode || !canMutate ? undefined : item.id === "opening" ? onEditOpening : onEditMessage}
-    onSelectOpening={onSelectOpening}
+    onSelectOpening={deleteMode || !canMutate ? undefined : onSelectOpening}
     onRegenerate={deleteMode || !canMutate ? undefined : onRegenerate}
     pluginActions={pluginActions}
     pluginAfter={pluginAfter}

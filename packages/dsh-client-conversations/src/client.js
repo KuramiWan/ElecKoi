@@ -776,8 +776,29 @@ window.__ModuleLoader__.load({
         for (const listener of this.listeners) listener()
       }
 
+      openingChangeAllowed(id, runtimeSessionId) {
+        const binding = this.sessionReference?.binding
+        const state = binding?.session.getSnapshot()
+        const identities = binding?.session.projections?.faceOf('eleckoiInputContinuations')?.getSnapshot()
+        const inbox = binding?.session.projections?.faceOf('inbox')?.getSnapshot()
+        return Boolean(this.sessionReference?.sessionId === runtimeSessionId
+          && state?.openState === 'open' && !state.removed && !state.running
+          && !state.pendingSubmissions?.length && !this.activeRequests.has(id) && !this.sessionMutations.has(id)
+          && Array.isArray(identities?.inputs) && identities.inputs.length === 0
+          && Array.isArray(inbox?.['next-turn']) && inbox['next-turn'].length === 0
+          && Array.isArray(inbox?.['next-step']) && inbox['next-step'].length === 0)
+      }
+
       prepareDetails(next, officialProjectionSignature = null) {
         const request = this.activeRequests.get(next.id)
+        const opening = next.details?.messages.find(message => message.id === 'opening')
+        if (opening) {
+          const canChangeOpening = this.openingChangeAllowed(next.id, next.runtimeSessionId)
+          if (opening.canChangeOpening !== canChangeOpening) {
+            next = { ...next, details: { ...next.details, messages: next.details.messages.map(message =>
+              message === opening ? { ...message, canChangeOpening } : message) } }
+          }
+        }
         if (Number.isSafeInteger(request?.rewindEventSeq) && next.details) {
           // The selected input owns the visible branch while the Host rewinds.
           // A refresh of the retiring Session must not put its old replies back.
@@ -1271,6 +1292,7 @@ window.__ModuleLoader__.load({
           hasMore,
           subagentProjectionRevision: this.subagentProjectionRevision,
           inputContinuationsKey: JSON.stringify(this.inputContinuations(runtimeSessionId)),
+          canChangeOpening: this.openingChangeAllowed(this.detailsSnapshot.id, runtimeSessionId),
           sessionRunning,
           pendingSubmissions,
           nodes: nodes.filter(node => node.kind === 'user' || node.kind === 'steering'
@@ -1284,6 +1306,7 @@ window.__ModuleLoader__.load({
           && left?.hasMore === right?.hasMore
           && left?.subagentProjectionRevision === right?.subagentProjectionRevision
           && left?.inputContinuationsKey === right?.inputContinuationsKey
+          && left?.canChangeOpening === right?.canChangeOpening
           && left?.sessionRunning === right?.sessionRunning
           && left?.pendingSubmissions?.length === right?.pendingSubmissions?.length
           && left.pendingSubmissions.every((submission, index) => submission === right.pendingSubmissions[index])
@@ -1370,6 +1393,7 @@ window.__ModuleLoader__.load({
             .map(key => [key, binding.session.projections?.faceOf(key)])
           const subagentCatalogFace = binding.session.projections?.faceOf('subagentCatalog')
           const inputContinuationsFace = binding.session.projections?.faceOf('eleckoiInputContinuations')
+          const inboxFace = binding.session.projections?.faceOf('inbox')
           const publishProjections = () => {
             if (this.disposed || generation !== this.sessionBindingGeneration || id !== this.detailsSnapshot.id) return
             const stats = Object.fromEntries(projections.map(([key, face]) => [key, face?.getSnapshot()]))
@@ -1411,6 +1435,7 @@ window.__ModuleLoader__.load({
             ...projections.map(([, face]) => face?.subscribe(publishProjections)),
             subagentCatalogFace?.subscribe(publishSubagents),
             inputContinuationsFace?.subscribe(() => { publishProjections(); publish() }),
+            inboxFace?.subscribe(publish),
             this.sessions.list.subscribe?.(publishSubagents),
           ].filter(Boolean)
           this.stopProjections = () => { for (const stop of stops) stop() }
@@ -1658,6 +1683,7 @@ window.__ModuleLoader__.load({
           throw error
         } finally {
           if (this.activeRequests.get(input.conversationId) === request) this.activeRequests.delete(input.conversationId)
+          if (this.detailsSnapshot.id === input.conversationId) this.publishDetails(this.detailsSnapshot, this.officialProjectionSignature)
           request.rewindEventSeq = undefined
           if (request.statsPending && this.detailsSnapshot.id === input.conversationId
             && this.latestStatsSnapshot.id === input.conversationId) {

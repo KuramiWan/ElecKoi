@@ -195,7 +195,7 @@ export class MessageRepository {
       const draft = { content, images: inputImageAttachments, files: inputFileAttachments, process: [] }
       this.writePendingInput(id, draft)
       this.drafts.set(id, draft)
-      this.publish(conversationId, 1, 1)
+      this.publish(conversationId, 1)
       return {
         id, conversationId, turnId: id, speakerId, sequence, role, content,
         variableStateJson, status: 'complete', createdAt: now,
@@ -218,7 +218,7 @@ export class MessageRepository {
       this.store.native.prepare(`INSERT INTO agent_responses(id,conversationId,turnId,responseIndex,speakerId,status,createdAt,variableStateJson,runtimeThreadId)
         VALUES (?,?,?,?,?,?,?,?,?)`).run(id, conversationId, turnId, responseIndex, speakerId, toStoredStatus(status), now, variableStateJson, runtimeThreadId)
       this.drafts.set(id, { content, images: [], files: [], process: [] })
-      this.publish(conversationId, 1, 0)
+      this.publish(conversationId, 1)
       return { id, conversationId, turnId, speakerId, sequence: turn.sequence, responseIndex, role: 'assistant', content, variableStateJson, status, createdAt: now }
     })
   }
@@ -683,17 +683,15 @@ export class MessageRepository {
         .run(conversationId, conversationId, conversationId)
 
       const remainingMessages = this.list(conversationId)
-      const remainingUserCount = remainingMessages.filter((item) => item.role === 'user').length
       writeCurrentConversationVariableState(
         conversationId,
         rollbackVariableStateJson,
         this.store.db
       )
       this.store.native.prepare(`UPDATE chat_sessions SET
-        historyMessageCount=?,historyUserMessageCount=?,updatedAt=? WHERE id=?`)
+        historyMessageCount=?,updatedAt=? WHERE id=?`)
         .run(
           remainingMessages.length,
-          remainingUserCount,
           new Date().toISOString(),
           conversationId
         )
@@ -804,8 +802,8 @@ export class MessageRepository {
       const retained = this.store.native.prepare('SELECT COUNT(*) AS count FROM agent_branch_turns WHERE branchId=?').get(branch.branchId) as { count: number }
       const retainedResponses = this.store.native.prepare('SELECT COUNT(*) AS count FROM agent_responses r JOIN agent_branch_turns p ON p.turnId=r.turnId WHERE p.branchId=?').get(branch.branchId) as { count: number }
       const users = this.store.native.prepare("SELECT COUNT(*) AS count FROM agent_branch_turns p JOIN agent_turns t ON t.id=p.turnId WHERE p.branchId=? AND t.kind='user'").get(branch.branchId) as { count: number }
-      this.store.native.prepare('UPDATE chat_sessions SET historyMessageCount=?,historyUserMessageCount=?,updatedAt=? WHERE id=?')
-        .run(retained.count + retainedResponses.count, users.count, new Date().toISOString(), conversationId)
+      this.store.native.prepare('UPDATE chat_sessions SET historyMessageCount=?,updatedAt=? WHERE id=?')
+        .run(retained.count + retainedResponses.count, new Date().toISOString(), conversationId)
       const state = this.store.native.prepare('SELECT variableStateJson FROM agent_turns WHERE id=?').get(turnId) as { variableStateJson: string } | undefined
       if (state?.variableStateJson) {
         writeCurrentConversationVariableState(conversationId, state.variableStateJson, this.store.db)
@@ -900,9 +898,9 @@ export class MessageRepository {
       .run(turnId, JSON.stringify({ content: draft.content, images: draft.images, files: draft.files }))
   }
 
-  private publish(conversationId: string, messages = 0, users = 0): void {
-    if (messages) this.store.native.prepare('UPDATE chat_sessions SET historyMessageCount=historyMessageCount+?,historyUserMessageCount=historyUserMessageCount+?,updatedAt=? WHERE id=?')
-      .run(messages, users, new Date().toISOString(), conversationId)
+  private publish(conversationId: string, messages = 0): void {
+    if (messages) this.store.native.prepare('UPDATE chat_sessions SET historyMessageCount=historyMessageCount+?,updatedAt=? WHERE id=?')
+      .run(messages, new Date().toISOString(), conversationId)
   }
 
   private project(
@@ -958,10 +956,7 @@ export class MessageRepository {
     const inputFileAttachments = row.role === 'user'
       ? transcript?.userSeq !== null && transcript !== undefined ? transcript.userFiles ?? [] : draft?.files ?? []
       : []
-    const openingSelectable = row.id === 'opening' && !(this.store.native.prepare(
-      'SELECT historyUserMessageCount FROM chat_sessions WHERE id=?'
-    ).get(conversationId) as { historyUserMessageCount: number } | undefined)?.historyUserMessageCount
-    const opening = openingSelectable
+    const opening = row.id === 'opening'
       ? this.store.native.prepare('SELECT payloadJson FROM agent_openings WHERE conversationId=? AND turnId=?').get(conversationId, row.ownerId) as { payloadJson: string } | undefined
       : undefined
     let openingData: { options?: ChatMessage['openingOptions']; selectedId?: string } = {}

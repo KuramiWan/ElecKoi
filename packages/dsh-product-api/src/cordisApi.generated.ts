@@ -451,13 +451,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote selectOpening(conversationId: string, openingId: string): ConversationDetailsMetadata',
+        signature: '@Remote async selectOpening(conversationId: string, openingId: string): Promise<ConversationDetailsMetadata>',
         description: '切换开场白。',
         parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'openingId', description: '开场白编号。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote updateOpening(conversationId: string, content: string): ConversationDetailsMetadata',
+        signature: '@Remote async updateOpening(conversationId: string, content: string): Promise<ConversationDetailsMetadata>',
         description: '修改开场白文本。',
         parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'content', description: '要保存的完整文本。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
@@ -769,7 +769,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConversationMessageMetadata',
-    declaration: 'export interface ConversationMessageMetadata {\n    id: string;\n    conversationId: string;\n    role: \'user\' | \'assistant\';\n    variableStateJson: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    createdAt: string;\n    content?: string;\n    displayContent?: string;\n    turnId?: string;\n    speakerId?: string;\n    speakerName?: string;\n    speakerAvatar?: string;\n    sequence?: number;\n    messageIndex?: number;\n    responseIndex?: number;\n    runtimeSessionId?: string;\n    dshMessageId?: string;\n    sessionEventSeq?: number;\n    dshTurn?: number;\n    openingOptions?: ConversationOpeningOption[];\n    selectedOpeningId?: string;\n}',
+    declaration: 'export interface ConversationMessageMetadata {\n    id: string;\n    conversationId: string;\n    role: \'user\' | \'assistant\';\n    variableStateJson: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    createdAt: string;\n    content?: string;\n    displayContent?: string;\n    turnId?: string;\n    speakerId?: string;\n    speakerName?: string;\n    speakerAvatar?: string;\n    sequence?: number;\n    messageIndex?: number;\n    responseIndex?: number;\n    runtimeSessionId?: string;\n    dshMessageId?: string;\n    sessionEventSeq?: number;\n    dshTurn?: number;\n    openingOptions?: ConversationOpeningOption[];\n    selectedOpeningId?: string;\n    canChangeOpening?: boolean;\n}',
   },
   {
     name: 'ConversationMetadata',

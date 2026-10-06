@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import Database from 'better-sqlite3'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getTableColumns, getTableName } from 'drizzle-orm'
 import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
 import { commonTables } from '../packages/dsh-product-data/src/storage/sqlite/schema/common'
@@ -54,6 +54,22 @@ function schemaObjects(db: Database.Database) {
   return db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
 }
 
+// Older fixtures must retain the released table shape until the v7 → v8 step.
+const schemaV7Sql = commonSchemaSql
+  .replace(/^CREATE TABLE IF NOT EXISTS `chat_sessions` .*;$/m,
+    'CREATE TABLE IF NOT EXISTS `chat_sessions` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `characterId` TEXT NOT NULL, `characterName` TEXT NOT NULL, `characterAvatar` TEXT NOT NULL, `historyMessageCount` INTEGER NOT NULL, `historyUserMessageCount` INTEGER NOT NULL, `createdAt` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`id`));')
+  .replace(/^PRAGMA user_version = \d+;$/m, 'PRAGMA user_version = 7;')
+
+function productRecords(database: Database.Database) {
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all() as { name: string }[]
+  return Object.fromEntries(tables.map(({ name }) => [name,
+    (database.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[])
+      .map((row) => Object.fromEntries(Object.entries(row)
+        .filter(([key]) => name !== 'chat_sessions' || key !== 'historyUserMessageCount')))
+  ]))
+}
+
 const legacyContentSql = `
   CREATE TABLE web_search_settings (singletonId INTEGER NOT NULL PRIMARY KEY, mode TEXT NOT NULL, maxResults INTEGER NOT NULL, tavilyApiKey TEXT NOT NULL, updatedAt TEXT NOT NULL);
   CREATE TABLE agent_content_parts (conversationId TEXT NOT NULL,ownerType TEXT NOT NULL,ownerId TEXT NOT NULL,partIndex INTEGER NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,payloadJson TEXT NOT NULL,chunkIndex INTEGER NOT NULL,PRIMARY KEY(ownerType,ownerId,partIndex,chunkIndex));
@@ -82,7 +98,7 @@ function registerDesktopV2(database: Database.Database): void {
 
 function legacyV1Database(path = ':memory:'): Database.Database {
   const database = new Database(path)
-  database.exec(commonSchemaSql)
+  database.exec(schemaV7Sql)
   database.exec(legacyContentSql)
   database.exec(`
     ALTER TABLE chat_sessions ADD COLUMN historySummary TEXT NOT NULL DEFAULT '';
@@ -153,7 +169,7 @@ function legacyV1Database(path = ':memory:'): Database.Database {
 
 function legacyV2Database(baseline = 'eleckoi-common-v1-2026-09-14-runtime-clean'): Database.Database {
   const database = new Database(':memory:')
-  database.exec(commonSchemaSql)
+  database.exec(schemaV7Sql)
   database.exec(legacyContentSql)
   database.exec(`
     ALTER TABLE chat_sessions ADD COLUMN historySummary TEXT NOT NULL DEFAULT '';
@@ -173,7 +189,7 @@ function legacyV2Database(baseline = 'eleckoi-common-v1-2026-09-14-runtime-clean
 
 function currentV2Database(): Database.Database {
   const database = new Database(':memory:')
-  database.exec(commonSchemaSql)
+  database.exec(schemaV7Sql)
   database.exec(legacyContentSql)
   database.exec(`
     CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
@@ -185,10 +201,125 @@ function currentV2Database(): Database.Database {
 }
 
 describe('shared SQLite baseline', () => {
+  it('removes only the v7 user counter and preserves product records across two disk reopens', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'eleckoi-v7-user-count-'))
+    directories.push(directory)
+    const path = join(directory, 'eleckoi.sqlite3')
+    const source = new Database(path)
+    let expected: ReturnType<typeof productRecords>
+    try {
+      source.exec(schemaV7Sql)
+      insertSyntheticCharacter(source)
+      source.exec(`
+        INSERT INTO chat_sessions VALUES
+          ('synthetic-chat','合成聊天','synthetic-character','合成角色','',3,0,'created','updated'),
+          ('synthetic-empty-chat','合成空聊天','','','',0,99,'created','updated');
+        INSERT INTO chat_session_character_snapshots VALUES ('synthetic-chat','{"assistant_name":"合成助手"}');
+        INSERT INTO chat_session_variable_states VALUES ('synthetic-chat','global','{"score":5}');
+        INSERT INTO conversation_setting_changes VALUES ('synthetic-chat','entry','synthetic-entry','upsert','{}','updated');
+        INSERT INTO agent_conversations VALUES ('synthetic-chat','synthetic-branch','synthetic-session');
+        INSERT INTO agent_branches VALUES ('synthetic-branch','synthetic-chat');
+        INSERT INTO conversation_speakers VALUES
+          ('synthetic-user','synthetic-chat','user','user','合成用户',''),
+          ('synthetic-assistant','synthetic-chat','assistant','assistant','合成助手','');
+        INSERT INTO agent_turns VALUES
+          ('synthetic-opening','synthetic-chat','synthetic-assistant','opening','created','{}'),
+          ('synthetic-input','synthetic-chat','synthetic-user','user','created','{"score":5}');
+        INSERT INTO agent_branch_turns VALUES
+          ('synthetic-branch',0,'synthetic-opening'),('synthetic-branch',1,'synthetic-input');
+        INSERT INTO agent_openings VALUES ('synthetic-chat','synthetic-opening','合成开场','{"options":[]}');
+        INSERT INTO agent_pending_inputs VALUES ('synthetic-input','{"content":"合成输入","images":[],"files":[]}');
+        INSERT INTO agent_responses VALUES
+          ('synthetic-response','synthetic-chat','synthetic-input',0,'synthetic-assistant','completed','created','{"score":6}','synthetic-session',1,'[]');
+        INSERT INTO agent_setting_snapshots VALUES ('synthetic-chat','response','synthetic-response','[]');
+        INSERT INTO user_profile VALUES ('self','合成用户','','','','');
+        INSERT INTO setting_libraries VALUES ('synthetic-character','合成设定','',1,'[]','[]','updated');
+        INSERT INTO agent_presets VALUES ('synthetic-preset','合成预设','general','[]','','','','',0,'[]');
+        INSERT INTO agent_preset_contents VALUES ('synthetic-preset','usage_instructions','合成说明');
+      `)
+      expected = productRecords(source)
+      expect(source.pragma('user_version', { simple: true })).toBe(7)
+    } finally { source.close() }
+
+    for (let reopen = 0; reopen < 2; reopen++) {
+      const database = new SqliteDatabase(path)
+      try {
+        database.open()
+        expect(database.native.pragma('user_version', { simple: true })).toBe(8)
+        expect((database.native.pragma('table_info(chat_sessions)') as { name: string }[]).map(column => column.name))
+          .not.toContain('historyUserMessageCount')
+        expect(productRecords(database.native)).toEqual(expected!)
+        expect(database.native.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='chat_sessions' ORDER BY name").all())
+          .toEqual([
+            { name: 'index_chat_sessions_characterId' },
+            { name: 'index_chat_sessions_updatedAt' },
+            { name: 'sqlite_autoindex_chat_sessions_1' }
+          ])
+        expect(database.native.pragma('foreign_key_check')).toEqual([])
+        expect(database.native.pragma('integrity_check', { simple: true })).toBe('ok')
+      } finally { database.close() }
+    }
+  }, 15_000)
+
+  it('rolls back a v7 column removal if the migration is interrupted before the version stamp', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'eleckoi-v7-user-count-rollback-'))
+    directories.push(directory)
+    const path = join(directory, 'eleckoi.sqlite3')
+    const source = new Database(path)
+    let originalSchema: ReturnType<typeof schemaObjects>
+    try {
+      source.exec(schemaV7Sql)
+      source.exec("INSERT INTO chat_sessions VALUES ('synthetic-chat','合成聊天','','','',2,1,'created','updated')")
+      originalSchema = schemaObjects(source)
+      const execute = source.exec.bind(source)
+      const interrupted = vi.spyOn(source, 'exec').mockImplementation((sql) => {
+        const result = execute(sql)
+        if (sql === 'ALTER TABLE chat_sessions DROP COLUMN historyUserMessageCount') {
+          throw new Error('合成迁移中断')
+        }
+        return result
+      })
+      try {
+        expect(() => installSchema(source)).toThrow('合成迁移中断')
+      } finally { interrupted.mockRestore() }
+    } finally { source.close() }
+
+    const reopened = new Database(path)
+    try {
+      expect(reopened.pragma('user_version', { simple: true })).toBe(7)
+      expect(schemaObjects(reopened)).toEqual(originalSchema!)
+      expect(reopened.prepare('SELECT * FROM chat_sessions').get()).toEqual({
+        id: 'synthetic-chat', title: '合成聊天', characterId: '', characterName: '', characterAvatar: '',
+        historyMessageCount: 2, historyUserMessageCount: 1, createdAt: 'created', updatedAt: 'updated'
+      })
+      installSchema(reopened)
+      expect(reopened.pragma('user_version', { simple: true })).toBe(8)
+      expect(reopened.pragma('foreign_key_check')).toEqual([])
+      expect(reopened.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally { reopened.close() }
+  }, 15_000)
+
+  it('refuses a v7 database with an unexpected table shape without changing its data', () => {
+    const database = new Database(':memory:')
+    try {
+      database.exec(schemaV7Sql)
+      database.exec(`
+        INSERT INTO chat_sessions VALUES ('synthetic-chat','合成聊天','','','',2,1,'created','updated');
+        ALTER TABLE chat_sessions ADD COLUMN unexpected TEXT;
+      `)
+      const before = schemaObjects(database)
+      expect(() => installSchema(database)).toThrow('公共数据库结构不匹配：chat_sessions')
+      expect(database.pragma('user_version', { simple: true })).toBe(7)
+      expect(schemaObjects(database)).toEqual(before)
+      expect(database.prepare('SELECT historyUserMessageCount,title FROM chat_sessions').get())
+        .toEqual({ historyUserMessageCount: 1, title: '合成聊天' })
+    } finally { database.close() }
+  })
+
   it('removes child-model routing from current and versioned preset tool configuration', () => {
     const database = new Database(':memory:')
     try {
-      database.exec(commonSchemaSql)
+      database.exec(schemaV7Sql)
       database.exec(`
         INSERT INTO agent_presets(
           id,name,modelFamily,modelTagsJson,libraryGroupId,activeVersionId,authorName,
@@ -237,7 +368,7 @@ describe('shared SQLite baseline', () => {
   it('removes DSH-owned configuration in the v5 to v6 migration without a handoff', () => {
     const database = new Database(':memory:')
     try {
-      installSchema(database)
+      database.exec(schemaV7Sql)
       database.exec(`
         CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
         INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
@@ -302,6 +433,9 @@ describe('shared SQLite baseline', () => {
       expect(Object.values(getTableColumns(table)).map((column) => column.name)).toEqual(fields.map((column) => column.name))
     }
     expect(database.native.pragma('foreign_keys', { simple: true })).toBe(1)
+    expect(database.native.pragma('user_version', { simple: true })).toBe(8)
+    expect((database.native.pragma('table_info(chat_sessions)') as { name: string }[]).map(column => column.name))
+      .not.toContain('historyUserMessageCount')
     expect(database.native.pragma('secure_delete', { simple: true })).toBe(2)
     expect(database.native.pragma('foreign_key_check')).toEqual([])
     expect(database.native.pragma('integrity_check', { simple: true })).toBe('ok')
@@ -311,7 +445,7 @@ describe('shared SQLite baseline', () => {
   it('upgrades a v3 response ledger with its existing messages intact', () => {
     const database = new Database(':memory:')
     try {
-      database.exec(commonSchemaSql)
+      database.exec(schemaV7Sql)
       database.exec(legacyContentSql)
       database.exec(`
         CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
@@ -356,7 +490,7 @@ describe('shared SQLite baseline', () => {
   it('migrates v3 opening text and EJS settings into v4', () => {
     const database = new Database(':memory:')
     try {
-      database.exec(commonSchemaSql)
+      database.exec(schemaV7Sql)
       database.exec(legacyContentSql)
       database.exec(`
         CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
@@ -441,7 +575,7 @@ describe('shared SQLite baseline', () => {
   it('adds pending inputs in the v3 to v4 migration without changing conversations', () => {
     const database = new Database(':memory:')
     try {
-      installSchema(database)
+      database.exec(schemaV7Sql)
       database.exec(`
         CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
         INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
@@ -464,7 +598,7 @@ describe('shared SQLite baseline', () => {
   it('removes the released v4 rich-message height cache in the v5 migration and preserves product data', () => {
     const database = new Database(':memory:')
     try {
-      installSchema(database)
+      database.exec(schemaV7Sql)
       database.exec(`
         CREATE TABLE desktop_schema (id INTEGER PRIMARY KEY CHECK(id = 1), baseline TEXT NOT NULL);
         INSERT INTO desktop_schema VALUES (1, 'eleckoi-common');
@@ -712,7 +846,7 @@ describe('shared SQLite baseline', () => {
 
     let database = new Database(path)
     try {
-      database.exec(commonSchemaSql)
+      database.exec(schemaV7Sql)
       database.exec(legacyContentSql)
       registerDesktopV2(database)
       insertSyntheticCharacter(database)
@@ -847,7 +981,7 @@ describe('shared SQLite baseline', () => {
     } finally {
       secondReopen.close()
     }
-  })
+  }, 15_000)
 
   it('keeps a v2 file unchanged when the placement migration encounters damaged JSON', () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-v2-placement-rollback-'))
@@ -855,7 +989,7 @@ describe('shared SQLite baseline', () => {
     const path = join(directory, 'eleckoi.sqlite3')
     let database = new Database(path)
     try {
-      database.exec(commonSchemaSql)
+      database.exec(schemaV7Sql)
       database.exec(legacyContentSql)
       registerDesktopV2(database)
       insertSyntheticCharacter(database)
@@ -891,7 +1025,7 @@ describe('shared SQLite baseline', () => {
     } finally {
       database.close()
     }
-  })
+  }, 15_000)
 
   it('updates only the changed character text and keeps user identity separate', () => {
     const { database, characters, conversations, media } = harness()
@@ -1418,11 +1552,11 @@ describe('shared SQLite baseline', () => {
       { kind: 'current', stateJson: '{"好感":10}' },
       { kind: 'initial', stateJson: '{"好感":10}' }
     ])
-    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions WHERE id=?')
-      .get(created.conversation.id)).toEqual({ historyMessageCount: 1, historyUserMessageCount: 0 })
+    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
+      .get(created.conversation.id)).toEqual({ historyMessageCount: 1 })
   })
 
-  it('switches and edits only the conversation opening before the first user message', () => {
+  it('stores opening choices and edits only in the conversation snapshot', () => {
     const { characters, database } = harness()
     characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card()] })
     const settingLibraries = new SettingLibraryRepository(database)
@@ -1469,16 +1603,14 @@ describe('shared SQLite baseline', () => {
     messages.create(conversationId, 'user', '开始聊天', 'complete')
     conversations.touch(conversationId, '最近的真实消息')
     expect(conversations.get(conversationId).preview).toBe('只改当前对话的备用开场')
-    expect(() => conversations.selectOpening(conversationId, 'primary')).toThrow('对话开始后不能再切换开场白')
-    expect(() => conversations.updateOpening(conversationId, '不能再改')).toThrow('对话开始后不能修改开场白')
 
     const deleted = messages.deleteFrom(conversationId, 'opening')
     expect(deleted).toMatchObject({ deletedMessageCount: 2, remainingMessageCount: 0 })
     expect(messages.list(conversationId)).toEqual([])
     expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
       .get(conversationId)).toEqual({ stateJson: '{"好感":2}' })
-    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 0, historyUserMessageCount: 0 })
+    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
+      .get(conversationId)).toEqual({ historyMessageCount: 0 })
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
@@ -1502,8 +1634,8 @@ describe('shared SQLite baseline', () => {
     expect(messages.list(conversationId).map((message) => message.messageIndex)).toEqual([0, 1, 2])
     expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
       .get(conversationId)).toEqual({ stateJson: '{"轮次":1}' })
-    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 3, historyUserMessageCount: 2 })
+    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
+      .get(conversationId)).toEqual({ historyMessageCount: 3 })
 
     messages.create(conversationId, 'assistant', '重新生成的回复', 'complete')
     expect(messages.list(conversationId).map((message) => message.messageIndex)).toEqual([0, 1, 2, 3])
@@ -1604,8 +1736,8 @@ describe('shared SQLite baseline', () => {
       .toBeUndefined()
     expect(database.native.prepare('SELECT DISTINCT runtimeThreadId FROM agent_responses WHERE conversationId=?')
       .all(conversationId)).toEqual([{ runtimeThreadId: 'runtime-a' }])
-    expect(database.native.prepare('SELECT historyMessageCount,historyUserMessageCount FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 2, historyUserMessageCount: 1 })
+    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
+      .get(conversationId)).toEqual({ historyMessageCount: 2 })
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 

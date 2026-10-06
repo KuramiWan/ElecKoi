@@ -409,7 +409,6 @@ describe('ElecKoi DSH Remote contract', () => {
       characterName: '测试角色',
       characterAvatar: '',
       historyMessageCount: 0,
-      historyUserMessageCount: 0,
       createdAt: '2026-10-01T00:00:00.000Z',
       updatedAt: '2026-10-01T00:00:00.000Z'
     }).run()

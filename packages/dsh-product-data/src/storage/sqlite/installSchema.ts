@@ -11,6 +11,7 @@ import { migration0004 } from './migrations/0004DshTurnBinding'
 import { migration0005 } from './migrations/0005RemoveRichMessageHeights'
 import { migration0006 } from './migrations/0006RemoveDshOwnedConfiguration'
 import { migration0007 } from './migrations/0007RemovePresetSubagentModelSelection'
+import { migration0008, schemaV7ChatSessionsSql } from './migrations/0008RemoveHistoryUserMessageCount'
 import { commonSchemaSql } from './migrations/commonSchemaSql'
 import { BASELINE_ID, CURRENT_SCHEMA_VERSION } from './schemaVersion'
 
@@ -19,9 +20,9 @@ const PRE_RELEASE_V2_SCHEMA_VERSION = 2
 const PRE_RELEASE_V2_BASELINES = [BASELINE_ID, 'eleckoi-common-v1-2026-09-14-runtime-clean'] as const
 // TODO(迁移清理)：只有正式停止支持某个旧 schema 及更早版本直接升级后，才能删除从该版本
 // 出发的步骤，并同步删除 import、登记和 tests/database.test.ts 中对应旧库 fixture。
-// 当前仍支持 v1 连续升级至 v7；已升级的本机数据库不能证明其他旧安装已完成迁移。
+// 当前仍支持 v1 连续升级至 v8；已升级的本机数据库不能证明其他旧安装已完成迁移。
 // 剩余受支持版本必须仍有连续原子迁移链，当前 SQL、版本常量和完整性检查始终保留。
-const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007] as const
+const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007, migration0008] as const
 
 function hasTable(database: Database.Database, name: string): boolean {
   return Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name))
@@ -31,12 +32,13 @@ function normalized(sql: string): string {
   return sql.replace(/\bIF NOT EXISTS\s+/gi, '').replace(/\s+/g, ' ').replace(/;$/, '').trim()
 }
 
-function validateSchema(database: Database.Database): void {
+function validateSchema(database: Database.Database, previousChatSessionsSql?: string): void {
   const installed = database.prepare("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL").all() as { name: string; sql: string }[]
   const objects = new Map(installed.map((row) => [row.name, normalized(row.sql)]))
   for (const match of commonSchemaSql.matchAll(/(CREATE (?:TABLE|(?:UNIQUE )?INDEX|VIEW)[\s\S]*?);/g)) {
-    const sql = match[1]!
+    let sql = match[1]!
     const name = sql.match(/^CREATE (?:TABLE|(?:UNIQUE )?INDEX|VIEW) (?:IF NOT EXISTS )?`?([\w]+)`?/)?.[1]
+    if (name === 'chat_sessions' && previousChatSessionsSql) sql = previousChatSessionsSql
     if (!name || objects.get(name) !== normalized(sql)) throw new Error(`公共数据库结构不匹配：${name ?? 'unknown'}。`)
   }
 }
@@ -95,7 +97,7 @@ function normalizePreReleaseV2(database: Database.Database, baseline: string, ve
       normalizeAgentPresetStorage(database)
     } else {
       validateTableInventory(database)
-      validateSchema(database)
+      validateSchema(database, schemaV7ChatSessionsSql)
     }
     database.prepare('UPDATE desktop_schema SET baseline = ? WHERE id = 1').run(BASELINE_ID)
   }).immediate()
@@ -128,10 +130,10 @@ export function installSchema(database: Database.Database): void {
   if (tables.length > 0) {
     const version = database.pragma('user_version', { simple: true }) as number
     if (version < CURRENT_SCHEMA_VERSION) {
-      if (version === 6) {
+      if (version === 6 || version === 7) {
         normalizePreReleaseV6(database, version)
         validateTableInventory(database)
-        validateSchema(database)
+        validateSchema(database, schemaV7ChatSessionsSql)
         migrate(database, BASELINE_ID, version)
       } else {
         if (!tables.some(({ name }) => name === 'desktop_schema')) throw new Error('此文件不是 ElecKoi 数据库的可迁移版本，拒绝修改数据。')

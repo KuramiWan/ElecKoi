@@ -8,7 +8,7 @@
 - 数据库文件：Electron `userData/eleckoi-common.sqlite3`，路径由桌面壳作为 Host 启动参数传入。
 - SQLite 打开、迁移、恢复和所有 Repository 写入均位于 `packages/dsh-product-data/src`。Electron Main、Client 和 Renderer 不打开数据库。
 - 公共 SQL：`resources/database/eleckoi-common-schema-v1.sql`。
-- 当前 `PRAGMA user_version`：`7`。
+- 当前 `PRAGMA user_version`：`8`。
 - 当前结构：43 张业务表、2 个视图；数据库物理结构版本只使用 SQLite `PRAGMA user_version`。
 
 `pnpm db:generate` 从固定 SQL 生成内嵌迁移 SQL与 Drizzle 查询映射；`pnpm check:database-schema` 校验生成内容。SQL 是公共结构权威，Drizzle 映射不反向生成迁移。
@@ -45,6 +45,7 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 5. v5：删除废弃消息高度字段。
 6. v6：删除已由 DSH 正式存储接管的模型与搜索配置表，并删除不再使用的 `generation_attempts`、`cleanup_operations`、`desktop_preferences` 与旧结构登记表 `desktop_schema`；旧设置不迁移，当前版本只以 `PRAGMA user_version` 标识。
 7. v7：原子移除当前预设及其历史版本中的子 Agent 模型选择字段，并更新预设工具配置版本；子 Agent 模型授权只由 DSH Host 设置负责。
+8. v8：原子删除 `chat_sessions.historyUserMessageCount` 冗余列，保留其他列、聊天标识、快照及全部有效产品关系；运行时不再写入该计数。开场白切换和编辑权限以 DSH Session 的真实用户输入、待处理输入与运行状态为准，不另存第二份用户历史判断。
 
 较早开发构建创建的 v6 数据库在升级至 v7 前，先原子整理已废弃的执行、偏好与结构登记表，再执行 v6 → v7 迁移。仍有效的角色、预设、设定、变量与聊天索引数据保留，不要求清库。后续结构变化必须提升版本并追加连续迁移。
 
@@ -54,7 +55,7 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 
 | 入口 | 何时可以清理 | 必须一起处理的范围 |
 | --- | --- | --- |
-| [SQLite v1 → v7 迁移链](../packages/dsh-product-data/src/storage/sqlite/installSchema.ts) | 正式停止支持某步骤起点及更早 schema 直接升级；剩余受支持版本仍有连续原子链 | 对应 `0002` 至 `0007` 步骤、import、登记与旧库 fixture；保留当前 SQL、版本常量及完整性校验 |
+| [SQLite v1 → v8 迁移链](../packages/dsh-product-data/src/storage/sqlite/installSchema.ts) | 正式停止支持某步骤起点及更早 schema 直接升级；剩余受支持版本仍有连续原子链 | 对应 `0002` 至 `0008` 步骤、旧表定义、import、登记与旧库 fixture；保留当前 SQL、版本常量及完整性校验 |
 | [开发 v2、v6 同版本整理](../packages/dsh-product-data/src/storage/sqlite/installSchema.ts) | 分别停止支持对应开发基线直接升级 | 对应整理函数、专用入口和 fixture；v2 共享整理函数仍被 `0002` 使用时继续保留 |
 | [模型设置 schema v0/v1 → v2](../packages/dsh-client-models/src/index.js) | 支持的升级和 profile 恢复入口均已保存至少 schema v2 的设置 | 旧 schema 转换、专用常量与用例；函数和启动调用须等两段整理均退役，保留当前设置合同和插件装配 |
 | [旧子 Agent 占位路由](../packages/dsh-client-models/src/index.js) | 停止支持 v0.2.3 之前版本直升，且支持的 profile 恢复入口不再携带该路由 | 占位路由过滤、专用常量与用例；与模型设置 schema 转换分别核对 |
@@ -79,7 +80,7 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 ## 验证
 
 - `pnpm check:database-schema`：43 张公共表、2 个视图与生成文件一致。
-- `pnpm test`：覆盖 v1 至 v7 迁移、开发 v6 整理、外键、重启持久化、角色与媒体、设定、变量、正则、预设、聊天索引和 Remote 写入。
-- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 43 张业务表、2 个视图、`user_version = 7`、外键和完整性。
+- `pnpm test`：覆盖 v1 至 v8 迁移、开发 v6 整理、v7 升级后的数据保留与失败回滚、外键、重启持久化、角色与媒体、设定、变量、正则、预设、聊天索引和 Remote 写入。
+- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 43 张业务表、2 个视图、`user_version = 8`、冗余列缺失、外键和完整性。
 
 架构决策见 [ADR 0018](adr/0018-dsh-host-owns-product-data.md)。

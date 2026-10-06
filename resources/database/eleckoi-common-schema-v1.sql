@@ -3,7 +3,7 @@ PRAGMA foreign_keys = ON;
 
 BEGIN TRANSACTION;
 
-CREATE TABLE IF NOT EXISTS `chat_sessions` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `characterId` TEXT NOT NULL, `characterName` TEXT NOT NULL, `characterAvatar` TEXT NOT NULL, `historyMessageCount` INTEGER NOT NULL, `historyUserMessageCount` INTEGER NOT NULL, `createdAt` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`id`));
+CREATE TABLE IF NOT EXISTS `chat_sessions` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `characterId` TEXT NOT NULL, `characterName` TEXT NOT NULL, `characterAvatar` TEXT NOT NULL, `historyMessageCount` INTEGER NOT NULL, `createdAt` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`id`));
 
 CREATE INDEX IF NOT EXISTS `index_chat_sessions_characterId` ON `chat_sessions` (`characterId`);
 
@@ -169,6 +169,6 @@ CREATE VIEW `setting_library_version_entries` AS SELECT link.characterId, link.v
         JOIN setting_entry_contents AS content ON content.characterId = link.characterId
           AND content.entryId = link.entryId AND content.revisionId = link.revisionId;
 
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;
 
 COMMIT;

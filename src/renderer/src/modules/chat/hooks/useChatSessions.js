@@ -428,7 +428,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   }
 
   async function selectOpening(message, openingId) {
-    if (!sessionId || chatBusy || message?.id !== "opening" || !openingId) return;
+    if (!sessionId || chatBusy || message?.id !== "opening" || !message.canChangeOpening || !openingId) return;
     try {
       const result = await selectChatOpening(sessionId, openingId, { model: conversations });
       replaceChatMessages(result.chat, "auto");
@@ -440,7 +440,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   }
 
   async function editOpening(message, replacementMessage) {
-    if (!sessionId || chatBusy || message?.id !== "opening") return false;
+    if (!sessionId || chatBusy || message?.id !== "opening" || !message.canChangeOpening) return false;
     try {
       const result = await updateChatOpening(sessionId, replacementMessage, { model: conversations });
       replaceChatMessages(result.chat, "auto");

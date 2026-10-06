@@ -27,6 +27,7 @@ function mapMessage(message) {
     inputFileAttachments: message.inputFileAttachments || [],
     openingOptions: message.openingOptions || [],
     selectedOpeningId: message.selectedOpeningId || '',
+    canChangeOpening: message.canChangeOpening === true,
   };
 }
 

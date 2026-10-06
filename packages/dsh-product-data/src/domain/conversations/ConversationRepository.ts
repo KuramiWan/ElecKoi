@@ -54,7 +54,7 @@ export class ConversationRepository {
       database.insert(chatSessions).values({
         id, title: input.title?.trim() || '新对话', characterId: metadata.characterId,
         characterName: card?.name ?? metadata.characterName, characterAvatar: card?.avatar ?? metadata.characterAvatar,
-        historyMessageCount: 0, historyUserMessageCount: 0, createdAt: now, updatedAt: now
+        historyMessageCount: 0, createdAt: now, updatedAt: now
       }).run()
       database.insert(agentConversations).values({ id, activeBranchId: branchId, runtimeThreadId: id }).run()
       database.insert(agentBranches).values({ id: branchId, conversationId: id }).run()
@@ -239,10 +239,9 @@ export class ConversationRepository {
 
   selectOpening(conversationId: string, openingId: string): void {
     this.store.withWriteTx((database) => {
-      const session = database.select({ userMessages: chatSessions.historyUserMessageCount })
+      const session = database.select({ id: chatSessions.id })
         .from(chatSessions).where(eq(chatSessions.id, conversationId)).get()
       if (!session) throw new Error('找不到对应的聊天存档。')
-      if (session.userMessages > 0) throw new Error('对话开始后不能再切换开场白。')
       const row = this.store.native.prepare('SELECT turnId AS ownerId,payloadJson FROM agent_openings WHERE conversationId=?')
         .get(conversationId) as { ownerId: string; payloadJson: string } | undefined
       if (!row) throw new Error('当前对话没有开场白。')
@@ -262,10 +261,9 @@ export class ConversationRepository {
     const nextContent = content.trim()
     if (!nextContent) throw new Error('开场白不能为空。')
     this.store.withWriteTx((database) => {
-      const session = database.select({ userMessages: chatSessions.historyUserMessageCount })
+      const session = database.select({ id: chatSessions.id })
         .from(chatSessions).where(eq(chatSessions.id, conversationId)).get()
       if (!session) throw new Error('找不到对应的聊天存档。')
-      if (session.userMessages > 0) throw new Error('对话开始后不能修改开场白。')
       const row = this.store.native.prepare('SELECT turnId AS ownerId,payloadJson FROM agent_openings WHERE conversationId=?')
         .get(conversationId) as { ownerId: string; payloadJson: string } | undefined
       if (!row) throw new Error('当前对话没有开场白。')

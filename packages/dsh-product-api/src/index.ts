@@ -883,10 +883,8 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  selectOpening(conversationId: string, openingId: string): ConversationDetailsMetadata {
-    const details = this.productData.selectConversationOpening(conversationId, openingId)
-    this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: ['opening'] })
-    return details
+  async selectOpening(conversationId: string, openingId: string): Promise<ConversationDetailsMetadata> {
+    return this.changeOpening(conversationId, () => this.productData.selectConversationOpening(conversationId, openingId))
   }
 
   /**
@@ -896,8 +894,29 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  updateOpening(conversationId: string, content: string): ConversationDetailsMetadata {
-    const details = this.productData.updateConversationOpening(conversationId, content)
+  async updateOpening(conversationId: string, content: string): Promise<ConversationDetailsMetadata> {
+    return this.changeOpening(conversationId, () => this.productData.updateConversationOpening(conversationId, content))
+  }
+
+  private async changeOpening(conversationId: string, mutate: () => ConversationDetailsMetadata): Promise<ConversationDetailsMetadata> {
+    const sessionId = this.productData.runtimeSessionId(conversationId) as SessionId
+    const inspection = await this.ownerContext.sessionController.inspect(sessionId)
+    // Cold reads must also account for accepted input still waiting in the inbox.
+    const projections = await this.ownerContext.sessionController.projections({ sessionId }, new AbortController().signal)
+    if (!projections) throw new Error('无法读取聊天状态，不能修改开场白。')
+    const inbox = projections.values.inbox
+    if (!inbox) throw new Error('无法读取输入队列，不能修改开场白。')
+    const agent = this.ownerContext.agents.get(sessionId)
+    // Recheck the attached writer after the asynchronous reads, then commit
+    // synchronously so prompt admission cannot interleave with the mutation.
+    const events = agent?.session.snapshotEvents() ?? inspection.events
+    if (events.some(event => event.type === 'user/message' && event.data.source.kind === 'user')
+      || agent?.status === 'running' || agent?.inbox.nextTurn.length || agent?.inbox.nextStep.length
+      || inbox?.['next-turn'].length || inbox?.['next-step'].length
+      || this.pendingRegenerations.has(conversationId)) {
+      throw new Error('对话开始后不能再切换或修改开场白。')
+    }
+    const details = mutate()
     this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: ['opening'] })
     return details
   }

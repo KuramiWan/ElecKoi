@@ -123,6 +123,11 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   const selectedOpeningIdRef = useRef(message.selectedOpeningId);
   selectedOpeningIdRef.current = message.selectedOpeningId;
   const options = message.openingOptions || [];
+  const openingEnabled = message.canChangeOpening === true && Boolean(onSelectOpening);
+  const showOpeningPager = openingEnabled && options.length > 1;
+  const openingEnabledRef = useRef(openingEnabled);
+  openingEnabledRef.current = openingEnabled;
+  const editingEnabled = Boolean(onEdit) && (message.id !== "opening" || message.canChangeOpening === true);
   const selectedIndex = Math.max(0, options.findIndex((option) => option.id === message.selectedOpeningId));
   const pagerSelectedIndex = Math.max(0, options.findIndex((option) => option.id === pagerOpeningId));
   const liveProcess = shouldShowInlineAgentProcess(message, displayContent)
@@ -138,6 +143,10 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   const requestedPageValid = requestedIndex >= 0 && requestedIndex < options.length;
 
   useEffect(() => setDraft(content || ""), [content]);
+  useEffect(() => {
+    if (!openingEnabled) setJumpOpen(false);
+    if (!editingEnabled) setEditing(false);
+  }, [openingEnabled, editingEnabled]);
   useEffect(() => {
     if (!openingSwitchingRef.current) setPagerOpeningId(message.selectedOpeningId);
   }, [message.selectedOpeningId]);
@@ -186,6 +195,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   }
 
   async function saveEdit() {
+    if (!editingEnabled) return;
     const next = draft.trim();
     if (!next || next === content) { setEditing(false); return; }
     if (await onEdit?.(message, next)) setEditing(false);
@@ -202,7 +212,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   }
   async function selectOpeningAt(targetIndex) {
     const targetOption = options[targetIndex];
-    if (!targetOption?.id || targetIndex === selectedIndex || openingSwitchingRef.current) return;
+    if (!openingEnabledRef.current || !targetOption?.id || targetIndex === selectedIndex || openingSwitchingRef.current) return;
 
     openingSwitchingRef.current = true;
     setOpeningSwitching(true);
@@ -217,6 +227,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
         clearExit = await animateOpeningSlide(article, 0, movingForward ? -range : range, true);
       }
 
+      if (!openingEnabledRef.current) return;
       await Promise.resolve(onSelectOpening?.(message, targetOption.id));
       await nextPaint();
 
@@ -238,14 +249,14 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   }
   function submitPageJump(event) {
     event.preventDefault();
-    if (!requestedPageValid) return;
+    if (!openingEnabled || !requestedPageValid) return;
     closePageJump(false);
     void selectOpeningAt(requestedIndex);
   }
-  const openingPager = options.length > 1 ? <div className="opening-pager" aria-label="切换开场白" aria-busy={openingSwitching || undefined}>
-    <button type="button" className="opening-pager-prev" disabled={openingSwitching || pagerSelectedIndex <= 0} onClick={() => { void selectOpeningAt(selectedIndex - 1); }} aria-label="上一条开场白"><FontAwesomeIcon icon={faChevronLeft} /></button>
-    <button type="button" className="opening-pager-next" disabled={openingSwitching || pagerSelectedIndex >= options.length - 1} onClick={() => { void selectOpeningAt(selectedIndex + 1); }} aria-label="下一条开场白"><FontAwesomeIcon icon={faChevronRight} /></button>
-    <button ref={jumpTriggerRef} type="button" className="opening-pager-index" disabled={openingSwitching} onClick={() => { setPageInput(String(pagerSelectedIndex + 1)); setJumpOpen(true); }} aria-label={`第 ${pagerSelectedIndex + 1} 条，共 ${options.length} 条开场白，点击跳转`}>{pagerSelectedIndex + 1}/{options.length}</button>
+  const openingPager = showOpeningPager ? <div className="opening-pager" aria-label="切换开场白" aria-busy={openingSwitching || undefined}>
+    <button type="button" className="opening-pager-prev" disabled={!openingEnabled || openingSwitching || pagerSelectedIndex <= 0} onClick={() => { void selectOpeningAt(selectedIndex - 1); }} aria-label="上一条开场白"><FontAwesomeIcon icon={faChevronLeft} /></button>
+    <button type="button" className="opening-pager-next" disabled={!openingEnabled || openingSwitching || pagerSelectedIndex >= options.length - 1} onClick={() => { void selectOpeningAt(selectedIndex + 1); }} aria-label="下一条开场白"><FontAwesomeIcon icon={faChevronRight} /></button>
+    <button ref={jumpTriggerRef} type="button" className="opening-pager-index" disabled={!openingEnabled || openingSwitching} onClick={() => { setPageInput(String(pagerSelectedIndex + 1)); setJumpOpen(true); }} aria-label={`第 ${pagerSelectedIndex + 1} 条，共 ${options.length} 条开场白，点击跳转`}>{pagerSelectedIndex + 1}/{options.length}</button>
   </div> : null;
   const messageTools = !pending && layoutMode !== "agent" ? <div className={`message-tools${expanded ? ' expanded' : ''}`} ref={toolsRef}>
     <div className="message-tools-leading">
@@ -259,12 +270,12 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
       </div> : null}
       <button type="button" onClick={() => setExpanded((value) => !value)} aria-label="更多" title="更多"><MoreDotsIcon /></button>
     </div>
-    <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑"><MessagePencilIcon /></button>
+    <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!editingEnabled}><MessagePencilIcon /></button>
   </div> : null;
   return (
     <article
       ref={articleRef}
-      className={`message ${isUser ? "mine" : "theirs"} message-${layoutMode} avatar-shape-${avatarShape}${options.length > 1 ? " has-opening-pager" : ""}${layoutMode === "agent" && !isUser && isLatestAssistant ? " is-latest-assistant" : ""}`}
+      className={`message ${isUser ? "mine" : "theirs"} message-${layoutMode} avatar-shape-${avatarShape}${showOpeningPager ? " has-opening-pager" : ""}${layoutMode === "agent" && !isUser && isLatestAssistant ? " is-latest-assistant" : ""}`}
       style={Number.isFinite(spacingAfter) ? { marginBottom: `${spacingAfter}px` } : undefined}
     >
       {avatar
@@ -312,7 +323,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
         {pluginAfter}
         {layoutMode === "agent" && isUser && !pending && !editing ? <div className="agent-user-actions" aria-label="用户消息操作">
           <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || "")} aria-label="复制" title="复制" disabled={!displayContent}><CopyIcon /></button>
-          <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!onEdit}><AgentPencilIcon /></button>
+          <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!editingEnabled}><AgentPencilIcon /></button>
         </div> : null}
         {layoutMode === "agent" && !isUser && !pending && !editing ? <div className="agent-message-footer" aria-label="消息操作">
           <div className="agent-message-footer-leading">
@@ -322,7 +333,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
             {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
             <button type="button" onClick={speak} aria-label="朗读" title="朗读" disabled={!displayContent}><SpeakerIcon /></button>
             <TurnUsage usage={message.turnUsage} compact />
-            <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!onEdit}><AgentPencilIcon /></button>
+            <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!editingEnabled}><AgentPencilIcon /></button>
           </div>
         </div> : null}
       </div>
@@ -335,7 +346,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
             <h2 id="opening-jump-title">跳转开场白</h2>
             <label>页码（1–{options.length}）<input type="number" min="1" max={options.length} step="1" value={pageInput} onChange={(event) => setPageInput(event.target.value.replace(/\D/g, '').slice(0, 5))} inputMode="numeric" autoFocus aria-invalid={Boolean(pageInput) && !requestedPageValid} aria-describedby={pageInput && !requestedPageValid ? "opening-jump-error" : undefined} /></label>
             {pageInput && !requestedPageValid ? <small id="opening-jump-error">请输入 1 到 {options.length}</small> : null}
-            <div><button type="button" onClick={() => closePageJump()}>取消</button><button type="submit" className="primary" disabled={!requestedPageValid}>跳转</button></div>
+            <div><button type="button" onClick={() => closePageJump()}>取消</button><button type="submit" className="primary" disabled={!openingEnabled || !requestedPageValid}>跳转</button></div>
           </form>
         </div>,
         document.body,

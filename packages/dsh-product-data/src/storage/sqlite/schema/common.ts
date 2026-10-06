@@ -10,7 +10,6 @@ export const chatSessions = sqliteTable('chat_sessions', {
   characterName: text('characterName').notNull(),
   characterAvatar: text('characterAvatar').notNull(),
   historyMessageCount: integer('historyMessageCount').notNull(),
-  historyUserMessageCount: integer('historyUserMessageCount').notNull(),
   createdAt: text('createdAt').notNull(),
   updatedAt: text('updatedAt').notNull(),
 })

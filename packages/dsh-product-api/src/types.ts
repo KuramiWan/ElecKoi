@@ -131,6 +131,8 @@ export interface ConversationMessageMetadata {
   dshTurn?: number
   openingOptions?: ConversationOpeningOption[]
   selectedOpeningId?: string
+  /** Client permission derived from the complete DSH input and control projections. */
+  canChangeOpening?: boolean
 }
 
 export interface ConversationRuntimeStateSnapshot {

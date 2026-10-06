@@ -523,7 +523,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
  * @param openingId - 开场白编号。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote selectOpening(conversationId: string, openingId: string): ConversationDetailsMetadata
+@Remote async selectOpening(conversationId: string, openingId: string): Promise<ConversationDetailsMetadata>
 
 /**
  * 修改开场白文本。
@@ -531,7 +531,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
  * @param content - 要保存的完整文本。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote updateOpening(conversationId: string, content: string): ConversationDetailsMetadata
+@Remote async updateOpening(conversationId: string, content: string): Promise<ConversationDetailsMetadata>
 ```
 
 Types: [AuthorConversationState](types-host.md#authorconversationstate) · [ConversationChange](types-host.md#conversationchange) · [ConversationCreateInput](types-host.md#conversationcreateinput) · [ConversationDetailsMetadata](types-host.md#conversationdetailsmetadata) · [ConversationMessageDisplayInput](types-host.md#conversationmessagedisplayinput) · [ConversationMessageDisplayResult](types-host.md#conversationmessagedisplayresult) · [ConversationSummary](types-host.md#conversationsummary) · [VariableViewerTimeline](types-host.md#variableviewertimeline)

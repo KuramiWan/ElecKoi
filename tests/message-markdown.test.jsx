@@ -249,6 +249,7 @@ describe("message markdown presentation", () => {
         role: "assistant",
         content: "开场白一",
         selectedOpeningId: "opening-a",
+        canChangeOpening: true,
         openingOptions: [
           { id: "opening-a", content: "开场白一" },
           { id: "opening-b", content: "开场白二" },
@@ -256,6 +257,7 @@ describe("message markdown presentation", () => {
       },
       name: "角色",
       layoutMode: "roleplay",
+      onSelectOpening: () => {},
     }));
 
     expect(html).toContain('class="opening-pager-prev"');
@@ -319,6 +321,7 @@ describe("message markdown presentation", () => {
         content: "开场白一",
         process: [{ id: "step-1" }],
         selectedOpeningId: "opening-a",
+        canChangeOpening: true,
         openingOptions: [
           { id: "opening-a", content: "开场白一" },
           { id: "opening-b", content: "开场白二" },
@@ -327,6 +330,7 @@ describe("message markdown presentation", () => {
       name: "角色",
       layoutMode: "agent",
       onEdit: () => {},
+      onSelectOpening: () => {},
     }));
 
     expect(html).toContain('class="message theirs message-agent');
