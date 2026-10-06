@@ -10,6 +10,8 @@ import {
   variableConfigVersionContents,
   variableConfigVersions
 } from '@product-data/storage/sqlite/schema/common'
+import { conversationVariableVersionIds, readConversationVariableBinding } from '@product-data/domain/conversations'
+import { openingVariableVersionIds } from '@product-data/domain/settingLibraries'
 import {
   readVariable,
   readVariableObject,
@@ -88,6 +90,15 @@ export class VariableConfigRepository {
     return this.get(characterId, db).initialStateJson
   }
 
+  forConversation(conversationId: string, characterId: string): VariableConfig {
+    const binding = readConversationVariableBinding(conversationId, this.store.db)
+    if (binding.characterId !== characterId) throw new Error('变量配置与聊天所属角色不匹配。')
+    const config = this.get(characterId)
+    const version = config.versions.find((item) => item.id === binding.versionId)
+    if (!version) throw new Error('聊天绑定的变量版本不存在，请恢复对应变量版本。')
+    return activeVariableConfig(characterId, version, config.versions)
+  }
+
   save(characterId: string, input: VariableConfig): VariableConfig {
     const previous = this.get(characterId)
     const saved = this.store.withWriteTx((db) => this.saveInTransaction(characterId, input, db))
@@ -99,6 +110,13 @@ export class VariableConfigRepository {
     if (input.characterId !== characterId) throw new Error('变量配置与角色不匹配。')
     const previous = this.get(characterId, db)
     const normalized = normalizeVariableConfig(characterId, variableConfigSchema.parse(input), previous)
+    const retained = new Set(normalized.versions.map((version) => version.id))
+    if (conversationVariableVersionIds(characterId, db).some((id) => id && !retained.has(id))) {
+      throw new Error('这个变量版本正在被聊天使用，不能删除。')
+    }
+    if (openingVariableVersionIds(characterId, db).some((id) => !retained.has(id))) {
+      throw new Error('这个变量版本已绑定开场白，请先解除绑定再删除。')
+    }
     if (persistedContent(previous) !== persistedContent(normalized)) this.persist(db, normalized)
     return normalized
   }

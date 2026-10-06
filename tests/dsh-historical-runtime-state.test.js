@@ -37,9 +37,10 @@ function runtime() {
       exportConversationArchive: () => saved,
       restoreConversationRuntime: vi.fn(),
       validateConversationRuntimeSnapshot: vi.fn(),
-      snapshotConversationRuntime: vi.fn(() => { throw new Error('must not read current state') })
+      snapshotConversationRuntime: vi.fn(() => ({ variableStateJson: '{"score":99}', settingLibraryStateJson: '[]' }))
     },
     sessionController: {}, sessionProjections: { register: () => () => {} }, agentDefaultModel: {}, llm: {},
+    sessions: { flush: async () => true }, logger: { error: vi.fn() },
     provide(name, service) { this[name] = service }, on(name, listener) { listeners.set(name, listener); return () => {} }
   }
   writeSessionSnapshot(root, 'session', { conversationId: 'chat' })
@@ -48,24 +49,27 @@ function runtime() {
 }
 
 describe('saved old runtime state', () => {
-  it('does not create setting branches by committing the scratch library at turn completion', () => {
+  it('does not create setting branches by committing the scratch library at turn completion', async () => {
     const f = runtime()
     mkdirSync(join(f.root, 'chat'))
-    writeSessionSnapshot(f.root, 'session', { conversationId: 'chat',
+    writeSessionSnapshot(f.root, 'session', { conversationId: 'chat', operationId: 'synthetic-operation',
       settingLibraryEnabled: true, settingStateFile: join(f.root, 'not-a-persisted-setting.json') })
     f.ctx.eleckoiProductData.commitConversationRuntime = vi.fn()
+    let completion
+    f.ctx.eleckoiConversationLifecycle = { matches: () => true, track: (_conversation, _id, operation) => { completion = operation() }, afterSave: async () => {} }
     f.ctx.eleckoiProductData.snapshotConversationRuntime.mockReturnValue({
       variableStateJson: '{}', settingLibraryStateJson: '[]'
     })
     f.listeners.get('session/event')({ id: 'session' }, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
-    expect(f.ctx.eleckoiProductData.commitConversationRuntime).toHaveBeenCalledWith('chat', undefined, undefined, undefined)
+    await completion
+    expect(f.ctx.eleckoiProductData.commitConversationRuntime).toHaveBeenCalledWith('chat', undefined, undefined, undefined, undefined)
     expect(JSON.parse(readFileSync(f.checkpoints, 'utf8')).checkpoints[0].state.settingLibraryStateJson).toBe('[]')
   })
   it('recovers the exact old pre-input variables and settings into the existing checkpoint file', () => {
     const f = runtime()
     const restore = f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1)
     expect(f.ctx.eleckoiProductData.restoreConversationRuntime).not.toHaveBeenCalled()
-    restore()
+    restore.apply()
     expect(f.ctx.eleckoiProductData.restoreConversationRuntime).toHaveBeenCalledWith('chat', {
       variableStateJson: '{"score":2}', settingLibraryStateJson: '[]'
     })
@@ -76,13 +80,13 @@ describe('saved old runtime state', () => {
     // Once converted, normal rewind does not depend on the historical ledger.
     f.saved.tables.agent_responses = []
     expect(() => f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1)).not.toThrow()
-    expect(f.ctx.eleckoiProductData.snapshotConversationRuntime).not.toHaveBeenCalled()
+    expect(f.ctx.eleckoiProductData.snapshotConversationRuntime).toHaveBeenCalled()
   })
 
   it('uses the selected unanswered input state rather than the later native-turn checkpoint', () => {
     const f = runtime()
-    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1)()
-    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1, 'unanswered')()
+    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1).apply()
+    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1, 'unanswered').apply()
     expect(f.ctx.eleckoiProductData.restoreConversationRuntime).toHaveBeenLastCalledWith('chat', {
       variableStateJson: '{"score":1}', settingLibraryStateJson: '[]'
     })
@@ -118,11 +122,11 @@ describe('saved old runtime state', () => {
 
   it('uses the normal checkpoint for a chat without a bound character or exportable archive', () => {
     const f = runtime()
-    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1)()
+    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1).apply()
     f.ctx.eleckoiProductData.readConversationDetails = () => ({ metadata: { characterId: '' } })
     f.ctx.eleckoiProductData.exportConversationArchive = () => { throw new Error('ordinary chat must not export a roleplay archive') }
     const restore = f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1, 'native-input')
-    restore()
+    restore.apply()
     expect(f.ctx.eleckoiProductData.restoreConversationRuntime).toHaveBeenLastCalledWith('chat', {
       variableStateJson: '{"score":2}', settingLibraryStateJson: '[]'
     })
@@ -130,7 +134,7 @@ describe('saved old runtime state', () => {
 
   it('exposes the exact committed variable snapshot for each DSH reply turn', () => {
     const f = runtime()
-    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1)()
+    f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1).apply()
     writeFileSync(f.checkpoints, JSON.stringify({ version: 1, checkpoints: [
       { beforeTurn: 1, state: { variableStateJson: '{"score":0}', settingLibraryStateJson: '[]' } },
       { beforeTurn: 2, state: { variableStateJson: '{"score":1}', settingLibraryStateJson: '[]' } },

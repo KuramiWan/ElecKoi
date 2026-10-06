@@ -17,16 +17,17 @@ describe('conversation opening seed', () => {
         }]
       })
     }
-    const variables = { initialState: () => '{"好感":0}' }
+    const variables = { get: () => ({ activeVersionId: 'version-a', initialStateJson: '{"好感":0}', versions: [{ id: 'version-a', initialStateJson: '{"好感":0}' }] }) }
 
     expect(resolveConversationSeed(
       'card-a', {} as never, settingLibraries as never, variables as never
     )).toEqual({
+      variableVersionId: 'version-a',
       initialVariableStateJson: '{"好感":10}',
       openingText: '主开场',
       openingOptions: [
-        { id: 'backup', title: '备用', content: '备用开场', initialVariableStateJson: '{"好感":0}' },
-        { id: 'primary', title: '主开场', content: '主开场', initialVariableStateJson: '{"好感":10}' },
+        { id: 'backup', title: '备用', content: '备用开场', variableVersionId: 'version-a', initialVariableStateJson: '{"好感":0}' },
+        { id: 'primary', title: '主开场', content: '主开场', variableVersionId: 'version-a', initialVariableStateJson: '{"好感":10}' },
       ],
       selectedOpeningId: 'primary',
     })
@@ -34,13 +35,13 @@ describe('conversation opening seed', () => {
 
   it('does not fall back to the obsolete persona opening field', () => {
     const settingLibraries = { get: () => ({ entries: [] }) }
-    const variables = { initialState: () => '{}' }
+    const variables = { get: () => ({ activeVersionId: 'version-a', initialStateJson: '{}', versions: [{ id: 'version-a', initialStateJson: '{}' }] }) }
 
     expect(resolveConversationSeed(
       'card-a',
       {} as never,
       settingLibraries as never,
       variables as never
-    )).toEqual({ initialVariableStateJson: '{}', openingText: '', openingOptions: [], selectedOpeningId: '' })
+    )).toEqual({ variableVersionId: 'version-a', initialVariableStateJson: '{}', openingText: '', openingOptions: [], selectedOpeningId: '' })
   })
 })

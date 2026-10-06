@@ -10,9 +10,11 @@
 
 ## 插件开发
 
-从 [插件开发文档](plugins/README.md) 开始；第一次写插件先看 [快速入门](plugins/quick-start.md)。查询能力时先看 [接口总表](plugins/api-reference.md)，方法参数与数据字段见 [完整服务参考](plugins/services.md)，跨 Host/Client 调用见 [Remote](plugins/remote.md)。
+从 [插件开发文档](plugins/README.md) 开始；第一次写插件先看 [快速入门](plugins/quick-start.md)。查询能力时使用 [接口总表](plugins/api-reference.md)，跨 Host/Client 调用见 [Remote](plugins/remote.md)。
 
-接口总表由当前仓库的 bundle manifest 自动生成，不能手工维护数量和成员。
+接口总表是 bundle manifest 的导航目录；[Client](plugins/api-client.md)、[Host](plugins/api-host.md)、[Remote](plugins/api-remote.md) 的完整调用参考和数据类型使用锁定 DSH 官方生成器从公开源码生成。数量、成员和参数不能另行手工维护。
+
+- [插件参与聊天流程](plugins/conversation-lifecycle.md)：生成前准备、保存后收尾、消息回退及当前操作等待。
 
 ## 决策与历史
 

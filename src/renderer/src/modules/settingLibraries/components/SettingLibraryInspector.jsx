@@ -5,9 +5,12 @@ import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
 import { OpeningEditor } from "./OpeningEditor.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
 import { SettingLibraryResizer } from "./SettingLibraryResizer.jsx";
+import { DEFAULT_INSPECTOR_WIDTH, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH } from "../model/settingLibraryInspectorSizing.js";
 
 function EntryEditor({
   entry,
+  variableVersions,
+  variableVersionsError,
   entries,
   groups,
   promptPositions,
@@ -20,7 +23,7 @@ function EntryEditor({
   onPromptPositionsChange,
 }) {
   if (entry.kind === "opening") {
-    return <OpeningEditor entry={entry} onChange={onChange} onRequestDelete={onRequestDeleteOpening} />;
+    return <OpeningEditor entry={entry} variableVersions={variableVersions} variableVersionsError={variableVersionsError} onChange={onChange} onRequestDelete={onRequestDeleteOpening} />;
   }
 
   const isReference = entry.dynamicMode === "ejs_reference";
@@ -71,6 +74,8 @@ function fixedEntryContentPlaceholder(entry) {
 export function SettingLibraryInspector({
   selected,
   library,
+  variableVersions,
+  variableVersionsError,
   nameInputRef,
   SelectedIcon,
   onClose,
@@ -82,7 +87,9 @@ export function SettingLibraryInspector({
   onRequestDeleteOpening,
   onPromptPositionsChange,
   allowCustomPromptPositions = false,
-  inspectorWidth = 480,
+  inspectorWidth = DEFAULT_INSPECTOR_WIDTH,
+  inspectorMinWidth = MIN_INSPECTOR_WIDTH,
+  inspectorMaxWidth = MAX_INSPECTOR_WIDTH,
   onResizeStart,
   onResizeKeyDown,
   onResetResize,
@@ -93,8 +100,8 @@ export function SettingLibraryInspector({
       {onResizeStart ? (
         <SettingLibraryResizer
           aria-label="调整编辑器宽度"
-          aria-valuemin={420}
-          aria-valuemax={760}
+          aria-valuemin={inspectorMinWidth}
+          aria-valuemax={inspectorMaxWidth}
           aria-valuenow={Math.round(inspectorWidth)}
           onPointerDown={onResizeStart}
           onKeyDown={onResizeKeyDown}
@@ -119,6 +126,8 @@ export function SettingLibraryInspector({
         ) : (
           <EntryEditor
             entry={selected.value}
+            variableVersions={variableVersions}
+            variableVersionsError={variableVersionsError}
             entries={library.entries}
             groups={library.groups}
             promptPositions={library.promptPositions}

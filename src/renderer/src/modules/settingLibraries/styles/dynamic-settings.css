@@ -250,10 +250,11 @@
   min-width: 0;
   min-height: 0;
   container-type: inline-size;
+  overflow: hidden;
 }
 
 .dynamic-settings-editor-layout.is-inspector-open {
-  grid-template-columns: minmax(56px, 1fr) min(var(--setting-library-inspector-width, 560px), calc(100% - 56px));
+  grid-template-columns: minmax(56px, 1fr) min(var(--setting-library-inspector-width, 760px), calc(100% - 56px));
 }
 
 .dynamic-settings-editor-pane {
@@ -537,7 +538,7 @@
 
 @media (max-width: 760px) {
   .dynamic-settings-editor-layout.is-inspector-open {
-    grid-template-columns: minmax(28px, 1fr) min(var(--setting-library-inspector-width, 560px), calc(100% - 28px));
+    grid-template-columns: minmax(28px, 1fr) min(var(--setting-library-inspector-width, 760px), calc(100% - 28px));
   }
 }
 

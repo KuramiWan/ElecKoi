@@ -217,7 +217,7 @@ describe('ElecKoi built-in bundle details', () => {
                             expect(source, id).toMatch(new RegExp(`(?:["']${escapedId}["']|\\b${escapedId}\\b)\\s*:\\s*\\{\\s*kind\\s*:`));
                         }
                         else if (declaration.kind === 'service') {
-                            expect(source, id).toMatch(new RegExp(`ctx(?:\\.reflect)?\\.provide\\(["']${escapedId}["']`));
+                            expect(source, id).toMatch(new RegExp(`(?:ctx(?:\\.reflect)?\\.provide\\(|super\\(ctx,\\s*)["']${escapedId}["']`));
                         }
                         else if (declaration.kind === 'contribution') {
                             expect(declaration.relation).toBe('contributes');

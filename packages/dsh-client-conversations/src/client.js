@@ -986,6 +986,14 @@ window.__ModuleLoader__.load({
 
       handleChange(change) {
         if (!change || typeof change !== 'object') return
+        if (change.kind === 'generation') {
+          if (change.conversationId !== this.detailsSnapshot.id) return
+          if (change.error) {
+            this.publishStream({ ...this.streamState, id: change.conversationId, status: 'error', error: change.error })
+          }
+          void this.refreshDetails().catch(() => {})
+          return
+        }
         if (change.kind === 'snapshot' || change.kind === 'catalog') {
           const generation = this.generation + 1
           const selectedId = this.detailsSnapshot.id
@@ -1636,7 +1644,7 @@ window.__ModuleLoader__.load({
         }
         try {
           await this.unwrap(
-            await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || ''),
+            await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || '', input.signal),
             '准备 DSH 会话失败。'
           )
           if (!this.sessionReference || this.sessionReference.sessionId !== input.sessionId) {
@@ -1696,8 +1704,8 @@ window.__ModuleLoader__.load({
         const conversationId = input.conversationId
         const runtimeSessionId = this.runtimeSessionId(conversationId) || this.detailsSnapshot.runtimeSessionId
         if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
-        await this.unwrap(
-          await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || ''),
+        const prepared = await this.unwrap(
+          await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || '', input.signal),
           '准备 DSH 会话失败。'
         )
         if (!this.sessionReference || this.sessionReference.sessionId !== runtimeSessionId) {
@@ -1723,6 +1731,9 @@ window.__ModuleLoader__.load({
         if (!accepted?.ok) throw new Error(accepted?.error?.message || '生成请求失败。')
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
+        if (prepared.operationId) {
+          this.unwrap(await this.remote.eleckoiConversations.waitForGeneration(conversationId, prepared.operationId), '等待保存及插件收尾失败。')
+        }
         const details = this.detailsSnapshot.id === conversationId
           ? await this.refreshDetails()
           : this.unwrap(await this.remote.eleckoiConversations.details(conversationId, undefined, undefined), '读取会话详情失败。')
@@ -1811,6 +1822,9 @@ window.__ModuleLoader__.load({
         if (!Number.isSafeInteger(accepted.turn) || accepted.turn < 1) throw new Error('重新生成请求缺少 DSH 执行轮次。')
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId, accepted.turn)
+        if (prepared.operationId) {
+          this.unwrap(await this.remote.eleckoiConversations.waitForGeneration(input.conversationId, prepared.operationId), '等待保存及插件收尾失败。')
+        }
         const details = await this.refreshDetails()
         return {
           details: this.assertDetails(details, input.conversationId),

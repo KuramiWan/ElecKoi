@@ -71,6 +71,7 @@ export interface ConversationSummary extends ConversationRecord {
  */
 export type ConversationChange =
   | { kind: 'snapshot' }
+  | { kind: 'generation'; conversationId: string; error: string }
   | { kind: 'catalog'; conversationId: string; reason: 'created' | 'deleted' }
   | {
       kind: 'messages'
@@ -101,6 +102,7 @@ export interface ConversationOpeningOption {
   id: string
   title: string
   content: string
+  variableVersionId?: string
   displayContent?: string
   initialVariableStateJson: string
 }
@@ -360,6 +362,7 @@ export interface SettingLibraryOpeningMessage {
   id: string
   title: string
   content: string
+  variableVersionId?: string
   initialVariableStateJson: string
 }
 
@@ -736,7 +739,8 @@ export interface ElecKoiProductDataStore {
     conversationId: string,
     variableStateJson: string | undefined,
     settingLibraryStateJson: string | undefined,
-    settingLibraryBaseline: ConversationRuntimePreparation['settingLibraryBaseline']
+    settingLibraryBaseline: ConversationRuntimePreparation['settingLibraryBaseline'],
+    expectedVariableStateJson?: string
   ): void
   snapshotConversationRuntime(conversationId: string): ConversationRuntimeStateSnapshot
   validateConversationRuntimeSnapshot(snapshot: ConversationRuntimeStateSnapshot): void

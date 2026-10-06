@@ -54,7 +54,9 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     return { runtime, previous, mainModel, effectiveToolPolicy, requestedPreset }
   }
 
-  const prepare = async (conversationId, text, creating = false) => {
+  const prepare = async (conversationId, text, creating = false, signal) => {
+    signal?.throwIfAborted()
+    await ctx.eleckoiConversationLifecycle.drain(conversationId)
     const {
       runtime,
       previous,
@@ -70,6 +72,13 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
     mkdirSync(sessionRoot, { recursive: true })
     const nextTurn = creating ? 1 : await nextSessionTurn(ctx, runtime.runtimeSessionId)
+    const operationId = creating ? undefined : randomUUID()
+    if (operationId) {
+      await ctx.eleckoiConversationLifecycle.prepare({
+        operationId, conversationId, runtimeSessionId: runtime.runtimeSessionId, turn: nextTurn,
+        text, model: mainModel, runtime
+      }, signal)
+    }
     writeRuntimeCheckpoint(
       sessionRoot,
       nextTurn,
@@ -91,6 +100,8 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     )
     writeSessionSnapshot(snapshotRoot, runtime.runtimeSessionId, {
       conversationId,
+      ...(operationId ? { operationId } : {}),
+      generationVariableStateJson: ctx.eleckoiProductData.snapshotConversationRuntime(conversationId).variableStateJson,
       runtimeThreadId: runtime.runtimeSessionId,
       mountedPresetId,
       mountedPresetRevision,
@@ -110,11 +121,17 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       historyCompactionInstructions: runtime.agentPreset.historyCompactionInstructions ?? ''
     })
     if (!creating) await presetRegistrar.selectForSession(runtime.runtimeSessionId)
+    signal?.throwIfAborted()
+    if (operationId) ctx.eleckoiConversationLifecycle.begin({
+      operationId, conversationId, runtimeSessionId: runtime.runtimeSessionId, turn: nextTurn
+    })
     return { runtimeSessionId: runtime.runtimeSessionId, presetId: requestedPreset.id }
+
   }
 
   const service = {
     async prepareSessionAccess(conversationId) {
+      await ctx.eleckoiConversationLifecycle.drain(conversationId)
       const prepared = await prepareCurrentPreset(conversationId, '')
       return prepared.runtime.runtimeSessionId
     },
@@ -131,9 +148,15 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       }
       return prepared.runtimeSessionId
     },
-    async preparePrompt(conversationId, text) {
-      const prepared = await prepare(conversationId, text, false)
+    async preparePrompt(conversationId, text, signal) {
+      const prepared = await prepare(conversationId, text, false, signal)
       return prepared.runtimeSessionId
+    },
+    currentOperation(conversationId) {
+      const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
+      const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
+      if (!snapshot.operationId) throw new Error('当前聊天尚未准备生成。')
+      return snapshot.operationId
     },
     async prepareRegeneration(conversationId, text) {
       const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
@@ -146,6 +169,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
           .map(name => join(sessionRoot, name))
       ].map(path => ({ path, content: existsSync(path) ? readFileSync(path) : undefined }))
       const rollback = () => {
+        ctx.eleckoiConversationLifecycle.forget(conversationId)
         ctx.eleckoiProductData.restoreConversationRuntime(conversationId, state)
         for (const file of files) {
           if (file.content === undefined) rmSync(file.path, { force: true })
@@ -154,7 +178,8 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         refreshSettingBranches()
       }
       try {
-        await prepare(conversationId, text, false)
+        await requireIdleSession(ctx, sessionId)
+        await ctx.eleckoiConversationLifecycle.drain(conversationId)
         return { rollback }
       } catch (error) {
         rollback()
@@ -186,15 +211,25 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         ?? (archive && historicalRuntimeState(archive, sessionId, fromTurn))
       if (!state) throw new Error(`缺少第 ${fromTurn} 轮之前的历史运行状态，未修改聊天。`)
       ctx.eleckoiProductData.validateConversationRuntimeSnapshot(state)
-      return () => {
+      const previous = ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
+      const checkpointFile = checkpointPath(sessionRoot)
+      const checkpointContent = existsSync(checkpointFile) ? readFileSync(checkpointFile) : undefined
+      return { state, apply() {
         ctx.eleckoiProductData.restoreConversationRuntime(conversationId, state)
         mkdirSync(sessionRoot, { recursive: true })
         writeRuntimeCheckpoint(sessionRoot, fromTurn, state)
         trimRuntimeCheckpoints(sessionRoot, fromTurn)
         refreshSettingBranches()
-      }
+      }, rollback() {
+        ctx.eleckoiProductData.restoreConversationRuntime(conversationId, previous)
+        if (checkpointContent === undefined) rmSync(checkpointFile, { force: true })
+        else writeAtomically(checkpointFile, checkpointContent)
+        refreshSettingBranches()
+      } }
     },
-    removeArtifacts(conversationId, sessionId) {
+    async removeArtifacts(conversationId, sessionId) {
+      await ctx.eleckoiConversationLifecycle.drain(conversationId)
+      ctx.eleckoiConversationLifecycle.forget(conversationId)
       removeSessionSnapshot(snapshotRoot, sessionId)
       rmSync(join(bridgeRoot, safePathPart(conversationId)), { recursive: true, force: true })
       refreshSettingBranches()
@@ -203,31 +238,44 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   ctx.provide('eleckoiRoleplaySessions', service)
 
   const disposeCommit = ctx.on('session/event', (session, event) => {
-    if (event.type !== 'turn/end' || event.data?.reason?.kind !== 'completed') return
+    if (event.type !== 'turn/end') return
     let snapshot
     try {
       snapshot = readSessionSnapshot(snapshotRoot, session.id)
-      if (snapshot.inheritedFromSessionId) return
-      const variableState = snapshot.variablesEnabled
-        ? readVariableBridgeState(snapshot.variableStateFile)
-        : undefined
-      ctx.eleckoiProductData.commitConversationRuntime(
-        snapshot.conversationId,
-        variableState,
-        undefined,
-        undefined
-      )
+      if (snapshot.inheritedFromSessionId || !snapshot.operationId) return
       const turn = Number(event.data?.turn)
       if (!Number.isSafeInteger(turn) || turn < 1) {
         throw new Error('DSH 完成事件缺少有效轮次。')
       }
-      writeRuntimeCheckpoint(
-        join(bridgeRoot, safePathPart(snapshot.conversationId)),
-        turn + 1,
-        ctx.eleckoiProductData.snapshotConversationRuntime(snapshot.conversationId)
-      )
+      if (!ctx.eleckoiConversationLifecycle.matches(snapshot.conversationId, snapshot.operationId, turn)) return
+      ctx.eleckoiConversationLifecycle.track(snapshot.conversationId, snapshot.operationId, async () => {
+        try {
+          // 下一次准备先等待本次收尾，桥接文件仍属于当前轮次。
+          const variableState = snapshot.variablesEnabled && event.data.reason.kind === 'completed'
+            ? readVariableBridgeState(snapshot.variableStateFile) : undefined
+          if (!await ctx.sessions.flush(session)) throw new Error('DSH Session 没有持久保存服务。')
+          if (event.data.reason.kind === 'completed') {
+            ctx.eleckoiProductData.commitConversationRuntime(snapshot.conversationId, variableState, undefined, undefined, snapshot.generationVariableStateJson)
+            writeRuntimeCheckpoint(join(bridgeRoot, safePathPart(snapshot.conversationId)), turn + 1,
+              ctx.eleckoiProductData.snapshotConversationRuntime(snapshot.conversationId))
+            await ctx.eleckoiConversationLifecycle.afterSave({
+              operationId: snapshot.operationId, conversationId: snapshot.conversationId,
+              runtimeSessionId: session.id, turn
+            })
+          } else if (event.data.reason.kind !== 'aborted') {
+            throw new Error(event.data.reason.error?.message || 'DSH 本轮生成未完成。')
+          }
+        } catch (error) {
+          ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: String(error) })
+          throw error
+        }
+        ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: '' })
+      })
     } catch (error) {
       ctx.logger.error(`ElecKoi 会话运行状态提交失败：${String(error)}`)
+      if (snapshot?.operationId && !snapshot.inheritedFromSessionId) {
+        ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: String(error) })
+      }
     }
   })
   return () => { disposeCommit(); disposeHistoryStats(); disposeTurnOutcomes(); disposeInputContinuations() }

@@ -17,6 +17,7 @@ import { SettingLibraryManager } from "./SettingLibraryManager.jsx";
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingLibraryInspector } from "./SettingLibraryInspector.jsx";
 import { SettingLibraryTree, SettingTreeActionsContext } from "./SettingLibraryTree.jsx";
+import { useInspectorPresence } from "../model/useInspectorPresence.js";
 import { DEFAULT_INSPECTOR_WIDTH, inspectorWidthBounds } from "../model/settingLibraryInspectorSizing.js";
 import {
   PINNED_ENTRY_IDS,
@@ -47,8 +48,9 @@ function nodeIcon(entry) {
   return FileText;
 }
 
-export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, onDirtyChange }, ref) {
+export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, variables, onDirtyChange }, ref) {
   const [library, setLibrary] = useState(null);
+  const [variableSnapshot, setVariableSnapshot] = useState({ value: null, error: "" });
   const [persisted, setPersisted] = useState(null);
   const [selectedKey, setSelectedKey] = useState("");
   const [expandedKeys, setExpandedKeys] = useState([]);
@@ -60,7 +62,8 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saveNotice, setSaveNotice] = useState("");
-  const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
+  const [preferredInspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
+  const [containerWidth, setContainerWidth] = useState(() => window.innerWidth || 1024);
   const [resizeSession, setResizeSession] = useState(null);
   const layoutRef = useRef(null);
   const nameInputRef = useRef(null);
@@ -72,6 +75,25 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const selected = useMemo(() => findSelected(library, selectedKey), [library, selectedKey]);
   const nodes = useMemo(() => treeNodes(library), [library]);
   const searchHasResults = useMemo(() => library ? hasSearchResults(library, query) : false, [library, query]);
+  const inspectorBounds = inspectorWidthBounds(containerWidth);
+  const inspectorWidth = Math.min(inspectorBounds.max, Math.max(inspectorBounds.min, preferredInspectorWidth));
+
+  useEffect(() => {
+    const layout = layoutRef.current;
+    if (!layout) return undefined;
+    const measure = () => {
+      const width = layout.getBoundingClientRect().width;
+      if (width > 0) setContainerWidth(width);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(layout);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [Boolean(library)]);
 
   useEffect(() => {
     if (!resizeSession) return undefined;
@@ -135,6 +157,21 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     });
     return () => { active = false; stop(); };
   }, [characterId, settingLibraries]);
+
+  useEffect(() => {
+    let active = true;
+    setVariableSnapshot({ value: null, error: "" });
+    if (!variables) return undefined;
+    const adopt = (snapshot) => { if (active) setVariableSnapshot(snapshot); };
+    adopt(variables.getSnapshot(characterId));
+    const stop = variables.subscribe((kind, id, snapshot) => {
+      if (kind === "configuration" && id === characterId) adopt(snapshot);
+    });
+    void variables.read(characterId).catch((cause) => {
+      if (active) setVariableSnapshot((current) => ({ ...current, error: cause?.message || "读取变量版本失败" }));
+    });
+    return () => { active = false; stop(); };
+  }, [characterId, variables]);
 
   function changeLibrary(updater) {
     setError("");
@@ -471,7 +508,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   function adjustInspectorWidth(delta) {
     const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
     const { min, max } = inspectorWidthBounds(containerWidth);
-    setInspectorWidth((current) => Math.min(max, Math.max(min, current + delta)));
+    setInspectorWidth(Math.min(max, Math.max(min, inspectorWidth + delta)));
   }
 
   function handleInspectorResizeKeyDown(event) {
@@ -492,15 +529,40 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     }
   }
 
-  if (!library) return <div className="setting-library-loading">{error || "正在读取…"}</div>;
-
   const selectedIcon = selected.kind === "group" ? DshFolderClosedIcon : nodeIcon(selected.value);
   const SelectedIcon = selectedIcon || FileText;
+  const presence = useInspectorPresence(selected.value && !managerOpen ? (
+    <SettingLibraryInspector
+      selected={selected}
+      library={library}
+      variableVersions={variableSnapshot.value?.versions || []}
+      variableVersionsError={variableSnapshot.error}
+      allowCustomPromptPositions={false}
+      nameInputRef={nameInputRef}
+      SelectedIcon={SelectedIcon}
+      onClose={requestCloseInspector}
+      inspectorWidth={inspectorWidth}
+      inspectorMinWidth={inspectorBounds.min}
+      inspectorMaxWidth={inspectorBounds.max}
+      onResizeStart={startInspectorResize}
+      onResizeKeyDown={handleInspectorResizeKeyDown}
+      onResetResize={() => setInspectorWidth(DEFAULT_INSPECTOR_WIDTH)}
+      onUpdateGroup={updateGroup}
+      onDeleteGroup={() => askDelete("group", selected.value.id)}
+      onUpdateEntry={(entry) => updateEntryById(entry.id, entry)}
+      onEntriesChange={(entries) => changeLibrary((current) => ({ ...current, entries }))}
+      onOpenEntry={(entryId) => setSelectedKey(nodeKey("entry", entryId))}
+      onRequestDeleteOpening={askDeleteOpening}
+      onPromptPositionsChange={(promptPositions, entries = library.entries) => changeLibrary((current) => ({ ...current, promptPositions, entries }))}
+    />
+  ) : null);
+
+  if (!library) return <div className="setting-library-loading">{error || "正在读取…"}</div>;
 
   return (
     <section
       ref={layoutRef}
-      className={`setting-library-layout${selected.value && !managerOpen ? " is-inspector-open" : ""}${resizeSession ? " is-resizing" : ""}`}
+      className={`setting-library-layout${presence.content && !managerOpen ? " is-inspector-open" : ""}${resizeSession ? " is-resizing" : ""}`}
       style={{ "--setting-library-inspector-width": `${inspectorWidth}px` }}
       aria-label="设定库"
       onMouseDown={() => setMenuOpen(false)}
@@ -552,26 +614,11 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
           onClose={() => setManagerOpen(false)}
           onError={setError}
         />
-      ) : selected.value ? (
-        <SettingLibraryInspector
-          selected={selected}
-          library={library}
-          allowCustomPromptPositions={false}
-          nameInputRef={nameInputRef}
-          SelectedIcon={SelectedIcon}
-          onClose={requestCloseInspector}
-          inspectorWidth={inspectorWidth}
-          onResizeStart={startInspectorResize}
-          onResizeKeyDown={handleInspectorResizeKeyDown}
-          onResetResize={() => setInspectorWidth(DEFAULT_INSPECTOR_WIDTH)}
-          onUpdateGroup={updateGroup}
-          onDeleteGroup={() => askDelete("group", selected.value.id)}
-          onUpdateEntry={(entry) => updateEntryById(entry.id, entry)}
-          onEntriesChange={(entries) => changeLibrary((current) => ({ ...current, entries }))}
-          onOpenEntry={(entryId) => setSelectedKey(nodeKey("entry", entryId))}
-          onRequestDeleteOpening={askDeleteOpening}
-          onPromptPositionsChange={(promptPositions, entries = library.entries) => changeLibrary((current) => ({ ...current, promptPositions, entries }))}
-        />
+      ) : presence.content ? (
+        <div className={`setting-library-inspector-pane inspector-presence${presence.closing ? " is-closing" : ""}`}
+          inert={presence.closing} onAnimationEnd={presence.onAnimationEnd}>
+          {presence.content}
+        </div>
       ) : null}
 
       {contextMenu ? (

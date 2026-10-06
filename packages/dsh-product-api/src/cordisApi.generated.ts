@@ -325,6 +325,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'eleckoiConversationLifecycle',
+    summary: '按 Cordis 插件生命周期管理聊天参与者，不管理 Agent 分工或模型路由。',
+    description: '按 Cordis 插件生命周期管理聊天参与者，不管理 Agent 分工或模型路由。',
+    methods: [
+      {
+        signature: 'register(participant: ConversationLifecycleParticipant): () => void',
+        description: '注册生成准备、保存收尾和回退处理，停用插件时自动取消并等待正在执行的回调。',
+        parameters: [{ name: 'participant', description: '插件编号和需要参与的处理函数。' }],
+        returns: '注销当前注册项的函数；插件卸载也会自动注销。',
+      },
+    ],
+  },
+  {
     key: 'eleckoiConversationModelsApi',
     summary: '管理所有聊天下一轮共同使用的模型，通过官方 Typert Remote 公开跨端调用。',
     description: '管理所有聊天下一轮共同使用的模型，通过官方 Typert Remote 公开跨端调用。',
@@ -421,10 +434,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote async preparePrompt(conversationId: string, text: string): Promise<{ runtimeSessionId: string }>',
+        signature: '@Remote async preparePrompt(conversationId: string, text: string, signal: AbortSignal): Promise<{ runtimeSessionId: string; operationId: string }>',
         description: '准备本次输入需要的产品配置和官方 Session，不直接生成回复。',
-        parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'text', description: '本次输入或待测试文本。' }],
+        parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'text', description: '本次输入或待测试文本。' }, { name: 'signal', description: '取消准备过程的信号；插件回调也会收到此信号。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
+      },
+      {
+        signature: '@Remote async waitForGeneration(conversationId: string, operationId: string): Promise<void>',
+        description: '等待当前进程本次保存及插件收尾，失败抛出错误；不查询历史或重启前结果。',
+        parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'operationId', description: '生成准备时返回的本次操作编号。' }],
+        returns: '本轮收尾完成；此方法不启动模型，也不重复执行插件。',
       },
       {
         signature: '@Remote async editMessage( conversationId: string, eventSeq: number, role: \'user\' | \'assistant\', content: string ): Promise<ConversationDetailsMetadata>',
@@ -439,7 +458,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote async regenerateMessage( conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string ): Promise<{ runtimeSessionId: string; prepared: true }>',
+        signature: '@Remote async regenerateMessage( conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string ): Promise<{ runtimeSessionId: string; prepared: true; operationId: string }>',
         description: '准备指定用户输入的重新生成，返回待启动请求。',
         parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'eventSeq', description: '官方 Session 中消息的事件序号。' }, { name: 'requestId', description: '本次生成的唯一请求编号。' }, { name: 'replacementMessage', description: '可替换的用户输入；省略时保留原输入。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
@@ -749,7 +768,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConversationChange',
-    declaration: 'export type ConversationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'catalog\';\n    conversationId: string;\n    reason: \'created\' | \'deleted\';\n} | {\n    kind: \'messages\';\n    conversationId: string;\n    reason: \'edited\' | \'deleted\' | \'regenerated\';\n    messageIds: string[];\n};',
+    declaration: 'export type ConversationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'generation\';\n    conversationId: string;\n    error: string;\n} | {\n    kind: \'catalog\';\n    conversationId: string;\n    reason: \'created\' | \'deleted\';\n} | {\n    kind: \'messages\';\n    conversationId: string;\n    reason: \'edited\' | \'deleted\' | \'regenerated\';\n    messageIds: string[];\n};',
   },
   {
     name: 'ConversationCreateInput',
@@ -758,6 +777,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ConversationDetailsMetadata',
     declaration: 'export interface ConversationDetailsMetadata {\n    conversation: ConversationRecord;\n    metadata: ConversationMetadata;\n    runtimeSessionId: string;\n    messages: ConversationMessageMetadata[];\n    hasMore: boolean;\n    beforeSequence: number | null;\n    runtimeVariableStateByTurn?: Record<string, string>;\n}',
+  },
+  {
+    name: 'ConversationLifecycleParticipant',
+    declaration: 'export interface ConversationLifecycleParticipant {\n    readonly id: string;\n    prepare?(input: ConversationPreparation, signal: AbortSignal): void | Promise<void>;\n    afterSave?(input: ConversationSave, signal: AbortSignal): void | Promise<void>;\n    prepareRestore?(input: ConversationRestore, signal: AbortSignal): ConversationRestorePlan | Promise<ConversationRestorePlan>;\n}',
   },
   {
     name: 'ConversationMessageDisplayInput',
@@ -781,15 +804,39 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConversationOpeningOption',
-    declaration: 'export interface ConversationOpeningOption {\n    id: string;\n    title: string;\n    content: string;\n    displayContent?: string;\n    initialVariableStateJson: string;\n}',
+    declaration: 'export interface ConversationOpeningOption {\n    id: string;\n    title: string;\n    content: string;\n    variableVersionId?: string;\n    displayContent?: string;\n    initialVariableStateJson: string;\n}',
+  },
+  {
+    name: 'ConversationPreparation',
+    declaration: 'export interface ConversationPreparation {\n    readonly operationId: string;\n    readonly conversationId: string;\n    readonly runtimeSessionId: string;\n    readonly turn: number;\n    readonly text: string;\n    readonly model: {\n        readonly provider: string;\n        readonly model: string;\n        readonly reasoningEffort?: string;\n    };\n    readonly runtime: Readonly<ConversationRuntimePreparation>;\n}',
   },
   {
     name: 'ConversationRecord',
     declaration: 'export interface ConversationRecord {\n    id: string;\n    title: string;\n    preview: string;\n    createdAt: string;\n    updatedAt: string;\n}',
   },
   {
+    name: 'ConversationRestore',
+    declaration: 'export interface ConversationRestore {\n    readonly operationId: string;\n    readonly conversationId: string;\n    readonly runtimeSessionId: string;\n    readonly reason: \'delete-messages\' | \'regenerate\';\n    readonly fromTurn: number;\n    readonly fromEventSeq: number;\n    readonly state: Readonly<ConversationRuntimeStateSnapshot>;\n}',
+  },
+  {
+    name: 'ConversationRestorePlan',
+    declaration: 'export interface ConversationRestorePlan {\n    apply(): void | Promise<void>;\n    rollback(): void | Promise<void>;\n}',
+  },
+  {
+    name: 'ConversationRuntimePreparation',
+    declaration: 'export interface ConversationRuntimePreparation {\n    conversationId: string;\n    runtimeSessionId: string;\n    variableContext?: {\n        initialStateJson: string;\n        schemaCode: string;\n        objects: VariableObjectConfig[];\n        variables: VariableItemConfig[];\n        stateJson: string;\n    };\n    conversationContext: {\n        characterId: string;\n        characterName: string;\n        persona: Record<string, unknown>;\n        history: Array<{\n            role: \'user\' | \'assistant\';\n            content: string;\n            speakerName?: string;\n        }>;\n        historyMode: \'prefix\';\n        currentPromptText: string;\n        settingLibrary?: ConversationRuntimeSettingLibrary;\n    };\n    disabledToolGroupIds: string[];\n    agentPreset: {\n        id: string;\n        versionId: string;\n        name: string;\n        roleplayPlan: {\n            steps: string[];\n        };\n        historyCompactionInstructions?: string;\n    };\n    settingLibraryBaseline?: {\n        source: ConversationRuntimeSettingLibrary;\n        projected: ConversationRuntimeSettingLibrary;\n    };\n}',
+  },
+  {
     name: 'ConversationRuntimeSettingLibrary',
     declaration: 'export interface ConversationRuntimeSettingLibrary {\n    characterId: string;\n    name: string;\n    entries: SettingLibraryEntry[];\n    groups: SettingLibraryGroup[];\n    promptPositions: SettingLibraryPromptPosition[];\n}',
+  },
+  {
+    name: 'ConversationRuntimeStateSnapshot',
+    declaration: 'export interface ConversationRuntimeStateSnapshot {\n    variableStateJson: string;\n    settingLibraryStateJson: string;\n}',
+  },
+  {
+    name: 'ConversationSave',
+    declaration: 'export interface ConversationSave {\n    readonly operationId: string;\n    readonly conversationId: string;\n    readonly runtimeSessionId: string;\n    readonly turn: number;\n}',
   },
   {
     name: 'ConversationSummary',
@@ -893,7 +940,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SettingLibraryOpeningMessage',
-    declaration: 'export interface SettingLibraryOpeningMessage {\n    id: string;\n    title: string;\n    content: string;\n    initialVariableStateJson: string;\n}',
+    declaration: 'export interface SettingLibraryOpeningMessage {\n    id: string;\n    title: string;\n    content: string;\n    variableVersionId?: string;\n    initialVariableStateJson: string;\n}',
   },
   {
     name: 'SettingLibraryPosition',

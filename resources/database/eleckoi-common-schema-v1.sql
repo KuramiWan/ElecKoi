@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS `regex_state` (`singletonId` INTEGER NOT NULL, `activ
 
 CREATE INDEX IF NOT EXISTS `index_regex_state_activeVersionId` ON `regex_state` (`activeVersionId`);
 
-CREATE TABLE IF NOT EXISTS `agent_conversations` (`id` TEXT NOT NULL, `activeBranchId` TEXT NOT NULL, `runtimeThreadId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`));
+CREATE TABLE IF NOT EXISTS `agent_conversations` (`id` TEXT NOT NULL, `activeBranchId` TEXT NOT NULL, `runtimeThreadId` TEXT NOT NULL DEFAULT '', `variableVersionId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`));
 
 CREATE INDEX IF NOT EXISTS `index_agent_conversations_activeBranchId` ON `agent_conversations` (`activeBranchId`);
 
@@ -169,6 +169,7 @@ CREATE VIEW `setting_library_version_entries` AS SELECT link.characterId, link.v
         JOIN setting_entry_contents AS content ON content.characterId = link.characterId
           AND content.entryId = link.entryId AND content.revisionId = link.revisionId;
 
-PRAGMA user_version = 8;
+
+PRAGMA user_version = 9;
 
 COMMIT;

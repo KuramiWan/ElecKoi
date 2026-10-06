@@ -1,4 +1,7 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
+import { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
+export { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
+export type { ConversationPreparation, ConversationSave, ConversationRestore, ConversationRestorePlan, ConversationLifecycleParticipant } from './conversationLifecycle.js'
 import { registerHostApiInspect } from './hostInspect.js'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -160,16 +163,22 @@ declare module '@deepseek-ai/cordis' {
     eleckoiCharacterConfigurationChanges: CharacterConfigurationChangeFeed
     eleckoiProductRecordChanges: ProductRecordChangeFeed
     eleckoiProductData: ElecKoiProductDataStore
+    eleckoiConversationLifecycle: ElecKoiConversationLifecycle
     eleckoiRoleplaySessions: {
       create(conversationId: string): Promise<string>
       prepareSessionAccess(conversationId: string): Promise<string>
-      preparePrompt(conversationId: string, text: string): Promise<string>
+      preparePrompt(conversationId: string, text: string, signal?: AbortSignal): Promise<string>
+      currentOperation(conversationId: string): string
       prepareRegeneration(conversationId: string, text: string): Promise<{
         rollback(): void
       }>
       variableStatesByTurn(conversationId: string): Record<string, string>
-      prepareRestoreBeforeTurn(conversationId: string, sessionId: string, fromTurn: number, beforeMessageId?: string): () => void
-      removeArtifacts(conversationId: string, sessionId: string): void
+      prepareRestoreBeforeTurn(conversationId: string, sessionId: string, fromTurn: number, beforeMessageId?: string): {
+        state: import('./types.js').ConversationRuntimeStateSnapshot
+        apply(): void
+        rollback(): void
+      }
+      removeArtifacts(conversationId: string, sessionId: string): Promise<void>
     }
     eleckoiSessionEditor: ElecKoiSessionEditor
   }
@@ -423,6 +432,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     'sessionController',
     'sessionPersistence',
     'eleckoiProductData',
+    'eleckoiConversationLifecycle',
     'eleckoiRoleplaySessions',
     'eleckoiSessionEditor',
     'eleckoiConversationChanges'
@@ -703,7 +713,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   async delete(conversationId: string): Promise<void> {
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
     await this.ownerContext.eleckoiSessionEditor.deleteSession(runtimeSessionId)
-    this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversationId, runtimeSessionId)
+    await this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversationId, runtimeSessionId)
     await this.productData.deleteConversation(conversationId)
     this.changeFeed.publish({ kind: 'catalog', conversationId, reason: 'deleted' })
   }
@@ -712,12 +722,27 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
    * 准备本次输入需要的产品配置和官方 Session，不直接生成回复。
    * @param conversationId - ElecKoi 聊天编号。
    * @param text - 本次输入或待测试文本。
+   * @param signal - 取消准备过程的信号；插件回调也会收到此信号。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  async preparePrompt(conversationId: string, text: string): Promise<{ runtimeSessionId: string }> {
-    const runtimeSessionId = await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, text)
-    return { runtimeSessionId }
+  async preparePrompt(conversationId: string, text: string, signal: AbortSignal): Promise<{ runtimeSessionId: string; operationId: string }> {
+    return this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
+      const runtimeSessionId = await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, text, signal)
+      return { runtimeSessionId, operationId: this.ownerContext.eleckoiRoleplaySessions.currentOperation(conversationId) }
+    })
+  }
+
+  /**
+   * 等待当前进程本次保存及插件收尾，失败抛出错误；不查询历史或重启前结果。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param operationId - 生成准备时返回的本次操作编号。
+   * @returns 本轮收尾完成；此方法不启动模型，也不重复执行插件。
+   */
+  @Remote
+  async waitForGeneration(conversationId: string, operationId: string): Promise<void> {
+    this.productData.runtimeSessionId(conversationId)
+    await this.ownerContext.eleckoiConversationLifecycle.wait(conversationId, operationId)
   }
 
   /**
@@ -763,40 +788,50 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     deletedMessageCount: number
     remainingMessageCount: number
   }> {
-    const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
-    await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
-    const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
-    const target = requireSessionMessage(inspection, eventSeq, role)
-    const fromTurn = sessionMessageTurn(inspection.events, target.index)
-    const visible = visibleSessionMessages(inspection.events)
-    const selectedVisibleIndex = visible.findIndex(item => item.seq === eventSeq)
-    if (selectedVisibleIndex < 0) throw new Error('找不到要删除的 DSH 消息。')
-    const retainedUser = role === 'assistant'
-      ? directUserMessageBeforeTurn(inspection.events, target.index, fromTurn)
-      : undefined
-    const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
-      conversationId,
-      runtimeSessionId,
-      fromTurn,
-      historicalInputId(inspection.events, target.index)
-    )
-    const retainedSeq = retainedUser?.seq
-    const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(
-      runtimeSessionId, fromTurn, retainedSeq === undefined ? eventSeq : Number(retainedSeq), retainedSeq !== undefined
-    )
-    if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
-    restoreRuntime()
-    this.changeFeed.publish({
-      kind: 'messages',
-      conversationId,
-      reason: 'deleted',
-      messageIds: visible.slice(selectedVisibleIndex).map(item => String(item.seq))
+    return this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
+      const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+      await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
+      const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
+      const target = requireSessionMessage(inspection, eventSeq, role)
+      const fromTurn = sessionMessageTurn(inspection.events, target.index)
+      const visible = visibleSessionMessages(inspection.events)
+      const selectedVisibleIndex = visible.findIndex(item => item.seq === eventSeq)
+      if (selectedVisibleIndex < 0) throw new Error('找不到要删除的 DSH 消息。')
+      const retainedUser = role === 'assistant'
+        ? directUserMessageBeforeTurn(inspection.events, target.index, fromTurn)
+        : undefined
+      const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
+        conversationId,
+        runtimeSessionId,
+        fromTurn,
+        historicalInputId(inspection.events, target.index)
+      )
+      const retainedSeq = retainedUser?.seq
+      try {
+        await this.ownerContext.eleckoiSessionEditor.transaction(runtimeSessionId, () =>
+          this.ownerContext.eleckoiConversationLifecycle.restore({
+            operationId: randomUUID(), conversationId, runtimeSessionId, reason: 'delete-messages',
+            fromTurn, fromEventSeq: eventSeq, state: restoreRuntime.state
+          }, async () => {
+            const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(
+              runtimeSessionId, fromTurn, retainedSeq === undefined ? eventSeq : Number(retainedSeq), retainedSeq !== undefined
+            )
+            if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
+            restoreRuntime.apply()
+          }))
+      } catch (error) { restoreRuntime.rollback(); throw error }
+      this.changeFeed.publish({
+        kind: 'messages',
+        conversationId,
+        reason: 'deleted',
+        messageIds: visible.slice(selectedVisibleIndex).map(item => String(item.seq))
+      })
+      return {
+        details: this.productData.readConversationDetails(conversationId),
+        deletedMessageCount: visible.length - selectedVisibleIndex,
+        remainingMessageCount: selectedVisibleIndex
+      }
     })
-    return {
-      details: this.productData.readConversationDetails(conversationId),
-      deletedMessageCount: visible.length - selectedVisibleIndex,
-      remainingMessageCount: selectedVisibleIndex
-    }
   }
 
   /**
@@ -813,42 +848,47 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     eventSeq: number,
     requestId: string,
     replacementMessage?: string
-  ): Promise<{ runtimeSessionId: string; prepared: true }> {
-    if (!requestId.trim()) throw new Error('重新生成请求缺少有效标识。')
-    const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
-    await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
-    const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
-    const target = requireSessionMessage(inspection, eventSeq, 'user')
-    const fromTurn = sessionMessageTurn(inspection.events, target.index)
-    const inputMessageId = String(jsonRecord(target.event.data).id ?? '')
-    if (!inputMessageId) throw new Error('重新生成的用户事件缺少消息标识。')
-    const promptText = replacementMessage ?? sessionMessageText(target.event)
-    if (replacementMessage !== undefined && !replacementMessage.trim()) throw new Error('重新生成的用户输入不能为空。')
-    const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
-      conversationId,
-      runtimeSessionId,
-      fromTurn,
-      historicalInputId(inspection.events, target.index)
-    )
-    const preparation = await this.ownerContext.eleckoiRoleplaySessions.prepareRegeneration(conversationId, promptText)
-    try {
-      await this.ownerContext.eleckoiSessionEditor.transaction(runtimeSessionId, async () => {
-        if (replacementMessage !== undefined) {
-          await this.ownerContext.eleckoiSessionEditor.editMessage(runtimeSessionId, eventSeq, 'user', replacementMessage)
-        }
-        const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq, true)
-        if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
-        restoreRuntime()
-        await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
-      })
-    } catch (error) {
-      preparation.rollback()
-      this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: [String(eventSeq)] })
-      throw error
-    }
-    this.pendingRegenerations.set(conversationId, { requestId, inputMessageId, inputEventSeq: eventSeq })
-    this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'regenerated', messageIds: [String(eventSeq)] })
-    return { runtimeSessionId, prepared: true }
+  ): Promise<{ runtimeSessionId: string; prepared: true; operationId: string }> {
+    return this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
+      if (!requestId.trim()) throw new Error('重新生成请求缺少有效标识。')
+      const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+      await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
+      const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
+      const target = requireSessionMessage(inspection, eventSeq, 'user')
+      const fromTurn = sessionMessageTurn(inspection.events, target.index)
+      const inputMessageId = String(jsonRecord(target.event.data).id ?? '')
+      if (!inputMessageId) throw new Error('重新生成的用户事件缺少消息标识。')
+      const promptText = replacementMessage ?? sessionMessageText(target.event)
+      if (replacementMessage !== undefined && !replacementMessage.trim()) throw new Error('重新生成的用户输入不能为空。')
+      const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
+        conversationId,
+        runtimeSessionId,
+        fromTurn,
+        historicalInputId(inspection.events, target.index)
+      )
+      const preparation = await this.ownerContext.eleckoiRoleplaySessions.prepareRegeneration(conversationId, promptText)
+      try {
+        await this.ownerContext.eleckoiSessionEditor.transaction(runtimeSessionId, () => this.ownerContext.eleckoiConversationLifecycle.restore({
+          operationId: randomUUID(), conversationId, runtimeSessionId, reason: 'regenerate',
+          fromTurn, fromEventSeq: eventSeq, state: restoreRuntime.state
+        }, async () => {
+          if (replacementMessage !== undefined) {
+            await this.ownerContext.eleckoiSessionEditor.editMessage(runtimeSessionId, eventSeq, 'user', replacementMessage)
+          }
+          const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq, true)
+          if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
+          restoreRuntime.apply()
+          await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
+        }))
+      } catch (error) {
+        preparation.rollback()
+        this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: [String(eventSeq)] })
+        throw error
+      }
+      this.pendingRegenerations.set(conversationId, { requestId, inputMessageId, inputEventSeq: eventSeq })
+      this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'regenerated', messageIds: [String(eventSeq)] })
+      return { runtimeSessionId, prepared: true, operationId: this.ownerContext.eleckoiRoleplaySessions.currentOperation(conversationId) }
+    })
   }
 
   /**
@@ -1407,7 +1447,7 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
       .filter(item => deleting.has(item.metadata.characterId))
     for (const conversation of conversations) {
       await this.ownerContext.eleckoiSessionEditor.deleteSession(conversation.runtimeSessionId)
-      this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversation.id, conversation.runtimeSessionId)
+      await this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversation.id, conversation.runtimeSessionId)
     }
     const collection = this.productData.deleteCharacters(characterIds)
     this.publishChange(characterIds)
@@ -1990,6 +2030,7 @@ const eleckoiProductApiPlugin = {
     ctx.provide('eleckoiConversationChanges', new ConversationChangeFeed())
     ctx.provide('eleckoiCharacterConfigurationChanges', new CharacterConfigurationChangeFeed())
     ctx.provide('eleckoiProductRecordChanges', new ProductRecordChangeFeed())
+    await ctx.plugin(ElecKoiConversationLifecycle)
     await ctx.plugin(ElecKoiSystemApi)
     await ctx.plugin(ElecKoiCharactersApi)
     await ctx.plugin(ElecKoiPersonaApi)

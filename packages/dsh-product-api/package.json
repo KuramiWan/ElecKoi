@@ -94,6 +94,17 @@
   "eleckoi": {
     "developerInterfaces": [
       {
+        "id": "eleckoiConversationLifecycle",
+        "kind": "service",
+        "title": "聊天流程参与",
+        "description": "Host 插件注册生成前准备、保存后收尾及消息回退处理，回调完成后继续原流程。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": ["register"],
+        "owner": "eleckoiConversationLifecycle"
+      },
+      {
         "id": "eleckoiSystem",
         "kind": "remote",
         "title": "桌面运行状态",
@@ -310,6 +321,7 @@
           "create",
           "delete",
           "preparePrompt",
+          "waitForGeneration",
           "editMessage",
           "deleteMessagesFrom",
           "regenerateMessage",

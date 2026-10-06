@@ -57,6 +57,7 @@ export interface OpeningMessageOption {
   id: string
   title: string
   content: string
+  variableVersionId?: string
   displayContent?: string
   initialVariableStateJson: string
 }

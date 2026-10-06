@@ -24,7 +24,7 @@ function versionLabel(version) {
 
 function suggestedVersionName(config, sourceId) {
   const source = config.versions.find((version) => version.id === sourceId);
-  const base = source ? `${version.name.trim() || "未命名版本"} · 副本` : "新版本";
+  const base = source ? `${source.name.trim() || "未命名版本"} · 副本` : "新版本";
   return uniqueVariableName(base, new Set(config.versions.map((version) => version.name.trim())));
 }
 

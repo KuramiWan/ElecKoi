@@ -12,7 +12,7 @@ import { ACTIVE_RUNTIME_PRESET_ID, installRoleplaySessionRuntime } from './sessi
 import { refreshSessionModelSnapshot } from './model-selection-migration.mjs'
 
 export const name = 'eleckoi-agent-preset-bridge'
-export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'llm', 'settings', 'sessionController']
+export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'llm', 'settings', 'sessionController', 'sessions', 'eleckoiConversationLifecycle']
 
 export async function apply(ctx) {
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT

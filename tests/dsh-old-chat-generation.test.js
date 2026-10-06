@@ -13,7 +13,7 @@ import TypertGatewayService from '@deepseek-ai/dsh-api-gateway'
 import { afterEach, describe, expect, it } from 'vitest'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { ConversationChangeFeed, ElecKoiConversationsApi } from '@eleckoi/dsh-product-api'
+import { ConversationChangeFeed, ElecKoiConversationsApi, ElecKoiConversationLifecycle } from '@eleckoi/dsh-product-api'
 import { TYPERT } from '@eleckoi/dsh-product-api/typert'
 import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
 import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
@@ -156,6 +156,7 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
     }
   })
   await ctx.plugin(productDataPlugin)
+  await ctx.plugin(ElecKoiConversationLifecycle)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(piAi, { providers: { test: { api: 'openai-responses', baseURL: 'http://127.0.0.1:1/v1',
     apiKeyEnv: 'SYNTHETIC_KEY', models: [{ id: 'test', contextWindow: 100000, maxTokens: 8000 }] } } })
@@ -168,7 +169,7 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
   cleanups.push(installRoleplaySessionRuntime(ctx, {
     prepareForSession: async () => undefined,
     selectForSession: async () => {
-      if (failPreparation && ++preparationCount === 2) throw new Error('Synthetic preparation failure')
+      if (failPreparation && ++preparationCount === 1) throw new Error('Synthetic preparation failure')
     }
   }))
   cleanups.push(ctx.typert.register(TYPERT))
@@ -202,7 +203,7 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
     await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'regenerateMessage',
       args: { conversationId: f.conversationId, eventSeq: f.userEvent.seq,
         requestId: 'synthetic-regeneration', replacementMessage: '合成替换输入' } }))
-      .resolves.toEqual({ runtimeSessionId: f.conversationId, prepared: true })
+      .resolves.toMatchObject({ runtimeSessionId: f.conversationId, prepared: true, operationId: expect.any(String) })
     expect(readDshSessionLog(f.sessionRoot, f.conversationId).events
       .filter(event => event.type === 'assistant/message')).toHaveLength(0)
     expect(contextBridge(f)).toMatchObject({ historyMode: 'prefix', currentUserInput: '合成替换输入',

@@ -50,23 +50,91 @@ function harness() {
 function card(id = 'card-a') {
   return { id, name: id, group: '', persona: { assistant_name: id, assistant_avatar: '', assistant_cover: '', opening: 'opening', show_opening: true } }
 }
+
+const unreleasedGenerationTableSql = 'CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )'
+
+describe('unreleased database baseline consolidation', () => {
+  it.each([9, 10])('removes the unused table from development v%s and preserves product records across reopen', (version) => {
+    const { path, database, conversations } = harness()
+    const conversationId = conversations.create({ title: '合成迁移聊天' }).conversation.id
+    new VariableStateRepository(database, new VariableConfigRepository(database)).replaceCurrent(conversationId, '{"score":7}')
+    database.close()
+    const legacy = new Database(path)
+    legacy.exec(unreleasedGenerationTableSql)
+    legacy.prepare('INSERT INTO conversation_generation_results VALUES (?,?,?)').run('synthetic-operation', conversationId, '{}')
+    if (version === 9) legacy.exec('ALTER TABLE agent_conversations DROP COLUMN variableVersionId')
+    legacy.pragma(`user_version = ${version}`)
+    const before = productRecords(legacy)
+    legacy.close()
+    const reopened = new SqliteDatabase(path)
+    reopened.open()
+    try {
+      expect(reopened.native.pragma('user_version', { simple: true })).toBe(9)
+      expect(reopened.native.prepare("SELECT 1 FROM sqlite_master WHERE name='conversation_generation_results'").get()).toBeUndefined()
+      expect(productRecords(reopened.native)).toEqual(before)
+      expect(new ConversationRepository(reopened).get(conversationId).title).toBe('合成迁移聊天')
+      expect(JSON.parse(new VariableStateRepository(reopened, new VariableConfigRepository(reopened)).viewerStates(conversationId).currentStateJson)).toEqual({ score: 7 })
+      expect(reopened.native.pragma('foreign_key_check')).toEqual([])
+      expect(reopened.native.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally { reopened.close() }
+    reopened.open()
+    try {
+      expect(reopened.native.pragma('user_version', { simple: true })).toBe(9)
+      expect(productRecords(reopened.native)).toEqual(before)
+    } finally { reopened.close() }
+  }, 30_000)
+
+  it('rolls back removal and column changes together when development v9 consolidation fails', () => {
+    const { path, database, conversations } = harness()
+    conversations.create({ title: '合成回滚聊天' })
+    database.close()
+    const legacy = new Database(path)
+    try {
+      legacy.exec(`${unreleasedGenerationTableSql}; ALTER TABLE agent_conversations DROP COLUMN variableVersionId;
+        CREATE TRIGGER synthetic_binding_failure BEFORE UPDATE ON agent_conversations BEGIN SELECT RAISE(ABORT, 'synthetic update failure'); END;
+        PRAGMA user_version = 9;`)
+      const schema = schemaObjects(legacy)
+      const records = productRecords(legacy)
+      expect(() => installSchema(legacy)).toThrow('synthetic update failure')
+      expect(schemaObjects(legacy)).toEqual(schema)
+      expect(productRecords(legacy)).toEqual(records)
+      expect(legacy.pragma('user_version', { simple: true })).toBe(9)
+    } finally { legacy.close() }
+  }, 30_000)
+
+  it('rejects an unknown development v10 table shape without deleting data', () => {
+    const { path, database } = harness()
+    database.close()
+    const legacy = new Database(path)
+    try {
+      legacy.exec('CREATE TABLE conversation_generation_results (unexpected TEXT); INSERT INTO conversation_generation_results VALUES (\'preserved\'); PRAGMA user_version = 10;')
+      const schema = schemaObjects(legacy)
+      expect(() => installSchema(legacy)).toThrow('生成结果表结构不匹配')
+      expect(schemaObjects(legacy)).toEqual(schema)
+      expect(legacy.prepare('SELECT unexpected FROM conversation_generation_results').get()).toEqual({ unexpected: 'preserved' })
+      expect(legacy.pragma('user_version', { simple: true })).toBe(10)
+    } finally { legacy.close() }
+  }, 30_000)
+})
 function schemaObjects(db: Database.Database) {
   return db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
 }
 
 // Older fixtures must retain the released table shape until the v7 → v8 step.
 const schemaV7Sql = commonSchemaSql
+  .replace(", `variableVersionId` TEXT NOT NULL DEFAULT ''", '')
   .replace(/^CREATE TABLE IF NOT EXISTS `chat_sessions` .*;$/m,
     'CREATE TABLE IF NOT EXISTS `chat_sessions` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `characterId` TEXT NOT NULL, `characterName` TEXT NOT NULL, `characterAvatar` TEXT NOT NULL, `historyMessageCount` INTEGER NOT NULL, `historyUserMessageCount` INTEGER NOT NULL, `createdAt` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`id`));')
   .replace(/^PRAGMA user_version = \d+;$/m, 'PRAGMA user_version = 7;')
 
 function productRecords(database: Database.Database) {
-  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> 'conversation_generation_results' ORDER BY name")
     .all() as { name: string }[]
   return Object.fromEntries(tables.map(({ name }) => [name,
     (database.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[])
       .map((row) => Object.fromEntries(Object.entries(row)
-        .filter(([key]) => name !== 'chat_sessions' || key !== 'historyUserMessageCount')))
+        .filter(([key]) => (name !== 'chat_sessions' || key !== 'historyUserMessageCount')
+          && (name !== 'agent_conversations' || key !== 'variableVersionId'))))
   ]))
 }
 
@@ -245,7 +313,7 @@ describe('shared SQLite baseline', () => {
       const database = new SqliteDatabase(path)
       try {
         database.open()
-        expect(database.native.pragma('user_version', { simple: true })).toBe(8)
+        expect(database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
         expect((database.native.pragma('table_info(chat_sessions)') as { name: string }[]).map(column => column.name))
           .not.toContain('historyUserMessageCount')
         expect(productRecords(database.native)).toEqual(expected!)
@@ -293,7 +361,7 @@ describe('shared SQLite baseline', () => {
         historyMessageCount: 2, historyUserMessageCount: 1, createdAt: 'created', updatedAt: 'updated'
       })
       installSchema(reopened)
-      expect(reopened.pragma('user_version', { simple: true })).toBe(8)
+      expect(reopened.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(reopened.pragma('foreign_key_check')).toEqual([])
       expect(reopened.pragma('integrity_check', { simple: true })).toBe('ok')
     } finally { reopened.close() }
@@ -433,7 +501,7 @@ describe('shared SQLite baseline', () => {
       expect(Object.values(getTableColumns(table)).map((column) => column.name)).toEqual(fields.map((column) => column.name))
     }
     expect(database.native.pragma('foreign_keys', { simple: true })).toBe(1)
-    expect(database.native.pragma('user_version', { simple: true })).toBe(8)
+    expect(database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
     expect((database.native.pragma('table_info(chat_sessions)') as { name: string }[]).map(column => column.name))
       .not.toContain('historyUserMessageCount')
     expect(database.native.pragma('secure_delete', { simple: true })).toBe(2)

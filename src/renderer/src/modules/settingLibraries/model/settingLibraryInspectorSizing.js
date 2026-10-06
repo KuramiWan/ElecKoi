@@ -1,6 +1,6 @@
-export const DEFAULT_INSPECTOR_WIDTH = 560;
-export const MIN_INSPECTOR_WIDTH = 420;
-export const MAX_INSPECTOR_WIDTH = 760;
+export const DEFAULT_INSPECTOR_WIDTH = 760;
+export const MIN_INSPECTOR_WIDTH = 520;
+export const MAX_INSPECTOR_WIDTH = 1040;
 
 export function inspectorWidthBounds(containerWidth) {
   const availableWidth = Math.max(280, Number(containerWidth) || window.innerWidth || 1280);

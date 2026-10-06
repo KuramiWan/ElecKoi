@@ -345,6 +345,25 @@ Types: [CharacterCollection](types-host.md#charactercollection) · [CharacterExp
 
 Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
 
+<a id="ctxeleckoiconversationlifecycle--eleckoiconversationlifecycle"></a>
+
+### `ctx.eleckoiConversationLifecycle` — `ElecKoiConversationLifecycle`
+
+按 Cordis 插件生命周期管理聊天参与者，不管理 Agent 分工或模型路由。
+
+```ts cordis-catalog
+/**
+ * 注册生成准备、保存收尾和回退处理，停用插件时自动取消并等待正在执行的回调。
+ * @param participant - 插件编号和需要参与的处理函数。
+ * @returns 注销当前注册项的函数；插件卸载也会自动注销。
+ */
+register(participant: ConversationLifecycleParticipant): () => void
+```
+
+Types: [ConversationLifecycleParticipant](types-host.md#conversationlifecycleparticipant)
+
+Source: [`packages/dsh-product-api/src/conversationLifecycle.ts`](../../packages/dsh-product-api/src/conversationLifecycle.ts)
+
 <a id="ctxeleckoiconversationmodelsapi--eleckoiconversationmodelsapi"></a>
 
 ### `ctx.eleckoiConversationModelsApi` — `ElecKoiConversationModelsApi`
@@ -475,9 +494,18 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
  * 准备本次输入需要的产品配置和官方 Session，不直接生成回复。
  * @param conversationId - ElecKoi 聊天编号。
  * @param text - 本次输入或待测试文本。
+ * @param signal - 取消准备过程的信号；插件回调也会收到此信号。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote async preparePrompt(conversationId: string, text: string): Promise<{ runtimeSessionId: string }>
+@Remote async preparePrompt(conversationId: string, text: string, signal: AbortSignal): Promise<{ runtimeSessionId: string; operationId: string }>
+
+/**
+ * 等待当前进程本次保存及插件收尾，失败抛出错误；不查询历史或重启前结果。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param operationId - 生成准备时返回的本次操作编号。
+ * @returns 本轮收尾完成；此方法不启动模型，也不重复执行插件。
+ */
+@Remote async waitForGeneration(conversationId: string, operationId: string): Promise<void>
 
 /**
  * 修改同一 Session 中指定消息并刷新投影。
@@ -506,7 +534,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
  * @param replacementMessage - 可替换的用户输入；省略时保留原输入。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote async regenerateMessage( conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string ): Promise<{ runtimeSessionId: string; prepared: true }>
+@Remote async regenerateMessage( conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string ): Promise<{ runtimeSessionId: string; prepared: true; operationId: string }>
 
 /**
  * 从已保留的用户事件启动重新生成；取消时保留用户输入，不启动新的回复。

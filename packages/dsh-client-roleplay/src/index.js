@@ -11,6 +11,8 @@ export const inject = [
   'llm',
   'settings',
   'sessionController',
+  'sessions',
+  'eleckoiConversationLifecycle',
   'sessionProjections'
 ]
 

@@ -127,6 +127,19 @@ export class ConversationArchiveRepository {
             row.characterName = character.name
             row.characterAvatar = character.avatar
           }
+          if (table === 'agent_conversations') {
+            if (row.variableVersionId === undefined) {
+              const config = this.store.native.prepare('SELECT activeVersionId FROM variable_configs WHERE characterId=?')
+                .get(characterId) as { activeVersionId: string } | undefined
+              row.variableVersionId = config?.activeVersionId || 'variable-config-default'
+            }
+            if (typeof row.variableVersionId !== 'string' || !row.variableVersionId
+              || (!this.store.native.prepare('SELECT 1 FROM variable_config_versions WHERE characterId=? AND versionId=?')
+                .get(characterId, row.variableVersionId) && !(row.variableVersionId === 'variable-config-default'
+                  && !this.store.native.prepare('SELECT 1 FROM variable_configs WHERE characterId=?').get(characterId)))) {
+              throw new Error('聊天记录绑定的变量版本不存在，请先恢复对应变量配置。')
+            }
+          }
           const keys = Object.keys(row)
           if (keys.length === 0) throw new Error('聊天记录数据格式不正确。')
           this.store.native.prepare(`INSERT INTO ${table} (${keys.map((key) => `"${key}"`).join(',')}) VALUES (${keys.map(() => '?').join(',')})`)

@@ -14,6 +14,7 @@ import {
   settingLibraryVersionGroups,
   settingLibraryVersions
 } from '@product-data/storage/sqlite/schema/common'
+import { variableConfigVersions, variableConfigs } from '@product-data/storage/sqlite/schema/common'
 import { conversationSettingChanges } from '@product-data/storage/sqlite/schema/common'
 import { readEntry, readGroup, readPromptPositions, writeEntry, writeGroup, writePromptPositions } from './settingLibraryCodec'
 import { OPENING_ENTRY_ID, normalizeSettingLibrary } from './settingLibraryNormalization'
@@ -435,6 +436,16 @@ export class SettingLibraryRepository {
   saveInTransaction(characterId: string, input: SettingLibrary, db: ElecKoiDatabase): SettingLibrary {
     if (input.characterId !== characterId) throw new Error('设定库与角色不匹配。')
     const normalized = normalizeSettingLibrary(characterId, input)
+    const versionIds = new Set(db.select({ id: variableConfigVersions.versionId }).from(variableConfigVersions)
+      .where(eq(variableConfigVersions.characterId, characterId)).all().map((row) => row.id))
+    if (!db.select().from(variableConfigs).where(eq(variableConfigs.characterId, characterId)).get()) {
+      versionIds.add('variable-config-default')
+    }
+    for (const version of normalized.versions) for (const entry of version.entries) for (const opening of entry.openingMessages) {
+      if (opening.variableVersionId && !versionIds.has(opening.variableVersionId)) {
+        throw new Error(`开场白“${opening.title || '未命名开场白'}”绑定的变量版本不存在。`)
+      }
+    }
     this.persist(db, normalized)
     return normalized
   }

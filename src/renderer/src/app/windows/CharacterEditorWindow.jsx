@@ -302,6 +302,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         ref={settingLibraryRef}
         characterId={character.id}
         settingLibraries={characterConfiguration.settingLibraries}
+        variables={characterConfiguration.variables}
         onDirtyChange={setLoreDirty}
       />;
       editorContent = renderCharacterEditorSection?.("lore", {

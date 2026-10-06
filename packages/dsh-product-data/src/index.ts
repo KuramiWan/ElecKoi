@@ -504,7 +504,7 @@ class ProductDataStore {
     return {
       initialVariableStateJson: states.initialStateJson,
       currentVariableStateJson: states.currentStateJson,
-      variableConfig: this.variables!.get(characterId),
+      variableConfig: this.variables!.forConversation(conversationId, characterId),
       settingLibrarySummary: {
         characterId: library.characterId,
         name: library.name,
@@ -609,11 +609,16 @@ class ProductDataStore {
     settingLibraryBaseline: {
       source: NonNullable<ReturnType<SettingLibraryRepository['runtimeContext']>>
       projected: NonNullable<ReturnType<SettingLibraryRepository['runtimeContext']>>
-    } | undefined
+    } | undefined,
+    expectedVariableStateJson?: string
   ): void {
     this.databaseRepositories()
     const characterBinding = this.conversations!.getCharacterBinding(conversationId)
     this.store!.withWriteTx((db) => {
+      if (expectedVariableStateJson !== undefined && variableStateJson !== undefined
+        && this.variableStates!.viewerStates(conversationId).currentStateJson !== expectedVariableStateJson) {
+        throw new Error('生成期间聊天变量已被其他操作修改，未覆盖当前变量。')
+      }
       if (variableStateJson !== undefined) {
         this.variableStates!.replaceCurrent(conversationId, variableStateJson, db)
       }

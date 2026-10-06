@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { SettingLibraryResizer } from "./SettingLibraryResizer.jsx";
 import { DEFAULT_INSPECTOR_WIDTH, inspectorWidthBounds } from "../model/settingLibraryInspectorSizing.js";
+import { useInspectorPresence } from "../model/useInspectorPresence.js";
 
 export function BranchSettingsSplitView({ children, preferredWidth, onWidthChange }) {
   const layoutRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(() => window.innerWidth || 1024);
   const [drag, setDrag] = useState(null);
-  const inspectorOpen = Boolean(children[1]);
+  const presence = useInspectorPresence(children[1]);
+  const inspectorOpen = Boolean(presence.content);
   const { min, max } = inspectorWidthBounds(containerWidth);
   const width = Math.min(max, Math.max(min, preferredWidth));
 
@@ -58,7 +60,8 @@ export function BranchSettingsSplitView({ children, preferredWidth, onWidthChang
       style={{ "--setting-library-inspector-width": `${width}px` }}>
       {children[0]}
       {inspectorOpen ? (
-      <div className="dynamic-settings-editor-pane">
+      <div className={`dynamic-settings-editor-pane inspector-presence${presence.closing ? ' is-closing' : ''}`}
+        inert={presence.closing} onAnimationEnd={presence.onAnimationEnd}>
         <SettingLibraryResizer aria-label="调整编辑器宽度"
           aria-valuemin={min} aria-valuemax={max} aria-valuenow={Math.round(width)}
           onPointerDown={(event) => {
@@ -82,7 +85,7 @@ export function BranchSettingsSplitView({ children, preferredWidth, onWidthChang
               setDrag(null);
             }
           }} />
-        {children[1]}
+        {presence.content}
       </div>
       ) : null}
     </div>
