@@ -48,6 +48,27 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 
 较早开发构建创建的 v6 数据库在升级至 v7 前，先原子整理已废弃的执行、偏好与结构登记表，再执行 v6 → v7 迁移。仍有效的角色、预设、设定、变量与聊天索引数据保留，不要求清库。后续结构变化必须提升版本并追加连续迁移。
 
+## 升级代码的清理条件
+
+代码入口旁以 `TODO(迁移清理)` 标记等待退役的转换，下面按实际数据分别核对。客户端发布了新版本、某台机器已升级或本机扫描没有命中，都不能证明其他受支持的旧安装、未打开的聊天及备份已完成转换。当前没有宣布新的最低升级版本，以下入口均保留。
+
+| 入口 | 何时可以清理 | 必须一起处理的范围 |
+| --- | --- | --- |
+| [SQLite v1 → v7 迁移链](../packages/dsh-product-data/src/storage/sqlite/installSchema.ts) | 正式停止支持某步骤起点及更早 schema 直接升级；剩余受支持版本仍有连续原子链 | 对应 `0002` 至 `0007` 步骤、import、登记与旧库 fixture；保留当前 SQL、版本常量及完整性校验 |
+| [开发 v2、v6 同版本整理](../packages/dsh-product-data/src/storage/sqlite/installSchema.ts) | 分别停止支持对应开发基线直接升级 | 对应整理函数、专用入口和 fixture；v2 共享整理函数仍被 `0002` 使用时继续保留 |
+| [模型设置 schema v0/v1 → v2](../packages/dsh-client-models/src/index.js) | 支持的升级和 profile 恢复入口均已保存至少 schema v2 的设置 | 旧 schema 转换、专用常量与用例；函数和启动调用须等两段整理均退役，保留当前设置合同和插件装配 |
+| [旧子 Agent 占位路由](../packages/dsh-client-models/src/index.js) | 停止支持 v0.2.3 之前版本直升，且支持的 profile 恢复入口不再携带该路由 | 占位路由过滤、专用常量与用例；与模型设置 schema 转换分别核对 |
+| [旧默认模型路由](../packages/dsh-client-roleplay/src/host/model-selection-migration.mjs) | 停止支持 v0.2.1 及更早版本直升，且支持的 profile 恢复入口不再携带旧路由 | 迁移函数、辅助函数、启动调用和旧路由用例；当前请求快照改为直接解析正式选择，保留每轮冻结与恢复后的模型刷新 |
+| [旧实体化预设 ID](../packages/dsh-client-roleplay/src/host/agent-preset-bridge.mjs) | 支持恢复的 Session、快照和导入记录均已持久选择 `eleckoi-active`，且对应旧版本直升已退役 | 旧声明注册、别名、目录扫描、分支与用例；保留当前预设注册、重组和恢复服务 |
+| [profile 内置 bundle 登记](../packages/dsh-runtime/src/desktopPluginBundles.ts)、[Tavily 首次选择](../packages/dsh-runtime/src/desktopPluginHost.ts) | 支持的升级和 profile 恢复入口分别已完成 `bundles-v5`、`tavily-bundle-v1` 登记 | 各自的一次性函数、调用及旧 profile 用例；保留新 profile 初始化和用户启停选择 |
+| [请求上下文记录修复](../packages/dsh-runtime/src/sessionRequestContextRepair.ts) | 对应旧版本直升已退役，且支持的 Session 恢复和导入入口已有转换缺失可忽略标记的能力 | 修复模块、启动扫描、导出与专用用例；保留当前记录写入、Schema 和投影 |
+| [旧聊天独立输入补回](../packages/dsh-runtime/src/sessionHistoryRecovery.ts) | 对应旧聊天直升已退役，且支持的恢复和导入入口已把缺失输入写为正式 Session 消息 | 补回模块、归档读取、启动调用、导出与专用用例；保留逐会话错误隔离、投影重放、检查点和正常重新生成 |
+| [已补回聊天的统计标记](../packages/dsh-client-roleplay/src/host/history-stats-projection.mjs) | 支持恢复的已迁移日志完成等价统计转换，重放结果保持正确 | 仅旧标记分支、专用状态与旧日志用例；保留当前已有输入续接的统计及投影登记 |
+| [V1 请求投影信封读取](../packages/dsh-client-roleplay/src/host/conversation-context.mjs) | 支持恢复和导入的日志已转换持久化 V1 信封 | 旧前缀、解码分支与样例；保留当前 V2 信封和角色请求上下文 |
+| [v3 → v4 系统开头补丁](adr/0026-legacy-session-system-head-migration.md) | 锁定上游的正式相邻迁移能通过同一组旧日志用例 | 版本补丁、`patchedDependencies` 登记和锁文件；保留官方格式目录与完整迁移链 |
+
+删除恢复或迁移入口时只移除其专用用例；新建、重开、备份、完整性、当前模型请求、预设重组和重新生成等正常路径的验证继续保留。异常退出后的响应状态恢复是当前运行职责，仍由 [启动恢复](../packages/dsh-product-data/src/storage/sqlite/recoverInterruptedState.ts) 执行。
+
 ## 删除与文件
 
 - 删除角色时级联删除其产品关系和聊天索引。

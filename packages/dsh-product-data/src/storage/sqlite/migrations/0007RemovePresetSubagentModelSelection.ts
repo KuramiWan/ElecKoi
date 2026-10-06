@@ -68,10 +68,9 @@ function migratePresetVersionContents(database: Database.Database): void {
  *
  * This is a one-way data migration. Runtime code does not read the removed key.
  *
- * TODO(remove only when direct upgrades from every database schema below v7
- * are no longer supported): remove this migration and its v6 fixture together.
- * Do not remove it merely because one installation has already upgraded; every
- * older installation needs this step exactly once when it first opens v7+.
+ * TODO(迁移清理)：停止支持所有低于 schema v7 的数据库直接升级后，移除此步骤、
+ * installSchema 登记和对应 v6 fixture。当前预设与历史版本都必须完成字段转换；
+ * 不能因本机已升级而删除，其他旧安装首次打开 v7+ 时仍需要执行一次。
  */
 export const migration0007 = {
   fromVersion: 6,

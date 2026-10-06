@@ -104,12 +104,11 @@ export async function apply(ctx) {
     ? registerActivePreset()
     : registerLegacyPreset(id)
 
-  // TODO(remove only after direct upgrades from releases that persisted
-  // materialized preset ids are no longer supported):
-  // remove legacyRegistrations, legacyAliasDefinition, and their migration tests
-  // together once every supported release has durably selected eleckoi-active.
-  // Until then old declarations must remain registered long enough for an old
-  // Session log to resume once and persist the single current preset selection.
+  // TODO(迁移清理)：停止支持保存实体化预设 ID 的旧版本直升，并确认仍支持恢复的
+  // Session、快照及导入记录都已持久选择 eleckoi-active 后，删除 legacyRegistrations、
+  // registerLegacyPreset、legacyAliasDefinition、旧目录扫描及对应迁移用例。
+  // 同步收口 registerPreset 的旧 ID 分支；保留当前预设注册、重组和 Session 恢复服务。
+  // 升级客户端不会自动改写未打开的旧 Session；不能只按客户端版本号删除旧声明。
   if (existsSync(presetRoot)) {
     const ids = readdirSync(presetRoot, { withFileTypes: true })
       .filter(entry => entry.isDirectory() && existsSync(join(presetRoot, entry.name, 'preset.json')))

@@ -10,6 +10,9 @@ export const projectionPlugin = 'eleckoi-request-projection'
 
 const PROJECTION_VERSION = 2
 const PROJECTION_PREFIX = `ELECKOI_REQUEST_PROJECTION_V${PROJECTION_VERSION}\n`
+// TODO(迁移清理)：所有仍受支持的 Session 恢复、导入入口已转换持久化 V1 投影后，
+// 删除此常量、decodeProjectionEnvelope 的 V1 分支和旧样例。历史补回不会改写旧信封；
+// 必须单独核对该持久数据，保留当前 V2 信封、请求投影和角色上下文装配。
 const LEGACY_PROJECTION_PREFIX = 'ELECKOI_REQUEST_PROJECTION_V1\n'
 
 /** Install product-owned prompt contributions for every root turn. */

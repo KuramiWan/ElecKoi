@@ -5,6 +5,9 @@ import {
   HIDDEN_TOOL_TIMELINE_PROMPT_POSITION_ID
 } from '@shared/contracts/presets/builtIns'
 
+// TODO(迁移清理)：本文件仅供 0004 的旧设定与快照转换使用；随该步骤的升级下限
+// 调整一并退役，确认没有其他调用后删除本文件和对应旧格式 fixture。当前设定模型保留。
+
 type Entry = Record<string, unknown>
 type Style = 'camel' | 'snake'
 

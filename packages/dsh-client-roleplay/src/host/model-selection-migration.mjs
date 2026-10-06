@@ -1,8 +1,10 @@
 import { readSessionSnapshot, writeSessionSnapshot } from './session-snapshot.mjs'
 
 /**
- * TODO(remove only after direct upgrades from v0.2.1 and older are no longer
- * supported): remove this function and its legacy-route tests together.
+ * TODO(迁移清理)：停止支持 v0.2.1 及更早版本直升，且受支持的 profile 恢复入口
+ * 不再携带旧路由后，删除本迁移函数、专用辅助函数和旧路由测试，同时移除 roleplay
+ * 启动调用。currentRequestSnapshot 改为直接解析当前选择；requestSnapshot、
+ * refreshSessionModelSnapshot 和每轮冻结当前全局模型的正常运行路径必须保留。
  * Older ElecKoi releases stored a display label such as `deepseek-default` as
  * the selected provider even though the generated DSH route had a hashed id.
  * Convert that one persisted value to the unique current route. Runtime model

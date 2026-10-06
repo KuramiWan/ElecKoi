@@ -21,5 +21,6 @@ ADR 是 Architecture Decision Record，即架构决策记录，用于说明一�
 | 0023 | [使用 DSH 官方生成器维护插件接口参考](0023-official-plugin-api-reference.md) | 已实施 | 公开类型、源码生成参考与官方 Inspect 查询，补充 0016。 |
 | 0024 | [官方 ChatView 与角色消息座位](0024-official-chat-view-roleplay-seats.md) | 已采纳 | 官方列表、滚动与角色呈现边界。 |
 | 0025 | [同一 Session 复用已有用户事件重新生成](0025-same-session-existing-input-regeneration.md) | 已采纳 | 保留用户事件并继续官方运行循环。 |
+| 0026 | [旧 Session 系统开头的迁移修复](0026-legacy-session-system-head-migration.md) | 已采纳 | 在相邻迁移中补齐空开头，保留原日志并隔离单个会话失败。 |
 
 本目录没有收录 0006—0011 和 0014；保留编号间隔，不复制内部历史材料来补齐。后续编号须同时核对两个工作树，避免复用未收录编号。

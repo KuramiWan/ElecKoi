@@ -11,6 +11,11 @@ const require = createRequire(import.meta.url)
 const runtimeRequire = createRequire(require.resolve('@eleckoi/dsh-runtime'))
 const TAVILY_BUNDLE = '@eleckoi/dsh-web-search-tavily'
 
+/**
+ * TODO(迁移清理)：受支持的升级及 profile 恢复入口都已完成 tavily-bundle-v1 登记后，
+ * 删除本函数、start 调用及对应旧 profile 用例。保留新 profile 的 Tavily 默认选择，
+ * 以及通过正式 profile 保存用户启停选择的正常流程；不要删除现有用户配置或标记文件。
+ */
 function selectTavilyBundleOnce(profile: string): void {
   const marker = join(profile, '.eleckoi-tavily-bundle-v1')
   if (existsSync(marker)) return

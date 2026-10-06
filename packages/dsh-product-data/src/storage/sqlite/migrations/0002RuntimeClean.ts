@@ -35,6 +35,10 @@ const DEFAULT_ROLEPLAY_PLAN_STEPS = [
   '等前置任务都完成，直接输出 <FINAL> 正文，不要再次调用 update_roleplay_plan；应用检测到正文后会自动完成最终项的标记。'
 ]
 
+/**
+ * TODO(迁移清理)：停止支持 schema v1 直接升级后，移除此步骤、installSchema 登记
+ * 和对应 v1 fixture。本文件的整理函数也供开发 v2 入口使用；在该入口退役前保留。
+ */
 export const migration0002 = {
   fromVersion: 1,
   toVersion: 2,

@@ -10,7 +10,12 @@ import { REQUEST_CONTEXT_EVENT } from '@eleckoi/dsh-client-roleplay/host/request
 import { requestContextRecordSchema } from '@eleckoi/dsh-client-roleplay/host/request-context-schema.mjs'
 import { readDshSessionLog } from './trajectory'
 
-/** Repair only the missing optional-event marker on validated request annotations. */
+/**
+ * Repair only the missing optional-event marker on validated request annotations.
+ * TODO(迁移清理)：停止支持产生未标记记录的旧版本直升，且仍受支持的 Session 恢复、
+ * 导入入口已能先转换该形态后，删除本文件、Host 启动扫描、index 导出和专用修复用例。
+ * 当前 request-context 写入、Schema 与投影继续保留；只打开过本机聊天不满足删除条件。
+ */
 export async function repairRequestContextLog(root: string, id: string): Promise<number> {
   const located = readDshSessionLog(root, id)
   if (!located || located.header.version !== sessionFormatCatalog.currentVersion) return 0

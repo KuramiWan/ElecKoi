@@ -5,6 +5,10 @@ import type Database from 'better-sqlite3'
  * profiles, credentials and plugin settings from v6. DSH Session and Agent
  * services also own execution state and stored session artifacts. The former
  * product tables duplicated those responsibilities, so no rows migrate.
+ *
+ * TODO(迁移清理)：停止支持所有低于 schema v6 的数据库直接升级后，移除此步骤、
+ * installSchema 登记和对应旧表 fixture。开发 v6 整理及 v6 → v7 是独立入口，
+ * 不能因旧配置表已从当前库消失而一起删除它们。
  */
 export const migration0006 = {
   fromVersion: 5,

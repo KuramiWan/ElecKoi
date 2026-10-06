@@ -17,6 +17,10 @@ import { BASELINE_ID, CURRENT_SCHEMA_VERSION } from './schemaVersion'
 export { BASELINE_ID, CURRENT_SCHEMA_VERSION } from './schemaVersion'
 const PRE_RELEASE_V2_SCHEMA_VERSION = 2
 const PRE_RELEASE_V2_BASELINES = [BASELINE_ID, 'eleckoi-common-v1-2026-09-14-runtime-clean'] as const
+// TODO(迁移清理)：只有正式停止支持某个旧 schema 及更早版本直接升级后，才能删除从该版本
+// 出发的步骤，并同步删除 import、登记和 tests/database.test.ts 中对应旧库 fixture。
+// 当前仍支持 v1 连续升级至 v7；已升级的本机数据库不能证明其他旧安装已完成迁移。
+// 剩余受支持版本必须仍有连续原子迁移链，当前 SQL、版本常量和完整性检查始终保留。
 const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007] as const
 
 function hasTable(database: Database.Database, name: string): boolean {
@@ -72,6 +76,11 @@ function migrate(database: Database.Database, baseline: string, version: number)
   }
 }
 
+/**
+ * TODO(迁移清理)：停止支持开发 schema v2 的两种旧结构直接升级后，删除本函数、
+ * 调用、PRE_RELEASE_V2_* 常量及对应开发库 fixture。0002 中的共享整理函数还被
+ * v1 → v2 使用；仅移除这里的开发基线入口时不能一并删除那些函数。
+ */
 function normalizePreReleaseV2(database: Database.Database, baseline: string, version: number): void {
   const oldStorage = isLegacyDevelopmentV2Storage(database)
   const oldPresetStorage = !oldStorage && hasPreReleaseV2PresetStorage(database)
@@ -98,9 +107,9 @@ function normalizePreReleaseV2(database: Database.Database, baseline: string, ve
  * services, plus retired preference and schema-marker tables. Consolidate
  * that development baseline in place without touching current product data.
  *
- * TODO(remove only when direct upgrades from schema v6 are no longer
- * supported): remove this normalizer together with the dedicated v6 branch
- * below. It is upgrade-only code and is never used by a schema-v7 database.
+ * TODO(迁移清理)：正式停止支持 schema v6 直接升级后，删除本整理函数、下方
+ * version === 6 专用入口和 tests/database.test.ts 中的开发 v6 fixture。
+ * 此函数只处理旧开发库，schema v7 不调用；未来提高版本号本身不满足删除条件。
  */
 function normalizePreReleaseV6(database: Database.Database, version: number): void {
   if (version !== 6) return

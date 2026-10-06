@@ -1,11 +1,9 @@
 import { delimiter } from 'node:path'
-import { SessionId } from '@deepseek-ai/dsh-session'
 import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import { ELECKOI_INSTALL_ANCHOR } from './desktopPluginBundles'
 import { repairRequestContextLogs } from './sessionRequestContextRepair'
-import { recoverSessionHistory } from './sessionHistoryRecovery'
-import { refreshSessionProjections, type SessionProjectionRefreshContext } from './sessionProjectionRefresh'
+import { recoverStartupSessions } from './sessionStartupRecovery'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -74,30 +72,7 @@ async function main(): Promise<void> {
     throw new Error(`ElecKoi Host 服务未正确装载：${missingServices.join(', ')}`)
   }
   const sessionRoot = process.env.DSH_SESSION_ROOT
-  if (sessionRoot) {
-    const handles = ctx.get('eleckoiSessionHandles') as {
-      withClosed<T>(id: string, action: () => Promise<T>): Promise<T>
-    }
-    for (const conversation of ctx.eleckoiProductData.readConversationCatalog()) {
-      if (!conversation.metadata.characterId) continue
-      const archive = ctx.eleckoiProductData.exportConversationArchive(conversation.id)
-      if (!archive.tables.agent_turns?.some(turn => turn.kind === 'user')) continue
-      if (!await ctx.sessionPersistence.stat(SessionId(conversation.runtimeSessionId))) continue
-      try {
-        await handles.withClosed(conversation.runtimeSessionId, async () => {
-          const probe = await ctx.sessionPersistence.open(SessionId(conversation.runtimeSessionId), 'write')
-          await probe.close()
-          await recoverSessionHistory(sessionRoot, conversation.runtimeSessionId,
-            archive)
-        })
-      } catch (error) {
-        console.error(`DSH Session ${conversation.runtimeSessionId} 旧聊天历史恢复失败：`, error)
-      }
-      // Header identity is unchanged by history recovery. Old cached watermarks
-      // cannot prove they still describe this log, even on a repeated startup.
-      await refreshSessionProjections(ctx as unknown as SessionProjectionRefreshContext, conversation.runtimeSessionId)
-    }
-  }
+  if (sessionRoot) await recoverStartupSessions(ctx, sessionRoot)
   process.on('message', (value: unknown) => {
     if (typeof value !== 'object' || value === null || !('type' in value)) return
     const message = value as ParentHostMessage

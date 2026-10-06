@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 describe('DSH trajectory projection', () => {
-  it('reads a valid V3 log when the current migration rejects its surface order', () => {
+  it('reads a legacy V3 log with its missing system head repaired by the adjacent migration', () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-trajectory-v3-read-'))
     temporaryDirectories.push(root)
     const sessionId = 'historical-session'
@@ -66,9 +66,10 @@ describe('DSH trajectory projection', () => {
       recovery: 'strict', validation: 'transformed'
     })
     for (const item of events) migrated.decodeRow(releasedV3SessionFormatCodec.encodeEvent(item))
-    expect(() => migrated.finish()).toThrow(/protected first surface head/)
-    expect(readDshSessionLog(root, sessionId)?.events.map((item) => item.type)).toEqual(events.map((item) => item.type))
-    expect(readDshSessionLog(root, sessionId)?.header.version).toBe(3)
+    const result = migrated.finish()
+    expect(result.events.filter(item => item.type === 'system/message')).toHaveLength(2)
+    expect(readDshSessionLog(root, sessionId)?.events).toEqual(result.events)
+    expect(readDshSessionLog(root, sessionId)?.header.version).toBe(4)
     expect(readFileSync(path, 'utf8')).toBe(source)
   })
 
