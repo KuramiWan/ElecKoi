@@ -1,0 +1,47 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/dsh-client-character-configuration/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-characters/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-conversations/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-creator-studio/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-display-preferences/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-models/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-persona/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-presets/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-web-search/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/dsh-client-shell/tsconfig.client.json"
+    }
+  ],
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "strict": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@eleckoi/dsh-product-api/types": [
+        "./packages/dsh-product-api/src/types.ts"
+      ]
+    }
+  }
+}

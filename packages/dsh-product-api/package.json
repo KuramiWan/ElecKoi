@@ -22,7 +22,10 @@
       "types": "./lib/typert.remote-client.d.ts",
       "default": "./lib/typert.remote-client.js"
     },
-    "./client": "./lib/client.js",
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
@@ -61,7 +64,10 @@
     "zod": "4.4.3",
     "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-llm-deepseek-api-key": "0.2.0-rc.2"
+    "@deepseek-ai/dsh-llm-deepseek-api-key": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-cordis-host-runner": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-cordis-client-runner": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.2.0-rc.2"
   },
   "devDependencies": {
     "@types/node": "26.3.0",
@@ -97,7 +103,8 @@
         "relation": "provides",
         "members": [
           "status"
-        ]
+        ],
+        "owner": "eleckoiSystem"
       },
       {
         "id": "eleckoiCharactersRemote",
@@ -118,7 +125,8 @@
           "prepareImport",
           "commitImport",
           "discardImport"
-        ]
+        ],
+        "owner": "eleckoiCharacters"
       },
       {
         "id": "eleckoiCharacterChangesRemote",
@@ -130,7 +138,8 @@
         "relation": "provides",
         "members": [
           "changes"
-        ]
+        ],
+        "owner": "eleckoiCharacters"
       },
       {
         "id": "eleckoiPersonaRemote",
@@ -143,7 +152,8 @@
         "members": [
           "read",
           "save"
-        ]
+        ],
+        "owner": "eleckoiPersona"
       },
       {
         "id": "eleckoiPersonaChangesRemote",
@@ -155,7 +165,8 @@
         "relation": "provides",
         "members": [
           "changes"
-        ]
+        ],
+        "owner": "eleckoiPersona"
       },
       {
         "id": "eleckoiCharacterConfiguration",
@@ -181,7 +192,8 @@
           "importRegexRules",
           "exportRegexRules",
           "testRegexRule"
-        ]
+        ],
+        "owner": "eleckoiCharacterConfiguration"
       },
       {
         "id": "eleckoiCharacterConfigurationChanges",
@@ -193,7 +205,8 @@
         "relation": "provides",
         "members": [
           "changes"
-        ]
+        ],
+        "owner": "eleckoiCharacterConfiguration"
       },
       {
         "id": "eleckoiAgentPresetsRemote",
@@ -216,7 +229,8 @@
           "assignGroup",
           "deleteGroup",
           "delete"
-        ]
+        ],
+        "owner": "eleckoiAgentPresets"
       },
       {
         "id": "eleckoiCreatorStudioRemote",
@@ -230,7 +244,8 @@
           "list",
           "create",
           "delete"
-        ]
+        ],
+        "owner": "eleckoiCreatorStudio"
       },
       {
         "id": "eleckoiCreatorStudioChangesRemote",
@@ -242,7 +257,8 @@
         "relation": "provides",
         "members": [
           "changes"
-        ]
+        ],
+        "owner": "eleckoiCreatorStudio"
       },
       {
         "id": "eleckoiDisplayPreferencesRemote",
@@ -256,7 +272,8 @@
           "read",
           "updateUi",
           "setChatDisplay"
-        ]
+        ],
+        "owner": "eleckoiDisplayPreferences"
       },
       {
         "id": "eleckoiConversationModelsRemote",
@@ -269,7 +286,8 @@
         "members": [
           "current",
           "select"
-        ]
+        ],
+        "owner": "eleckoiConversationModels"
       },
       {
         "id": "eleckoiConversationsRemote",
@@ -296,8 +314,10 @@
           "deleteMessagesFrom",
           "regenerateMessage",
           "selectOpening",
-          "updateOpening"
-        ]
+          "updateOpening",
+          "startRegeneration"
+        ],
+        "owner": "eleckoiConversations"
       },
       {
         "id": "eleckoiConversationChangesRemote",
@@ -309,7 +329,8 @@
         "relation": "provides",
         "members": [
           "changes"
-        ]
+        ],
+        "owner": "eleckoiConversations"
       },
       {
         "id": "eleckoiWebSearchRemote",
@@ -323,7 +344,8 @@
           "selection",
           "select",
           "testTavily"
-        ]
+        ],
+        "owner": "eleckoiWebSearch"
       },
       {
         "title": "模型连接测试",
@@ -337,7 +359,8 @@
           "revealApiKey"
         ],
         "mode": "call",
-        "relation": "provides"
+        "relation": "provides",
+        "owner": "eleckoiModels"
       }
     ]
   }

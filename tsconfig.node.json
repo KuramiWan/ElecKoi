@@ -29,6 +29,12 @@
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "packages/dsh-product-data/src/**/*.ts",
+    "packages/dsh-product-api/src/hostInspect.ts",
+    "packages/dsh-product-api/src/inspectProvider.ts",
+    "packages/dsh-product-api/src/cordisApi.generated.ts",
+    "packages/dsh-product-api/src/client/inspect.ts",
+    "packages/dsh-product-api/src/client/cordisApi.generated.ts",
+    "packages/dsh-product-api/src/client/remoteApi.generated.ts",
     "tests/**/*.ts",
     "vitest.config.ts"
   ]

@@ -28,7 +28,8 @@ pnpm check:plugin-docs
 
 - 内置 bundle 探针验证桌面 profile 中全部 bundle 能被 Host 解析和装配。
 - DSH runtime 检查验证锁定版本、依赖、patch、生产包清单和接口 manifest。
-- 插件文档检查验证 14 个 bundle、接口 ID 唯一性以及自动生成总表是否同步。
+- 插件文档检查核对 manifest、公开源码成员、JSDoc、完整参考和官方 Inspect 目录；类型检查通过第三方公开 exports 编译调用，并验证错误参数会被拒绝。
+- Inspect 用例实际运行锁定版本的 Host 和 Client 注册表，验证跨端查询、取消、迟到依赖和卸载清理。
 
 ## 源码日常检查
 

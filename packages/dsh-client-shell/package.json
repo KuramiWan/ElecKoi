@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.js",
-    "./client": "./src/client.js",
+    "./client": {
+      "types": "./src/client/types.ts",
+      "default": "./src/client.js"
+    },
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
@@ -191,5 +194,9 @@
         "relation": "provides"
       }
     ]
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-client-ui-layout": "0.2.0-rc.2"
   }
 }

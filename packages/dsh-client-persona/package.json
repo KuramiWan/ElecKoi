@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.js",
-    "./client": "./src/client.js",
+    "./client": {
+      "types": "./src/client/types.ts",
+      "default": "./src/client.js"
+    },
     "./slots": {
       "types": "./src/slots.d.ts"
     },
@@ -54,5 +57,9 @@
         "relation": "provides"
       }
     ]
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@eleckoi/dsh-product-api": "workspace:*"
   }
 }

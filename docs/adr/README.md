@@ -18,5 +18,6 @@ ADR 是 Architecture Decision Record，即架构决策记录，用于说明一�
 | 0020 | [旧聊天历史与回退状态恢复](0020-roleplay-history-recovery.md) | 已采纳 | 恢复可信历史并保持原聊天与 Session 身份。 |
 | 0021 | [同一 Session 的历史重载](0021-session-history-reload.md) | 已采纳 | 日志修改后共享 Client Session 的重载合同。 |
 | 0022 | [模型配置的发现与采样参数](0022-model-configuration-request-contract.md) | 已采纳 | 模型配置、凭据、发现和正式请求参数。 |
+| 0023 | [使用 DSH 官方生成器维护插件接口参考](0023-official-plugin-api-reference.md) | 已实施 | 公开类型、源码生成参考与官方 Inspect 查询，补充 0016。 |
 
 本目录没有收录 0006—0011 和 0014；保留编号间隔，不复制内部历史材料来补齐。后续编号须同时核对两个工作树，避免复用未收录编号。
