@@ -75,6 +75,10 @@ window.__ModuleLoader__.load({
       'conversation.input.activity': 'eleckoi.roleplay.conversation.input.activity',
       'conversation.composer.dock': 'eleckoi.roleplay.conversation.composer.dock'
     })
+    // A projected parent owns separate child declarations; components keep
+    // using their declared names and the same list entry identities.
+    const viewSeatName = name => name === 'conversation.view'
+      ? 'eleckoi.roleplay.session.view' : `eleckoi.roleplay.view.${name}`
 
     function RoleplaySessionView({
       matched, sessionId, useSession, useSessionStatus, useInput, renderSlot, renderSlotChain
@@ -87,13 +91,40 @@ window.__ModuleLoader__.load({
           fallback: content
         }
       ), [renderSlotChain])
-      return React.createElement(matched.component, {
+      const props = {
         ...matched.props,
         renderRoleplaySlot: renderSlot,
         renderRoleplaySlotChain: renderSlotChain,
         renderRoleplayMessage,
         dshComposerOwner: { sessionId, session, pendingInteraction },
         dshInputZone: { session, input }
+      }
+      return renderSlot('eleckoi.roleplay.session.header', {
+        matched: { ...matched, props }
+      }, { fallback: React.createElement(matched.component, props) })
+    }
+
+    function RoleplayConversationHeader({ matched, useConversationViews, useStore, selectView }) {
+      const tabs = useConversationViews(value => value)
+      const selectedId = useStore(state => state.view)
+      const active = tabs.find(tab => tab.id === selectedId) ?? tabs.find(tab => tab.id === 'chat')
+      return matched.props.renderRoleplaySlot('eleckoi.roleplay.session.body', {
+        matched,
+        navigation: { tabs, activeView: active?.id, selectView }
+      }, { fallback: React.createElement(matched.component, matched.props) })
+    }
+
+    function RoleplayConversationBody({ matched, navigation, useInspectCall, useStore, actions, openView, renderSlot }) {
+      const inspectCall = useInspectCall(value => value)
+      const viewRequest = useStore(state => state.viewRequest ?? null)
+      const viewOwner = { inspectCall, viewRequest, openView, completeViewRequest: actions.completeViewRequest }
+      return React.createElement(matched.component, {
+        ...matched.props,
+        dshConversation: {
+          ...navigation,
+          viewOwner,
+          renderView: (id, owner = {}) => renderSlot(viewSeatName('conversation.view'), { ...viewOwner, ...owner }, { only: id })
+        }
       })
     }
 
@@ -173,6 +204,7 @@ window.__ModuleLoader__.load({
         renderRoleplaySlot: undefined,
         renderRoleplaySlotChain: undefined,
         renderRoleplayMessage: undefined,
+        dshConversation: undefined,
         dshComposerOwner: undefined,
         dshInputZone: undefined
       })
@@ -186,10 +218,17 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         const retainedStatsByProjection = new WeakMap()
         const retainedStatsKeys = new Set(['sessionStats', 'tokenUsage', 'contextPressure', 'contextBreakdown'])
+        const projectedViewChildren = new Set()
         const projectConversationSeat = (source, target, options = {}) => {
           ctx.slots.inject(target, () => {
             const projected = new Map()
             const adapt = entry => function ConversationSeatEntry(ownerProps) {
+              if (options.component) return React.createElement(options.component, ownerProps)
+              if (options.bridgeChildren) return React.createElement(entry.component, {
+                ...ownerProps,
+                renderSlot: (name, owner, renderOptions) => ownerProps.renderSlot(viewSeatName(name), owner, renderOptions),
+                renderSlotChain: (name, owner, renderOptions) => ownerProps.renderSlotChain(viewSeatName(name), owner, renderOptions),
+              })
               if (source === 'conversation.composer.dock' && entry.options.id === 'stats') {
                 const adjustment = ownerProps.useProjection('eleckoiHistoryStatsAdjustment')
                 const identities = ownerProps.useProjection('eleckoiInputContinuations')
@@ -282,7 +321,7 @@ window.__ModuleLoader__.load({
                 const registrationOptions = {
                   name: target,
                   ...(targetSpec.kind === 'list'
-                    ? { id: `dsh:${source}:${entry.options.id}` }
+                    ? { id: options.bridgeChildren ? entry.options.id : `dsh:${source}:${entry.options.id}` }
                     : targetSpec.kind === 'keyed' ? { key: entry.options.key } : {}),
                   ...(entry.options.order !== undefined ? { order: entry.options.order } : {}),
                   ...(entry.options.label !== undefined ? { label: entry.options.label } : {}),
@@ -292,6 +331,15 @@ window.__ModuleLoader__.load({
                   ...(entry.store ? { store: entry.store } : {}),
                   ...(entry.locale ? { locale: entry.locale } : {}),
                   ...(entry.registrant ? { registrant: entry.registrant } : {})
+                }
+                if (options.bridgeChildren && entry.children) {
+                  registrationOptions.children = Object.fromEntries(Object.entries(entry.children)
+                    .map(([name, spec]) => [viewSeatName(name), spec]))
+                  for (const name of Object.keys(entry.children)) {
+                    if (projectedViewChildren.has(name)) continue
+                    projectedViewChildren.add(name)
+                    projectConversationSeat(name, viewSeatName(name), { bridgeChildren: true })
+                  }
                 }
                 if (options.entryId === 'chat' && entry.children) {
                   registrationOptions.children = Object.fromEntries(Object.entries(entry.children)
@@ -321,6 +369,8 @@ window.__ModuleLoader__.load({
         ctx.slots.inject('eleckoi.roleplay.session', () => ctx.slots.register({
           name: 'eleckoi.roleplay.session',
           children: {
+            'eleckoi.roleplay.session.header': { kind: 'single', scope: 'session' },
+            'eleckoi.roleplay.session.body': { kind: 'single', scope: 'session' },
             'eleckoi.roleplay.message.content': { kind: 'chain', scope: 'session' },
             'eleckoi.roleplay.message.actions': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.message.after': { kind: 'list', scope: 'session' },
@@ -344,6 +394,12 @@ window.__ModuleLoader__.load({
             'eleckoi.roleplay.chat': { kind: 'single', scope: 'session' }
           }
         }, RoleplaySessionView))
+        projectConversationSeat('conversation.session.header', 'eleckoi.roleplay.session.header', {
+          winnerOnly: true, component: RoleplayConversationHeader
+        })
+        projectConversationSeat('conversation.session', 'eleckoi.roleplay.session.body', {
+          winnerOnly: true, component: RoleplayConversationBody, bridgeChildren: true
+        })
         projectConversationSeat('conversation.session.header.corner', 'eleckoi.roleplay.conversation.header.corner', {
           winnerOnly: true
         })

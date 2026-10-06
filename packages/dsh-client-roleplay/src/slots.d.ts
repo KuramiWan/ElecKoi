@@ -8,6 +8,7 @@ import type {
   InputControlOwnerProps,
   InputZone,
   MessageImagesOwnerProps,
+  ViewTab,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ChatNodeOwnerProps, ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { SlotMap } from '@deepseek-ai/dsh-client-ui-slots'
@@ -78,6 +79,27 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       kind: 'single'
       scope: 'session'
       owner: RoleplaySessionOwner
+    }
+    'eleckoi.roleplay.session.header': {
+      kind: 'single'
+      scope: 'session'
+      owner: RoleplaySessionOwner
+    }
+    'eleckoi.roleplay.session.body': {
+      kind: 'single'
+      scope: 'session'
+      owner: RoleplaySessionOwner & {
+        navigation: {
+          tabs: readonly ViewTab[]
+          activeView: string | undefined
+          selectView: (view: string) => void
+        }
+      }
+    }
+    'eleckoi.roleplay.session.view': {
+      kind: 'list'
+      scope: 'session'
+      owner: ConvViewOwnerProps
     }
     'eleckoi.roleplay.message.content': {
       kind: 'chain'

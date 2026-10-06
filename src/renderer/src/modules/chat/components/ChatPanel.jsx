@@ -75,12 +75,22 @@ export function ChatPanel({
   renderRoleplayMessage,
   dshComposerOwner,
   dshInputZone,
+  dshConversation,
   isSwitchingChat = false,
   conversationTransitionRevision = 0,
 }) {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [processMessage, setProcessMessage] = useState(null);
-  const [activeView, setActiveView] = useState("chat");
+  const [fallbackView, setFallbackView] = useState("chat");
+  const activeView = dshConversation ? dshConversation.activeView : fallbackView;
+  const viewTabs = dshConversation?.tabs ?? [{ id: "chat", label: "对话" }, { id: "trajectory", label: "轨迹" }];
+  const selectView = (id) => {
+    setHeaderMenuOpen(false);
+    setDeleteMode(false);
+    setDeleteFromMessageId("");
+    if (dshConversation) dshConversation.selectView(id);
+    else setFallbackView(id);
+  };
   const [activePresetName, setActivePresetName] = useState("");
   const [trajectoryRevision, setTrajectoryRevision] = useState(0);
   const [variablesOpen, setVariablesOpen] = useState(false);
@@ -135,7 +145,7 @@ export function ChatPanel({
   }, [scrollRef]);
 
   useEffect(() => {
-    setActiveView("chat");
+    setFallbackView("chat");
   }, [conversationId]);
 
   useEffect(() => {
@@ -344,6 +354,7 @@ export function ChatPanel({
   };
   const opening = <MessageList {...rowProps} openingOnly />;
   const officialChat = isSwitchingChat ? null : renderRoleplaySlot?.("eleckoi.roleplay.chat", {
+    ...dshConversation?.viewOwner,
     before: opening,
     runningStatusTarget,
     renderChatNode: ({ node }) => {
@@ -397,14 +408,8 @@ export function ChatPanel({
             ) : null}
           </div>
         </div>
-        <div className="chat-header-tabs" role="tablist" aria-label="对话视图">
-          <button type="button" role="tab" aria-selected={activeView === "chat"} onClick={() => setActiveView("chat")}>对话</button>
-          <button type="button" role="tab" aria-selected={activeView === "trajectory"} onClick={() => {
-            setHeaderMenuOpen(false);
-            setDeleteMode(false);
-            setDeleteFromMessageId("");
-            setActiveView("trajectory");
-          }}>轨迹</button>
+        <div className="chat-header-tabs" role="tablist" aria-label="对话视图" data-conversation-tabs="">
+          {viewTabs.map((view) => <button key={view.id} type="button" role="tab" aria-selected={activeView === view.id} onClick={() => selectView(view.id)}>{view.label}</button>)}
         </div>
       </header>
 
@@ -416,15 +421,16 @@ export function ChatPanel({
           aria-busy={isSwitchingChat || isLoadingOlderMessages || undefined}
         >
           <div className="chat-transcript-region">
-            {activeView === "chat" ? officialChat ?? (isSwitchingChat ? null : opening) : <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
+            {activeView === "chat" ? officialChat ?? (isSwitchingChat ? null : opening) : activeView === "trajectory" ? <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
               <TrajectoryView
                 key={`${conversationId}:${trajectoryRevision}`}
                 conversationId={conversationId}
                 isSending={isSending}
                 refreshRevision={trajectoryRevision}
                 renderSlot={renderRoleplaySlot}
+                viewOwner={dshConversation?.viewOwner}
               />
-            </Suspense>}
+            </Suspense> : activeView === undefined ? null : dshConversation?.renderView(activeView)}
           </div>
 
           <div className="chat-composer-region" ref={composerRegionRef} data-composer-seat="">
