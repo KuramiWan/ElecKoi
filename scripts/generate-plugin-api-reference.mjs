@@ -160,7 +160,8 @@ export async function generatePluginApiReference(root, { check = false } = {}) {
     + '\n\n```ts\n' + remote.dts + '```\n\n数据字段见 [Host 数据类型](types-host.md)。\n')
   const stale = []
   for (const [path, content] of artifacts) {
-    const generated = path.endsWith('.md') ? content.trimEnd() + '\n' : content
+    const normalized = content.replaceAll('\r\n', '\n')
+    const generated = path.endsWith('.md') ? normalized.trimEnd() + '\n' : normalized
     const absolute = resolve(root, path)
     if (check) {
       const current = await readFile(absolute, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error })
