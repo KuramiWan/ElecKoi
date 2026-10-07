@@ -1,0 +1,80 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 完整卡",
+    "description": "PROBE 角色描述正文",
+    "personality": "PROBE-DROP-personality 字段内容",
+    "scenario": "PROBE-DROP-scenario 字段内容",
+    "mes_example": "PROBE-DROP-mes_example 字段内容",
+    "system_prompt": "PROBE-DROP-system_prompt 字段内容",
+    "post_history_instructions": "PROBE-DROP-post_history_instructions",
+    "creator_notes": "PROBE-DROP-creator_notes 字段内容",
+    "creator": "PROBE-DROP-creator 字段内容",
+    "character_version": "PROBE-DROP-character_version",
+    "nickname": "PROBE-DROP-nickname",
+    "tags": ["PROBE-DROP-tags"],
+    "group_only_greetings": ["PROBE-DROP-group_only_greetings"],
+    "assets": [
+      { "type": "icon", "uri": "PROBE-DROP-assets-uri" }
+    ],
+    "first_mes": "PROBE 开场白甲",
+    "alternate_greetings": ["PROBE 开场白乙", "PROBE 开场白乙"],
+    "extensions": {
+      "depth_prompt": { "role": 2, "depth": 987641, "prompt": "PROBE-DROP-depth_prompt 正文" },
+      "talkativeness": 987642,
+      "fav": true,
+      "world": "PROBE-DROP-world",
+      "regex_scripts": [
+        {
+          "scriptName": "清理测试标签",
+          "findRegex": "/<sample>[\\s\\S]*?<\\/sample>/g",
+          "replaceString": "PROBE 替换结果",
+          "placement": [2],
+          "disabled": false,
+          "markdownOnly": false,
+          "promptOnly": false,
+          "runOnEdit": true,
+          "minDepth": 987643,
+          "maxDepth": 987644
+        }
+      ]
+    },
+    "character_book": {
+      "name": "世界设定",
+      "description": "PROBE-DROP-book-description",
+      "scan_depth": 987645,
+      "token_budget": 987646,
+      "recursive_scanning": false,
+      "extensions": { "book_extensions_probe": "PROBE-DROP-book-extensions" },
+      "entries": [
+        {
+          "id": "PROBE-DROP-entry-id",
+          "name": "舞台",
+          "comment": "PROBE 舞台备注",
+          "content": "PROBE 舞台正文",
+          "keys": ["PROBE-KEY-舞台"],
+          "constant": true,
+          "enabled": true,
+          "insertion_order": 987647,
+          "position": "PROBE-DROP-position",
+          "priority": 987648,
+          "character_filter": {
+            "isExclude": false,
+            "names": [],
+            "tags": ["PROBE-DROP-filter-tag"]
+          }
+        },
+        {
+          "id": "PROBE-DROP-entry-id-2",
+          "name": "歌声",
+          "content": "PROBE 歌声正文",
+          "keys": ["PROBE-KEY-歌声"],
+          "constant": false,
+          "enabled": true,
+          "use_regex": false
+        }
+      ]
+    }
+  }
+}

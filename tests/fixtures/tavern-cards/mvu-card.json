@@ -1,0 +1,48 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 变量卡",
+    "first_mes": "PROBE 变量卡开场",
+    "extensions": {
+      "tavern_helper": {
+        "variables": {
+          "好感度": 100001,
+          "阶段": "PROBE-MVU-初识"
+        },
+        "scripts": [
+          {
+            "name": "PROBE-DROP-script-变量结构",
+            "enabled": true,
+            "content": "const Schema = z.object({\n  好感度: z.coerce.number().describe('好感度数值'),\n  阶段: z.string().describe('关系阶段')\n})"
+          },
+          {
+            "name": "PROBE-DROP-script-运行时更新",
+            "enabled": true,
+            "content": "_.set('好感度', 100002)"
+          }
+        ]
+      }
+    },
+    "character_book": {
+      "name": "变量世界书",
+      "entries": [
+        {
+          "name": "[initvar]",
+          "content": "好感度: 100003\n阶段: 未使用",
+          "keys": []
+        },
+        {
+          "name": "[mvu_update] 更新规则",
+          "content": "变量更新规则:\n  好感度:\n    check:\n      - PROBE-MVU-check 必须是数字",
+          "keys": []
+        },
+        {
+          "name": "变量普通条目",
+          "content": "PROBE-MVU-普通正文",
+          "keys": ["PROBE-KEY-mvu"]
+        }
+      ]
+    }
+  }
+}

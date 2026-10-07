@@ -1,0 +1,96 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 触发语义卡",
+    "first_mes": "PROBE 触发卡开场",
+    "character_book": {
+      "name": "触发语义",
+      "entries": [
+        {
+          "id": "e-any",
+          "name": "any 条目",
+          "content": "PROBE any 正文",
+          "keys": ["PROBE-KEY-any"],
+          "secondary_keys": ["PROBE-SUB-any"],
+          "extensions": { "selectiveLogic": 0 }
+        },
+        {
+          "id": "e-notall",
+          "name": "notall 条目",
+          "content": "PROBE notall 正文",
+          "keys": ["PROBE-KEY-notall"],
+          "secondary_keys": ["PROBE-SUB-notall"],
+          "extensions": { "selectiveLogic": 1 }
+        },
+        {
+          "id": "e-notany",
+          "name": "notany 条目",
+          "content": "PROBE notany 正文",
+          "keys": ["PROBE-KEY-notany"],
+          "secondary_keys": ["PROBE-SUB-notany"],
+          "extensions": { "selectiveLogic": 2 }
+        },
+        {
+          "id": "e-all",
+          "name": "all 条目",
+          "content": "PROBE all 正文",
+          "keys": ["PROBE-KEY-all"],
+          "secondary_keys": ["PROBE-SUB-all"],
+          "extensions": { "selectiveLogic": 3 }
+        },
+        {
+          "id": "e-selective-false",
+          "name": "selective-false 条目",
+          "content": "PROBE selective-false 正文",
+          "keys": ["PROBE-KEY-sel-false"],
+          "secondary_keys": ["PROBE-SUB-sel-false"],
+          "selective": false
+        },
+        {
+          "id": "e-constant",
+          "name": "常驻 条目",
+          "content": "PROBE 常驻正文",
+          "keys": ["PROBE-KEY-const"],
+          "constant": true
+        },
+        {
+          "id": "e-disabled",
+          "name": "disabled 条目",
+          "content": "PROBE disabled 正文",
+          "keys": ["PROBE-KEY-disabled"],
+          "enabled": false
+        },
+        {
+          "id": "e-comment",
+          "comment": "COMMENT 标题来源",
+          "content": "PROBE comment 正文",
+          "keys": ["PROBE-KEY-comment"]
+        },
+        {
+          "id": "e-both",
+          "name": "NAME 优先标题",
+          "comment": "COMMENT 被忽略",
+          "content": "PROBE both 正文",
+          "keys": ["PROBE-KEY-both"]
+        },
+        {
+          "id": "e-legacy",
+          "name": "legacy 别名条目",
+          "content": "PROBE legacy 正文",
+          "key": ["PROBE-KEY-legacy"],
+          "keysecondary": ["PROBE-SUB-legacy"]
+        },
+        {
+          "id": "e-case",
+          "name": "大小写 条目",
+          "content": "PROBE 大小写正文",
+          "keys": ["PROBE-KEY-case"],
+          "case_sensitive": true,
+          "match_whole_words": true,
+          "use_regex": false
+        }
+      ]
+    }
+  }
+}

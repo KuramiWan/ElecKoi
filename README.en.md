@@ -51,6 +51,10 @@ ElecKoi aims to build a continuously improving creative flywheel: turn the commu
 
 Open problems that require focused attention will be collected in [Open Problems in AI Roleplay Development](docs/open-problems/README.en.md).
 
+## Tavern Card Compatibility
+
+Field-level compatibility for character card import — which fields are read, where they land, which are not read, and why — is documented in [Tavern Character Card Import Compatibility](docs/tavern-compatibility.en.md).
+
 ## QQ Group
 
 `1041463229`

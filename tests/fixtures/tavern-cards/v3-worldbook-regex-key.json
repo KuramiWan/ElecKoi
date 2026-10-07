@@ -1,0 +1,22 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 正则键卡",
+    "first_mes": "PROBE 正则键开场",
+    "character_book": {
+      "name": "正则形态键名世界书",
+      "entries": [
+        {
+          "name": "正则形态键条目",
+          "content": "PROBE-REGEX-正文",
+          "keys": ["/^PROBE-REGEX-\\d+$/i"]
+        },        {
+          "name": "普通键条目",
+          "content": "PROBE-PLAIN-正文",
+          "keys": ["PROBE-PLAIN-key"]
+        }
+      ]
+    }
+  }
+}

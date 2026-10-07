@@ -1,0 +1,51 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 扩展面卡",
+    "first_mes": "PROBE 扩展卡开场",
+    "character_book": {
+      "name": "扩展面",
+      "entries": [
+        {
+          "id": "PROBE-DROP-ext-entry-id",
+          "name": "扩展面 条目",
+          "content": "PROBE 扩展面正文",
+          "keys": ["PROBE-KEY-ext"],
+          "extensions": {
+            "case_sensitive": false,
+            "match_whole_words": true,
+            "probability": 987651,
+            "useProbability": false,
+            "depth": 987652,
+            "position": 987653,
+            "role": 987654,
+            "group": "PROBE-DROP-ext-group",
+            "group_override": true,
+            "group_weight": 987655,
+            "sticky": 987656,
+            "cooldown": 987657,
+            "delay": 987658,
+            "scan_depth": 987659,
+            "use_group_scoring": false,
+            "display_index": 987660,
+            "automation_id": "PROBE-DROP-ext-automation",
+            "vectorized": false,
+            "outlet_name": "PROBE-DROP-ext-outlet",
+            "triggers": ["PROBE-DROP-ext-triggers"],
+            "ignore_budget": true,
+            "exclude_recursion": true,
+            "prevent_recursion": true,
+            "delay_until_recursion": 987661,
+            "match_persona_description": true,
+            "match_character_description": true,
+            "match_character_personality": true,
+            "match_character_depth_prompt": true,
+            "match_scenario": true,
+            "match_creator_notes": true
+          }
+        }
+      ]
+    }
+  }
+}

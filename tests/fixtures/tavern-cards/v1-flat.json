@@ -1,0 +1,8 @@
+{
+  "name": "PROBE 扁平卡",
+  "description": "PROBE 扁平卡描述",
+  "personality": "PROBE 扁平卡人格",
+  "scenario": "PROBE 扁平卡场景",
+  "first_mes": "PROBE 扁平卡开场白",
+  "mes_example": "PROBE 扁平卡示例对话"
+}

@@ -1,0 +1,9 @@
+{
+  "spec": "chara_card_v2",
+  "spec_version": "2.0",
+  "data": {
+    "name": "PROBE 最小卡",
+    "description": "PROBE 最小卡描述",
+    "first_mes": "PROBE 最小卡开场"
+  }
+}

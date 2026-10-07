@@ -1,0 +1,29 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 前端卡",
+    "first_mes": "PROBE 前端卡开场",
+    "character_book": {
+      "name": "前端世界书",
+      "entries": [
+        {
+          "name": "EJS 控制器",
+          "content": "<% const 材料 = getwi('前端材料条目'); TavernHelper.setvar('阶段', 'PROBE-FE-阶段') %>",
+          "keys": ["PROBE-KEY-fe-ctrl"]
+        },
+        {
+          "name": "前端材料条目",
+          "content": "PROBE-FE-材料正文",
+          "keys": ["PROBE-KEY-fe-material"],
+          "enabled": false
+        },
+        {
+          "name": "前端普通条目",
+          "content": "PROBE-FE-普通正文",
+          "keys": ["PROBE-KEY-fe-normal"]
+        }
+      ]
+    }
+  }
+}

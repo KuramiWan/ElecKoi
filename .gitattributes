@@ -7,6 +7,11 @@ docs/plugins/types-host.md text eol=lf
 docs/plugins/api-client.md text eol=lf
 docs/plugins/types-client.md text eol=lf
 docs/plugins/api-remote.md text eol=lf
+# 生成产物：生成器写 \n，check:tavern-docs 是逐字比对，所以检出时必须也是 LF
+docs/tavern-compatibility.md text eol=lf
+docs/tavern-compatibility.en.md text eol=lf
+# 模板是逐字比对的**输入**：`docRender.ts` 已把 \r\n 归一（真正的修法），这里再钉一次，省得只钉一半
+tests/fixtures/tavern-docs/*.md text eol=lf
 packages/dsh-product-api/src/cordisApi.generated.ts text eol=lf
 packages/dsh-product-api/src/client/cordisApi.generated.ts text eol=lf
 packages/dsh-product-api/src/client/remoteApi.generated.ts text eol=lf

@@ -1,0 +1,46 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 条目数组卡",
+    "first_mes": "PROBE 数组卡开场",
+    "character_book": {
+      "name": "数组形态世界书",
+      "entries": [
+        {
+          "name": "重名条目",
+          "content": "PROBE-ARR-重名甲",
+          "keys": ["PROBE-KEY-arr-1"]
+        },
+        {
+          "name": "重名条目",
+          "content": "PROBE-ARR-重名乙",
+          "keys": ["PROBE-KEY-arr-2"]
+        },
+        {
+          "name": "关闭条目",
+          "content": "PROBE-ARR-关闭",
+          "keys": ["PROBE-KEY-arr-3"],
+          "enabled": false
+        },
+        {
+          "name": "常驻条目",
+          "content": "PROBE-ARR-常驻",
+          "keys": ["PROBE-KEY-arr-4"],
+          "constant": true
+        },
+        {
+          "name": "缺省 enabled 条目",
+          "content": "PROBE-ARR-缺省启用",
+          "keys": ["PROBE-KEY-arr-5"]
+        },
+        {
+          "name": "disable 条目",
+          "content": "PROBE-ARR-disable",
+          "keys": ["PROBE-KEY-arr-6"],
+          "disable": true
+        }
+      ]
+    }
+  }
+}

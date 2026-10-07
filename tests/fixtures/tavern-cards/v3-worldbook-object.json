@@ -1,0 +1,33 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 条目对象卡",
+    "first_mes": "PROBE 对象卡开场",
+    "character_book": {
+      "name": "对象形态世界书",
+      "entries": {
+        "10": {
+          "name": "第十条",
+          "content": "PROBE-OBJ-十",
+          "keys": ["PROBE-KEY-obj-10"]
+        },
+        "1": {
+          "name": "第一条",
+          "content": "PROBE-OBJ-一",
+          "keys": ["PROBE-KEY-obj-1"]
+        },
+        "2": {
+          "name": "第二条",
+          "content": "PROBE-OBJ-二",
+          "keys": ["PROBE-KEY-obj-2"]
+        },
+        "x": {
+          "name": "非数字键条",
+          "content": "PROBE-OBJ-x",
+          "keys": ["PROBE-KEY-obj-x"]
+        }
+      }
+    }
+  }
+}

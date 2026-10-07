@@ -347,6 +347,45 @@ describe("DSH character setting-library tools", () => {
     expect(read.files.map((file) => file.content)).toEqual(["地下港口即将关闭。", "密道入口在钟楼。"]);
   });
 
+  it("treats a /…/flags keyword literally when the entry has no use_regex, and as a regex when it does", async () => {
+    // 这一条钉的是**匹配器层**（`containsKeyword` / `compileTavernKeywordRegex`，setting-library-tools.mjs:449-469）：
+    // 它按条目的 `keywordUseRegex` 决定"字面量还是正则"，这个不变式今天成立、修好后也仍成立——
+    // 所以它是**永久不变式，不是回归网**（"修好会红"的那种）。
+    // ⚠️ 别把它读成"导入器今天是对的"：导入侧的契约（`/…/flags` 的键必须原样保留 + 置 `keywordUseRegex: true`）
+    // 由目标套件 `tests/tavern-world-file-target.test.js` 第 1 条红断言钉着。
+    // 两层合起来才是完整的一句话：匹配器已经支持 /…/flags，缺的是导入侧不告诉它。
+    const runtime = await tools({
+      history: [{ role: "user", content: "泊位编号是 地下港口42" }],
+      extraEntries: [
+        // 酒馆自己导出的世界书就是这个形态：键写成 /…/flags，但条目里没有 use_regex。
+        // 电子爱只在显式 keywordUseRegex 时才解析 /…/（setting-library-tools.mjs:449-460 的 containsKeyword）。
+        entry({
+          id: "regex-off",
+          title: "正则键（无 use_regex）",
+          content: "泊位编号规则。",
+          agentReadStrategy: "keyword",
+          keywords: ["/地下港口\\d+/i"],
+          keywordUseRegex: false,
+          keywordScanDepth: 1,
+        }),
+        entry({
+          id: "regex-on",
+          title: "正则键（显式 use_regex）",
+          content: "泊位编号规则（显式正则）。",
+          agentReadStrategy: "keyword",
+          keywords: ["/地下港口\\d+/i"],
+          keywordUseRegex: true,
+          keywordScanDepth: 1,
+        }),
+      ],
+    });
+
+    const found = await runtime.byName.get("eleckoi_glob_setting_files").execute({ pattern: "**" });
+    const paths = found.files.map((file) => file.path);
+    expect(paths, "ST 导出的 /…/flags 键在电子爱里按字面量比对 ⇒ 永不命中（这是 C-4 记录的缺口）").not.toContain("正则键（无 use_regex）");
+    expect(paths, "同一形态的键在显式 keywordUseRegex 时按正则跑 ⇒ 命中").toContain("正则键（显式 use_regex）");
+  });
+
   it("keeps unmatched keywords hidden when the latest user turn does not match the prior assistant", async () => {
     const runtime = await tools({
       history: [

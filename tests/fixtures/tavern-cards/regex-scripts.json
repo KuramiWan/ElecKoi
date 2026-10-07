@@ -1,0 +1,40 @@
+{
+  "spec": "chara_card_v3",
+  "spec_version": "3.0",
+  "data": {
+    "name": "PROBE 正则卡",
+    "first_mes": "PROBE 正则卡开场",
+    "extensions": {
+      "regex_scripts": [
+        {
+          "id": "PROBE-DROP-regex-id",
+          "scriptName": "合法替换",
+          "findRegex": "/<sample>[\\s\\S]*?<\\/sample>/g",
+          "replaceString": "PROBE 正则替换结果",
+          "placement": [1, 2, 3, 5, 6],
+          "disabled": false,
+          "markdownOnly": true,
+          "promptOnly": false,
+          "runOnEdit": true,
+          "minDepth": 987671,
+          "maxDepth": 987672,
+          "trimStrings": true,
+          "substituteRegex": "PROBE-DROP-substitute-regex"
+        },
+        {
+          "id": "PROBE-DROP-regex-id-2",
+          "scriptName": "非法正则",
+          "findRegex": "/[/g",
+          "replaceString": "PROBE 非法替换结果",
+          "placement": [2],
+          "disabled": true,
+          "markdownOnly": false,
+          "promptOnly": true,
+          "runOnEdit": false,
+          "minDepth": 987673,
+          "maxDepth": 987674
+        }
+      ]
+    }
+  }
+}
