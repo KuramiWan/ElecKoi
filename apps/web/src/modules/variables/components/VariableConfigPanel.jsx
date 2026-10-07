@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Copy, MagnifyingGlass, PencilSimple, Plus, Scissors, SlidersHorizontal, Trash } from "@phosphor-icons/react";
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
+import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
 import {
   convertVariableToObject,
   copyVariableNode,
@@ -322,7 +323,19 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
   if (!config) return <div className="variable-loading">{error || "正在读取…"}</div>;
 
   return (
-    <section className="variable-layout" aria-label="变量配置" onMouseDown={() => { setAddOpen(false); setContextMenu(null); }}>
+    <EditorSidebarLayout className="variable-layout" aria-label="变量配置"
+      onMouseDown={() => { setAddOpen(false); setContextMenu(null); }}
+      inspector={selected.value ? (
+        <VariableConfigInspector
+          config={config}
+          selected={selected}
+          nameInputRef={nameInputRef}
+          onClose={closeInspector}
+          onChange={(next) => changeConfig(next)}
+          onReplaceContents={(objectId, sourceText) => changeConfig((current) => replaceObjectContentsFromJson(current, objectId, sourceText), false)}
+          onConvert={convertToObject}
+        />
+      ) : null}>
       <div className="variable-browser">
         <div className="variable-toolbar" onMouseDown={(event) => event.stopPropagation()}>
           <label className="variable-search"><MagnifyingGlass size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索变量" aria-label="搜索变量" /></label>
@@ -333,7 +346,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
           <button type="button" className="variable-manage-button" aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
           <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
         </div>
-        <div className="variable-tree" onContextMenu={openBackgroundMenu} onMouseDown={(event) => { if (event.button === 0 && !event.target.closest('[role="treeitem"]')) closeInspector(); }}>
+        <div className="variable-tree editor-sidebar-directory" onContextMenu={openBackgroundMenu} onMouseDown={(event) => { if (event.button === 0 && !event.target.closest('[role="treeitem"]')) closeInspector(); }}>
           <VariableTreeActionsContext.Provider value={{ openContextMenu, toggleNode }}>
             <VariableConfigTree
               key={characterId}
@@ -352,16 +365,6 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
 
       {managerOpen ? (
         <VariableConfigManager config={config} onChange={applyManagerChange} onClose={() => setManagerOpen(false)} onError={setError} />
-      ) : selected.value ? (
-        <VariableConfigInspector
-          config={config}
-          selected={selected}
-          nameInputRef={nameInputRef}
-          onClose={closeInspector}
-          onChange={(next) => changeConfig(next)}
-          onReplaceContents={(objectId, sourceText) => changeConfig((current) => replaceObjectContentsFromJson(current, objectId, sourceText), false)}
-          onConvert={convertToObject}
-        />
       ) : null}
 
       {contextMenu ? (
@@ -371,6 +374,6 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
         </div>
       ) : null}
       <ConfirmationDialog target={deleteTarget} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
-    </section>
+    </EditorSidebarLayout>
   );
 });

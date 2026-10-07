@@ -4,15 +4,12 @@ import { FIXED_ENTRY_IDS } from "../model/settingLibraryEditing.js";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
 import { OpeningEditor } from "./OpeningEditor.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
-import { SettingLibraryResizer } from "./SettingLibraryResizer.jsx";
-import { DEFAULT_INSPECTOR_WIDTH, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH } from "../model/settingLibraryInspectorSizing.js";
 
 function EntryEditor({
   entry,
   variableVersions,
   variableVersionsError,
   entries,
-  groups,
   promptPositions,
   allowCustomPromptPositions,
   nameInputRef,
@@ -33,7 +30,6 @@ function EntryEditor({
       <SettingLibraryEntryEditor
         entry={entry}
         entries={entries}
-        groups={groups}
         promptPositions={promptPositions}
         allowCustomPromptPositions={allowCustomPromptPositions}
         nameInputRef={nameInputRef}
@@ -87,27 +83,10 @@ export function SettingLibraryInspector({
   onRequestDeleteOpening,
   onPromptPositionsChange,
   allowCustomPromptPositions = false,
-  inspectorWidth = DEFAULT_INSPECTOR_WIDTH,
-  inspectorMinWidth = MIN_INSPECTOR_WIDTH,
-  inspectorMaxWidth = MAX_INSPECTOR_WIDTH,
-  onResizeStart,
-  onResizeKeyDown,
-  onResetResize,
 }) {
   if (!selected.value) return null;
   return (
     <aside className="setting-library-inspector" aria-label="设定编辑器">
-      {onResizeStart ? (
-        <SettingLibraryResizer
-          aria-label="调整编辑器宽度"
-          aria-valuemin={inspectorMinWidth}
-          aria-valuemax={inspectorMaxWidth}
-          aria-valuenow={Math.round(inspectorWidth)}
-          onPointerDown={onResizeStart}
-          onKeyDown={onResizeKeyDown}
-          onDoubleClick={onResetResize}
-        />
-      ) : null}
       <header className="setting-library-inspector-header">
         <div>
           {selected.kind === "entry" && !FIXED_ENTRY_IDS.has(selected.value.id) && selected.value.contentMode !== "ejs" && selected.value.dynamicMode !== "ejs_reference"
@@ -129,7 +108,6 @@ export function SettingLibraryInspector({
             variableVersions={variableVersions}
             variableVersionsError={variableVersionsError}
             entries={library.entries}
-            groups={library.groups}
             promptPositions={library.promptPositions}
             allowCustomPromptPositions={allowCustomPromptPositions}
             nameInputRef={nameInputRef}

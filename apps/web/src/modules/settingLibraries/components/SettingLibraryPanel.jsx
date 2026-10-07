@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
-  Books,
   ChatCircleDots,
   Code,
   Copy,
@@ -9,6 +8,7 @@ import {
   MagnifyingGlass,
   PencilSimple,
   Plus,
+  SlidersHorizontal,
   Trash,
 } from "@phosphor-icons/react";
 import { DshFolderClosedIcon } from "../../../ui/icons/dshTreeIcons.jsx";
@@ -17,8 +17,7 @@ import { SettingLibraryManager } from "./SettingLibraryManager.jsx";
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingLibraryInspector } from "./SettingLibraryInspector.jsx";
 import { SettingLibraryTree, SettingTreeActionsContext } from "./SettingLibraryTree.jsx";
-import { useInspectorPresence } from "../model/useInspectorPresence.js";
-import { DEFAULT_INSPECTOR_WIDTH, inspectorWidthBounds } from "../model/settingLibraryInspectorSizing.js";
+import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
 import {
   PINNED_ENTRY_IDS,
   createEntryDraft,
@@ -62,10 +61,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saveNotice, setSaveNotice] = useState("");
-  const [preferredInspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
-  const [containerWidth, setContainerWidth] = useState(() => window.innerWidth || 1024);
-  const [resizeSession, setResizeSession] = useState(null);
-  const layoutRef = useRef(null);
   const nameInputRef = useRef(null);
   const libraryRef = useRef(null);
   const persistedRef = useRef(null);
@@ -75,44 +70,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const selected = useMemo(() => findSelected(library, selectedKey), [library, selectedKey]);
   const nodes = useMemo(() => treeNodes(library), [library]);
   const searchHasResults = useMemo(() => library ? hasSearchResults(library, query) : false, [library, query]);
-  const inspectorBounds = inspectorWidthBounds(containerWidth);
-  const inspectorWidth = Math.min(inspectorBounds.max, Math.max(inspectorBounds.min, preferredInspectorWidth));
-
-  useEffect(() => {
-    const layout = layoutRef.current;
-    if (!layout) return undefined;
-    const measure = () => {
-      const width = layout.getBoundingClientRect().width;
-      if (width > 0) setContainerWidth(width);
-    };
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(layout);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [Boolean(library)]);
-
-  useEffect(() => {
-    if (!resizeSession) return undefined;
-    const handlePointerMove = (event) => {
-      const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
-      const { min, max } = inspectorWidthBounds(containerWidth);
-      const nextWidth = Math.min(max, Math.max(min, resizeSession.startWidth + resizeSession.startX - event.clientX));
-      setInspectorWidth(nextWidth);
-    };
-    const stopResize = () => setResizeSession(null);
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", stopResize);
-    window.addEventListener("pointercancel", stopResize);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", stopResize);
-      window.removeEventListener("pointercancel", stopResize);
-    };
-  }, [resizeSession]);
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
@@ -497,41 +454,9 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     requestCloseInspector();
   }
 
-  function startInspectorResize(event) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setResizeSession({ startX: event.clientX, startWidth: inspectorWidth });
-  }
-
-  function adjustInspectorWidth(delta) {
-    const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
-    const { min, max } = inspectorWidthBounds(containerWidth);
-    setInspectorWidth(Math.min(max, Math.max(min, inspectorWidth + delta)));
-  }
-
-  function handleInspectorResizeKeyDown(event) {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      adjustInspectorWidth(24);
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      adjustInspectorWidth(-24);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
-      setInspectorWidth(inspectorWidthBounds(containerWidth).min);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      const containerWidth = layoutRef.current?.getBoundingClientRect().width || window.innerWidth;
-      setInspectorWidth(inspectorWidthBounds(containerWidth).max);
-    }
-  }
-
   const selectedIcon = selected.kind === "group" ? DshFolderClosedIcon : nodeIcon(selected.value);
   const SelectedIcon = selectedIcon || FileText;
-  const presence = useInspectorPresence(selected.value && !managerOpen ? (
+  const inspector = selected.value ? (
     <SettingLibraryInspector
       selected={selected}
       library={library}
@@ -541,12 +466,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       nameInputRef={nameInputRef}
       SelectedIcon={SelectedIcon}
       onClose={requestCloseInspector}
-      inspectorWidth={inspectorWidth}
-      inspectorMinWidth={inspectorBounds.min}
-      inspectorMaxWidth={inspectorBounds.max}
-      onResizeStart={startInspectorResize}
-      onResizeKeyDown={handleInspectorResizeKeyDown}
-      onResetResize={() => setInspectorWidth(DEFAULT_INSPECTOR_WIDTH)}
       onUpdateGroup={updateGroup}
       onDeleteGroup={() => askDelete("group", selected.value.id)}
       onUpdateEntry={(entry) => updateEntryById(entry.id, entry)}
@@ -555,15 +474,14 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       onRequestDeleteOpening={askDeleteOpening}
       onPromptPositionsChange={(promptPositions, entries = library.entries) => changeLibrary((current) => ({ ...current, promptPositions, entries }))}
     />
-  ) : null);
+  ) : null;
 
   if (!library) return <div className="setting-library-loading">{error || "正在读取…"}</div>;
 
   return (
-    <section
-      ref={layoutRef}
-      className={`setting-library-layout${presence.content && !managerOpen ? " is-inspector-open" : ""}${resizeSession ? " is-resizing" : ""}`}
-      style={{ "--setting-library-inspector-width": `${inspectorWidth}px` }}
+    <EditorSidebarLayout
+      className="setting-library-layout"
+      inspector={inspector}
       aria-label="设定库"
       onMouseDown={() => setMenuOpen(false)}
     >
@@ -583,11 +501,11 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
               </div>
             ) : null}
           </div>
-          <button type="button" className="setting-library-manage-button" aria-expanded={managerOpen} onClick={() => { setMenuOpen(false); setManagerOpen(true); }}><Books size={16} />管理</button>
+          <button type="button" className="setting-library-manage-button" aria-expanded={managerOpen} onClick={() => { setMenuOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
           <SaveControl dirty={dirty} error={error} notice={saveNotice} saving={saving} onSave={save} />
         </div>
 
-        <div className="setting-library-tree" onMouseDown={handleTreeMouseDown} onContextMenu={openTreeContextMenu}>
+        <div className="setting-library-tree editor-sidebar-directory" onMouseDown={handleTreeMouseDown} onContextMenu={openTreeContextMenu}>
           <SettingTreeActionsContext.Provider value={{ openContextMenu, updateEntryById }}>
             <SettingLibraryTree
               key={characterId}
@@ -614,11 +532,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
           onClose={() => setManagerOpen(false)}
           onError={setError}
         />
-      ) : presence.content ? (
-        <div className={`setting-library-inspector-pane inspector-presence${presence.closing ? " is-closing" : ""}`}
-          inert={presence.closing} onAnimationEnd={presence.onAnimationEnd}>
-          {presence.content}
-        </div>
       ) : null}
 
       {contextMenu ? (
@@ -636,6 +549,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
         </div>
       ) : null}
       <ConfirmationDialog target={deleteTarget} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
-    </section>
+    </EditorSidebarLayout>
   );
 });

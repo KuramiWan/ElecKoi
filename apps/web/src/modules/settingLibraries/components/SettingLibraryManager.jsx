@@ -14,6 +14,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { ExportIcon, ImportIcon } from "../../../ui/icons/index.jsx";
+import { VersionNameDialog } from "../../../ui/ui/VersionNameDialog.jsx";
 import {
   createLibraryVersion,
   deleteActiveLibraryVersion,
@@ -25,16 +26,10 @@ import {
   switchLibraryVersion,
   syncActiveVersion,
 } from "../model/settingLibraryTransfer.js";
-import { PINNED_ENTRY_IDS, uniqueName } from "../model/settingLibraryEditing.js";
+import { PINNED_ENTRY_IDS } from "../model/settingLibraryEditing.js";
 
 function versionLabel(version) {
   return version.name.trim() || "待命名";
-}
-
-function suggestedVersionName(library, sourceId) {
-  const source = library.versions.find((version) => version.id === sourceId);
-  const base = source ? `${versionLabel(source)} · 副本` : "新版本";
-  return uniqueName(base, new Set(library.versions.map((version) => version.name.trim())));
 }
 
 function Modal({ title, children, actions, onClose, labelledBy = "setting-library-modal-title" }) {
@@ -46,54 +41,6 @@ function Modal({ title, children, actions, onClose, labelledBy = "setting-librar
         <div className="setting-library-manager-dialog-actions">{actions}</div>
       </section>
     </div>
-  );
-}
-
-function CreateVersionDialog({ library, onCancel, onCreate }) {
-  const [sourceId, setSourceId] = useState(library.activeVersionId);
-  const [name, setName] = useState(() => suggestedVersionName(library, library.activeVersionId));
-  const [edited, setEdited] = useState(false);
-  const [validation, setValidation] = useState("");
-  const ordered = useMemo(() => [...library.versions].sort((left, right) => left.id === library.activeVersionId ? -1 : right.id === library.activeVersionId ? 1 : 0), [library]);
-
-  function selectSource(nextId) {
-    setSourceId(nextId);
-    setValidation("");
-    if (!edited) setName(suggestedVersionName(library, nextId));
-  }
-
-  function submit() {
-    const normalized = name.trim();
-    if (!normalized) return setValidation("请输入版本名称");
-    if (library.versions.some((version) => version.name.trim() === normalized)) return setValidation("版本名称已存在");
-    onCreate(normalized, sourceId === "__blank__" ? "" : sourceId);
-  }
-
-  return (
-    <Modal
-      title="新建版本"
-      onClose={onCancel}
-      actions={<><button type="button" onClick={onCancel}>取消</button><button type="button" className="is-primary" onClick={submit}>创建版本</button></>}
-    >
-      <label className="setting-library-manager-field">
-        <span>版本名称</span>
-        <input autoFocus value={name} maxLength={60} aria-invalid={Boolean(validation)} onChange={(event) => { setName(event.target.value); setEdited(true); setValidation(""); }} />
-        {validation ? <small role="alert">{validation}</small> : null}
-      </label>
-      <fieldset className="setting-library-version-source-list">
-        <legend>创建方式</legend>
-        {ordered.map((version) => (
-          <label key={version.id}>
-            <input type="radio" name="version-source" checked={sourceId === version.id} onChange={() => selectSource(version.id)} />
-            <span><strong>{version.id === library.activeVersionId ? "复制当前版本" : versionLabel(version)}</strong><small>{version.id === library.activeVersionId ? versionLabel(version) : "从这个版本复制"}</small></span>
-          </label>
-        ))}
-        <label>
-          <input type="radio" name="version-source" checked={sourceId === "__blank__"} onChange={() => selectSource("__blank__")} />
-          <span><strong>创建空白版本</strong><small>保留固定条目，不复制其他设定</small></span>
-        </label>
-      </fieldset>
-    </Modal>
   );
 }
 
@@ -363,7 +310,8 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
 
           <section className="setting-library-manager-card">
             <div className="setting-library-manager-rows">
-              <button type="button" className="setting-library-manager-row is-accent" onClick={() => setDialog("create")}><Plus size={18} /><strong>新建版本</strong><CaretRight size={15} /></button>
+              <button type="button" className="setting-library-manager-row" onClick={() => setDialog({ type: "copy", sourceVersionId: current.activeVersionId })}><Copy size={18} /><strong>复制当前版本</strong><CaretRight size={15} /></button>
+              <button type="button" className="setting-library-manager-row is-accent" onClick={() => setDialog({ type: "create", sourceVersionId: "" })}><Plus size={18} /><strong>创建空白版本</strong><CaretRight size={15} /></button>
               <button type="button" className="setting-library-manager-row" onClick={() => setPage("sources")}><ArrowsMerge size={18} /><strong>并入设定库</strong><CaretRight size={15} /></button>
               <button type="button" className="setting-library-manager-row" onClick={() => setDialog("import")}><ImportIcon size={18} /><strong>导入设定库</strong><CaretRight size={15} /></button>
               <button type="button" className="setting-library-manager-row" onClick={exportLibrary}><ExportIcon size={18} /><strong>导出设定库</strong><CaretRight size={15} /></button>
@@ -421,7 +369,13 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
         </div>
       ) : null}
 
-        {dialog === "create" ? <CreateVersionDialog library={current} onCancel={() => setDialog("")} onCreate={(name, sourceId) => { onChange(createLibraryVersion(current, name, sourceId)); setDialog(""); setNotice(`已创建“${name}”，保存后生效`); }} /> : null}
+        {dialog.type === "copy" || dialog.type === "create" ? <VersionNameDialog
+          title={dialog.type === "copy" ? "复制当前版本" : "创建空白版本"} versions={current.versions}
+          confirmLabel={dialog.type === "copy" ? "复制" : "创建"}
+          onCancel={() => setDialog("")} onCreate={(name) => {
+            onChange(createLibraryVersion(current, name, dialog.sourceVersionId));
+            setDialog(""); setNotice(`已创建“${name}”，保存后生效`);
+          }} /> : null}
         {dialog === "import" ? <ImportTypeDialog onCancel={() => setDialog("")} onPick={(expected) => requestFile({ type: "import", expected })} /> : null}
         {dialog === "delete" && activeVersion ? <DeleteVersionDialog version={activeVersion} onCancel={() => setDialog("")} onDelete={() => { onChange(deleteActiveLibraryVersion(current)); setDialog(""); setNotice("当前版本已删除，保存后生效"); }} /> : null}
         {mergePreview && pickedVersion ? <MergeConfirmDialog sourceName={source.name} version={pickedVersion} plan={mergePreview.plan} onCancel={() => setMergePreview(null)} onMerge={() => { onChange(mergePreview.library); setMergePreview(null); setCheckedIds(new Set()); setPage("home"); setNotice(`已并入 ${mergePreview.plan.entryCount} 条设定，保存后生效`); }} /> : null}

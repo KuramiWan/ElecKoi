@@ -24,7 +24,7 @@ import { DynamicSettingsNameDialog } from "./DynamicSettingsDialogs.jsx";
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
 import { BranchSettingsSplitView } from "./BranchSettingsSplitView.jsx";
-import { DEFAULT_INSPECTOR_WIDTH } from "../model/settingLibraryInspectorSizing.js";
+import { DEFAULT_INSPECTOR_WIDTH } from "../../../ui/hooks/editorSidebarSizing.js";
 
 function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -622,7 +622,6 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                     key={selected.value.id}
                     entry={selected.value}
                     entries={library.entries}
-                    groups={library.groups}
                     promptPositions={library.promptPositions}
                     onChange={(patch) => changeLibrary((current) => ({
                       ...current,

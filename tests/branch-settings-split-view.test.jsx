@@ -35,7 +35,7 @@ describe('branch settings two-pane layout', () => {
       const width = () => Number(separator.getAttribute('aria-valuenow'))
       const key = async (value, shiftKey = false) => act(async () => separator.dispatchEvent(new KeyboardEvent('keydown', { key: value, shiftKey, bubbles: true })))
       expect(layout.children).toHaveLength(2)
-      expect(separator.className).toBe('setting-library-inspector-resizer')
+      expect(separator.className).toBe('editor-sidebar-resizer')
       expect(separator.parentElement.classList.contains('dynamic-settings-editor-pane')).toBe(true)
       expect(width()).toBe(720)
       await key('ArrowRight')

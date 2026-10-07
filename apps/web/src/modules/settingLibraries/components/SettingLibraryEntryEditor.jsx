@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   BookOpenText,
-  CaretDown,
   CaretRight,
   Check,
   ClockCounterClockwise,
@@ -205,39 +204,6 @@ function BasicSection({ entry, nameInputRef, onChange }) {
   );
 }
 
-function groupPath(groupId, groups) {
-  const byId = new Map(groups.map((group) => [group.id, group]));
-  const names = [];
-  const visited = new Set();
-  let current = byId.get(groupId);
-  while (current && !visited.has(current.id) && names.length < 12) {
-    visited.add(current.id);
-    names.unshift(current.name || "未命名文件夹");
-    current = byId.get(current.parentId);
-  }
-  return names;
-}
-
-function AgentDirectoryPreview({ currentEntryId, entries, groups }) {
-  const items = useMemo(() => entries
-    .filter((entry) => !FIXED_ENTRY_IDS.has(entry.id) && entry.enabled && entry.triggerMode === "agent_tool" && entry.dynamicMode !== "ejs_reference")
-    .sort((left, right) => left.treeViewOrder - right.treeViewOrder)
-    .map((entry) => ({ entry, path: [...groupPath(entry.groupId, groups), entry.title || "未命名设定"] })), [entries, groups]);
-  return (
-    <details className="setting-library-directory-preview">
-      <summary><span><strong>AI 看到的目录</strong><small>{items.length} 条已启用</small></span><CaretDown size={15} /></summary>
-      <div>
-        {items.length ? items.map(({ entry, path }) => (
-          <div className={entry.id === currentEntryId ? "is-current" : ""} key={entry.id}>
-            <span>{path.join(" / ")}</span>
-            <em>{entry.agentReadStrategy === "required" ? "必读" : entry.agentReadStrategy === "keyword" ? "关键词" : entry.contentMode === "ejs" ? "EJS条件" : "选读"}</em>
-          </div>
-        )) : <p>还没有可供 Agent 读取的条目</p>}
-      </div>
-    </details>
-  );
-}
-
 function KeywordRules({ entry, onChange }) {
   const effectiveCondition = !entry.conditionKeywords.length ? "none" : entry.keywordCondition === "none" ? "any" : entry.keywordCondition;
   return (
@@ -286,7 +252,7 @@ function KeywordRules({ entry, onChange }) {
   );
 }
 
-function TriggerSection({ entry, entries, groups, onChange }) {
+function TriggerSection({ entry, onChange }) {
   function setStrategy(agentReadStrategy) {
     if (agentReadStrategy === "normal" && entry.agentReadStrategy === "keyword") return;
     onChange({ ...entry, agentReadStrategy,
@@ -299,15 +265,18 @@ function TriggerSection({ entry, entries, groups, onChange }) {
       {entry.triggerMode === "agent_tool" ? (
         <>
           <SegmentedField label="读取策略" value={entry.agentReadStrategy === "required" ? "required" : "normal"} options={READ_STRATEGIES} onChange={setStrategy} />
-          {entry.agentReadStrategy !== "required" ? <SwitchRow title="关键词命中" description={entry.agentReadStrategy === "keyword" ? "命中后列为本轮必读" : "关闭时由 AI 选读"} checked={entry.agentReadStrategy === "keyword"} onChange={(enabled) => onChange({ ...entry, agentReadStrategy: enabled ? "keyword" : "normal" })} /> : null}
-          {entry.agentReadStrategy === "keyword" ? <KeywordRules entry={entry} onChange={onChange} /> : null}
           {entry.agentReadStrategy === "normal" && entry.contentMode === "plain_text" ? (
             <label className="setting-library-field-card setting-library-text-field">
               <span>注释（AI 读目录时靠它判断）</span>
               <textarea value={entry.agentSelectionHint} maxLength={200} placeholder="写给 AI 看的一句话" onChange={(event) => onChange({ ...entry, agentSelectionHint: event.target.value })} />
             </label>
           ) : null}
-          <AgentDirectoryPreview currentEntryId={entry.id} entries={entries} groups={groups} />
+          {entry.agentReadStrategy !== "required" ? (
+            <section className="setting-library-field-card setting-library-keyword-card">
+              <SwitchRow title="关键词命中" description={entry.agentReadStrategy === "keyword" ? "命中后列为本轮必读" : "关闭时由 AI 选读"} checked={entry.agentReadStrategy === "keyword"} onChange={(enabled) => onChange({ ...entry, agentReadStrategy: enabled ? "keyword" : "normal" })} />
+            </section>
+          ) : null}
+          {entry.agentReadStrategy === "keyword" ? <KeywordRules entry={entry} onChange={onChange} /> : null}
         </>
       ) : null}
     </div>
@@ -449,7 +418,7 @@ function InsertSection({ entry, entries, promptPositions, allowCustomPromptPosit
   );
 }
 
-export function SettingLibraryEntryEditor({ entry, entries, groups, promptPositions = [], allowCustomPromptPositions = false, nameInputRef, onChange, onEntriesChange, onOpenEntry, onPromptPositionsChange = () => {} }) {
+export function SettingLibraryEntryEditor({ entry, entries, promptPositions = [], allowCustomPromptPositions = false, nameInputRef, onChange, onEntriesChange, onOpenEntry, onPromptPositionsChange = () => {} }) {
   const [section, setSection] = useState("base");
   const [managingPositions, setManagingPositions] = useState(false);
   const editorRef = useRef(null);
@@ -490,7 +459,7 @@ export function SettingLibraryEntryEditor({ entry, entries, groups, promptPositi
         })}
       </nav>
       {activeSection === "base" ? <BasicSection entry={entry} nameInputRef={nameInputRef} onChange={onChange} /> : null}
-      {activeSection === "trigger" ? <TriggerSection entry={entry} entries={entries} groups={groups} onChange={onChange} /> : null}
+      {activeSection === "trigger" ? <TriggerSection entry={entry} onChange={onChange} /> : null}
       {activeSection === "content" ? <ContentSection entry={entry} entries={entries} onChange={onChange} onOpenEntry={onOpenEntry} /> : null}
       {activeSection === "insert" ? <InsertSection entry={entry} entries={entries} promptPositions={promptPositions} allowCustomPromptPositions={allowCustomPromptPositions} onChange={onChange} onEntriesChange={onEntriesChange} onManagePositions={openPositionManager} /> : null}
     </div>

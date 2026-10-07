@@ -125,6 +125,10 @@
   overflow: auto;
 }
 
+.regex-layout.is-inspector-open .regex-list-scroll {
+  margin-inline-end: calc(min(var(--editor-sidebar-width), calc(100% - var(--editor-sidebar-gap))) + 6px);
+}
+
 .regex-rule-groups {
   width: min(620px, 100%);
 }

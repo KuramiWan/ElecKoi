@@ -60,7 +60,7 @@ export function OpeningEditor({ entry, variableVersions = [], variableVersionsEr
                 onChange={(event) => onChange(updateOpening(entry, message.id, {
                   variableVersionId: event.target.value, initialVariableStateJson: '',
                 }))}>
-                <option value="">当前变量版本</option>
+                <option value="" disabled hidden>{variableVersions.length ? '请选择变量版本' : '暂无变量版本'}</option>
                 {message.variableVersionId && !variableVersions.some((version) => version.id === message.variableVersionId)
                   ? <option value={message.variableVersionId} disabled>版本不存在</option> : null}
                 {variableVersions.map((version) => <option key={version.id} value={version.id}>{version.name || '未命名版本'}</option>)}

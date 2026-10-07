@@ -58,7 +58,8 @@ body:has(#eleckoi-root) {
 html.is-window-resizing *,
 html.is-window-resizing *::before,
 html.is-window-resizing *::after {
-  animation: none !important;
+  /* 保留动画实例，避免缩放结束时重播已完成的入场动画。 */
+  animation-play-state: paused !important;
   transition: none !important;
 }
 

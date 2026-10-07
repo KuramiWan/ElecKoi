@@ -13,6 +13,8 @@ export const inject = [
   'sessionController',
   'sessions',
   'eleckoiConversationLifecycle',
+  'eleckoiConversationChanges',
+  'eleckoiCharacterConfigurationChanges',
   'sessionProjections'
 ]
 

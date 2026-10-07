@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { MagnifyingGlass, Plus, SlidersHorizontal } from "@phosphor-icons/react";
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
+import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
 import {
   REGEX_SCOPES,
   createRegexRule,
@@ -232,7 +233,19 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
   if (!collection) return <div className="regex-loading">{error || "正在读取…"}</div>;
 
   return (
-    <section className={`regex-layout${selected ? " has-inspector" : ""}`} aria-label="正则配置" onMouseDown={() => setAddOpen(false)}>
+    <EditorSidebarLayout className="regex-layout" aria-label="正则配置" onMouseDown={() => setAddOpen(false)}
+      inspector={selected ? (
+        <RegexRuleInspector
+          scope={selected.scope}
+          rule={selected.rule}
+          onTest={(text, rule, target) => regexRules.test(text, rule, target)}
+          onChange={changeSelected}
+          onMoveScope={moveSelectedScope}
+          onClose={() => setSelectedId("")}
+          onDuplicate={() => { changeCollection((current) => duplicateRegexRules(current, [selected.rule.id])); }}
+          onDelete={askDeleteSelected}
+        />
+      ) : null}>
       <div className="regex-browser">
         <div className="regex-toolbar" onMouseDown={(event) => event.stopPropagation()}>
           <label className="regex-search"><MagnifyingGlass size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索正则" aria-label="搜索正则" /></label>
@@ -243,7 +256,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
           <button type="button" className="regex-manage-button" aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
           <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
         </div>
-        <div className="regex-list-scroll" onMouseDown={(event) => { if (!event.target.closest(".regex-rule-row")) setSelectedId(""); }}>
+        <div className="regex-list-scroll editor-sidebar-directory" onMouseDown={(event) => { if (!event.target.closest(".regex-rule-row")) setSelectedId(""); }}>
           <RegexRuleList
             collection={collection}
             query={query}
@@ -259,19 +272,6 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
         </div>
       </div>
 
-      {selected ? (
-        <RegexRuleInspector
-          scope={selected.scope}
-          rule={selected.rule}
-          onTest={(text, rule, target) => regexRules.test(text, rule, target)}
-          onChange={changeSelected}
-          onMoveScope={moveSelectedScope}
-          onClose={() => setSelectedId("")}
-          onDuplicate={() => { changeCollection((current) => duplicateRegexRules(current, [selected.rule.id])); }}
-          onDelete={askDeleteSelected}
-        />
-      ) : null}
-
       {managerOpen ? (
         <RegexRulesManager
           collection={collection}
@@ -283,6 +283,6 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       ) : null}
       <input ref={importInputRef} className="regex-file-input" type="file" accept="application/json,.json" multiple onChange={handleImportFiles} />
       <ConfirmationDialog target={deleteTarget} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteTarget(null)} onConfirm={confirmDeleteSelected} />
-    </section>
+    </EditorSidebarLayout>
   );
 });
