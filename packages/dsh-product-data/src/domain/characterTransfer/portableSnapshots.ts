@@ -117,6 +117,7 @@ function settingEntry(value: JsonObject, index: number): SettingLibraryEntry {
       id: string(message.id) || `opening-${messageIndex + 1}-${randomUUID()}`,
       title: string(message.title),
       content: string(message.content),
+      variableVersionId: string(message.variable_version_id),
       initialVariableStateJson: string(message.initial_variable_state)
     })),
     defaultOpeningMessageId: string(value.default_opening_message_id),
@@ -249,6 +250,7 @@ function settingEntryJson(entry: SettingLibraryEntry): JsonObject {
       id: message.id,
       title: message.title,
       content: message.content,
+      variable_version_id: message.variableVersionId || '',
       initial_variable_state: message.initialVariableStateJson
     })),
     default_opening_message_id: entry.defaultOpeningMessageId,

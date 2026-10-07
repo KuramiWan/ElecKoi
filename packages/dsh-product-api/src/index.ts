@@ -1,6 +1,24 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
+import { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
+export { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
+export type { ConversationPreparation, ConversationSave, ConversationRestore, ConversationRestorePlan, ConversationLifecycleParticipant } from './conversationLifecycle.js'
 import { registerHostApiInspect } from './hostInspect.js'
 import { randomUUID } from 'node:crypto'
+import { CompatibilityCatalogOperations } from './compatibility-catalog.js'
+import { CompatibilityMessageOperations } from './compatibility-messages.js'
+import { CompatibilityWorldbookHost } from './compatibility-worldbook-host.js'
+import { CompatibilityRegexOperations } from './compatibility-regex.js'
+import { CompatibilityRuntimePreparation } from './compatibility-runtime.js'
+import { CompatibilityDataBankOperations } from './compatibility-databank.js'
+import { CompatibilityModelOperations } from './compatibility-models.js'
+import { CompatibilityFrontendOperations } from './compatibility-frontends.js'
+export type * from './frontend-project-types.js'
+import { CompatibilityChatOperations } from './compatibility-chats.js'
+import { ElecKoiCreatorAssistantApi } from './creator-assistant.js'
+export { ElecKoiCreatorAssistantApi } from './creator-assistant.js'
+import { clearConversationCompatibility, exportConversationCompatibility, parseConversationCompatibility, restoreConversationCompatibility } from './conversation-compatibility-archive.js'
+export { extractAndroidBackup, androidArchivePath } from './migration-archive.js'
+export type { ExtractedAndroidBackup, AndroidBackupManifest } from './migration-archive.js'
 import { join } from 'node:path'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-config-editor'
@@ -8,7 +26,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, type SessionEvent, type SessionHeader, type SessionId } from '@deepseek-ai/dsh-session'
 
 declare module '@deepseek-ai/dsh-session' {
@@ -69,6 +87,9 @@ import type {
   VariableViewerTimeline
 } from './types.js'
 import { testTavilyConnection } from './tavily.js'
+import { CompatibilityOperations, COMPATIBILITY_METHODS } from './compatibility.js'
+import type { CompatibilityCommand, CompatibilityChange, CompatibilityValue } from './types.js'
+export type { CompatibilityCommand, CompatibilityChange, CompatibilityValue } from './types.js'
 import type { ElecKoiSessionEditor } from './sessionEditor.js'
 export type { ElecKoiSessionEditor } from './sessionEditor.js'
 import { testModelConnection, discoverDraftModels, readModelApiKey } from './modelConnection.js'
@@ -146,6 +167,7 @@ export type {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     eleckoiSystemApi: ElecKoiSystemApi
+    eleckoiCompatibilityApi: ElecKoiCompatibilityApi
     eleckoiModelsApi: ElecKoiModelsApi
     eleckoiPersonaApi: ElecKoiPersonaApi
     eleckoiCharactersApi: ElecKoiCharactersApi
@@ -160,18 +182,39 @@ declare module '@deepseek-ai/cordis' {
     eleckoiCharacterConfigurationChanges: CharacterConfigurationChangeFeed
     eleckoiProductRecordChanges: ProductRecordChangeFeed
     eleckoiProductData: ElecKoiProductDataStore
+    eleckoiWorldbookRounds: CompatibilityWorldbookHost
+    eleckoiCompatibilityRuntime: CompatibilityRuntimePreparation
+    eleckoiCompatibilityMessages: CompatibilityMessageOperations
+    eleckoiCompatibilityFrontends: CompatibilityFrontendOperations
+    eleckoiCompatibilityChats: CompatibilityChatOperations
+    eleckoiMigration: { invoke(method: string, params: CompatibilityCommand['params']): Promise<CompatibilityValue> }
+    eleckoiCompatibilityDataBank: CompatibilityDataBankOperations
+    eleckoiCompatibilityVectors: { retrieve: CompatibilityDataBankOperations['retrieveWorldbookVectors'] }
+    eleckoiConversationLifecycle: ElecKoiConversationLifecycle
     eleckoiRoleplaySessions: {
       create(conversationId: string): Promise<string>
+      adoptFork(conversationId: string, sourceConversationId: string, sourceTurn: number, afterTurn: boolean): Promise<string>
       prepareSessionAccess(conversationId: string): Promise<string>
-      preparePrompt(conversationId: string, text: string): Promise<string>
+      preparePrompt(conversationId: string, text: string, signal?: AbortSignal): Promise<string>
+      currentOperation(conversationId: string): string
       prepareRegeneration(conversationId: string, text: string): Promise<{
         rollback(): void
       }>
       variableStatesByTurn(conversationId: string): Record<string, string>
-      prepareRestoreBeforeTurn(conversationId: string, sessionId: string, fromTurn: number, beforeMessageId?: string): () => void
-      removeArtifacts(conversationId: string, sessionId: string): void
+      prepareRestoreBeforeTurn(conversationId: string, sessionId: string, fromTurn: number, beforeMessageId?: string): {
+        state: import('./types.js').ConversationRuntimeStateSnapshot
+        apply(): void
+        rollback(): void
+      }
+      removeArtifacts(conversationId: string, sessionId: string): Promise<void>
     }
     eleckoiSessionEditor: ElecKoiSessionEditor
+  }
+}
+
+declare module '@deepseek-ai/dsh-llm/types' {
+  interface MessageSourceMap {
+    'eleckoi-group': { kind: 'eleckoi-group'; conversationId: string; characterId: string }
   }
 }
 
@@ -355,7 +398,7 @@ export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
     const value = jsonObject(descriptor.value)
     return {
       ui: jsonObject(value.ui),
-      chatDisplay: jsonObject(value.chatDisplay),
+      chatDisplay: jsonObject(this.productData.normalizeChatDisplaySettings(value.chatDisplay)),
       writable: this.ownerContext.settings.writable,
       revision: descriptor.revision
     }
@@ -423,6 +466,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     'sessionController',
     'sessionPersistence',
     'eleckoiProductData',
+    'eleckoiConversationLifecycle',
     'eleckoiRoleplaySessions',
     'eleckoiSessionEditor',
     'eleckoiConversationChanges'
@@ -479,9 +523,19 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
    */
   @Remote
   details(conversationId: string, beforeSequence?: number, limit?: number): ConversationDetailsMetadata {
+    const store = this.productData.compatibilityStore()
+    const swipes = store.list(`swipes:${conversationId}`)
+    const messageVariables = Object.fromEntries(Object.entries(swipes).map(([id, value]) => {
+      const choices = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.swipes) ? value.swipes : []
+      return [id, choices.map((_, index) => store.get(`variables:message:${conversationId}:${id}`, `state:${index}`)
+        ?? (index === 0 ? store.get(`variables:message:${conversationId}:${id}`, 'state') : null) ?? {})]
+    }))
     return {
       ...this.productData.readConversationDetails(conversationId, beforeSequence, limit),
-      runtimeVariableStateByTurn: this.ownerContext.eleckoiRoleplaySessions.variableStatesByTurn(conversationId)
+      runtimeVariableStateByTurn: this.ownerContext.eleckoiRoleplaySessions.variableStatesByTurn(conversationId),
+      compatibilityPresentation: { metadata: store.list(`metadata:${conversationId}`), extensions: store.list(`message-extensions:${conversationId}`),
+        bindings: { ...store.list(`migration:android:message-bindings:${conversationId}`), ...store.list(`message-bindings:${conversationId}`) },
+        swipes, variables: messageVariables, timeline: store.get(`message-presentation:${conversationId}`, 'timeline') }
     }
   }
 
@@ -586,12 +640,16 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     if ([...requiredIds].some((id) => !archivedIds.has(id))) {
       throw new Error('聊天记录缺少对应的 DSH 会话日志，无法完整导出。')
     }
+    const compatibilityMessages = this.ownerContext.get('eleckoiCompatibilityMessages', false)
+    const compatibility = compatibilityMessages ? exportConversationCompatibility(this.productData.compatibilityStore(), conversationId,
+      await compatibilityMessages.read(conversationId, true)) : undefined
     return JSON.stringify({
       format: 'eleckoi.desktop-chat-history',
       version: 1,
       exportedAt: new Date().toISOString(),
       snapshot,
-      sessionLogs
+      sessionLogs,
+      ...(compatibility ? { compatibility } : {})
     }, null, 2)
   }
 
@@ -611,6 +669,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     if (archive.format !== 'eleckoi.desktop-chat-history' || archive.version !== 1
       || !Array.isArray(archive.sessionLogs)) throw new Error('不支持此聊天记录文件。')
     const snapshot = this.productData.parseConversationArchive(archive.snapshot)
+    const compatibility = parseConversationCompatibility(archive.compatibility, snapshot.conversationId)
     if (snapshot.characterId !== characterId) throw new Error('聊天记录与当前角色不匹配。')
     const expectedIds = new Set(this.productData.conversationArchiveRuntimeSessionIds(snapshot))
     const logs = parseDshSessionArchives(archive.sessionLogs, expectedIds)
@@ -621,6 +680,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     const conversationId = randomUUID()
     const ids = new Map([...expectedIds].map((id) => [id, id === snapshot.conversationId ? conversationId : randomUUID()]))
     const createdIds: string[] = []
+    let importedId: string | undefined
     try {
       for (const log of logs) {
         const id = ids.get(log.header.id as string)
@@ -643,10 +703,23 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
           await handle.close()
         }
       }
-      const importedId = this.productData.importConversationArchive(snapshot, characterId, ids, conversationId)
+      importedId = this.productData.importConversationArchive(snapshot, characterId, ids, conversationId)
+      if (compatibility) {
+        const messages = this.ownerContext.get('eleckoiCompatibilityMessages', false)
+        if (!messages) throw new Error('Conversation compatibility message service is not mounted')
+        restoreConversationCompatibility(this.productData.compatibilityStore(), compatibility, importedId, ids, await messages.read(importedId, true))
+        if (compatibility.group) {
+          const groups = this.ownerContext.get('eleckoiCompatibilityChats', false)
+          if (!groups) throw new Error('Conversation compatibility group service is not mounted')
+          const store = this.productData.compatibilityStore(), groupId = String(compatibility.group.id)
+          if (store.get('groups', groupId) === null) await groups.invoke('groups.put', { group: { ...compatibility.group, chats: [], chat_id: null } })
+          groups.bind(importedId, groupId)
+        }
+      }
       this.changeFeed.publish({ kind: 'catalog', conversationId: importedId, reason: 'created' })
       return importedId
     } catch (error) {
+      if (importedId) { clearConversationCompatibility(this.productData.compatibilityStore(), importedId); await this.delete(importedId) }
       await Promise.allSettled(createdIds.map((id) => this.ownerContext.eleckoiSessionEditor.deleteSession(id)))
       throw error
     }
@@ -703,30 +776,148 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   async delete(conversationId: string): Promise<void> {
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
     await this.ownerContext.eleckoiSessionEditor.deleteSession(runtimeSessionId)
-    this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversationId, runtimeSessionId)
+    await this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversationId, runtimeSessionId)
     await this.productData.deleteConversation(conversationId)
     this.changeFeed.publish({ kind: 'catalog', conversationId, reason: 'deleted' })
+  }
+
+  /**
+   * 重命名聊天，同时保存官方 Session 与产品目录中的标题。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param title - 新的聊天标题。
+   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   */
+  @Remote
+  async rename(conversationId: string, title: string): Promise<ConversationDetailsMetadata> {
+    const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+    await this.ownerContext.sessionController.rename({ sessionId: runtimeSessionId as SessionId, title })
+    const details = this.productData.renameConversation(conversationId, title)
+    this.changeFeed.publish({ kind: 'catalog', conversationId, reason: 'updated' })
+    return details
+  }
+
+  /**
+   * 从指定官方 Session 事件创建聊天分支，复制保留的产品轮次和历史运行状态。
+   * @param conversationId - 来源 ElecKoi 聊天编号。
+   * @param atSeq - 分支边界的官方事件序号；省略时创建同配置和开场白的空聊天。
+   * @param retainedTurnIds - 分支中需要保留的产品轮次编号；开场白轮次自动保留。
+   * @param title - 新聊天的标题。
+   * @returns 新建分支的 ElecKoi 聊天编号；创建失败会清理分支并抛出错误。
+   */
+  @Remote
+  async fork(conversationId: string, atSeq: number | undefined, retainedTurnIds: string[], title: string): Promise<string> {
+    const original = this.productData.readConversationDetails(conversationId)
+    if (atSeq === undefined) {
+      const created = await this.create({ title, metadata: original.metadata })
+      const opening = original.messages.find(message => message.id === 'opening')
+      if (opening) this.productData.updateConversationOpening(created.conversation.id, opening.content ?? '')
+      return created.conversation.id
+    }
+    const source = this.productData.runtimeSessionId(conversationId), inspection = await this.ownerContext.sessionController.inspect(source as SessionId)
+    const targetIndex = inspection.events.findIndex(event => Number(event.seq) === atSeq)
+    if (targetIndex < 0) throw new Error(`Branch event does not exist: ${atSeq}`)
+    const sourceTurn = sessionMessageTurn(inspection.events, targetIndex), target = inspection.events[targetIndex]!
+    const fork = await this.ownerContext.sessionController.fork({ sessionId: source as SessionId, atSeq })
+    let id: string | undefined
+    try {
+      const snapshot = this.productData.exportConversationArchive(conversationId), retained = new Set(retainedTurnIds)
+      for (const row of snapshot.tables.agent_openings ?? []) retained.add(String(row.turnId))
+      snapshot.tables.agent_turns = (snapshot.tables.agent_turns ?? []).filter(row => retained.has(String(row.id)))
+      snapshot.tables.agent_responses = (snapshot.tables.agent_responses ?? []).filter(row => retained.has(String(row.turnId))
+        && (row.runtimeThreadId !== source || row.dshTurn === null || Number(row.dshTurn) <= sourceTurn))
+      snapshot.tables.agent_branch_turns = (snapshot.tables.agent_branch_turns ?? []).filter(row => retained.has(String(row.turnId)))
+      const mappings = new Map(this.productData.conversationArchiveRuntimeSessionIds(snapshot).map(sessionId => [sessionId, sessionId === source ? fork.sessionId as string : sessionId]))
+      id = this.productData.importConversationArchive(snapshot, snapshot.characterId, mappings, randomUUID())
+      this.productData.renameConversation(id, title)
+      await this.ownerContext.eleckoiRoleplaySessions.adoptFork(id, conversationId, sourceTurn, target.type === 'assistant/message')
+      this.changeFeed.publish({ kind: 'catalog', conversationId: id, reason: 'created' })
+      return id
+    } catch (error) {
+      await this.ownerContext.eleckoiSessionEditor.deleteSession(fork.sessionId)
+      if (id) { await this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(id, fork.sessionId); await this.productData.deleteConversation(id) }
+      throw error
+    }
   }
 
   /**
    * 准备本次输入需要的产品配置和官方 Session，不直接生成回复。
    * @param conversationId - ElecKoi 聊天编号。
    * @param text - 本次输入或待测试文本。
+   * @param signal - 取消准备过程的信号；插件回调也会收到此信号。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  async preparePrompt(conversationId: string, text: string): Promise<{ runtimeSessionId: string }> {
-    const runtimeSessionId = await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, text)
-    return { runtimeSessionId }
+  async preparePrompt(conversationId: string, text: string, signal: AbortSignal): Promise<{ runtimeSessionId: string; operationId: string }> {
+    return this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
+      const groups = this.ownerContext.get('eleckoiCompatibilityChats', false)
+      if (groups?.current(conversationId)) {
+        const selected = await groups.beginRound(conversationId, text)
+        if (!selected?.length) { groups.finish(conversationId); throw new Error('当前群聊策略没有激活成员。') }
+      }
+      const runtimeSessionId = await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, text, signal)
+      return { runtimeSessionId, operationId: this.ownerContext.eleckoiRoleplaySessions.currentOperation(conversationId) }
+    })
   }
 
   /**
-   * 修改同一 Session 中指定消息并刷新投影。
+   * 等待当前进程本次保存及插件收尾，失败抛出错误；不查询历史或重启前结果。
    * @param conversationId - ElecKoi 聊天编号。
-   * @param eventSeq - 官方 Session 中消息的事件序号。
-   * @param role - 消息角色。
-   * @param content - 要保存的完整文本。
-   * @returns 操作结果，结构见返回类型；失败抛出错误。
+   * @param operationId - 生成准备时返回的本次操作编号。
+   * @returns 本轮收尾完成；此方法不启动模型，也不重复执行插件。
+   */
+  @Remote
+  async waitForGeneration(conversationId: string, operationId: string): Promise<void> {
+    this.productData.runtimeSessionId(conversationId)
+    await this.ownerContext.eleckoiConversationLifecycle.wait(conversationId, operationId)
+  }
+
+  /**
+   * 保存当前群聊成员的回复，并按群聊策略依次执行余下成员的 Agent 回合。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param cancelled - 当前成员是否已取消；为 true 时直接结束群聊轮次。
+   * @param signal - 取消后续成员生成的信号。
+   * @returns 是否发生取消；无活跃群聊时返回 cancelled 为 false，生成失败抛出错误。
+   */
+  @Remote
+  async completeGroupRound(conversationId: string, cancelled: boolean, signal: AbortSignal): Promise<{ cancelled: boolean }> {
+    const groups = this.ownerContext.get('eleckoiCompatibilityChats', false)
+    if (!groups?.current(conversationId) || !groups.speaker(conversationId)) return { cancelled: false }
+    await groups.annotateReply(conversationId)
+    if (cancelled) { groups.finish(conversationId); return { cancelled: true } }
+    const sessionId = this.productData.runtimeSessionId(conversationId), resolved = await this.ownerContext.sessionController.resolveAgent(sessionId as SessionId)
+    if ('error' in resolved) throw resolved.error
+    const agent = resolved.agent
+    const cancel = () => agent.cancel({ kind: 'user' })
+    signal.addEventListener('abort', cancel, { once: true })
+    try {
+      for (let selected = groups.next(conversationId); selected; selected = groups.next(conversationId)) {
+        signal.throwIfAborted()
+        await agent.whenIdle()
+        const prompt = `现在由 ${this.productData.readCharacters().items.find(character => character.id === selected.characterId)?.name ?? selected.characterId} 继续群聊。`
+        await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, prompt)
+        const before = (await this.ownerContext.sessionController.inspect(sessionId as SessionId)).events.length
+        agent.followup(createUserMessage({ source: { kind: 'eleckoi-group', conversationId, characterId: selected.characterId },
+          content: [{ type: 'text', text: prompt }] }))
+        await agent.whenIdle()
+        await groups.annotateReply(conversationId)
+        const inspection = await this.ownerContext.sessionController.inspect(sessionId as SessionId)
+        const end = inspection.events.slice(before).findLast(event => event.type === 'turn/end')
+        const reason = (end?.data as { reason?: { kind: string; error?: { message: string } } } | undefined)?.reason
+        if (reason?.kind === 'error') throw new Error(reason.error?.message || '群聊成员生成失败。')
+        if (!end) throw new Error('群聊成员回合没有提交完成事件。')
+        if (reason?.kind === 'aborted' || reason?.kind === 'interrupted') return { cancelled: true }
+      }
+      return { cancelled: false }
+    } finally { signal.removeEventListener('abort', cancel); groups.finish(conversationId) }
+  }
+
+  /**
+   * 修改同一官方 Session 中的用户或模型消息，刷新投影并发布消息变更。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param eventSeq - 官方 Session 中待修改消息的事件序号。
+   * @param role - 消息角色，必须与指定事件中的消息一致。
+   * @param content - 保存后替换原正文的完整文本。
+   * @returns 修改后的聊天详情与元数据；消息不存在或角色不一致时抛出错误。
    */
   @Remote
   async editMessage(
@@ -763,40 +954,51 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     deletedMessageCount: number
     remainingMessageCount: number
   }> {
-    const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
-    await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
-    const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
-    const target = requireSessionMessage(inspection, eventSeq, role)
-    const fromTurn = sessionMessageTurn(inspection.events, target.index)
-    const visible = visibleSessionMessages(inspection.events)
-    const selectedVisibleIndex = visible.findIndex(item => item.seq === eventSeq)
-    if (selectedVisibleIndex < 0) throw new Error('找不到要删除的 DSH 消息。')
-    const retainedUser = role === 'assistant'
-      ? directUserMessageBeforeTurn(inspection.events, target.index, fromTurn)
-      : undefined
-    const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
-      conversationId,
-      runtimeSessionId,
-      fromTurn,
-      historicalInputId(inspection.events, target.index)
-    )
-    const retainedSeq = retainedUser?.seq
-    const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(
-      runtimeSessionId, fromTurn, retainedSeq === undefined ? eventSeq : Number(retainedSeq), retainedSeq !== undefined
-    )
-    if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
-    restoreRuntime()
-    this.changeFeed.publish({
-      kind: 'messages',
-      conversationId,
-      reason: 'deleted',
-      messageIds: visible.slice(selectedVisibleIndex).map(item => String(item.seq))
+    return this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
+      const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+      await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
+      const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
+      const target = requireSessionMessage(inspection, eventSeq, role)
+      const fromTurn = sessionMessageTurn(inspection.events, target.index)
+      const visible = visibleSessionMessages(inspection.events)
+      const selectedVisibleIndex = visible.findIndex(item => item.seq === eventSeq)
+      if (selectedVisibleIndex < 0) throw new Error('找不到要删除的 DSH 消息。')
+      const retainedUser = role === 'assistant'
+        ? directUserMessageBeforeTurn(inspection.events, target.index, fromTurn)
+        : undefined
+      const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
+        conversationId,
+        runtimeSessionId,
+        fromTurn,
+        historicalInputId(inspection.events, target.index)
+      )
+      const retainedSeq = retainedUser?.seq
+      try {
+        await this.ownerContext.eleckoiSessionEditor.transaction(runtimeSessionId, () =>
+          this.ownerContext.eleckoiConversationLifecycle.restore({
+            operationId: randomUUID(), conversationId, runtimeSessionId, reason: 'delete-messages',
+            fromTurn, fromEventSeq: eventSeq, state: restoreRuntime.state
+          }, async () => {
+            const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(
+              runtimeSessionId, fromTurn, retainedSeq === undefined ? eventSeq : Number(retainedSeq), retainedSeq !== undefined
+            )
+            if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
+            restoreRuntime.apply()
+          }))
+      } catch (error) { restoreRuntime.rollback(); throw error }
+      this.changeFeed.publish({
+        kind: 'messages',
+        conversationId,
+        reason: 'deleted',
+        sessionRewritten: true,
+        messageIds: visible.slice(selectedVisibleIndex).map(item => String(item.seq))
+      })
+      return {
+        details: this.productData.readConversationDetails(conversationId),
+        deletedMessageCount: visible.length - selectedVisibleIndex,
+        remainingMessageCount: selectedVisibleIndex
+      }
     })
-    return {
-      details: this.productData.readConversationDetails(conversationId),
-      deletedMessageCount: visible.length - selectedVisibleIndex,
-      remainingMessageCount: selectedVisibleIndex
-    }
   }
 
   /**
@@ -813,42 +1015,48 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     eventSeq: number,
     requestId: string,
     replacementMessage?: string
-  ): Promise<{ runtimeSessionId: string; prepared: true }> {
-    if (!requestId.trim()) throw new Error('重新生成请求缺少有效标识。')
-    const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
-    await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
-    const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
-    const target = requireSessionMessage(inspection, eventSeq, 'user')
-    const fromTurn = sessionMessageTurn(inspection.events, target.index)
-    const inputMessageId = String(jsonRecord(target.event.data).id ?? '')
-    if (!inputMessageId) throw new Error('重新生成的用户事件缺少消息标识。')
-    const promptText = replacementMessage ?? sessionMessageText(target.event)
-    if (replacementMessage !== undefined && !replacementMessage.trim()) throw new Error('重新生成的用户输入不能为空。')
-    const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
-      conversationId,
-      runtimeSessionId,
-      fromTurn,
-      historicalInputId(inspection.events, target.index)
-    )
-    const preparation = await this.ownerContext.eleckoiRoleplaySessions.prepareRegeneration(conversationId, promptText)
-    try {
-      await this.ownerContext.eleckoiSessionEditor.transaction(runtimeSessionId, async () => {
-        if (replacementMessage !== undefined) {
-          await this.ownerContext.eleckoiSessionEditor.editMessage(runtimeSessionId, eventSeq, 'user', replacementMessage)
-        }
-        const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq, true)
-        if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
-        restoreRuntime()
-        await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
-      })
-    } catch (error) {
-      preparation.rollback()
-      this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: [String(eventSeq)] })
-      throw error
-    }
-    this.pendingRegenerations.set(conversationId, { requestId, inputMessageId, inputEventSeq: eventSeq })
-    this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'regenerated', messageIds: [String(eventSeq)] })
-    return { runtimeSessionId, prepared: true }
+  ): Promise<{ runtimeSessionId: string; prepared: true; operationId: string }> {
+    return this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
+      if (!requestId.trim()) throw new Error('重新生成请求缺少有效标识。')
+      const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
+      await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
+      const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
+      const target = requireSessionMessage(inspection, eventSeq, 'user')
+      const fromTurn = sessionMessageTurn(inspection.events, target.index)
+      const inputMessageId = String(jsonRecord(target.event.data).id ?? '')
+      if (!inputMessageId) throw new Error('重新生成的用户事件缺少消息标识。')
+      const promptText = replacementMessage ?? sessionMessageText(target.event)
+      if (replacementMessage !== undefined && !replacementMessage.trim()) throw new Error('重新生成的用户输入不能为空。')
+      const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
+        conversationId,
+        runtimeSessionId,
+        fromTurn,
+        historicalInputId(inspection.events, target.index)
+      )
+      const preparation = await this.ownerContext.eleckoiRoleplaySessions.prepareRegeneration(conversationId, promptText)
+      try {
+        await this.ownerContext.eleckoiSessionEditor.transaction(runtimeSessionId, () => this.ownerContext.eleckoiConversationLifecycle.restore({
+          operationId: randomUUID(), conversationId, runtimeSessionId, reason: 'regenerate',
+          fromTurn, fromEventSeq: eventSeq, state: restoreRuntime.state
+        }, async () => {
+          if (replacementMessage !== undefined) {
+            await this.ownerContext.eleckoiSessionEditor.editMessage(runtimeSessionId, eventSeq, 'user', replacementMessage)
+          }
+          const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq, true)
+          if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
+          restoreRuntime.apply()
+          await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
+        }))
+      } catch (error) {
+        restoreRuntime.rollback()
+        preparation.rollback()
+        this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: [String(eventSeq)], sessionRewritten: true })
+        throw error
+      }
+      this.pendingRegenerations.set(conversationId, { requestId, inputMessageId, inputEventSeq: eventSeq })
+      this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'regenerated', messageIds: [String(eventSeq)], sessionRewritten: true })
+      return { runtimeSessionId, prepared: true, operationId: this.ownerContext.eleckoiRoleplaySessions.currentOperation(conversationId) }
+    })
   }
 
   /**
@@ -1396,20 +1604,21 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
   }
 
   /**
-   * 删除指定项目及其关联数据。
+   * 删除指定角色，并按选项清理关联聊天及官方 Session。
    * @param characterIds - 待删除角色编号列表。
+   * @param options - 删除选项；deleteChats 为 false 时保留关联聊天，默认删除。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  async delete(characterIds: string[]): Promise<CharacterCollection> {
+  async delete(characterIds: string[], options?: { deleteChats?: boolean }): Promise<CharacterCollection> {
     const deleting = new Set(characterIds)
     const conversations = this.productData.readConversationCatalog()
       .filter(item => deleting.has(item.metadata.characterId))
-    for (const conversation of conversations) {
+    for (const conversation of options?.deleteChats === false ? [] : conversations) {
       await this.ownerContext.eleckoiSessionEditor.deleteSession(conversation.runtimeSessionId)
-      this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversation.id, conversation.runtimeSessionId)
+      await this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversation.id, conversation.runtimeSessionId)
     }
-    const collection = this.productData.deleteCharacters(characterIds)
+    const collection = this.productData.deleteCharacters(characterIds, options)
     this.publishChange(characterIds)
     this.ownerContext.eleckoiCharacterConfigurationChanges.publish({ kind: 'snapshot' })
     this.ownerContext.eleckoiConversationChanges.publish({ kind: 'snapshot' })
@@ -1982,25 +2191,126 @@ export class ElecKoiCreatorStudioApi extends TypertRemoteService {
   }
 }
 
+/** 将酒馆兼容命令转交已有产品服务，并向客户端发布兼容数据变更。 */
+export class ElecKoiCompatibilityApi extends TypertRemoteService {
+  static inject = ['typert', 'eleckoiProductData', 'eleckoiCharactersApi', 'eleckoiPersonaApi', 'eleckoiConversationsApi', 'eleckoiConversationModelsApi', 'eleckoiSessionEditor', 'sessionController', 'settings', 'credentials', 'llm']
+  private readonly feed = new RemoteChangeFeed<CompatibilityChange>({ event: 'compatibility.snapshot', payload: null })
+  private readonly operations: CompatibilityOperations
+  constructor(ctx: Context) {
+    super(ctx, 'eleckoiCompatibilityApi', { namespace: 'eleckoiCompatibility' })
+    const publish = (change: CompatibilityChange) => {
+      this.feed.publish(change)
+      const payload = change.payload
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return
+      if ((change.event === 'variables.changed' && (payload.scope ?? 'chat') === 'chat'
+        || change.event === 'messages.metadataChanged') && typeof payload.conversationId === 'string') {
+        ctx.eleckoiConversationChanges.publish({ kind: 'messages', conversationId: payload.conversationId,
+          reason: 'edited', messageIds: typeof payload.id === 'string' && payload.id !== 'chat' ? [payload.id] : [] })
+      }
+      if (change.event === 'worldbooks.changed' && typeof payload.name === 'string' && payload.name.startsWith('character:')) {
+        ctx.eleckoiCharacterConfigurationChanges.publish({ kind: 'configuration', domain: 'settingLibraries', characterId: payload.name.slice(10) })
+      }
+      if (change.event === 'presets.changed') ctx.eleckoiCharacterConfigurationChanges.publish({ kind: 'configuration', domain: 'agentPresets' })
+      if (change.event === 'regex.changed') ctx.eleckoiCharacterConfigurationChanges.publish({ kind: 'configuration', domain: 'regexRules', characterId: String(payload.characterId ?? '') })
+      if (change.event === 'messages.changed' && typeof payload.conversationId === 'string') {
+        ctx.eleckoiConversationChanges.publish({ kind: 'messages', conversationId: payload.conversationId, reason: 'edited', messageIds: [],
+          ...payload.sessionRewritten === true ? { sessionRewritten: true } : {} })
+      }
+    }
+    const messages = new CompatibilityMessageOperations(ctx.eleckoiProductData, {
+      inspect: id => ctx.sessionController.inspect(id as SessionId),
+      mutate: (id, mutation) => ctx.eleckoiSessionEditor.mutateTimeline(id, mutation),
+      updateOpening: (id, content) => ctx.eleckoiConversationsApi.updateOpening(id, content)
+    }, publish)
+    const catalog = new CompatibilityCatalogOperations(ctx.eleckoiProductData, {
+      characters: ctx.eleckoiCharactersApi, persona: ctx.eleckoiPersonaApi,
+      readMessageCount: async id => (await messages.read(id)).length
+    }, publish)
+    const regexes = new CompatibilityRegexOperations(ctx.eleckoiProductData, publish)
+    const frontends = new CompatibilityFrontendOperations(ctx.eleckoiProductData, publish)
+    const worldbooks = new CompatibilityWorldbookHost(ctx.eleckoiProductData, ctx, catalog, messages, publish)
+    const databank = new CompatibilityDataBankOperations(ctx.eleckoiProductData, {}, publish)
+    const models = new CompatibilityModelOperations({
+      describe: () => ctx.settings.describe(),
+      mutate: (ns, ops, revision) => ctx.settings.mutate(ns, ops, revision),
+      readSecret: async ref => (await ctx.credentials.resolve(credentialRef(ref)))?.value ?? '',
+      writeSecret: (ref, value) => value === null ? ctx.credentials.unset(credentialRef(ref)) : ctx.credentials.set(credentialRef(ref), value),
+      discover: config => discoverDraftModels(ctx, { configId: String(config.id),
+        baseURL: String(config.baseUrl), api: String(({ responses: 'openai-responses', chat_completions: 'openai-completions',
+          anthropic_messages: 'anthropic-messages', google_gemini: 'google-generative-ai' } as Record<string, string>)[String(config.apiFormat)] ?? config.apiFormat),
+        headers: (config.customHeaders ?? {}) as Record<string, string> }) as unknown as Promise<CompatibilityValue[]>
+    }, publish)
+    const chats = new CompatibilityChatOperations(ctx.eleckoiProductData, catalog, messages, {
+      create: input => ctx.eleckoiConversationsApi.create(input), delete: id => ctx.eleckoiConversationsApi.delete(id),
+      rename: (id, title) => ctx.eleckoiConversationsApi.rename(id, title),
+      fork: (id, seq, turns, title) => ctx.eleckoiConversationsApi.fork(id, seq, turns, title),
+      exportArchive: id => ctx.eleckoiConversationsApi.exportArchive(id), importArchive: (id, content) => ctx.eleckoiConversationsApi.importArchive(id, content),
+      callback: (method, payload, conversationId, clientId) => {
+        const service = ctx.get('eleckoiCompatibilityCallbacks', false) as unknown as { callback(method: string, payload: unknown, options: { conversationId: string; clientId?: string }): Promise<CompatibilityValue> } | undefined
+        if (!service) throw new Error('The shared group runtime is not mounted')
+        return service.callback(method, payload, { conversationId, ...(clientId ? { clientId } : {}) })
+      }
+    }, publish)
+    ctx.provide('eleckoiCompatibilityRuntime', new CompatibilityRuntimePreparation(ctx.eleckoiProductData, catalog, publish, ctx))
+    ctx.provide('eleckoiCompatibilityMessages', messages)
+    ctx.provide('eleckoiCompatibilityFrontends', frontends)
+    ctx.provide('eleckoiCompatibilityChats', chats)
+    ctx.provide('eleckoiCompatibilityDataBank', databank)
+    ctx.provide('eleckoiCompatibilityVectors', { retrieve: request => databank.retrieveWorldbookVectors(request) })
+    ctx.provide('eleckoiWorldbookRounds', worldbooks)
+    const migrationHandlers = ['migration.inspect', 'migration.start', 'migration.status', 'migration.list'].map(method =>
+      [method, (params: CompatibilityCommand['params']) => {
+        const service = ctx.get('eleckoiMigration')
+        if (!service) throw new Error('Android migration service is not initialized')
+        return service.invoke(method, params)
+      }] as const)
+    this.operations = new CompatibilityOperations(ctx.eleckoiProductData, publish, new Map([...catalog.handlers, ...messages.handlers, ...worldbooks.handlers, ...regexes.handlers, ...databank.handlers, ...models.handlers, ...frontends.handlers, ...chats.handlers, ...migrationHandlers]))
+    ctx.effect(() => () => this.feed.close())
+  }
+  /**
+   * 读取当前宿主实际注册的兼容命令及协议版本。
+   * @returns 去重后的方法名称列表与兼容协议版本。
+   */
+  @Remote
+  capabilities(): { methods: string[]; version: number } { return { methods: this.operations.methods, version: 1 } }
+  /**
+   * 调用兼容命令，复用角色、消息、预设、世界书及其他产品服务。
+   * @param command - 包含 method 名称与 params 参数的兼容命令。
+   * @returns 命令的可序列化结果；未知命令或执行失败会抛出错误。
+   */
+  @Remote
+  async invoke(command: CompatibilityCommand): Promise<CompatibilityValue> { return await this.operations.invoke(command) }
+  /**
+   * 订阅兼容数据变更，连接时先返回快照标记以便客户端重新读取状态。
+   * @param signal - 取消订阅的信号。
+   * @returns 当前连接期间的变更流，不回放连接之前的历史事件。
+   */
+  @Remote({ mode: 'stream' })
+  changes(signal: AbortSignal): AsyncIterable<CompatibilityChange> { return this.feed.stream(signal) }
+}
+
 const eleckoiProductApiPlugin = {
   name: 'eleckoi-product-api',
   inject: ['typert', 'eleckoiProductData'],
-  provide: ['eleckoiConversationChanges', 'eleckoiCharacterConfigurationChanges', 'eleckoiProductRecordChanges'],
+  provide: ['eleckoiConversationChanges', 'eleckoiCharacterConfigurationChanges', 'eleckoiProductRecordChanges', 'eleckoiWorldbookRounds', 'eleckoiCompatibilityRuntime', 'eleckoiCompatibilityMessages', 'eleckoiCompatibilityDataBank', 'eleckoiCompatibilityVectors', 'eleckoiCompatibilityFrontends', 'eleckoiCompatibilityChats'],
   async apply(ctx: Context) {
     ctx.provide('eleckoiConversationChanges', new ConversationChangeFeed())
     ctx.provide('eleckoiCharacterConfigurationChanges', new CharacterConfigurationChangeFeed())
     ctx.provide('eleckoiProductRecordChanges', new ProductRecordChangeFeed())
+    await ctx.plugin(ElecKoiConversationLifecycle)
     await ctx.plugin(ElecKoiSystemApi)
     await ctx.plugin(ElecKoiCharactersApi)
     await ctx.plugin(ElecKoiPersonaApi)
     await ctx.plugin(ElecKoiCharacterConfigurationApi)
     await ctx.plugin(ElecKoiAgentPresetsApi)
     await ctx.plugin(ElecKoiCreatorStudioApi)
+    await ctx.plugin(ElecKoiCreatorAssistantApi)
     await ctx.plugin(ElecKoiWebSearchApi)
     await ctx.plugin(ElecKoiModelsApi)
     await ctx.plugin(ElecKoiDisplayPreferencesApi)
     await ctx.plugin(ElecKoiConversationModelsApi)
     await ctx.plugin(ElecKoiConversationsApi)
+    await ctx.plugin(ElecKoiCompatibilityApi)
     const inspect = registerHostApiInspect(ctx)
     return async () => {
       try { await inspect.dispose() }

@@ -417,7 +417,7 @@ describe('ElecKoi DSH Remote contract', () => {
       personaJson: JSON.stringify({ user_name: '旧用户', assistant_name: '测试角色' })
     }).run()
     database.db.insert(agentConversations).values({
-      id: 'conversation-1', activeBranchId: 'branch-1', runtimeThreadId: 'conversation-1'
+      id: 'conversation-1', activeBranchId: 'branch-1', runtimeThreadId: 'conversation-1', variableVersionId: 'variable-config-default'
     }).run()
     database.db.insert(agentBranches).values({ id: 'branch-1', conversationId: 'conversation-1' }).run()
     database.close()
@@ -523,12 +523,14 @@ describe('ElecKoi DSH Remote contract', () => {
               preparedPrompts.push({ conversationId, text })
               return conversationId
             },
+            currentOperation: () => 'synthetic-operation',
             prepareSessionAccess: async () => {},
             prepareRegeneration: async () => ({ rollback() {} }),
             variableStatesByTurn: () => ({ 1: '{"score":1}' }),
             prepareRestoreBeforeTurn: (conversationId: string, sessionId: string, fromTurn: number) => {
               preparedRestores.push({ conversationId, sessionId, fromTurn })
-              return () => { restoredTurns.push(fromTurn) }
+              return { state: { variableStateJson: '{}', settingLibraryStateJson: '[]' },
+                apply: () => { restoredTurns.push(fromTurn) }, rollback() {} }
             },
             removeArtifacts: (conversationId: string, sessionId: string) => {
               removedArtifacts.push({ conversationId, sessionId })

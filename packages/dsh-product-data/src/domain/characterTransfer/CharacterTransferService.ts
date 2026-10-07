@@ -200,9 +200,9 @@ export class CharacterTransferService {
       this.store.withWriteTx((db) => {
         this.characters.createInTransaction(this.characterRecord(characterId, decoded), db)
         const library = this.importedLibrary(characterId, decoded)
-        if (library) this.settingLibraries.saveInTransaction(characterId, library, db)
         const variables = this.importedVariables(characterId, decoded)
         if (variables) this.variables.saveInTransaction(characterId, variables, db)
+        if (library) this.settingLibraries.saveInTransaction(characterId, library, db)
         if (decoded.regexRules.length) {
           const current = this.regexRules.get(characterId, db)
           const imported = decoded.regexRules.map((rule) => ({ scope: 'Character' as const, rule }))

@@ -7,7 +7,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
-import { ElecKoiConversationsApi, ConversationChangeFeed } from '@eleckoi/dsh-product-api'
+import { ElecKoiConversationsApi, ConversationChangeFeed, ElecKoiConversationLifecycle } from '@eleckoi/dsh-product-api'
 import { TYPERT } from '@eleckoi/dsh-product-api/typert'
 import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
 import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
@@ -70,6 +70,7 @@ async function fixture() {
   ctx.provide('eleckoiRoleplaySessions', {})
   ctx.provide('eleckoiSessionEditor', {})
   ctx.provide('eleckoiConversationChanges', new ConversationChangeFeed())
+  await ctx.plugin(ElecKoiConversationLifecycle)
   await ctx.plugin(ElecKoiConversationsApi)
   return { ctx, database, conversation, session, handle, controller, select, update, details,
     api: ctx.eleckoiConversationsApi }

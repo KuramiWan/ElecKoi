@@ -4,7 +4,7 @@ import { adaptTrajectorySnapshot } from "../model/trajectorySnapshotAdapter.js";
 
 const noop = () => {};
 
-export function TrajectoryView({ renderSlot }) {
+export function TrajectoryView({ renderSlot, viewOwner }) {
   return <section className="trajectory-host" aria-label="轨迹">
     {renderSlot?.("eleckoi.roleplay.trajectory", {
       component: SessionTrajectoryView,
@@ -12,6 +12,7 @@ export function TrajectoryView({ renderSlot }) {
       viewRequest: null,
       openView: noop,
       completeViewRequest: noop,
+      ...viewOwner,
     })}
   </section>;
 }

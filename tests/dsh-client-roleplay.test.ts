@@ -18,6 +18,110 @@ function clientRequire(React: unknown) {
 }
 
 describe('ElecKoi roleplay client contribution', () => {
+  it('uses the official view roster and shared shell store for arbitrary plugin views', async () => {
+    let registration: any
+    runInNewContext(source, {
+      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } }
+    })
+    const React = { createElement: (type: unknown, props: unknown) => ({ type, props }) }
+    const slots: any = new SlotCore()
+    const disposers: Array<() => void> = []
+    slots.inject = (name: string, register: () => () => void) => {
+      let release: (() => void) | undefined
+      const sync = () => { release?.(); release = slots.spec(name) ? register() : undefined }
+      const unsubscribe = slots.subscribeDeclaration(name, sync)
+      sync()
+      disposers.push(() => { unsubscribe(); release?.() })
+    }
+    const releaseRoot = slots.register({ name: 'root', children: {
+      'eleckoi.roleplay': { kind: 'chain', scope: 'root' },
+      'conversation.session.header': { kind: 'single', scope: 'session' },
+      'conversation.session': { kind: 'single', scope: 'session' },
+    } }, () => null)
+    registration.factory(clientRequire(React)).apply({ sessions: {}, slots })
+    const store = () => null
+    const injectHeader = () => ({})
+    const injectBody = () => ({})
+    const releaseHeader = slots.register({ name: 'conversation.session.header', store, inject: injectHeader, locale: 'conversation' }, () => null)
+    const releaseBody = slots.register({ name: 'conversation.session', store, inject: injectBody, children: {
+      'conversation.view': { kind: 'list', scope: 'session' }
+    } }, () => null)
+    await Promise.resolve()
+    const releaseChat = slots.register({ name: 'conversation.view', id: 'chat', order: 0, label: () => '对话' }, () => null)
+    const releaseCustom = slots.register({ name: 'conversation.view', id: 'sample-view', order: 5, label: () => '示例视图',
+      children: { 'sample-view.controls': { kind: 'list', scope: 'session' } },
+      store: () => null, inject: () => ({ hooks: {} }),
+    }, () => null)
+    const releaseTrajectory = slots.register({ name: 'conversation.view', id: 'trajectory', order: 10, label: () => '轨迹' }, () => null)
+    await Promise.resolve()
+    const pluginView = slots.entriesOfSlot('conversation.view').find((entry: any) => entry.options.id === 'sample-view')
+    const projectedView = slots.entriesOfSlot('eleckoi.roleplay.session.view').find((entry: any) => entry.options.id === 'sample-view')
+    expect(projectedView.store).toBe(pluginView.store)
+    expect(projectedView.inject).toBe(pluginView.inject)
+    const Controls = () => null
+    const releaseControls = slots.register({ name: 'sample-view.controls', id: 'sample-control', order: 2 }, Controls)
+    await Promise.resolve()
+    expect(slots.entriesOfSlot('eleckoi.roleplay.view.sample-view.controls')[0].options.id).toBe('sample-control')
+    const viewProps = { sessionId: 'session-sample', renderSlot: (name: string, owner: unknown, options: unknown) => ({ name, owner, options }) }
+    const viewNode = projectedView.component(viewProps)
+    expect(viewNode.type).toBe(pluginView.component)
+    expect(viewNode.props.sessionId).toBe(viewProps.sessionId)
+    expect(viewNode.props.renderSlot('sample-view.controls', { active: true }, { only: 'sample-control' })).toEqual({
+      name: 'eleckoi.roleplay.view.sample-view.controls', owner: { active: true }, options: { only: 'sample-control' }
+    })
+    const header = slots.entriesOfSlot('eleckoi.roleplay.session.header')[0]
+    const body = slots.entriesOfSlot('eleckoi.roleplay.session.body')[0]
+    expect(header.store).toBe(store)
+    expect(header.inject).toBe(injectHeader)
+    expect(body.store).toBe(store)
+    expect(body.inject).toBe(injectBody)
+    expect(body.children['eleckoi.roleplay.session.view']).toMatchObject({ kind: 'list', scope: 'session' })
+    const ProductView = () => null
+    const matched = { component: ProductView, props: { renderRoleplaySlot: (name: string, owner: unknown) => ({ name, owner }) } }
+    const useConversationViews = (select: any) => select(slots.entriesOfSlot('conversation.view').map((entry: any) => ({
+      id: entry.options.id, label: entry.options.label()
+    })))
+    let preferred = 'sample-view'
+    const useStore = (select: any) => select({ view: preferred, viewRequest: { view: 'sample-view', focus: 'sample-focus' } })
+    const selectView = (id: string) => { preferred = id }
+    const headerProps = { matched, useConversationViews, useStore, selectView }
+    const headerNode = header.component(headerProps)
+    const selected = headerNode.type(headerNode.props)
+    expect(selected.owner.navigation.tabs.map((tab: any) => tab.id)).toEqual(['chat', 'sample-view', 'trajectory'])
+    expect(selected.owner.navigation.activeView).toBe('sample-view')
+    const renderSlot = (name: string, owner: unknown, options: unknown) => ({ name, owner, options })
+    const completeViewRequest = () => {}
+    const inspectCall = () => {}
+    const openView = () => {}
+    const bodyNode = body.component({ ...selected.owner, useStore, useInspectCall: (select: any) => select(inspectCall),
+      actions: { completeViewRequest }, openView, renderSlot })
+    const product = bodyNode.type(bodyNode.props)
+    expect(product.type).toBe(ProductView)
+    expect(product.props.dshConversation.renderView('sample-view')).toEqual({
+      name: 'eleckoi.roleplay.session.view', options: { only: 'sample-view' },
+      owner: { inspectCall, viewRequest: { view: 'sample-view', focus: 'sample-focus' }, openView, completeViewRequest }
+    })
+    product.props.dshConversation.selectView('trajectory')
+    expect(preferred).toBe('trajectory')
+    preferred = 'sample-view'
+    releaseCustom()
+    releaseControls()
+    await Promise.resolve()
+    const removed = headerNode.type(headerProps)
+    expect(removed.owner.navigation.activeView).toBe('chat')
+    expect(slots.spec('sample-view.controls')).toBeUndefined()
+    expect(slots.spec('eleckoi.roleplay.view.sample-view.controls')).toBeUndefined()
+    releaseBody()
+    releaseHeader()
+    await Promise.resolve()
+    expect(slots.entriesOfSlot('eleckoi.roleplay.session.body')).toHaveLength(0)
+    expect(slots.entriesOfSlot('eleckoi.roleplay.session.header')).toHaveLength(0)
+    releaseChat()
+    releaseTrajectory()
+    for (const dispose of disposers.reverse()) dispose()
+    releaseRoot()
+  })
+
   it('mounts the existing chat view through a removable DSH chain entry', () => {
     let registration: any
     let unregister = false
@@ -62,6 +166,7 @@ describe('ElecKoi roleplay client contribution', () => {
       renderRoleplaySlot: undefined,
       renderRoleplaySlotChain: undefined,
       renderRoleplayMessage: undefined,
+      dshConversation: undefined,
       dshComposerOwner: undefined,
       dshInputZone: undefined
     } })
@@ -132,18 +237,19 @@ describe('ElecKoi roleplay client contribution', () => {
       renderSlot,
       renderSlotChain
     })
-    expect(sessionResult.type).toBe(ChatView)
-    expect(sessionResult.props.renderRoleplaySlot).toBe(renderSlot)
-    expect(sessionResult.props.renderRoleplaySlotChain).toBe(renderSlotChain)
-    expect(sessionResult.props.dshComposerOwner).toEqual({
+    expect(sessionResult.name).toBe('eleckoi.roleplay.session.header')
+    const productProps = sessionResult.owner.matched.props
+    expect(productProps.renderRoleplaySlot).toBe(renderSlot)
+    expect(productProps.renderRoleplaySlotChain).toBe(renderSlotChain)
+    expect(productProps.dshComposerOwner).toEqual({
       sessionId: reference.sessionId,
       session: sessionSnapshot,
       pendingInteraction
     })
-    expect(sessionResult.props.dshInputZone).toEqual({ session: sessionSnapshot, input: inputSnapshot })
+    expect(productProps.dshInputZone).toEqual({ session: sessionSnapshot, input: inputSnapshot })
     const messageOwner = { productMessageId: 'm1', content: '流式正文', streaming: true }
     const content = { type: 'official-markdown', props: { text: '流式正文', streaming: true } }
-    const rendered = sessionResult.props.renderRoleplayMessage(messageOwner, content)
+    const rendered = productProps.renderRoleplayMessage(messageOwner, content)
     expect(rendered.name).toBe('eleckoi.roleplay.message.content')
     expect(rendered.owner).toEqual(messageOwner)
     expect(rendered.options.fallback).toBe(content)
@@ -314,7 +420,7 @@ describe('ElecKoi roleplay client contribution', () => {
     await Promise.resolve()
 
     const typeDeclarations = [...slotTypes.matchAll(/'([^']+)':\s*\{\s*kind:\s*'([^']+)'\s*scope:\s*'([^']+)'/g)]
-      .filter(([, id]) => id !== 'eleckoi.roleplay.session')
+      .filter(([, id]) => !id!.startsWith('eleckoi.roleplay.session'))
     expect(manifest.eleckoi.developerInterfaces.map((item: any) => item.id).sort())
       .toEqual(typeDeclarations.map(([, id]) => id).sort())
     const modes: Record<string, string> = { single: 'replace', keyed: 'replace', chain: 'replace', list: 'append' }

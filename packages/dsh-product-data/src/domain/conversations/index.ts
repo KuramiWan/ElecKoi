@@ -4,6 +4,8 @@ export { MessageRepository } from './MessageRepository'
 export { MessageDisplayProjector } from './MessageDisplayProjector'
 export type { MessageDisplayCompatibility } from './MessageDisplayCompatibility'
 export {
+  readConversationVariableBinding,
+  conversationVariableVersionIds,
   readConversationVariableStates,
   readCurrentConversationVariableState,
   writeCurrentConversationVariableState

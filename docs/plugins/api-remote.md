@@ -8,7 +8,7 @@
 - `ctx.remote.eleckoiCharacterConfiguration`：`changes`、`exportRegexRules`、`importRegexRules`、`readConversationSettingLibraries`、`readRegexRules`、`readSettingLibrary`、`readVariableConfig`、`resetConversationSettingLibrary`、`saveConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`saveRegexRules`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`saveVariableConfig`、`saveVariableConfigViewState`、`testRegexRule`
 - `ctx.remote.eleckoiCharacters`：`changes`、`commitImport`、`create`、`delete`、`discardImport`、`export`、`list`、`prepareImport`、`saveGroups`、`select`、`update`
 - `ctx.remote.eleckoiConversationModels`：`current`、`select`
-- `ctx.remote.eleckoiConversations`：`authorState`、`changes`、`create`、`delete`、`deleteMessagesFrom`、`details`、`editMessage`、`exportArchive`、`importArchive`、`list`、`preparePrompt`、`projectDisplay`、`regenerateMessage`、`replaceVariableState`、`revealFile`、`selectOpening`、`startRegeneration`、`updateOpening`、`variableTimeline`
+- `ctx.remote.eleckoiConversations`：`authorState`、`changes`、`create`、`delete`、`deleteMessagesFrom`、`details`、`editMessage`、`exportArchive`、`importArchive`、`list`、`preparePrompt`、`projectDisplay`、`regenerateMessage`、`replaceVariableState`、`revealFile`、`selectOpening`、`startRegeneration`、`updateOpening`、`variableTimeline`、`waitForGeneration`
 - `ctx.remote.eleckoiCreatorStudio`：`changes`、`create`、`delete`、`list`
 - `ctx.remote.eleckoiDisplayPreferences`：`read`、`setChatDisplay`、`updateUi`
 - `ctx.remote.eleckoiModels`：`discoverModels`、`revealApiKey`、`testConnection`
@@ -86,15 +86,16 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     exportArchive: (conversationId: string) => Promise<RemoteResult<string>>
     importArchive: (characterId: string, json: string) => Promise<RemoteResult<string>>
     list: (signal?: AbortSignal) => Promise<RemoteResult<ConversationSummary[]>>
-    preparePrompt: (conversationId: string, text: string) => Promise<RemoteResult<{ runtimeSessionId: string; }>>
+    preparePrompt: (conversationId: string, text: string, signal?: AbortSignal) => Promise<RemoteResult<{ runtimeSessionId: string; operationId: string; }>>
     projectDisplay: (conversationId: string, messages: ConversationMessageDisplayInput[]) => Promise<RemoteResult<ConversationMessageDisplayResult[]>>
-    regenerateMessage: (conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string) => Promise<RemoteResult<{ runtimeSessionId: string; prepared: true; }>>
+    regenerateMessage: (conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string) => Promise<RemoteResult<{ runtimeSessionId: string; prepared: true; operationId: string; }>>
     replaceVariableState: (conversationId: string, stateJson: string) => Promise<RemoteResult<string>>
     revealFile: (conversationId: string, attachmentId: string, name: string, signal?: AbortSignal) => Promise<RemoteResult<void>>
     selectOpening: (conversationId: string, openingId: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     startRegeneration: (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; turn?: number; }>>
     updateOpening: (conversationId: string, content: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     variableTimeline: (conversationId: string) => Promise<RemoteResult<VariableViewerTimeline>>
+    waitForGeneration: (conversationId: string, operationId: string) => Promise<RemoteResult<void>>
   }
   interface TypertRemoteNamespace$656c65636b6f6943726561746f7253747564696f {
     changes: (signal?: AbortSignal) => RemoteStreamHandle<ProductRecordChange, never>
@@ -177,15 +178,16 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'eleckoiConversations/exportArchive': (conversationId: string) => Promise<RemoteResult<string>>
     'eleckoiConversations/importArchive': (characterId: string, json: string) => Promise<RemoteResult<string>>
     'eleckoiConversations/list': (signal?: AbortSignal) => Promise<RemoteResult<ConversationSummary[]>>
-    'eleckoiConversations/preparePrompt': (conversationId: string, text: string) => Promise<RemoteResult<{ runtimeSessionId: string; }>>
+    'eleckoiConversations/preparePrompt': (conversationId: string, text: string, signal?: AbortSignal) => Promise<RemoteResult<{ runtimeSessionId: string; operationId: string; }>>
     'eleckoiConversations/projectDisplay': (conversationId: string, messages: ConversationMessageDisplayInput[]) => Promise<RemoteResult<ConversationMessageDisplayResult[]>>
-    'eleckoiConversations/regenerateMessage': (conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string) => Promise<RemoteResult<{ runtimeSessionId: string; prepared: true; }>>
+    'eleckoiConversations/regenerateMessage': (conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string) => Promise<RemoteResult<{ runtimeSessionId: string; prepared: true; operationId: string; }>>
     'eleckoiConversations/replaceVariableState': (conversationId: string, stateJson: string) => Promise<RemoteResult<string>>
     'eleckoiConversations/revealFile': (conversationId: string, attachmentId: string, name: string, signal?: AbortSignal) => Promise<RemoteResult<void>>
     'eleckoiConversations/selectOpening': (conversationId: string, openingId: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     'eleckoiConversations/startRegeneration': (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; turn?: number; }>>
     'eleckoiConversations/updateOpening': (conversationId: string, content: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     'eleckoiConversations/variableTimeline': (conversationId: string) => Promise<RemoteResult<VariableViewerTimeline>>
+    'eleckoiConversations/waitForGeneration': (conversationId: string, operationId: string) => Promise<RemoteResult<void>>
     'eleckoiCreatorStudio/changes': (signal?: AbortSignal) => RemoteStreamHandle<ProductRecordChange, never>
     'eleckoiCreatorStudio/create': (input: CreateCreatorProjectInput) => Promise<RemoteResult<CreatorProjectCollection>>
     'eleckoiCreatorStudio/delete': (projectId: string) => Promise<RemoteResult<CreatorProjectCollection>>

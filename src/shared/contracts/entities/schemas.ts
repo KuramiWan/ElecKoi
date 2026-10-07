@@ -35,6 +35,7 @@ export const openingMessageOptionSchema = z.object({
   id: z.string(),
   title: z.string(),
   content: z.string(),
+  variableVersionId: z.string().optional(),
   displayContent: z.string().optional(),
   initialVariableStateJson: z.string()
 })

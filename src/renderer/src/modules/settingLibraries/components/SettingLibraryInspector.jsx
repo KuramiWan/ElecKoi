@@ -1,13 +1,17 @@
-import { Trash, X } from "@phosphor-icons/react";
+import { Trash } from "@phosphor-icons/react";
+import { EditorHeader } from '../../../ui/ui/EditorHeader.jsx';
 import { DshFolderClosedIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { FIXED_ENTRY_IDS } from "../model/settingLibraryEditing.js";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
 import { OpeningEditor } from "./OpeningEditor.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
 import { SettingLibraryResizer } from "./SettingLibraryResizer.jsx";
+import { DEFAULT_INSPECTOR_WIDTH, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH } from "../model/settingLibraryInspectorSizing.js";
 
 function EntryEditor({
   entry,
+  variableVersions,
+  variableVersionsError,
   entries,
   groups,
   promptPositions,
@@ -20,7 +24,7 @@ function EntryEditor({
   onPromptPositionsChange,
 }) {
   if (entry.kind === "opening") {
-    return <OpeningEditor entry={entry} onChange={onChange} onRequestDelete={onRequestDeleteOpening} />;
+    return <OpeningEditor entry={entry} variableVersions={variableVersions} variableVersionsError={variableVersionsError} onChange={onChange} onRequestDelete={onRequestDeleteOpening} />;
   }
 
   const isReference = entry.dynamicMode === "ejs_reference";
@@ -71,9 +75,12 @@ function fixedEntryContentPlaceholder(entry) {
 export function SettingLibraryInspector({
   selected,
   library,
+  variableVersions,
+  variableVersionsError,
   nameInputRef,
   SelectedIcon,
   onClose,
+  saveAction,
   onUpdateGroup,
   onDeleteGroup,
   onUpdateEntry,
@@ -82,7 +89,9 @@ export function SettingLibraryInspector({
   onRequestDeleteOpening,
   onPromptPositionsChange,
   allowCustomPromptPositions = false,
-  inspectorWidth = 480,
+  inspectorWidth = DEFAULT_INSPECTOR_WIDTH,
+  inspectorMinWidth = MIN_INSPECTOR_WIDTH,
+  inspectorMaxWidth = MAX_INSPECTOR_WIDTH,
   onResizeStart,
   onResizeKeyDown,
   onResetResize,
@@ -93,23 +102,21 @@ export function SettingLibraryInspector({
       {onResizeStart ? (
         <SettingLibraryResizer
           aria-label="调整编辑器宽度"
-          aria-valuemin={420}
-          aria-valuemax={760}
+          aria-valuemin={inspectorMinWidth}
+          aria-valuemax={inspectorMaxWidth}
           aria-valuenow={Math.round(inspectorWidth)}
           onPointerDown={onResizeStart}
           onKeyDown={onResizeKeyDown}
           onDoubleClick={onResetResize}
         />
       ) : null}
-      <header className="setting-library-inspector-header">
-        <div>
+      <EditorHeader className="catalog-editor-header" onBack={onClose} backLabel="返回设定列表" saveAction={saveAction}
+        title={<span className="catalog-editor-title">
           {selected.kind === "entry" && !FIXED_ENTRY_IDS.has(selected.value.id) && selected.value.contentMode !== "ejs" && selected.value.dynamicMode !== "ejs_reference"
             ? <SettingEntryGlyph iconId={selected.value.iconId} size={19} aria-hidden="true" />
             : selected.kind === "group" ? <DshFolderClosedIcon size={19} aria-hidden="true" /> : <SelectedIcon size={19} aria-hidden="true" />}
           <strong>{selected.kind === "group" ? "文件夹" : selected.value.dynamicMode === "ejs_reference" ? "EJS引用设定" : selected.value.title}</strong>
-        </div>
-        <button type="button" aria-label="关闭编辑器" onClick={onClose}><X size={17} /></button>
-      </header>
+        </span>} />
       <div className="setting-library-inspector-body">
         {selected.kind === "group" ? (
           <div className="setting-library-group-editor">
@@ -119,6 +126,8 @@ export function SettingLibraryInspector({
         ) : (
           <EntryEditor
             entry={selected.value}
+            variableVersions={variableVersions}
+            variableVersionsError={variableVersionsError}
             entries={library.entries}
             groups={library.groups}
             promptPositions={library.promptPositions}

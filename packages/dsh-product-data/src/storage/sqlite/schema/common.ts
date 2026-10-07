@@ -159,6 +159,7 @@ export const agentConversations = sqliteTable('agent_conversations', {
   id: text('id').notNull().primaryKey(),
   activeBranchId: text('activeBranchId').notNull(),
   runtimeThreadId: text('runtimeThreadId').notNull().default(sql.raw("''")),
+  variableVersionId: text('variableVersionId').notNull().default(sql.raw("''")),
 })
 
 export const agentBranches = sqliteTable('agent_branches', {

@@ -1,6 +1,20 @@
 import { and, eq } from 'drizzle-orm'
 import type { ElecKoiDatabase } from '@product-data/storage/sqlite/SqliteDatabase'
-import { chatSessions, chatSessionVariableStates } from '@product-data/storage/sqlite/schema/common'
+import { agentConversations, chatSessions, chatSessionVariableStates } from '@product-data/storage/sqlite/schema/common'
+
+export function readConversationVariableBinding(conversationId: string, db: ElecKoiDatabase): { characterId: string; versionId: string } {
+  const binding = db.select({ characterId: chatSessions.characterId, versionId: agentConversations.variableVersionId })
+    .from(agentConversations).innerJoin(chatSessions, eq(chatSessions.id, agentConversations.id))
+    .where(eq(agentConversations.id, conversationId)).get()
+  if (!binding) throw new Error('找不到变量配置所属的聊天存档。')
+  return binding
+}
+
+export function conversationVariableVersionIds(characterId: string, db: ElecKoiDatabase): string[] {
+  return db.select({ versionId: agentConversations.variableVersionId }).from(agentConversations)
+    .innerJoin(chatSessions, eq(chatSessions.id, agentConversations.id))
+    .where(eq(chatSessions.characterId, characterId)).all().map((row) => row.versionId)
+}
 
 function requireConversation(conversationId: string, db: ElecKoiDatabase): void {
   const session = db.select({ id: chatSessions.id }).from(chatSessions)

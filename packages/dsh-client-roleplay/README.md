@@ -27,6 +27,8 @@
 
 ## 消息与轨迹
 
+会话标签与选择状态复用官方 `conversation.session.header` 和 `conversation.session` 的注入、共享 store 和切换操作。所有 `conversation.view` 注册项按官方列表的顺序和本地化标签显示；第三方视图由官方 Slot Renderer 在同一个 Session 下直接渲染，保留其 store、hooks、子插槽和卸载行为。内置角色正文与轨迹在对应视图保留产品展示适配，新增视图不需要注册 ElecKoi 专属接口。
+
 `message.content` 包装或替换正文；`message.actions` 与 `message.after` 追加操作和内容。owner 包含产品会话 ID、产品消息 ID、DSH 消息 ID 与角色，正文另外提供 `content`、`streaming`。开场白没有日志消息 ID，不显示 `message.actions`。
 
 `trajectory` 替换轨迹视图，`trajectory.images` 替换详情图片预览；审批详情与计划审核操作仅在对应输入区接管组件调用时显示。

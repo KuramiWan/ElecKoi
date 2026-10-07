@@ -9,7 +9,7 @@ import {
 } from "../model/settingLibraryEditing.js";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
 
-export function OpeningEditor({ entry, onChange, onRequestDelete }) {
+export function OpeningEditor({ entry, variableVersions = [], variableVersionsError = '', onChange, onRequestDelete }) {
   const messages = useMemo(() => primaryFirstOpeningMessages(entry), [entry]);
   const primary = messages[0];
   const backups = messages.slice(1);
@@ -53,6 +53,19 @@ export function OpeningEditor({ entry, onChange, onRequestDelete }) {
             <label>
               <span>标题</span>
               <input value={message.title} maxLength={40} placeholder="未命名开场白" onChange={(event) => onChange(updateOpening(entry, message.id, { title: event.target.value }))} />
+            </label>
+            <label>
+              <span>绑定变量版本</span>
+              <select value={message.variableVersionId || ''} disabled={!variableVersions.length}
+                onChange={(event) => onChange(updateOpening(entry, message.id, {
+                  variableVersionId: event.target.value, initialVariableStateJson: '',
+                }))}>
+                <option value="">当前变量版本</option>
+                {message.variableVersionId && !variableVersions.some((version) => version.id === message.variableVersionId)
+                  ? <option value={message.variableVersionId} disabled>版本不存在</option> : null}
+                {variableVersions.map((version) => <option key={version.id} value={version.id}>{version.name || '未命名版本'}</option>)}
+              </select>
+              {variableVersionsError ? <span role="alert">{variableVersionsError}</span> : null}
             </label>
             <MarkdownTextareaField
               label="开场白正文"

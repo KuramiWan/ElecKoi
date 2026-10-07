@@ -33,7 +33,7 @@ export class VariableStateRepository {
   ): AgentVariableRuntimeContext | undefined {
     if (!context.characterId) return undefined
 
-    const config = this.configs.get(context.characterId)
+    const config = this.configs.forConversation(conversationId, context.characterId)
     const hasVariables = config.schemaCode.trim().length > 0
       || config.variables.length > 0
       || config.objects.some((item) => item.id !== VARIABLE_INITIALIZATION_OBJECT_ID)
@@ -41,7 +41,7 @@ export class VariableStateRepository {
 
     const currentStateJson = readCurrentConversationVariableState(conversationId, this.store.db)
     return {
-      initialStateJson: normalizedObjectJson(config.initialStateJson),
+      initialStateJson: normalizedObjectJson(this.viewerStates(conversationId).initialStateJson),
       schemaCode: config.schemaCode,
       objects: config.objects,
       variables: config.variables,

@@ -99,7 +99,7 @@ export class ConversationArchiveRepository {
       .map((response) => response.runtimeThreadId as string))]
   }
 
-  import(snapshot: ConversationArchiveSnapshot, characterId: string, runtimeIds: ReadonlyMap<string, string>, conversationId: string = randomUUID()): string {
+  import(snapshot: ConversationArchiveSnapshot, characterId: string, runtimeIds: ReadonlyMap<string, string>, conversationId: string = randomUUID(), options: { preserveIds?: boolean } = {}): string {
     if (snapshot.characterId !== characterId) throw new Error('聊天记录与当前角色不匹配。')
     const character = this.store.native.prepare('SELECT id,name,avatar FROM characters WHERE id=?').get(characterId) as
       { id: string; name: string; avatar: string } | undefined
@@ -108,7 +108,7 @@ export class ConversationArchiveRepository {
     for (const table of ['agent_branches', 'conversation_speakers', 'agent_turns', 'agent_responses'] as const) {
       for (const row of snapshot.tables[table]) {
         if (typeof row.id !== 'string' || !row.id || ids.has(row.id)) throw new Error('聊天记录身份无效。')
-        ids.set(row.id, randomUUID())
+        ids.set(row.id, options.preserveIds ? row.id : randomUUID())
       }
     }
     const remap = (key: string, value: Cell): Cell => typeof value === 'string'
@@ -126,6 +126,19 @@ export class ConversationArchiveRepository {
           if (table === 'chat_sessions') {
             row.characterName = character.name
             row.characterAvatar = character.avatar
+          }
+          if (table === 'agent_conversations') {
+            if (row.variableVersionId === undefined) {
+              const config = this.store.native.prepare('SELECT activeVersionId FROM variable_configs WHERE characterId=?')
+                .get(characterId) as { activeVersionId: string } | undefined
+              row.variableVersionId = config?.activeVersionId || 'variable-config-default'
+            }
+            if (typeof row.variableVersionId !== 'string' || !row.variableVersionId
+              || (!this.store.native.prepare('SELECT 1 FROM variable_config_versions WHERE characterId=? AND versionId=?')
+                .get(characterId, row.variableVersionId) && !(row.variableVersionId === 'variable-config-default'
+                  && !this.store.native.prepare('SELECT 1 FROM variable_configs WHERE characterId=?').get(characterId)))) {
+              throw new Error('聊天记录绑定的变量版本不存在，请先恢复对应变量配置。')
+            }
           }
           const keys = Object.keys(row)
           if (keys.length === 0) throw new Error('聊天记录数据格式不正确。')
