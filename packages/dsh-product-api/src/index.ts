@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@eleckoi/dsh-client-roleplay/projections'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, type SessionEvent, type SessionHeader, type SessionId } from '@deepseek-ai/dsh-session'
 
@@ -47,6 +48,8 @@ import type {
   ConversationModelSelection,
   ConversationCreateInput,
   ConversationDetailsMetadata,
+  ConversationRequestPreview,
+  ConversationRequestPreviewSummary,
   ConversationMessageDisplayInput,
   ConversationMessageDisplayResult,
   ConversationSummary,
@@ -116,6 +119,8 @@ export type {
   ConversationArchiveSnapshot,
   ConversationRecord,
   ConversationCreateInput,
+  ConversationRequestPreview,
+  ConversationRequestPreviewSummary,
   ConversationSummary,
   CreatorProject,
   CreatorProjectCollection,
@@ -435,6 +440,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     'eleckoiConversationLifecycle',
     'eleckoiRoleplaySessions',
     'eleckoiSessionEditor',
+    'eleckoiRequestPreviews',
     'eleckoiConversationChanges'
   ]
 
@@ -467,17 +473,39 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   @Remote
   async list(signal: AbortSignal): Promise<ConversationSummary[]> {
     const records = this.productData.readConversationCatalog()
-    return Promise.all(records.map(async (summary) => {
-      try {
-        const inspection = await this.ownerContext.sessionController.inspect(
-          summary.runtimeSessionId as SessionId,
-          signal
-        )
-        return { ...summary, preview: latestSessionPreview(inspection.events) || summary.preview }
-      } catch {
-        return summary
-      }
+    const listed = await this.ownerContext.sessionController.list({}, signal)
+    const previews = new Map(listed.items.map(item => [
+      String(item.sessionId), item.projections?.values.eleckoiConversationPreview
+    ]))
+    return records.map(summary => ({
+      ...summary, preview: previews.get(summary.runtimeSessionId) || summary.preview
     }))
+  }
+
+  /**
+   * 订阅当前运行期间实际请求的轻量目录；关闭 Host 后不恢复。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param signal - 取消订阅的信号。
+   * @returns 仅包含轮次、请求编号和模型的目录流。
+   */
+  @Remote({ mode: 'stream' })
+  requestPreviews(conversationId: string, signal: AbortSignal): AsyncIterable<ConversationRequestPreviewSummary[]> {
+    const sessionId = this.productData.readConversationDetails(conversationId).runtimeSessionId as SessionId
+    return this.ownerContext.eleckoiRequestPreviews.stream(sessionId, signal)
+  }
+
+  /**
+   * 读取当前运行期间捕获的指定请求，不读取 Session 日志或当前设定重算。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param requestId - 当前运行期间请求目录中的正式标识。
+   * @param signal - 取消本次读取的信号。
+   * @returns 按实际发送顺序排列的可读输入；关闭后或不存在的请求抛出原因。
+   */
+  @Remote
+  requestPreview(conversationId: string, requestId: string, signal: AbortSignal): ConversationRequestPreview {
+    signal.throwIfAborted()
+    const sessionId = this.productData.readConversationDetails(conversationId).runtimeSessionId
+    return this.ownerContext.eleckoiRequestPreviews.read(sessionId, requestId)
   }
 
   /**
@@ -715,6 +743,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     await this.ownerContext.eleckoiSessionEditor.deleteSession(runtimeSessionId)
     await this.ownerContext.eleckoiRoleplaySessions.removeArtifacts(conversationId, runtimeSessionId)
     await this.productData.deleteConversation(conversationId)
+    this.ownerContext.eleckoiRequestPreviews.forget(runtimeSessionId)
     this.changeFeed.publish({ kind: 'catalog', conversationId, reason: 'deleted' })
   }
 
@@ -1010,21 +1039,6 @@ function storedFilePath(attachmentId: string, name: string): string {
   const home = process.env.DSH_HOME
   if (!home) throw new Error('DSH 附件目录尚未就绪。')
   return join(home, 'attachments', 'v1', 'files', match[1].slice(0, 2), match[1], name)
-}
-
-function latestSessionPreview(events: readonly unknown[]): string {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = jsonRecord(events[index])
-    if (event.surfaceOp !== 'append' || (event.type !== 'assistant/message' && event.type !== 'user/message')) continue
-    const message = jsonRecord(jsonRecord(event.data).message)
-    const content = Array.isArray(message.content) ? message.content : []
-    const text = content.flatMap((part) => {
-      const block = jsonRecord(part)
-      return block.type === 'text' && typeof block.text === 'string' ? [block.text] : []
-    }).join('').trim()
-    if (text) return Array.from(text).slice(0, 240).join('')
-  }
-  return ''
 }
 
 function requireSessionMessage(

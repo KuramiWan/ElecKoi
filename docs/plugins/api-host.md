@@ -413,6 +413,23 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 @Remote async list(signal: AbortSignal): Promise<ConversationSummary[]>
 
 /**
+ * 订阅当前运行期间实际请求的轻量目录；关闭 Host 后不恢复。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param signal - 取消订阅的信号。
+ * @returns 仅包含轮次、请求编号和模型的目录流。
+ */
+@Remote({ mode: 'stream' }) requestPreviews(conversationId: string, signal: AbortSignal): AsyncIterable<ConversationRequestPreviewSummary[]>
+
+/**
+ * 读取当前运行期间捕获的指定请求，不读取 Session 日志或当前设定重算。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param requestId - 当前运行期间请求目录中的正式标识。
+ * @param signal - 取消本次读取的信号。
+ * @returns 按实际发送顺序排列的可读输入；关闭后或不存在的请求抛出原因。
+ */
+@Remote requestPreview(conversationId: string, requestId: string, signal: AbortSignal): ConversationRequestPreview
+
+/**
  * 读取聊天关联资料和消息元数据；消息正文由官方 Session 读取。
  * @param conversationId - ElecKoi 聊天编号。
  * @param beforeSequence - 分页消息边界，读取该事件序号之前的消息。
@@ -562,7 +579,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 @Remote async updateOpening(conversationId: string, content: string): Promise<ConversationDetailsMetadata>
 ```
 
-Types: [AuthorConversationState](types-host.md#authorconversationstate) · [ConversationChange](types-host.md#conversationchange) · [ConversationCreateInput](types-host.md#conversationcreateinput) · [ConversationDetailsMetadata](types-host.md#conversationdetailsmetadata) · [ConversationMessageDisplayInput](types-host.md#conversationmessagedisplayinput) · [ConversationMessageDisplayResult](types-host.md#conversationmessagedisplayresult) · [ConversationSummary](types-host.md#conversationsummary) · [VariableViewerTimeline](types-host.md#variableviewertimeline)
+Types: [AuthorConversationState](types-host.md#authorconversationstate) · [ConversationChange](types-host.md#conversationchange) · [ConversationCreateInput](types-host.md#conversationcreateinput) · [ConversationDetailsMetadata](types-host.md#conversationdetailsmetadata) · [ConversationMessageDisplayInput](types-host.md#conversationmessagedisplayinput) · [ConversationMessageDisplayResult](types-host.md#conversationmessagedisplayresult) · [ConversationRequestPreview](types-host.md#conversationrequestpreview) · [ConversationRequestPreviewSummary](types-host.md#conversationrequestpreviewsummary) · [ConversationSummary](types-host.md#conversationsummary) · [VariableViewerTimeline](types-host.md#variableviewertimeline)
 
 Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
 
@@ -703,6 +720,60 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 Types: [PersonaProfile](types-host.md#personaprofile) · [ProductRecordChange](types-host.md#productrecordchange)
 
 Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+
+<a id="ctxeleckoirequestpreviews--requestpreviewstore"></a>
+
+### `ctx.eleckoiRequestPreviews` — `RequestPreviewStore`
+
+Host 运行期请求预览；只共用内存消息，不持久化或恢复历史请求。
+
+```ts cordis-catalog
+/**
+ * 捕获即将交给 LLM Runtime 的真实请求。
+ * @param session - 发送请求的正式 Session。
+ * @param options - 完成产品装配的实际模型请求。
+ * @param plan - 此次装配使用的设定位置和可读来源。
+ * @param execution - 已有输入投影的轮次和实时步骤事件中的执行身份。
+ * @returns 仅含身份与编号的请求目录项。
+ */
+capture(session: Session, options: GenerateOptions, plan: readonly object[], execution: { round: number | null; turn: number; step: number }): RequestPreviewSummary
+
+/**
+ * 列出当前运行捕获的请求，目录不包含正文。
+ * @param sessionId - 正式 Session ID。
+ * @returns 发送顺序中的请求目录项。
+ */
+list(sessionId: string): RequestPreviewSummary[]
+
+/**
+ * 按运行期请求身份临时生成可读上下文；不存在时失败。
+ * @param sessionId - 正式 Session ID。
+ * @param requestId - 本次运行捕获时分配的请求 ID。
+ * @returns 请求身份和按实际顺序排列的上下文条目。
+ */
+read(sessionId: string, requestId: string): { id: string; items: RoleplayRequestContextItem[] }
+
+/**
+ * 订阅请求目录，慢读取者合并通知，取消后释放订阅。
+ * @param sessionId - 正式 Session ID。
+ * @param signal - 订阅取消生命周期。
+ * @returns 初始目录及之后的最新目录。
+ */
+stream(sessionId: string, signal: AbortSignal): AsyncIterable<RequestPreviewSummary[]>
+
+/**
+ * 删除聊天时释放该 Session 的全部运行期请求。
+ * @param sessionId - 已删除的正式 Session ID。
+ */
+forget(sessionId: string): void
+
+/** 释放全部请求并结束订阅；用于 Host 插件卸载。 */
+close(): void
+```
+
+Types: [RequestPreviewSummary](types-host.md#requestpreviewsummary) · [RoleplayRequestContextItem](types-host.md#roleplayrequestcontextitem)
+
+Source: [`packages/dsh-client-roleplay/src/host/request-preview.d.mts`](../../packages/dsh-client-roleplay/src/host/request-preview.d.mts)
 
 <a id="ctxeleckoisessioneditor--eleckoisessioneditor"></a>
 

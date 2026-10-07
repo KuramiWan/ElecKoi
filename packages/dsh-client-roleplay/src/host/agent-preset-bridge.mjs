@@ -175,7 +175,7 @@ export async function apply(ctx) {
       await registerPreset(snapshot.mountedPresetId)
       if (!child) {
         installRequestConfig(agent.ctx, snapshotRoot, agent.id)
-        installConversationContext(agent.ctx, snapshotRoot, agent.id)
+        installConversationContext(agent.ctx, snapshotRoot, agent.id, ctx.eleckoiRequestPreviews)
       }
       applyDisabledPolicy(agent.ctx, snapshot.disabledToolGroupIds)
     } catch (error) {

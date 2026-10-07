@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DshNewChatIcon, DshRefreshIcon } from "../../../ui/icons/dshComposerIcons.jsx";
 import { ChatHistoryIcon, MenuIcon, PlugIcon } from "../../../ui/icons/openSourceIcons.jsx";
 import { TrashIcon } from "../../../ui/icons/index.jsx";
-import { Database } from "@phosphor-icons/react";
+import { Database, TextAlignLeft } from "@phosphor-icons/react";
 
 /** Roleplay-only actions placed immediately after the native DSH plus button. */
 export function RoleplayInputMenu({
@@ -11,6 +11,7 @@ export function RoleplayInputMenu({
   onOpenHistory,
   onOpenTools,
   onOpenVariables,
+  onOpenRequestPreview,
   onEnterDeleteMode,
   canDeleteMessages = false,
   onRegenerate,
@@ -37,6 +38,7 @@ export function RoleplayInputMenu({
 
   function run(action) {
     setOpen(false);
+    rootRef.current?.querySelector("button")?.focus();
     action?.();
   }
 
@@ -60,6 +62,9 @@ export function RoleplayInputMenu({
           </button>
           <button type="button" role="menuitem" onClick={() => run(onOpenTools)}>
             <PlugIcon size={18} /><span>工具</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => run(onOpenRequestPreview)}>
+            <TextAlignLeft size={18} weight="regular" /><span>请求上下文预览</span>
           </button>
           <button type="button" role="menuitem" onClick={() => run(onOpenVariables)}>
             <Database size={18} weight="regular" /><span>变量查看器</span>

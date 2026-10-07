@@ -26,7 +26,7 @@ export interface AgentPreset {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:628](../../packages/dsh-product-api/src/types.ts#L628)
+源码：[packages/dsh-product-api/src/types.ts:654](../../packages/dsh-product-api/src/types.ts#L654)
 
 ## AgentPresetCatalog
 
@@ -38,7 +38,7 @@ export interface AgentPresetCatalog {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:607](../../packages/dsh-product-api/src/types.ts#L607)
+源码：[packages/dsh-product-api/src/types.ts:633](../../packages/dsh-product-api/src/types.ts#L633)
 
 ## AgentPresetExportFormat
 
@@ -46,7 +46,7 @@ export interface AgentPresetCatalog {
 export type AgentPresetExportFormat = 'json' | 'png';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:567](../../packages/dsh-product-api/src/types.ts#L567)
+源码：[packages/dsh-product-api/src/types.ts:593](../../packages/dsh-product-api/src/types.ts#L593)
 
 ## AgentPresetExportResult
 
@@ -58,7 +58,7 @@ export interface AgentPresetExportResult {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:659](../../packages/dsh-product-api/src/types.ts#L659)
+源码：[packages/dsh-product-api/src/types.ts:685](../../packages/dsh-product-api/src/types.ts#L685)
 
 ## AgentPresetImportDocument
 
@@ -70,7 +70,7 @@ export interface AgentPresetImportDocument {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:646](../../packages/dsh-product-api/src/types.ts#L646)
+源码：[packages/dsh-product-api/src/types.ts:672](../../packages/dsh-product-api/src/types.ts#L672)
 
 ## AgentPresetImportResult
 
@@ -83,7 +83,7 @@ export interface AgentPresetImportResult {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:652](../../packages/dsh-product-api/src/types.ts#L652)
+源码：[packages/dsh-product-api/src/types.ts:678](../../packages/dsh-product-api/src/types.ts#L678)
 
 ## AgentPresetImportSource
 
@@ -91,7 +91,7 @@ export interface AgentPresetImportResult {
 export type AgentPresetImportSource = 'eleckoi' | 'sillytavern';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:566](../../packages/dsh-product-api/src/types.ts#L566)
+源码：[packages/dsh-product-api/src/types.ts:592](../../packages/dsh-product-api/src/types.ts#L592)
 
 ## AgentPresetLibraryGroup
 
@@ -103,7 +103,7 @@ export interface AgentPresetLibraryGroup {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:589](../../packages/dsh-product-api/src/types.ts#L589)
+源码：[packages/dsh-product-api/src/types.ts:615](../../packages/dsh-product-api/src/types.ts#L615)
 
 ## AgentPresetModelFamily
 
@@ -111,7 +111,7 @@ export interface AgentPresetLibraryGroup {
 export type AgentPresetModelFamily = 'general' | 'claude' | 'openai' | 'gemini' | 'deepseek' | 'other';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:565](../../packages/dsh-product-api/src/types.ts#L565)
+源码：[packages/dsh-product-api/src/types.ts:591](../../packages/dsh-product-api/src/types.ts#L591)
 
 ## AgentPresetModelTag
 
@@ -123,7 +123,7 @@ export interface AgentPresetModelTag {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:569](../../packages/dsh-product-api/src/types.ts#L569)
+源码：[packages/dsh-product-api/src/types.ts:595](../../packages/dsh-product-api/src/types.ts#L595)
 
 ## AgentPresetProfile
 
@@ -136,7 +136,7 @@ export interface AgentPresetProfile {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:582](../../packages/dsh-product-api/src/types.ts#L582)
+源码：[packages/dsh-product-api/src/types.ts:608](../../packages/dsh-product-api/src/types.ts#L608)
 
 ## AgentPresetSummary
 
@@ -154,7 +154,7 @@ export interface AgentPresetSummary {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:595](../../packages/dsh-product-api/src/types.ts#L595)
+源码：[packages/dsh-product-api/src/types.ts:621](../../packages/dsh-product-api/src/types.ts#L621)
 
 ## AgentPresetTimelineItem
 
@@ -167,7 +167,7 @@ export interface AgentPresetTimelineItem {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:575](../../packages/dsh-product-api/src/types.ts#L575)
+源码：[packages/dsh-product-api/src/types.ts:601](../../packages/dsh-product-api/src/types.ts#L601)
 
 ## AgentToolGroup
 
@@ -183,7 +183,7 @@ export interface AgentToolGroup {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:618](../../packages/dsh-product-api/src/types.ts#L618)
+源码：[packages/dsh-product-api/src/types.ts:644](../../packages/dsh-product-api/src/types.ts#L644)
 
 ## AgentToolMember
 
@@ -194,7 +194,7 @@ export interface AgentToolMember {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:613](../../packages/dsh-product-api/src/types.ts#L613)
+源码：[packages/dsh-product-api/src/types.ts:639](../../packages/dsh-product-api/src/types.ts#L639)
 
 ## AuthorConversationState
 
@@ -208,7 +208,7 @@ export interface AuthorConversationState {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:210](../../packages/dsh-product-api/src/types.ts#L210)
+源码：[packages/dsh-product-api/src/types.ts:236](../../packages/dsh-product-api/src/types.ts#L236)
 
 ## CharacterCollection
 
@@ -220,7 +220,7 @@ export interface CharacterCollection {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:283](../../packages/dsh-product-api/src/types.ts#L283)
+源码：[packages/dsh-product-api/src/types.ts:309](../../packages/dsh-product-api/src/types.ts#L309)
 
 ## CharacterConfigurationChange
 
@@ -228,7 +228,7 @@ export interface CharacterCollection {
 export type CharacterConfigurationChange = { kind: 'snapshot'; } | { kind: 'configuration'; domain: 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets'; characterId?: string; };
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:83](../../packages/dsh-product-api/src/types.ts#L83)
+源码：[packages/dsh-product-api/src/types.ts:109](../../packages/dsh-product-api/src/types.ts#L109)
 
 ## CharacterExportFormat
 
@@ -236,7 +236,7 @@ export type CharacterConfigurationChange = { kind: 'snapshot'; } | { kind: 'conf
 export type CharacterExportFormat = 'png' | 'json';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:295](../../packages/dsh-product-api/src/types.ts#L295)
+源码：[packages/dsh-product-api/src/types.ts:321](../../packages/dsh-product-api/src/types.ts#L321)
 
 ## CharacterExportResult
 
@@ -248,7 +248,7 @@ export interface CharacterExportResult {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:323](../../packages/dsh-product-api/src/types.ts#L323)
+源码：[packages/dsh-product-api/src/types.ts:349](../../packages/dsh-product-api/src/types.ts#L349)
 
 ## CharacterGroupAssignment
 
@@ -259,7 +259,7 @@ export interface CharacterGroupAssignment {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:289](../../packages/dsh-product-api/src/types.ts#L289)
+源码：[packages/dsh-product-api/src/types.ts:315](../../packages/dsh-product-api/src/types.ts#L315)
 
 ## CharacterImportFile
 
@@ -271,7 +271,7 @@ export interface CharacterImportFile {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:297](../../packages/dsh-product-api/src/types.ts#L297)
+源码：[packages/dsh-product-api/src/types.ts:323](../../packages/dsh-product-api/src/types.ts#L323)
 
 ## CharacterImportPreview
 
@@ -282,7 +282,7 @@ export interface CharacterImportPreview {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:312](../../packages/dsh-product-api/src/types.ts#L312)
+源码：[packages/dsh-product-api/src/types.ts:338](../../packages/dsh-product-api/src/types.ts#L338)
 
 ## CharacterImportPreviewItem
 
@@ -297,7 +297,7 @@ export interface CharacterImportPreviewItem {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:303](../../packages/dsh-product-api/src/types.ts#L303)
+源码：[packages/dsh-product-api/src/types.ts:329](../../packages/dsh-product-api/src/types.ts#L329)
 
 ## CharacterImportResult
 
@@ -309,7 +309,7 @@ export interface CharacterImportResult {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:317](../../packages/dsh-product-api/src/types.ts#L317)
+源码：[packages/dsh-product-api/src/types.ts:343](../../packages/dsh-product-api/src/types.ts#L343)
 
 ## CharacterImportSource
 
@@ -317,7 +317,7 @@ export interface CharacterImportResult {
 export type CharacterImportSource = 'eleckoi' | 'sillytavern';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:294](../../packages/dsh-product-api/src/types.ts#L294)
+源码：[packages/dsh-product-api/src/types.ts:320](../../packages/dsh-product-api/src/types.ts#L320)
 
 ## CharacterPersona
 
@@ -337,7 +337,7 @@ export interface CharacterPersona {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:246](../../packages/dsh-product-api/src/types.ts#L246)
+源码：[packages/dsh-product-api/src/types.ts:272](../../packages/dsh-product-api/src/types.ts#L272)
 
 ## CharacterRecord
 
@@ -366,7 +366,7 @@ export interface CharacterRecord {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:260](../../packages/dsh-product-api/src/types.ts#L260)
+源码：[packages/dsh-product-api/src/types.ts:286](../../packages/dsh-product-api/src/types.ts#L286)
 
 ## ConversationChange
 
@@ -374,7 +374,7 @@ export interface CharacterRecord {
 export type ConversationChange = { kind: 'snapshot'; } | { kind: 'generation'; conversationId: string; error: string; } | { kind: 'catalog'; conversationId: string; reason: 'created' | 'deleted'; } | { kind: 'messages'; conversationId: string; reason: 'edited' | 'deleted' | 'regenerated'; messageIds: string[]; };
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:72](../../packages/dsh-product-api/src/types.ts#L72)
+源码：[packages/dsh-product-api/src/types.ts:98](../../packages/dsh-product-api/src/types.ts#L98)
 
 ## ConversationCreateInput
 
@@ -401,7 +401,7 @@ export interface ConversationDetailsMetadata {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:145](../../packages/dsh-product-api/src/types.ts#L145)
+源码：[packages/dsh-product-api/src/types.ts:171](../../packages/dsh-product-api/src/types.ts#L171)
 
 ## ConversationLifecycleParticipant
 
@@ -429,7 +429,7 @@ export interface ConversationMessageDisplayInput {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:157](../../packages/dsh-product-api/src/types.ts#L157)
+源码：[packages/dsh-product-api/src/types.ts:183](../../packages/dsh-product-api/src/types.ts#L183)
 
 ## ConversationMessageDisplayResult
 
@@ -442,7 +442,7 @@ export interface ConversationMessageDisplayResult {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:167](../../packages/dsh-product-api/src/types.ts#L167)
+源码：[packages/dsh-product-api/src/types.ts:193](../../packages/dsh-product-api/src/types.ts#L193)
 
 ## ConversationMessageMetadata
 
@@ -473,7 +473,7 @@ export interface ConversationMessageMetadata {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:111](../../packages/dsh-product-api/src/types.ts#L111)
+源码：[packages/dsh-product-api/src/types.ts:137](../../packages/dsh-product-api/src/types.ts#L137)
 
 ## ConversationMetadata
 
@@ -513,7 +513,7 @@ export interface ConversationOpeningOption {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:101](../../packages/dsh-product-api/src/types.ts#L101)
+源码：[packages/dsh-product-api/src/types.ts:127](../../packages/dsh-product-api/src/types.ts#L127)
 
 ## ConversationPreparation
 
@@ -544,6 +544,33 @@ export interface ConversationRecord {
 ```
 
 源码：[packages/dsh-product-api/src/types.ts:39](../../packages/dsh-product-api/src/types.ts#L39)
+
+## ConversationRequestPreview
+
+```ts
+export interface ConversationRequestPreview {
+    id: string;
+    items: Array<{ order: number; messageId: string; role: 'system' | 'user' | 'assistant'; kind: 'system' | 'prompt' | 'history' | 'user' | 'assistant' | 'tool' | 'context'; title: string; source: string; anchor: string; content: string; }>;
+}
+```
+
+源码：[packages/dsh-product-api/src/types.ts:77](../../packages/dsh-product-api/src/types.ts#L77)
+
+## ConversationRequestPreviewSummary
+
+```ts
+export interface ConversationRequestPreviewSummary {
+    id: string;
+    round: number | null;
+    request: number;
+    turn: number;
+    step: number;
+    provider: string;
+    model: string;
+}
+```
+
+源码：[packages/dsh-product-api/src/types.ts:66](../../packages/dsh-product-api/src/types.ts#L66)
 
 ## ConversationRestore
 
@@ -586,7 +613,7 @@ export interface ConversationRuntimePreparation {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:673](../../packages/dsh-product-api/src/types.ts#L673)
+源码：[packages/dsh-product-api/src/types.ts:699](../../packages/dsh-product-api/src/types.ts#L699)
 
 ## ConversationRuntimeSettingLibrary
 
@@ -600,7 +627,7 @@ export interface ConversationRuntimeSettingLibrary {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:665](../../packages/dsh-product-api/src/types.ts#L665)
+源码：[packages/dsh-product-api/src/types.ts:691](../../packages/dsh-product-api/src/types.ts#L691)
 
 ## ConversationRuntimeStateSnapshot
 
@@ -611,7 +638,7 @@ export interface ConversationRuntimeStateSnapshot {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:140](../../packages/dsh-product-api/src/types.ts#L140)
+源码：[packages/dsh-product-api/src/types.ts:166](../../packages/dsh-product-api/src/types.ts#L166)
 
 ## ConversationSave
 
@@ -648,7 +675,7 @@ export interface CreateCreatorProjectInput {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:346](../../packages/dsh-product-api/src/types.ts#L346)
+源码：[packages/dsh-product-api/src/types.ts:372](../../packages/dsh-product-api/src/types.ts#L372)
 
 ## CreatorProject
 
@@ -665,7 +692,7 @@ export interface CreatorProject {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:331](../../packages/dsh-product-api/src/types.ts#L331)
+源码：[packages/dsh-product-api/src/types.ts:357](../../packages/dsh-product-api/src/types.ts#L357)
 
 ## CreatorProjectCollection
 
@@ -675,7 +702,7 @@ export interface CreatorProjectCollection {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:342](../../packages/dsh-product-api/src/types.ts#L342)
+源码：[packages/dsh-product-api/src/types.ts:368](../../packages/dsh-product-api/src/types.ts#L368)
 
 ## CreatorProjectMode
 
@@ -683,7 +710,7 @@ export interface CreatorProjectCollection {
 export type CreatorProjectMode = 'blank' | 'existing';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:329](../../packages/dsh-product-api/src/types.ts#L329)
+源码：[packages/dsh-product-api/src/types.ts:355](../../packages/dsh-product-api/src/types.ts#L355)
 
 ## DisplayPreferencesSnapshot
 
@@ -696,7 +723,7 @@ export interface DisplayPreferencesSnapshot {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:808](../../packages/dsh-product-api/src/types.ts#L808)
+源码：[packages/dsh-product-api/src/types.ts:834](../../packages/dsh-product-api/src/types.ts#L834)
 
 ## DisplayPreferenceValue
 
@@ -704,7 +731,7 @@ export interface DisplayPreferencesSnapshot {
 export type DisplayPreferenceValue = null | boolean | number | string | DisplayPreferenceValue[] | { [key: string]: DisplayPreferenceValue; };
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:805](../../packages/dsh-product-api/src/types.ts#L805)
+源码：[packages/dsh-product-api/src/types.ts:831](../../packages/dsh-product-api/src/types.ts#L831)
 
 ## ElecKoiHostStatus
 
@@ -779,7 +806,7 @@ export interface PersonaProfile {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:233](../../packages/dsh-product-api/src/types.ts#L233)
+源码：[packages/dsh-product-api/src/types.ts:259](../../packages/dsh-product-api/src/types.ts#L259)
 
 ## ProductRecordChange
 
@@ -787,7 +814,7 @@ export interface PersonaProfile {
 export type ProductRecordChange = { kind: 'snapshot'; } | { kind: 'records'; domain: 'characters' | 'persona' | 'creatorProjects'; ids?: string[]; };
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:91](../../packages/dsh-product-api/src/types.ts#L91)
+源码：[packages/dsh-product-api/src/types.ts:117](../../packages/dsh-product-api/src/types.ts#L117)
 
 ## RegexRule
 
@@ -806,7 +833,7 @@ export interface RegexRule {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:514](../../packages/dsh-product-api/src/types.ts#L514)
+源码：[packages/dsh-product-api/src/types.ts:540](../../packages/dsh-product-api/src/types.ts#L540)
 
 ## RegexRuleCollection
 
@@ -825,7 +852,7 @@ export interface RegexRuleCollection {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:535](../../packages/dsh-product-api/src/types.ts#L535)
+源码：[packages/dsh-product-api/src/types.ts:561](../../packages/dsh-product-api/src/types.ts#L561)
 
 ## RegexRuleImportDocument
 
@@ -836,7 +863,7 @@ export interface RegexRuleImportDocument {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:548](../../packages/dsh-product-api/src/types.ts#L548)
+源码：[packages/dsh-product-api/src/types.ts:574](../../packages/dsh-product-api/src/types.ts#L574)
 
 ## RegexRuleImportResult
 
@@ -849,7 +876,7 @@ export interface RegexRuleImportResult {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:553](../../packages/dsh-product-api/src/types.ts#L553)
+源码：[packages/dsh-product-api/src/types.ts:579](../../packages/dsh-product-api/src/types.ts#L579)
 
 ## RegexRuleScope
 
@@ -857,7 +884,7 @@ export interface RegexRuleImportResult {
 export type RegexRuleScope = 'Global' | 'AgentPreset' | 'Character';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:511](../../packages/dsh-product-api/src/types.ts#L511)
+源码：[packages/dsh-product-api/src/types.ts:537](../../packages/dsh-product-api/src/types.ts#L537)
 
 ## RegexRuleTarget
 
@@ -865,7 +892,7 @@ export type RegexRuleScope = 'Global' | 'AgentPreset' | 'Character';
 export type RegexRuleTarget = 'UserInput' | 'AiOutput' | 'SlashCommand' | 'SettingContent' | 'Reasoning';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:512](../../packages/dsh-product-api/src/types.ts#L512)
+源码：[packages/dsh-product-api/src/types.ts:538](../../packages/dsh-product-api/src/types.ts#L538)
 
 ## RegexRuleTestResult
 
@@ -876,7 +903,7 @@ export interface RegexRuleTestResult {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:560](../../packages/dsh-product-api/src/types.ts#L560)
+源码：[packages/dsh-product-api/src/types.ts:586](../../packages/dsh-product-api/src/types.ts#L586)
 
 ## RegexRuleVersion
 
@@ -890,7 +917,40 @@ export interface RegexRuleVersion {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:527](../../packages/dsh-product-api/src/types.ts#L527)
+源码：[packages/dsh-product-api/src/types.ts:553](../../packages/dsh-product-api/src/types.ts#L553)
+
+## RequestPreviewSummary
+
+```ts
+export interface RequestPreviewSummary {
+    id: string;
+    round: number | null;
+    request: number;
+    turn: number;
+    step: number;
+    provider: string;
+    model: string;
+}
+```
+
+源码：[packages/dsh-client-roleplay/src/host/request-preview.d.mts:4](../../packages/dsh-client-roleplay/src/host/request-preview.d.mts#L4)
+
+## RoleplayRequestContextItem
+
+```ts
+export interface RoleplayRequestContextItem {
+    order: number;
+    messageId: string;
+    role: 'system' | 'user' | 'assistant';
+    kind: 'system' | 'prompt' | 'history' | 'user' | 'assistant' | 'tool' | 'context';
+    title: string;
+    source: string;
+    anchor: string;
+    content: string;
+}
+```
+
+源码：[packages/dsh-client-roleplay/src/projections.d.ts:4](../../packages/dsh-client-roleplay/src/projections.d.ts#L4)
 
 ## SettingLibrary
 
@@ -908,7 +968,7 @@ export interface SettingLibrary {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:435](../../packages/dsh-product-api/src/types.ts#L435)
+源码：[packages/dsh-product-api/src/types.ts:461](../../packages/dsh-product-api/src/types.ts#L461)
 
 ## SettingLibraryConversation
 
@@ -924,7 +984,7 @@ export interface SettingLibraryConversation {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:447](../../packages/dsh-product-api/src/types.ts#L447)
+源码：[packages/dsh-product-api/src/types.ts:473](../../packages/dsh-product-api/src/types.ts#L473)
 
 ## SettingLibraryEntry
 
@@ -964,7 +1024,7 @@ export interface SettingLibraryEntry {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:369](../../packages/dsh-product-api/src/types.ts#L369)
+源码：[packages/dsh-product-api/src/types.ts:395](../../packages/dsh-product-api/src/types.ts#L395)
 
 ## SettingLibraryGroup
 
@@ -980,7 +1040,7 @@ export interface SettingLibraryGroup {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:403](../../packages/dsh-product-api/src/types.ts#L403)
+源码：[packages/dsh-product-api/src/types.ts:429](../../packages/dsh-product-api/src/types.ts#L429)
 
 ## SettingLibraryOpeningMessage
 
@@ -994,7 +1054,7 @@ export interface SettingLibraryOpeningMessage {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:361](../../packages/dsh-product-api/src/types.ts#L361)
+源码：[packages/dsh-product-api/src/types.ts:387](../../packages/dsh-product-api/src/types.ts#L387)
 
 ## SettingLibraryPosition
 
@@ -1002,7 +1062,7 @@ export interface SettingLibraryOpeningMessage {
 export type SettingLibraryPosition = 'instructions' | 'insert_point_1' | 'insert_point_2' | 'insert_point_3' | 'insert_point_4' | 'insert_point_5';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:353](../../packages/dsh-product-api/src/types.ts#L353)
+源码：[packages/dsh-product-api/src/types.ts:379](../../packages/dsh-product-api/src/types.ts#L379)
 
 ## SettingLibraryPromptPosition
 
@@ -1018,7 +1078,7 @@ export interface SettingLibraryPromptPosition {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:413](../../packages/dsh-product-api/src/types.ts#L413)
+源码：[packages/dsh-product-api/src/types.ts:439](../../packages/dsh-product-api/src/types.ts#L439)
 
 ## SettingLibraryVersion
 
@@ -1036,7 +1096,7 @@ export interface SettingLibraryVersion {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:423](../../packages/dsh-product-api/src/types.ts#L423)
+源码：[packages/dsh-product-api/src/types.ts:449](../../packages/dsh-product-api/src/types.ts#L449)
 
 ## TavilyConnection
 
@@ -1049,7 +1109,7 @@ export interface TavilyConnection {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:226](../../packages/dsh-product-api/src/types.ts#L226)
+源码：[packages/dsh-product-api/src/types.ts:252](../../packages/dsh-product-api/src/types.ts#L252)
 
 ## VariableConfig
 
@@ -1067,7 +1127,7 @@ export interface VariableConfig {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:499](../../packages/dsh-product-api/src/types.ts#L499)
+源码：[packages/dsh-product-api/src/types.ts:525](../../packages/dsh-product-api/src/types.ts#L525)
 
 ## VariableConfigVersion
 
@@ -1085,7 +1145,7 @@ export interface VariableConfigVersion {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:487](../../packages/dsh-product-api/src/types.ts#L487)
+源码：[packages/dsh-product-api/src/types.ts:513](../../packages/dsh-product-api/src/types.ts#L513)
 
 ## VariableFloorSnapshot
 
@@ -1101,7 +1161,7 @@ export interface VariableFloorSnapshot {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:195](../../packages/dsh-product-api/src/types.ts#L195)
+源码：[packages/dsh-product-api/src/types.ts:221](../../packages/dsh-product-api/src/types.ts#L221)
 
 ## VariableItemConfig
 
@@ -1123,7 +1183,7 @@ export interface VariableItemConfig {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:471](../../packages/dsh-product-api/src/types.ts#L471)
+源码：[packages/dsh-product-api/src/types.ts:497](../../packages/dsh-product-api/src/types.ts#L497)
 
 ## VariableJsonValue
 
@@ -1131,7 +1191,7 @@ export interface VariableItemConfig {
 export type VariableJsonValue = null | boolean | number | string | VariableJsonValue[] | { [key: string]: VariableJsonValue; };
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:184](../../packages/dsh-product-api/src/types.ts#L184)
+源码：[packages/dsh-product-api/src/types.ts:210](../../packages/dsh-product-api/src/types.ts#L210)
 
 ## VariableObjectConfig
 
@@ -1151,7 +1211,7 @@ export interface VariableObjectConfig {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:457](../../packages/dsh-product-api/src/types.ts#L457)
+源码：[packages/dsh-product-api/src/types.ts:483](../../packages/dsh-product-api/src/types.ts#L483)
 
 ## VariableStateDocument
 
@@ -1165,7 +1225,7 @@ export interface VariableStateDocument {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:187](../../packages/dsh-product-api/src/types.ts#L187)
+源码：[packages/dsh-product-api/src/types.ts:213](../../packages/dsh-product-api/src/types.ts#L213)
 
 ## VariableViewerTimeline
 
@@ -1176,7 +1236,7 @@ export interface VariableViewerTimeline {
 }
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:205](../../packages/dsh-product-api/src/types.ts#L205)
+源码：[packages/dsh-product-api/src/types.ts:231](../../packages/dsh-product-api/src/types.ts#L231)
 
 ## WebSearchMode
 
@@ -1184,4 +1244,12 @@ export interface VariableViewerTimeline {
 export type WebSearchMode = 'provider_native' | 'tavily';
 ```
 
-源码：[packages/dsh-product-api/src/types.ts:224](../../packages/dsh-product-api/src/types.ts#L224)
+源码：[packages/dsh-product-api/src/types.ts:250](../../packages/dsh-product-api/src/types.ts#L250)
+
+## 官方和平台类型
+
+官方类型从其对应的 DSH 公开包入口导入；平台类型使用 TypeScript 标准库。
+
+[锁定版本的官方接口目录](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/docs/subsystems/README.zh.md)
+
+`GenerateOptions`、`Session`

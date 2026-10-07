@@ -94,6 +94,8 @@ export async function generatePluginApiReference(root, { check = false } = {}) {
     const links = Object.fromEntries(ownTypes.map(type => [type.name, `${typePage}#${type.name.toLowerCase()}`]))
     const exemptions = Object.fromEntries(closure.filter(type => !type.location.file.startsWith('packages/'))
       .map(type => [type.name, `${upstream}/docs/subsystems/README.zh.md`]))
+    exemptions.Session = `${upstream}/packages/core/session/src/index.ts`
+    exemptions.GenerateOptions = `${upstream}/packages/llm/llm/src/types.ts`
     const policy = { linkedTypePages: links, foundationTypeNames: foundationTypes,
       typeLinkExemptions: exemptions, inheritedServices: [], inheritedEvents: [] }
     const projector = new CordisCatalogProjector(selected, sources.filter(source => source.face === original.face), policy)

@@ -54,7 +54,6 @@ export const agentTrajectoryRequestSchema = z.object({
   }).nullable(),
   detail: z.string(),
   rawJson: z.string(),
-  context: z.array(agentRequestContextItemSchema),
   timeMillis: z.number().int().nonnegative().nullable(),
   durationMillis: z.number().int().nonnegative().nullable(),
   startedAt: z.number().int().nonnegative().nullable(),

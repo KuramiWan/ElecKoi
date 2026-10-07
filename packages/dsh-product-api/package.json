@@ -48,6 +48,7 @@
     "build": "pnpm build:host && pnpm build:client"
   },
   "dependencies": {
+    "@eleckoi/dsh-client-roleplay": "workspace:*",
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
     "@deepseek-ai/dsh-api-gateway": "0.2.0-rc.2",
@@ -311,6 +312,7 @@
         "members": [
           "list",
           "details",
+          "requestPreview",
           "projectDisplay",
           "variableTimeline",
           "authorState",
@@ -342,6 +344,17 @@
         "members": [
           "changes"
         ],
+        "owner": "eleckoiConversations"
+      },
+      {
+        "id": "eleckoiRequestPreviewsRemote",
+        "kind": "remote",
+        "title": "运行期间请求目录",
+        "description": "订阅本次 Host 运行期间实际发起的请求；目录不含请求正文，关闭后不恢复。",
+        "mode": "listen",
+        "scope": "host",
+        "relation": "provides",
+        "members": ["requestPreviews"],
         "owner": "eleckoiConversations"
       },
       {

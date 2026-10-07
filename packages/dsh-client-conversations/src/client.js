@@ -534,6 +534,7 @@ window.__ModuleLoader__.load({
         this.timelineSnapshot = { id: '', status: 'idle', timeline: null, error: '' }
         this.timelineListeners = new Set()
         this.timelineGeneration = 0
+        this.previewStreams = new Set()
         this.streamSnapshot = { id: '', status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '', sequence: 0, content: '', process: [], error: '' }
         this.streamState = this.streamSnapshot
         this.chatSnapshot = { details: this.detailsSnapshot, stream: this.streamSnapshot }
@@ -2034,6 +2035,36 @@ window.__ModuleLoader__.load({
         return page
       }
 
+      async observeRequestPreviews(id, onChange, signal) {
+        if (this.disposed) throw new Error('DSH 聊天服务已关闭。')
+        signal.throwIfAborted()
+        const controller = new AbortController()
+        const stream = this.remote.$stream({
+          name: 'ElecKoi request preview catalog',
+          open: currentSignal => this.remote.eleckoiConversations.requestPreviews(id, currentSignal),
+          ended: () => new Error('请求上下文预览连接已结束。')
+        })
+        const close = () => { controller.abort(); void stream.dispose() }
+        this.previewStreams.add(close)
+        signal.addEventListener('abort', close, { once: true })
+        try {
+          for await (const frame of stream) {
+            if (controller.signal.aborted || signal.aborted || this.disposed) return
+            onChange(frame.value)
+            frame.accept()
+          }
+        } finally {
+          signal.removeEventListener('abort', close)
+          this.previewStreams.delete(close)
+          close()
+        }
+      }
+
+      async readRequestPreview(id, requestId, signal) {
+        if (this.disposed) throw new Error('DSH 聊天服务已关闭。')
+        return this.unwrap(await this.remote.eleckoiConversations.requestPreview(id, requestId, signal), '请求上下文预览读取失败。')
+      }
+
       async refreshTimeline() {
         const id = this.timelineSnapshot.id
         if (this.disposed || !id) throw new Error('ElecKoi 当前变量时间线不可用。')
@@ -2085,6 +2116,8 @@ window.__ModuleLoader__.load({
         this.detailGeneration += 1
         this.timelineGeneration += 1
         this.releaseOfficialSession()
+        for (const close of this.previewStreams) close()
+        this.previewStreams.clear()
         this.publishStats('', null)
         this.cancelStreamFrame()
         this.stopEvents()

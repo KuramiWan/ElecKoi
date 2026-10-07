@@ -3,49 +3,58 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
-import { recordRequestContext } from './request-context-record.mjs'
+import { INPUT_CONTINUATIONS_PROJECTION } from './input-continuations-projection.mjs'
 
 export const name = 'eleckoi-conversation-context'
 export const projectionPlugin = 'eleckoi-request-projection'
 
-const PROJECTION_VERSION = 2
-const PROJECTION_PREFIX = `ELECKOI_REQUEST_PROJECTION_V${PROJECTION_VERSION}\n`
-// TODO(迁移清理)：所有仍受支持的 Session 恢复、导入入口已转换持久化 V1 投影后，
-// 删除此常量、decodeProjectionEnvelope 的 V1 分支和旧样例。历史补回不会改写旧信封；
-// 必须单独核对该持久数据，保留当前 V2 信封、请求投影和角色上下文装配。
-const LEGACY_PROJECTION_PREFIX = 'ELECKOI_REQUEST_PROJECTION_V1\n'
-
 /** Install product-owned prompt contributions for every root turn. */
-export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId) {
+export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId, previews) {
+  let executionStep
+  const disposeStep = agentCtx.on('session/event', (session, event) => {
+    if (session.id === sourceSessionId && event.type === 'step/start') executionStep = event.data
+  })
   const read = () => {
     const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
     const conversationContext = JSON.parse(readFileSync(snapshot.contextFile, 'utf8'))
     return { ...snapshot, conversationContext }
   }
-  const disposeStepProjection = agentCtx.on('agent/pre-step', async ({ agent, signal }, next) => {
-    const decision = await next()
-    if (decision.kind === 'reject' || signal.aborted) return decision
-    const snapshot = requestProjectionSnapshot(read().conversationContext)
-    if ((snapshot.plan.length === 0 && snapshot.history.length === 0)
-      || activeProjectionEnvelope(agent.session)) return decision
-    return {
-      ...decision,
-      messages: [...decision.messages, projectionEnvelope(snapshot)]
-    }
-  })
   const disposeRequestProjection = agentCtx.on('llm/stream', (options, next) => {
     if (!isAgentLoopRequest(options) || options.sessionId !== sourceSessionId) return next()
     const session = agentCtx.sessions.get(options.sessionId)
     if (!session) return next()
     const snapshot = read()
     const projection = requestProjectionSnapshot(snapshot.conversationContext)
-    ensureProjectionEnvelope(session, projection)
-    const productMessages = projectProductHistory(session.deriveMessages(), snapshot.conversationContext)
-    const messages = projectRequestMessages(
-      projectCurrentUserPrompt(productMessages, snapshot.conversationContext), projection.plan
-    )
-    const instructions = sessionInstructions(snapshot)
-    if (instructions) {
+    const surface = session.deriveMessages()
+    const currentUser = surface.findLast(isDirectUserMessage)
+    const prompt = snapshot.conversationContext.currentPromptText
+    const transform = {
+      instructions: sessionInstructions(snapshot) || null,
+      currentPromptText: typeof prompt === 'string' && prompt !== messageText(currentUser)
+        ? prompt : null
+    }
+    const messages = projectRequestInput(surface, projection, transform)
+    if (!executionStep) throw new Error('实际模型请求缺少 Session 步骤。')
+    const inputState = agentCtx.sessionProjections.stateOf(session, INPUT_CONTINUATIONS_PROJECTION)
+    if (!inputState) throw new Error('实际模型请求缺少正式用户输入投影。')
+    const inputs = inputState.inputs
+    const inputIndex = currentUser ? inputs.findIndex(input => input.messageId === currentUser.id) : -1
+    if (currentUser && inputIndex < 0) throw new Error('实际模型请求的用户输入不在 Session 投影中。')
+    previews.capture(session, { ...options, messages }, projection.plan, {
+      ...executionStep, round: currentUser ? inputIndex + 1 : null
+    })
+    return agentCtx.llm.stream({ ...options, messages })
+  })
+  return () => { disposeRequestProjection(); disposeStep() }
+}
+
+/** Assemble the actual request from the official surface and this turn's active settings. */
+export function projectRequestInput(surface, snapshot, transform) {
+  const messages = projectRequestMessages(
+    projectCurrentUserPrompt(projectProductHistory(surface, snapshot), transform), snapshot.plan
+  )
+  const instructions = transform.instructions
+  if (instructions) {
       const systemIndex = messages.findLastIndex((message) => message?.role === 'system')
       if (systemIndex >= 0) {
         const system = messages[systemIndex]
@@ -57,17 +66,8 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
         const id = `eleckoi-system-${createHash('sha256').update(instructions).digest('hex')}`
         messages.unshift(freezeMessage({ ...createSystemMessage(instructions, name), id }))
       }
-    }
-    recordRequestContext(agentCtx.sessionProjections, session, requestContextItems(messages, projection.plan))
-    return agentCtx.llm.stream({
-      ...options,
-      messages
-    })
-  })
-  return () => {
-    disposeRequestProjection()
-    disposeStepProjection()
   }
+  return messages
 }
 
 function sessionInstructions(snapshot) {
@@ -79,7 +79,7 @@ function sessionInstructions(snapshot) {
     .join('\n\n')
 }
 
-/** Freeze the complete active position graph into one durable projection definition. */
+/** Describe the active position graph for request assembly and the in-memory preview. */
 export function requestProjectionPlan(context) {
   return settingInjections(context)
     .filter((entry) => entry.anchor !== 'instructions')
@@ -96,7 +96,7 @@ export function requestProjectionPlan(context) {
     }))
 }
 
-/** Persist the product history that is authoritative for this provider request. */
+/** Prepare the active settings and opening prefix without persisting a request copy. */
 export function requestProjectionSnapshot(context) {
   return {
     plan: requestProjectionPlan(context),
@@ -110,11 +110,11 @@ export function requestProjectionSnapshot(context) {
 
 /**
  * Rebuild the exact provider-facing message order for one model request.
- * The projection envelope itself stays durable in the DSH log but never reaches
- * the provider. Every tool continuation is therefore reassembled against the
- * latest real user input and the tool flow accumulated after it.
+ * Every tool continuation is assembled against the latest real user input
+ * and the tool flow accumulated after it. Retired projection envelopes are
+ * excluded when resuming existing Sessions.
  */
-export function projectRequestMessages(messages, plan = projectionPlanFromMessages(messages)) {
+export function projectRequestMessages(messages, plan = []) {
   const visible = messages.filter((message) => !isProjectionEnvelope(message))
   if (!plan) return visible
   const system = visible.filter((message) => message?.role === 'system')
@@ -142,20 +142,6 @@ export function projectRequestMessages(messages, plan = projectionPlanFromMessag
     ...dialogue.slice(latestUserIndex + 1),
     ...messagesForAnchor(plan, 'insert_point_5')
   ]
-}
-
-export function projectionPlanFromMessages(messages) {
-  const envelope = messages.findLast(isProjectionEnvelope)
-  if (!envelope) return undefined
-  return decodeProjectionEnvelope(envelope).plan
-}
-
-/** Reconstruct previously recorded provider input from its product envelope. */
-export function replayRequestContext(messages) {
-  const envelope = messages.findLast(isProjectionEnvelope)
-  const snapshot = envelope ? decodeProjectionEnvelope(envelope) : undefined
-  const history = snapshot ? projectProductHistory(messages, snapshot) : messages
-  return requestContextItems(projectRequestMessages(history, snapshot?.plan), snapshot?.plan)
 }
 
 export function isProjectionEnvelope(message) {
@@ -267,68 +253,6 @@ function prettyJsonText(value) {
   } catch {
     return value
   }
-}
-
-function activeProjectionEnvelope(session) {
-  for (const seq of session.surface.nodes.toReversed()) {
-    const event = session.eventAt(seq)
-    if (event?.type === 'user/message' && isProjectionEnvelope(event.data)) return event
-  }
-}
-
-function ensureProjectionEnvelope(session, snapshot) {
-  const current = activeProjectionEnvelope(session)
-  const next = projectionEnvelope(snapshot)
-  if (current && messageText(current.data) === messageText(next)) return current
-  if (!current && snapshot.plan.length === 0 && snapshot.history.length === 0) return undefined
-  if (!current) {
-    return session.append('user/message', next, { surfaceOp: 'append' })
-  }
-  return session.append('user/message', next, {
-    surfaceOp: { op: 'replace', startSeq: current.seq, endSeq: current.seq },
-    sourceEventSeqs: [current.seq]
-  })
-}
-
-function projectionEnvelope(snapshot) {
-  return freezeMessage({
-    id: `${projectionPlugin}:v${PROJECTION_VERSION}`,
-    role: 'user',
-    content: [{ type: 'text', text: `${PROJECTION_PREFIX}${JSON.stringify(snapshot)}` }],
-    source: {
-      kind: `plugin:${projectionPlugin}`,
-      form: 'snapshot',
-      sections: snapshot.plan.map((entry) => ({ name: entry.traceTitle || entry.id, text: entry.content }))
-    }
-  })
-}
-
-function decodeProjectionEnvelope(message) {
-  const text = messageText(message)
-  const prefix = text.startsWith(PROJECTION_PREFIX)
-    ? PROJECTION_PREFIX
-    : text.startsWith(LEGACY_PROJECTION_PREFIX) ? LEGACY_PROJECTION_PREFIX : undefined
-  if (!prefix) return { plan: [], historyMode: 'replace', history: [] }
-  try {
-    const value = JSON.parse(text.slice(prefix.length))
-    if (Array.isArray(value)) return { plan: value.filter(isProjectionEntry), historyMode: 'replace', history: [] }
-    if (!value || typeof value !== 'object') return { plan: [], historyMode: 'replace', history: [] }
-    return {
-      plan: Array.isArray(value.plan) ? value.plan.filter(isProjectionEntry) : [],
-      historyMode: value.historyMode === 'prefix' ? 'prefix' : 'replace',
-      history: Array.isArray(value.history) ? value.history.filter(isProductHistoryEntry) : []
-    }
-  } catch {
-    return { plan: [], history: [] }
-  }
-}
-
-function isProjectionEntry(value) {
-  return value && typeof value === 'object'
-    && typeof value.id === 'string'
-    && typeof value.anchor === 'string'
-    && (value.role === 'user' || value.role === 'assistant')
-    && typeof value.content === 'string'
 }
 
 function isDirectUserMessage(message) {
@@ -449,12 +373,12 @@ function productHistoryMessage(item, index) {
   if (!item || (item.role !== 'user' && item.role !== 'assistant')) return null
   const value = String(item.content ?? '')
   if (!value.trim()) return null
-  return {
+  return freezeMessage({
     id: `eleckoi-product-history-${index}`,
     role: item.role,
     content: [{ type: 'text', text: value }],
     source: { kind: 'plugin:eleckoi-product-history' }
-  }
+  })
 }
 
 function compactedProjection(productHistory, nativeHistory) {

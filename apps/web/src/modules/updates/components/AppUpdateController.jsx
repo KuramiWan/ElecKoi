@@ -67,12 +67,15 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
   const descriptionId = useId();
   const dialogRef = useRef(null);
   const secondaryRef = useRef(null);
+  const lifecycleRef = useRef({ onClose, installing: false });
   const installing = status.phase === "installing";
+  lifecycleRef.current = { onClose, installing };
   const downloading = status.phase === "downloading";
   const ready = status.phase === "ready";
   const failed = status.phase === "error";
   const progressPercent = Math.round(status.progress?.percent ?? 0);
-  const title = ready || installing ? "更新已准备好" : failed ? "更新失败" : "发现新版本";
+  const title = installing ? "正在更新" : downloading ? "正在下载" : failed ? "更新失败" : "版本就绪";
+  const releaseUrl = `https://github.com/eleckoi/ElecKoi/releases/tag/${encodeURIComponent(`v${status.availableVersion}`)}`;
   const description = useMemo(() => {
     if (installing) return "正在重启并安装更新…";
     if (ready) return "更新已下载，重启后即可完成安装。";
@@ -88,11 +91,11 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
     function handleKeyDown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (!installing) onClose();
+        if (!lifecycleRef.current.installing) lifecycleRef.current.onClose();
         return;
       }
       if (event.key !== "Tab") return;
-      const focusable = Array.from(dialogRef.current?.querySelectorAll("button:not(:disabled)") || []);
+      const focusable = Array.from(dialogRef.current?.querySelectorAll('button:not(:disabled), a[href], [tabindex="0"]') || []);
       if (!focusable.length) {
         event.preventDefault();
         return;
@@ -114,7 +117,7 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
       window.removeEventListener("keydown", handleKeyDown);
       if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [installing, onClose]);
+  }, []);
 
   const dialog = (
     <div className="app-update-overlay" role="presentation" onMouseDown={() => !installing && onClose()}>
@@ -129,25 +132,24 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="app-update-heading">
-          <h2 id={titleId}>{title}</h2>
-          <strong>ElecKoi v{status.availableVersion}</strong>
-          <p id={descriptionId}>{description}</p>
+          <h2 id={titleId}>v{status.availableVersion} {title}</h2>
+          <a className="app-update-release-link" href={releaseUrl} target="_blank" rel="noopener noreferrer">前往下载</a>
         </header>
-
-        {downloading ? (
-          <div className="app-update-progress" aria-label={`更新下载进度 ${progressPercent}%`}>
-            <i style={{ width: `${progressPercent}%` }} />
-          </div>
-        ) : null}
-
-        <section className="app-update-notes-section" aria-label="本次更新">
-          <h3>本次更新</h3>
+        <section className="app-update-notes-section" aria-label="本次更新" tabIndex={0}>
           <p className="app-update-notes">
             {status.releaseNotes || status.releaseName || "包含稳定性改进和问题修复。"}
           </p>
         </section>
 
         <footer className="app-update-footer">
+          {downloading ? <div className="app-update-download-progress">
+            <div className="app-update-progress" role="progressbar" aria-label="更新下载进度"
+              aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}>
+              <i style={{ width: `${progressPercent}%` }} />
+            </div>
+            <span>{progressPercent}%</span>
+          </div> : null}
+          <p id={descriptionId} className="app-update-status" role={failed ? "alert" : "status"}>{description}</p>
           <span>
             当前版本 v{status.currentVersion}
             {status.downloadSizeBytes ? ` · 约 ${formatBytes(status.downloadSizeBytes)}` : ""}

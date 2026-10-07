@@ -5,6 +5,7 @@ import conversationWidthCss from "./ConversationWidthControls.module.css";
 import { PinnedAvatar } from "./PinnedAvatar.jsx";
 import { AgentProcessDialog } from "./AgentProcessDialog.jsx";
 import { VariableViewerDialog } from "./VariableViewerDialog.jsx";
+import { RequestPreviewDialog } from "./RequestPreviewDialog.jsx";
 import { AgentToolsDialog } from "./AgentToolsDialog.jsx";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
@@ -94,6 +95,7 @@ export function ChatPanel({
   const [activePresetName, setActivePresetName] = useState("");
   const [trajectoryRevision, setTrajectoryRevision] = useState(0);
   const [variablesOpen, setVariablesOpen] = useState(false);
+  const [requestPreviewOpen, setRequestPreviewOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const loadImage = useCallback((id, image) => {
     if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
@@ -301,6 +303,7 @@ export function ChatPanel({
     onOpenHistory={onOpenHistory}
     onOpenTools={() => setToolsOpen(true)}
     onOpenVariables={() => setVariablesOpen(true)}
+    onOpenRequestPreview={() => setRequestPreviewOpen(true)}
     onEnterDeleteMode={enterDeleteMode}
     canDeleteMessages={displayedMessages.some((message) => message.id !== "opening")}
     onRegenerate={regenerateFrom}
@@ -474,6 +477,7 @@ export function ChatPanel({
         />
       ) : null}
       {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
+      {requestPreviewOpen ? <RequestPreviewDialog key={conversationId} conversationId={conversationId} conversationModel={conversationModel} onClose={() => setRequestPreviewOpen(false)} /> : null}
       {toolsOpen ? <AgentToolsDialog
         presetCatalog={presetCatalog}
         onClose={() => setToolsOpen(false)}

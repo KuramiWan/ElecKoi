@@ -117,6 +117,24 @@ Source: [`packages/dsh-client-characters/src/client/types.ts`](../../packages/ds
 
 ```ts cordis-catalog
 /**
+ * 订阅当前运行期间实际发起的请求目录；取消时释放订阅。
+ * @param id - 聊天编号。
+ * @param onChange - 接收不含正文的请求目录。
+ * @param signal - 关闭弹窗或切换聊天时取消订阅。
+ * @returns 订阅结束后完成；失败会拒绝 Promise。
+ */
+observeRequestPreviews(id: string, onChange: (requests: ConversationRequestPreviewSummary[]) => void, signal: AbortSignal): Promise<void>
+
+/**
+ * 读取当前运行期间某次实际请求的正文；不提供关闭后的恢复。
+ * @param id - 聊天编号。
+ * @param requestId - 请求目录中的标识。
+ * @param signal - 切换请求时取消读取。
+ * @returns 实际发送顺序与可读正文。
+ */
+readRequestPreview(id: string, requestId: string, signal: AbortSignal): Promise<ConversationRequestPreview>
+
+/**
  * 读取聊天目录的页面状态。
  * @returns 当前页面保存的状态对象。
  */

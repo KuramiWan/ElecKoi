@@ -4,6 +4,8 @@
 
 ## 当前架构
 
+- [运行期请求预览与写入放大](adr/0029-ephemeral-request-context-preview.md)：实际请求、内存共享、预览入口与增长回归约束。
+
 - [DSH 官方客户端架构基准](DSH_DESKTOP_ARCHITECTURE.md)：Host、Client、桌面壳及上游版本边界。
 - [产品数据库](DATABASE.md)：数据所有权、结构与迁移。
 - [插件归属与接入清单](DSH_PLUGIN_MIGRATION.md)：内置能力的归属与公开接入点。
@@ -27,6 +29,7 @@
 
 ## 文档维护
 
+- [v0.2.8 发布说明](releases/v0.2.8.md)
 - [v0.2.7 发布说明](releases/v0.2.7.md)
 
 新增、改名、归档和同步规则见 [文档维护约定](MAINTENANCE.md)。运行 `pnpm check:docs` 检查本地链接、ADR 编号、标题和索引；接口总表由 `pnpm check:plugin-docs` 单独校验。

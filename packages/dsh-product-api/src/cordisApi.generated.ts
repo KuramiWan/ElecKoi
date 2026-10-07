@@ -374,6 +374,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
+        signature: '@Remote({ mode: \'stream\' }) requestPreviews(conversationId: string, signal: AbortSignal): AsyncIterable<ConversationRequestPreviewSummary[]>',
+        description: '订阅当前运行期间实际请求的轻量目录；关闭 Host 后不恢复。',
+        parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'signal', description: '取消订阅的信号。' }],
+        returns: '仅包含轮次、请求编号和模型的目录流。',
+      },
+      {
+        signature: '@Remote requestPreview(conversationId: string, requestId: string, signal: AbortSignal): ConversationRequestPreview',
+        description: '读取当前运行期间捕获的指定请求，不读取 Session 日志或当前设定重算。',
+        parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'requestId', description: '当前运行期间请求目录中的正式标识。' }, { name: 'signal', description: '取消本次读取的信号。' }],
+        returns: '按实际发送顺序排列的可读输入；关闭后或不存在的请求抛出原因。',
+      },
+      {
         signature: '@Remote details(conversationId: string, beforeSequence?: number, limit?: number): ConversationDetailsMetadata',
         description: '读取聊天关联资料和消息元数据；消息正文由官方 Session 读取。',
         parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'beforeSequence', description: '分页消息边界，读取该事件序号之前的消息。' }, { name: 'limit', description: '分页最多读取的消息数量。' }],
@@ -586,6 +598,47 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: '保存完整数据并通知相关页面刷新。',
         parameters: [{ name: 'profile', description: '完整用户资料。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
+      },
+    ],
+  },
+  {
+    key: 'eleckoiRequestPreviews',
+    summary: 'Host 运行期请求预览；只共用内存消息，不持久化或恢复历史请求。',
+    description: 'Host 运行期请求预览；只共用内存消息，不持久化或恢复历史请求。',
+    methods: [
+      {
+        signature: 'capture(session: Session, options: GenerateOptions, plan: readonly object[], execution: { round: number | null; turn: number; step: number }): RequestPreviewSummary',
+        description: '捕获即将交给 LLM Runtime 的真实请求。',
+        parameters: [{ name: 'session', description: '发送请求的正式 Session。' }, { name: 'options', description: '完成产品装配的实际模型请求。' }, { name: 'plan', description: '此次装配使用的设定位置和可读来源。' }, { name: 'execution', description: '已有输入投影的轮次和实时步骤事件中的执行身份。' }],
+        returns: '仅含身份与编号的请求目录项。',
+      },
+      {
+        signature: 'list(sessionId: string): RequestPreviewSummary[]',
+        description: '列出当前运行捕获的请求，目录不包含正文。',
+        parameters: [{ name: 'sessionId', description: '正式 Session ID。' }],
+        returns: '发送顺序中的请求目录项。',
+      },
+      {
+        signature: 'read(sessionId: string, requestId: string): { id: string; items: RoleplayRequestContextItem[] }',
+        description: '按运行期请求身份临时生成可读上下文；不存在时失败。',
+        parameters: [{ name: 'sessionId', description: '正式 Session ID。' }, { name: 'requestId', description: '本次运行捕获时分配的请求 ID。' }],
+        returns: '请求身份和按实际顺序排列的上下文条目。',
+      },
+      {
+        signature: 'stream(sessionId: string, signal: AbortSignal): AsyncIterable<RequestPreviewSummary[]>',
+        description: '订阅请求目录，慢读取者合并通知，取消后释放订阅。',
+        parameters: [{ name: 'sessionId', description: '正式 Session ID。' }, { name: 'signal', description: '订阅取消生命周期。' }],
+        returns: '初始目录及之后的最新目录。',
+      },
+      {
+        signature: 'forget(sessionId: string): void',
+        description: '删除聊天时释放该 Session 的全部运行期请求。',
+        parameters: [{ name: 'sessionId', description: '已删除的正式 Session ID。' }],
+      },
+      {
+        signature: 'close(): void',
+        description: '释放全部请求并结束订阅；用于 Host 插件卸载。',
+        parameters: [],
       },
     ],
   },
@@ -815,6 +868,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ConversationRecord {\n    id: string;\n    title: string;\n    preview: string;\n    createdAt: string;\n    updatedAt: string;\n}',
   },
   {
+    name: 'ConversationRequestPreview',
+    declaration: 'export interface ConversationRequestPreview {\n    id: string;\n    items: Array<{\n        order: number;\n        messageId: string;\n        role: \'system\' | \'user\' | \'assistant\';\n        kind: \'system\' | \'prompt\' | \'history\' | \'user\' | \'assistant\' | \'tool\' | \'context\';\n        title: string;\n        source: string;\n        anchor: string;\n        content: string;\n    }>;\n}',
+  },
+  {
+    name: 'ConversationRequestPreviewSummary',
+    declaration: 'export interface ConversationRequestPreviewSummary {\n    id: string;\n    round: number | null;\n    request: number;\n    turn: number;\n    step: number;\n    provider: string;\n    model: string;\n}',
+  },
+  {
     name: 'ConversationRestore',
     declaration: 'export interface ConversationRestore {\n    readonly operationId: string;\n    readonly conversationId: string;\n    readonly runtimeSessionId: string;\n    readonly reason: \'delete-messages\' | \'regenerate\';\n    readonly fromTurn: number;\n    readonly fromEventSeq: number;\n    readonly state: Readonly<ConversationRuntimeStateSnapshot>;\n}',
   },
@@ -921,6 +982,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RegexRuleVersion',
     declaration: 'export interface RegexRuleVersion {\n    id: string;\n    name: string;\n    globalEnabledIds: string[];\n    agentPresetEnabledIds: string[];\n    characterEnabledIds: string[];\n}',
+  },
+  {
+    name: 'RoleplayRequestContextItem',
+    declaration: 'export interface RoleplayRequestContextItem {\n    order: number;\n    messageId: string;\n    role: \'system\' | \'user\' | \'assistant\';\n    kind: \'system\' | \'prompt\' | \'history\' | \'user\' | \'assistant\' | \'tool\' | \'context\';\n    title: string;\n    source: string;\n    anchor: string;\n    content: string;\n}',
   },
   {
     name: 'SettingLibrary',

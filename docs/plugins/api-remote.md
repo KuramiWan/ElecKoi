@@ -8,7 +8,7 @@
 - `ctx.remote.eleckoiCharacterConfiguration`：`changes`、`exportRegexRules`、`importRegexRules`、`readConversationSettingLibraries`、`readRegexRules`、`readSettingLibrary`、`readVariableConfig`、`resetConversationSettingLibrary`、`saveConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`saveRegexRules`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`saveVariableConfig`、`saveVariableConfigViewState`、`testRegexRule`
 - `ctx.remote.eleckoiCharacters`：`changes`、`commitImport`、`create`、`delete`、`discardImport`、`export`、`list`、`prepareImport`、`saveGroups`、`select`、`update`
 - `ctx.remote.eleckoiConversationModels`：`current`、`select`
-- `ctx.remote.eleckoiConversations`：`authorState`、`changes`、`create`、`delete`、`deleteMessagesFrom`、`details`、`editMessage`、`exportArchive`、`importArchive`、`list`、`preparePrompt`、`projectDisplay`、`regenerateMessage`、`replaceVariableState`、`revealFile`、`selectOpening`、`startRegeneration`、`updateOpening`、`variableTimeline`、`waitForGeneration`
+- `ctx.remote.eleckoiConversations`：`authorState`、`changes`、`create`、`delete`、`deleteMessagesFrom`、`details`、`editMessage`、`exportArchive`、`importArchive`、`list`、`preparePrompt`、`projectDisplay`、`regenerateMessage`、`replaceVariableState`、`requestPreview`、`requestPreviews`、`revealFile`、`selectOpening`、`startRegeneration`、`updateOpening`、`variableTimeline`、`waitForGeneration`
 - `ctx.remote.eleckoiCreatorStudio`：`changes`、`create`、`delete`、`list`
 - `ctx.remote.eleckoiDisplayPreferences`：`read`、`setChatDisplay`、`updateUi`
 - `ctx.remote.eleckoiModels`：`discoverModels`、`revealApiKey`、`testConnection`
@@ -23,7 +23,7 @@ import type {
   RemoteStreamHandle,
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { AgentPreset, AgentPresetCatalog, AgentPresetExportFormat, AgentPresetExportResult, AgentPresetImportDocument, AgentPresetImportResult, AgentPresetImportSource, AuthorConversationState, CharacterCollection, CharacterConfigurationChange, CharacterExportFormat, CharacterExportResult, CharacterGroupAssignment, CharacterImportFile, CharacterImportPreview, CharacterImportResult, CharacterImportSource, CharacterRecord, ConversationChange, ConversationCreateInput, ConversationDetailsMetadata, ConversationMessageDisplayInput, ConversationMessageDisplayResult, ConversationModelSelection, ConversationSummary, CreateCreatorProjectInput, CreatorProjectCollection, DisplayPreferencesSnapshot, DisplayPreferenceValue, ElecKoiHostStatus, ModelConnectionInput, ModelDiscoveryInput, ModelDiscoveryResult, PersonaProfile, ProductRecordChange, RegexRule, RegexRuleCollection, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleScope, RegexRuleTarget, RegexRuleTestResult, SettingLibrary, SettingLibraryConversation, TavilyConnection, VariableConfig, VariableViewerTimeline, WebSearchMode } from '@eleckoi/dsh-product-api/types'
+import type { AgentPreset, AgentPresetCatalog, AgentPresetExportFormat, AgentPresetExportResult, AgentPresetImportDocument, AgentPresetImportResult, AgentPresetImportSource, AuthorConversationState, CharacterCollection, CharacterConfigurationChange, CharacterExportFormat, CharacterExportResult, CharacterGroupAssignment, CharacterImportFile, CharacterImportPreview, CharacterImportResult, CharacterImportSource, CharacterRecord, ConversationChange, ConversationCreateInput, ConversationDetailsMetadata, ConversationMessageDisplayInput, ConversationMessageDisplayResult, ConversationModelSelection, ConversationRequestPreview, ConversationRequestPreviewSummary, ConversationSummary, CreateCreatorProjectInput, CreatorProjectCollection, DisplayPreferencesSnapshot, DisplayPreferenceValue, ElecKoiHostStatus, ModelConnectionInput, ModelDiscoveryInput, ModelDiscoveryResult, PersonaProfile, ProductRecordChange, RegexRule, RegexRuleCollection, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleScope, RegexRuleTarget, RegexRuleTestResult, SettingLibrary, SettingLibraryConversation, TavilyConnection, VariableConfig, VariableViewerTimeline, WebSearchMode } from '@eleckoi/dsh-product-api/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$656c65636b6f694167656e7450726573657473 {
@@ -90,6 +90,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     projectDisplay: (conversationId: string, messages: ConversationMessageDisplayInput[]) => Promise<RemoteResult<ConversationMessageDisplayResult[]>>
     regenerateMessage: (conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string) => Promise<RemoteResult<{ runtimeSessionId: string; prepared: true; operationId: string; }>>
     replaceVariableState: (conversationId: string, stateJson: string) => Promise<RemoteResult<string>>
+    requestPreview: (conversationId: string, requestId: string, signal?: AbortSignal) => Promise<RemoteResult<ConversationRequestPreview>>
+    requestPreviews: (conversationId: string, signal?: AbortSignal) => RemoteStreamHandle<ConversationRequestPreviewSummary[], never>
     revealFile: (conversationId: string, attachmentId: string, name: string, signal?: AbortSignal) => Promise<RemoteResult<void>>
     selectOpening: (conversationId: string, openingId: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     startRegeneration: (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; turn?: number; }>>
@@ -182,6 +184,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'eleckoiConversations/projectDisplay': (conversationId: string, messages: ConversationMessageDisplayInput[]) => Promise<RemoteResult<ConversationMessageDisplayResult[]>>
     'eleckoiConversations/regenerateMessage': (conversationId: string, eventSeq: number, requestId: string, replacementMessage?: string) => Promise<RemoteResult<{ runtimeSessionId: string; prepared: true; operationId: string; }>>
     'eleckoiConversations/replaceVariableState': (conversationId: string, stateJson: string) => Promise<RemoteResult<string>>
+    'eleckoiConversations/requestPreview': (conversationId: string, requestId: string, signal?: AbortSignal) => Promise<RemoteResult<ConversationRequestPreview>>
+    'eleckoiConversations/requestPreviews': (conversationId: string, signal?: AbortSignal) => RemoteStreamHandle<ConversationRequestPreviewSummary[], never>
     'eleckoiConversations/revealFile': (conversationId: string, attachmentId: string, name: string, signal?: AbortSignal) => Promise<RemoteResult<void>>
     'eleckoiConversations/selectOpening': (conversationId: string, openingId: string) => Promise<RemoteResult<ConversationDetailsMetadata>>
     'eleckoiConversations/startRegeneration': (conversationId: string, requestId: string, cancelled: boolean) => Promise<RemoteResult<{ accepted: boolean; turn?: number; }>>

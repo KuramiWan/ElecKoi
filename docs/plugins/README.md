@@ -4,7 +4,7 @@ ElecKoi 使用 DSH 官方 bundle、Cordis 生命周期和 Web Client Slots 作�
 
 本文档对应以下固定基准：
 
-- ElecKoi Desktop：`0.2.7`
+- ElecKoi Desktop：`0.2.8`
 - DSH：`0.2.0-rc.2`
 - DSH 提交：`c1b47e41fcd54d20a0f061df28683bfc29ee24e5`
 - 插件接口与数量：[自动生成的开发接口总表](api-reference.md)

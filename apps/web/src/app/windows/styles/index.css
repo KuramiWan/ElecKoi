@@ -35,6 +35,7 @@
 @import "../../../modules/chat/styles/chat-panel.css";
 @import "../../../modules/chat/styles/trajectory.css";
 @import "../../../modules/chat/styles/variable-viewer.css";
+@import "../../../modules/chat/styles/request-preview.css";
 @import "../../../modules/chat/styles/chat-background.css";
 @import "../../../ui/styles/avatar.css";
 @import "../../../ui/styles/avatar-crop.css";

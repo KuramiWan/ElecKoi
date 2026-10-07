@@ -1,4 +1,4 @@
-export function adaptTrajectorySnapshot(official, contexts, outcomes, inputIdentities) {
+export function adaptTrajectorySnapshot(official, outcomes, inputIdentities) {
   const abortedTurns = new Set(outcomes?.abortedTurns || []);
   const turnLabels = new Map();
   const inputTurns = new Map();
@@ -28,10 +28,6 @@ export function adaptTrajectorySnapshot(official, contexts, outcomes, inputIdent
       // a failed request.
       .filter((request) => !(request.purpose === "assistant"
         && request.status === "error"
-        && abortedTurns.has(request.turn)))
-      .map((request) => ({
-        ...request,
-        context: contexts?.[request.startSeq] ?? [],
-      })),
+        && abortedTurns.has(request.turn))),
   };
 }

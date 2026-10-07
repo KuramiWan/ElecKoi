@@ -6,6 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import TypertGatewayService from '@deepseek-ai/dsh-api-gateway'
 import TypertRegistry, { type TypertContribution } from '@deepseek-ai/dsh-typert-registry'
 import { afterEach, describe, expect, it } from 'vitest'
+import { RequestPreviewStore } from '../packages/dsh-client-roleplay/src/host/request-preview.mjs'
 import ElecKoiSystemApi, {
   type AgentPresetCatalog,
   CharacterConfigurationChangeFeed,
@@ -491,8 +492,11 @@ describe('ElecKoi DSH Remote contract', () => {
       })
       await ctx.plugin({
         name: 'test-agent-session-storage',
-        provide: ['agents', 'sessionPersistence'],
+        provide: ['agents', 'sessionPersistence', 'eleckoiRequestPreviews'],
         apply(owner) {
+          const previews = new RequestPreviewStore()
+          owner.provide('eleckoiRequestPreviews', previews)
+          owner.effect(() => () => previews.close())
           owner.provide('agents', { get: () => undefined } as never)
           owner.provide('sessionPersistence', {
             create: async (header: { id: string }) => {

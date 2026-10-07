@@ -96,7 +96,7 @@ describe('explicit existing-input continuation in the pinned official loop', () 
         inputContinuationsProjection.init())
       expect(links.links).toEqual([{ turn, inputMessageId: f.input.id, inputEventSeq: original.seq }])
       expect(links.inputs).toEqual([{ turn: 1, eventSeq: original.seq, messageId: f.input.id }])
-      const trajectory = adaptTrajectorySnapshot(officialTrajectoryFixture().replace(persisted.events), {}, {},
+      const trajectory = adaptTrajectorySnapshot(officialTrajectoryFixture().replace(persisted.events), {},
         inputContinuationsProjection.wire.view(links))
       expect(trajectory.requests).toMatchObject([{ turn, status: 'complete' }])
       expect(trajectory.requests).toHaveLength(1)

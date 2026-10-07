@@ -62,6 +62,32 @@ export interface ConversationSummary extends ConversationRecord {
   runtimeSessionId: string
 }
 
+/** 本次运行期间实际发起的请求目录，不包含请求正文。 */
+export interface ConversationRequestPreviewSummary {
+  id: string
+  round: number | null
+  request: number
+  turn: number
+  step: number
+  provider: string
+  model: string
+}
+
+/** 仅存在于运行期间内存的实际请求输入。 */
+export interface ConversationRequestPreview {
+  id: string
+  items: Array<{
+    order: number
+    messageId: string
+    role: 'system' | 'user' | 'assistant'
+    kind: 'system' | 'prompt' | 'history' | 'user' | 'assistant' | 'tool' | 'context'
+    title: string
+    source: string
+    anchor: string
+    content: string
+  }>
+}
+
 /**
  * Live changes to the product-owned conversation catalog.
  *
