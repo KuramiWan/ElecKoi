@@ -9,7 +9,7 @@
   <a href="./README.en.md">English</a>
 </p>
 
-电子爱是一个由 DSH Agent 驱动的 AI 角色卡创作与演绎客户端，现已支持 Windows PC 与 Android。本仓库按 `apps/desktop`、`apps/desktop-host`、`apps/web` 组织 Windows 客户端，Android 壳与本地 Host 分别位于 `apps/android` 和 `apps/android-host`，共用产品数据合同与 Web Client。
+电子爱是一个由 DSH Agent 驱动的 AI 角色卡创作与演绎客户端，支持 Windows PC 与 Android。两端源码在本仓库统一维护，共享核心功能，各自保留独立的运行环境与构建流程。
 
 [作者 SDK 文档](https://eleckoi.github.io/ElecKoi/)包含原生脚本、角色前端的开发教程、接口参考和可导入示例。
 

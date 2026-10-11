@@ -9,7 +9,7 @@
   <strong>English</strong>
 </p>
 
-ElecKoi is a DSH Agent-powered AI character-card creation and roleplay client for Windows PC and Android. This workspace organizes the Windows client under `apps/desktop`, `apps/desktop-host`, and `apps/web`. The Android shell and local Host are under `apps/android` and `apps/android-host`, sharing product data contracts and the Web Client.
+ElecKoi is a DSH Agent-powered AI character-card creation and roleplay client for Windows PC and Android. Both clients are maintained in this repository, sharing core functionality while keeping separate runtimes and build processes.
 
 The [Author SDK documentation](https://eleckoi.github.io/ElecKoi/) provides native script and character frontend tutorials, an API reference, and importable examples.
 
