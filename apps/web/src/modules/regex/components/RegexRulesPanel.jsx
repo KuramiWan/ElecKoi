@@ -1,7 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { MagnifyingGlass, Plus, SlidersHorizontal } from "@phosphor-icons/react";
+import { Copy, MagnifyingGlass, PencilSimple, Plus, SlidersHorizontal } from "../../../ui/icons/interfaceIcons.jsx";
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
+import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import {
   REGEX_SCOPES,
   createRegexRule,
@@ -26,9 +28,11 @@ function downloadJson(fileName, json) {
 }
 
 export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId, regexRules, onDirtyChange }, ref) {
+  const { compact } = useEditorPresentation();
   const [collection, setCollection] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [selectedId, setSelectedId] = useState("");
+  const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState(new Set());
   const [addOpen, setAddOpen] = useState(false);
@@ -171,10 +175,14 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [dirty, saving]);
 
+  function selectRule(id) { setSelectedId(id); setEditing(false); }
+  function closeEditor() { if (compact) setEditing(false); else setSelectedId(''); }
+
   function addRule(scope) {
     const created = createRegexRule(collectionRef.current, scope);
     changeCollection(created.collection);
     setSelectedId(created.rule.id);
+    setEditing(true);
     setAddOpen(false);
   }
 
@@ -230,18 +238,20 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
     }
   }
 
-  if (!collection) return <div className="regex-loading">{error || "正在读取…"}</div>;
+  if (!collection && !compact) return <div className="regex-loading">{error || "正在读取…"}</div>;
 
   return (
     <EditorSidebarLayout className="regex-layout" aria-label="正则配置" onMouseDown={() => setAddOpen(false)}
-      inspector={selected ? (
+      inspectorTitle={selected?.rule.name || '编辑正则'} onCloseInspector={closeEditor}
+      feedback={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />}
+      inspector={selected && (!compact || editing) ? (
         <RegexRuleInspector
           scope={selected.scope}
           rule={selected.rule}
           onTest={(text, rule, target) => regexRules.test(text, rule, target)}
           onChange={changeSelected}
           onMoveScope={moveSelectedScope}
-          onClose={() => setSelectedId("")}
+          onClose={closeEditor}
           onDuplicate={() => { changeCollection((current) => duplicateRegexRules(current, [selected.rule.id])); }}
           onDelete={askDeleteSelected}
         />
@@ -249,27 +259,38 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       <div className="regex-browser">
         <div className="regex-toolbar" onMouseDown={(event) => event.stopPropagation()}>
           <label className="regex-search"><MagnifyingGlass size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索正则" aria-label="搜索正则" /></label>
-          <div className="regex-add-wrap">
+          {!compact && <div className="regex-add-wrap">
             <button type="button" className="regex-create-button" aria-expanded={addOpen} onClick={() => setAddOpen((open) => !open)}><Plus size={16} />新建</button>
             {addOpen ? <div className="regex-popover" role="menu">{REGEX_SCOPES.map((scope) => <button type="button" role="menuitem" key={scope.id} onClick={() => addRule(scope.id)}>{scope.label}</button>)}</div> : null}
-          </div>
-          <button type="button" className="regex-manage-button" aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
+          </div>}
+          <button type="button" className="regex-manage-button" disabled={!collection} aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
           <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
         </div>
         <div className="regex-list-scroll editor-sidebar-directory" onMouseDown={(event) => { if (!event.target.closest(".regex-rule-row")) setSelectedId(""); }}>
-          <RegexRuleList
+          {!collection && <p className="regex-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p>}
+          {collection && <RegexRuleList
             collection={collection}
+            touchReorder={compact}
             query={query}
             selectedId={selectedId}
             collapsed={collapsed}
             draggedId={draggedId}
             onToggleSection={(scope) => setCollapsed((current) => { const next = new Set(current); if (next.has(scope)) next.delete(scope); else next.add(scope); return next; })}
-            onSelect={setSelectedId}
+            onSelect={selectRule}
+            onOpen={id => { setSelectedId(id); setEditing(true); }}
             onToggleRule={(scope, id, enabled) => changeCollection((current) => updateRegexRule(current, scope, id, { enabled }))}
             onMove={(scope, id, index) => changeCollection((current) => moveRegexRule(current, scope, id, index))}
             onDragState={setDraggedId}
-          />
+          />}
         </div>
+        {compact && collection && <MobileEditorActions label="正则操作" selectionId={selectedId} canEdit={Boolean(selected)} canModify={Boolean(selected)}
+          onEdit={() => setEditing(true)} onDelete={askDeleteSelected}
+          createItems={REGEX_SCOPES.map(scope => ({ label: scope.label, run: () => addRule(scope.id) }))}
+          moveItems={REGEX_SCOPES.map(scope => ({ label: scope.label, disabled: scope.id === selected?.scope, run: () => moveSelectedScope(scope.id) }))}
+          moreItems={[
+            { label: '复制', Icon: Copy, run: () => changeCollection(current => duplicateRegexRules(current, [selected.rule.id])) },
+            { label: '重命名', Icon: PencilSimple, run: () => setEditing(true) },
+          ]} />}
       </div>
 
       {managerOpen ? (

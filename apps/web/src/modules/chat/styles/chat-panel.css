@@ -391,6 +391,27 @@
   --dsh-chat-flow-gap: 0px;
 }
 
+/* Align the flow item itself; slot outlet anchors use display: contents. */
+.message-area :is(
+  [data-chat-flow-kind="command"],
+  [data-chat-flow-kind="manual-compaction"],
+  [data-chat-flow-kind="compaction"]
+) {
+  box-sizing: border-box;
+  width: min(var(--chat-composer-card-max-width), 100%);
+  margin-inline: auto;
+  padding-inline: var(--chat-horizontal-padding, 16px);
+}
+
+.message-area.layout-roleplay :is(
+  [data-chat-flow-kind="command"],
+  [data-chat-flow-kind="manual-compaction"],
+  [data-chat-flow-kind="compaction"]
+) {
+  width: min(calc(var(--chat-reading-width) + 2 * var(--chat-roleplay-side-rail)), 100%);
+  padding-inline: var(--chat-roleplay-side-rail);
+}
+
 /* DSH's running indicator remains the authoritative status/timer, but the
    roleplay composer owns its visual seat. Keep it docked immediately above
    the input instead of leaving it as a loose row in the transcript. */
@@ -703,7 +724,7 @@
   gap: 4px;
   min-height: 30px;
   margin-top: 3px;
-  color: var(--muted);
+  color: var(--dsw-alias-label-tertiary, var(--soft-text));
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
@@ -725,7 +746,8 @@
   color: inherit;
 }
 
-.agent-user-actions button:hover:not(:disabled) { background: var(--active); color: var(--text); }
+.agent-user-actions button > svg { width: calc(15px + var(--dsh-content-font-delta, 0px)); height: calc(15px + var(--dsh-content-font-delta, 0px)); }
+.agent-user-actions button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, var(--active)); color: var(--dsw-alias-label-secondary, var(--muted)); }
 .agent-user-actions button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .agent-user-actions button:disabled { opacity: .42; cursor: default; }
 
@@ -740,7 +762,7 @@
   min-width: 0;
   min-height: 30px;
   margin-top: 10px;
-  color: var(--muted);
+  color: var(--dsw-alias-label-tertiary, var(--soft-text));
 }
 
 .agent-message-footer-leading {
@@ -761,7 +783,8 @@
   color: inherit;
 }
 
-.agent-message-footer button:hover:not(:disabled) { background: var(--active); color: var(--text); }
+.agent-message-footer-leading > button > svg { width: calc(17px + var(--dsh-content-font-delta, 0px)); height: calc(17px + var(--dsh-content-font-delta, 0px)); }
+.agent-message-footer button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, var(--active)); color: var(--dsw-alias-label-secondary, var(--muted)); }
 .agent-message-footer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .agent-message-footer button:disabled { opacity: .42; cursor: default; }
 
@@ -1180,11 +1203,12 @@
   color: inherit;
 }
 
-.message-tools > button:hover,
-.message-tools-leading > button:hover,
-.message-tools-expanded > button:hover,
+.message-tools-expanded > button > svg { width: calc(17px + var(--dsh-content-font-delta, 0px)); height: calc(17px + var(--dsh-content-font-delta, 0px)); }
+.message-tools-expanded > button:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover, var(--active)); color: var(--dsw-alias-label-secondary, var(--muted)); }
+.message-tools > button:hover:not(:disabled),
+.message-tools-leading > button:hover:not(:disabled),
 .opening-pager button:hover:not(:disabled) { background: color-mix(in srgb, currentColor 9%, transparent); }
-.message-tools-expanded { display: flex; align-items: center; gap: 2px; }
+.message-tools-expanded { display: flex; align-items: center; gap: 2px; color: var(--dsw-alias-label-tertiary, var(--soft-text)); }
 
 .message-inline-editor {
   display: grid;
@@ -2021,18 +2045,18 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted);
+  color: var(--dsw-alias-label-tertiary, var(--soft-text));
   font: inherit;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-.turn-usage-trigger:hover,
+.turn-usage-trigger:hover { background: var(--dsw-alias-interactive-bg-hover, var(--active)); color: var(--dsw-alias-label-secondary, var(--muted)); }
 .turn-usage-trigger[aria-expanded="true"] { background: var(--active); color: var(--text); }
 .turn-usage-trigger:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .turn-usage-trigger.is-compact { justify-content: center; width: 26px; min-height: 26px; padding: 0; }
 .message-tools-expanded .turn-usage-trigger { color: inherit; }
-.message-tools-expanded .turn-usage-trigger:hover { background: color-mix(in srgb, currentColor 9%, transparent); }
+.message-tools-expanded .turn-usage-trigger:hover { background: var(--dsw-alias-interactive-bg-hover, var(--active)); }
 .turn-usage-panel { width: 430px; }
 .turn-usage-route dt { flex: none; white-space: nowrap; }
 .turn-usage-route dd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2646,6 +2670,14 @@ button.chat-file-card:hover { border-color: var(--blue); }
 @container chat-panel (max-width: 720px) {
   .message-area.layout-roleplay {
     scrollbar-gutter: auto;
+  }
+
+  .message-area.layout-roleplay :is(
+    [data-chat-flow-kind="command"],
+    [data-chat-flow-kind="manual-compaction"],
+    [data-chat-flow-kind="compaction"]
+  ) {
+    padding-inline-end: var(--chat-horizontal-padding, 10px);
   }
 
   .message-roleplay {

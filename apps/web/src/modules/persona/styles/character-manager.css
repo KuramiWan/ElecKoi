@@ -653,6 +653,12 @@
   max-height: 460px;
 }
 
+.character-import-preview-copy .character-import-warning {
+  color: #956216;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .character-import-preview-item {
   grid-template-columns: 40px minmax(0, 1fr) 20px;
   border-bottom: 1px solid var(--line);

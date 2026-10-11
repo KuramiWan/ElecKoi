@@ -42,4 +42,8 @@ pnpm check:plugin-docs
 
 修改 bundle 开发接口后运行 `pnpm generate:plugin-docs`，再校验。源码构建包含以上检查。
 
+原生作者教程维护在 `plugins/author-sdk.md`。修改作者 SDK 合同或 `packages/examples/native-author` 源码后，运行 `pnpm generate:author-docs` 生成同一教程的 HTML 页面、完整方法和类型参考，以及可导入的合成示例；`pnpm check:author-docs` 拒绝过期内容，桌面构建包含此检查。HTML 及示例容器是正式文档交付，不作为另一套独立维护的接口定义。
+
+`pnpm build:author-docs-site` 将已生成的教程、页面资源和示例整理到 `build/author-docs`，不发布应用源码或本地数据。GitHub Pages 工作流在相关文档推送到 `main` 后发布该目录；其他技术文档链接指向 GitHub 中的对应文件。
+
 `node scripts/check-docs.mjs --compare <另一工作树路径>` 额外核对两边共有 ADR 的编号、文件名与标题；它只读取文档，不执行同步，也不会公开另一工作树的内容。

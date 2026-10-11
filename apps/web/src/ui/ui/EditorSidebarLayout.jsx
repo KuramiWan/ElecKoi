@@ -1,17 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DEFAULT_INSPECTOR_WIDTH, inspectorWidthBounds } from '../hooks/editorSidebarSizing.js';
 import { useInspectorPresence } from '../hooks/useInspectorPresence.js';
+import { EditorPresentationContext, useEditorPresentation, useEditorSubpage } from './EditorPresentationContext.jsx';
 
 /** 各编辑页共用宽度、拖动、键盘操作与开关生命周期，表单和数据仍由所属页面维护。 */
 export function EditorSidebarLayout({
   as: Element = 'section', className = '', paneClassName = '', overlay = true,
-  inspector, children, preferredWidth, onWidthChange, ...props
+  inspector, inspectorTitle, onCloseInspector, feedback, children, preferredWidth, onWidthChange, ...props
 }) {
   const layoutRef = useRef(null);
+  const pageRef = useRef(null);
   const [localWidth, setLocalWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
   const [containerWidth, setContainerWidth] = useState(() => window.innerWidth || 1024);
   const [drag, setDrag] = useState(null);
   const presence = useInspectorPresence(inspector);
+  const presentation = useEditorPresentation();
+  const { compact } = presentation;
+  const [nestedPage, setNestedPage] = useState(null);
+  const registerNestedPage = useCallback(page => {
+    setNestedPage(page);
+    return () => setNestedPage(current => current === page ? null : current);
+  }, []);
+  useEditorSubpage(Boolean(inspector), nestedPage?.title || inspectorTitle, nestedPage?.back || onCloseInspector, nestedPage?.actions);
+  useLayoutEffect(() => {
+    if (!compact || !inspector) return undefined;
+    const previous = document.activeElement;
+    pageRef.current?.focus({ preventScroll: true });
+    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }); };
+  }, [compact, Boolean(inspector)]);
   const { min, max } = inspectorWidthBounds(containerWidth);
   const width = Math.min(max, Math.max(min, preferredWidth ?? localWidth));
   const changeWidth = onWidthChange || setLocalWidth;
@@ -59,6 +75,15 @@ export function EditorSidebarLayout({
   }, [drag, min, max, changeWidth]);
 
   const reset = () => changeWidth(DEFAULT_INSPECTOR_WIDTH);
+  if (compact) return <Element {...props} ref={layoutRef} className={`editor-sidebar-layout is-page-layout ${className}${inspector ? ' is-inspector-open' : ''}`}>
+    <div className="editor-page-list" hidden={Boolean(inspector)} inert={Boolean(inspector)}>{children}</div>
+    {inspector ? <>
+      <div ref={pageRef} tabIndex={-1} className={`editor-page-detail ${paneClassName}`}>
+        <EditorPresentationContext.Provider value={{ ...presentation, registerSubpage: registerNestedPage }}>{inspector}</EditorPresentationContext.Provider>
+      </div>
+      {feedback && <div className="editor-page-feedback">{feedback}</div>}
+    </> : null}
+  </Element>;
   return (
     <Element {...props} ref={layoutRef}
       className={`editor-sidebar-layout ${className}${presence.content ? ' is-inspector-open' : ''}${drag ? ' is-resizing' : ''}`}

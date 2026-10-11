@@ -18,7 +18,7 @@ for (const page of dshClientPages) {
   if (!new RegExp(`\\bas\\s+${page.component}\\b`).test(bundle)) {
     throw new Error(`${assetName} 没有导出 ${page.component}。`)
   }
-  if (!plugin.includes(`dsh-app://app/eleckoi/assets/${assetName}`)) {
+  if (!plugin.includes(`new URL('${assetName}', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href`)) {
     throw new Error(`${page.package} 没有加载自己的页面资源。`)
   }
 }

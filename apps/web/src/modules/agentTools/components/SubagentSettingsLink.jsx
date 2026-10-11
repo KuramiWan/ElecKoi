@@ -1,4 +1,4 @@
-import { CaretRight, UsersThree } from '@phosphor-icons/react';
+import { CaretRight, UsersThree } from '../../../ui/icons/interfaceIcons.jsx';
 
 export function SubagentSettingsLink({ onBeforeOpen, onOpen, onNotify }) {
   function openSettings() {

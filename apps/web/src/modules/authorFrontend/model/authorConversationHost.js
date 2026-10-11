@@ -5,6 +5,8 @@ import {
   AuthorBridgeRequestGate,
   AUTHOR_EVENT_NAMES,
   authorApiDefinitions,
+  applyAuthorVariablePatch,
+  mergeAuthorVariableState,
   characterConversationPermissions,
   routeAuthorApiRequest,
 } from '@eleckoi/author-sdk';
@@ -62,76 +64,6 @@ function jsonObject(value, message) {
   return value;
 }
 
-function mergeObjects(base, patch) {
-  const result = { ...base };
-  for (const [key, value] of Object.entries(patch)) {
-    const previous = result[key];
-    result[key] = previous && typeof previous === 'object' && !Array.isArray(previous)
-      && value && typeof value === 'object' && !Array.isArray(value)
-      ? mergeObjects(previous, value)
-      : value;
-  }
-  return result;
-}
-
-function pointerParts(path) {
-  if (typeof path !== 'string' || (path !== '' && !path.startsWith('/'))) {
-    throw new AuthorApiError('INVALID_PARAMS', '变量补丁路径必须是 JSON Pointer');
-  }
-  return path === '' ? [] : path.slice(1).split('/').map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'));
-}
-
-function arrayIndex(part, length, allowEnd) {
-  if (allowEnd && part === '-') return length;
-  if (!/^(0|[1-9]\d*)$/.test(part)) throw new AuthorApiError('INVALID_PARAMS', `无效的数组位置：${part}`);
-  const index = Number(part);
-  if (index < 0 || index > length || (!allowEnd && index === length)) {
-    throw new AuthorApiError('INVALID_PARAMS', `数组位置超出范围：${part}`);
-  }
-  return index;
-}
-
-function applyVariablePatch(current, rawPatch) {
-  if (!Array.isArray(rawPatch) || rawPatch.length > 1_000) {
-    throw new AuthorApiError('INVALID_PARAMS', '变量补丁必须是操作数组');
-  }
-  let root = structuredClone(current);
-  for (const rawOperation of rawPatch) {
-    const operation = jsonObject(rawOperation, '变量补丁操作必须是对象');
-    const op = operation.op;
-    if (!['add', 'replace', 'remove'].includes(op)) {
-      throw new AuthorApiError('INVALID_PARAMS', `不支持的变量补丁操作：${String(op)}`);
-    }
-    if (op !== 'remove' && !Object.prototype.hasOwnProperty.call(operation, 'value')) {
-      throw new AuthorApiError('INVALID_PARAMS', `${op} 操作必须提供 value`);
-    }
-    const parts = pointerParts(operation.path);
-    if (parts.length === 0) {
-      root = op === 'remove' ? {} : structuredClone(operation.value);
-      continue;
-    }
-    let parent = root;
-    for (const part of parts.slice(0, -1)) {
-      if (Array.isArray(parent)) parent = parent[arrayIndex(part, parent.length, false)];
-      else if (parent && typeof parent === 'object') parent = parent[part];
-      else throw new AuthorApiError('INVALID_PARAMS', `变量补丁找不到路径：${String(operation.path)}`);
-    }
-    const key = parts.at(-1);
-    if (Array.isArray(parent)) {
-      const index = arrayIndex(key, parent.length, op === 'add');
-      if (op === 'add') parent.splice(index, 0, structuredClone(operation.value));
-      else if (op === 'replace') parent[index] = structuredClone(operation.value);
-      else parent.splice(index, 1);
-    } else if (parent && typeof parent === 'object') {
-      if (op !== 'add' && !(key in parent)) {
-        throw new AuthorApiError('INVALID_PARAMS', `变量补丁找不到路径：${String(operation.path)}`);
-      }
-      if (op === 'remove') delete parent[key];
-      else parent[key] = structuredClone(operation.value);
-    } else throw new AuthorApiError('INVALID_PARAMS', `变量补丁找不到路径：${String(operation.path)}`);
-  }
-  return jsonObject(root, '变量补丁的最终结果必须是一个对象');
-}
 
 async function publicImageAttachment(conversations, conversationId, attachment) {
   return {
@@ -415,14 +347,14 @@ async function invokeMethod(context, method, params) {
     );
     case 'variables.merge': {
       const state = await readAuthorState();
-      return conversations.replaceAuthorVariableState(conversationId, mergeObjects(
+      return conversations.replaceAuthorVariableState(conversationId, mergeAuthorVariableState(
         jsonObject(parsedJson(state.currentVariableStateJson), '当前变量状态不正确'),
         jsonObject(params.state, '合并内容必须是一个对象'),
       ));
     }
     case 'variables.applyPatch': {
       const state = await readAuthorState();
-      return conversations.replaceAuthorVariableState(conversationId, applyVariablePatch(
+      return conversations.replaceAuthorVariableState(conversationId, applyAuthorVariablePatch(
         jsonObject(parsedJson(state.currentVariableStateJson), '当前变量状态不正确'), params.patch,
       ));
     }

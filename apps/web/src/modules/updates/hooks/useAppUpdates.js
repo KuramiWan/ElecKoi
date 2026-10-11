@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 export function useAppUpdates() {
+  const android = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === "android";
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (android) return undefined;
     let active = true;
     const updates = window.dshDesktop.updates;
     if (!updates) {
@@ -26,7 +28,7 @@ export function useAppUpdates() {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [android]);
 
   const requestStatus = useCallback(async (request) => {
     setError("");
@@ -62,5 +64,5 @@ export function useAppUpdates() {
     }
   }, []);
 
-  return useMemo(() => ({ status, error, check, download, install }), [check, download, error, install, status]);
+  return useMemo(() => android ? null : ({ status, error, check, download, install }), [android, check, download, error, install, status]);
 }

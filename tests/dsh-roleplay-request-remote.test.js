@@ -7,7 +7,7 @@ import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { TYPERT_REMOTE } from '@eleckoi/dsh-product-api/remote'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { RequestPreviewStore } from '../packages/dsh-client-roleplay/src/host/request-preview.mjs'
+import { RequestPreviewStore } from '../packages/client/features/dsh-client-roleplay/src/host/request-preview.mjs'
 import { describe, expect, it, vi } from 'vitest'
 
 const require = createRequire(import.meta.url)
@@ -46,7 +46,7 @@ describe('request preview through the official Client Remote', () => {
       })
       await ctx.plugin(clientPlugin(require.resolve('@deepseek-ai/dsh-api-gateway/client'), { '@deepseek-ai/cordis': Cordis }))
       await ctx.remote.$mount(TYPERT_REMOTE)
-      const client = clientPlugin(new URL('../packages/dsh-client-conversations/src/client.js', import.meta.url), {
+      const client = clientPlugin(new URL('../packages/client/features/dsh-client-conversations/src/client.js', import.meta.url), {
         react: { lazy: () => () => null }
       }, true)
       let catalog

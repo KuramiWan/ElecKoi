@@ -1,4 +1,4 @@
-import { Trash, X } from "@phosphor-icons/react";
+import { Trash, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { DshFolderClosedIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { FIXED_ENTRY_IDS } from "../model/settingLibraryEditing.js";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";

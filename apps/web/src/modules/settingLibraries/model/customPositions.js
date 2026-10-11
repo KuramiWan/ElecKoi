@@ -148,7 +148,8 @@ export function moveCustomPosition(positions, entries, movingId, targetKey, movi
     updatedAt: new Date().toISOString(),
   });
   const replaced = new Set(sameAnchor.map((position) => position.id));
-  const nextPositions = normalizeCustomPositions([...without.filter((position) => !replaced.has(position.id)), ...sameAnchor]);
+  const reordered = sameAnchor.map((position, index) => ({ ...position, order: index + 1 }));
+  const nextPositions = normalizeCustomPositions([...without.filter((position) => !replaced.has(position.id)), ...reordered]);
   const placementKey = (items) => normalizeCustomPositions(items).map((position) => `${position.id}:${position.anchor}:${position.side}:${position.order}`).join('|');
   if (placementKey(nextPositions) === placementKey(positions)) return { positions, entries };
   return {

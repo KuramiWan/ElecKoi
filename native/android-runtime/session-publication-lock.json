@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "upstreamCommit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+  "package": "@deepseek-ai/dsh-session-persistence-jsonl",
+  "version": "0.2.0-rc.2",
+  "file": "lib/index.js",
+  "sourceSha256": "cf1c5c8c873f7ef08dee6611c588c0dbb1660f00c63a967e030d587aa2645f1e",
+  "helper": "android-file-publication.mjs",
+  "replacements": [
+    {
+      "before": "await internals.fs.link(staged, currentPath);",
+      "after": "await publishAndroidFile(staged, currentPath);"
+    },
+    {
+      "before": "await link(tmp, finalPath);",
+      "after": "await publishAndroidFile(tmp, finalPath);"
+    }
+  ]
+}

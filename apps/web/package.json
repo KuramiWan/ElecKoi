@@ -16,7 +16,6 @@
   "dependencies": {
     "@eleckoi/author-sdk": "workspace:*",
     "@eleckoi/compatibility-mvu": "workspace:*",
-    "@eleckoi/compatibility-tavern-helper": "workspace:*",
     "@eleckoi/dsh-client-character-configuration": "workspace:*",
     "@eleckoi/dsh-client-characters": "workspace:*",
     "@eleckoi/dsh-client-conversations": "workspace:*",

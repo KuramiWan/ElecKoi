@@ -41,11 +41,11 @@ CREATE TABLE IF NOT EXISTS `variable_config_variables` (`characterId` TEXT NOT N
 
 CREATE INDEX IF NOT EXISTS `index_variable_config_variables_characterId_versionId` ON `variable_config_variables` (`characterId`, `versionId`);
 
-CREATE TABLE IF NOT EXISTS `global_regex_rules` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `pattern` TEXT NOT NULL, `replacement` TEXT NOT NULL, `targetsJson` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `displayOnly` INTEGER NOT NULL, `promptOnly` INTEGER NOT NULL, `runOnEdit` INTEGER NOT NULL, `sortIndex` INTEGER NOT NULL, PRIMARY KEY(`id`));
+CREATE TABLE IF NOT EXISTS `global_regex_rules` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `pattern` TEXT NOT NULL, `replacement` TEXT NOT NULL, `targetsJson` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `displayOnly` INTEGER NOT NULL, `promptOnly` INTEGER NOT NULL, `runOnEdit` INTEGER NOT NULL, `sortIndex` INTEGER NOT NULL, `optionsJson` TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(`id`));
 
 CREATE INDEX IF NOT EXISTS `index_global_regex_rules_sortIndex` ON `global_regex_rules` (`sortIndex`);
 
-CREATE TABLE IF NOT EXISTS `character_regex_rules` (`characterId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `pattern` TEXT NOT NULL, `replacement` TEXT NOT NULL, `targetsJson` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `displayOnly` INTEGER NOT NULL, `promptOnly` INTEGER NOT NULL, `runOnEdit` INTEGER NOT NULL, `sortIndex` INTEGER NOT NULL, PRIMARY KEY(`characterId`, `id`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
+CREATE TABLE IF NOT EXISTS `character_regex_rules` (`characterId` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `pattern` TEXT NOT NULL, `replacement` TEXT NOT NULL, `targetsJson` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `displayOnly` INTEGER NOT NULL, `promptOnly` INTEGER NOT NULL, `runOnEdit` INTEGER NOT NULL, `sortIndex` INTEGER NOT NULL, `optionsJson` TEXT NOT NULL DEFAULT '{}', PRIMARY KEY(`characterId`, `id`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
 
 CREATE INDEX IF NOT EXISTS `index_character_regex_rules_characterId_sortIndex` ON `character_regex_rules` (`characterId`, `sortIndex`);
 
@@ -170,6 +170,8 @@ CREATE VIEW `setting_library_version_entries` AS SELECT link.characterId, link.v
           AND content.entryId = link.entryId AND content.revisionId = link.revisionId;
 
 
-PRAGMA user_version = 9;
+CREATE TABLE IF NOT EXISTS `script_libraries` (`scope` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `characterId` TEXT, `presetId` TEXT, `enabled` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `treesJson` TEXT NOT NULL, `variablesJson` TEXT NOT NULL, PRIMARY KEY(`scope`, `ownerId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`presetId`) REFERENCES `agent_presets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , CHECK (`enabled` IN (0, 1) AND `revision` >= 0), CHECK ((`scope` = 'global' AND `ownerId` = '' AND `characterId` IS NULL AND `presetId` IS NULL) OR (`scope` = 'character' AND `characterId` IS NOT NULL AND `ownerId` = `characterId` AND `ownerId` <> '' AND `presetId` IS NULL) OR (`scope` = 'preset' AND `presetId` IS NOT NULL AND `ownerId` = `presetId` AND `ownerId` <> '' AND `characterId` IS NULL)));
+
+PRAGMA user_version = 10;
 
 COMMIT;

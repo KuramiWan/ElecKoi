@@ -6,12 +6,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@main': resolve('apps/desktop/src/main'),
-      '@product-data': resolve('packages/dsh-product-data/src'),
-      '@shared': resolve('packages/product-shared/src'),
-      '@eleckoi/dsh-product-data/media': resolve('packages/dsh-product-data/src/storage/media/index.ts'),
-      '@eleckoi/dsh-product-data': resolve('packages/dsh-product-data/src/index.ts'),
+      '@product-data': resolve('packages/host/product-data/src'),
+      '@shared': resolve('packages/shared/src'),
+      '@eleckoi/dsh-product-data/media': resolve('packages/host/product-data/src/storage/media/index.ts'),
+      '@eleckoi/dsh-product-data/variables': resolve('packages/host/product-data/src/domain/variables/variableSchema.ts'),
+      '@eleckoi/dsh-product-data/frontends': resolve('packages/host/product-data/src/domain/frontends/index.ts'),
+      '@eleckoi/dsh-product-data': resolve('packages/host/product-data/src/index.ts'),
       '@eleckoi/desktop-host': resolve('apps/desktop-host/src/index.ts'),
-      '@eleckoi/dsh-runtime': resolve('packages/dsh-runtime/src/index.ts')
+      '@eleckoi/dsh-runtime': resolve('packages/host/runtime/src/index.ts')
     }
   },
   plugins: [authorVendorPlugin(resolve('.'))],

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { z } from 'zod'
+import { describeVariableRuleFailure } from '@eleckoi/dsh-product-data/variables'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 
 const fixedObjectId = 'fixed-variable-initialization-object'
@@ -12,14 +12,14 @@ const maximumInlineValueChars = 4_000
 const maximumPageChars = 12_000
 const maximumGrepLineChars = 2_000
 export const name = 'eleckoi-variable-tools'
-export const inject = ['tools']
+export const inject = ['tools', 'eleckoiVariableProcessing']
 
 export function apply(ctx) {
   return [
     ctx.tools.register(globTool()),
     ctx.tools.register(grepTool()),
     ctx.tools.register(readTool()),
-    ctx.tools.register(patchTool()),
+    ctx.tools.register(patchTool(ctx.eleckoiVariableProcessing)),
   ]
 }
 
@@ -187,7 +187,7 @@ function readTool() {
   })
 }
 
-function patchTool() {
+function patchTool(processing) {
   return defineTool({
     name: 'eleckoi_apply_variable_patch',
     description: '修改剧情运行时变量值。支持 replace、delta、insert、remove；path 使用 JSON Pointer。状态只保存当前值，不要用 value/min/max/description/update_rule 包装简单值。作者 Zod 校验失败时状态不改变。',
@@ -215,20 +215,37 @@ function patchTool() {
       if (!bridge.enabled) return {
         status: 'ok', applied_operations: 0, paths: [], state_unchanged: true
       }
-      let next
-      try { next = applyOperations(bridge.state, args.operations) } catch (error) {
-        return { ...failure('patch_error', errorMessage(error)), paths: operationPaths(args.operations), state_unchanged: true }
-      }
-      if (bridge.config.schemaCode.trim()) {
-        const validation = validateWithZod(bridge.config.schemaCode, next)
-        if (!validation.ok) return {
-          ...failure('validation_error', '变量状态不符合 Zod 规则'),
-          detail: validation.detail,
-          schema_source: 'author_zod',
+      let next, patched
+      try {
+        const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
+        if (!snapshot.conversationId || !processing) throw new Error('当前 Session 缺少受管变量处理服务或聊天归属。')
+        const processed = await processing.process({ conversationId: snapshot.conversationId,
+          before: bridge.state, schemaCode: bridge.config.schemaCode, signal: exec.signal,
+          apply: state => {
+            try { return applyOperations(state, args.operations) }
+            catch (error) { error.code = 'VARIABLE_PATCH_ERROR'; throw error }
+          } })
+        next = processed.state
+        patched = processed.patched
+      } catch (error) {
+        if (exec.signal?.aborted) throw exec.signal.reason
+        if (error.code === 'VARIABLE_PATCH_ERROR') return { ...failure('patch_error', errorMessage(error)), paths: operationPaths(args.operations), state_unchanged: true }
+        const validation = describeVariableRuleFailure(error)
+        return {
+          ...failure(validation.error_stage === 'validation' ? 'validation_error' : 'rule_error',
+            validation.error_stage === 'validation' ? '变量状态不符合 Zod 规则' : '作者变量规则处理失败'),
+          ...validation,
+          ...(error.code ? { error_code: error.code } : {}),
+          schema_source: 'author_rules',
           paths: operationPaths(args.operations),
           state_unchanged: true,
+          repair_guidance: validation.error_stage === 'validation'
+            ? '本次修改未生效。按 issues 中的字段与原因修改参数后，可再次调用变量工具；不要重复已成功的补丁。'
+            : '本次修改未生效。请报告作者规则处理失败的阶段与原因；不能把它当作变量值校验失败或已更新成功。',
         }
-        const conflicts = normalizationConflicts(next, validation.state, args.operations)
+      }
+      if (bridge.config.schemaCode.trim()) {
+        const conflicts = normalizationConflicts(patched, next, args.operations)
         if (conflicts.length) return {
           ...failure('normalization_conflict', '作者 Zod 归一化结果没有保留本次修改路径。'),
           detail: '未保留的路径：' + conflicts.join('、'),
@@ -236,8 +253,8 @@ function patchTool() {
           paths: conflicts,
           state_unchanged: true,
         }
-        next = validation.state
       }
+      if (JSON.stringify(readBridge(bridgeFile)) !== JSON.stringify(bridge)) return { ...failure('state_conflict', '处理期间本轮变量已变化，请重新读取后再试。'), state_unchanged: true }
       writeBridge(bridgeFile, { ...bridge, state: next })
       return {
         status: 'ok',
@@ -415,20 +432,6 @@ function resolveTarget(root, segments, index, createParents) {
     } else throw patchError(index, '路径经过了不能包含子项的值：' + segment)
   }
   return { parent: current, key: segments.at(-1) }
-}
-
-function validateWithZod(source, state) {
-  try {
-    const normalized = String(source).replace(/export\s+const\s+Schema\s*=/, 'const Schema =').replace(/export\s+default\s+/, 'const Schema = ')
-    let schema
-    try { schema = new Function('z', '"use strict"; ' + normalized + '; return typeof Schema !== "undefined" ? Schema : undefined;')(z) } catch { schema = undefined }
-    if (!schema) schema = new Function('z', '"use strict"; return (' + source + ');')(z)
-    if (!schema || typeof schema.safeParse !== 'function') return { ok: false, detail: '总校验配置没有返回 Zod schema' }
-    const result = schema.safeParse(state)
-    return result.success ? { ok: true, state: result.data } : { ok: false, detail: JSON.stringify(result.error.issues || result.error, null, 2).slice(0, 8000) }
-  } catch (error) {
-    return { ok: false, detail: errorMessage(error).slice(0, 8000) }
-  }
 }
 
 function normalizationConflicts(patched, normalized, operations) {

@@ -8,18 +8,26 @@ import { WebSearchProvider } from "../../modules/agentTools/index.js";
 import { AppearanceProvider } from "../../modules/appearance/index.js";
 import { DisplayPreferencesProvider } from "../../modules/settings/index.js";
 import { OfficialMarkdownProvider } from "../../ui/messages/OfficialMarkdown.jsx";
+import { ApplicationFrontendController, NativeFrontendProvider } from "../../modules/authorFrontend/index.js";
 
 export default function App(props = {}) {
   return <OfficialMarkdownProvider component={props.markdownComponent}>
     <AppearanceProvider model={props.appearance}>
     <DisplayPreferencesProvider model={props.displayPreferences}>
-      <WebSearchProvider model={props.webSearch}><AppContent {...props} /></WebSearchProvider>
+      <WebSearchProvider model={props.webSearch}>
+        <NativeFrontendProvider connection={props.frontendConnection} authorConnection={props.characterConfiguration?.scriptRuntimeConnection}>
+        <ApplicationFrontendController slots={props.slots} subscribeSlots={props.subscribeSlots} navigation={props.navigation}>
+          {navigation => <AppContent {...props} navigation={navigation} />}
+        </ApplicationFrontendController>
+        </NativeFrontendProvider>
+      </WebSearchProvider>
     </DisplayPreferencesProvider>
     </AppearanceProvider>
   </OfficialMarkdownProvider>;
 }
 
-function AppContent({ conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, settingsSections, navigation, rightbar, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderCharacterEditorSection, renderCharacterManager, renderConversationList, renderPresetEditorSection, renderPresetManager, renderRoleplay } = {}) {
+function AppContent({ renderWindow, ...windowProps } = {}) {
+  const { conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, settingsSections, navigation, rightbar, renderSettingsSection, renderUserProfileEditor, renderCharacterPageSection, renderCharacterEditorSection, renderCharacterManager, renderConversationList, renderPresetEditorSection, renderPresetManager, renderRoleplay } = windowProps;
   const params = new URLSearchParams(window.location.search);
   if (params.get("view") === "chat") {
     return <ChatWindow conversations={conversations} characters={characters} characterConfiguration={characterConfiguration}
@@ -38,9 +46,10 @@ function AppContent({ conversations, characters, characterConfiguration, creator
     return <CreatorStudioWindow characterCatalog={characters} projectCatalog={creatorStudio} />;
   }
 
-  return <MainWindow conversations={conversations} characters={characters} characterConfiguration={characterConfiguration} models={models} persona={persona} presets={presets}
+  const fallback = <MainWindow conversations={conversations} characters={characters} characterConfiguration={characterConfiguration} models={models} persona={persona} presets={presets}
     settingsSections={settingsSections} navigation={navigation} rightbar={rightbar} renderSettingsSection={renderSettingsSection}
     renderUserProfileEditor={renderUserProfileEditor} renderCharacterPageSection={renderCharacterPageSection}
     renderConversationList={renderConversationList} renderPresetEditorSection={renderPresetEditorSection}
     renderRoleplay={renderRoleplay} />;
+  return renderWindow?.(windowProps, fallback) ?? fallback;
 }

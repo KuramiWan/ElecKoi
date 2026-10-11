@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import { useEffect, useId, useRef, useState } from 'react';
 
 export function VersionNameDialog({ title, confirmLabel, versions, onCancel, onCreate }) {
@@ -34,7 +35,7 @@ export function VersionNameDialog({ title, confirmLabel, versions, onCancel, onC
   }, [onCancel]);
 
   return (
-    <div className="version-name-overlay" role="presentation" onMouseDown={onCancel}>
+    <SystemBarOverlay className="version-name-overlay" role="presentation" onMouseDown={onCancel}>
       <form ref={formRef} className="version-name-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => {
           event.preventDefault();
@@ -56,6 +57,6 @@ export function VersionNameDialog({ title, confirmLabel, versions, onCancel, onC
           <button type="submit" className="is-primary">{confirmLabel}</button>
         </div>
       </form>
-    </div>
+    </SystemBarOverlay>
   );
 }

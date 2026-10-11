@@ -10,7 +10,7 @@ import { sessionFormatLogFilename } from '@deepseek-ai/dsh-session-format'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { createSessionFormatV3ToV4, releasedV3SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import { afterEach, describe, expect, it } from 'vitest'
-import { readDshSessionLog } from '../packages/dsh-runtime/src/trajectory'
+import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })

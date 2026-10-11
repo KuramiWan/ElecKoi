@@ -10,19 +10,23 @@ import {
   MagnifyingGlass,
   PencilSimple,
   Plus,
+  SlidersHorizontal,
   Trash,
   X,
-} from "@phosphor-icons/react";
+} from "../../../ui/icons/interfaceIcons.jsx";
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { conversationPreviewText } from "../../../ui/messages/conversationPreviewText.js";
 import { UnsavedChangesDialog } from "../../../ui/ui/UnsavedChangesDialog.jsx";
 import { DshFolderClosedIcon, DshFolderOpenIcon, DshTriangleRightIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { SETTING_LIBRARY_CREATE_ICONS } from "../../../ui/icons/settingLibraryCreateIcons.jsx";
-import { PINNED_ENTRY_IDS, createEntryDraft, createGroupDraft, createId, uniqueName } from "../model/settingLibraryEditing.js";
-import { descendants, findSelected, nodeKey } from "../model/settingLibraryTree.js";
+import { PINNED_ENTRY_IDS, canTransferSettingNode, copySettingNode, moveTreeNode, createEntryDraft, createGroupDraft, createId, uniqueName } from "../model/settingLibraryEditing.js";
+import { descendants, findSelected, nodeKey, parseNodeKey } from "../model/settingLibraryTree.js";
 import { DynamicSettingsNameDialog } from "./DynamicSettingsDialogs.jsx";
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
+import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
+import { useTouchReorder } from '../../../ui/tree/useTouchReorder.js';
 import { BranchSettingsSplitView } from "./BranchSettingsSplitView.jsx";
 import { DEFAULT_INSPECTOR_WIDTH } from "../../../ui/hooks/editorSidebarSizing.js";
 
@@ -105,6 +109,10 @@ function EntryIcon({ entry }) {
 }
 
 export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ characterId, settingLibraries, onDirtyChange }, ref) {
+  const { compact } = useEditorPresentation();
+  const [editing, setEditing] = useState(false);
+  const [clipboard, setClipboard] = useState(null);
+  const [managerOpen, setManagerOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [library, setLibrary] = useState(null);
@@ -137,6 +145,12 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     () => library ? visibleTreeRows(library, expandedIds, normalizedQuery) : [],
     [library, expandedIds, normalizedQuery],
   );
+  const touch = useTouchReorder({ enabled: compact && Boolean(library) && !normalizedQuery && !clipboard,
+    onSelect: key => { setSelectedKey(key); setEditing(false); }, onMove: ({ dragId, parentId, destinationIndex }) => {
+      const moved = parseNodeKey(dragId);
+      if (moved.kind === 'entry' && !isEditableEntry(libraryRef.current?.entries.find(entry => entry.id === moved.id))) return;
+      changeLibrary(current => moveTreeNode(current, moved, parentId, destinationIndex));
+    } });
   const filteredItems = useMemo(() => items.filter((item) => {
     if (!normalizedQuery) return true;
     return `${item.characterName}\n${item.title}\n${item.summary}`.toLocaleLowerCase().includes(normalizedQuery);
@@ -229,6 +243,9 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   }, [notice]);
 
   function openConversation(item) {
+    setEditing(false);
+    setClipboard(null);
+    setManagerOpen(false);
     setSelectedSessionId(item.sessionId);
     setLibrary(item.library);
     setPersisted(item.library);
@@ -317,6 +334,38 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     return "";
   }
 
+  function closeEditor() { if (compact) setEditing(false); else setSelectedKey(''); }
+  function startTransfer(mode) {
+    if (!selected.value || PINNED_ENTRY_IDS.has(selected.value.id)) return;
+    setClipboard({ mode, target: { kind: selected.kind, id: selected.value.id } });
+    setSelectedKey('');
+    setEditing(false);
+  }
+  function pasteSelection() {
+    const parentId = targetGroupId();
+    if (!clipboard || !canTransferSettingNode(libraryRef.current, clipboard.target, parentId)) {
+      setError('不能粘贴到此文件夹，请选择其他位置。'); return;
+    }
+    if (clipboard.mode === 'cut') {
+      changeLibrary(current => moveTreeNode(current, clipboard.target, parentId, Number.MAX_SAFE_INTEGER));
+      setSelectedKey(nodeKey(clipboard.target.kind, clipboard.target.id));
+    } else {
+      const copied = copySettingNode(libraryRef.current, clipboard.target, parentId);
+      changeLibrary(copied.library);
+      setSelectedKey(copied.key);
+    }
+    if (parentId) setExpandedIds(current => new Set([...current, parentId]));
+    setClipboard(null);
+  }
+  function requestVersion() {
+    setManagerOpen(false);
+    setNameDialog({ type: 'version', title: '保存为设定版本', label: '版本名称', value: versionName(selectedItem), confirmLabel: '保存', maxLength: 60 });
+  }
+  function requestReset() {
+    setManagerOpen(false);
+    setResetTarget({ title: '清空这段对话的分支设定？', message: '将删除这段对话里由 AI 和你产生的全部设定改动，并回归母设定。母设定不会被修改。' });
+  }
+
   function nextOrder(parentId) {
     return 1 + Math.max(0,
       ...library.groups.filter((group) => group.parentId === parentId).map((group) => group.treeViewOrder),
@@ -330,6 +379,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     changeLibrary((current) => ({ ...current, entries: [...current.entries, entry] }));
     if (parentId) setExpandedIds((current) => new Set([...current, parentId]));
     setSelectedKey(nodeKey("entry", entry.id));
+    setEditing(true);
     setAddMenuOpen(false);
     setContextMenu(null);
   }
@@ -366,6 +416,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   function openContextMenu(event, row = null) {
     event.preventDefault();
     event.stopPropagation();
+    if (compact) { if (row) setSelectedKey(nodeKey(row.kind, row.value.id)); setEditing(false); return; }
     setAddMenuOpen(false);
     const kind = row?.kind || "background";
     const id = row?.value?.id || "";
@@ -446,7 +497,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     }
   }
 
-  if (loading) return <div className="setting-library-loading">正在读取分支设定…</div>;
+  if (loading && !compact) return <div className="setting-library-loading">正在读取分支设定…</div>;
 
   if (!selectedItem || !library) {
     return (
@@ -458,8 +509,8 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
           </label>
         </header>
         <div className="dynamic-settings-conversation-list">
-          {error ? <p className="dynamic-settings-status is-error" role="alert">{error}</p> : null}
-          {!filteredItems.length ? (
+          {loading ? <p className="dynamic-settings-status" role="status">正在读取分支设定…</p> : error ? <p className="dynamic-settings-status is-error" role="alert">{error}</p> : null}
+          {loading ? null : !filteredItems.length ? (
             !error && <p className="dynamic-settings-status">{normalizedQuery ? "没有找到相关对话" : "还没有分支设定"}</p>
           ) : (
             <div className="dynamic-settings-conversation-records">
@@ -490,7 +541,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     );
   }
 
-  const canDeleteSelected = selected.kind === "group" || (selected.kind === "entry" && isEditableEntry(selected.value));
+  const canDeleteSelected = Boolean(selected.value) && !PINNED_ENTRY_IDS.has(selected.value.id) && (selected.kind === "group" || (selected.kind === "entry" && isEditableEntry(selected.value)));
   const editableEntry = selected.kind === "entry" && isEditableEntry(selected.value);
 
   return (
@@ -502,28 +553,30 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
         <div className="dynamic-settings-toolbar-copy">
           <strong title={selectedItem.title}>{selectedItem.title || "未命名聊天"}</strong>
         </div>
-        <button type="button" className="dynamic-settings-secondary-action" title="保存为设定版本" aria-label="保存为设定版本" disabled={saving} onClick={() => setNameDialog({
+        {!compact && <button type="button" className="dynamic-settings-secondary-action" title="保存为设定版本" aria-label="保存为设定版本" disabled={saving} onClick={() => setNameDialog({
           type: "version",
           title: "保存为设定版本",
           label: "版本名称",
           value: versionName(selectedItem),
           confirmLabel: "保存",
           maxLength: 60,
-        })}><Copy size={15} />另存版本</button>
-        <button type="button" className="dynamic-settings-danger-action" title="清空分支设定" aria-label="清空分支设定" disabled={saving} onClick={() => setResetTarget({
+        })}><Copy size={15} />另存版本</button>}
+        {!compact && <button type="button" className="dynamic-settings-danger-action" title="清空分支设定" aria-label="清空分支设定" disabled={saving} onClick={() => setResetTarget({
           title: "清空这段对话的分支设定？",
           message: "将删除这段对话里由 AI 和你产生的全部设定改动，并回归母设定。母设定不会被修改。",
-        })}><Trash size={15} />清空</button>
+        })}><Trash size={15} />清空</button>}
       </header>
 
-      <BranchSettingsSplitView preferredWidth={inspectorWidth} onWidthChange={setInspectorWidth}>
+      <BranchSettingsSplitView preferredWidth={inspectorWidth} onWidthChange={setInspectorWidth}
+        feedback={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />}
+        inspectorTitle={selected.kind === 'group' ? '编辑文件夹' : selected.value?.title || '编辑分支设定'} onCloseInspector={closeEditor}>
         <section className="dynamic-settings-tree-pane">
           <div className="dynamic-settings-tree-toolbar">
             <label className="setting-library-search">
               <MagnifyingGlass size={15} aria-hidden="true" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索设定" aria-label="搜索分支设定" />
             </label>
-            <div className="setting-library-add-wrap">
+            {!compact && <div className="setting-library-add-wrap">
               <button type="button" className="setting-library-create-button" aria-label="新建" aria-expanded={addMenuOpen} onClick={() => setAddMenuOpen((open) => !open)}><Plus size={16} />新建</button>
               {addMenuOpen ? (
                 <div className="setting-library-popover" role="menu">
@@ -535,10 +588,17 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                   <button type="button" role="menuitem" onClick={() => createEntry("reference")}><SETTING_LIBRARY_CREATE_ICONS.reference size={16} />EJS引用设定</button>
                 </div>
               ) : null}
-            </div>
+            </div>}
+            {compact && <div className="setting-library-add-wrap">
+              <button type="button" className="setting-library-manage-button" aria-expanded={managerOpen} onClick={() => setManagerOpen(open => !open)}><SlidersHorizontal size={16} />管理</button>
+              {managerOpen && <div className="setting-library-popover" role="menu">
+                <button type="button" role="menuitem" disabled={saving} onClick={requestVersion}><Copy size={16} />另存版本</button>
+                <button type="button" role="menuitem" disabled={saving} onClick={requestReset}><Trash size={16} />清空分支设定</button>
+              </div>}
+            </div>}
             <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
           </div>
-          <div className="dynamic-settings-tree" role="tree" aria-label="当前对话有效设定"
+          <div className="dynamic-settings-tree editor-sidebar-directory" {...touch.handlers} role="tree" aria-label="当前对话有效设定"
             onContextMenu={(event) => openContextMenu(event)}
             onMouseDown={(event) => {
               const tree = event.currentTarget;
@@ -557,12 +617,21 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                   role="treeitem"
                   aria-selected={selectedKey === key}
                   aria-expanded={row.kind === "group" ? Boolean(expanded) : undefined}
-                  className={`dynamic-settings-tree-row${row.kind === "group" ? " is-folder" : ""}`}
+                  className={`dynamic-settings-tree-row${row.kind === "group" ? " is-folder" : ""}${touch.preview?.dragId === key ? ' is-dragging' : ''}`}
+                  data-reorder-id={key} data-reorder-parent={row.kind === 'group' ? row.value.parentId : row.value.groupId}
+                  data-reorder-fixed={String(PINNED_ENTRY_IDS.has(row.value.id) || (row.kind === 'entry' && !isEditableEntry(row.value)))}
+                  data-reorder-target={touch.preview?.targetId === key ? (touch.preview.after ? 'after' : 'before') : undefined}
                   style={{ paddingLeft: `${12 + row.level * 18}px` }}
                   key={key}
                   onContextMenu={(event) => openContextMenu(event, row)}
+                  onDoubleClick={() => {
+                    if (row.kind === 'entry' && !isEditableEntry(row.value)) return;
+                    setSelectedKey(key);
+                    setEditing(true);
+                  }}
                   onClick={() => {
                     setSelectedKey(key);
+                    setEditing(false);
                     if (row.kind === "group" && !normalizedQuery) {
                       setExpandedIds((current) => {
                         const next = new Set(current);
@@ -585,6 +654,19 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
               );
             })}
           </div>
+          {compact && <MobileEditorActions label="分支设定操作" selectionId={selectedKey}
+            canEdit={Boolean(selected.value)} canModify={canDeleteSelected} clipboard={clipboard}
+            canPaste={Boolean(clipboard && canTransferSettingNode(library, clipboard.target, targetGroupId()))}
+            onEdit={() => setEditing(true)} onMove={() => startTransfer('cut')} onPaste={pasteSelection}
+            onCancel={() => setClipboard(null)} onDelete={requestDeleteSelected}
+            createItems={[
+              { label: '文件夹', Icon: SETTING_LIBRARY_CREATE_ICONS.group, run: () => setNameDialog({ type: 'group', title: '新建文件夹', label: '文件夹名称', value: '新建文件夹', confirmLabel: '创建', parentId: targetGroupId(), maxLength: 80 }) },
+              { label: '设定', Icon: SETTING_LIBRARY_CREATE_ICONS.entry, run: () => createEntry('standard') },
+              { label: 'EJS引用设定', Icon: SETTING_LIBRARY_CREATE_ICONS.reference, run: () => createEntry('reference') },
+            ]} moreItems={canDeleteSelected ? [
+              { label: '复制', Icon: Copy, run: () => startTransfer('copy') },
+              { label: '重命名', Icon: PencilSimple, run: () => setEditing(true) },
+            ] : []} />}
           {contextMenu ? (
             <div className="setting-library-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" onMouseDown={(event) => event.stopPropagation()}>
               {contextMenu.kind === "background" || contextMenu.kind === "group" ? (
@@ -601,12 +683,12 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
           ) : null}
         </section>
 
-        {selected.value ? <aside className="dynamic-settings-inspector" aria-label="分支设定详情">
+        {selected.value && (!compact || editing) ? <aside className="dynamic-settings-inspector" aria-label="分支设定详情">
             <>
               <header>
                 <span aria-hidden="true">{selected.kind === "group" ? <DshFolderClosedIcon /> : <EntryIcon entry={selected.value} />}</span>
                 <strong>{selected.kind === "group" ? selected.value.name : selected.value.title || "未命名设定"}</strong>
-                <button type="button" aria-label="关闭详情" onClick={() => setSelectedKey("")}><X size={17} /></button>
+                <button type="button" aria-label="关闭详情" onClick={closeEditor}><X size={17} /></button>
               </header>
               <div className="dynamic-settings-inspector-body">
                 {selected.kind === "group" ? (

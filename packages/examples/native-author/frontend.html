@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="eleckoi-author-api" content="0.1.0">
+  <title>积分对话</title>
+  <style>
+    body { margin: 16px; font: 14px/1.6 system-ui; color: #202124; background: #fff; }
+    main { max-width: 760px; margin: auto; }
+    form { display: grid; gap: 12px; }
+    label { display: grid; gap: 4px; }
+    input, select, button { box-sizing: border-box; max-width: 100%; min-height: 40px; font: inherit; padding: 8px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    output, li { overflow-wrap: anywhere; white-space: pre-wrap; }
+    ol { padding-left: 24px; }
+    h1 { font-size: 20px; } h2 { font-size: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>积分对话</h1>
+    <form>
+      <label>开场白<select id="opening" disabled></select></label>
+      <label>积分<input id="score" type="number" min="0" value="5" required disabled></label>
+      <label>消息<input id="message" value="继续探索" required disabled></label>
+      <div class="actions">
+        <button type="button" id="update" disabled>更新积分</button>
+        <button type="button" id="draft" disabled>填写输入框</button>
+        <button id="send" disabled>确认并发送</button>
+        <button type="button" id="stop" disabled>停止生成</button>
+      </div>
+      <output id="state"></output>
+      <output id="status" role="status"></output>
+    </form>
+    <h2>已加载消息</h2>
+    <ol id="messages"></ol>
+  </main>
+  <script type="module">
+    const form = document.querySelector('form'), status = document.querySelector('#status');
+    const score = document.querySelector('#score'), message = document.querySelector('#message');
+    const controls = [...form.querySelectorAll('button, input, select')];
+    try {
+      const api = await window.ElecKoiReady;
+      const opening = document.querySelector('#opening');
+      const options = await api.openings.list(), current = await api.openings.current();
+      for (const item of options.items) {
+        const option = document.createElement('option'); option.value = item.id; option.textContent = item.title;
+        opening.append(option);
+      }
+      opening.value = current?.id ?? '';
+      async function refresh() {
+        document.querySelector('#state').textContent = JSON.stringify(await api.variables.getState(), null, 2);
+        const rows = await api.messages.list();
+        document.querySelector('#messages').replaceChildren(...rows.map(row => {
+          const li = document.createElement('li'); li.textContent = `${row.role}: ${row.content}`; return li;
+        }));
+      }
+      async function perform(action) {
+        controls.forEach(control => { control.disabled = true; });
+        document.querySelector('#stop').disabled = false;
+        status.textContent = '';
+        try { await action(); await refresh(); }
+        catch (error) { status.textContent = error.message; }
+        finally { controls.forEach(control => { control.disabled = false; }); }
+      }
+      const acceptScore = () => api.variables.merge({ score: Number(score.value) });
+      document.querySelector('#update').onclick = () => perform(acceptScore);
+      document.querySelector('#draft').onclick = () => perform(() => api.input.set(message.value));
+      document.querySelector('#stop').onclick = async () => {
+        try { await api.chat.stopGeneration(); } catch (error) { status.textContent = error.message; }
+      };
+      opening.onchange = () => perform(() => api.openings.select(opening.value));
+      form.onsubmit = event => {
+        event.preventDefault();
+        void perform(async () => {
+          const accepted = await acceptScore();
+          await api.chat.send(`${message.value}。当前积分 ${accepted.score}，等级 ${accepted.level}。`);
+        });
+      };
+      const stopEvents = api.events.on('messages.changed', () => { void refresh().catch(error => { status.textContent = error.message; }); });
+      window.addEventListener('pagehide', stopEvents, { once: true });
+      await refresh();
+      controls.forEach(control => { control.disabled = false; });
+    } catch (error) { status.textContent = error.message; }
+  </script>
+</body>
+</html>

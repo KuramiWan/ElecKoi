@@ -3,8 +3,8 @@ import { runInNewContext } from 'node:vm'
 import { resolve } from 'node:path'
 import React from 'react'
 
-const source = readFileSync(resolve('packages/dsh-client-roleplay/src/client.js'), 'utf8')
-const boundary = "inject: ['slots', 'sessions'],"
+const source = readFileSync(resolve('packages/client/features/dsh-client-roleplay/src/client.js'), 'utf8')
+const boundary = "inject: ['slots', 'sessions', 'eleckoiConversations'],"
 if (source.split(boundary).length !== 2) throw new Error('Unexpected roleplay contribution boundary')
 let registration
 runInNewContext(source.replace(boundary, `createInputRoundIndex, presentChatTurnNavigation, adaptChatSessionStats, ${boundary}`), {

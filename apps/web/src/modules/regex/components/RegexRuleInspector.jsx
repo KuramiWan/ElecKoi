@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, Play, Trash, X } from "@phosphor-icons/react";
+import { Copy, Play, Trash, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { REGEX_SCOPES, REGEX_TARGETS } from "../model/regexRulesEditing.js";
 
 function Switch({ checked, onChange, label }) {

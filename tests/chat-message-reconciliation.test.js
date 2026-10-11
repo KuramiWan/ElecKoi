@@ -109,7 +109,7 @@ describe('chat message reconciliation', () => {
     expect(message.process[0]).toMatchObject({ status: 'complete', detail: '完整思考' })
   })
 
-  it('keeps a settled rich display while rewind briefly reopens the same assistant step', () => {
+  it('accepts the restored source display after a rich display rule is disabled', () => {
     const current = [{
       id: 'assistant-rich',
       role: 'assistant',
@@ -127,14 +127,14 @@ describe('chat message reconciliation', () => {
     }]
 
     expect(preserveMessageRenderKeys(current, reopened)[0]).toMatchObject({
-      displayContent: current[0].displayContent,
+      displayContent: reopened[0].displayContent,
       status: 'complete',
       pending: false,
       renderKey: 'dsh-reply-turn-2',
     })
   })
 
-  it('keeps the rich display when the transient projection normalizes source text', () => {
+  it('accepts a changed source and shorter projected display for the same durable message', () => {
     const current = [{
       id: 'assistant-rich-normalized',
       role: 'assistant',
@@ -154,7 +154,7 @@ describe('chat message reconciliation', () => {
 
     expect(preserveMessageRenderKeys(current, transientProjection)[0]).toMatchObject({
       content: transientProjection[0].content,
-      displayContent: current[0].displayContent,
+      displayContent: transientProjection[0].displayContent,
       status: 'complete',
       pending: false,
     })

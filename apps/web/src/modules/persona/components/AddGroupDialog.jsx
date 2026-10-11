@@ -1,6 +1,7 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 export function AddGroupDialog({ title = "添加分组", value, onChange, onConfirm, onCancel }) {
   return (
-    <div className="character-group-dialog-backdrop">
+    <SystemBarOverlay className="character-group-dialog-backdrop">
       <form
         className="character-group-dialog"
         onSubmit={(event) => {
@@ -27,6 +28,6 @@ export function AddGroupDialog({ title = "添加分组", value, onChange, onConf
           </button>
         </div>
       </form>
-    </div>
+    </SystemBarOverlay>
   );
 }

@@ -1,5 +1,5 @@
 diff --git a/lib/index.js b/lib/index.js
-index 7ebf353150852b62a67ae9b3a6cdc902a6d86b8d..ea6b12c54f3cb2d8796d992b633ae82e3090093a 100644
+index 7ebf353150852b62a67ae9b3a6cdc902a6d86b8d..b7dcbb0c1fcdc395cd50cdc51befa43ba8c97710 100644
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -227,6 +227,37 @@ function bundleManifest(name, dir, anchor) {
@@ -40,7 +40,7 @@ index 7ebf353150852b62a67ae9b3a6cdc902a6d86b8d..ea6b12c54f3cb2d8796d992b633ae82e
  /** Atomically save a profile manifest while retaining unrelated fields.
  * @param dir Profile directory.
  * @param manifest Updated document.
-@@ -1075,6 +1106,19 @@ var __esDecorate = function(ctor, descriptorIn, decorators, contextIn, initializ
+@@ -1075,6 +1106,20 @@ var __esDecorate = function(ctor, descriptorIn, decorators, contextIn, initializ
  /** An http(s) URL, as pnpm's `--registry` takes it. */
  const REGISTRY_URL = /^https?:\/\/\S+$/;
  const protectedModules = new Set([
@@ -55,12 +55,13 @@ index 7ebf353150852b62a67ae9b3a6cdc902a6d86b8d..ea6b12c54f3cb2d8796d992b633ae82e
 +	"@eleckoi/dsh-client-web-search",
 +	"@eleckoi/dsh-product-api",
 +	"@eleckoi/dsh-client-shell",
++	"@eleckoi/dsh-client-mobile",
 +	"@eleckoi/dsh-client-roleplay",
 +	"@eleckoi/dsh-runtime/session-edit-plugin",
  	"@deepseek-ai/dsh-plugin-manager",
  	"@deepseek-ai/cordis-plugin-loader",
  	"@deepseek-ai/cordis-plugin-include",
-@@ -1491,11 +1535,13 @@ let PluginManager = (() => {
+@@ -1491,11 +1536,13 @@ let PluginManager = (() => {
  					if (compatibility !== void 0 && !compatibility.exempted) throw new ManagementFailure("incompatible-version", [incompatiblePlugin(compatibility)]);
  					const dir = resolveBundleDir("dsh", name, this.profile.installAnchor, this.profile.dir);
  					const meta = readPluginMeta(info.name ?? name, pathToFileURL(join(dir, "package.json")).href);

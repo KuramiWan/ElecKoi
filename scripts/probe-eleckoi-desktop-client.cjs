@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, session } = require('electron')
+const { app, BrowserWindow, ipcMain, protocol, session, webFrameMain } = require('electron')
 const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join, resolve } = require('node:path')
@@ -26,15 +26,23 @@ let window
 let failed = false
 let modelServer
 let modelRequests = 0
+const modelBodies = []
+const nativeAuthorMode = process.argv.includes('--native-author')
 async function main() {
-  const { DshDesktopPluginHost, resolveDshWebFrontendDirectory } = await import('@eleckoi/desktop-host')
-  const { OPTIONAL_BUNDLES } = await import('@deepseek-ai/dsh-app-boot')
+  const { DshDesktopPluginHost, resolveDshWebFrontendDirectory, ELECKOI_DESKTOP_BUNDLES, registerDesktopBundles } = await import('@eleckoi/desktop-host')
+  const { OPTIONAL_BUNDLES, initProfile, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } = await import('@deepseek-ai/dsh-app-boot')
   await app.whenReady()
   modelServer = createServer((_request, response) => {
+    if (nativeAuthorMode) {
+      let body = ''
+      _request.setEncoding('utf8')
+      _request.on('data', chunk => { body += chunk })
+      _request.on('end', () => { modelBodies.push(JSON.parse(body)) })
+    }
     modelRequests += 1
-    if (modelRequests > 1) {
+    if (nativeAuthorMode || modelRequests > 1) {
       response.writeHead(200, { 'content-type': 'text/event-stream' })
-      const text = modelRequests === 2 ? 'Synthetic recovered reply' : `Synthetic regenerated reply ${modelRequests}`
+      const text = nativeAuthorMode ? 'Synthetic native reply' : modelRequests === 2 ? 'Synthetic recovered reply' : `Synthetic regenerated reply ${modelRequests}`
       const item = { id: 'synthetic-message', type: 'message', role: 'assistant', content: [] }
       const events = [
         { type: 'response.created', response: { id: 'synthetic-response', model: 'example-model', status: 'in_progress', output: [] } },
@@ -54,6 +62,20 @@ async function main() {
   })
   await new Promise(resolve => modelServer.listen(0, '127.0.0.1', resolve))
   const endpoint = `http://127.0.0.1:${modelServer.address().port}/v1`
+  if (nativeAuthorMode) {
+    const profile = join(root, 'home', 'profiles', 'desktop')
+    initProfile(profile, [...PROFILE_TEMPLATES.web.bundles, ...ELECKOI_DESKTOP_BUNDLES])
+    registerDesktopBundles(profile)
+    const manifest = readProfileManifest('dsh', profile)
+    writeProfileBundles(profile, manifest, manifest.dsh.profile.bundles.filter(name =>
+      name !== '@eleckoi/dsh-client-tavern-shared' && name !== '@eleckoi/dsh-compatibility-host'))
+    writeFileSync(join(profile, 'cordis.patch.yml'), JSON.stringify([
+      { id: 'llm-pi-ai', config: { providers: { 'synthetic-native': { api: 'openai-responses', baseURL: endpoint,
+        apiKeyEnv: 'ELECKOI_SYNTHETIC_PROBE_KEY', models: [{ id: 'example-model', contextWindow: 65536, maxTokens: 8192 }] } } } },
+      { id: 'agent-default-model', config: { provider: 'synthetic-native', model: 'example-model' } },
+    ]))
+    process.env.ELECKOI_SYNTHETIC_PROBE_KEY = 'synthetic-probe-key'
+  }
   const hostOptions = { runtimeDataRoot: root, workspaceRoot: join(root, 'workspace'),
     productDatabasePath: join(root, 'product.sqlite'), productMediaRoot: join(root, 'media'),
     presetTemplatePath: resolve('apps/desktop/resources/dsh/agent-preset-template/agent.cordis.yml'),
@@ -83,7 +105,14 @@ async function main() {
   window = new BrowserWindow({ show: false, width: 1440, height: 1000,
     webPreferences: { preload: resolve('apps/desktop/out/preload/preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, offscreen: true, backgroundThrottling: false } })
   window.webContents.on('console-message', ({ level, message }) => { if (level === 'error') errors.push(message) })
-  window.webContents.on('did-fail-load', (_event, code, message) => errors.push(`${code}: ${message}`))
+  window.webContents.on('did-fail-load', (_event, code, message, url, isMainFrame, processId, routingId) => {
+    setImmediate(() => {
+      const frame = webFrameMain.fromId(processId, routingId)
+      // Removed authored frames can report their canceled navigation after unmount.
+      if (code === -3 && !isMainFrame && url === 'about:srcdoc' && !frame) return
+      errors.push(`${code}: ${message}; url=${url}; mainFrame=${isMainFrame}; frame=${JSON.stringify(frame ? { detached: frame.detached, url: frame.url, name: frame.name } : null)}`)
+    })
+  })
   await window.loadURL('dsh-app://app/')
   const waitFor = async (expression, label) => {
     const deadline = Date.now() + 35_000
@@ -94,6 +123,11 @@ async function main() {
     throw new Error(`${label}: ${(await window.webContents.executeJavaScript('document.body.innerText')).slice(0, 1600)}\n${errors.join('\n')}`)
   }
   await waitFor(`document.body.innerText.includes('ElecKoi')`, 'ElecKoi shell did not render')
+  if (nativeAuthorMode) {
+    const { runNativeAuthorScenario } = require('./probe-eleckoi-native-author-scenario.cjs')
+    await runNativeAuthorScenario({ window, ready, cookie, waitFor, requests: () => modelRequests, modelBodies, errors, productDataRoot: root })
+    return
+  }
   const checkOptionalPluginCards = async (expectedEnabled = false) => {
     await window.webContents.executeJavaScript(`(() => {
       const button = document.querySelector('button[aria-label="插件"]')
@@ -219,25 +253,21 @@ async function main() {
   const providers = settings.namespaces.find(row => row.ns === 'llm-pi-ai').value.providers
   const provider = Object.keys(providers).find(id => providers[id].baseURL === endpoint)
   if (!provider) throw new Error('Synthetic model profile is missing')
-  const created = await remoteCall('eleckoiConversations/create', { input: { title: 'Example chat', modelSelection: { provider, model: 'example-model' } } })
+  const created = await remoteCall('eleckoiConversations/create', { input: { title: 'Example chat' } })
+  await remoteCall('eleckoiConversationModels/select', { conversationId: created.conversation.id,
+    selection: { provider, model: 'example-model' } })
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === '消息')?.click()`)
   await waitFor(`Array.from(document.querySelectorAll('.conversation-main b')).some(node => node.innerText === 'Example chat')`, 'Synthetic conversation did not appear')
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.conversation-main b')).find(node => node.innerText === 'Example chat').click()`)
-  await waitFor(`document.querySelector('textarea') !== null`, 'Synthetic conversation did not open')
-  await window.webContents.executeJavaScript(`(() => {
-    const input = document.querySelector('textarea')
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Synthetic input')
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-  })()`)
+  await waitFor(`document.querySelector('[data-composer-input][contenteditable="true"]') !== null`, 'Synthetic conversation did not open')
+  await window.webContents.executeJavaScript(`document.querySelector('[data-composer-input]').focus()`)
+  await window.webContents.insertText('Synthetic input')
   await waitFor(`document.querySelector('button[aria-label="发送消息"]')?.disabled === false`, 'Send did not enable')
   await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="发送消息"]').click()`)
   await waitFor(`document.body.innerText.includes('Synthetic payment rejection') && !document.querySelector('button[aria-label="停止生成"]') && !document.body.innerText.includes('深度求索中')`, 'Failed model request left the composer running')
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(button => button.innerText.trim() === '关闭')?.click()`)
-  await window.webContents.executeJavaScript(`(() => {
-    const input = document.querySelector('textarea')
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(input, 'Synthetic retry')
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-  })()`)
+  await window.webContents.executeJavaScript(`document.querySelector('[data-composer-input]').focus()`)
+  await window.webContents.insertText('Synthetic retry')
   await waitFor(`document.querySelector('button[aria-label="发送消息"]')?.disabled === false`, 'Retry did not enable')
   await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="发送消息"]').click()`)
   await waitFor(`document.body.innerText.includes('Synthetic recovered reply') && !document.querySelector('button[aria-label="停止生成"]') && !document.body.innerText.includes('深度求索中')`, 'Retry did not complete in the original conversation')
@@ -262,11 +292,13 @@ async function main() {
       else if (!current.textContent.trim()) failures.push('Statistics became empty')
     }
     const observer = new MutationObserver(inspect)
-    observer.observe(document.querySelector('.chat-composer-dock'), { childList: true, subtree: true, characterData: true })
+    const composer = document.querySelector('[data-composer-card]')?.parentElement
+    if (!composer?.contains(root)) throw new Error('Composer statistics are outside the resident input surface')
+    observer.observe(composer, { childList: true, subtree: true, characterData: true })
     window.__eleckoiStatsProbe = { failures, observer }
   })()`)
   const regenerate = async () => {
-    await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="更多工具"]').click()`)
+    await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="扮演菜单"]').click()`)
     await waitFor(`Array.from(document.querySelectorAll('.composer-more-menu button')).some(button => button.innerText.trim() === '重新生成' && !button.disabled)`, 'Regeneration did not enable')
     await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.composer-more-menu button')).find(button => button.innerText.trim() === '重新生成').click()`)
   }

@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2024", "module": "ESNext", "moduleResolution": "Bundler",
+    "strict": true, "skipLibCheck": true, "composite": true, "declaration": true,
+    "declarationMap": true, "rootDir": "src", "outDir": "lib/types", "lib": ["ES2024", "DOM"]
+  },
+  "references": [
+    { "path": "../dsh-client-conversations/tsconfig.client.json" },
+    { "path": "../dsh-client-models/tsconfig.client.json" },
+    { "path": "../dsh-client-character-configuration/tsconfig.client.json" }
+  ],
+  "include": ["src/**/*.ts"]
+}

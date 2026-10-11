@@ -1,0 +1,108 @@
+import { assertVariableJson, loadVariableSchema } from '@eleckoi/dsh-product-data/variables'
+import type { ElecKoiProductDataStore } from './types.js'
+
+type VariableObject = Record<string, unknown>
+function assertObject(value: unknown): asserts value is VariableObject {
+  assertVariableJson(value)
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('变量状态必须是 JSON 对象。')
+}
+export interface VariableRuleContext {
+  conversationId: string
+  schemaCode: string
+  signal: AbortSignal
+}
+export interface VariableRuleRun {
+  apply(stage: 'before' | 'after' | 'afterSchema', state: VariableObject, before: VariableObject): Promise<VariableObject>
+  schema?(state: VariableObject, before: VariableObject): Promise<VariableObject | null>
+  close(): void
+}
+export interface VariableRuleProvider {
+  open(context: VariableRuleContext): VariableRuleRun | Promise<VariableRuleRun>
+}
+
+/** Processes an isolated candidate; repositories only save its accepted result. */
+export class ElecKoiVariableProcessing {
+  private provider: VariableRuleProvider | undefined
+  private providerRequired = false
+  private readonly active = new Map<string, AbortController>()
+  private closed = false
+
+  constructor(private readonly data: ElecKoiProductDataStore) {}
+
+  register(provider: VariableRuleProvider): () => void {
+    if (this.provider) throw new Error('作者变量处理服务已经注册。')
+    this.provider = provider
+    this.providerRequired = true
+    return () => {
+      if (this.provider !== provider) return
+      this.provider = undefined
+      for (const controller of this.active.values()) controller.abort(new Error('作者变量处理服务已卸载。'))
+    }
+  }
+
+  async process(input: {
+    conversationId: string
+    before: VariableObject
+    schemaCode: string
+    apply(state: VariableObject): VariableObject
+    signal?: AbortSignal
+  }): Promise<{ patched: VariableObject; state: VariableObject }> {
+    if (this.closed) throw new Error('变量处理服务已关闭。')
+    if (this.providerRequired && !this.provider) throw Object.assign(new Error('作者变量处理服务已卸载，本次修改未执行。'), { code: 'VARIABLE_RULE_OWNER_UNAVAILABLE' })
+    if (this.active.has(input.conversationId)) throw Object.assign(new Error('该聊天已有变量修改正在处理，请等待后重试。'), { code: 'VARIABLE_UPDATE_BUSY' })
+    const controller = new AbortController()
+    const signal = input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal
+    this.active.set(input.conversationId, controller)
+    let run: VariableRuleRun | undefined
+    try {
+      signal.throwIfAborted()
+      assertObject(input.before)
+      const before = structuredClone(input.before)
+      run = await this.provider?.open({ conversationId: input.conversationId, schemaCode: input.schemaCode, signal })
+      let working = run ? await run.apply('before', structuredClone(before), structuredClone(before)) : structuredClone(before)
+      signal.throwIfAborted()
+      assertObject(working)
+      const patched = input.apply(working)
+      assertObject(patched)
+      working = run ? await run.apply('after', structuredClone(patched), structuredClone(before)) : patched
+      signal.throwIfAborted()
+      assertObject(working)
+      const preSchema = structuredClone(working)
+      const authored = await run?.schema?.(structuredClone(working), structuredClone(before))
+      let state = authored ?? (input.schemaCode.trim() ? loadVariableSchema(input.schemaCode).parse(working) : working)
+      signal.throwIfAborted()
+      assertObject(state)
+      if (run) state = await run.apply('afterSchema', structuredClone(state), structuredClone(before))
+      signal.throwIfAborted()
+      assertObject(state)
+      return { patched: preSchema, state }
+    } finally {
+      run?.close()
+      this.active.delete(input.conversationId)
+    }
+  }
+
+  async replace(conversationId: string, stateJson: string, signal?: AbortSignal): Promise<string> {
+    const proposed: unknown = JSON.parse(stateJson)
+    assertObject(proposed)
+    return this.mutate(conversationId, () => structuredClone(proposed), signal)
+  }
+
+  async mutate(conversationId: string, apply: (state: VariableObject) => VariableObject, signal?: AbortSignal): Promise<string> {
+    const original = this.data.readAuthorConversationState(conversationId)
+    const { state } = await this.process({ conversationId, before: JSON.parse(original.currentVariableStateJson) as VariableObject,
+      schemaCode: original.variableConfig?.schemaCode || '', apply, ...(signal ? { signal } : {}) })
+    const current = this.data.readAuthorConversationState(conversationId)
+    if (current.currentVariableStateJson !== original.currentVariableStateJson
+      || JSON.stringify(current.variableConfig) !== JSON.stringify(original.variableConfig)) {
+      throw Object.assign(new Error('处理期间变量或配置已变化，本次修改未保存，请重新读取后再试。'), { code: 'VARIABLE_UPDATE_CONFLICT' })
+    }
+    signal?.throwIfAborted()
+    return this.data.replaceConversationVariableState(conversationId, JSON.stringify(state))
+  }
+
+  close(): void {
+    this.closed = true
+    for (const controller of this.active.values()) controller.abort(new Error('变量处理服务已关闭。'))
+  }
+}

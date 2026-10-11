@@ -8,20 +8,20 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import productDataPlugin from '@eleckoi/dsh-product-data'
-import { ElecKoiConversationLifecycle } from '../packages/dsh-product-api/src/conversationLifecycle'
-import { ConversationChangeFeed, CharacterConfigurationChangeFeed } from '../packages/dsh-product-api/src/index'
+import { ElecKoiConversationLifecycle } from '../packages/host/product-api/src/conversationLifecycle'
+import { ConversationChangeFeed, CharacterConfigurationChangeFeed } from '../packages/host/product-api/src/index'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { VariableStateRepository } from '../packages/dsh-product-data/src/domain/variables/VariableStateRepository'
-import { VariableConfigRepository } from '../packages/dsh-product-data/src/domain/variables/VariableConfigRepository'
-import * as roleplayPlugin from '../packages/dsh-client-roleplay/src/index.js'
-import { readSessionSnapshot, writeSessionSnapshot } from '../packages/dsh-client-roleplay/src/host/session-snapshot.mjs'
-import { readDshSessionLog } from '../packages/dsh-runtime/src/trajectory'
-import { rewindDshSession } from '../packages/dsh-runtime/src/sessionRewind'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { VariableStateRepository } from '../packages/host/product-data/src/domain/variables/VariableStateRepository'
+import { VariableConfigRepository } from '../packages/host/product-data/src/domain/variables/VariableConfigRepository'
+import * as roleplayPlugin from '../packages/client/features/dsh-client-roleplay/src/index.js'
+import { readSessionSnapshot, writeSessionSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-snapshot.mjs'
+import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
+import { rewindDshSession } from '../packages/host/runtime/src/sessionRewind'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
@@ -99,14 +99,19 @@ function run(f) {
 }
 
 describe('official Session and product save boundary', { timeout: 30_000 }, () => {
-  it.each(['send', 'regeneration'])('settles an interrupted %s before the next input without replaying it', async mode => {
+  it.each([
+    ['send', 'text'], ['send', 'reasoning'], ['regeneration', 'text'], ['regeneration', 'reasoning'],
+  ])('settles an interrupted %s with only %s before the next input without replaying it', async (mode, interruptedType) => {
     const started = Promise.withResolvers()
     const requests = []
     const f = await fixture({ async *stream(options) {
       requests.push(options)
-      const text = requests.length === 1 ? '<FINAL>合成中断正文' : '<FINAL>合成后续正文</FINAL>'
-      yield { type: 'block-start', index: 0, blockType: 'text' }
-      yield { type: 'text-delta', index: 0, text }
+      const type = requests.length === 1 ? interruptedType : 'text'
+      const text = requests.length === 1
+        ? type === 'reasoning' ? '合成中断思考' : '<FINAL>合成中断正文'
+        : '<FINAL>合成后续正文</FINAL>'
+      yield { type: 'block-start', index: 0, blockType: type }
+      yield { type: `${type}-delta`, index: 0, text }
       if (requests.length === 1) {
         started.resolve()
         await new Promise((_resolve, reject) => {
@@ -114,7 +119,7 @@ describe('official Session and product save boundary', { timeout: 30_000 }, () =
           else options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true })
         })
       }
-      yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+      yield { type: 'block-end', index: 0, block: { type, text } }
       yield { type: 'finish', reason: { kind: 'stop' } }
     } })
     const original = createUserMessage({ content: [{ type: 'text', text: '合成原输入' }], source: { kind: 'user' } })
@@ -127,7 +132,11 @@ describe('official Session and product save boundary', { timeout: 30_000 }, () =
     f.handle.agent.cancel({ kind: 'user' }, { keepInbox: true })
     await f.handle.agent.whenIdle()
     await f.ctx.eleckoiConversationLifecycle.wait(f.conversationId, f.input.operationId)
-    expect(readDshSessionLog(join(f.root, 'sessions'), f.conversationId).events.at(-1))
+    const interruptedEvents = readDshSessionLog(join(f.root, 'sessions'), f.conversationId).events
+    expect(interruptedEvents.find(event => event.type === 'assistant/message'))
+      .toMatchObject({ surfaceOp: 'append', data: { interrupted: true,
+        message: { content: [{ type: interruptedType }] } } })
+    expect(interruptedEvents.at(-1))
       .toMatchObject({ type: 'turn/end', data: { turn: 1, reason: { kind: 'aborted' } } })
     expect(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId).variableStateJson).toBe('{}')
 
@@ -192,26 +201,24 @@ describe('official Session and product save boundary', { timeout: 30_000 }, () =
     expect(f.changes.filter(change => change.kind === 'generation').map(change => change.error)).toEqual(['', ''])
   })
 
-  it('flushes the real Session before committing variables, waits for plugins, and retains variables after reopening without a result table', async () => {
+  it('waits for official Session persistence before committing variables and retains them after reopening', async () => {
     const f = await fixture()
     let release
     const gate = new Promise(resolve => { release = resolve })
-    let sawDurableReply = false
     let entered
     const started = new Promise(resolve => { entered = resolve })
-    f.ctx.eleckoiConversationLifecycle.register({ id: 'synthetic-memory', async afterSave() {
-      sawDurableReply = readDshSessionLog(join(f.root, 'sessions'), f.conversationId).events.some(event => event.type === 'turn/end')
-      expect(JSON.parse(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId).variableStateJson)).toEqual({ score: 1 })
+    f.ctx.on('session/flush', async () => {
       entered()
       await gate
-    } })
+    })
     await run(f)
     let finished = false
     const pending = f.ctx.eleckoiConversationLifecycle.wait(f.conversationId, f.input.operationId).then(() => { finished = true })
-    await Promise.race([started, pending.then(() => { throw new Error('Save finished before the plugin was called') })])
-    expect(sawDurableReply).toBe(true)
+    await Promise.race([started, pending.then(() => { throw new Error('Product save finished before Session persistence') })])
     expect(finished).toBe(false)
+    expect(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId).variableStateJson).toBe('{}')
     release(); await pending
+    expect(readDshSessionLog(join(f.root, 'sessions'), f.conversationId).events.some(event => event.type === 'turn/end')).toBe(true)
     expect(f.changes).toContainEqual({ kind: 'generation', conversationId: f.conversationId, error: '' })
     expect(JSON.parse(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId).variableStateJson)).toEqual({ score: 1 })
     await f.ctx.fiber.dispose()
@@ -224,22 +231,11 @@ describe('official Session and product save boundary', { timeout: 30_000 }, () =
     finally { reopened.close() }
   })
 
-  it('reports plugin finalization failure and preserves the already saved variables', async () => {
+  it('does not commit variables if the official durability barrier fails', async () => {
     const f = await fixture()
-    f.ctx.eleckoiConversationLifecycle.register({ id: 'synthetic-failure', afterSave() { throw new Error('synthetic plugin failure') } })
-    await run(f)
-    await expect(f.ctx.eleckoiConversationLifecycle.wait(f.conversationId, f.input.operationId)).rejects.toThrow('synthetic plugin failure')
-    expect(JSON.parse(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId).variableStateJson)).toEqual({ score: 1 })
-  })
-
-  it('does not commit variables or call plugins if the official durability barrier fails', async () => {
-    const f = await fixture()
-    let called = false
     f.ctx.on('session/flush', () => { throw new Error('synthetic disk failure') })
-    f.ctx.eleckoiConversationLifecycle.register({ id: 'synthetic-save', afterSave() { called = true } })
     await run(f)
     await expect(f.ctx.eleckoiConversationLifecycle.wait(f.conversationId, f.input.operationId)).rejects.toThrow('synthetic disk failure')
-    expect(called).toBe(false)
     expect(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId).variableStateJson).toBe('{}')
   })
 

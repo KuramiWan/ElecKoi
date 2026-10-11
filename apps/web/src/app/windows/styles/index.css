@@ -25,6 +25,7 @@
 @import "../../../modules/variables/styles/variable-config.css";
 @import "../../../modules/regex/styles/regex-rules.css";
 @import "../../../modules/regex/styles/regex-manager.css";
+@import "../../../modules/scripts/styles/script-libraries.css";
 @import "../../../modules/presets/styles/preset-panel.css";
 @import "../../../modules/agentTools/styles/web-search-settings.css";
 @import "../../../modules/agentTools/styles/subagent-settings-link.css";

@@ -4,7 +4,7 @@ import { LlmRuntime, BlockAssembler } from '@deepseek-ai/dsh-llm'
 import * as deepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { describe, expect, it } from 'vitest'
-import { requestSnapshot } from '../packages/dsh-client-roleplay/src/host/session-runtime.mjs'
+import { requestSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-runtime.mjs'
 
 describe('model request parameters', () => {
   it('carries saved sampling and compaction parameters into main and subagent request snapshots', () => {

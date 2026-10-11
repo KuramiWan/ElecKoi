@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "status": "android-runtime",
+  "glibc": {
+    "version": "2.44",
+    "url": "https://packages.termux.dev/apt/termux-glibc/pool/stable/g/glibc/glibc_2.44_aarch64.deb",
+    "file": "glibc_2.44_aarch64.deb",
+    "sha256": "5392d254e84c436e96783bcb6ffffe429d6b24c7ad00490f23f06f66c4769fb6",
+    "auditedSourceCommit": "e289d1efc6216790e4ea87aa9c2f2dcfbfc429f1"
+  },
+  "ubuntuLoader": {
+    "member": "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1",
+    "sha256": "393384096ffa869e1be20d2f91fdf08dfadb9f3e531dfe724085d8501d3f85d9"
+  },
+  "prefix": {
+    "original": "/data/data/com.termux/files",
+    "replacement": "/proc/self/fd/63",
+    "fileDescriptor": 63
+  },
+  "elfFiles": [
+    {
+      "file": "ld-linux-aarch64.so.1",
+      "sourceSha256": "ca4af7c4022222bb405b0b601d818506ea608a2242f3cce43bd0b56b71f94530",
+      "sha256": "576b1c97d8bbe5fc9960e57120d178d3e9431ced8553699d4881847ef7faa5a7",
+      "prefixReplacements": 10
+    },
+    {
+      "file": "libc.so.6",
+      "sourceSha256": "cb7b001c0d4030119eb9010ae2d747fcbc51108cfb1e0940fa78618d78dc9ae9",
+      "sha256": "f0feeb8206ad11c9881e95d5cbd031766b04ede86b7364390bc1fa533984cfd3",
+      "prefixReplacements": 55
+    },
+    {
+      "file": "libdl.so.2",
+      "sourceSha256": "9c8504547ea2ae94146760551135ae49b19659ee3f6d913c1f2f055695a7fce7",
+      "sha256": "9c8504547ea2ae94146760551135ae49b19659ee3f6d913c1f2f055695a7fce7",
+      "prefixReplacements": 0
+    },
+    {
+      "file": "libm.so.6",
+      "sourceSha256": "6e070086457ddc46e8fbbd2ed11a63bb0a394e9eeb41bbfbe1825aa286f9cbb1",
+      "sha256": "f5f77b6699eeec66bc0d058a57e24b8af883a7d01a8ff1ef244bd46912ab71e2",
+      "prefixReplacements": 2
+    },
+    {
+      "file": "libnss_dns.so.2",
+      "sourceSha256": "1eaa206e5e1c7e5f983038de9c2c9aabb76337334c2f4e9fa46fe8058ebe7dbe",
+      "sha256": "1eaa206e5e1c7e5f983038de9c2c9aabb76337334c2f4e9fa46fe8058ebe7dbe",
+      "prefixReplacements": 0
+    },
+    {
+      "file": "libnss_files.so.2",
+      "sourceSha256": "068976beb57afd439680a9c9ad72652562088efd50bd68e722144003632f5c96",
+      "sha256": "068976beb57afd439680a9c9ad72652562088efd50bd68e722144003632f5c96",
+      "prefixReplacements": 0
+    },
+    {
+      "file": "libpthread.so.0",
+      "sourceSha256": "adf2a3b38694cdd6b8e6c08f56a64786420cb20d736ceece48c3871147357ff2",
+      "sha256": "adf2a3b38694cdd6b8e6c08f56a64786420cb20d736ceece48c3871147357ff2",
+      "prefixReplacements": 0
+    },
+    {
+      "file": "libresolv.so.2",
+      "sourceSha256": "490093f15e8f6a5966e89f61c01887657ababeb154b755c48d91a6e2ab9888f2",
+      "sha256": "023d7cd28931737a040ce314afd604cd41a4722ed15bba04272b0b93d76c251f",
+      "prefixReplacements": 1
+    },
+    {
+      "file": "librt.so.1",
+      "sourceSha256": "a941a6c9eb45597c47597e7711e8cd24b039eb488f20337d2a96e35c22daf327",
+      "sha256": "a941a6c9eb45597c47597e7711e8cd24b039eb488f20337d2a96e35c22daf327",
+      "prefixReplacements": 0
+    }
+  ],
+  "licenses": [
+    {
+      "file": "GPL-3.0.txt",
+      "url": "https://www.gnu.org/licenses/gpl-3.0.txt",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "target": "copyright"
+    },
+    {
+      "file": "LGPL-3.0.txt",
+      "url": "https://www.gnu.org/licenses/lgpl-3.0.txt",
+      "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118",
+      "target": "copyright.1"
+    }
+  ]
+}

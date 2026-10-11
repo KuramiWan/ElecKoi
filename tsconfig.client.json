@@ -1,35 +1,38 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/client/features/dsh-client-author/tsconfig.client.json" },
+    { "path": "./packages/client/features/dsh-client-tavern-shared/tsconfig.client.json" },
+    { "path": "./packages/client/mobile/dsh-client-mobile/tsconfig.client.json" },
     {
-      "path": "./packages/dsh-client-character-configuration/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-character-configuration/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-characters/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-characters/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-conversations/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-conversations/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-creator-studio/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-creator-studio/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-display-preferences/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-display-preferences/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-models/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-models/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-persona/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-persona/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-presets/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-presets/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-web-search/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-web-search/tsconfig.client.json"
     },
     {
-      "path": "./packages/dsh-client-shell/tsconfig.client.json"
+      "path": "./packages/client/features/dsh-client-shell/tsconfig.client.json"
     }
   ],
   "compilerOptions": {
@@ -39,8 +42,14 @@
     "strict": true,
     "skipLibCheck": true,
     "paths": {
+      "@eleckoi/dsh-product-api/frontends": [
+        "./packages/host/product-api/src/frontend-project-types.ts"
+      ],
+      "@eleckoi/dsh-product-data/frontends": [
+        "./packages/host/product-data/src/domain/frontends/index.ts"
+      ],
       "@eleckoi/dsh-product-api/types": [
-        "./packages/dsh-product-api/src/types.ts"
+        "./packages/host/product-api/src/types.ts"
       ]
     }
   }

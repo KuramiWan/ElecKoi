@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { CaretDown, X } from "@phosphor-icons/react";
-import { generatedInitialStatePreviewJson, generatedObjectStateJson } from "../../../../../../packages/product-shared/src/foundation/variables/initialState.ts";
-import { VARIABLE_INITIALIZATION_OBJECT_ID } from "../../../../../../packages/product-shared/src/contracts/variables/schemas.ts";
+import { CaretDown, X } from "../../../ui/icons/interfaceIcons.jsx";
+import { generatedInitialStatePreviewJson, generatedObjectStateJson } from "../../../../../../packages/shared/src/foundation/variables/initialState.ts";
+import { VARIABLE_INITIALIZATION_OBJECT_ID } from "../../../../../../packages/shared/src/contracts/variables/schemas.ts";
 import { VariableEntryIcon, VariableGroupIcon } from "./VariableConfigTree.jsx";
 import { variablePointerPath } from "../model/variableConfigEditing.js";
 
@@ -15,6 +15,7 @@ const VARIABLE_TYPES = [
   { value: "boolean", description: "JS boolean，只保存 true / false" },
   { value: "object", description: "JSON object，由具名字段组成的对象" },
   { value: "array", description: "JSON array，有顺序的一组 JSON 值" },
+  { value: "null", description: "JSON null，表示空值" },
 ];
 
 function VariableTypeSelect({ value, onSelect }) {
@@ -154,6 +155,8 @@ function VariableEditor({ config, variable, nameInputRef, onChange, onConvert })
   const update = (patch) => onChange({ ...config, variables: config.variables.map((item) => item.id === variable.id ? { ...item, ...patch } : item) });
   const defaultControl = variable.type === "boolean" ? (
     <select value={variable.defaultValue || "false"} onChange={(event) => update({ defaultValue: event.target.value })}><option value="false">false</option><option value="true">true</option></select>
+  ) : variable.type === "null" ? (
+    <input readOnly value="null" />
   ) : variable.type === "array" ? (
     <textarea className="is-code" value={variable.defaultValue} onChange={(event) => update({ defaultValue: event.target.value })} placeholder="[]" />
   ) : (
@@ -169,7 +172,7 @@ function VariableEditor({ config, variable, nameInputRef, onChange, onConvert })
         </div>
       </Field>
       <Field label="变量名称"><input ref={nameInputRef} maxLength={60} value={variable.title} onChange={(event) => update({ title: event.target.value })} /></Field>
-      <VariableTypeSelect key={variable.id} value={variable.type} onSelect={(type) => type === "object" ? onConvert(variable.id) : update({ type })} />
+      <VariableTypeSelect key={variable.id} value={variable.type} onSelect={(type) => type === "object" ? onConvert(variable.id) : update({ type, ...(type === "null" ? { defaultValue: "null" } : {}) })} />
       <Field label="默认值" wide>{defaultControl}</Field>
       <Field label="说明" wide><textarea value={variable.description} onChange={(event) => update({ description: event.target.value })} placeholder="这个变量表示什么" /></Field>
       <Field label="更新规则" wide><textarea value={variable.updateRule} onChange={(event) => update({ updateRule: event.target.value })} placeholder="何时、如何更新这个变量" /></Field>

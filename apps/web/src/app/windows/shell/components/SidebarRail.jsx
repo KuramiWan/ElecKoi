@@ -2,8 +2,9 @@ import { Suspense } from "react";
 import { PluginNavIcon, SettingsIcon } from "../../../../ui/icons/index.jsx";
 import { Avatar } from "../../../../ui/ui/Avatar.jsx";
 import logoIcon from "../../../../assets/eleckoi-app-icon.png";
+import { DshPanelLeftIcon } from "../../../../ui/icons/dshComposerIcons.jsx";
 
-function RailIconButton({ label, active, onClick, icon, productIcon }) {
+function RailIconButton({ label, active, onClick, icon, productIcon, expanded }) {
   function handleClick() {
     Promise.resolve(onClick?.()).catch((error) => {
       console.error(`Rail action failed: ${label}`, error);
@@ -25,11 +26,12 @@ function RailIconButton({ label, active, onClick, icon, productIcon }) {
       <span className="rail-icon-layer active-fill" aria-hidden="true">
         <Suspense fallback={<PluginNavIcon />}>{icon}</Suspense>
       </span>
+      {expanded && <span className="rail-navigation-label">{label}</span>}
     </button>
   );
 }
 
-function RailProfileButton({ persona, active, onOpenProfile }) {
+function RailProfileButton({ persona, active, onOpenProfile, expanded }) {
   const displayName = persona?.user_name || "你";
   const avatar = persona?.user_avatar || "";
 
@@ -43,27 +45,33 @@ function RailProfileButton({ persona, active, onOpenProfile }) {
         onClick={onOpenProfile}
       >
         <Avatar src={avatar} name={displayName} className="rail-user-avatar" />
+        {expanded && <span>{displayName}</span>}
       </button>
     </div>
   );
 }
 
-function RailSettingsButton({ active, onOpenSettings }) {
+function RailSettingsButton({ active, onOpenSettings, expanded }) {
   return (
     <button
       className={`rail-settings-trigger ${active ? "active" : ""}`}
       type="button"
       title="设置"
-      aria-label="打开设置"
+      aria-label={expanded ? "设置" : "打开设置"}
       aria-current={active ? "page" : undefined}
       onClick={onOpenSettings}
     >
       <SettingsIcon weight="light" />
+      {expanded && <span>设置</span>}
     </button>
   );
 }
 
-export function SidebarRail({ activeSection, navigationItems = [], renderSidebarSlot, profileActive, onSectionChange, onNavigationAction, persona, onOpenProfile, onOpenSettings }) {
+export function SidebarRail({ activeSection, navigationItems = [], renderSidebarSlot, profileActive, onSectionChange, onNavigationAction, persona, onOpenProfile, onOpenSettings, expanded = false, compactAccount = false, onCollapse, footerActions }) {
+  const brand = <span className="rail-brand-seat" aria-hidden="true">
+    {renderSidebarSlot?.("sidebar.brand.mark", { size: 30, content: <img src={logoIcon} alt="" draggable="false" /> }) || <img src={logoIcon} alt="" draggable="false" />}
+    {renderSidebarSlot?.("sidebar.toggle.badge", {})}
+  </span>;
   const renderItem = ({ id, label, action, productIcon }) => (
     <RailIconButton
       key={id}
@@ -72,23 +80,28 @@ export function SidebarRail({ activeSection, navigationItems = [], renderSidebar
       onClick={() => action ? onNavigationAction?.(id) : onSectionChange(id)}
       icon={renderSidebarSlot?.("sidebar.panellist", { size: 24, active: !action && activeSection === id }, { only: id }) || <PluginNavIcon />}
       productIcon={productIcon}
+      expanded={expanded}
     />
   );
+  const profile = <RailProfileButton persona={persona} active={profileActive} onOpenProfile={onOpenProfile} expanded={expanded} />;
+  const settings = renderSidebarSlot?.("sidebar.settings", {
+    wide: expanded && !compactAccount,
+    content: <RailSettingsButton active={activeSection === "settings" && !profileActive} onOpenSettings={onOpenSettings} expanded={expanded && !compactAccount} />,
+  }) || <RailSettingsButton active={activeSection === "settings" && !profileActive} onOpenSettings={onOpenSettings} expanded={expanded && !compactAccount} />;
   return (
-    <aside className="qq-rail" aria-label="侧边功能栏">
-      <span className="rail-brand-seat" aria-hidden="true">
-        {renderSidebarSlot?.("sidebar.brand.mark", { size: 30, content: <img src={logoIcon} alt="" draggable="false" /> }) || <img src={logoIcon} alt="" draggable="false" />}
-        {renderSidebarSlot?.("sidebar.toggle.badge", {})}
-      </span>
+    <aside className={`qq-rail${expanded ? " expanded" : ""}`} aria-label="侧边功能栏">
+      {expanded && <header className="rail-expanded-header">
+        {brand}
+        {renderSidebarSlot?.("sidebar.brand.name", { content: <strong>ElecKoi</strong> }) || <strong>ElecKoi</strong>}
+        <button type="button" aria-label="收起侧边栏" onClick={onCollapse}><DshPanelLeftIcon size={20} /></button>
+      </header>}
+      {!expanded && brand}
       <div className="rail-nav-group">
         {navigationItems.map(renderItem)}
       </div>
       <div className="rail-bottom-zone">
-        <RailProfileButton persona={persona} active={profileActive} onOpenProfile={onOpenProfile} />
-        {renderSidebarSlot?.("sidebar.settings", {
-          wide: false,
-          content: <RailSettingsButton active={activeSection === "settings" && !profileActive} onOpenSettings={onOpenSettings} />,
-        }) || <RailSettingsButton active={activeSection === "settings" && !profileActive} onOpenSettings={onOpenSettings} />}
+        {footerActions && <div className="rail-footer-actions" aria-label="侧边栏插件操作">{footerActions}</div>}
+        {compactAccount ? <div className="rail-account-row">{profile}<div className="rail-settings-seat">{settings}</div></div> : <>{profile}{settings}</>}
       </div>
     </aside>
   );

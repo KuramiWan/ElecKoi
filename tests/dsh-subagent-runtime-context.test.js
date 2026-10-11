@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
+import { ElecKoiVariableProcessing } from '@eleckoi/dsh-product-api'
 import {
   apply as applyAgentPresetBridge,
   installAgentHandleTracking
@@ -294,6 +295,7 @@ function runtimeFixture() {
 async function toolResultFor(sessionId, name, args) {
   const registered = []
   const context = {
+    eleckoiVariableProcessing: new ElecKoiVariableProcessing(null),
     eleckoiProductData: { commitConversationRuntime: vi.fn((conversationId, _variables, raw) => {
       expect(conversationId).toBe('conversation-a')
       expect(JSON.parse(raw).entries[0].content).toBe('港口终年晴朗。')

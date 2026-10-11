@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import React, { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -61,7 +62,7 @@ export function ConfirmationDialog({
   if (!open) return null;
 
   const dialog = (
-    <div className="confirmation-overlay" role="presentation" onMouseDown={() => !busy && onCancel?.()}>
+    <SystemBarOverlay className="confirmation-overlay" role="presentation" onMouseDown={() => !busy && onCancel?.()}>
       <section
         ref={dialogRef}
         className="confirmation-dialog"
@@ -86,7 +87,7 @@ export function ConfirmationDialog({
           </button>
         </div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 
   const portalTarget = typeof document === "undefined" ? null : document.body;

@@ -2,20 +2,22 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { RegexRuleRepository } from '../packages/dsh-product-data/src/domain/regexRules/RegexRuleRepository'
-import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
-import { regexRuleCollectionSchema, type RegexRule } from '../packages/product-shared/src/contracts/regex/schemas'
+import { RegexRuleRepository } from '../packages/host/product-data/src/domain/regexRules/RegexRuleRepository'
+import { AgentPresetRepository } from '../packages/host/product-data/src/domain/agentPresets'
+import { MessageDisplayProjector } from '../packages/host/product-data/src/domain/conversations/MessageDisplayProjector'
+import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
+import { regexRuleCollectionSchema, type RegexRule } from '../packages/shared/src/contracts/regex/schemas'
 import {
   includeImportedRulesInActiveVersion,
   rulesForSurface,
   transformCollectionSurface,
   transformWithRegexRules,
   validateRegexRule
-} from '../packages/product-shared/src/foundation/regex/RegexRuleProcessor'
+} from '../packages/shared/src/foundation/regex/RegexRuleProcessor'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []
@@ -95,7 +97,9 @@ describe('regex processor', () => {
       .toBe('two two')
     expect(transformWithRegexRules('abc', [rule({ pattern: '/^/g', replacement: '>' })], 'AiOutput'))
       .toBe('>abc')
-    expect(validateRegexRule(rule({ pattern: '/x/u' }))).toBe('不支持的正则标志：u')
+    expect(validateRegexRule(rule({ pattern: '/x/u' }))).toBeNull()
+    expect(transformWithRegexRules('sample', [rule({ pattern: '/\\p{Letter}+/u', replacement: 'word' })], 'AiOutput')).toBe('word')
+    expect(validateRegexRule(rule({ pattern: '/x/z' }))).toBe('不支持的正则标志：z')
   })
 
   it('keeps scope priority and Android surface rules', () => {
@@ -256,6 +260,26 @@ describe('regex repository', () => {
     expect(agentPresets.active().regexRules.map((item) => item.id)).toEqual(['external'])
   })
 
+  it('refreshes the same message after persisted preset edits without changing the regex state revision', () => {
+    const { agentPresets, repository, database } = harness()
+    const active = agentPresets.active()
+    const displayRule = rule({ pattern: '/hello/g', replacement: '<section>Old display</section>', displayOnly: true })
+    agentPresets.save({ ...active, regexRules: [displayRule] })
+    const loaded = repository.get('card-a')
+    const message = { id: 'assistant-a', conversationId: 'chat-a', role: 'assistant' as const,
+      content: 'hello', variableStateJson: '{}', status: 'complete' as const, createdAt: '2026-10-10T00:00:00.000Z' }
+    const projector = new MessageDisplayProjector(mvuMessageDisplayCompatibility)
+    expect(projector.project(message, loaded).displayContent).toContain('Old display')
+    agentPresets.save({ ...agentPresets.active(), regexRules: [{ ...displayRule, replacement: 'New display' }] })
+    const updated = repository.get('card-a')
+    expect(updated.revision).toBe(loaded.revision)
+    expect(updated.agentPresetRegexRevision).not.toBe(loaded.agentPresetRegexRevision)
+    expect(projector.project(message, updated).displayContent).toBe('New display')
+    const reread = new RegexRuleRepository(database, agentPresets).get('card-a')
+    expect(reread.agentPresetRules[0]!.replacement).toBe('New display')
+    expect(message.content).toBe('hello')
+  }, 20_000)
+
   it('rejects a stale preset editor save after regex rules changed elsewhere', () => {
     const { agentPresets } = harness()
     const stale = agentPresets.active()
@@ -274,22 +298,30 @@ describe('regex repository', () => {
     })
   })
 
-  it('imports Tavern rules, keeps scopes and ignores unsupported depth metadata', () => {
-    const { repository } = harness()
+  it('imports Tavern rules and preserves native options after reopening and export', () => {
+    const { repository, database, agentPresets } = harness()
     const empty = repository.get('card-a')
     const imported = repository.import('card-a', 'Global', [{
       displayName: 'rules.json',
       json: JSON.stringify({ regex_scripts: [
         { scriptName: '显示清理', findRegex: '/<x>/g', replaceString: '', placement: [2], markdownOnly: true },
         { scriptName: '角色规则', findRegex: '/a/g', replaceString: 'b', scope: 'Character' },
-        { scriptName: '保留外部规则', findRegex: '/c/g', minDepth: 1, maxDepth: 4 }
+        { scriptName: '保留外部规则', findRegex: '/c/g', minDepth: 1, maxDepth: 4,
+          trimStrings: ['prefix'], substituteRegex: 1 }
       ] })
     }], empty.revision)
     expect(imported.importedRuleCount).toBe(3)
     expect(imported.collection.globalRules[0]).toMatchObject({ name: '显示清理', displayOnly: true, targets: ['AiOutput'] })
-    expect(imported.collection.globalRules[1]).toMatchObject({ name: '保留外部规则' })
+    expect(imported.collection.globalRules[1]).toMatchObject({ name: '保留外部规则', minDepth: 1,
+      maxDepth: 4, trimStrings: ['prefix'], substituteRegex: 1 })
     expect(imported.collection.characterRules[0]).toMatchObject({ name: '角色规则' })
     const exported = repository.export('card-a', imported.collection.globalRules.concat(imported.collection.characterRules).map((item) => item.id))
     expect(JSON.parse(exported.json)).toMatchObject({ format: 'eleckoi.regex-rules-export', version: 2 })
-  })
+    expect(JSON.parse(exported.json).rules[1]).toMatchObject({ minDepth: 1, maxDepth: 4,
+      trimStrings: ['prefix'], substituteRegex: 1 })
+    database.close()
+    database.open()
+    const reopened = new RegexRuleRepository(database, agentPresets).get('card-a')
+    expect(reopened.globalRules[1]).toEqual(imported.collection.globalRules[1])
+  }, 20_000)
 })

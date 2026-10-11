@@ -1,8 +1,8 @@
-import { CheckCircle, NotePencil } from '@phosphor-icons/react';
+import { CheckCircle, NotePencil } from '../../../ui/icons/interfaceIcons.jsx';
 import { Avatar } from '../../../ui/ui/Avatar.jsx';
 import defaultPresetAvatar from '../../../assets/eleckoi-app-icon.png';
 
-export function PresetProfileHeader({ preset, active, onActivate, onEdit }) {
+export function PresetProfileHeader({ preset, active, onActivate, onEdit, showActivate = true }) {
   const profile = preset.profile;
 
   return <header className="preset-profile-hero">
@@ -13,11 +13,11 @@ export function PresetProfileHeader({ preset, active, onActivate, onEdit }) {
           <h1 title={preset.name}>{preset.name}</h1>
           <button type="button" aria-label="编辑预设资料" onClick={onEdit}><NotePencil size={20} aria-hidden="true" /></button>
         </div>
-        <div className="preset-profile-hero-actions">
+        {(active || showActivate) && <div className="preset-profile-hero-actions">
           {active
             ? <span className="preset-profile-active"><CheckCircle size={16} weight="fill" aria-hidden="true" />使用中</span>
             : <button type="button" className="preset-profile-use" onClick={onActivate}><CheckCircle size={16} aria-hidden="true" />使用此预设</button>}
-        </div>
+        </div>}
       </div>
       <div className="preset-profile-hero-meta">
         <span>{profile.authorName || '未填写作者'}</span>

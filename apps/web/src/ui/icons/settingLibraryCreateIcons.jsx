@@ -1,4 +1,4 @@
-import { Database, LinkSimple } from '@phosphor-icons/react';
+import { Database, LinkSimple } from './interfaceIcons.jsx';
 import { DshProjectAddIcon } from './dshTreeIcons.jsx';
 import { ElecKoiSettingEntryIcon } from './elecKoiPromptIcons.jsx';
 

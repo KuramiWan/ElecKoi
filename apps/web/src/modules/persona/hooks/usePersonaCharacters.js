@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { emptyPersona } from "../../../utils/constants/defaults.js";
 
-function newCharacter(group = "") {
+export function newCharacter(group = "") {
   const id = `character-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
   return {
     id,

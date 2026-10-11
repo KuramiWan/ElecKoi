@@ -1,4 +1,4 @@
-import { projectProductHistory, projectRequestMessages, requestContextItems } from '../../packages/dsh-client-roleplay/src/host/conversation-context.mjs'
+import { projectProductHistory, projectRequestMessages, requestContextItems } from '../../packages/client/features/dsh-client-roleplay/src/host/conversation-context.mjs'
 
 /** Build the request annotation used by the supported legacy migration fixtures. */
 export function legacyFixtureRequest(messages) {

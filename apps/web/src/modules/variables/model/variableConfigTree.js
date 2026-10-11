@@ -1,4 +1,4 @@
-import { VARIABLE_INITIALIZATION_OBJECT_ID } from "../../../../../../packages/product-shared/src/contracts/variables/schemas.ts";
+import { VARIABLE_INITIALIZATION_OBJECT_ID } from "../../../../../../packages/shared/src/contracts/variables/schemas.ts";
 import { nodeKey } from "./variableConfigEditing.js";
 
 function ordered(items) {

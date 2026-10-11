@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { CheckCircle, Eye, EyeSlash, SpinnerGap, Trash } from '@phosphor-icons/react';
+import { CheckCircle, Eye, EyeSlash, SpinnerGap, Trash } from '../../../ui/icons/interfaceIcons.jsx';
 import { useWebSearchModel } from '../model/WebSearchContext.jsx';
 
 const RESULT_COUNTS = [3, 5, 8];

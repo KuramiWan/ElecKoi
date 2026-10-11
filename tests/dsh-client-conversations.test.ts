@@ -1,13 +1,20 @@
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
 import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
-import { MessageDisplayProjector } from '../packages/dsh-product-data/src/domain/conversations/MessageDisplayProjector'
-import type { RegexRuleCollection } from '../packages/product-shared/src/contracts/regex/schemas'
-import { detectRichMessagePresentation } from '../packages/product-shared/src/foundation/richMessage'
+import { MessageDisplayProjector } from '../packages/host/product-data/src/domain/conversations/MessageDisplayProjector'
+import type { RegexRuleCollection } from '../packages/shared/src/contracts/regex/schemas'
+import { detectRichMessagePresentation } from '../packages/shared/src/foundation/richMessage'
+// @ts-expect-error The browser test runtime does not publish declarations.
+import { JSDOM } from 'jsdom'
+import { NativeAuthorClient } from '@eleckoi/dsh-client-author/runtime'
+import type { ElecKoiAuthorApi } from '@eleckoi/author-sdk'
 
-const source = readFileSync(new URL('../packages/dsh-client-conversations/src/client.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../packages/client/features/dsh-client-conversations/src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 
 interface Result {
@@ -107,6 +114,7 @@ function mountCatalog(
   request: (name?: string, input?: unknown) => Promise<Result | unknown>,
   runtime: {
     allowOtherQueries?: boolean
+    conversation?: { input: { for: (ctx: unknown) => unknown } }
     requestAnimationFrame?: (callback: () => void) => number
     cancelAnimationFrame?: (id: number) => void
   } = {}
@@ -137,6 +145,7 @@ function mountCatalog(
   expect(registration?.id).toBe('@eleckoi/dsh-client-conversations')
   dshClientPlugin(registration!).apply({
     remote: conversationRemote(read, changes),
+    conversation: runtime.conversation,
     provide: (name: string, value: typeof catalog) => {
       expect(name).toBe('eleckoiConversations')
       catalog = value
@@ -154,6 +163,228 @@ function mountCatalog(
 }
 
 describe('DSH ElecKoi conversation client model', () => {
+  it('delivers native SDK generation events from the pinned official event window, not historical replay or idle guesses', async () => {
+    const require = createRequire(import.meta.url)
+    const { MutableSessionEventSource } = await import(pathToFileURL(join(dirname(require.resolve('@deepseek-ai/dsh-api-session-controller/package.json')),
+      'lib/types/client/contract/events.js')).href)
+    const events = new MutableSessionEventSource(), sessionListeners = new Set<() => void>(), targetListeners = new Set<() => void>()
+    const subscribe = (listeners: Set<() => void>) => (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener) }
+    let running = false, nodes = new Map<string, any>(), turns = new Map<number, any>()
+    const session = { getSnapshot: () => ({ running }), subscribe: subscribe(sessionListeners) }
+    const target = { getSnapshot: () => ({ nodes, order: [...nodes.keys()], timeline: { turns } }), subscribe: subscribe(targetListeners) }
+    const binding = { session, eventSource: events }, released = vi.fn()
+    const record = { id: 'synthetic-chat', runtimeSessionId: 'synthetic-session', title: '', preview: '', createdAt: '', updatedAt: '',
+      metadata: { characterId: 'synthetic-character', characterName: 'Synthetic character', characterAvatar: '' } }
+    const r = mountCatalog(async name => name === 'query.conversations.list' ? { ok: true, data: [record] }
+      : { ok: true, data: { conversation: record, metadata: record.metadata, runtimeSessionId: record.runtimeSessionId,
+        messages: [], hasMore: false, beforeSequence: null } }, { allowOtherQueries: true })
+    const catalog = r.catalog as any
+    catalog.sessions = { list: { getSnapshot: () => ({ byId: { [record.runtimeSessionId]: {} } }) }, refresh: async () => {},
+      retain: () => ({ sessionId: record.runtimeSessionId, binding, ready: Promise.resolve(binding), release: released }) }
+    catalog.uiConversation = { binding: () => ({ target: () => target }) }
+    const page = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' }), report = vi.fn()
+    const runtime = new NativeAuthorClient({ window: page.window, conversations: catalog, models: {} as any,
+      libraries: { subscribeChanges: () => () => {} } as any, report, remote: {
+        eleckoiAuthorScripts: {
+          read: async () => ({ ok: true, value: { conversationId: record.id, characterId: record.metadata.characterId, presetId: '', version: 'synthetic-version', scripts: [] } }),
+          connect: (_id: string, version: string, signal: AbortSignal) => {
+            const stream = (async function* () {
+              yield { kind: 'ready', version }
+              await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }))
+            })()
+            return Object.assign(stream, { dispose: () => stream.return(undefined) })
+          },
+        }, eleckoiConversations: { changes: (signal: AbortSignal) => conversationChangeFeed().open(signal) },
+      } as any })
+    const changes: Array<{ name: string; payload: any }> = []
+    const durable = (type: string, seq: number, data: any) => ({ type: 'event', event: { type, seq, time: seq, data } })
+    try {
+      await settle(); await catalog.open(record.id); await runtime.start(); runtime.mountDocument(page.window, record.id, '')
+      const api = page.window.ElecKoi as ElecKoiAuthorApi
+      for (const name of ['agent.state.changed', 'agent.output.delta', 'agent.run.finished', 'agent.run.cancelled'] as const) {
+        api.events.on(name, payload => changes.push({ name, payload }))
+      }
+      events.replace([durable('turn/start', 1, { turn: 1 }), durable('turn/end', 2, { turn: 1, reason: { kind: 'completed' } })], false)
+      events.prepend([durable('turn/start', 0, { turn: 0 })], false)
+      await settle(); expect(changes).toEqual([])
+      running = true
+      events.append(durable('turn/start', 3, { turn: 2 }))
+      nodes = new Map([['synthetic-live', { key: 'synthetic-live', kind: 'assistant-step',
+        location: { kind: 'step', turn: { turn: 2 }, step: { step: 1 } },
+        data: { turn: 2, step: 1, status: 'running', blocks: [{ kind: 'text', text: '<FINAL>Synthetic body' }] } }]])
+      turns = new Map([[2, { turn: 2, status: 'open' }]])
+      for (const listener of targetListeners) listener()
+      const generation = await api.chat.getGenerationState()
+      expect(generation).toMatchObject({ active: true, runId: record.runtimeSessionId, turn: 2, generationId: expect.any(String), sequence: 1 })
+      running = false; for (const listener of sessionListeners) listener(); await settle()
+      expect(changes.some(change => change.name === 'agent.run.finished')).toBe(false)
+      events.settleAssistant('synthetic-attempt', durable('assistant/message', 5, { turn: 2, step: 1,
+        message: { role: 'assistant', id: 'synthetic-assistant', content: [{ type: 'text', text: '<FINAL>Synthetic body</FINAL>' }] }, stream: [] }))
+      events.append(durable('turn/end', 6, { turn: 2, reason: { kind: 'completed' } }))
+      await settle(); expect(changes.some(change => change.name === 'agent.run.finished')).toBe(false)
+      const finalNode = { seq: 5, messageId: 'synthetic-assistant', time: 5 }
+      nodes = new Map([['synthetic-tail', { kind: 'turn-tail', data: { turn: 2, seq: 6, time: 6,
+        closing: { finalNode, blocks: [{ kind: 'text', text: '<FINAL>Synthetic body</FINAL>' }] } } }]])
+      turns = new Map([[2, { turn: 2, status: 'closed' }]])
+      for (const listener of targetListeners) listener()
+      await vi.waitFor(() => expect(changes.filter(change => change.name === 'agent.run.finished')).toHaveLength(1))
+      expect(changes.find(change => change.name === 'agent.output.delta')!.payload).toMatchObject({ operation: 'append', accumulated: 'Synthetic body' })
+      expect(changes.find(change => change.name === 'agent.run.finished')!.payload).toMatchObject({ turn: 2, reason: 'completed', message: { id: 'synthetic-assistant' } })
+      events.append(durable('turn/start', 7, { turn: 3 })); events.append(durable('turn/end', 8, { turn: 3, reason: { kind: 'aborted', reason: 'user' } }))
+      await vi.waitFor(() => expect(changes.filter(change => change.name === 'agent.run.cancelled')).toHaveLength(1))
+      events.append(durable('turn/start', 9, { turn: 4 }))
+      events.settleAssistant('synthetic-empty-attempt', durable('assistant/message', 10, { turn: 4, step: 1,
+        message: { role: 'assistant', id: 'synthetic-empty', content: [] }, stream: [] }))
+      events.append(durable('turn/end', 11, { turn: 4, reason: { kind: 'completed' } }))
+      nodes = new Map([['synthetic-empty-tail', { kind: 'turn-tail', data: { turn: 4, seq: 11, time: 11,
+        closing: { finalNode: { seq: 10, messageId: 'synthetic-empty', time: 10 }, blocks: [] } } }]])
+      turns = new Map([[4, { turn: 4, status: 'closed' }]])
+      expect(catalog.getGenerationReply(record.runtimeSessionId, 4, 10)).toEqual({ status: 'pending' })
+      for (const listener of targetListeners) listener()
+      await vi.waitFor(() => expect(changes.filter(change => change.name === 'agent.run.finished')).toHaveLength(2))
+      expect(changes.find(change => change.name === 'agent.run.finished' && change.payload.turn === 4)!.payload.message).toBeNull()
+      catalog.activate(''); await settle(); const count = changes.length
+      events.append(durable('turn/start', 12, { turn: 5 })); await settle()
+      expect(changes).toHaveLength(count); expect(report).not.toHaveBeenCalled()
+    } finally {
+      await runtime.dispose(); page.window.close(); r.dispose()
+    }
+    expect(sessionListeners.size + targetListeners.size).toBe(0); expect(released).toHaveBeenCalledOnce()
+  })
+
+  it('completes native SDK navigation through the actual conversation model after closing its source page', async () => {
+    const record = (id: string) => ({ id, title: 'Synthetic catalog title', preview: '', createdAt: '', updatedAt: '',
+      metadata: { characterId: 'synthetic-role', characterName: 'Synthetic role', characterAvatar: '' } })
+    let items = [record('synthetic-source'), record('synthetic-destination')]
+    const r = mountCatalog(async (name, input: any) => name === 'query.conversations.list'
+      ? { ok: true, data: items }
+      : { ok: true, data: { conversation: { ...record(input.conversationId), title: 'Synthetic loaded title' },
+        metadata: record(input.conversationId).metadata, runtimeSessionId: '', messages: [], hasMore: false, beforeSequence: null } }, { allowOtherQueries: true })
+    const catalog = r.catalog as any, page = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' })
+    const author = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' })
+    const runtime = new NativeAuthorClient({ window: page.window, conversations: catalog, models: {} as any,
+      libraries: { subscribeChanges: () => () => {} } as any, report: vi.fn(), remote: {
+        eleckoiAuthorScripts: {
+          read: async (id: string) => ({ ok: true, value: { conversationId: id, characterId: 'synthetic-role',
+            presetId: '', version: id, scripts: [] } }),
+          connect: (_id: string, version: string, signal: AbortSignal) => (async function* () {
+            yield { kind: 'ready', version }
+            await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }))
+          })(),
+        },
+        eleckoiConversations: { changes: (signal: AbortSignal) => conversationChangeFeed().open(signal) },
+      } as any })
+    try {
+      await settle(); await catalog.open('synthetic-source'); await runtime.start()
+      runtime.mountDocument(author.window, 'synthetic-source', '')
+      const api = author.window.ElecKoi as ElecKoiAuthorApi
+      expect(await api.chat.open('synthetic-destination')).toMatchObject({ chat: {
+        id: 'synthetic-destination', title: 'Synthetic loaded title', characterId: 'synthetic-role',
+      } })
+      await expect(api.chat.current()).rejects.toMatchObject({ code: 'FRAME_CLOSED' })
+      const next = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' })
+      try {
+        runtime.mountDocument(next.window, 'synthetic-destination', '')
+        catalog.sessions = { refresh: vi.fn(async () => {}) }
+        catalog.remote.eleckoiConversations.delete = vi.fn(async (id: string) => {
+          items = items.filter(item => item.id !== id)
+          return { ok: true, value: undefined }
+        })
+        expect(await (next.window.ElecKoi as ElecKoiAuthorApi).chat.delete('synthetic-destination'))
+          .toEqual({ deletedId: 'synthetic-destination', chat: null })
+        expect(catalog.getDetailsSnapshot()).toMatchObject({ id: '', status: 'idle', details: null })
+        expect((await catalog.refresh()).map((item: any) => item.id)).toEqual(['synthetic-source'])
+      } finally { next.window.close() }
+    } finally { await runtime.dispose(); author.window.close(); page.window.close(); r.dispose() }
+  })
+
+  it('reads, writes and submits the scoped official input instead of a separate page draft', async () => {
+    let state = { draft: 'Synthetic typed draft', phase: 'plain', attachmentIds: [] as string[] }
+    const facade = { state: { getSnapshot: () => state }, setDraft: vi.fn((text: string) => { state = { ...state, draft: text } }), submit: vi.fn() }
+    const conversation = { input: { for: vi.fn(() => facade) } }
+    const ctx = Object.defineProperty({}, 'conversation', { get() { throw new Error('Session scope does not inject the conversation service') } })
+    const r = mountCatalog(async () => ({ ok: true, data: [] }), { conversation })
+    const catalog = r.catalog as any
+    try {
+      await settle()
+      catalog.snapshot = { ...catalog.snapshot, items: [{ id: 'synthetic-chat', runtimeSessionId: 'synthetic-session' }] }
+      catalog.detailsSnapshot = { id: 'synthetic-chat', status: 'ready', runtimeSessionId: 'synthetic-session',
+        details: { conversation: { id: 'synthetic-chat' }, runtimeSessionId: 'synthetic-session' } }
+      catalog.sessionReference = { sessionId: 'synthetic-session', binding: { ctx }, release() {} }
+      expect(catalog.readInputDraft('synthetic-chat')).toBe('Synthetic typed draft')
+      expect(catalog.writeInputDraft('synthetic-chat', 'Synthetic page draft')).toBe('Synthetic page draft')
+      expect(conversation.input.for).toHaveBeenLastCalledWith(ctx)
+      expect(facade.setDraft).toHaveBeenCalledWith('Synthetic page draft')
+      expect(catalog.submitInput('synthetic-chat')).toBe(true)
+      expect(facade.submit).toHaveBeenCalledExactlyOnceWith('queue', 'click')
+      state = { ...state, draft: '' }; expect(catalog.submitInput('synthetic-chat')).toBe(false)
+      state = { ...state, attachmentIds: ['synthetic-attachment'] }; expect(catalog.submitInput('synthetic-chat')).toBe(true)
+      state = { ...state, phase: 'submitting' }; expect(catalog.submitInput('synthetic-chat')).toBe(false)
+      state = { ...state, phase: 'adjudicating' }; expect(catalog.submitInput('synthetic-chat')).toBe(false)
+      expect(facade.submit).toHaveBeenCalledTimes(2)
+      expect(() => catalog.readInputDraft('synthetic-other-chat')).toThrow('官方输入框尚未就绪')
+      catalog.sessionReference.sessionId = 'synthetic-stale-session'
+      expect(() => catalog.writeInputDraft('synthetic-chat', 'Do not write')).toThrow('官方输入框尚未就绪')
+      expect(facade.setDraft).toHaveBeenCalledTimes(1)
+    } finally { r.dispose() }
+  })
+
+  it('keeps the selected chat and its Session while deletion is pending or fails, and releases them only after success', async () => {
+    const r = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = r.catalog as any, release = vi.fn()
+    try {
+      await settle()
+      catalog.detailsSnapshot = { id: 'synthetic-chat', status: 'ready', details: { conversation: { id: 'synthetic-chat' } } }
+      catalog.sessionReference = { binding: { session: {} }, release }
+      catalog.sessions = { refresh: vi.fn(async () => {}) }
+      let finish!: (value: unknown) => void
+      const remove = vi.fn(() => new Promise(resolve => { finish = resolve }))
+      catalog.remote.eleckoiConversations.delete = remove
+      const pending = catalog.delete('synthetic-chat'), outcome = pending.then(() => null, (error: Error) => error)
+      expect(catalog.getDetailsSnapshot().id).toBe('synthetic-chat')
+      expect(release).not.toHaveBeenCalled()
+      finish({ ok: false, error: { message: 'Synthetic deletion failed' } })
+      expect(await outcome).toMatchObject({ message: 'Synthetic deletion failed' })
+      expect(catalog.getDetailsSnapshot()).toMatchObject({ id: 'synthetic-chat', status: 'ready' })
+      expect(release).not.toHaveBeenCalled()
+      remove.mockResolvedValueOnce({ ok: true, value: undefined })
+      await catalog.delete('synthetic-chat')
+      expect(catalog.getDetailsSnapshot()).toMatchObject({ id: '', status: 'idle', details: null })
+      expect(release).toHaveBeenCalledTimes(1)
+    } finally { r.dispose() }
+  })
+
+  it('cancels the selected official Session without depending on the stream request id', async () => {
+    const r = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = r.catalog as any, cancel = vi.fn(async () => ({ ok: true }))
+    try {
+      await settle()
+      catalog.detailsSnapshot = { id: 'synthetic-chat', status: 'ready', details: null }
+      catalog.streamState = { id: 'synthetic-chat', status: 'running', requestId: '', runId: 'synthetic-session', content: '', process: [] }
+      catalog.sessionReference = { binding: { session: { cancel } }, release() {} }
+      expect(await catalog.cancelGeneration('synthetic-other')).toBe(false)
+      expect(cancel).not.toHaveBeenCalled()
+      expect(await catalog.cancelGeneration('synthetic-chat')).toBe(true)
+      expect(cancel).toHaveBeenCalledTimes(1)
+      expect(catalog.getStreamSnapshot().status).toBe('idle')
+      expect(await catalog.cancelGeneration('synthetic-chat')).toBe(false)
+    } finally { r.dispose() }
+  })
+
+  it('cancels an admitted native request even before the live projection is running', async () => {
+    const r = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = r.catalog as any, cancel = vi.fn(async () => ({ ok: true }))
+    try {
+      await settle()
+      catalog.detailsSnapshot = { id: 'synthetic-chat', status: 'ready', details: null }
+      const request = { requestId: 'synthetic-request', cancelled: false, session: { cancel } }
+      catalog.activeRequests.set('synthetic-chat', request)
+      expect(await catalog.cancelGeneration('synthetic-chat')).toBe(true)
+      expect(request.cancelled).toBe(true); expect(cancel).toHaveBeenCalledTimes(1)
+      catalog.activeRequests.clear()
+    } finally { r.dispose() }
+  })
+
   it('projects opening regexes on load, refresh, selection, edits and rule changes without changing the original', async () => {
     let registration: any
     let catalog: any
@@ -359,7 +590,7 @@ describe('DSH ElecKoi conversation client model', () => {
         if (mode === 'failed' || mode.endsWith('error')) {
           expect(catalog.getStreamSnapshot()).toMatchObject({ status: 'error' })
           expect(catalog.activeRequests.size).toBe(0)
-          expect(listeners.size).toBe(1)
+          expect(listeners.size).toBe(2)
         }
       } else {
         await expect(observed).resolves.toMatchObject({ cancelled: false })
@@ -373,7 +604,10 @@ describe('DSH ElecKoi conversation client model', () => {
     const changes = conversationChangeFeed()
     // Product details deliberately have no transcript rows. DSH is the only
     // source of both historical and newly generated message bodies.
-    const details = { conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', messages: [], hasMore: false }
+    const details = { conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', messages: [], hasMore: false,
+      metadata: { characterId: '', characterName: '', characterAvatar: '', characterPersona: {
+        assistant_name: '', assistant_avatar: '', assistant_square: '', assistant_cover: '', image_prompt: '',
+      } } }
     const user = (seq: number, requestId: string) => ({ kind: 'user', anchorSeq: seq, data: {
       seq, time: seq, messageId: `input-${requestId}`, source: { kind: 'user', rpcId: requestId },
       content: [{ type: 'text', text: '重复的合成输入' }],
@@ -413,6 +647,10 @@ describe('DSH ElecKoi conversation client model', () => {
     }
     const session = {
       getSnapshot: () => ({ running, removed, pendingSubmissions }), subscribe: subscribe(sessionListeners),
+      projections: { faceOf: (key: string) => key === 'eleckoiInputContinuations' ? {
+        getSnapshot: () => ({ links: [{ turn: 2, inputMessageId: 'input-deleted', inputEventSeq: 9 }] }),
+        subscribe: subscribe(sessionListeners),
+      } : undefined },
       prompt: vi.fn(async (_content: unknown, _mode: unknown, _signal: unknown, requestId: string) => {
         begin(requestId)
         return { ok: true, value: { accepted: true } }
@@ -438,7 +676,7 @@ describe('DSH ElecKoi conversation client model', () => {
           if (role === 'assistant') nodes.set('user-9', user(9, 'deleted'))
           turns = new Map([[1, { turn: 1, status: 'closed' }]])
           retire()
-          return { ok: true, value: { details, deletedMessageCount: role === 'user' ? 2 : 1 } }
+          return { ok: true, value: { details, deletedMessageCount: role === 'user' ? 2 : 1, remainingMessageCount: role === 'user' ? 2 : 3 } }
         },
         regenerateMessage: async (_id: string, eventSeq: number) => {
           expect(eventSeq).toBe(9)
@@ -462,14 +700,24 @@ describe('DSH ElecKoi conversation client model', () => {
       effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {},
     })
     const messages = () => catalog.getDetailsSnapshot().details.messages
+    const authorPage = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' })
+    let authorRequest = 0
+    vi.spyOn(authorPage.window.crypto, 'randomUUID').mockImplementation(() => `next-${authorRequest++}` as any)
+    const authorRuntime = new NativeAuthorClient({ window: authorPage.window, conversations: catalog,
+      remote: {} as any, libraries: {} as any,
+      models: { refresh: async () => { throw new Error('Unexpected model read during message mutation') } } as any,
+      report: error => { throw error } })
     try {
       await settle()
       await catalog.open('chat-1')
+      authorRuntime.mountDocument(authorPage.window, 'chat-1', '')
+      const authorApi = authorPage.window.ElecKoi as ElecKoiAuthorApi
       expect(messages()).toHaveLength(4)
       const retiredSnapshot = chat
       const retiredCallbacks = [...targetListeners]
       const pair = scenario.startsWith('delete-pair')
-      await catalog.deleteMessagesFrom('chat-1', pair ? 9 : 12, pair ? 'user' : 'assistant')
+      const deletion = await authorApi.messages.deleteFrom(pair ? 'input-deleted' : 'reply-2-12')
+      expect(deletion).toEqual({ ok: true, deletedMessageCount: pair ? 2 : 1, remainingMessageCount: pair ? 2 : 3 })
       expect(messages().map((message: any) => message.dshMessageId))
         .toEqual(pair ? ['input-prefix', 'reply-1-5'] : ['input-prefix', 'reply-1-5', 'input-deleted'])
       expect(catalog.getStreamSnapshot()).toMatchObject({ status: 'idle', content: '', nodeKey: '' })
@@ -484,7 +732,7 @@ describe('DSH ElecKoi conversation client model', () => {
         const regenerating = scenario.endsWith('regenerate')
         const expectedInputCount = regenerating ? 2 : messages().filter((message: any) => message.role === 'user').length + 1
         const request = regenerating
-          ? catalog.regenerate({ conversationId: 'chat-1', requestId, eventSeq: 9 })
+          ? authorApi.messages.editAndRegenerate('input-deleted', '重复的合成输入')
           : catalog.send({ conversationId: 'chat-1', requestId, text: '重复的合成输入' })
         await settle()
         expect(activeRequestId).toBe(requestId)
@@ -518,7 +766,8 @@ describe('DSH ElecKoi conversation client model', () => {
         events = [...events, { type: 'event', event: { type: 'turn/end', seq: assistantSeq + 1,
           data: { turn, reason: { kind: 'completed' } } } }]
         publish()
-        await request
+        const receipt = await request
+        if (regenerating) expect(receipt).toMatchObject({ accepted: true, runId: 'runtime-1', messageId: `reply-${turn}-${assistantSeq}` })
         expect(messages().filter((message: any) => message.role === 'user')).toHaveLength(inputCount)
         expect(messages().at(-1)).toMatchObject({ role: 'assistant', status: 'complete', dshTurn: turn })
         expect(messages().slice(0, 2).map((message: any) => message.dshMessageId)).toEqual(['input-prefix', 'reply-1-5'])
@@ -528,7 +777,7 @@ describe('DSH ElecKoi conversation client model', () => {
       expect(reloadHistory).toHaveBeenCalledTimes(scenario.endsWith('regenerate') ? 3 : 1)
       expect(catalog.activeRequests.size).toBe(0)
       expect(catalog.sessionMutations.size).toBe(0)
-    } finally { cleanup() }
+    } finally { await authorRuntime.dispose(); authorPage.window.close(); cleanup() }
   })
 
   it('keeps the latest baseline when requests finish out of order and releases its listener', async () => {
@@ -568,7 +817,7 @@ describe('DSH ElecKoi conversation client model', () => {
     const calls: number[] = []
     const details = { conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', messages: [] }
     const session = { getSnapshot: () => ({ running: false }), subscribe: () => () => {} }
-    const binding = { session, eventSource: { getSnapshot: () => ({ entries: [], hasMore: false }) } }
+    const binding = { session, eventSource: { getSnapshot: () => ({ entries: [], hasMore: false }), subscribe: () => () => {} } }
     const changes = conversationChangeFeed()
     const reloadHistory = vi.fn(async () => { seq = 9 })
     runInNewContext(source, { setTimeout, clearTimeout, Date, AbortController,
@@ -770,7 +1019,7 @@ describe('DSH ElecKoi conversation client model', () => {
     let eventEntries: any[] = []
     const binding = {
       session,
-      eventSource: { getSnapshot: () => ({ hasMore, entries: eventEntries }) }
+      eventSource: { getSnapshot: () => ({ hasMore, entries: eventEntries }), subscribe: () => () => {} }
     }
     const target = {
       getSnapshot: () => targetSnapshot,
@@ -806,6 +1055,7 @@ describe('DSH ElecKoi conversation client model', () => {
         if (name === 'query.conversations.details') return { ok: true, data: {
           conversation: { id: 'chat-1' }, runtimeSessionId: 'runtime-1', hasMore: false, beforeSequence: 1,
           runtimeVariableStateByTurn: { 1: '{"score":7}' },
+          compatibilityPresentation: { extensions: { 'product-assistant': { nativeVariableStateJson: '{"score":999}' } } },
           messages: [
             { id: 'product-user', role: 'user', sequence: 3, sessionEventSeq: 2, messageIndex: 17, content: 'official user', variableStateJson: '{}' },
             { id: 'product-assistant', role: 'assistant', sequence: 4, messageIndex: 22, dshMessageId: 'assistant-dsh', variableStateJson: '{}', displayContent: '<FINAL>official reply</FINAL>' },
@@ -851,6 +1101,7 @@ describe('DSH ElecKoi conversation client model', () => {
       .toEqual(['official user', 'projected:official reply'])
     expect(opened.messages.map((message: any) => message.messageIndex)).toEqual([0, 1])
     expect(opened.messages[1].variableStateJson).toBe('{"score":7}')
+    expect(opened.messages[1].nativeVariableStateJson).toBe('{"score":7}')
     expect(catalog.getDetailsSnapshot().details.messages).toMatchObject([
       { id: 'product-user', content: 'official user', runtimeSessionId: 'runtime-1' },
       { id: 'product-assistant', content: '<FINAL>official reply</FINAL>', dshMessageId: 'assistant-dsh' }
@@ -869,6 +1120,7 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(optimistic.at(-1)).toMatchObject({
       id: 'dsh-pending-request-new', requestId: 'request-new', content: '你好', status: 'streaming'
     })
+    expect(optimistic.at(-1).nativeVariableStateJson).toBeUndefined()
     const admittedUser = { kind: 'user', anchorSeq: 7, data: {
       kind: 'user', seq: 7, time: 31, content: [{ type: 'text', text: '你好' }],
       source: { kind: 'user', rpcId: 'request-new' }
@@ -1254,6 +1506,8 @@ describe('DSH ElecKoi conversation client model', () => {
     const changes = conversationChangeFeed()
     let cleanup = () => {}
     let exists = true
+    let finishCatalog: (() => void) | undefined
+    let pendingCatalog: Promise<void> | undefined
     const detailRequests: string[] = []
     let catalog: {
       open: (id: string) => Promise<unknown>
@@ -1262,6 +1516,7 @@ describe('DSH ElecKoi conversation client model', () => {
     const bridge = {
       request: async (name: string, input: { conversationId?: string }) => {
         if (name === 'query.conversations.list') {
+          if (pendingCatalog) await pendingCatalog
           return { ok: true, data: exists ? [{ id: 'only-chat' }] : [] }
         }
         if (name === 'query.conversations.details') {
@@ -1289,7 +1544,12 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(catalog.getDetailsSnapshot()).toMatchObject({ id: 'only-chat', status: 'ready', error: '' })
 
     exists = false
+    pendingCatalog = new Promise(resolve => { finishCatalog = resolve })
     changes.emit({ kind: 'catalog', conversationId: 'only-chat', reason: 'deleted' })
+    await settle()
+    expect(catalog.getDetailsSnapshot()).toMatchObject({ id: '', status: 'idle', error: '' })
+    expect(detailRequests).toEqual(['only-chat'])
+    finishCatalog!()
     await settle()
     expect(detailRequests).toEqual(['only-chat'])
     expect(catalog.getDetailsSnapshot()).toMatchObject({ id: '', status: 'idle', error: '' })

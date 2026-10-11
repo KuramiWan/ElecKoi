@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useRef, useState } from "react";
 import { PaletteIcon, PictureFrameIcon, RestoreDefaultIcon, XIcon } from "../../../ui/icons/index.jsx";
 import { createAppearanceThemeFromFile } from "../theme/appearanceTheme.js";
@@ -43,7 +44,7 @@ export function ThemePaletteModal({ open, theme, onClose, onApply, onReset, onNo
   const hasTheme = Boolean(theme?.colors);
 
   return (
-    <div className="theme-modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <SystemBarOverlay className="theme-modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="theme-modal"
         role="dialog"
@@ -100,6 +101,6 @@ export function ThemePaletteModal({ open, theme, onClose, onApply, onReset, onNo
             <input ref={inputRef} className="theme-file-input" type="file" accept="image/*" onChange={pickFile} />
         </div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 }

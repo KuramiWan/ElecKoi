@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { migrateModelSettings } from '../packages/dsh-client-models/src/index.js'
+import { migrateModelSettings } from '../packages/client/features/dsh-client-models/src/index.js'
 
 describe('ElecKoi model settings migration', () => {
   it('removes only known obsolete child-model routes and preserves all registered providers', async () => {

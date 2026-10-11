@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { settingLibrarySchema } from "../packages/shared/src/contracts/settingLibrary/schemas";
 import {
   createLibraryVersion,
   deleteActiveLibraryVersion,
@@ -13,7 +14,7 @@ function entry(id, title, groupId = "", order = 1) {
   return {
     id, title, iconId: "", kind: "normal", groupId, content: `${title}正文`, openingMessages: [],
     defaultOpeningMessageId: "", agentSelectionHint: "", agentReadStrategy: "normal",
-    dynamicMode: "standard", keywords: [], keywordScanDepth: 1,
+    dynamicMode: "standard", contentMode: "plain_text", keywords: [], keywordScanDepth: 1,
     conditionKeywords: [], keywordCondition: "none", keywordUseRegex: false, keywordIgnoreCase: true,
     keywordWholeWord: false, keywordRecursionDepth: 0, triggerMode: "always", enabled: true,
     position: "insert_point_1", promptPositionId: "", insertRole: "user", order,
@@ -98,11 +99,61 @@ describe("setting-library versions and transfer", () => {
     vi.unstubAllGlobals();
   });
 
+  it("preserves native entry, folder, position and opening variable identities through export and version import", () => {
+    const source = library();
+    source.entries = source.entries.map(item => ({ ...item, contentMode: "plain_text" }));
+    source.groups = [{ id: "synthetic-folder", name: "合成文件夹", parentId: "", order: 1, treeViewOrder: 1, createdAt: "", updatedAt: "" }];
+    source.promptPositions = [{ id: "synthetic-position", name: "合成位置", anchor: "instructions", side: "after_setting_position", order: 1, createdAt: "", updatedAt: "" }];
+    source.entries[1] = { ...source.entries[1], groupId: "synthetic-folder", promptPositionId: "synthetic-position" };
+    source.entries[0].openingMessages = [
+      { id: "synthetic-opening-a", title: "开场一", content: "合成开场一", variableVersionId: "synthetic-variables-a", initialVariableStateJson: "" },
+      { id: "synthetic-opening-b", title: "开场二", content: "合成开场二", variableVersionId: "synthetic-variables-b", initialVariableStateJson: "{\"score\":2}" },
+    ];
+    source.entries[0].defaultOpeningMessageId = "synthetic-opening-b";
+    const exported = serializeSettingLibrary(source);
+    expect(JSON.parse(exported).entries[0].opening_messages.map(item => item.variable_version_id))
+      .toEqual(["synthetic-variables-a", "synthetic-variables-b"]);
+    const imported = importLibraryAsVersion(source, parseSettingLibraryFile(exported, "eleckoi"));
+    expect(imported.activeVersionId).not.toBe(source.activeVersionId);
+    expect(imported.entries).toEqual(source.entries);
+    expect(imported.groups).toEqual(source.groups);
+    expect(imported.promptPositions).toEqual(source.promptPositions);
+    const switched = switchLibraryVersion(imported, "v1");
+    expect(switched.entries[1]).toMatchObject({ id: "a", groupId: "synthetic-folder", promptPositionId: "synthetic-position" });
+    expect(switched.entries[0].openingMessages).toEqual(source.entries[0].openingMessages);
+  });
+
   it("imports a SillyTavern world book into one folder", () => {
     const parsed = parseSettingLibraryFile(JSON.stringify({ name: "世界书", entries: { 0: { comment: "地点", content: "内容", keys: ["城堡"] } } }), "sillytavern");
     expect(parsed.name).toBe("世界书");
     expect(parsed.groups).toHaveLength(1);
     expect(parsed.entries[0]).toMatchObject({ title: "地点", keywords: ["城堡"], agentReadStrategy: "keyword" });
+  });
+
+  it.each(['entries', 'character_book', 'data.character_book'])('produces saveable entries for %s in both version imports and merges', (shape) => {
+    const entries = [
+      { comment: 'Synthetic keyword', content: 'Synthetic text', key: ['synthetic-key'], disable: true },
+      { comment: 'Synthetic constant', content: 'Synthetic constant text', constant: true },
+      { comment: 'Synthetic controller', content: '<%- await getwi(null, "Synthetic reference") %>', constant: true },
+      { comment: 'Synthetic reference', content: 'Synthetic reference text' },
+    ];
+    const source = shape === 'entries' ? { entries: Object.fromEntries(entries.map((item, index) => [index, item])) }
+      : shape === 'character_book' ? { character_book: { entries } } : { data: { character_book: { entries } } };
+    const parsed = parseSettingLibraryFile(JSON.stringify(source), 'sillytavern');
+    expect(Object.fromEntries(parsed.entries.map(item => [item.title, item.contentMode]))).toEqual({
+      'Synthetic keyword': 'plain_text', 'Synthetic constant': 'plain_text',
+      'Synthetic controller': 'ejs', 'Synthetic reference': 'plain_text',
+    });
+    const imported = importLibraryAsVersion(library(), parsed);
+    expect(() => settingLibrarySchema.parse(imported)).not.toThrow();
+    expect(imported.versions.find(item => item.id === 'v1').entries.find(item => item.id === 'a')).toMatchObject({ content: '旧设定正文' });
+    const merged = mergeSettingLibraryEntries(library(), parsed, parsed.entries.map(item => item.id)).library;
+    expect(() => settingLibrarySchema.parse(merged)).not.toThrow();
+    expect(merged.activeVersionId).toBe('v1');
+    expect(merged.entries.find(item => item.id === 'a')).toMatchObject({ content: '旧设定正文' });
+    expect(merged.entries.find(item => item.title === 'Synthetic keyword')).toMatchObject({ contentMode: 'plain_text', enabled: false });
+    const exported = parseSettingLibraryFile(serializeSettingLibrary(imported), 'eleckoi');
+    expect(exported.entries.map(item => item.contentMode)).toEqual(imported.entries.map(item => item.contentMode));
   });
 
   it("classifies EJS controllers and their getwi references like Android", () => {

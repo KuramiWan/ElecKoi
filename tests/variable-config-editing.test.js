@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   copyVariableNode,
+  canTransferVariableNode,
   createObjectDraft,
   createVariableDraft,
   deleteVariableNode,
@@ -19,7 +20,7 @@ import {
   switchVariableVersion,
 } from "../apps/web/src/modules/variables/model/variableConfigTransfer.js";
 import { variableTreeNodes } from "../apps/web/src/modules/variables/model/variableConfigTree.js";
-import { variableConfigSchema } from "../packages/product-shared/src/contracts/variables/schemas.ts";
+import { variableConfigSchema } from "../packages/shared/src/contracts/variables/schemas.ts";
 
 const stamp = "2026-09-06T00:00:00.000Z";
 function config() {
@@ -44,6 +45,13 @@ function expectSaveRequestValid(value) {
 }
 
 describe("variable configuration editing", () => {
+  it("preserves null through object replacement and variable export/import", () => {
+    const rebuilt = replaceObjectContentsFromJson(config(), "status", '{"note":null}');
+    expect(rebuilt.variables[0]).toMatchObject({ title: "note", type: "null", defaultValue: "null" });
+    const imported = importVariableConfig(config(), serializeVariableConfig(rebuilt));
+    expect(JSON.parse(imported.initialStateJson)).toEqual({ 状态: { note: null } });
+    expectSaveRequestValid(imported);
+  });
   it("always exposes the fixed runtime configuration node, including an empty version", () => {
     const empty = { ...config(), schemaCode: "", objects: [], variables: [] };
     const prepared = ensureInitializationObject(empty);
@@ -185,4 +193,17 @@ describe("variable configuration versions and transfer", () => {
     expect(imported.versions).toHaveLength(2);
     expect(imported.variables[0]).toMatchObject({ title: "心情~值", defaultValue: "平静", readMode: "required" });
   });
+});
+
+
+it('rejects variable clipboard destinations that are fixed, missing or inside the source subtree', () => {
+  const source = ensureInitializationObject(config());
+  for (const parentId of ['status', 'detail', 'missing-object', 'fixed-variable-initialization-object']) {
+    const target = { kind: 'object', id: 'status' };
+    expect(canTransferVariableNode(source, target, parentId)).toBe(false);
+    expect(copyVariableNode(source, target, parentId)).toEqual({ config: source, key: '' });
+    expect(moveVariableNode(source, target, parentId, 0)).toBe(source);
+  }
+  expect(canTransferVariableNode(source, { kind: 'object', id: 'fixed-variable-initialization-object' }, '')).toBe(false);
+  expect(canTransferVariableNode(source, { kind: 'unknown', id: 'mood' }, '')).toBe(false);
 });

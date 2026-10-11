@@ -1,4 +1,4 @@
-import { FileText, X } from '@phosphor-icons/react';
+import { FileText, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { useState } from 'react';
 
 function sizeLabel(bytes) {

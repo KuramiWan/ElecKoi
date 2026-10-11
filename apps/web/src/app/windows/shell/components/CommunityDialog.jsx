@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { CopyIcon, XIcon } from "../../../../ui/icons/index.jsx";
@@ -63,7 +64,7 @@ export function CommunityDialog({ open, onClose, onNotify }) {
   }
 
   const dialog = (
-    <div className="community-dialog-overlay" role="presentation" onMouseDown={onClose}>
+    <SystemBarOverlay className="community-dialog-overlay" role="presentation" onMouseDown={onClose}>
       <section
         ref={dialogRef}
         className="community-dialog"
@@ -97,7 +98,7 @@ export function CommunityDialog({ open, onClose, onNotify }) {
           </button>
         </div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 
   const portalTarget = typeof document === "undefined" ? null : document.body;

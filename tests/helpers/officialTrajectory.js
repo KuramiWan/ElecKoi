@@ -33,7 +33,7 @@ function loadClient(name, exposed = '') {
   })
 }
 
-const conversation = loadClient('dsh-client-ui-conversation', ', ConversationNodeAssembler, inspectSystemPrompt, inspectRequestPrompt')
+const conversation = loadClient('dsh-client-ui-conversation', ', ConversationNodeAssembler, inspectSystemPrompt, inspectRequestPrompt, ContextMeter')
 const trajectory = loadClient('dsh-client-ui-trajectory')
 
 export function officialTrajectoryFixture() {
@@ -76,6 +76,9 @@ export function officialTrajectoryFixture() {
 
 export const trajectoryAssistantDefinition = officialTrajectoryFixture().definitions.get('trajectory-assistant-step')
 
+export const OfficialStatsPills = loadClient('dsh-client-ui-chat', ', StatsPills').StatsPills
+export const OfficialContextMeter = conversation.ContextMeter
+
 export function officialChatFixture() {
   const chat = loadClient('dsh-client-ui-chat', ', registerConversationNodes')
   const definitions = new Map()
@@ -102,6 +105,11 @@ export function officialChatFixture() {
     },
     append(event) {
       engine.append({ type: event.type === 'assistant/live-chunk' ? 'transient' : 'durable', event })
+      engine.flush()
+      return engine.snapshot('chat')
+    },
+    prepend(events) {
+      engine.prepend(events.map(event => ({ type: 'durable', event })), false)
       engine.flush()
       return engine.snapshot('chat')
     },

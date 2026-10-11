@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, extname, join, relative, resolve, sep } from 'node:path'
+import { isDshRuntimeImport, isForbiddenRendererDshImport, moduleImports } from './architecture-imports.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const failures = []
@@ -55,11 +56,14 @@ assertClosedSet(
   new Set(['host', 'i18n', 'modules', 'platform']),
   new Set(['main.ts'])
 )
-assertClosedSet('packages/product-shared/src', new Set(['contracts', 'foundation']), new Set())
+assertClosedSet('packages/shared/src', new Set(['contracts', 'foundation']), new Set())
+assertClosedSet('packages', new Set(['client', 'host', 'shared', 'sdk', 'compatibility', 'examples']), new Set(['README.md']))
+assertClosedSet('packages/client', new Set(['features', 'mobile']), new Set())
+assertClosedSet('packages/host', new Set(['product-api', 'product-data', 'runtime', 'web-search-tavily', 'compatibility-host']), new Set())
 assertClosedSet('apps/desktop/src/preload', new Set(), new Set(['preload.ts']))
 assertClosedSet(
   'apps/web/src',
-  new Set(['app', 'assets', 'modules', 'ui', 'utils']),
+  new Set(['app', 'assets', 'mobile', 'modules', 'ui', 'utils']),
   new Set(['main.jsx', 'env.d.ts'])
 )
 
@@ -70,11 +74,15 @@ forbidImports(
     /from\s+['"]node:/,
     /from\s+['"]better-sqlite3['"]/,
     /from\s+['"]drizzle-orm/,
-    /from\s+['"]@deepseek-ai\//,
     /from\s+['"]@eleckoi\/(?:dsh-runtime|desktop-host)['"]/
   ],
   '违反 Renderer 只能通过 DSH Client 服务或明确的 Electron 壳适配访问桌面能力的边界。'
 )
+for (const file of sourceFiles('apps/web/src')) {
+  if (moduleImports(readFileSync(file, 'utf8'), file).some(isForbiddenRendererDshImport)) {
+    failures.push(`${relative(root, file)} 直接依赖了非公开 Renderer UI 包；Host 与 SDK 能力必须通过 DSH Client 服务调用。`)
+  }
+}
 forbidImports(
   'apps/desktop/src/main',
   [/from\s+['"]@renderer(?:\/|['"])/, /from\s+['"][^'"]*renderer\//],
@@ -93,7 +101,7 @@ forbidImports(
   '违反 Preload 只能依赖 Electron 与 Shared Contract 的边界。'
 )
 forbidImports(
-  'packages/product-shared/src',
+  'packages/shared/src',
   [
     /from\s+['"]electron['"]/,
     /from\s+['"]node:/,
@@ -163,14 +171,14 @@ function assertAcyclicModules(dependencies, label) {
 }
 assertAcyclicModules(mainModuleDependencies, 'Main 业务模块')
 
-const productDataDomainRoot = join(root, 'packages/dsh-product-data/src/domain')
+const productDataDomainRoot = join(root, 'packages/host/product-data/src/domain')
 const productDataDependencies = new Map()
 for (const entry of readdirSync(productDataDomainRoot, { withFileTypes: true })) {
   if (entry.isDirectory() && !existsSync(join(productDataDomainRoot, entry.name, 'index.ts'))) {
-    failures.push(`packages/dsh-product-data/src/domain/${entry.name} 缺少唯一公开入口 index.ts。`)
+    failures.push(`packages/host/product-data/src/domain/${entry.name} 缺少唯一公开入口 index.ts。`)
   }
 }
-for (const file of sourceFiles('packages/dsh-product-data/src/domain')) {
+for (const file of sourceFiles('packages/host/product-data/src/domain')) {
   const normalized = relative(productDataDomainRoot, file).split(sep).join('/')
   const ownModule = normalized.split('/')[0]
   const content = readFileSync(file, 'utf8')
@@ -246,7 +254,7 @@ const exclusiveSqlTableOwners = new Map([
   ['agent_preset_version_entries', 'agentPresets']
 ])
 
-for (const file of sourceFiles('packages/dsh-product-data/src/domain')) {
+for (const file of sourceFiles('packages/host/product-data/src/domain')) {
   const normalized = relative(productDataDomainRoot, file).split(sep).join('/')
   const ownModule = normalized.split('/')[0]
   const content = readFileSync(file, 'utf8')
@@ -327,7 +335,7 @@ for (const file of [...sourceFiles('apps/web/src/app'), ...sourceFiles('apps/web
   }
 }
 
-const productSources = ['apps/desktop/src', 'apps/web/src', 'packages/product-shared/src'].flatMap(sourceFiles)
+const productSources = ['apps/desktop/src', 'apps/web/src', 'packages/shared/src'].flatMap(sourceFiles)
 for (const file of productSources) {
   const content = readFileSync(file, 'utf8')
   if (/\bDesktopGateway\b|\bdesktopGateway\b|\bwindow\.eleckoi\b|eleckoi\.desktop\.request|DESKTOP_REQUEST_CHANNEL/.test(content)) {
@@ -344,12 +352,12 @@ for (const file of productSources) {
 const dshHostComposition = join(root, 'apps/desktop/src/main/host/dshHostPlugin.ts')
 for (const file of productSources) {
   const content = readFileSync(file, 'utf8')
-  if (/@eleckoi\/(?:dsh-runtime|desktop-host)|@deepseek-ai\/dsh-/.test(content) && file !== dshHostComposition) {
+  if (moduleImports(content, file).some(isDshRuntimeImport) && file !== dshHostComposition) {
     failures.push(`${relative(root, file)} 绕过了 Desktop Host 组合根；产品侧不得直接依赖 DSH Runtime。`)
   }
 }
-const dshRuntimeExports = JSON.parse(readFileSync(join(root, 'packages/dsh-runtime/package.json'), 'utf8')).exports
-for (const file of [...sourceFiles('packages/dsh-runtime/src'), ...sourceFiles('apps/desktop-host/src')]) {
+const dshRuntimeExports = JSON.parse(readFileSync(join(root, 'packages/host/runtime/package.json'), 'utf8')).exports
+for (const file of [...sourceFiles('packages/host/runtime/src'), ...sourceFiles('apps/desktop-host/src')]) {
   const content = readFileSync(file, 'utf8')
   const invalidSubpath = [...content.matchAll(/['"]@eleckoi\/dsh-runtime\/([^'"\s]+)['"]/g)]
     .some(([, name]) => !Object.hasOwn(dshRuntimeExports, `./${name}`))

@@ -22,8 +22,12 @@ ADR 是 Architecture Decision Record，即架构决策记录，用于说明一�
 | 0024 | [官方 ChatView 与角色消息座位](0024-official-chat-view-roleplay-seats.md) | 已采纳 | 官方列表、滚动与角色呈现边界。 |
 | 0025 | [同一 Session 复用已有用户事件重新生成](0025-same-session-existing-input-regeneration.md) | 已采纳 | 保留用户事件并继续官方运行循环。 |
 | 0026 | [旧 Session 系统开头的迁移修复](0026-legacy-session-system-head-migration.md) | 已采纳 | 在相邻迁移中补齐空开头，保留原日志并隔离单个会话失败。 |
-| 0027 | [通过官方 DSH 合同开放聊天流程参与入口](0027-conversation-plugin-lifecycle.md) | 已采纳 | Cordis Host 服务、官方 Session 保存、Remote 当前操作等待及消息回退参与。 |
+| 0027 | [通过官方 DSH 合同开放聊天流程参与入口](0027-conversation-plugin-lifecycle.md) | 已撤销 | 原回调接口已删除；当前接入使用 DSH 公开能力与产品接口。 |
 | 0028 | [以多应用工作区组织桌面与后续 Android 工程](0028-multi-application-workspace.md) | 已采纳 | 应用入口、公共合同、原生源码与各平台构建职责。 |
 | 0029 | [运行期间查看实际请求，停止请求副本写入放大](0029-ephemeral-request-context-preview.md) | 已采纳 | 真实请求只在内存保留；独立弹窗按需预览，退出后不恢复。 |
+| 0030 | [按职责分组工作区包](0030-package-responsibility-groups.md) | 已采纳 | Client、Host、公共合同、SDK 与示例按职责组织，保留包身份。 |
+| 0031 | [Android 本地 Node Host](0031-android-local-node-host.md) | 实施中 | 独立本地运行环境、数据库与平台构建边界。 |
+| 0032 | [原生脚本库与作者 SDK](0032-native-script-libraries.md) | 已实施 | 三类脚本、文件源码、原生变量规则与作者前端。 |
+| 0033 | [导入格式与原生数据存储](0033-native-format-import-storage.md) | 已采纳 | 外部格式转换到原生领域，不保留第二份业务数据。 |
 
 本目录没有收录 0006—0011 和 0014；保留编号间隔，不复制内部历史材料来补齐。后续编号须同时核对两个工作树，避免复用未收录编号。

@@ -27,7 +27,7 @@ export const AGENT_TOOL_GROUP_ICONS = Object.freeze({
   'builtin:plugin-discovery': PlugsConnected,
 });
 
-export function AgentToolGroupIcon({ groupId, size = 18, weight = 'fill', ...props }) {
+export function AgentToolGroupIcon({ groupId, size = 18, weight = 'regular', ...props }) {
   const Icon = AGENT_TOOL_GROUP_ICONS[groupId] || PuzzlePiece;
   return <Icon size={size} weight={weight} aria-hidden="true" data-tool-group-icon={groupId} {...props} />;
 }

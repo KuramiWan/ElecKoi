@@ -17,7 +17,7 @@ import {
   UserCircle,
   UserCircleGear,
   UploadSimple,
-} from "@phosphor-icons/react";
+} from "./interfaceIcons.jsx";
 
 function phosphor(Icon, { size = 24, weight = "regular", ...props } = {}) {
   return <Icon size={size} weight={weight} aria-hidden="true" {...props} />;
@@ -40,7 +40,7 @@ export function ChatHistoryIcon(props) { return phosphor(ChatText, props); }
 export function ImportIcon(props) { return phosphor(DownloadSimple, { size: 16, ...props }); }
 export function ExportIcon(props) { return phosphor(UploadSimple, { size: 16, ...props }); }
 function historyFileIcon(paths, props = {}) {
-  return <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+  return <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
     {paths.map((path) => <path key={path} d={path} />)}
   </svg>;
 }

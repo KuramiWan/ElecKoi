@@ -52,6 +52,15 @@ function CharacterDeckCard({ character, offset, selected, onSelect }) {
   );
 }
 
+function CharacterPortrait({ character }) {
+  const cover = assetSrc(characterCover(character));
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [cover]);
+  return <div className="character-profile-portrait">
+    {cover && !failed ? <img src={cover} alt={`${characterName(character)}立绘`} onError={() => setFailed(true)} /> : <span>{characterName(character).slice(0, 1)}</span>}
+  </div>;
+}
+
 export function CharacterProfilePanel({
   characters,
   selectedCharacterId,
@@ -59,6 +68,7 @@ export function CharacterProfilePanel({
   onStartConversation,
   onEditCharacter,
   onCreateFirstCharacter,
+  presentation = 'deck',
 }) {
   const items = characters?.items || [];
   const requestedIndex = Math.max(0, items.findIndex((item) => item.id === selectedCharacterId));
@@ -66,7 +76,8 @@ export function CharacterProfilePanel({
   const [displayedCharacterId, setDisplayedCharacterId] = useState(() => requestedCharacter?.id || "");
   const [remoteSwitching, setRemoteSwitching] = useState(false);
   const displayedIndex = items.findIndex((item) => item.id === displayedCharacterId);
-  const selectedIndex = displayedIndex >= 0 ? displayedIndex : requestedIndex;
+  const single = presentation === 'single';
+  const selectedIndex = single ? requestedIndex : displayedIndex >= 0 ? displayedIndex : requestedIndex;
   const selectedCharacter = items[selectedIndex] || null;
 
   useEffect(() => {
@@ -83,7 +94,7 @@ export function CharacterProfilePanel({
       : Number.POSITIVE_INFINITY;
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-    if (distance <= 2 || reduceMotion) {
+    if (single || distance <= 2 || reduceMotion) {
       setRemoteSwitching(false);
       setDisplayedCharacterId(targetId);
       return undefined;
@@ -96,7 +107,7 @@ export function CharacterProfilePanel({
     }, 90);
 
     return () => window.clearTimeout(timer);
-  }, [displayedCharacterId, items, requestedCharacter?.id, requestedIndex]);
+  }, [single, displayedCharacterId, items, requestedCharacter?.id, requestedIndex]);
 
   const visibleCards = useMemo(
     () => items
@@ -115,7 +126,7 @@ export function CharacterProfilePanel({
   }
 
   useEffect(() => {
-    if (items.length < 2) return undefined;
+    if (single || items.length < 2) return undefined;
 
     function handleWindowKeyDown(event) {
       const direction = characterDeckKeyDirection(event, hasBlockingCharacterOverlay(document));
@@ -126,7 +137,7 @@ export function CharacterProfilePanel({
 
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [items, selectedIndex, onSelectCharacter]);
+  }, [single, items, selectedIndex, onSelectCharacter]);
 
   if (!selectedCharacter) {
     return (
@@ -148,6 +159,19 @@ export function CharacterProfilePanel({
       || selectedCharacter.profileLike
       || "",
   ).trim();
+
+  const copy = <div className={`character-profile-copy${!single && remoteSwitching ? ' is-remote-switching' : ''}`}>
+    <h1>{name}</h1><p className={introduction ? '' : 'is-empty'}>{introduction || '暂无简介'}</p>
+  </div>;
+  const actions = <div className="character-profile-actions">
+    <button type="button" className="character-profile-action is-primary" onMouseDown={preventPointerFocus} onClick={() => onStartConversation(selectedCharacter.id)}><NewChatIcon />开始对话</button>
+    <button type="button" className="character-profile-action is-secondary" onMouseDown={preventPointerFocus} onClick={() => onEditCharacter(selectedCharacter.id)}><PencilIcon />编辑角色</button>
+  </div>;
+
+  if (single) return <section className="character-profile-panel is-single-portrait" aria-label={`${name}的角色简介`}>
+    <div className="character-profile-scroll"><CharacterPortrait character={selectedCharacter} />{copy}</div>
+    {actions}
+  </section>;
 
   return (
     <section className="character-profile-panel" aria-label={`${name}的角色简介`} aria-busy={remoteSwitching || undefined}>
@@ -178,21 +202,8 @@ export function CharacterProfilePanel({
 
       </div>
 
-      <div className={`character-profile-copy${remoteSwitching ? " is-remote-switching" : ""}`}>
-        <h1>{name}</h1>
-        <p className={introduction ? "" : "is-empty"}>{introduction || "暂无简介"}</p>
-      </div>
-
-      <div className="character-profile-actions">
-        <button type="button" className="character-profile-action is-primary" onMouseDown={preventPointerFocus} onClick={() => onStartConversation(selectedCharacter.id)}>
-          <NewChatIcon />
-          开始对话
-        </button>
-        <button type="button" className="character-profile-action is-secondary" onMouseDown={preventPointerFocus} onClick={() => onEditCharacter(selectedCharacter.id)}>
-          <PencilIcon />
-          编辑角色
-        </button>
-      </div>
+      {copy}
+      {actions}
 
     </section>
   );

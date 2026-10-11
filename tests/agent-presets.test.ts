@@ -2,11 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
+import { AgentPresetRepository } from '../packages/host/product-data/src/domain/agentPresets'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 import { readPngText } from '@eleckoi/dsh-product-data/media'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { agentPresetSchema } from '../packages/product-shared/src/contracts/presets/schemas'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { agentPresetSchema } from '../packages/shared/src/contracts/presets/schemas'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []

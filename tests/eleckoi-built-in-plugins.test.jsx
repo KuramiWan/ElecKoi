@@ -3,16 +3,28 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import React, { act } from 'react';
+import * as ReactDom from 'react-dom';
+import * as Jsx from 'react/jsx-runtime';
+import * as Slots from '@deepseek-ai/dsh-client-ui-slots';
+import * as Store from '@deepseek-ai/dsh-client-store';
+import { createRequire } from 'node:module';
 import { createRoot } from 'react-dom/client';
 import * as primitives from '@deepseek-ai/dsh-client-ui-primitives';
 import { describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import { readWorkspacePackages } from '../scripts/workspace-packages.mjs';
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 const bundles = JSON.parse(readFileSync(resolve('apps/desktop/resources/dsh/runtime-manifest.json'), 'utf8')).desktopProfile.bundles;
-const bundleManifest = (name) => JSON.parse(readFileSync(resolve(name.replace('@eleckoi/', 'packages/') + '/package.json'), 'utf8'));
+const packagePaths = new Map(readWorkspacePackages(process.cwd()).map(({ manifest, directory }) => [manifest.name, directory]));
+const bundleRoot = (name) => {
+    const directory = packagePaths.get(name);
+    if (!directory) throw new Error(`Missing workspace bundle: ${name}`);
+    return resolve(directory);
+};
+const bundleManifest = (name) => JSON.parse(readFileSync(resolve(bundleRoot(name), 'package.json'), 'utf8'));
 const developerInterfaces = (name) => bundleManifest(name).eleckoi?.developerInterfaces ?? [];
 function packageSource(name) {
-    const root = resolve(name.replace('@eleckoi/', 'packages/') + '/src');
+    const root = resolve(bundleRoot(name), 'src');
     const files = [];
     const visit = (directory) => {
         for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -29,11 +41,12 @@ function packageSource(name) {
 function inventory(face) {
     let registration;
     const entries = [];
-    runInNewContext(readFileSync(resolve('packages/dsh-client-shell/src/client.js'), 'utf8'), {
+    runInNewContext(readFileSync(resolve('packages/client/features/dsh-client-shell/src/client.js'), 'utf8'), {
         AbortController,
         window: { __ModuleLoader__: { load: (value) => { registration = value; } } },
     });
     registration.factory((name) => name === 'react' ? React : primitives).apply({
+        inject: () => {},
         effect: () => { },
         reflect: { provide: () => () => {} },
         slots: {
@@ -88,9 +101,44 @@ async function withDetail(run) {
     }
 }
 describe('ElecKoi built-in bundle details', () => {
-    it('keeps enabled installation bundles in the official plugin detail index', () => {
-        const source = readFileSync(resolve('node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js'), 'utf8');
-        expect(source).toContain('pkg.enabled || pkg.installed || pkg.optional || pkg.error !== void 0');
+    it('keeps a shipped bundle in the official list and detail while disabled and allows enabling it again', async () => {
+        let plugin, page, initialState;
+        runInNewContext(readFileSync(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-client-ui-plugin-manager/client'), 'utf8'), {
+            window: { __ModuleLoader__: { load: value => { plugin = value; } } },
+        });
+        const dependencies = { react: React, 'react-dom': ReactDom, 'react/jsx-runtime': Jsx,
+            '@deepseek-ai/dsh-client-ui-primitives': primitives, '@deepseek-ai/dsh-client-ui-slots': Slots,
+            '@deepseek-ai/dsh-client-store': Store };
+        plugin.factory(name => dependencies[name]).apply({
+            effect: () => {}, locale: { bind: () => () => '', resolveText: value => value },
+            configForms: { describe: () => ({}) },
+            slots: { inject: (_name, register) => { const result = register(); if (result?.next) result.next(); },
+                register: (options, component) => { if (options.name === 'main') { page = component; initialState = options.inject().hooks.pluginManager.getSnapshot(); } return () => {}; } },
+        });
+        const node = document.createElement('div'); document.body.append(node);
+        const root = createRoot(node);
+        const name = '@test/shipped-bundle';
+        let view = { kind: 'list' }, state = { ...initialState, status: 'ready', packages: [{ name,
+                enabled: true, installed: false, optional: false, rows: [], overrides: [], meta: { title: '合成插件' } }] };
+        const render = () => root.render(React.createElement(page, {
+            t: (key, values) => key === 'enableToggle' ? `启用 ${values.name}` : key,
+            ensure: () => {}, renderSlot: () => null, resolveText: value => value,
+            useConfigurations: select => select({}), configForm: () => {},
+            usePluginManager: select => select(state), useConfigLedger: select => select({ items: [], bundles: new Set(), rows: new Set() }),
+            useStore: select => select({ view }), actions: { setView: next => { view = next; render(); } },
+            setEnabled: (id, enabled) => { expect(id).toBe(name); state = { ...state, packages: [{ ...state.packages[0], enabled }] }; render(); },
+        }));
+        try {
+            await act(async () => render());
+            await act(async () => node.querySelector('[role="switch"]').click());
+            expect(node.querySelector('[data-plugin-package]')?.dataset.pluginStatus).toBe('disabled');
+            await act(async () => node.querySelector('[data-plugin-package] button').click());
+            expect(node.querySelector('[data-plugin-detail]')).not.toBeNull();
+            expect(node.querySelector('[role="switch"]').getAttribute('aria-checked')).toBe('false');
+            await act(async () => node.querySelector('[role="switch"]').click());
+            expect(state.packages[0].enabled).toBe(true);
+            expect(node.querySelector('[role="switch"]').getAttribute('aria-checked')).toBe('true');
+        } finally { await act(async () => root.unmount()); node.remove(); }
     });
     it('publishes shipped bundles even when they are not installed into the user profile', () => {
         let registration;
@@ -121,8 +169,9 @@ describe('ElecKoi built-in bundle details', () => {
         try {
             ;
             window.__ModuleLoader__ = { load: (value) => { registration = value; } };
-            runInNewContext(readFileSync(resolve('packages/dsh-client-shell/src/client.js'), 'utf8'), { window, CustomEvent, AbortController });
+            runInNewContext(readFileSync(resolve('packages/client/features/dsh-client-shell/src/client.js'), 'utf8'), { window, CustomEvent, AbortController });
             registration.factory((name) => name === 'react' ? react : primitives).apply({
+                inject: () => {},
                 slots, reflect: { provide: () => () => { } },
                 effect: (run) => { if (firstEffect) {
                     firstEffect = false;
@@ -249,7 +298,7 @@ describe('ElecKoi built-in bundle details', () => {
         expect(clientSource).toContain('{ developerInterfaces: bundle.developerInterfaces }');
     });
     it('classifies patched upstream packages as adaptations', () => {
-        const source = readFileSync(resolve('packages/dsh-client-shell/src/client.js'), 'utf8');
+        const source = readFileSync(resolve('packages/client/features/dsh-client-shell/src/client.js'), 'utf8');
         const workspace = parseYaml(readFileSync(resolve('pnpm-workspace.yaml'), 'utf8'));
         for (const spec of Object.keys(workspace.patchedDependencies)) {
             const split = spec.lastIndexOf('@');

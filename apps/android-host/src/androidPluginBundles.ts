@@ -1,0 +1,33 @@
+import { createRequire } from 'node:module'
+import { existsSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
+import bundles from './androidPluginBundleManifest.json'
+
+export const ELECKOI_INSTALL_ANCHOR = createRequire(import.meta.url).resolve('@eleckoi/android-host/package.json')
+
+export const ELECKOI_ANDROID_BUNDLES: readonly string[] = Object.freeze([...bundles])
+
+const frontendBundles = ['@eleckoi/dsh-client-tavern-shared', '@eleckoi/dsh-compatibility-host'] as const
+
+/** Register the shipped frontend upgrade once; later bundle selections remain user-owned. */
+export function registerAndroidFrontendBundles(profileDirectory: string): void {
+  const marker = join(profileDirectory, '.eleckoi-android-frontend-bundles-v1')
+  if (existsSync(marker)) return
+  for (const name of frontendBundles) {
+    if (!ELECKOI_ANDROID_BUNDLES.includes(name)) throw new Error(`Android frontend bundle is not declared: ${name}`)
+  }
+  const manifest = readProfileManifest('dsh', profileDirectory)
+  const selected = manifest.dsh?.profile?.bundles ?? []
+  const missing = frontendBundles.filter(name => !selected.includes(name))
+  if (missing.length) writeProfileBundles(profileDirectory, manifest, [...selected, ...missing])
+  writeFileSync(marker, 'initialized\n', { flag: 'wx' })
+}
+
+/** The Android application requires its mobile surface; other bundle selections remain user-owned. */
+export function registerAndroidMobileBundle(profileDirectory: string): void {
+  const manifest = readProfileManifest('dsh', profileDirectory)
+  const selected = manifest.dsh?.profile?.bundles ?? []
+  const mobile = '@eleckoi/dsh-client-mobile'
+  if (!selected.includes(mobile)) writeProfileBundles(profileDirectory, manifest, [...selected, mobile])
+}

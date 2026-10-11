@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { MessageDisplayProjector } from '../packages/dsh-product-data/src/domain/conversations/MessageDisplayProjector'
+import { MessageDisplayProjector } from '../packages/host/product-data/src/domain/conversations/MessageDisplayProjector'
 import {
   resolveSettingLibraryCharacterCardMacros,
   resolveVariableContextCharacterCardMacros
-} from '../packages/dsh-product-data/src/domain/agent/CharacterCardMacroResolver'
+} from '../packages/host/product-data/src/domain/agent/CharacterCardMacroResolver'
 import type {
   AgentSettingLibraryRuntimeContext,
   AgentVariableRuntimeContext
-} from '../packages/product-shared/src/contracts/agent/runtime'
+} from '../packages/shared/src/contracts/agent/runtime'
 import {
   characterCardMacroValues,
   resolveCharacterCardMacros,
   resolveCharacterCardMacrosInJson
-} from '../packages/product-shared/src/foundation/characterCardMacros'
+} from '../packages/shared/src/foundation/characterCardMacros'
 
 const values = { userName: '用户$1', characterName: '测试角色' }
 

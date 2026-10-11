@@ -10,7 +10,7 @@ import {
   Plus,
   SlidersHorizontal,
   Trash,
-} from "@phosphor-icons/react";
+} from "../../../ui/icons/interfaceIcons.jsx";
 import { DshFolderClosedIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { SETTING_LIBRARY_CREATE_ICONS } from "../../../ui/icons/settingLibraryCreateIcons.jsx";
 import { SettingLibraryManager } from "./SettingLibraryManager.jsx";
@@ -18,8 +18,12 @@ import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingLibraryInspector } from "./SettingLibraryInspector.jsx";
 import { SettingLibraryTree, SettingTreeActionsContext } from "./SettingLibraryTree.jsx";
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
+import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import {
   PINNED_ENTRY_IDS,
+  canTransferSettingNode,
+  copySettingNode,
   createEntryDraft,
   createGroupDraft,
   createId,
@@ -48,10 +52,13 @@ function nodeIcon(entry) {
 }
 
 export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, variables, onDirtyChange }, ref) {
+  const { compact } = useEditorPresentation();
   const [library, setLibrary] = useState(null);
   const [variableSnapshot, setVariableSnapshot] = useState({ value: null, error: "" });
   const [persisted, setPersisted] = useState(null);
   const [selectedKey, setSelectedKey] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [clipboard, setClipboard] = useState(null);
   const [expandedKeys, setExpandedKeys] = useState([]);
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -194,7 +201,43 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   }
 
   function requestCloseInspector() {
-    setSelectedKey("");
+    if (compact) setEditing(false);
+    else setSelectedKey('');
+  }
+
+  function selectNode(key) {
+    setSelectedKey(key);
+    setEditing(false);
+  }
+
+  function openEditor(key = selectedKey) {
+    setSelectedKey(key);
+    setEditing(true);
+  }
+
+  function startTransfer(mode) {
+    if (!selected.value || PINNED_ENTRY_IDS.has(selected.value.id)) return;
+    setClipboard({ mode, target: { kind: selected.kind, id: selected.value.id } });
+    selectNode('');
+  }
+
+  function pasteSelection() {
+    const parentId = parentForNewNode();
+    if (!clipboard || !canTransferSettingNode(libraryRef.current, clipboard.target, parentId)) {
+      setError('不能粘贴到此文件夹，请选择其他位置。');
+      return;
+    }
+    if (clipboard.mode === 'cut') {
+      handleMove({ dragId: nodeKey(clipboard.target.kind, clipboard.target.id), parentId: parentId ? nodeKey('group', parentId) : '',
+        destinationIndex: Number.MAX_SAFE_INTEGER, expandParentId: parentId ? nodeKey('group', parentId) : '' });
+      setSelectedKey(nodeKey(clipboard.target.kind, clipboard.target.id));
+    } else {
+      const copied = copySettingNode(libraryRef.current, clipboard.target, parentId);
+      changeLibrary(copied.library);
+      setSelectedKey(copied.key);
+      if (parentId) handleExpandedKeysChange([...new Set([...expandedKeysRef.current, nodeKey('group', parentId)])]);
+    }
+    setClipboard(null);
   }
 
   function applyManagerChange(nextLibrary) {
@@ -291,7 +334,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     changeLibrary(nextLibrary);
     setMenuOpen(false);
     setContextMenu(null);
-    setSelectedKey(nextKey);
+    openEditor(nextKey);
     requestAnimationFrame(() => nameInputRef.current?.select());
   }
 
@@ -337,7 +380,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
         entries: current.entries.filter((entry) => !removed.has(entry.groupId)),
       };
     });
-    setSelectedKey(nodeKey("entry", "fixed-opening-assistant"));
+    selectNode(compact ? "" : nodeKey("entry", "fixed-opening-assistant"));
     setDeleteTarget(null);
   }
 
@@ -409,6 +452,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   function openContextMenu(event, node) {
     event.preventDefault();
     event.stopPropagation();
+    if (compact) { selectNode(String(node.key)); return; }
     setMenuOpen(false);
     if (node.fixed) {
       setContextMenu({
@@ -451,12 +495,12 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     const treeRect = tree.getBoundingClientRect();
     const scrollbarHitWidth = Math.max(16, tree.offsetWidth - tree.clientWidth + 4);
     if (event.clientX >= treeRect.right - scrollbarHitWidth && event.clientX <= treeRect.right + 2) return;
-    requestCloseInspector();
+    selectNode('');
   }
 
   const selectedIcon = selected.kind === "group" ? DshFolderClosedIcon : nodeIcon(selected.value);
   const SelectedIcon = selectedIcon || FileText;
-  const inspector = selected.value ? (
+  const inspector = selected.value && (!compact || editing) ? (
     <SettingLibraryInspector
       selected={selected}
       library={library}
@@ -470,18 +514,21 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       onDeleteGroup={() => askDelete("group", selected.value.id)}
       onUpdateEntry={(entry) => updateEntryById(entry.id, entry)}
       onEntriesChange={(entries) => changeLibrary((current) => ({ ...current, entries }))}
-      onOpenEntry={(entryId) => setSelectedKey(nodeKey("entry", entryId))}
+      onOpenEntry={(entryId) => openEditor(nodeKey("entry", entryId))}
       onRequestDeleteOpening={askDeleteOpening}
       onPromptPositionsChange={(promptPositions, entries = library.entries) => changeLibrary((current) => ({ ...current, promptPositions, entries }))}
     />
   ) : null;
 
-  if (!library) return <div className="setting-library-loading">{error || "正在读取…"}</div>;
+  if (!library && !compact) return <div className="setting-library-loading">{error || "正在读取…"}</div>;
 
   return (
     <EditorSidebarLayout
       className="setting-library-layout"
       inspector={inspector}
+      inspectorTitle={selected.kind === 'group' ? '编辑文件夹' : selected.value?.title || '编辑设定'}
+      onCloseInspector={requestCloseInspector}
+      feedback={<SaveControl dirty={dirty} error={error} notice={saveNotice} saving={saving} onSave={save} />}
       aria-label="设定库"
       onMouseDown={() => setMenuOpen(false)}
     >
@@ -491,7 +538,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
             <MagnifyingGlass size={15} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索设定" aria-label="搜索设定" />
           </label>
-          <div className="setting-library-add-wrap">
+          {!compact && <div className="setting-library-add-wrap">
             <button type="button" className="setting-library-create-button" aria-label="新建" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Plus size={16} />新建</button>
             {menuOpen ? (
               <div className="setting-library-popover" role="menu">
@@ -500,27 +547,43 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
                 <button type="button" role="menuitem" onClick={() => requestAddNode("reference")}><CreateReferenceIcon size={16} />EJS引用设定</button>
               </div>
             ) : null}
-          </div>
-          <button type="button" className="setting-library-manage-button" aria-expanded={managerOpen} onClick={() => { setMenuOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
+          </div>}
+          <button type="button" className="setting-library-manage-button" disabled={!library} aria-expanded={managerOpen} onClick={() => { setMenuOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
           <SaveControl dirty={dirty} error={error} notice={saveNotice} saving={saving} onSave={save} />
         </div>
 
         <div className="setting-library-tree editor-sidebar-directory" onMouseDown={handleTreeMouseDown} onContextMenu={openTreeContextMenu}>
-          <SettingTreeActionsContext.Provider value={{ openContextMenu, updateEntryById }}>
+          <SettingTreeActionsContext.Provider value={{ openContextMenu, updateEntryById, openEditor: compact ? openEditor : undefined }}>
             <SettingLibraryTree
               key={characterId}
               nodes={nodes}
+              touchReorder={compact && !clipboard}
+              dragEnabled={!clipboard}
               query={query}
               selectedId={selectedKey}
               expandedIds={expandedKeys}
-              onSelectedIdChange={setSelectedKey}
+              onSelectedIdChange={selectNode}
               onExpandedIdsChange={handleExpandedKeysChange}
               onMove={handleMove}
               ariaLabel="设定文件夹树"
             />
           </SettingTreeActionsContext.Provider>
-          {!searchHasResults ? <p className="setting-library-empty">没有匹配的设定</p> : null}
+          {!library ? <p className="setting-library-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p> : !searchHasResults ? <p className="setting-library-empty">没有匹配的设定</p> : null}
         </div>
+        {compact && library && <MobileEditorActions label="设定操作" selectionId={selectedKey}
+          canEdit={Boolean(selected.value)} canModify={Boolean(selected.value) && !PINNED_ENTRY_IDS.has(selected.value.id)}
+          clipboard={clipboard} canPaste={Boolean(clipboard && canTransferSettingNode(library, clipboard.target, parentForNewNode()))}
+          onEdit={() => openEditor()} onMove={() => startTransfer('cut')} onPaste={pasteSelection} onCancel={() => setClipboard(null)}
+          onDelete={() => askDelete(selected.kind, selected.value.id)}
+          createItems={[
+            { label: '文件夹', Icon: CreateFolderIcon, run: () => requestAddNode('group') },
+            { label: '设定', Icon: CreateEntryIcon, run: () => requestAddNode('entry') },
+            { label: 'EJS引用设定', Icon: CreateReferenceIcon, run: () => requestAddNode('reference') },
+          ]}
+          moreItems={selected.value && !PINNED_ENTRY_IDS.has(selected.value.id) ? [
+            { label: '复制', Icon: Copy, run: () => startTransfer('copy') },
+            { label: '重命名', Icon: PencilSimple, run: () => { openEditor(); requestAnimationFrame(() => nameInputRef.current?.select()); } },
+          ] : []} />}
       </div>
 
       {managerOpen ? (

@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useRef, useState } from "react";
 
 export function DynamicSettingsNameDialog({ dialog, busy, onCancel, onConfirm }) {
@@ -12,7 +13,7 @@ export function DynamicSettingsNameDialog({ dialog, busy, onCancel, onConfirm })
   if (!dialog) return null;
   const normalized = value.trim();
   return (
-    <div className="setting-library-dialog-overlay" role="presentation" onMouseDown={onCancel}>
+    <SystemBarOverlay className="setting-library-dialog-overlay" role="presentation" onMouseDown={onCancel}>
       <section className="setting-library-dialog dynamic-settings-name-dialog" role="dialog" aria-modal="true" aria-labelledby="dynamic-settings-name-title" onMouseDown={(event) => event.stopPropagation()}>
         <h2 id="dynamic-settings-name-title">{dialog.title}</h2>
         <label>
@@ -33,6 +34,6 @@ export function DynamicSettingsNameDialog({ dialog, busy, onCancel, onConfirm })
           <button type="button" className="is-primary" disabled={!normalized || busy} onClick={() => onConfirm(normalized)}>{busy ? "保存中…" : dialog.confirmLabel}</button>
         </div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 }

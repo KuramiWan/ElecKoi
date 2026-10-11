@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { OfficialMarkdown } from "../../../ui/messages/OfficialMarkdown.jsx";
-import { ArrowsInSimple, ArrowsOutSimple, Eye, PencilSimple } from "@phosphor-icons/react";
+import { CornersIn, CornersOut, Eye, PencilSimple } from "../../../ui/icons/interfaceIcons.jsx";
 
 export function MarkdownTextareaField({ label, value, placeholder, onChange, preview = true, labelAction = null }) {
   const inputId = useId();
@@ -46,7 +46,7 @@ export function MarkdownTextareaField({ label, value, placeholder, onChange, pre
               <button type="button" role="tab" aria-selected={mode === "preview"} onClick={() => setMode("preview")}><Eye size={15} />预览</button>
             </div>
           ) : null}
-          <button type="button" className="immersive-markdown-exit" onClick={() => setImmersive(false)}><ArrowsInSimple size={15} />退出沉浸</button>
+          <button type="button" className="immersive-markdown-exit" onClick={() => setImmersive(false)}><CornersIn size={15} />退出沉浸</button>
         </div>
       </header>
       <div className="immersive-markdown-body">
@@ -74,8 +74,8 @@ export function MarkdownTextareaField({ label, value, placeholder, onChange, pre
         <div className="setting-library-content-heading">
           <label htmlFor={inputId}>{label}</label>
           <div className="setting-library-content-actions">
+            <button type="button" onClick={() => setImmersive(true)}><CornersOut size={14} />沉浸编辑</button>
             {labelAction}
-            <button type="button" onClick={() => setImmersive(true)}><ArrowsOutSimple size={14} />沉浸编辑</button>
           </div>
         </div>
         <textarea id={inputId} value={value} placeholder={placeholder} spellCheck={false} onChange={(event) => onChange(event.target.value)} />

@@ -19,36 +19,46 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "paths": {
+      "@eleckoi/dsh-product-data/frontends": [
+        "./packages/host/product-data/src/domain/frontends/index.ts"
+      ],
       "@eleckoi/dsh-product-data": [
-        "./packages/dsh-product-data/src/index.ts"
+        "./packages/host/product-data/src/index.ts"
       ],
       "@eleckoi/dsh-product-data/media": [
-        "./packages/dsh-product-data/src/storage/media/index.ts"
+        "./packages/host/product-data/src/storage/media/index.ts"
+      ],
+      "@eleckoi/dsh-product-data/variables": [
+        "./packages/host/product-data/src/domain/variables/variableSchema.ts"
       ],
       "@main/*": [
         "./apps/desktop/src/main/*"
       ],
       "@product-data/*": [
-        "./packages/dsh-product-data/src/*"
+        "./packages/host/product-data/src/*"
       ],
       "@shared/*": [
-        "./packages/product-shared/src/*"
+        "./packages/shared/src/*"
       ]
     }
   },
   "include": [
+    "apps/android-host/src/androidPluginBundles.ts",
+    "apps/android-host/src/androidPluginBundleManifest.json",
     "apps/desktop/electron.vite.config.ts",
     "scripts/vite-author-vendor-plugin.ts",
     "apps/desktop/src/main/**/*.ts",
     "apps/desktop/src/preload/**/*.ts",
-    "packages/product-shared/src/**/*.ts",
-    "packages/dsh-product-data/src/**/*.ts",
-    "packages/dsh-product-api/src/hostInspect.ts",
-    "packages/dsh-product-api/src/inspectProvider.ts",
-    "packages/dsh-product-api/src/cordisApi.generated.ts",
-    "packages/dsh-product-api/src/client/inspect.ts",
-    "packages/dsh-product-api/src/client/cordisApi.generated.ts",
-    "packages/dsh-product-api/src/client/remoteApi.generated.ts",
+    "packages/shared/src/**/*.ts",
+    "packages/host/product-data/src/**/*.ts",
+    "packages/host/product-api/src/hostInspect.ts",
+    "packages/host/product-api/src/inspectProvider.ts",
+    "packages/host/product-api/src/cordisApi.generated.ts",
+    "packages/host/product-api/src/client/inspect.ts",
+    "packages/host/product-api/src/client/cordisApi.generated.ts",
+    "packages/host/product-api/src/client/remoteApi.generated.ts",
+    "packages/client/features/dsh-client-author/src/generation.ts",
+    "packages/client/features/dsh-client-author/src/messages.ts",
     "tests/**/*.ts",
     "vitest.config.ts"
   ]

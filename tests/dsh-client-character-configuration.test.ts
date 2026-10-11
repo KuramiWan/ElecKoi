@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('../packages/dsh-client-character-configuration/src/client.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../packages/client/features/dsh-client-character-configuration/src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 
 type ConfigurationChange =
   | { kind: 'snapshot' }
-  | { kind: 'configuration'; domain: 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets'; characterId?: string }
+  | { kind: 'configuration'; domain: 'settingLibraries' | 'variables' | 'regexRules' | 'scripts' | 'agentPresets'; characterId?: string }
 
 function configurationChanges() {
   const queue: ConfigurationChange[] = [{ kind: 'snapshot' }]
@@ -55,6 +55,8 @@ describe('DSH ElecKoi character configuration models', () => {
     let branches: unknown[] = []
     let preview = '最新 AI 回复'
     let previewFailure = false
+    let scriptFailure = false
+    let openFailure = false
     const changes = configurationChanges()
     runInNewContext(source, {
       AbortController,
@@ -63,6 +65,11 @@ describe('DSH ElecKoi character configuration models', () => {
     expect(registration?.id).toBe('@eleckoi/dsh-client-character-configuration')
     registration!.factory().apply({
       remote: {
+        session: { openWorkspacePath: async (input: unknown) => {
+          inputs.push({ name: 'scripts.openDirectory', input })
+          return openFailure ? { ok: false, error: { message: 'Synthetic directory open failure' } } : { ok: true, value: undefined }
+        } },
+        eleckoiAgentPresets: { catalog: async () => ({ ok: true, value: { activePresetId: 'preset-1', presets: [{ id: 'preset-1', name: 'Synthetic preset' }] } }) },
         eleckoiConversations: {
           list: async () => {
             calls.push('query.conversations.list')
@@ -72,7 +79,25 @@ describe('DSH ElecKoi character configuration models', () => {
           }
         },
         eleckoiCharacterConfiguration: {
+          readScriptWorkspace: async (scope: string, ownerId: string) => {
+            inputs.push({ name: 'scripts.workspace', input: { scope, ownerId } })
+            return { ok: true, value: { path: `synthetic-workspace/${scope}/${ownerId}`, entries: [], version: 'synthetic-version' } }
+          },
           changes: (signal?: AbortSignal) => changes.open(signal),
+          readScriptLibrary: async (scope: string, ownerId: string) => {
+            inputs.push({ name: 'scripts.read', input: { scope, ownerId } })
+            return scriptFailure ? { ok: false, error: { message: 'Synthetic script read failure' } } : {
+              ok: true, value: { scope, ownerId, enabled: false, trees: [], variables: { value: 2 }, revision: 1 }
+            }
+          },
+          saveScriptLibraries: async (libraries: any[]) => {
+            inputs.push({ name: 'scripts.saveAll', input: libraries })
+            return { ok: true, value: libraries.map(library => ({ ...library, revision: library.revision + 1 })) }
+          },
+          saveScriptLibrary: async (library: any) => {
+            inputs.push({ name: 'scripts.save', input: library })
+            return { ok: true, value: { ...library, revision: library.revision + 1 } }
+          },
           readSettingLibrary: async (characterId: string) => {
             calls.push('query.setting_library.read')
             inputs.push({ name: 'query.setting_library.read', input: { characterId } })
@@ -157,6 +182,39 @@ describe('DSH ElecKoi character configuration models', () => {
     expect(libraries).toBeDefined()
     expect(variables).toBeDefined()
     expect(regexRules).toBeDefined()
+    const scripts = services.get('eleckoiScriptLibraries')
+    for (const [scope, ownerId] of [['global', ''], ['character', 'character-1'], ['preset', 'preset-1']]) await scripts.openDirectory(scope, ownerId)
+    expect(inputs.filter(item => item.name === 'scripts.workspace').map(item => item.input)).toEqual([
+      { scope: 'global', ownerId: '' }, { scope: 'character', ownerId: 'character-1' }, { scope: 'preset', ownerId: 'preset-1' }
+    ])
+    expect(inputs.filter(item => item.name === 'scripts.openDirectory').map(item => item.input)).toEqual([
+      { path: 'synthetic-workspace/global/' }, { path: 'synthetic-workspace/character/character-1' }, { path: 'synthetic-workspace/preset/preset-1' }
+    ])
+    openFailure = true
+    await expect(scripts.openDirectory('character', 'character-1')).rejects.toThrow('Synthetic directory open failure')
+    const scriptChanges: unknown[] = []
+    const stopScriptListening = scripts.subscribe((...args: unknown[]) => scriptChanges.push(args))
+    await settle()
+    await scripts.read('global', '')
+    await scripts.read('character', 'character-1')
+    await scripts.read('preset', 'preset-1')
+    expect(inputs.filter(item => item.name === 'scripts.read').map(item => item.input)).toEqual([
+      { scope: 'global', ownerId: '' }, { scope: 'character', ownerId: 'character-1' }, { scope: 'preset', ownerId: 'preset-1' }
+    ])
+    const draft = scripts.getSnapshot('global', '').value
+    await scripts.save({ ...draft, enabled: true })
+    expect(inputs.findLast(item => item.name === 'scripts.save')?.input).toEqual({ ...draft, enabled: true })
+    expect(scripts.getSnapshot('global', '').value.revision).toBe(2)
+    await scripts.saveAll([scripts.getSnapshot('global', '').value, scripts.getSnapshot('preset', 'preset-1').value])
+    expect(scripts.getSnapshot('global', '').value.revision).toBe(3)
+    expect(scripts.getSnapshot('preset', 'preset-1').value.revision).toBe(2)
+    scriptFailure = true
+    await expect(scripts.read('global', '')).rejects.toThrow('Synthetic script read failure')
+    expect(scripts.getSnapshot('global', '')).toMatchObject({ status: 'error', value: { revision: 3, enabled: true } })
+    scriptFailure = false
+    expect(await scripts.activePreset()).toEqual({ id: 'preset-1', name: 'Synthetic preset' })
+    expect(scriptChanges.some((change: any) => change[0] === 'preset' && change[1] === 'preset-1')).toBe(true)
+    stopScriptListening()
     await settle()
 
     await Promise.all([libraries.read('character-1'), variables.read('character-1'), regexRules.read('character-1')])

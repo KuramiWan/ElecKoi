@@ -9,6 +9,7 @@ import {
 } from "@headless-tree/core";
 import { AssistiveTreeDescription, useTree } from "@headless-tree/react";
 import "./headless-tree.css";
+import { useTouchReorder } from './useTouchReorder.js';
 import {
   HEADLESS_TREE_ROOT_ID,
   canDropAtHeadlessTarget,
@@ -49,6 +50,8 @@ export function HeadlessTree({
   onExpandedIdsChange,
   onMove,
   renderItem,
+  touchReorder = false,
+  dragEnabled = true,
 }) {
   const nestedDropRef = useRef(null);
   const [nestedDrop, setNestedDrop] = useState(null);
@@ -73,7 +76,7 @@ export function HeadlessTree({
     canReorder: true,
     reorderAreaPercentage: 0.32,
     openOnDropDelay: 500,
-    canDrag: (items) => !query.trim() && items.length === 1 && !items[0].getItemData().fixed,
+    canDrag: (items) => dragEnabled && !query.trim() && items.length === 1 && !items[0].getItemData().fixed,
     canDrop: (items, target) => {
       const parent = target.item.getItemData();
       const siblings = target.item.getChildren().map((item) => item.getItemData());
@@ -167,6 +170,8 @@ export function HeadlessTree({
     if (!isTreeDragging && nestedDropRef.current) updateNestedDrop(null);
   }, [isTreeDragging]);
 
+  const touch = useTouchReorder({ enabled: touchReorder && dragEnabled && !query.trim(), onSelect: onSelectedIdChange, onMove });
+
   const generatedContainerProps = tree.getContainerProps(ariaLabel);
   const { onDragOver: generatedContainerDragOver, ...containerProps } = generatedContainerProps;
   const visualDragLine = nestedDrop || dragLine;
@@ -174,6 +179,7 @@ export function HeadlessTree({
   return (
     <div
       {...containerProps}
+      {...touch.handlers}
       className="headless-tree-surface"
       onDragOver={(event) => {
         generatedContainerDragOver?.(event);
@@ -185,6 +191,7 @@ export function HeadlessTree({
         const { onClick: _generatedClick, onDragOver: generatedItemDragOver, ...itemProps } = generatedProps;
         const data = item.getItemData();
         const meta = item.getItemMeta();
+        const parent = item.getParent();
         return renderItem({
           key: item.getKey(),
           item,
@@ -193,10 +200,14 @@ export function HeadlessTree({
           isSelected: item.isSelected(),
           isExpanded: item.isExpanded(),
           isDropTarget: item.isUnorderedDragTarget(),
-          isDragging: Boolean(tree.getState().dnd?.draggedItems?.some((dragged) => dragged.getId() === item.getId())),
+          isDragging: touch.preview?.dragId === item.getId() || Boolean(tree.getState().dnd?.draggedItems?.some((dragged) => dragged.getId() === item.getId())),
           itemProps: {
             ...itemProps,
-            draggable: !query.trim() && !data.fixed,
+            'data-reorder-id': item.getId(),
+            'data-reorder-parent': parent.getId() === HEADLESS_TREE_ROOT_ID ? '' : parent.getId(),
+            'data-reorder-fixed': String(Boolean(data.fixed)),
+            'data-reorder-target': touch.preview?.targetId === item.getId() ? (touch.preview.after ? 'after' : 'before') : undefined,
+            draggable: dragEnabled && !query.trim() && !data.fixed,
             onDragOver: (event) => {
               generatedItemDragOver?.(event);
               updateNestedDropFromPointer(event.clientX, event.clientY);

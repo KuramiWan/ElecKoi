@@ -6,10 +6,10 @@
 
 - 唯一所有者：DSH Host 插件 `@eleckoi/dsh-product-data`。
 - 数据库文件：Electron `userData/eleckoi-common.sqlite3`，路径由桌面壳作为 Host 启动参数传入。
-- SQLite 打开、迁移、恢复和所有 Repository 写入均位于 `packages/dsh-product-data/src`。Electron Main、Client 和 Renderer 不打开数据库。
+- SQLite 打开、迁移、恢复和所有 Repository 写入均位于 `packages/host/product-data/src`。Electron Main、Client 和 Renderer 不打开数据库。
 - 公共 SQL：`apps/desktop/resources/database/eleckoi-common-schema-v1.sql`。
-- 当前 `PRAGMA user_version`：`9`。
-- 当前结构：43 张业务表、2 个视图；数据库物理结构版本只使用 SQLite `PRAGMA user_version`。
+- 当前 `PRAGMA user_version`：`10`。
+- 当前结构：44 张业务表、2 个视图；数据库物理结构版本只使用 SQLite `PRAGMA user_version`。
 
 `pnpm db:generate` 从固定 SQL 生成内嵌迁移 SQL与 Drizzle 查询映射；`pnpm check:database-schema` 校验生成内容。SQL 是公共结构权威，Drizzle 映射不反向生成迁移。
 
@@ -19,6 +19,7 @@
 | --- | --- |
 | 角色、角色卡文本、用户资料 | SQLite；媒体字段保存 `eleckoi-media://` 引用，文件位于产品媒体目录 |
 | 设定库、变量配置与状态、正则、Agent 预设 | SQLite |
+| 全局、角色、预设脚本的归属、列表、启停与设置 | SQLite；源码仅保存为 `author-scripts` 目录内的 `.js` 文件，库中只记录文件引用与修改标识 |
 | 聊天目录、角色快照、关系索引、说话者、轮次与最终回复关系 | SQLite |
 | 聊天正文、推理、工具调用、工具结果与 Provider replay state | DSH Session 日志 |
 | 模型提供商、模型 profile、API Key | DSH settings/profile/credentials |
@@ -30,13 +31,13 @@
 
 当前产品数据库没有挂载 `@deepseek-ai/dsh-storage-sqlite`。该官方包是 Host 侧文档型 KV 后端，每个键对应一行 JSON；`@deepseek-ai/dsh-storage-domain` 在其上提供 schema 校验、写入串行化和 `domain/changed` 事件。它适合简单、独立、按键读写的领域状态。
 
-ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表事务和从 v1 连续迁移到当前版本。锁定版本的 DSH Storage 不提供二级索引、跨表事务或自动迁移，因此不替代这套关系型产品库。两者遵守同一所有权边界：只在 DSH Host 打开，Client 通过正式 Remote 调用；新增简单 KV 领域时先评估 `ctx.storageDomain`，新增关系型领域则进入本产品库并维护迁移链。聊天正文与轨迹仍由 DSH Session 持久化，查询索引由官方 `dsh-session-query-sqlite` 负责。
+ElecKoi 当前 44 张产品表需要关系、外键、排序、搜索、跨表事务和从 v1 连续迁移到当前版本。锁定版本的 DSH Storage 不提供二级索引、跨表事务或自动迁移，因此不替代这套关系型产品库。两者遵守同一所有权边界：只在 DSH Host 打开，Client 通过正式 Remote 调用；新增简单 KV 领域时先评估 `ctx.storageDomain`，新增关系型领域则进入本产品库并维护迁移链。聊天正文与轨迹仍由 DSH Session 持久化，查询索引由官方 `dsh-session-query-sqlite` 负责。
 
 角色扮演的下一轮模型请求从 Session 投影：旧轮次只携带用户输入和角色最终正文，旧推理、工具过程与 Provider replay state 不再发送；当前轮次流程完整保留。该投影不会删除历史轨迹。编辑、删除、回退和重新生成保持同一聊天与 Session ID。
 
 ## 迁移链
 
-迁移由 `packages/dsh-product-data/src/storage/sqlite/installSchema.ts` 在 Host 启动时原子执行：
+迁移由 `packages/host/product-data/src/storage/sqlite/installSchema.ts` 在 Host 启动时原子执行：
 
 1. v1：公共 SQL 基线。
 2. v2：运行期结构整理。
@@ -47,8 +48,17 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 7. v7：原子移除当前预设及其历史版本中的子 Agent 模型选择字段，并更新预设工具配置版本；子 Agent 模型授权只由 DSH Host 设置负责。
 8. v8：原子删除 `chat_sessions.historyUserMessageCount` 冗余列，保留其他列、聊天标识、快照及全部有效产品关系；运行时不再写入该计数。开场白切换和编辑权限以 DSH Session 的真实用户输入、待处理输入与运行状态为准，不另存第二份用户历史判断。
 9. v9：聊天保存所选开场白的变量版本编号，变量工具按该版本加载完整配置；从 v8 直接升级，旧聊天固定升级时的当前版本，保留初始值、当前值及消息。
+10. v10：新增正式脚本库管理关系，保存全局、角色和预设的分组、按钮、设置、启停、源码文件引用与修改版本。角色和预设归属通过外键约束，源码正文不进入 SQLite；文件与管理关系一起提交，失败恢复原文件。
 
-本批变更尚未发布，生成结果表已移除，不占用正式迁移步骤。已运行过原开发 v9/v10 的数据库，启动时先核对全部结构，再原子删除该表并整理为当前 v9；原开发 v9 补齐变量版本绑定，原开发 v10 保留已有绑定，不重新选择版本。未知结构拒绝修改，失败回滚，不清库。聊天插件收尾只等待当前进程的工作，不保存或查询重启前的执行结果。
+本批变更尚未发布，生成结果表已移除，不占用正式迁移步骤。已运行过原开发 v9/v10 的数据库，启动时先核对全部结构，再原子删除该表并整理为当前 v10；原开发 v9 补齐变量版本绑定，原开发 v10 保留已有绑定，不重新选择版本。未知结构拒绝修改，失败回滚，不清库。聊天保存只等待当前进程的工作，不保存或查询重启前的执行结果。
+
+当前开发基线的全局与角色正则表使用 `optionsJson` 保存裁剪、深度范围和宏替换选项。缺少该字段的已知开发结构原子整理，保留已有规则，不新增业务表。独立扩展库及其读写服务已经撤除，不读取或搬运该库的数据，见 [ADR 0033](adr/0033-native-format-import-storage.md)。
+
+脚本功能尚未实际使用，按用户确认直接采用当前文件结构，不保留旧脚本库转换或启动回退入口。现有 SQL 结构不变，不增加脚本源码迁移。角色卡导入仍把源码写入该角色的文件目录，自动保存归属。
+
+脚本读取以实际 `.js` 文件为准。外部编辑造成源码变化时，读取更新修改标识，旧界面草稿不能覆盖已变更的源码。普通启停不重写未改变的源码。文件事务记录只用于当前操作失败和异常退出恢复，提交完成后释放，不是旧格式转换或另一份正常源码。数据库单文件备份不等于完整脚本备份，完整产品备份还须携带源码目录。
+
+原生角色卡和预设的导出携带所属目录内的辅助模块及二进制资源；导入保留相对路径并自动关联新的所属对象，与脚本管理记录原子保存。入口正文不在附件里重复保存，辅助文件不进入 SQLite。角色或预设删除同样通过文件事务删除其所属文件；即使目录已编辑但尚未保存脚本管理记录，异常退出也按所属对象是否已提交删除恢复文件。全局脚本不随角色或预设删除。
 
 较早开发构建创建的 v6 数据库在升级至 v7 前，先原子整理已废弃的执行、偏好与结构登记表，再执行 v6 → v7 迁移。仍有效的角色、预设、设定、变量与聊天索引数据保留，不要求清库。后续结构变化必须提升版本并追加连续迁移。
 
@@ -58,20 +68,20 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 
 | 入口 | 何时可以清理 | 必须一起处理的范围 |
 | --- | --- | --- |
-| [SQLite v1 → v8 迁移链](../packages/dsh-product-data/src/storage/sqlite/installSchema.ts) | 正式停止支持某步骤起点及更早 schema 直接升级；剩余受支持版本仍有连续原子链 | 对应 `0002` 至 `0008` 步骤、旧表定义、import、登记与旧库 fixture；保留当前 SQL、版本常量及完整性校验 |
-| [开发 v2、v6 同版本整理](../packages/dsh-product-data/src/storage/sqlite/installSchema.ts) | 分别停止支持对应开发基线直接升级 | 对应整理函数、专用入口和 fixture；v2 共享整理函数仍被 `0002` 使用时继续保留 |
-| [模型设置 schema v0/v1 → v2](../packages/dsh-client-models/src/index.js) | 支持的升级和 profile 恢复入口均已保存至少 schema v2 的设置 | 旧 schema 转换、专用常量与用例；函数和启动调用须等两段整理均退役，保留当前设置合同和插件装配 |
-| [旧子 Agent 占位路由](../packages/dsh-client-models/src/index.js) | 停止支持 v0.2.3 之前版本直升，且支持的 profile 恢复入口不再携带该路由 | 占位路由过滤、专用常量与用例；与模型设置 schema 转换分别核对 |
-| [旧默认模型路由](../packages/dsh-client-roleplay/src/host/model-selection-migration.mjs) | 停止支持 v0.2.1 及更早版本直升，且支持的 profile 恢复入口不再携带旧路由 | 迁移函数、辅助函数、启动调用和旧路由用例；当前请求快照改为直接解析正式选择，保留每轮冻结与恢复后的模型刷新 |
-| [旧实体化预设 ID](../packages/dsh-client-roleplay/src/host/agent-preset-bridge.mjs) | 支持恢复的 Session、快照和导入记录均已持久选择 `eleckoi-active`，且对应旧版本直升已退役 | 旧声明注册、别名、目录扫描、分支与用例；保留当前预设注册、重组和恢复服务 |
+| [SQLite v1 → v8 迁移链](../packages/host/product-data/src/storage/sqlite/installSchema.ts) | 正式停止支持某步骤起点及更早 schema 直接升级；剩余受支持版本仍有连续原子链 | 对应 `0002` 至 `0008` 步骤、旧表定义、import、登记与旧库 fixture；保留当前 SQL、版本常量及完整性校验 |
+| [开发 v2、v6 同版本整理](../packages/host/product-data/src/storage/sqlite/installSchema.ts) | 分别停止支持对应开发基线直接升级 | 对应整理函数、专用入口和 fixture；v2 共享整理函数仍被 `0002` 使用时继续保留 |
+| [模型设置 schema v0/v1 → v2](../packages/client/features/dsh-client-models/src/index.js) | 支持的升级和 profile 恢复入口均已保存至少 schema v2 的设置 | 旧 schema 转换、专用常量与用例；函数和启动调用须等两段整理均退役，保留当前设置合同和插件装配 |
+| [旧子 Agent 占位路由](../packages/client/features/dsh-client-models/src/index.js) | 停止支持 v0.2.3 之前版本直升，且支持的 profile 恢复入口不再携带该路由 | 占位路由过滤、专用常量与用例；与模型设置 schema 转换分别核对 |
+| [旧默认模型路由](../packages/client/features/dsh-client-roleplay/src/host/model-selection-migration.mjs) | 停止支持 v0.2.1 及更早版本直升，且支持的 profile 恢复入口不再携带旧路由 | 迁移函数、辅助函数、启动调用和旧路由用例；当前请求快照改为直接解析正式选择，保留每轮冻结与恢复后的模型刷新 |
+| [旧实体化预设 ID](../packages/client/features/dsh-client-roleplay/src/host/agent-preset-bridge.mjs) | 支持恢复的 Session、快照和导入记录均已持久选择 `eleckoi-active`，且对应旧版本直升已退役 | 旧声明注册、别名、目录扫描、分支与用例；保留当前预设注册、重组和恢复服务 |
 | [profile 内置 bundle 登记](../apps/desktop-host/src/desktopPluginBundles.ts)、[Tavily 首次选择](../apps/desktop-host/src/desktopPluginHost.ts) | 支持的升级和 profile 恢复入口分别已完成 `bundles-v5`、`tavily-bundle-v1` 登记 | 各自的一次性函数、调用及旧 profile 用例；保留新 profile 初始化和用户启停选择 |
-| [请求上下文记录修复](../packages/dsh-runtime/src/sessionRequestContextRepair.ts) | 对应旧版本直升已退役，且支持的 Session 恢复和导入入口已有转换缺失可忽略标记的能力 | 修复模块、启动扫描、导出与专用用例；旧事件保留，新预览不落盘，见 [ADR 0029](adr/0029-ephemeral-request-context-preview.md) |
-| [旧聊天独立输入补回](../packages/dsh-runtime/src/sessionHistoryRecovery.ts) | 对应旧聊天直升已退役，且支持的恢复和导入入口已把缺失输入写为正式 Session 消息 | 补回模块、归档读取、启动调用、导出与专用用例；保留逐会话错误隔离、投影重放、检查点和正常重新生成 |
-| [已补回聊天的统计标记](../packages/dsh-client-roleplay/src/host/history-stats-projection.mjs) | 支持恢复的已迁移日志完成等价统计转换，重放结果保持正确 | 仅旧标记分支、专用状态与旧日志用例；保留当前已有输入续接的统计及投影登记 |
-| [旧请求投影信封过滤](../packages/dsh-client-roleplay/src/host/conversation-context.mjs) | 支持恢复和导入的旧日志均已不含该插件消息 | 按正式插件来源标识排除旧信封；新请求仅在内存装配，不生产新信封 |
+| [请求上下文记录修复](../packages/host/runtime/src/sessionRequestContextRepair.ts) | 对应旧版本直升已退役，且支持的 Session 恢复和导入入口已有转换缺失可忽略标记的能力 | 修复模块、启动扫描、导出与专用用例；旧事件保留，新预览不落盘，见 [ADR 0029](adr/0029-ephemeral-request-context-preview.md) |
+| [旧聊天独立输入补回](../packages/host/runtime/src/sessionHistoryRecovery.ts) | 对应旧聊天直升已退役，且支持的恢复和导入入口已把缺失输入写为正式 Session 消息 | 补回模块、归档读取、启动调用、导出与专用用例；保留逐会话错误隔离、投影重放、检查点和正常重新生成 |
+| [已补回聊天的统计标记](../packages/client/features/dsh-client-roleplay/src/host/history-stats-projection.mjs) | 支持恢复的已迁移日志完成等价统计转换，重放结果保持正确 | 仅旧标记分支、专用状态与旧日志用例；保留当前已有输入续接的统计及投影登记 |
+| [旧请求投影信封过滤](../packages/client/features/dsh-client-roleplay/src/host/conversation-context.mjs) | 支持恢复和导入的旧日志均已不含该插件消息 | 按正式插件来源标识排除旧信封；新请求仅在内存装配，不生产新信封 |
 | [v3 → v4 系统开头补丁](adr/0026-legacy-session-system-head-migration.md) | 锁定上游的正式相邻迁移能通过同一组旧日志用例 | 版本补丁、`patchedDependencies` 登记和锁文件；保留官方格式目录与完整迁移链 |
 
-删除恢复或迁移入口时只移除其专用用例；新建、重开、备份、完整性、当前模型请求、预设重组和重新生成等正常路径的验证继续保留。异常退出后的响应状态恢复是当前运行职责，仍由 [启动恢复](../packages/dsh-product-data/src/storage/sqlite/recoverInterruptedState.ts) 执行。
+删除恢复或迁移入口时只移除其专用用例；新建、重开、备份、完整性、当前模型请求、预设重组和重新生成等正常路径的验证继续保留。异常退出后的响应状态恢复是当前运行职责，仍由 [启动恢复](../packages/host/product-data/src/storage/sqlite/recoverInterruptedState.ts) 执行。
 
 ## 删除与文件
 
@@ -82,8 +92,8 @@ ElecKoi 当前 43 张产品表需要关系、外键、排序、搜索、跨表�
 
 ## 验证
 
-- `pnpm check:database-schema`：43 张公共表、2 个视图与生成文件一致。
-- `pnpm test`：覆盖 v1 至 v9 迁移、未发布开发库整理、失败回滚、外键、重启持久化、角色与媒体、设定、变量、正则、预设、聊天索引和 Remote 写入。
-- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 43 张业务表、2 个视图、`user_version = 9`、冗余列缺失、外键和完整性。
+- `pnpm check:database-schema`：44 张公共表、2 个视图与生成文件一致。
+- `pnpm test`：覆盖 v1 至 v10 迁移、未发布开发库整理、失败回滚、外键、重启持久化、角色与媒体、设定、变量、正则、预设、脚本库、聊天索引和 Remote 写入。
+- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 44 张业务表、2 个视图、`user_version = 10`、冗余列缺失、外键和完整性。
 
 架构决策见 [ADR 0018](adr/0018-dsh-host-owns-product-data.md)。

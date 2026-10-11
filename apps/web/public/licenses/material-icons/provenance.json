@@ -1,0 +1,8 @@
+{
+  "project": "Google Material Design Icons",
+  "license": "Apache-2.0",
+  "icons": {
+    "SortRounded": "https://github.com/google/material-design-icons/blob/master/src/content/sort/materialiconsround/24px.svg",
+    "AddCircleOutline": "https://github.com/google/material-design-icons/blob/master/src/content/add_circle_outline/materialiconsoutlined/24px.svg"
+  }
+}

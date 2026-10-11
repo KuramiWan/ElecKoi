@@ -640,6 +640,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     requestRef.current = activeRequest;
     setIsSending(true);
     setStatus("正在重新生成...");
+    requestScrollToEnd("auto", "regeneration");
     try {
       const payload = {
         target_message_id: targetMessageId,
@@ -745,6 +746,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     isSending: chatBusy,
     filteredSessions,
     historyOpen,
+    visibleConversationSessions,
     pinnedIds,
     currentTitle,
     chatCharacter,

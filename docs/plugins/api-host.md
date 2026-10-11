@@ -33,6 +33,15 @@ DSH 基准：`0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 @Remote read(presetId: string): AgentPreset
 
 /**
+ * 按明确编号原子修改预设原稿的条目及当前版本，不创建聊天私有开关。
+ * @param presetId - 要修改的预设编号。
+ * @param updates - 条目编号与修改字段；使用该预设的后续请求共同生效。
+ * @param signal - 取消调用的信号。
+ * @returns 按指定顺序返回保存后的条目；一项失败则整组不保存。
+ */
+@Remote updateEntries(presetId: string, updates: SettingLibraryEntryUpdate[], signal: AbortSignal): SettingLibraryEntry[]
+
+/**
  * 保存完整数据并通知相关页面刷新。
  * @param preset - 完整预设数据。
  * @param expectedRegexRules - 要求仍有效的正则配置。
@@ -109,9 +118,230 @@ DSH 基准：`0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 @Remote delete(presetId: string): AgentPresetCatalog
 ```
 
-Types: [AgentPreset](types-host.md#agentpreset) · [AgentPresetCatalog](types-host.md#agentpresetcatalog) · [AgentPresetExportFormat](types-host.md#agentpresetexportformat) · [AgentPresetExportResult](types-host.md#agentpresetexportresult) · [AgentPresetImportDocument](types-host.md#agentpresetimportdocument) · [AgentPresetImportResult](types-host.md#agentpresetimportresult) · [AgentPresetImportSource](types-host.md#agentpresetimportsource) · [RegexRule](types-host.md#regexrule)
+Types: [AgentPreset](types-host.md#agentpreset) · [AgentPresetCatalog](types-host.md#agentpresetcatalog) · [AgentPresetExportFormat](types-host.md#agentpresetexportformat) · [AgentPresetExportResult](types-host.md#agentpresetexportresult) · [AgentPresetImportDocument](types-host.md#agentpresetimportdocument) · [AgentPresetImportResult](types-host.md#agentpresetimportresult) · [AgentPresetImportSource](types-host.md#agentpresetimportsource) · [RegexRule](types-host.md#regexrule) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
+
+<a id="ctxeleckoiauthorfrontendsapi--eleckoiauthorfrontendsapi"></a>
+
+### `ctx.eleckoiAuthorFrontendsApi` — `ElecKoiAuthorFrontendsApi`
+
+原生前端文件项目、明确归属、选择与资源操作的正式 Remote。
+
+```ts cordis-catalog
+/**
+ * 读取明确所属应用或角色的前端项目与选择。
+ * @param owner - 应用作用域，或带明确角色编号的角色作用域。
+ * @returns 项目列表、选择、绑定和修改版本。
+ */
+@Remote workspace(owner: FrontendOwner): FrontendWorkspace
+
+/**
+ * 导入 HTML、ZIP 或明确文件列表，保留项目额外元数据。
+ * @param owner - 项目所属作用域。
+ * @param input - 文件、入口与清单；普通导入创建新项目编号。
+ * @returns 导入后的工作区。
+ */
+@Remote importProject(owner: FrontendOwner, input: FrontendImport): FrontendWorkspace
+
+/**
+ * 选择同一所属对象的项目，null 撤回自定义页面。
+ * @param owner - 项目所属作用域。
+ * @param projectId - 明确项目编号或 null。
+ * @returns 修改后的工作区。
+ */
+@Remote select(owner: FrontendOwner, projectId: string | null): FrontendWorkspace
+
+/**
+ * 删除明确项目与资源，失败时保留原登记和文件。
+ * @param owner - 项目所属作用域。
+ * @param projectId - 明确项目编号。
+ * @returns 删除后的工作区。
+ */
+@Remote delete(owner: FrontendOwner, projectId: string): FrontendWorkspace
+
+/**
+ * 读取登记文件；不指定路径时读取该项目的明确入口。
+ * @param owner - 项目所属作用域。
+ * @param projectId - 明确项目编号。
+ * @param input - 项目内路径与编码；省略路径使用入口，省略编码使用 utf8。
+ * @returns 路径、编码后的内容与 MIME 类型。
+ */
+@Remote readFile(owner: FrontendOwner, projectId: string, input: FrontendFileQuery): FrontendFile
+
+/**
+ * 写入明确文件，连同项目清单更新，失败时恢复原文件。
+ * @param owner - 项目所属作用域。
+ * @param projectId - 明确项目编号。
+ * @param file - 路径、内容和编码。
+ * @returns 修改后的工作区。
+ */
+@Remote writeFile(owner: FrontendOwner, projectId: string, file: FrontendFileInput): FrontendWorkspace
+
+/**
+ * 导出完整资源及清单，不改变原项目。
+ * @param owner - 项目所属作用域。
+ * @param projectId - 明确项目编号。
+ * @returns ZIP 文件名、base64 数据和项目登记。
+ */
+@Remote exportProject(owner: FrontendOwner, projectId: string): FrontendExport
+
+/**
+ * 修改该工作区的消息渲染器开关。
+ * @param owner - 明确作用域。
+ * @param enabled - 是否启用消息渲染器。
+ * @returns 修改后的工作区。
+ */
+@Remote setMessageRenderer(owner: FrontendOwner, enabled: boolean): FrontendWorkspace
+
+/**
+ * 修改项目名称、入口或清单，不改变编号、归属及文件列表。
+ * @param owner - 项目所属作用域。
+ * @param projectId - 明确项目编号。
+ * @param patch - 明确的项目字段补丁。
+ * @returns 修改后的工作区。
+ */
+@Remote updateProject(owner: FrontendOwner, projectId: string, patch: FrontendJson): FrontendWorkspace
+
+/**
+ * 一次修改文件、删除路径与清单，验证引用后才提交。
+ * @param owner - 项目所属作用域。
+ * @param projectId - 明确项目编号。
+ * @param input - 文件修改、明确删除路径与清单。
+ * @returns 修改后的工作区。
+ */
+@Remote replaceFiles(owner: FrontendOwner, projectId: string, input: FrontendReplaceFiles): FrontendWorkspace
+
+/**
+ * 撤回自定义项目的选择，保留文件供以后再次启用。
+ * @param owner - 明确作用域。
+ * @returns 修改后的工作区。
+ */
+@Remote restoreDefault(owner: FrontendOwner): FrontendWorkspace
+
+/**
+ * 订阅该工作区的重读通知；合并待消费的通知，不回放编辑历史。
+ * @param owner - 明确作用域。
+ * @param signal - 取消订阅并释放等待者。
+ * @returns 首次快照版本及后续最新修改版本，不传输源码或素材正文。
+ */
+@Remote({ mode: 'stream' }) changes(owner: FrontendOwner, signal: AbortSignal): AsyncIterable<NativeFrontendChange>
+```
+
+Types: [FrontendExport](types-host.md#frontendexport) · [FrontendFile](types-host.md#frontendfile) · [FrontendFileInput](types-host.md#frontendfileinput) · [FrontendFileQuery](types-host.md#frontendfilequery) · [FrontendImport](types-host.md#frontendimport) · [FrontendJson](types-host.md#frontendjson) · [FrontendOwner](types-host.md#frontendowner) · [FrontendReplaceFiles](types-host.md#frontendreplacefiles) · [FrontendWorkspace](types-host.md#frontendworkspace) · [NativeFrontendChange](types-host.md#nativefrontendchange)
+
+Source: [`packages/host/product-api/src/author-frontends.ts`](../../packages/host/product-api/src/author-frontends.ts)
+
+<a id="ctxeleckoiauthorscriptsapi--eleckoiauthorscriptsapi"></a>
+
+### `ctx.eleckoiAuthorScriptsApi` — `ElecKoiAuthorScriptsApi`
+
+Native script source stays in product-data; only live callbacks cross this stream.
+
+```ts cordis-catalog
+/**
+ * 读取当前聊天的全局、活动预设与角色原生脚本，不改写未声明原生标准的源码。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @returns 按库与树顺序排列的启用脚本、所属配置和运行版本。
+ */
+@Remote read(conversationId: string): NativeAuthorScriptCatalog
+
+/** 读取当前运行脚本或其所属库的设置与修改版本。
+ * @param conversationId - 固定聊天编号。
+ * @param version - 实际运行的程序版本。
+ * @param identity - 明确的脚本作用域、所有者与编号。
+ * @param target - 脚本设置或所属库共享设置。
+ * @param signal - 取消读取。
+ * @returns JSON 设置及库修改版本。
+ */
+@Remote getSettings(conversationId: string, version: string, identity: NativeAuthorScriptIdentity, target: 'script' | 'library', signal: AbortSignal): NativeAuthorScriptSettings
+
+/** 保存当前脚本或所属库设置，不替换源码、不重新启动程序。
+ * @param conversationId - 固定聊天编号。
+ * @param version - 实际运行的程序版本。
+ * @param identity - 明确脚本身份。
+ * @param target - 脚本设置或所属库共享设置。
+ * @param settingsJson - 完整 JSON 对象。
+ * @param expectedRevision - 最近读取的库修改版本。
+ * @param signal - 保存前取消。
+ * @returns 已保存的设置与新修改版本。
+ */
+@Remote setSettings(conversationId: string, version: string, identity: NativeAuthorScriptIdentity, target: 'script' | 'library', settingsJson: string, expectedRevision: number, signal: AbortSignal): NativeAuthorScriptSettings
+
+/**
+ * 在脚本启动成功后建立本聊天唯一的原生变量规则流；断开会取消未完成修改。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param version - read 返回并实际启动的脚本版本。
+ * @param signal - 取消连接与正在等待的规则。
+ * @returns 就绪通知及变量候选任务；上行只接受本流任务的成功结果或明确错误。
+ */
+@Remote({ mode: 'stream' }) async *connect(conversationId: string, version: string, signal: AbortSignal): RemoteStream<NativeAuthorRuleTask, NativeAuthorRuleReply>
+```
+
+Types: [NativeAuthorRuleReply](types-host.md#nativeauthorrulereply) · [NativeAuthorRuleTask](types-host.md#nativeauthorruletask) · [NativeAuthorScriptCatalog](types-host.md#nativeauthorscriptcatalog) · [NativeAuthorScriptIdentity](types-host.md#nativeauthorscriptidentity) · [NativeAuthorScriptSettings](types-host.md#nativeauthorscriptsettings)
+
+Source: [`packages/host/product-api/src/author-scripts.ts`](../../packages/host/product-api/src/author-scripts.ts)
+
+<a id="ctxeleckoiauthorvariablesapi--eleckoiauthorvariablesapi"></a>
+
+### `ctx.eleckoiAuthorVariablesApi` — `ElecKoiAuthorVariablesApi`
+
+Native author variables share the Agent candidate processor and product repository.
+
+```ts cordis-catalog
+/**
+ * 读取原生聊天的当前变量，不返回历史消息或其他聊天的状态。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @returns 当前变量对象的 JSON 文本。
+ */
+@Remote getState(conversationId: string): string
+
+/**
+ * 读取该聊天绑定的原生变量配置。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @returns 变量配置；未绑定角色变量配置时返回 null。
+ */
+@Remote getConfig(conversationId: string): VariableConfig | null
+
+/**
+ * 替换当前变量，等待作者规则处理后才保存。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param stateJson - 完整变量对象的 JSON 文本。
+ * @param signal - 取消处理；取消后不保存候选数据。
+ * @returns 已接受并保存的变量对象 JSON 文本。
+ */
+@Remote async setState(conversationId: string, stateJson: string, signal: AbortSignal): Promise<string>
+
+/**
+ * 将对象递归合并到本次原生变量候选，数组与标量替换对应字段。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param stateJson - 合并对象的 JSON 文本。
+ * @param signal - 取消处理；取消后不保存候选数据。
+ * @returns 已接受并保存的变量对象 JSON 文本。
+ */
+@Remote async merge(conversationId: string, stateJson: string, signal: AbortSignal): Promise<string>
+
+/**
+ * 按原生 SDK 的 add、replace、remove 与 JSON Pointer 修改变量候选。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param patchJson - 原生变量补丁数组的 JSON 文本。
+ * @param signal - 取消处理；取消后不保存候选数据。
+ * @returns 已接受并保存的变量对象 JSON 文本。
+ */
+@Remote async applyPatch(conversationId: string, patchJson: string, signal: AbortSignal): Promise<string>
+
+/**
+ * 用聊天绑定的初始变量发起一次原生修改，仍等待作者规则完成。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param signal - 取消处理；取消后不保存候选数据。
+ * @returns 已接受并保存的变量对象 JSON 文本。
+ */
+@Remote async reset(conversationId: string, signal: AbortSignal): Promise<string>
+```
+
+Types: [VariableConfig](types-host.md#variableconfig)
+
+Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/host/product-api/src/author-variables.ts)
 
 <a id="ctxeleckoicharacterconfigurationapi--eleckoicharacterconfigurationapi"></a>
 
@@ -133,6 +363,54 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
 @Remote readSettingLibrary(characterId: string): SettingLibrary
+
+/**
+ * 保存角色设定库的当前内容，保留其他版本与管理设置。
+ * @param characterId - 所属角色编号。
+ * @param library - 设定库原文、文件夹和插入位置定义。
+ * @param signal - 取消调用的信号。
+ * @returns 实际保存后的角色设定库，仍采用现有请求规则。
+ */
+@Remote replaceSettingLibraryContent( characterId: string, library: SettingLibraryContent, signal: AbortSignal ): SettingLibrary
+
+/**
+ * 按明确编号原子修改角色设定库的普通条目，只保存指定字段。
+ * @param characterId - 所属角色编号。
+ * @param updates - 条目编号与修改字段；不得重复指定同一编号。
+ * @param signal - 取消调用的信号。
+ * @returns 按指定顺序返回保存后的条目；一项失败则整组不保存。
+ */
+@Remote updateSettingLibraryEntries( characterId: string, updates: SettingLibraryEntryUpdate[], signal: AbortSignal ): SettingLibraryEntry[]
+
+/**
+ * 读取指定作用域的正式脚本库。
+ * @param scope - 全局、角色或预设作用域。
+ * @param ownerId - 所属角色或预设编号；全局作用域使用空字符串。
+ * @returns 脚本配置、库启停与修改版本。
+ */
+@Remote readScriptLibrary(scope: ScriptLibraryScope, ownerId: string): ScriptLibrary
+
+/**
+ * 读取脚本文件目录与已登记的入口文件，目录不存在时创建空目录。
+ * @param scope - 全局、角色或预设作用域。
+ * @param ownerId - 所属编号；全局使用空字符串。
+ * @returns 本机目录、文件版本与按明确脚本编号登记的入口。
+ */
+@Remote readScriptWorkspace(scope: ScriptLibraryScope, ownerId: string): ScriptWorkspace
+
+/**
+ * 保存脚本库，检查修改版本以防止覆盖其他窗口或 SDK 的更新。
+ * @param library - 完整脚本库，revision 为读取时的版本。
+ * @returns 保存后的配置与新版本。
+ */
+@Remote saveScriptLibrary(library: ScriptLibrary): ScriptLibrary
+
+/**
+ * 在同一事务中保存多个脚本库；任一版本冲突时全部保留原值。
+ * @param libraries - 本页修改的脚本库及各自读取版本。
+ * @returns 保存后的脚本库配置。
+ */
+@Remote saveScriptLibraries(libraries: ScriptLibrary[]): ScriptLibrary[]
 
 /**
  * 保存完整角色设定库。
@@ -250,9 +528,9 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 @Remote testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget): RegexRuleTestResult
 ```
 
-Types: [CharacterConfigurationChange](types-host.md#characterconfigurationchange) · [RegexRule](types-host.md#regexrule) · [RegexRuleCollection](types-host.md#regexrulecollection) · [RegexRuleImportDocument](types-host.md#regexruleimportdocument) · [RegexRuleImportResult](types-host.md#regexruleimportresult) · [RegexRuleScope](types-host.md#regexrulescope) · [RegexRuleTarget](types-host.md#regexruletarget) · [RegexRuleTestResult](types-host.md#regexruletestresult) · [SettingLibrary](types-host.md#settinglibrary) · [SettingLibraryConversation](types-host.md#settinglibraryconversation) · [VariableConfig](types-host.md#variableconfig)
+Types: [CharacterConfigurationChange](types-host.md#characterconfigurationchange) · [RegexRule](types-host.md#regexrule) · [RegexRuleCollection](types-host.md#regexrulecollection) · [RegexRuleImportDocument](types-host.md#regexruleimportdocument) · [RegexRuleImportResult](types-host.md#regexruleimportresult) · [RegexRuleScope](types-host.md#regexrulescope) · [RegexRuleTarget](types-host.md#regexruletarget) · [RegexRuleTestResult](types-host.md#regexruletestresult) · [ScriptLibrary](types-host.md#scriptlibrary) · [ScriptLibraryScope](types-host.md#scriptlibraryscope) · [ScriptWorkspace](types-host.md#scriptworkspace) · [SettingLibrary](types-host.md#settinglibrary) · [SettingLibraryContent](types-host.md#settinglibrarycontent) · [SettingLibraryConversation](types-host.md#settinglibraryconversation) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate) · [VariableConfig](types-host.md#variableconfig)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoicharactersapi--eleckoicharactersapi"></a>
 
@@ -304,7 +582,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 @Remote saveGroups(groups: string[], assignments: CharacterGroupAssignment[]): CharacterCollection
 
 /**
- * 删除指定项目及其关联数据。
+ * 删除指定角色及其前端项目、关联聊天和官方 Session。
  * @param characterIds - 待删除角色编号列表。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
@@ -343,26 +621,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 
 Types: [CharacterCollection](types-host.md#charactercollection) · [CharacterExportFormat](types-host.md#characterexportformat) · [CharacterExportResult](types-host.md#characterexportresult) · [CharacterGroupAssignment](types-host.md#charactergroupassignment) · [CharacterImportFile](types-host.md#characterimportfile) · [CharacterImportPreview](types-host.md#characterimportpreview) · [CharacterImportResult](types-host.md#characterimportresult) · [CharacterImportSource](types-host.md#characterimportsource) · [CharacterRecord](types-host.md#characterrecord) · [ProductRecordChange](types-host.md#productrecordchange)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
-
-<a id="ctxeleckoiconversationlifecycle--eleckoiconversationlifecycle"></a>
-
-### `ctx.eleckoiConversationLifecycle` — `ElecKoiConversationLifecycle`
-
-按 Cordis 插件生命周期管理聊天参与者，不管理 Agent 分工或模型路由。
-
-```ts cordis-catalog
-/**
- * 注册生成准备、保存收尾和回退处理，停用插件时自动取消并等待正在执行的回调。
- * @param participant - 插件编号和需要参与的处理函数。
- * @returns 注销当前注册项的函数；插件卸载也会自动注销。
- */
-register(participant: ConversationLifecycleParticipant): () => void
-```
-
-Types: [ConversationLifecycleParticipant](types-host.md#conversationlifecycleparticipant)
-
-Source: [`packages/dsh-product-api/src/conversationLifecycle.ts`](../../packages/dsh-product-api/src/conversationLifecycle.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoiconversationmodelsapi--eleckoiconversationmodelsapi"></a>
 
@@ -389,7 +648,7 @@ Source: [`packages/dsh-product-api/src/conversationLifecycle.ts`](../../packages
 
 Types: [ConversationModelSelection](types-host.md#conversationmodelselection)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoiconversationsapi--eleckoiconversationsapi"></a>
 
@@ -461,12 +720,13 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 @Remote authorState(conversationId: string): AuthorConversationState
 
 /**
- * 替换聊天当前变量；生成期间拒绝修改。
+ * 按聊天绑定的变量版本执行作者规则，并保存处理结果。
  * @param conversationId - ElecKoi 聊天编号。
  * @param stateJson - 完整变量对象的 JSON 文本。
+ * @param signal - 取消本次变量处理；取消后不保存候选结果。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote replaceVariableState(conversationId: string, stateJson: string): string
+@Remote async replaceVariableState(conversationId: string, stateJson: string, signal: AbortSignal): Promise<string>
 
 /**
  * 导出聊天资料和官方 Session 日志的归档 JSON。
@@ -508,29 +768,47 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 @Remote async delete(conversationId: string): Promise<void>
 
 /**
+ * 重命名聊天，同时保存官方 Session 与产品目录中的标题。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param title - 新的聊天标题。
+ * @returns 操作结果，结构见返回类型；失败抛出错误。
+ */
+@Remote async rename(conversationId: string, title: string): Promise<ConversationDetailsMetadata>
+
+/**
+ * 从指定官方 Session 事件创建聊天分支，复制保留的产品轮次和历史运行状态。
+ * @param conversationId - 来源 ElecKoi 聊天编号。
+ * @param atSeq - 分支边界的官方事件序号；省略时创建同配置和开场白的空聊天。
+ * @param retainedTurnIds - 分支中需要保留的产品轮次编号；开场白轮次自动保留。
+ * @param title - 新聊天的标题。
+ * @returns 新建分支的 ElecKoi 聊天编号；创建失败会清理分支并抛出错误。
+ */
+@Remote async fork(conversationId: string, atSeq: number | undefined, retainedTurnIds: string[], title: string): Promise<string>
+
+/**
  * 准备本次输入需要的产品配置和官方 Session，不直接生成回复。
  * @param conversationId - ElecKoi 聊天编号。
  * @param text - 本次输入或待测试文本。
- * @param signal - 取消准备过程的信号；插件回调也会收到此信号。
+ * @param signal - 取消准备过程的信号。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
 @Remote async preparePrompt(conversationId: string, text: string, signal: AbortSignal): Promise<{ runtimeSessionId: string; operationId: string }>
 
 /**
- * 等待当前进程本次保存及插件收尾，失败抛出错误；不查询历史或重启前结果。
+ * 等待当前进程本次产品保存，失败抛出错误；不查询历史或重启前结果。
  * @param conversationId - ElecKoi 聊天编号。
  * @param operationId - 生成准备时返回的本次操作编号。
- * @returns 本轮收尾完成；此方法不启动模型，也不重复执行插件。
+ * @returns 本轮产品保存完成；此方法不启动模型。
  */
 @Remote async waitForGeneration(conversationId: string, operationId: string): Promise<void>
 
 /**
- * 修改同一 Session 中指定消息并刷新投影。
+ * 修改同一官方 Session 中的用户或模型消息，刷新投影并发布消息变更。
  * @param conversationId - ElecKoi 聊天编号。
- * @param eventSeq - 官方 Session 中消息的事件序号。
- * @param role - 消息角色。
- * @param content - 要保存的完整文本。
- * @returns 操作结果，结构见返回类型；失败抛出错误。
+ * @param eventSeq - 官方 Session 中待修改消息的事件序号。
+ * @param role - 消息角色，必须与指定事件中的消息一致。
+ * @param content - 保存后替换原正文的完整文本。
+ * @returns 修改后的聊天详情与元数据；消息不存在或角色不一致时抛出错误。
  */
 @Remote async editMessage( conversationId: string, eventSeq: number, role: 'user' | 'assistant', content: string ): Promise<ConversationDetailsMetadata>
 
@@ -581,7 +859,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 
 Types: [AuthorConversationState](types-host.md#authorconversationstate) · [ConversationChange](types-host.md#conversationchange) · [ConversationCreateInput](types-host.md#conversationcreateinput) · [ConversationDetailsMetadata](types-host.md#conversationdetailsmetadata) · [ConversationMessageDisplayInput](types-host.md#conversationmessagedisplayinput) · [ConversationMessageDisplayResult](types-host.md#conversationmessagedisplayresult) · [ConversationRequestPreview](types-host.md#conversationrequestpreview) · [ConversationRequestPreviewSummary](types-host.md#conversationrequestpreviewsummary) · [ConversationSummary](types-host.md#conversationsummary) · [VariableViewerTimeline](types-host.md#variableviewertimeline)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoicreatorstudioapi--eleckoicreatorstudioapi"></a>
 
@@ -620,7 +898,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 
 Types: [CreateCreatorProjectInput](types-host.md#createcreatorprojectinput) · [CreatorProjectCollection](types-host.md#creatorprojectcollection) · [ProductRecordChange](types-host.md#productrecordchange)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoidisplaypreferencesapi--eleckoidisplaypreferencesapi"></a>
 
@@ -654,7 +932,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 
 Types: [DisplayPreferenceValue](types-host.md#displaypreferencevalue) · [DisplayPreferencesSnapshot](types-host.md#displaypreferencessnapshot)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoimodelsapi--eleckoimodelsapi"></a>
 
@@ -687,7 +965,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 
 Types: [ModelConnectionInput](types-host.md#modelconnectioninput) · [ModelDiscoveryInput](types-host.md#modeldiscoveryinput) · [ModelDiscoveryResult](types-host.md#modeldiscoveryresult)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoipersonaapi--eleckoipersonaapi"></a>
 
@@ -719,7 +997,7 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 
 Types: [PersonaProfile](types-host.md#personaprofile) · [ProductRecordChange](types-host.md#productrecordchange)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoirequestpreviews--requestpreviewstore"></a>
 
@@ -773,7 +1051,7 @@ close(): void
 
 Types: [RequestPreviewSummary](types-host.md#requestpreviewsummary) · [RoleplayRequestContextItem](types-host.md#roleplayrequestcontextitem)
 
-Source: [`packages/dsh-client-roleplay/src/host/request-preview.d.mts`](../../packages/dsh-client-roleplay/src/host/request-preview.d.mts)
+Source: [`packages/client/features/dsh-client-roleplay/src/host/request-preview.d.mts`](../../packages/client/features/dsh-client-roleplay/src/host/request-preview.d.mts)
 
 <a id="ctxeleckoisessioneditor--eleckoisessioneditor"></a>
 
@@ -782,6 +1060,14 @@ Source: [`packages/dsh-client-roleplay/src/host/request-preview.d.mts`](../../pa
 修改同一个官方 Session 的消息和回退位置，保留 Session 编号。
 
 ```ts cordis-catalog
+/**
+ * 将导入的正文写入新建的空白官方 Session，并刷新消息投影。
+ * @param sessionId - 空白官方 Session 编号。
+ * @param messages - 按实际顺序排列的正文和可选变量快照。
+ * @returns 各消息的正式事件与轮次标识。
+ */
+importTranscript(sessionId: string, messages: Array<{ role: 'user' | 'assistant'; content: string; variableStateJson?: string }>): Promise<Array<{ role: 'user' | 'assistant'; content: string; variableStateJson?: string; id: string; sessionEventSeq: number; turn: number | null }>>
+
 /**
  * 修改一条消息并刷新官方投影。
  * @param sessionId - 官方 Session 编号。
@@ -803,7 +1089,7 @@ editMessage(sessionId: string, eventSeq: number, role: 'user' | 'assistant', con
 rewind(sessionId: string, fromTurn: number, fromEventSeq?: number, retainInput?: boolean): Promise<number | undefined>
 ```
 
-Source: [`packages/dsh-product-api/src/sessionEditor.ts`](../../packages/dsh-product-api/src/sessionEditor.ts)
+Source: [`packages/host/product-api/src/sessionEditor.ts`](../../packages/host/product-api/src/sessionEditor.ts)
 
 <a id="ctxeleckoisystemapi--eleckoisystemapi"></a>
 
@@ -821,7 +1107,7 @@ Source: [`packages/dsh-product-api/src/sessionEditor.ts`](../../packages/dsh-pro
 
 Types: [ElecKoiHostStatus](types-host.md#eleckoihoststatus)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
 <a id="ctxeleckoiwebsearchapi--eleckoiwebsearchapi"></a>
 
@@ -854,5 +1140,5 @@ Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api
 
 Types: [TavilyConnection](types-host.md#tavilyconnection) · [WebSearchMode](types-host.md#websearchmode)
 
-Source: [`packages/dsh-product-api/src/index.ts`](../../packages/dsh-product-api/src/index.ts)
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 <!-- END GENERATED cordis-surface -->

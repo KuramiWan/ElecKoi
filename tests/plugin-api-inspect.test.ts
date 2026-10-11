@@ -5,8 +5,8 @@ import * as Cordis from '@deepseek-ai/cordis'
 import * as React from 'react'
 import { CordisInspectRegistryService } from '@deepseek-ai/dsh-cordis-host-runner'
 import { afterEach, describe, expect, it } from 'vitest'
-import { registerHostApiInspect } from '../packages/dsh-product-api/src/hostInspect'
-import { registerClientApiInspect } from '../packages/dsh-product-api/src/client/inspect'
+import { registerHostApiInspect } from '../packages/host/product-api/src/hostInspect'
+import { registerClientApiInspect } from '../packages/host/product-api/src/client/inspect'
 import { assertMembers } from '../scripts/generate-plugin-api-reference.mjs'
 
 function clientRunnerModule() {

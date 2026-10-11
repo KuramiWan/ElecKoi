@@ -4,7 +4,7 @@ function clamp(value, minimum, maximum) {
   return Math.min(Math.max(Number(value), minimum), maximum);
 }
 
-export function TunerSliderRow({ label, value, min, max, step = 1, suffix = "", defaultValue, onChange }) {
+export function TunerSliderRow({ label, value, min, max, step = 1, suffix = "", precision, defaultValue, onChange }) {
   const safeValue = clamp(value, min, max);
   const progress = max > min ? ((safeValue - min) / (max - min)) * 100 : 0;
   const updateValue = (nextValue) => onChange(clamp(nextValue, min, max));
@@ -24,7 +24,7 @@ export function TunerSliderRow({ label, value, min, max, step = 1, suffix = "", 
             min={min}
             max={max}
             step={step}
-            value={safeValue}
+            value={precision == null ? safeValue : safeValue.toFixed(precision)}
             onChange={(event) => {
               if (event.target.value !== "") updateValue(event.target.value);
             }}
@@ -41,6 +41,7 @@ export function TunerSliderRow({ label, value, min, max, step = 1, suffix = "", 
       <input
         className="tuner-slider"
         type="range"
+        aria-label={`${label}滑杆`}
         min={min}
         max={max}
         step={step}

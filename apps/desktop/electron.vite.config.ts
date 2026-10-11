@@ -7,14 +7,14 @@ import { authorVendorPlugin } from '../../scripts/vite-author-vendor-plugin'
 const desktopRoot = import.meta.dirname
 const workspaceRoot = resolve(desktopRoot, '../..')
 const webRoot = resolve(workspaceRoot, 'apps/web')
-const sharedRoot = resolve(workspaceRoot, 'packages/product-shared/src')
+const sharedRoot = resolve(workspaceRoot, 'packages/shared/src')
 
 export default defineConfig({
   main: {
     build: { lib: { entry: resolve(desktopRoot, 'src/main/main.ts') } },
     resolve: { alias: { '@main': resolve(desktopRoot, 'src/main'), '@shared': sharedRoot } },
     plugins: [externalizeDepsPlugin({
-      exclude: ['@eleckoi/author-sdk', '@eleckoi/compatibility-mvu', '@eleckoi/compatibility-tavern-helper', 'electron-updater']
+      exclude: ['@eleckoi/author-sdk', '@eleckoi/compatibility-mvu', 'electron-updater']
     })]
   },
   preload: {

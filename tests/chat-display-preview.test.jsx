@@ -2,7 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SettingsPanel } from "../apps/web/src/modules/settings/components/SettingsPanel.jsx";
-import { DEFAULT_CHAT_DISPLAY_PREFERENCES } from "../packages/product-shared/src/contracts/settings/schemas.ts";
+import { DEFAULT_CHAT_DISPLAY_PREFERENCES } from "../packages/shared/src/contracts/settings/schemas.ts";
 import { WithOfficialMarkdown } from "./helpers/officialMarkdown.jsx";
 
 globalThis.React = React;

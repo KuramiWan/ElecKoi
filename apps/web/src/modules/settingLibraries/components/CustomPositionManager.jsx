@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { IconPinFillRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import {
   ArrowLeft,
   ChatCircleDots,
@@ -11,7 +16,7 @@ import {
   Trash,
   UserCircle,
   Wrench,
-} from '@phosphor-icons/react';
+} from '../../../ui/icons/interfaceIcons.jsx';
 import {
   createPositionDraft,
   moveCustomPosition,
@@ -20,6 +25,7 @@ import {
   savePositionDraft,
 } from '../model/customPositions.js';
 import '../styles/custom-positions.css';
+import { useEditorPresentation, useEditorSubpage } from '../../../ui/ui/EditorPresentationContext.jsx';
 
 const FIXED_POSITION_ICONS = {
   instructions: PushPin,
@@ -30,8 +36,87 @@ const FIXED_POSITION_ICONS = {
 };
 
 export function FixedPositionIcon({ id, size = 17 }) {
+  if (id === 'instructions') return <IconPinFillRegular size={size} />;
   const Icon = FIXED_POSITION_ICONS[id] || PushPin;
-  return <Icon size={size} weight={id === 'instructions' ? 'fill' : 'regular'} />;
+  return <Icon size={size} weight="regular" />;
+}
+
+const SORT_TRANSITION = { duration: 200, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
+const DROP_ANIMATION = { ...SORT_TRANSITION };
+const DRAG_MODIFIERS = [({ transform }) => ({ ...transform, x: 0 })];
+const DRAG_INSTRUCTIONS = {
+  draggable: '按空格或回车开始排序，使用上下方向键移动，再按空格或回车确认，按 Escape 取消。也可以按 Alt 加上下方向键直接移动。',
+};
+
+function useReducedSortMotion() {
+  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
+  useEffect(() => {
+    const preference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!preference) return;
+    const update = () => setReduced(preference.matches);
+    update();
+    preference.addEventListener('change', update);
+    return () => preference.removeEventListener('change', update);
+  }, []);
+  return reduced;
+}
+
+function PositionTrack({ topConnected, bottomConnected }) {
+  return <span className="setting-position-guide-track" aria-hidden="true"><i className={topConnected ? 'is-connected' : ''} /><b /><i className={bottomConnected ? 'is-connected' : ''} /></span>;
+}
+
+function PositionDragPreview({ position, selected }) {
+  return <div className={'setting-position-guide-row is-custom is-overlay' + (selected ? ' is-selected' : '')} aria-hidden="true">
+    <span />
+    <span className="setting-position-drag-handle"><DotsSixVertical size={20} /></span>
+    <span className="setting-position-guide-main"><strong>{position.name || '未命名位置'}</strong>{selected ? <span>当前</span> : null}</span>
+    <span className="setting-position-overlay-more"><DotsThree size={20} /></span>
+  </div>;
+}
+
+function SortablePositionRow({ row, index, total, selected, reducedMotion, onSelect, onEdit, onDelete, onMoveByKeyboard }) {
+  const custom = row.type === 'custom';
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: row.key,
+    disabled: { draggable: !custom, droppable: row.type === 'instructions' },
+    transition: reducedMotion ? null : SORT_TRANSITION,
+  });
+  const rowProps = {
+    ref: setNodeRef,
+    style: { transform: CSS.Transform.toString(transform), transition },
+    'data-position-key': row.key,
+  };
+  const track = <PositionTrack topConnected={index > 0} bottomConnected={index < total - 1} />;
+  if (!custom) return <div {...rowProps} className={'setting-position-guide-row is-fixed is-' + row.type}>
+    {track}
+    <span className="setting-position-fixed-card"><FixedPositionIcon id={row.key.split(':').pop()} /><strong>{row.label}</strong></span>
+  </div>;
+
+  return <article {...rowProps} className={'setting-position-guide-row is-custom' + (selected ? ' is-selected' : '') + (isDragging ? ' is-dragging' : '')}>
+    {track}
+    <button
+      ref={setActivatorNodeRef}
+      type="button"
+      className="setting-position-drag-handle"
+      {...attributes}
+      {...listeners}
+      aria-label={'拖动排序：' + row.position.name}
+      title="拖动排序"
+      onKeyDown={(event) => {
+        if (event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+          event.preventDefault();
+          onMoveByKeyboard(row.position.id, event.key === 'ArrowUp' ? -1 : 1);
+        } else listeners?.onKeyDown?.(event);
+      }}
+    ><DotsSixVertical size={20} /></button>
+    <button type="button" className="setting-position-guide-main" onClick={onSelect}><strong>{row.position.name || '未命名位置'}</strong>{selected ? <span>当前</span> : null}</button>
+    <details className="setting-position-more" name="custom-position-actions" onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
+    }}>
+      <summary aria-label={'管理位置：' + row.position.name} title="管理位置"><DotsThree size={20} weight="bold" /></summary>
+      <div><button type="button" onClick={(event) => { event.currentTarget.closest('details').open = false; onEdit(); }}><NotePencil size={16} />重命名</button><button type="button" className="is-danger" onClick={(event) => { event.currentTarget.closest('details').open = false; onDelete(); }}><Trash size={16} />删除</button></div>
+    </details>
+  </article>;
 }
 
 function PositionNameDialog({ draft, existing, onChange, onCancel, onSave }) {
@@ -70,17 +155,42 @@ function DeletePositionDialog({ position, affected, onCancel, onConfirm }) {
 }
 
 export function CustomPositionManager({ entry, positions, entries, onChange, onBack }) {
+  const { compact } = useEditorPresentation();
+  const pageRef = useRef(null);
+  useEffect(() => { if (compact) pageRef.current?.focus({ preventScroll: true }); }, [compact]);
   const [draft, setDraft] = useState(null);
   const [deleting, setDeleting] = useState(null);
-  const [draggingId, setDraggingId] = useState('');
+  const [activeKey, setActiveKey] = useState('');
   const addRef = useRef(null);
+  const guideRef = useRef(null);
+  const reducedMotion = useReducedSortMotion();
   const rows = useMemo(() => positionManagementRows(positions), [positions]);
+  const rowKeys = useMemo(() => rows.map((row) => row.key), [rows]);
+  const activeRow = rows.find((row) => row.key === activeKey);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const announcements = {
+    onDragStart: ({ active }) => `开始移动${rows.find((row) => row.key === active.id)?.position?.name || ''}。`,
+    onDragOver: ({ active, over }) => {
+      if (!over || over.id === active.id) return;
+      const fromIndex = rowKeys.indexOf(active.id);
+      const targetIndex = rowKeys.indexOf(over.id);
+      const target = rows[targetIndex];
+      return `移到${target?.position?.name || target?.label || ''}${fromIndex < targetIndex ? '之后' : '之前'}。`;
+    },
+    onDragEnd: ({ over }) => over ? '位置排序已确认。' : '未放入位置列表，保留原来的顺序。',
+    onDragCancel: () => '已取消移动，保留原来的顺序。',
+  };
 
-  function edit(position = null) {
+  const edit = useCallback((position = null) => {
     const currentAnchor = positions.find((item) => item.id === entry?.promptPositionId)?.anchor || entry?.position;
     setDraft(createPositionDraft(positions, position, currentAnchor));
     setDeleting(null);
-  }
+  }, [positions, entry?.promptPositionId, entry?.position]);
+  const headerActions = useMemo(() => <button ref={addRef} type="button" onClick={() => edit()}>新建</button>, [edit]);
+  useEditorSubpage(true, '自定义位置', onBack, headerActions);
 
   function saveDraft() {
     const exists = positions.some((position) => position.id === draft.id);
@@ -90,17 +200,26 @@ export function CustomPositionManager({ entry, positions, entries, onChange, onB
     requestAnimationFrame(() => addRef.current?.focus());
   }
 
-  function moveTo(targetKey) {
-    if (!draggingId) return;
-    const currentRows = positionManagementRows(positions);
-    const fromIndex = currentRows.findIndex((row) => row.key === 'custom:' + draggingId);
-    const targetIndex = currentRows.findIndex((row) => row.key === targetKey);
-    if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) return;
-    const next = moveCustomPosition(positions, entries, draggingId, targetKey, fromIndex < targetIndex);
+  function finishDrag({ active, over }) {
+    setActiveKey('');
+    if (!over || active.id === over.id) return;
+    const fromIndex = rowKeys.indexOf(active.id);
+    const targetIndex = rowKeys.indexOf(over.id);
+    const moving = rows[fromIndex];
+    if (moving?.type !== 'custom' || targetIndex < 0) return;
+    const next = moveCustomPosition(positions, entries, moving.position.id, over.id, fromIndex < targetIndex);
     if (next.positions !== positions) onChange(next.positions, next.entries);
   }
 
+  function detectPositionCollision(args) {
+    const bounds = guideRef.current?.getBoundingClientRect();
+    const pointer = args.pointerCoordinates;
+    if (bounds && pointer && (pointer.x < bounds.left || pointer.x > bounds.right || pointer.y < bounds.top || pointer.y > bounds.bottom)) return [];
+    return closestCenter(args);
+  }
+
   function moveByKeyboard(positionId, offset) {
+    if (activeKey) return;
     const currentRows = positionManagementRows(positions);
     const fromIndex = currentRows.findIndex((row) => row.key === 'custom:' + positionId);
     const target = currentRows[fromIndex + offset];
@@ -110,70 +229,50 @@ export function CustomPositionManager({ entry, positions, entries, onChange, onB
   }
 
   const affected = deleting ? entries.filter((item) => item.promptPositionId === deleting.id).length : 0;
+  const overlay = <DragOverlay modifiers={DRAG_MODIFIERS} dropAnimation={reducedMotion ? null : DROP_ANIMATION} zIndex={1000}>
+    {activeRow?.type === 'custom' ? <PositionDragPreview position={activeRow.position} selected={entry?.promptPositionId === activeRow.position.id} /> : null}
+  </DragOverlay>;
 
-  return <section className="setting-position-manager" aria-label="自定义位置" onKeyDown={(event) => {
-    if (event.key === 'Escape' && !draft && !deleting) { event.preventDefault(); onBack(); }
+  return <section ref={pageRef} tabIndex={compact ? -1 : undefined} className="setting-position-manager" aria-label="自定义位置" onKeyDown={(event) => {
+    if (event.key === 'Escape' && !draft && !deleting && !activeKey) { event.preventDefault(); onBack(); }
   }}>
-    <header className="setting-position-manager-header">
+    {!compact && <header className="setting-position-manager-header">
       <button type="button" className="setting-position-back" aria-label="返回插入配置" title="返回" onClick={onBack}><ArrowLeft size={18} /></button>
       <h2>自定义位置</h2>
       <button ref={addRef} type="button" className="setting-position-button" onClick={() => edit()}><Plus size={16} />新建</button>
-    </header>
+    </header>}
 
-    <div className="setting-position-guide" aria-label="位置顺序">
-      {rows.map((row, index) => {
-        const topConnected = index > 0;
-        const bottomConnected = index < rows.length - 1;
-        if (row.type === 'custom') {
-          const selected = entry?.promptPositionId === row.position.id;
-          const className = 'setting-position-guide-row is-custom'
-            + (selected ? ' is-selected' : '')
-            + (draggingId === row.position.id ? ' is-dragging' : '');
-          return <article
-            className={className}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={detectPositionCollision}
+      modifiers={DRAG_MODIFIERS}
+      autoScroll={{ canScroll: (element) => element === guideRef.current, threshold: { x: 0, y: 0.12 }, acceleration: 6, interval: 10 }}
+      accessibility={{ screenReaderInstructions: DRAG_INSTRUCTIONS, announcements }}
+      onDragStart={({ active }) => setActiveKey(active.id)}
+      onDragEnd={finishDrag}
+      onDragCancel={() => setActiveKey('')}
+    >
+      <div ref={guideRef} className={'setting-position-guide' + (activeKey ? ' is-sorting' : '')} aria-label="位置顺序">
+        <SortableContext items={rowKeys} strategy={verticalListSortingStrategy}>
+          {rows.map((row, index) => <SortablePositionRow
             key={row.key}
-            onDragEnter={(event) => { event.preventDefault(); moveTo(row.key); }}
-            onDragOver={(event) => event.preventDefault()}
-          >
-            <span className="setting-position-guide-track" aria-hidden="true"><i className={topConnected ? 'is-connected' : ''} /><b /><i className={bottomConnected ? 'is-connected' : ''} /></span>
-            <button
-              type="button"
-              className="setting-position-drag-handle"
-              draggable
-              aria-label={'拖动排序：' + row.position.name}
-              title="拖动排序"
-              onDragStart={(event) => { setDraggingId(row.position.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', row.position.id); }}
-              onDragEnd={() => setDraggingId('')}
-              onKeyDown={(event) => {
-                if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
-                event.preventDefault();
-                moveByKeyboard(row.position.id, event.key === 'ArrowUp' ? -1 : 1);
-              }}
-            ><DotsSixVertical size={18} weight="bold" /></button>
-            <button type="button" className="setting-position-guide-main" onClick={() => {
-              if (!entry || selected) return;
+            row={row}
+            index={index}
+            total={rows.length}
+            selected={row.type === 'custom' && entry?.promptPositionId === row.position.id}
+            reducedMotion={reducedMotion}
+            onSelect={() => {
+              if (!entry || entry.promptPositionId === row.position.id) return;
               onChange(positions, entries.map((item) => item.id === entry.id ? { ...item, position: row.position.anchor, promptPositionId: row.position.id } : item));
-            }}><strong>{row.position.name || '未命名位置'}</strong>{selected ? <span>当前</span> : null}</button>
-            <details className="setting-position-more" name="custom-position-actions" onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
-            }}>
-              <summary aria-label={'管理位置：' + row.position.name} title="管理位置"><DotsThree size={20} weight="bold" /></summary>
-              <div><button type="button" onClick={(event) => { event.currentTarget.closest('details').open = false; edit(row.position); }}><NotePencil size={16} />重命名</button><button type="button" className="is-danger" onClick={(event) => { event.currentTarget.closest('details').open = false; setDeleting(row.position); }}><Trash size={16} />删除</button></div>
-            </details>
-          </article>;
-        }
-        const key = row.key.split(':').pop();
-        return <div
-          className={'setting-position-guide-row is-fixed is-' + row.type}
-          key={row.key}
-          onDragEnter={(event) => { event.preventDefault(); moveTo(row.key); }}
-          onDragOver={(event) => event.preventDefault()}
-        >
-          <span className="setting-position-guide-track" aria-hidden="true"><i className={topConnected ? 'is-connected' : ''} /><b /><i className={bottomConnected ? 'is-connected' : ''} /></span>
-          <span className="setting-position-fixed-card"><FixedPositionIcon id={key} /><strong>{row.label}</strong></span>
-        </div>;
-      })}
-    </div>
+            }}
+            onEdit={() => edit(row.position)}
+            onDelete={() => setDeleting(row.position)}
+            onMoveByKeyboard={moveByKeyboard}
+          />)}
+        </SortableContext>
+      </div>
+      {typeof document === 'undefined' ? overlay : createPortal(overlay, document.getElementById('eleckoi-root') || document.body)}
+    </DndContext>
 
     {draft ? <PositionNameDialog draft={draft} existing={positions.some((position) => position.id === draft.id)} onChange={setDraft} onCancel={() => setDraft(null)} onSave={saveDraft} /> : null}
     {deleting ? <DeletePositionDialog position={deleting} affected={affected} onCancel={() => setDeleting(null)} onConfirm={() => {

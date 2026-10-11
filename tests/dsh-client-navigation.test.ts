@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 const packages = [
   'dsh-client-shell', 'dsh-client-conversations', 'dsh-client-characters',
@@ -15,7 +15,7 @@ const uiPrimitives = {
 }
 
 describe('ElecKoi DSH client navigation', () => {
-  it('lets each feature plugin register its page and navigation entry', () => {
+  it.each(['desktop', 'android'])('lets %s feature plugins register formal pages and navigation entries', (platform) => {
     let root: any
     const entries: Array<{ options: any; component: any; dispose: () => void }> = []
     const slots = {
@@ -37,8 +37,9 @@ describe('ElecKoi DSH client navigation', () => {
     }
     for (const packageName of packages) {
       let registration: any
-      const source = readFileSync(new URL(`../packages/${packageName}/src/client.js`, import.meta.url), 'utf8')
+      const source = readFileSync(new URL(`../packages/client/features/${packageName}/src/client.js`, import.meta.url), 'utf8')
       runInNewContext(source, {
+        __ELECKOI_CLIENT_PLATFORM__: { kind: platform },
         window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
         AbortController,
       })
@@ -55,6 +56,7 @@ describe('ElecKoi DSH client navigation', () => {
       let effectCount = 0
       plugin.apply({
         slots,
+        inject: () => {},
         provide: () => {},
         get: () => undefined,
         remote: { eleckoiAgentPresets: {} },
@@ -84,6 +86,13 @@ describe('ElecKoi DSH client navigation', () => {
     expect(layout.panelInfo.getSnapshot().activePanelId).toBe('extension-page')
     layout.selectPanel('messages')
     expect(layout.panelInfo.getSnapshot().activePanelId).toBeNull()
+    if (platform === 'android') {
+      expect(layout.panelInfo.getSnapshot().windowPanelId).toBe('messages')
+      expect(slots.entriesOfSlot('sidebar')).toHaveLength(1)
+      expect(slots.entriesOfSlot('sidebar')[0]?.options.registrant).toBe('@eleckoi/dsh-client-shell')
+      layout.selectPanel(null)
+      expect(layout.panelInfo.getSnapshot()).toEqual({ activePanelId: null, windowPanelId: 'conversation' })
+    }
     layout.openRightbar(true, false)
     expect(layout.rightbarInfo.getSnapshot()).toMatchObject({
       shown: true, track: true, fullscreen: false, width: expect.any(Number)
@@ -127,6 +136,7 @@ describe('ElecKoi DSH client navigation', () => {
       inject: (_name: string, register: () => void) => { register() },
     }
     const ProductApp = () => null
+    const sidebarRight = { isExpanded: () => true, toggleExpanded: vi.fn() }
     let stateIndex = 0
     const React = {
       Fragment: 'Fragment',
@@ -137,7 +147,7 @@ describe('ElecKoi DSH client navigation', () => {
       useEffect: () => {},
       createElement: (component: any, props: any, ...children: any[]) => ({ component, props, children }),
     }
-    const source = readFileSync(new URL('../packages/dsh-client-shell/src/client.js', import.meta.url), 'utf8')
+    const source = readFileSync(new URL('../packages/client/features/dsh-client-shell/src/client.js', import.meta.url), 'utf8')
     runInNewContext(source, {
       window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
       AbortController,
@@ -150,20 +160,22 @@ describe('ElecKoi DSH client navigation', () => {
     let effectCount = 0
     plugin.apply({
       slots,
+      inject: () => {},
       reflect: { provide: () => () => {} },
       effect: (run: () => void) => { if (effectCount++ === 0) run() },
     })
-    const render = () => {
+    const render = (panel = { activePanelId: null } as any) => {
       stateIndex = 0
       const rightbarInfo = { subscribe: () => () => {}, getSnapshot: () => ({ shown: false }) }
       const tree = rootComponent({
         layout: {
-          panelInfo: { subscribe: () => () => {}, getSnapshot: () => ({ activePanelId: null }) },
+          panelInfo: { subscribe: () => () => {}, getSnapshot: () => panel },
           rightbarInfo,
           setViewportWidth: () => {},
           setRightbar: () => {},
         },
         slots,
+        sidebarRight,
         locale: { subscribe: () => () => {}, getSnapshot: () => ({ revision: 0 }) },
         renderSlot: (name: string, owner: any) => {
           if (!rootOptions.children[name]) throw new Error(`root cannot render ${name}`)
@@ -180,7 +192,10 @@ describe('ElecKoi DSH client navigation', () => {
     expect(sidebarOptions.children['sidebar.footer.action']).toEqual({ kind: 'list', scope: 'root' })
     expect(render().navigation.hasSidebarFooterActions).toBe(true)
     expect(render().navigation.selectedPanelId).toBe('messages')
+    expect(render({ activePanelId: null, windowPanelId: 'conversation' }).navigation.selectedPanelId).toBe('conversation')
     expect(render().rightbar.render({ width: 360, viewportWidth: 1200, canShow: true })).toEqual({ slot: 'rightbar' })
+    render().rightbar.close()
+    expect(sidebarRight.toggleExpanded).toHaveBeenCalledTimes(1)
     const content = (renderSidebarSlot: any) => renderSidebarSlot('sidebar.footer.action', { wide: true })
     expect(render().navigation.renderSidebar(content)).toEqual({ slot: 'sidebar' })
     expect(slotCalls.some(call => call.name === 'sidebar' && call.owner.renderContent === content)).toBe(true)

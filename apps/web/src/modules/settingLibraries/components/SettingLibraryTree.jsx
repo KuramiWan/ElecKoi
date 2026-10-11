@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { ChatCircleDots, Code, LinkSimple } from "@phosphor-icons/react";
+import { ChatCircleDots, Code, LinkSimple } from "../../../ui/icons/interfaceIcons.jsx";
 import { DshFolderClosedIcon, DshFolderOpenIcon, DshTriangleRightIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { HeadlessTree } from "../../../ui/tree/HeadlessTree.jsx";
 import { SettingEntryGlyph } from "./SettingLibraryEntryEditor.jsx";
@@ -24,11 +24,12 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
       style={style}
       onDoubleClick={(event) => {
         event.stopPropagation();
+        if (actions?.openEditor) { actions.openEditor(String(data.key)); return; }
         if (!item.isFolder()) return;
         if (item.isExpanded()) item.collapse();
         else item.expand();
       }}
-      onContextMenu={(event) => actions.openContextMenu(event, data)}
+      onContextMenu={(event) => actions?.openContextMenu(event, data)}
     >
       <div className="setting-library-tree-row-content">
         {data.nodeKind === "group" ? (
@@ -37,6 +38,7 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
             className="setting-library-tree-expander"
             aria-label={isExpanded ? "折叠文件夹" : "展开文件夹"}
             aria-expanded={isExpanded}
+            onDoubleClick={event => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               if (item.isExpanded()) item.collapse();
@@ -59,6 +61,7 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
             role="switch"
             aria-checked={data.enabled}
             aria-label={`${data.enabled ? "停用" : "启用"}${data.label}`}
+            onDoubleClick={event => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
@@ -71,9 +74,11 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
   );
 }
 
-export function SettingLibraryTree({ nodes, query, selectedId, expandedIds, onSelectedIdChange, onExpandedIdsChange, onMove, ariaLabel }) {
+export function SettingLibraryTree({ nodes, query, selectedId, expandedIds, onSelectedIdChange, onExpandedIdsChange, onMove, ariaLabel, touchReorder, dragEnabled }) {
   return <HeadlessTree
     nodes={nodes}
+    touchReorder={touchReorder}
+    dragEnabled={dragEnabled}
     query={query}
     selectedId={selectedId}
     expandedIds={expandedIds}
@@ -82,6 +87,6 @@ export function SettingLibraryTree({ nodes, query, selectedId, expandedIds, onSe
     onSelectedIdChange={onSelectedIdChange}
     onExpandedIdsChange={onExpandedIdsChange}
     onMove={onMove}
-    renderItem={(props) => <SettingTreeNode key={props.key} {...props} />}
+    renderItem={({ key, ...props }) => <SettingTreeNode key={key} {...props} />}
   />;
 }

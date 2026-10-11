@@ -5,9 +5,9 @@ import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('../packages/dsh-client-roleplay/src/client.js', import.meta.url), 'utf8')
-const slotTypes = readFileSync(new URL('../packages/dsh-client-roleplay/src/slots.d.ts', import.meta.url), 'utf8')
-const manifest = JSON.parse(readFileSync(new URL('../packages/dsh-client-roleplay/package.json', import.meta.url), 'utf8'))
+const source = readFileSync(new URL('../packages/client/features/dsh-client-roleplay/src/client.js', import.meta.url), 'utf8')
+const slotTypes = readFileSync(new URL('../packages/client/features/dsh-client-roleplay/src/slots.d.ts', import.meta.url), 'utf8')
+const manifest = JSON.parse(readFileSync(new URL('../packages/client/features/dsh-client-roleplay/package.json', import.meta.url), 'utf8'))
 const rowId = 'eleckoi-client-roleplay'
 
 function clientRequire(React: unknown) {
@@ -174,7 +174,7 @@ describe('ElecKoi roleplay client contribution', () => {
   })
 
   it('allows the user profile layer to disable the bundled row', () => {
-    const patch = loadOverlayPatches('dsh', resolve('packages/dsh-client-roleplay/cordis.patch.yml'))
+    const patch = loadOverlayPatches('dsh', resolve('packages/client/features/dsh-client-roleplay/cordis.patch.yml'))
     expect(composeEntries([patch]).find(row => row.id === rowId)?.disabled).toBeFalsy()
     const disabled = composeEntries([patch, [{ id: rowId, disabled: true }]])
     expect(disabled.find(row => row.id === rowId)?.disabled).toBe(true)
@@ -362,6 +362,8 @@ describe('ElecKoi roleplay client contribution', () => {
       createElement: (type: unknown, props: unknown) => ({ type, props }),
       useState: () => [null, () => {}], useEffect: () => {},
       useMemo: (read: () => unknown) => read(),
+      useSyncExternalStore: (_subscribe: unknown, read: () => unknown) => read(),
+      useRef: (value: unknown) => ({ current: value }),
       useCallback: (callback: unknown) => callback
     }
     const plugin = registration.factory(clientRequire(React))
@@ -402,7 +404,13 @@ describe('ElecKoi roleplay client contribution', () => {
         'conversation.view': { kind: 'list', scope: 'session' }
       }
     }, () => null)
-    plugin.apply({ sessions: {}, slots: clientSlots })
+    let productDetails: any = { id: '', runtimeSessionId: '' }
+    let productStats: any = { id: '', stats: null }
+    const conversations = {
+      getDetailsSnapshot: () => productDetails, subscribeDetails: () => () => {},
+      getStatsSnapshot: () => productStats, subscribeStats: () => () => {},
+    }
+    plugin.apply({ sessions: {}, slots: clientSlots, eleckoiConversations: conversations })
 
     const officialChat = () => null
     const chatInject = () => ({ useChatNode: () => null })
@@ -561,14 +569,21 @@ describe('ElecKoi roleplay client contribution', () => {
       ? { turns: 3, steps: 5, llmMs: 1 }
       : key === 'eleckoiHistoryStatsAdjustment' ? { turns: 1, steps: 2 }
         : `official:${key}`
-    const statsRender = statsEntry?.component({ useProjection: statsProjection })
+    productDetails = { id: 'sample-chat', runtimeSessionId: 'sample-session' }
+    productStats = { id: 'sample-chat', stats: {
+      sessionStats: { turns: 2, steps: 3, llmMs: 1 }, tokenUsage: 'official:tokenUsage',
+    } }
+    const statsRender = statsEntry?.component({ sessionId: 'sample-session', useProjection: statsProjection })
     expect(statsRender.type).toBe(extensionDock)
     expect(statsRender.props.useProjection('sessionStats')).toEqual({ turns: 2, steps: 3, llmMs: 1 })
     expect(statsRender.props.useProjection('tokenUsage')).toBe('official:tokenUsage')
     statsAvailable = false
-    const statsDuringRebind = statsEntry?.component({ useProjection: statsProjection })
+    const statsDuringRebind = statsEntry?.component({ sessionId: 'sample-session', useProjection: statsProjection })
     expect(statsDuringRebind.props.useProjection('sessionStats')).toEqual({ turns: 2, steps: 3, llmMs: 1 })
     expect(statsDuringRebind.props.useProjection('tokenUsage')).toBe('official:tokenUsage')
+    expect(statsDuringRebind.props.useProjection('sessionStats', (value: any) => value.steps)).toBe(3)
+    const otherSession = statsEntry?.component({ sessionId: 'other-session', useProjection: statsProjection })
+    expect(otherSession.props.useProjection('sessionStats')).toBeNull()
     expect(statsEntry?.component({ useProjection: statsProjection, generationStatsEnabled: false })).toBeNull()
     releaseStats()
     const seat = slots.entriesOfSlot('eleckoi.roleplay.trajectory')[0]

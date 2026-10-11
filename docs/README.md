@@ -4,6 +4,11 @@
 
 ## 当前架构
 
+- [原生脚本库与作者 SDK](adr/0032-native-script-libraries.md)：三类脚本、作者规则和前端交互的数据与运行合同。
+- [导入格式与原生数据存储](adr/0033-native-format-import-storage.md)：格式转换、原生数据归属与 MVU 导入提示。
+- [工作区包职责分组](adr/0030-package-responsibility-groups.md)：Client、Host、公共合同和示例的位置。
+- [Android 本地 Node Host](adr/0031-android-local-node-host.md)：平台入口、独立运行环境与构建边界。
+
 - [运行期请求预览与写入放大](adr/0029-ephemeral-request-context-preview.md)：实际请求、内存共享、预览入口与增长回归约束。
 
 - [DSH 官方客户端架构基准](DSH_DESKTOP_ARCHITECTURE.md)：Host、Client、桌面壳及上游版本边界。
@@ -16,7 +21,9 @@
 
 接口总表是 bundle manifest 的导航目录；[Client](plugins/api-client.md)、[Host](plugins/api-host.md)、[Remote](plugins/api-remote.md) 的完整调用参考和数据类型使用锁定 DSH 官方生成器从公开源码生成。数量、成员和参数不能另行手工维护。
 
-- [插件参与聊天流程](plugins/conversation-lifecycle.md)：生成前准备、保存后收尾、消息回退及当前操作等待。
+- [原生作者 SDK](plugins/author-sdk.html)：开发教程与可搜索接口参考；[仓库教程](plugins/author-sdk.md)和[可运行示例](../packages/examples/native-author/README.md)使用同一合同。
+- [格式导入边界](plugins/sdk-compatibility.md)：外部资料转换为原生数据，不提供外部脚本运行环境。
+- [角色卡传输格式](CHARACTER_CARD_TRANSFER.md)与[预设传输格式](AGENT_PRESET_TRANSFER.md)。
 
 ## 决策与历史
 

@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -64,7 +65,7 @@ export function UnsavedChangesDialog({
   if (!open) return null;
 
   const dialog = (
-    <div className="unsaved-changes-overlay" role="presentation" onMouseDown={() => !saving && onCancel?.()}>
+    <SystemBarOverlay className="unsaved-changes-overlay" role="presentation" onMouseDown={() => !saving && onCancel?.()}>
       <section
         ref={dialogRef}
         className="unsaved-changes-dialog"
@@ -86,7 +87,7 @@ export function UnsavedChangesDialog({
           <button ref={cancelRef} type="button" disabled={saving} onClick={onCancel}>{cancelLabel}</button>
         </div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 
   const portalTarget = typeof document === "undefined" ? null : document.body;

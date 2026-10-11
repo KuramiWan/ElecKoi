@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useMemo, useState } from "react";
 import { CopyIcon, ExportIcon, ImportIcon, PlusIcon, TrashIcon, XIcon } from "../../../ui/icons/index.jsx";
 import {
@@ -46,7 +47,7 @@ export function RegexRulesManager({ collection, onChange, onClose, onImport, onE
   }
 
   return (
-    <div className="regex-manager-overlay" role="presentation" onMouseDown={onClose}>
+    <SystemBarOverlay className="regex-manager-overlay" role="presentation" onMouseDown={onClose}>
       <section className="regex-manager" role="dialog" aria-modal="true" aria-labelledby="regex-manager-title" onMouseDown={(event) => event.stopPropagation()}>
         <header>
           <h2 id="regex-manager-title">正则管理</h2>
@@ -105,6 +106,6 @@ export function RegexRulesManager({ collection, onChange, onClose, onImport, onE
           </div>
         )}
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 }

@@ -1,5 +1,3 @@
-// Exact prompt marker glyph used by the current Android setting-library position guide.
-// Source glyph: Font Awesome Free, CC BY 4.0 (see the Android repository NOTICE).
 export function ElecKoiPromptMarkerIcon({ size = 15, className }) {
   return (
     <svg width={size} height={size} className={className} viewBox="0 0 512 512" fill="none" aria-hidden="true">
@@ -11,8 +9,6 @@ export function ElecKoiPromptMarkerIcon({ size = 15, className }) {
   );
 }
 
-// Dedicated setting-library entry glyph from Android AppIconPaths.PromptPosition.
-// It is intentionally separate from both the thumbtack above and generic files.
 export function ElecKoiSettingEntryIcon({ size = 18, className }) {
   return (
     <svg

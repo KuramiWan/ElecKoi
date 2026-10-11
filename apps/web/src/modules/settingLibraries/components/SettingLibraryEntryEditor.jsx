@@ -17,7 +17,7 @@ import {
   SlidersHorizontal,
   UserCircle,
   UsersThree,
-} from "@phosphor-icons/react";
+} from "../../../ui/icons/interfaceIcons.jsx";
 import { ElecKoiSettingEntryIcon } from "../../../ui/icons/elecKoiPromptIcons.jsx";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
 import {
@@ -47,7 +47,7 @@ const READ_STRATEGIES = [
   { value: "normal", label: "选读" },
 ];
 const CONTENT_MODES = [
-  { value: "plain_text", label: "纯文字" },
+  { value: "plain_text", label: "文字" },
   { value: "ejs", label: "EJS" },
 ];
 
@@ -130,13 +130,14 @@ function KeywordTagInput({ label, keywords, placeholder, onChange, compact = fal
         ))}
         <input
           ref={inputRef}
+          enterKeyHint="enter"
           value={draft}
           aria-labelledby={labelId}
           placeholder={keywords.length ? "继续输入" : placeholder}
           onChange={(event) => updateDraft(event.target.value)}
           onBlur={commit}
           onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
+            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
             event.preventDefault();
             commit();
           }}

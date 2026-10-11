@@ -1,7 +1,11 @@
 packages:
   - .
   - apps/*
-  - packages/*
+  - packages/client/features/*
+  - packages/client/mobile/*
+  - packages/host/*
+  - packages/shared
+  - packages/examples/*
   - packages/sdk/*
   - packages/compatibility/*
 

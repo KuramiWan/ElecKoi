@@ -10,8 +10,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it } from 'vitest'
 
 
-import { readDshSessionLog } from '../packages/dsh-runtime/src/trajectory'
-import { repairRequestContextLog, repairRequestContextLogs } from '../packages/dsh-runtime/src/sessionRequestContextRepair'
+import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
+import { repairRequestContextLog, repairRequestContextLogs } from '../packages/host/runtime/src/sessionRequestContextRepair'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })

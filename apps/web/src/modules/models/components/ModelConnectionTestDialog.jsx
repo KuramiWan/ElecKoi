@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle, CircleNotch, XCircle } from "@phosphor-icons/react";
@@ -64,7 +65,7 @@ export function ModelConnectionTestDialog({ state, onDismiss }) {
   );
 
   return createPortal(
-    <div className="model-connection-test-overlay" onMouseDown={onDismiss}>
+    <SystemBarOverlay className="model-connection-test-overlay" onMouseDown={onDismiss}>
       <section
         className="model-connection-test-dialog"
         ref={dialogRef}
@@ -104,7 +105,7 @@ export function ModelConnectionTestDialog({ state, onDismiss }) {
           {state.finished ? "完成" : "后台继续检测"}
         </button>
       </section>
-    </div>,
+    </SystemBarOverlay>,
     document.body,
   );
 }

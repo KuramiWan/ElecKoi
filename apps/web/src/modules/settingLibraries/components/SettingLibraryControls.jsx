@@ -1,5 +1,8 @@
-import { useEffect, useId, useRef } from "react";
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
+import { useEffect, useId, useRef, useState } from "react";
 import { CheckCircle, CircleNotch, FloppyDisk, WarningCircle } from "@phosphor-icons/react";
+import { useEditorPresentation, useEditorSaveFeedback } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { AppErrorDialog } from '../../../ui/ui/AppErrorDialog.jsx';
 
 export function ConfirmationDialog({ target, cancelLabel = "取消", confirmLabel = "确定", tone = "primary", onCancel, onConfirm }) {
   const titleId = useId();
@@ -38,7 +41,7 @@ export function ConfirmationDialog({ target, cancelLabel = "取消", confirmLabe
   }
 
   return (
-    <div className="setting-library-dialog-overlay" role="presentation" onMouseDown={onCancel}>
+    <SystemBarOverlay className="setting-library-dialog-overlay" role="presentation" onMouseDown={onCancel}>
       <section ref={dialogRef} className="setting-library-dialog" role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={messageId} onKeyDown={handleKeyDown} onMouseDown={(event) => event.stopPropagation()}>
         <h2 id={titleId}>{target.title}</h2>
         <p id={messageId}>{target.message}</p>
@@ -47,11 +50,16 @@ export function ConfirmationDialog({ target, cancelLabel = "取消", confirmLabe
           <button type="button" className={tone === "destructive" ? "is-destructive" : "is-primary"} onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 }
 
 export function SaveControl({ dirty, error, notice, saving, onSave }) {
+  const { compact } = useEditorPresentation();
+  const inHeader = useEditorSaveFeedback(error, notice);
+  const [errorOpen, setErrorOpen] = useState(false);
+  useEffect(() => setErrorOpen(false), [error]);
+  if (inHeader) return null;
   return (
     <div className="setting-library-save-control">
       <button
@@ -65,8 +73,11 @@ export function SaveControl({ dirty, error, notice, saving, onSave }) {
         {saving ? <CircleNotch size={16} aria-hidden="true" /> : <FloppyDisk size={16} aria-hidden="true" />}
         {saving ? "保存中…" : "保存"}
       </button>
-      {error ? <span className="setting-library-save-feedback is-error" role="alert" title={error}><WarningCircle size={14} />保存失败</span> : null}
+      {error ? <span className="setting-library-save-feedback is-error" role="alert" title={error}>
+        {compact ? <><WarningCircle size={14} />{error}</> : <button type="button" className="setting-library-error-detail-button" aria-label="查看保存错误" onClick={() => setErrorOpen(true)}><WarningCircle size={14} />保存失败</button>}
+      </span> : null}
       {!error && notice === "saved" ? <span className="setting-library-save-feedback is-saved" role="status"><CheckCircle size={14} />已保存</span> : null}
+      {error && errorOpen ? <AppErrorDialog notice={{ id: error, message: error }} onDismiss={() => setErrorOpen(false)} /> : null}
     </div>
   );
 }

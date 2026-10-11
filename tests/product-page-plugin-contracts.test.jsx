@@ -13,8 +13,8 @@ vi.mock('../apps/web/src/modules/chat/index.js', () => ({
 }))
 
 import { MainPageContext } from '../apps/web/src/app/windows/MainPageContext.jsx'
-import { CharacterPage } from '../packages/dsh-client-characters/src/page.jsx'
-import { MessagesPage } from '../packages/dsh-client-conversations/src/page.jsx'
+import { CharacterPage } from '../packages/client/features/dsh-client-characters/src/page.jsx'
+import { MessagesPage } from '../packages/client/features/dsh-client-conversations/src/page.jsx'
 
 vi.stubGlobal('React', React)
 

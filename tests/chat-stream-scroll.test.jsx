@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ChatView, chatFixture, userNode, turnNode } from './helpers/officialChatView.jsx'
+import { ChatView, chatFixture, userNode, turnNode, ManualCompactionNodeView } from './helpers/officialChatView.jsx'
 import { MessageList } from './helpers/officialMarkdown.jsx'
 import { selectRoleplayChatSeat, selectRoleplayPendingInput } from '../apps/web/src/modules/chat/model/chatViewSeats.js'
 
@@ -45,17 +45,19 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
   const renderSlot = (name, owner, options) => {
     if (name === 'conversation.chat.node') {
       const seat = selectRoleplayChatSeat(messages, sessionId, owner.node)
+      const fallback = owner.node.kind === 'manual-compaction'
+        ? <ManualCompactionNodeView node={owner.node} t={fixture.props.t} /> : options?.fallback ?? null
       return seat ? <MessageList {...rowProps} messages={messages} seat={seat} officialNode />
-        : seat === undefined ? options?.fallback ?? null : null
+        : seat === undefined ? fallback : null
     }
     if (name === 'conversation.chat.pending-input') return <MessageList {...rowProps} messages={messages}
       seat={selectRoleplayPendingInput(messages, sessionId, owner.input)} />
     return options?.fallback ?? null
   }
   return { fixture, scroller, root,
-    async render(nextMessages = messages, next = {}) {
+    async render(nextMessages = messages, next = {}, viewProps = {}) {
       messages = nextMessages
-      await act(async () => { fixture.update(next); root.render(<ChatView {...fixture.props} renderSlot={renderSlot} />) })
+      await act(async () => { fixture.update(next); root.render(<ChatView {...fixture.props} renderSlot={renderSlot} {...viewProps} />) })
     },
     async grow() { await act(async () => { height += 40; for (const callback of observers) callback([]) }) },
     async move(top, end = false) { await act(async () => {
@@ -69,6 +71,45 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
 }
 
 describe('official ChatView with roleplay presentation', () => {
+  it('retains the official compression progress and failure node in roleplay', async () => {
+    const node = { key: 'compact-command', kind: 'manual-compaction', anchorSeq: 12,
+      data: { command: { kind: 'command', seq: 12, time: 12, commandId: 'synthetic-command', name: 'compact', outcome: null }, compaction: null } }
+    const view = mountChat()
+    try {
+      expect(selectRoleplayChatSeat([], 'session-render', node)).toBeUndefined()
+      await view.render([], { order: [node.key], nodes: new Map([[node.key, node]]) })
+      expect(view.scroller.textContent).toContain('message.compaction.running')
+      const failed = { ...node, data: { ...node.data, command: { ...node.data.command,
+        outcome: { kind: 'error', text: '合成摘要请求失败' } } } }
+      await view.render([], { nodes: new Map([[node.key, failed]]) })
+      expect(view.scroller.textContent).toContain('合成摘要请求失败')
+    } finally { await view.close() }
+  })
+  it('follows an explicit regeneration of the same image input and lets the reader interrupt following', async () => {
+    const fixture = chatFixture()
+    const input = userNode('image-input', 1, 'original-request')
+    input.data.content.push({ type: 'image', attachment: { attachmentId: 'synthetic-image', width: 220, height: 220 } })
+    const previous = turnNode('previous-turn', 1, 'closed')
+    const next = turnNode('replacement-turn', 2)
+    const view = mountChat('session-test', fixture)
+    const oldState = { order: [input.key, previous.key], nodes: new Map([[input.key, input], [previous.key, previous]]) }
+    const regenerated = { order: [input.key, next.key], nodes: new Map([[input.key, input], [next.key, next]]) }
+    try {
+      await view.render([], oldState)
+      await view.move(300, true)
+      const intent = { followTailRequestId: 'regenerate-1' }
+      await view.render([], { ...regenerated, session: { ...fixture.state.session, openState: 'loading' } }, intent)
+      expect(view.scroller.scrollTop).toBe(300)
+      await view.render([], { session: { ...fixture.state.session, openState: 'open', running: true } }, intent)
+      expect(view.scroller.scrollTop).toBe(800)
+      await view.grow()
+      expect(view.scroller.scrollTop).toBe(840)
+      await view.move(350, true)
+      await view.render([], { session: { ...fixture.state.session, running: false } }, intent)
+      await view.grow()
+      expect(view.scroller.scrollTop).toBe(350)
+    } finally { await view.close() }
+  })
   it('does not insert a history-loading row into the message flow during resync', async () => {
     const fixture = chatFixture()
     const input = userNode('input-stable', 3, 'request-stable')

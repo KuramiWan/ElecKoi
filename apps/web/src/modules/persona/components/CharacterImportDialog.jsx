@@ -1,5 +1,6 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CaretRight, CheckCircle, WarningCircle } from "@phosphor-icons/react";
+import { CaretRight, CheckCircle, WarningCircle } from "../../../ui/icons/interfaceIcons.jsx";
 import { ImportIcon, XIcon } from "../../../ui/icons/index.jsx";
 
 const SOURCES = [
@@ -84,7 +85,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
   const importableCount = preview?.items.filter((item) => item.importable).length || 0;
 
   return (
-    <div className="character-import-overlay" onMouseDown={() => !preparing && !importing && close()}>
+    <SystemBarOverlay className="character-import-overlay" onMouseDown={() => !preparing && !importing && close()}>
       <section className="character-import-dialog" role="dialog" aria-modal="true" aria-labelledby="character-import-title" onMouseDown={(event) => event.stopPropagation()}>
         <header>
           <h2 id="character-import-title">{preview ? "导入角色卡" : "选择导入来源"}</h2>
@@ -101,6 +102,9 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
                 <div className="character-import-preview-copy">
                   <strong>{item.name}</strong>
                   <span>{item.errorMessage || item.summary}</span>
+                  {item.warnings?.map((warning, warningIndex) => (
+                    <span className="character-import-warning" key={warningIndex}>{warning}</span>
+                  ))}
                 </div>
                 {item.importable ? <CheckCircle size={20} /> : <WarningCircle size={20} />}
               </div>
@@ -130,7 +134,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
         {preparing ? <div className="character-import-busy">正在读取角色卡…</div> : null}
         <input ref={inputRef} type="file" accept="image/png,application/json,.png,.json" multiple hidden onChange={onFilesPicked} />
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 }
 

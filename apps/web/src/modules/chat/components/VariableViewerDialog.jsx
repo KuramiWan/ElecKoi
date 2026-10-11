@@ -1,12 +1,17 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, CaretDown, CaretRight, Database, X } from "@phosphor-icons/react";
+import { ArrowLeft, CaretDown, CaretRight, Database, X } from "../../../ui/icons/interfaceIcons.jsx";
+import { MobileConversationOverlay, MobileOverlayScroll, isMobilePresentation } from '../../../mobile/MobileConversationOverlay.jsx';
 
 const EMPTY_TIMELINE = { id: "", status: "idle", timeline: null, error: "" };
 const subscribeEmptyTimeline = () => () => {};
 const getEmptyTimeline = () => EMPTY_TIMELINE;
 
 export function VariableViewerDialog({ conversationId, conversationModel, onClose, onNotify }) {
+  const mobile = isMobilePresentation();
+  const [showDetails, setShowDetails] = useState(false);
+  const snapshotBack = useRef(null);
   const [selectedId, setSelectedId] = useState("");
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
@@ -41,6 +46,7 @@ export function VariableViewerDialog({ conversationId, conversationModel, onClos
   }, [visibleTimeline]);
 
   useEffect(() => {
+    if (mobile) return undefined;
     closeRef.current?.focus();
     const handleDialogKeys = (event) => {
       if (event.key === "Escape") {
@@ -62,13 +68,21 @@ export function VariableViewerDialog({ conversationId, conversationModel, onClos
     };
     window.addEventListener("keydown", handleDialogKeys);
     return () => window.removeEventListener("keydown", handleDialogKeys);
-  }, [onClose]);
+  }, [onClose, mobile]);
 
   const selectedFloor = visibleTimeline?.floors.find((floor) => floor.id === selectedId) || null;
   const latestId = visibleTimeline?.floors.at(-1)?.id || "";
 
+  if (mobile) return <MobileConversationOverlay kind="page" title="变量查看器" className="mobile-variable-viewer" onClose={onClose}
+    onBack={showDetails ? () => { if (!snapshotBack.current?.()) setShowDetails(false); } : undefined}>
+    <div className="variable-viewer-body" data-page-direction={showDetails ? 'forward' : 'back'}>
+      <div className="mobile-variable-timeline" hidden={showDetails}><TimelinePane timeline={visibleTimeline} loading={visibleLoading} error={visibleError} selectedId={selectedId} onSelect={id => { setSelectedId(id); setShowDetails(true); }} /></div>
+      {showDetails && <SnapshotPane timeline={visibleTimeline} floor={selectedFloor} latestId={latestId} loading={visibleLoading} error={visibleError} mobile onBackRef={snapshotBack} />}
+    </div>
+  </MobileConversationOverlay>;
+
   return createPortal(
-    <div className="variable-viewer-backdrop" role="presentation" onMouseDown={onClose}>
+    <SystemBarOverlay className="variable-viewer-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         ref={dialogRef}
         className="variable-viewer-dialog"
@@ -93,7 +107,7 @@ export function VariableViewerDialog({ conversationId, conversationModel, onClos
           <SnapshotPane timeline={visibleTimeline} floor={selectedFloor} latestId={latestId} loading={visibleLoading} error={visibleError} />
         </div>
       </section>
-    </div>,
+    </SystemBarOverlay>,
     document.body,
   );
 }
@@ -134,19 +148,23 @@ function TimelinePane({ timeline, loading, error, selectedId, onSelect }) {
   </aside>;
 }
 
-function SnapshotPane({ timeline, floor, latestId, loading, error }) {
+function SnapshotPane({ timeline, floor, latestId, loading, error, mobile = false, onBackRef }) {
   const [viewMode, setViewMode] = useState("changes");
   const [expandedPaths, setExpandedPaths] = useState(() => new Set());
   const [focusStack, setFocusStack] = useState([]);
+  const positions = useRef(new Map()).current;
+  const previousDepth = useRef(0);
   const isOpening = floor?.id === "opening";
   const document = floor?.id === latestId ? timeline?.current : floor?.state;
   const changedPaths = useMemo(() => new Set(floor?.changedPaths || []), [floor]);
+  if (onBackRef) onBackRef.current = () => { if (!focusStack.length) return false; setFocusStack(stack => stack.slice(0, -1)); return true; };
 
   useEffect(() => {
     setViewMode(floor?.id === "opening" ? "all" : "changes");
     setExpandedPaths(new Set());
     setFocusStack([]);
   }, [floor?.id]);
+  useEffect(() => { previousDepth.current = focusStack.length; }, [focusStack.length]);
 
   if (loading || error) return <main className="variable-snapshot variable-snapshot-placeholder" />;
   if (!floor || !document) return <main className="variable-snapshot variable-snapshot-placeholder">
@@ -157,6 +175,10 @@ function SnapshotPane({ timeline, floor, latestId, loading, error }) {
   const focus = focusStack.at(-1) || null;
   const root = focus?.value || document.root;
   const visibleChanges = !isOpening && viewMode === "changes";
+  const direction = focusStack.length < previousDepth.current ? 'back' : 'forward';
+  const TreeScroll = mobile ? MobileOverlayScroll : 'div';
+  const scrollKey = `${floor.id}:${focus?.path || ''}:${viewMode}`;
+  const scrollProps = mobile ? { scrollKey, positions, direction } : {};
 
   function togglePath(path) {
     setExpandedPaths((current) => {
@@ -171,7 +193,7 @@ function SnapshotPane({ timeline, floor, latestId, loading, error }) {
     <div className="variable-snapshot-heading">
       <div>
         <span className="variable-snapshot-titleline">
-          {focus ? <button type="button" onClick={() => setFocusStack((stack) => stack.slice(0, -1))} aria-label="返回上一级变量"><ArrowLeft /></button> : null}
+          {focus && !mobile ? <button type="button" onClick={() => setFocusStack((stack) => stack.slice(0, -1))} aria-label="返回上一级变量"><ArrowLeft /></button> : null}
           <h3>{focus?.name || floor.label}</h3>
         </span>
         {focus ? <p>{focus.breadcrumb.join(" / ")}</p> : floor.messagePreview ? <p>{floor.messagePreview}</p> : null}
@@ -182,12 +204,13 @@ function SnapshotPane({ timeline, floor, latestId, loading, error }) {
       <button type="button" role="tab" aria-selected={viewMode === "changes"} onClick={() => setViewMode("changes")}>本轮变化</button>
       <button type="button" role="tab" aria-selected={viewMode === "all"} onClick={() => setViewMode("all")}>全部变量</button>
     </div> : null}
-    <div className="variable-viewer-tree-scroll">
+    <TreeScroll key={mobile ? scrollKey : undefined} className="variable-viewer-tree-scroll" {...scrollProps}>
       {document.errorMessage ? <section className="variable-raw-state">
         <strong>{document.errorMessage}</strong>
         <pre>{document.rawJson}</pre>
       </section> : null}
       {!document.errorMessage && root ? <VariableTree
+        mobile={mobile}
         root={root}
         basePath={focus?.path || ""}
         baseBreadcrumb={focus?.breadcrumb || []}
@@ -201,17 +224,17 @@ function SnapshotPane({ timeline, floor, latestId, loading, error }) {
       {!document.errorMessage && root && !hasVisibleEntries(root, focus?.path || "", changedPaths, visibleChanges)
         ? <p className="variable-viewer-empty">{visibleChanges ? "本轮没有可显示的新值" : "这一份快照没有变量"}</p>
         : null}
-    </div>
+    </TreeScroll>
   </main>;
 }
 
-function VariableTree({ root, basePath, baseBreadcrumb, depth, expandedPaths, changedPaths, changesOnly, onToggle, onFocus }) {
+function VariableTree({ root, basePath, baseBreadcrumb, depth, expandedPaths, changedPaths, changesOnly, onToggle, onFocus, mobile = false }) {
   return <div className="variable-viewer-tree" role={depth === 0 ? "tree" : "group"}>{Object.entries(root).map(([name, value]) => {
     const path = pointerPath(basePath, name);
     if (changesOnly && !pathIsVisible(path, changedPaths)) return null;
     const container = isObject(value);
     const expanded = container && expandedPaths.has(path);
-    const opensFocusedSubtree = container && depth >= 2;
+    const opensFocusedSubtree = container && (mobile || depth >= 2);
     const breadcrumb = [...baseBreadcrumb, name];
     return <div className={`variable-viewer-tree-node${changedPaths.has(path) ? " is-changed" : ""}`} key={path} role="treeitem" aria-expanded={container && !opensFocusedSubtree ? expanded : undefined}>
       {container ? <button

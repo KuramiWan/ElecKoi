@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../ui/SystemBarOverlay.jsx';
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { assetSrc } from "../../app/services/assets.js";
@@ -45,7 +46,7 @@ export function AvatarPreviewDialog({ src, name, onClose, onPin }) {
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="avatar-preview-backdrop" onPointerDown={(event) => {
+    <SystemBarOverlay className="avatar-preview-backdrop" onPointerDown={(event) => {
       if (event.target === event.currentTarget) onClose?.();
     }}>
       <div className="avatar-preview-dialog" role="dialog" aria-modal="true" aria-label={`${name || "角色"}的头像预览`}>
@@ -55,7 +56,7 @@ export function AvatarPreviewDialog({ src, name, onClose, onPin }) {
           <button ref={closeRef} type="button" className="avatar-preview-close" onClick={onClose} aria-label="关闭头像预览"><span aria-hidden="true">×</span>关闭</button>
         </div>
       </div>
-    </div>,
+    </SystemBarOverlay>,
     document.body,
   );
 }

@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
 
 function sameMessageIdentity(current, incoming) {
   if (!current || !incoming || current.role !== incoming.role) return false;
@@ -13,31 +12,6 @@ function sameMessageIdentity(current, incoming) {
   if (!current.runtimeSessionId || current.runtimeSessionId !== incoming.runtimeSessionId) return false;
   return Boolean((current.dshMessageId && current.dshMessageId === incoming.dshMessageId)
     || (current.renderKey && current.renderKey === incoming.renderKey));
-}
-
-function preserveSettledDisplayDuringRewind(previous, incoming) {
-  if (previous?.role !== 'assistant' || incoming?.role !== 'assistant') return {};
-  // This helper is only called after reconciliation matched the same durable
-  // message id. The transient DSH projection can normalize the source text
-  // (and therefore change content/display lengths) while keeping that id.
-  // Matching on content here would let that intermediate snapshot replace a
-  // settled rich display with its raw fallback for one render.
-  if (!previous.id || String(previous.id) !== String(incoming.id)) return {};
-  const previousDisplay = previous.displayContent;
-  const incomingDisplay = incoming.displayContent;
-  // During regeneration DSH can briefly publish an already-settled assistant
-  // step without its projected frontend/regex display. Keep the last rich
-  // projection until the durable snapshot catches up; otherwise the card is
-  // replaced by raw source for one render.
-  if (typeof previousDisplay !== 'string' || previousDisplay === previous.content) return {};
-  if (!detectRichMessagePresentation(previousDisplay, false)?.parts?.some((part) => part.kind === 'rich')) return {};
-  if (typeof incomingDisplay !== 'string') return {};
-  if (detectRichMessagePresentation(incomingDisplay, false)?.parts?.some((part) => part.kind === 'rich')) return {};
-  if (incomingDisplay.length >= previousDisplay.length) return {};
-  return {
-    displayContent: previousDisplay,
-    ...(incoming.pending ? { pending: previous.pending, status: previous.status } : {}),
-  };
 }
 
 function preserveAttachmentRenderKeys(current = [], incoming = []) {
@@ -105,7 +79,6 @@ export function preserveMessageRenderKeys(currentMessages = [], incomingMessages
     return {
       ...message,
       ...(renderKey ? { renderKey } : {}),
-      ...preserveSettledDisplayDuringRewind(previous, message),
       process: mergeProcessItems(previous.process || [], message.process || []),
       inputImageAttachments: preserveAttachmentRenderKeys(
         previous.inputImageAttachments || [],
@@ -136,8 +109,8 @@ export function useConversationMessages() {
   const [scrollRequest, setScrollRequest] = useState({ revision: 0, behavior: "auto" });
   const displayedMessages = messages;
 
-  function requestScrollToEnd(behavior = "smooth") {
-    setScrollRequest((current) => ({ revision: current.revision + 1, behavior }));
+  function requestScrollToEnd(behavior = "smooth", source = "submission") {
+    setScrollRequest((current) => ({ revision: current.revision + 1, behavior, source }));
   }
 
   function setMessagesWithScroll(nextMessages, behavior = null, page = {}) {

@@ -32,6 +32,15 @@ if (pluginHost.status !== 0) {
 
 process.stdout.write(pluginHost.stdout)
 
+const nativeAuthor = spawnSync(executable, [join(process.cwd(), 'scripts', 'probe-dsh-native-author.mjs')], {
+  cwd: process.cwd(), env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8', timeout: 120_000,
+})
+if (nativeAuthor.status !== 0) {
+  process.stderr.write(nativeAuthor.stderr || nativeAuthor.stdout || 'Electron native author Host check failed.\n')
+  process.exit(nativeAuthor.status ?? 1)
+}
+process.stdout.write(nativeAuthor.stdout)
+
 const regeneration = spawnSync(executable, [join(process.cwd(), 'scripts', 'probe-dsh-regeneration.mjs')], {
   cwd: process.cwd(), env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8', timeout: 90_000,
 })
@@ -40,3 +49,14 @@ if (regeneration.status !== 0) {
   process.exit(regeneration.status ?? 1)
 }
 process.stdout.write(regeneration.stdout)
+
+const clientEnv = { ...process.env }
+delete clientEnv.ELECTRON_RUN_AS_NODE
+const nativeClient = spawnSync(executable, [join(process.cwd(), 'scripts', 'probe-eleckoi-desktop-client.cjs'), '--native-author'], {
+  cwd: process.cwd(), env: clientEnv, encoding: 'utf8', windowsHide: true, timeout: 180_000,
+})
+if (nativeClient.status !== 0) {
+  process.stderr.write(nativeClient.stderr || nativeClient.stdout || 'Electron native author Client check failed.\n')
+  process.exit(nativeClient.status ?? 1)
+}
+process.stdout.write(nativeClient.stdout)

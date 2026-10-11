@@ -1,9 +1,9 @@
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
 
-export function BranchSettingsSplitView({ children, preferredWidth, onWidthChange }) {
+export function BranchSettingsSplitView({ children, preferredWidth, onWidthChange, inspectorTitle, onCloseInspector, feedback }) {
   return (
     <EditorSidebarLayout as="div" className="dynamic-settings-editor-layout" paneClassName="dynamic-settings-editor-pane"
-      overlay={false} inspector={children[1]} preferredWidth={preferredWidth} onWidthChange={onWidthChange}>
+      overlay={false} inspector={children[1]} inspectorTitle={inspectorTitle} onCloseInspector={onCloseInspector} feedback={feedback} preferredWidth={preferredWidth} onWidthChange={onWidthChange}>
       {children[0]}
     </EditorSidebarLayout>
   );

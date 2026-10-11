@@ -5,11 +5,12 @@ import Database from 'better-sqlite3'
 import { Context } from '@deepseek-ai/cordis'
 import TypertGatewayService from '@deepseek-ai/dsh-api-gateway'
 import TypertRegistry, { type TypertContribution } from '@deepseek-ai/dsh-typert-registry'
-import { afterEach, describe, expect, it } from 'vitest'
-import { RequestPreviewStore } from '../packages/dsh-client-roleplay/src/host/request-preview.mjs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RequestPreviewStore } from '../packages/client/features/dsh-client-roleplay/src/host/request-preview.mjs'
 import ElecKoiSystemApi, {
   type AgentPresetCatalog,
   CharacterConfigurationChangeFeed,
+  ElecKoiCharacterConfigurationApi,
   ConversationChangeFeed,
   ProductRecordChangeFeed,
   type PersonaProfile,
@@ -315,6 +316,26 @@ describe('ElecKoi DSH Remote contract', () => {
     feed.close()
   })
 
+  it.each(['save', 'import'])('broadcasts shared regex invalidation after %s, beyond the edited character', async operation => {
+    const feed = new CharacterConfigurationChangeFeed()
+    const controller = new AbortController()
+    const iterator = feed.stream(controller.signal)[Symbol.asyncIterator]()
+    await iterator.next()
+    const collection = { characterId: 'character-a', agentPresetId: 'preset-a', agentPresetName: 'Synthetic preset',
+      agentPresetRegexRevision: '0'.repeat(64), revision: 1,
+      globalRules: [], agentPresetRules: [], characterRules: [], versions: [], activeVersionId: '' }
+    const imported = { collection, importedFileCount: 1, importedRuleCount: 0, failedFileNames: [] }
+    const api = Object.assign(Object.create(ElecKoiCharacterConfigurationApi.prototype), {
+      productData: { saveRegexRules: () => collection, importRegexRules: () => imported }, changeFeed: feed
+    }) as ElecKoiCharacterConfigurationApi
+    try {
+      const notification = iterator.next()
+      if (operation === 'save') expect(api.saveRegexRules('character-a', collection, 1)).toBe(collection)
+      else expect(api.importRegexRules('character-a', 'Character', [], 1)).toBe(imported)
+      await expect(notification).resolves.toEqual({ done: false, value: { kind: 'configuration', domain: 'regexRules' } })
+    } finally { controller.abort(); feed.close() }
+  })
+
   it('streams product record invalidations without retaining product data', async () => {
     const feed = new ProductRecordChangeFeed()
     const controller = new AbortController()
@@ -350,6 +371,12 @@ describe('ElecKoi DSH Remote contract', () => {
       await ctx.plugin(productDataPlugin)
       await ctx.plugin(TypertGatewayService)
       await ctx.plugin(ElecKoiSystemApi)
+
+      expect(ctx.get('eleckoiCompatibilityApi', false)).toBeUndefined()
+      expect(ctx.get('eleckoiWorldbookRounds', false)).toBeUndefined()
+      expect(ctx.get('eleckoiAuthorVariablesApi', false)).toBeDefined()
+      expect(ctx.get('eleckoiAuthorScriptsApi', false)).toBeDefined()
+      expect(ctx.get('eleckoiAuthorFrontendsApi', false)).toBeDefined()
 
       expect(await ctx.typertGateway.invoke({
         namespace: 'eleckoiCreatorStudio', method: 'list', args: {}
@@ -447,6 +474,7 @@ describe('ElecKoi DSH Remote contract', () => {
     const revealedPaths: string[] = []
     let sessionEvents: unknown[] = []
     let rejectNextSession = false
+    let rejectNextDeletion = false
     let unregister: (() => void) | undefined
     try {
       await ctx.plugin(TypertRegistry)
@@ -555,7 +583,13 @@ describe('ElecKoi DSH Remote contract', () => {
               return fromTurn
             },
             transaction: async <T,>(_sessionId: string, operation: () => Promise<T>) => operation(),
-            deleteSession: async (sessionId: string) => { deletedSessionIds.push(sessionId) }
+            deleteSession: async (sessionId: string) => {
+              if (rejectNextDeletion) {
+                rejectNextDeletion = false
+                throw new Error('Synthetic session deletion failed')
+              }
+              deletedSessionIds.push(sessionId)
+            }
           })
         }
       })
@@ -1013,11 +1047,51 @@ describe('ElecKoi DSH Remote contract', () => {
 
       await ctx.typertGateway.invoke({
         namespace: 'eleckoiCharacters',
+        method: 'create',
+        args: { character: { ...currentCharacter, id: 'character-2', name: 'Synthetic Character Two',
+          persona: { ...currentCharacter.persona, assistant_name: 'Synthetic Character Two' } } }
+      })
+      const otherConversation = await ctx.typertGateway.invoke({
+        namespace: 'eleckoiConversations',
+        method: 'create',
+        args: { input: { title: 'Synthetic Other Chat', metadata: { characterId: 'character-2' } } }
+      }) as { conversation: { id: string }; runtimeSessionId: string }
+      const artifactsBeforeDeletion = removedArtifacts.length
+      rejectNextDeletion = true
+      await expect(ctx.typertGateway.invoke({
+        namespace: 'eleckoiCharacters',
         method: 'delete',
         args: { characterIds: ['character-1'] }
-      })
+      })).rejects.toThrow('Synthetic session deletion failed')
+      expect(removedArtifacts).toHaveLength(artifactsBeforeDeletion)
+      expect(ctx.eleckoiProductData.readCharacters().items).toContainEqual(expect.objectContaining({ id: 'character-1' }))
+      expect(ctx.eleckoiProductData.readConversationCatalog()).toContainEqual(expect.objectContaining({ id: 'conversation-1' }))
+
+      const deletedChats = ctx.eleckoiProductData.readConversationCatalog()
+        .filter(item => item.metadata.characterId === 'character-1').map(item => item.id)
+      const conversationChanges = vi.spyOn(ctx.eleckoiConversationChanges, 'publish')
+      const configurationChanges = vi.spyOn(ctx.eleckoiCharacterConfigurationChanges, 'publish')
+      const remainingCharacters = await ctx.typertGateway.invoke({
+        namespace: 'eleckoiCharacters',
+        method: 'delete',
+        args: { characterIds: ['character-1'] }
+      }) as { items: Array<{ id: string }> }
+      expect(remainingCharacters.items.map(item => item.id)).toEqual(['character-2'])
+      expect(conversationChanges.mock.calls.map(([change]) => change)).toEqual(deletedChats.map(conversationId => ({
+        kind: 'catalog', conversationId, reason: 'deleted',
+      })))
+      expect(Math.max(...conversationChanges.mock.invocationCallOrder)).toBeLessThan(configurationChanges.mock.invocationCallOrder[0]!)
       expect(deletedSessionIds).toContain('conversation-1')
+      expect(deletedSessionIds).toContain(importedConversationId)
+      expect(deletedSessionIds).not.toContain(otherConversation.runtimeSessionId)
       expect(removedArtifacts).toContainEqual({ conversationId: 'conversation-1', sessionId: 'conversation-1' })
+      const deletionReader = new Database(path, { readonly: true })
+      try {
+        expect(deletionReader.prepare('SELECT id FROM characters ORDER BY id').all()).toEqual([{ id: 'character-2' }])
+        expect(deletionReader.prepare('SELECT id FROM chat_sessions ORDER BY id').all()).toEqual([{ id: otherConversation.conversation.id }])
+        expect(deletionReader.pragma('foreign_key_check')).toEqual([])
+        expect(deletionReader.pragma('integrity_check', { simple: true })).toBe('ok')
+      } finally { deletionReader.close() }
     } finally {
       unregister?.()
       await ctx.fiber.dispose()

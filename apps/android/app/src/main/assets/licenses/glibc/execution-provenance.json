@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "sourceLock": "native/android-runtime/glibc-lock.json",
+  "androidNdkVersion": "27.2.12479018",
+  "androidApi": 27,
+  "sources": [
+    {
+      "path": "native/android-runtime/glibc-launcher.c",
+      "size": 1859,
+      "sha256": "846120781e97b127d131c8885ebc932c33879f9b014787681933e6e52bacdd7b"
+    },
+    {
+      "path": "native/android-runtime/glibc-exec.c",
+      "size": 9934,
+      "sha256": "b2649f9081605d91f842ce5bf86a492580e6dbb35ac4d17001f6237d1a8c1c6b"
+    },
+    {
+      "path": "native/android-runtime/glibc-node-bootstrap.cjs",
+      "size": 218,
+      "sha256": "0bf57d911e7172605a56873a6384e9fafa923ba987aa06d75325275edf4532b9"
+    },
+    {
+      "path": "native/android-runtime/android-file-publication.mjs",
+      "size": 758,
+      "sha256": "798dc1404772ab80ae69076db61166a51eac6a58f67cbad4e5f36f65996fd016"
+    },
+    {
+      "path": "native/android-runtime/session-publication-lock.json",
+      "size": 616,
+      "sha256": "38f759bc784189858fd8839a65f7ddb2bc22dfceeef2d8eda41a7adce19f3fbf"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "apps/android/app/src/main/jniLibs/arm64-v8a/libeleckoi_node.so",
+      "size": 8376,
+      "sha256": "406fdadd7029187d0d110146885d754fbfbf3a80ee371669380f7721543ec676"
+    },
+    {
+      "path": "apps/android/app/src/main/jniLibs/arm64-v8a/libeleckoi_glibc_portable.so",
+      "size": 242560,
+      "sha256": "576b1c97d8bbe5fc9960e57120d178d3e9431ced8553699d4881847ef7faa5a7"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libc.so.6",
+      "size": 2368240,
+      "sha256": "f0feeb8206ad11c9881e95d5cbd031766b04ede86b7364390bc1fa533984cfd3"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libdl.so.2",
+      "size": 69968,
+      "sha256": "9c8504547ea2ae94146760551135ae49b19659ee3f6d913c1f2f055695a7fce7"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libeleckoi_glibc_exec.so",
+      "size": 11384,
+      "sha256": "e53364253a5c589f1b338bddf4d5c656fcd8c6a49a4fba20bca2d149fdaf35a1"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libm.so.6",
+      "size": 1209792,
+      "sha256": "f5f77b6699eeec66bc0d058a57e24b8af883a7d01a8ff1ef244bd46912ab71e2"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libnss_dns.so.2",
+      "size": 69776,
+      "sha256": "1eaa206e5e1c7e5f983038de9c2c9aabb76337334c2f4e9fa46fe8058ebe7dbe"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libnss_files.so.2",
+      "size": 69776,
+      "sha256": "068976beb57afd439680a9c9ad72652562088efd50bd68e722144003632f5c96"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libpthread.so.0",
+      "size": 70352,
+      "sha256": "adf2a3b38694cdd6b8e6c08f56a64786420cb20d736ceece48c3871147357ff2"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/libresolv.so.2",
+      "size": 80320,
+      "sha256": "023d7cd28931737a040ce314afd604cd41a4722ed15bba04272b0b93d76c251f"
+    },
+    {
+      "path": "build/android-runtime/glibc-probe/portable/usr/glibc/lib/librt.so.1",
+      "size": 70520,
+      "sha256": "a941a6c9eb45597c47597e7711e8cd24b039eb488f20337d2a96e35c22daf327"
+    }
+  ]
+}

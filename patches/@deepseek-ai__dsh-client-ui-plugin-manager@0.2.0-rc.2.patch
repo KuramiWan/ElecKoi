@@ -15,7 +15,7 @@ index f830d1d9036fa79a8d7aaab0457781530eae980a..630ef0733a93883036159efa6c802a7f
  			}, [highlight, clearHighlight]);
  			const noticeLine = state.notice === null || state.notice.kind === "refresh-failed" ? null : noticeText(state.notice, t);
 -			const listed = state.packages.filter((pkg) => !BUILTIN_PROFILE_BUNDLES.has(pkg.name) && (pkg.installed || pkg.optional || pkg.error !== void 0));
-+			const listed = state.packages.filter((pkg) => !BUILTIN_PROFILE_BUNDLES.has(pkg.name) && (pkg.enabled || pkg.installed || pkg.optional || pkg.error !== void 0));
++			const listed = state.packages.filter((pkg) => !BUILTIN_PROFILE_BUNDLES.has(pkg.name));
  			const mine = listed.filter((pkg) => pkg.installed || !pkg.optional);
  			const official = listed.filter((pkg) => pkg.optional && !pkg.installed);
  			const loaded = state.status === "ready" || state.status === "error";

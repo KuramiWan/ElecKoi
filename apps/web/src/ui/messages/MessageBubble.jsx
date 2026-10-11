@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../ui/SystemBarOverlay.jsx';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faChevronLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
@@ -5,9 +6,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { OfficialMarkdown } from "./OfficialMarkdown.jsx";
 import { Avatar } from "../ui/Avatar.jsx";
 import { AvatarPreviewDialog } from "./AvatarPreviewDialog.jsx";
-import { AgentPencilIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, MessagePencilIcon, MoreDotsIcon, RefreshMessageIcon, SpeakerIcon } from "../icons/elecKoiMessageIcons.jsx";
+import { AgentHistoryIcon, AgentPencilIcon, AgentSpeakerIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, MessagePencilIcon, MoreDotsIcon, RefreshMessageIcon, SpeakerIcon } from "../icons/elecKoiMessageIcons.jsx";
 import { AgentProcessIcon } from "../../modules/chat/components/AgentProcessIcon.jsx";
-import { ChatImageGallery } from "../../modules/chat/components/ChatImageGallery.jsx";
+import { ChatImageGallery } from "./ChatImageGallery.jsx";
 import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
 import { TurnUsage } from "../../modules/chat/components/TurnUsage.jsx";
 import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
@@ -15,6 +16,7 @@ import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
 import { normalizeMarkdownForRendering } from "./normalizeMarkdownForRendering.js";
 import { prepareMarkdownTextTones, registerMarkdownTextToneHighlights } from "./markdownTextTones.js";
+import { useMessageToolbarMotion } from "../hooks/useMessageToolbarMotion.js";
 
 const OPENING_SWIPE_DURATION = 125;
 const timestampFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -117,6 +119,8 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   const [pagerOpeningId, setPagerOpeningId] = useState(message.selectedOpeningId);
   const articleRef = useRef(null);
   const toolsRef = useRef(null);
+  const mobileRoleplay = layoutMode === "roleplay" && typeof document !== "undefined" && document.documentElement.dataset.eleckoiMobile === "true";
+  const toolbar = useMessageToolbarMotion(expanded, mobileRoleplay, toolsRef, articleRef, !pending);
   const jumpDialogRef = useRef(null);
   const jumpTriggerRef = useRef(null);
   const openingSwitchingRef = useRef(false);
@@ -160,8 +164,10 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   useEffect(() => {
     if (!expanded) return undefined;
     const close = (event) => { if (!toolsRef.current?.contains(event.target)) setExpanded(false); };
+    const escape = (event) => { if (event.key === 'Escape') setExpanded(false); };
     window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
+    window.addEventListener('keydown', escape);
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', escape); };
   }, [expanded]);
   useEffect(() => {
     if (!jumpOpen) return undefined;
@@ -258,24 +264,24 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
     <button type="button" className="opening-pager-next" disabled={!openingEnabled || openingSwitching || pagerSelectedIndex >= options.length - 1} onClick={() => { void selectOpeningAt(selectedIndex + 1); }} aria-label="下一条开场白"><FontAwesomeIcon icon={faChevronRight} /></button>
     <button ref={jumpTriggerRef} type="button" className="opening-pager-index" disabled={!openingEnabled || openingSwitching} onClick={() => { setPageInput(String(pagerSelectedIndex + 1)); setJumpOpen(true); }} aria-label={`第 ${pagerSelectedIndex + 1} 条，共 ${options.length} 条开场白，点击跳转`}>{pagerSelectedIndex + 1}/{options.length}</button>
   </div> : null;
-  const messageTools = !pending && layoutMode !== "agent" ? <div className={`message-tools${expanded ? ' expanded' : ''}`} ref={toolsRef}>
+  const messageTools = !pending && layoutMode !== "agent" ? <div className={`message-tools${toolbar.presentedExpanded ? ' expanded' : ''}${toolbar.swapping ? ' swapping' : ''}`} ref={toolsRef}>
     <div className="message-tools-leading">
       {pluginActions}
-      {expanded ? <div className="message-tools-expanded">
+      {toolbar.presentedExpanded ? <div className="message-tools-expanded">
         {!isUser && message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
         {!isUser ? <TurnUsage usage={message.turnUsage} compact /> : null}
         <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || '')} aria-label="复制" title="复制"><CopyIcon /></button>
         {!isUser && message.id !== 'opening' ? <button type="button" onClick={() => onRegenerate?.(message)} aria-label="重新生成" title="重新生成"><RefreshMessageIcon /></button> : null}
         <button type="button" onClick={speak} aria-label="朗读" title="朗读"><SpeakerIcon /></button>
       </div> : null}
-      <button type="button" onClick={() => setExpanded((value) => !value)} aria-label="更多" title="更多"><MoreDotsIcon /></button>
+      {!mobileRoleplay || !toolbar.presentedExpanded ? <button type="button" onClick={() => setExpanded((value) => !value)} aria-label="更多" aria-expanded={expanded} title="更多"><MoreDotsIcon /></button> : null}
     </div>
     <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!editingEnabled}><MessagePencilIcon /></button>
   </div> : null;
   return (
     <article
       ref={articleRef}
-      className={`message ${isUser ? "mine" : "theirs"} message-${layoutMode} avatar-shape-${avatarShape}${showOpeningPager ? " has-opening-pager" : ""}${layoutMode === "agent" && !isUser && isLatestAssistant ? " is-latest-assistant" : ""}`}
+      className={`message ${isUser ? "mine" : "theirs"} message-${layoutMode} avatar-shape-${avatarShape}${toolbar.reserved ? " mobile-tools-reserved" : ""}${showOpeningPager ? " has-opening-pager" : ""}${layoutMode === "agent" && !isUser && isLatestAssistant ? " is-latest-assistant" : ""}`}
       style={Number.isFinite(spacingAfter) ? { marginBottom: `${spacingAfter}px` } : undefined}
     >
       {avatar
@@ -306,7 +312,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
               saveEdit();
             }
           }}
-          autoFocus
+          autoFocus={typeof document === "undefined" || document.documentElement.dataset.eleckoiMobile !== "true"}
           aria-label="编辑消息"
         /><div><button type="button" onClick={() => { setDraft(content || ''); setEditing(false); }}>取消</button><button type="button" className="primary" onClick={saveEdit}>保存</button></div></div> : liveProcess ? <button type="button" className="agent-process-inline" onClick={openProcess} aria-label={`查看处理过程：${liveProcess.title}`}>
           <AgentProcessIcon name={liveProcess.icon} size={liveProcess.icon === 'reasoning' ? 27 : 17} animated={liveProcess.icon === 'reasoning'} />
@@ -330,8 +336,8 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
             {openingPager}
             <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || "")} aria-label="复制" title="复制" disabled={!displayContent}><CopyIcon /></button>
             {message.id !== "opening" ? <button type="button" onClick={() => onRegenerate?.(message)} aria-label="重新生成" title="重新生成" disabled={!onRegenerate}><RefreshMessageIcon /></button> : null}
-            {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><HistoryIcon /></button> : null}
-            <button type="button" onClick={speak} aria-label="朗读" title="朗读" disabled={!displayContent}><SpeakerIcon /></button>
+            {message.process?.length ? <button type="button" onClick={openProcess} aria-label="查看过程" title="查看过程"><AgentHistoryIcon /></button> : null}
+            <button type="button" onClick={speak} aria-label="朗读" title="朗读" disabled={!displayContent}><AgentSpeakerIcon /></button>
             <TurnUsage usage={message.turnUsage} compact />
             <button type="button" onClick={() => setEditing(true)} aria-label="编辑" title="编辑" disabled={!editingEnabled}><AgentPencilIcon /></button>
           </div>
@@ -341,14 +347,14 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
       {layoutMode !== "agent" ? openingPager : null}
       {avatarPreviewOpen && avatar ? <AvatarPreviewDialog src={avatar} name={name} onClose={() => setAvatarPreviewOpen(false)} onPin={onPinAvatar ? () => { onPinAvatar({ src: pinSrc || avatar, name }); setAvatarPreviewOpen(false); } : undefined} /> : null}
       {jumpOpen && typeof document !== "undefined" ? createPortal(
-        <div className="opening-jump-backdrop" onPointerDown={() => closePageJump()}>
+        <SystemBarOverlay className="opening-jump-backdrop" onPointerDown={() => closePageJump()}>
           <form ref={jumpDialogRef} className="opening-jump-dialog" role="dialog" aria-modal="true" aria-labelledby="opening-jump-title" onPointerDown={(event) => event.stopPropagation()} onSubmit={submitPageJump}>
             <h2 id="opening-jump-title">跳转开场白</h2>
             <label>页码（1–{options.length}）<input type="number" min="1" max={options.length} step="1" value={pageInput} onChange={(event) => setPageInput(event.target.value.replace(/\D/g, '').slice(0, 5))} inputMode="numeric" autoFocus aria-invalid={Boolean(pageInput) && !requestedPageValid} aria-describedby={pageInput && !requestedPageValid ? "opening-jump-error" : undefined} /></label>
             {pageInput && !requestedPageValid ? <small id="opening-jump-error">请输入 1 到 {options.length}</small> : null}
             <div><button type="button" onClick={() => closePageJump()}>取消</button><button type="submit" className="primary" disabled={!openingEnabled || !requestedPageValid}>跳转</button></div>
           </form>
-        </div>,
+        </SystemBarOverlay>,
         document.body,
       ) : null}
     </article>

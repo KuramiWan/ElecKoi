@@ -1,8 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Copy, MagnifyingGlass, PencilSimple, Plus, Scissors, SlidersHorizontal, Trash } from "@phosphor-icons/react";
+import { Copy, MagnifyingGlass, PencilSimple, Plus, Scissors, SlidersHorizontal, Trash } from "../../../ui/icons/interfaceIcons.jsx";
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
+import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import {
+  canTransferVariableNode,
   convertVariableToObject,
   copyVariableNode,
   createObjectDraft,
@@ -20,7 +23,7 @@ import {
 import { hasVariableSearchResults, variableTreeNodes } from "../model/variableConfigTree.js";
 import { VariableConfigInspector } from "./VariableConfigInspector.jsx";
 import { VariableConfigManager } from "./VariableConfigManager.jsx";
-import { VariableConfigTree, VariableEntryIcon, VariableGroupIcon, VariableTreeActionsContext } from "./VariableConfigTree.jsx";
+import { VariableConfigTree, VariableEntryIcon, VariableGroupIcon, VariableTreeActionsContext, VARIABLE_INITIALIZATION_OBJECT_ID } from "./VariableConfigTree.jsx";
 
 function isTextInput(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
@@ -33,9 +36,12 @@ function destinationParent(config, selected) {
 }
 
 export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ characterId, variables, onDirtyChange }, ref) {
+  const { compact } = useEditorPresentation();
   const [config, setConfig] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [selectedKey, setSelectedKey] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [clipboard, setClipboard] = useState(null);
   const [expandedIds, setExpandedIds] = useState([]);
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -147,8 +153,12 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
   useImperativeHandle(ref, () => ({ save, discard }), [characterId, config, persisted]);
 
   function closeInspector() {
-    setSelectedKey("");
+    if (compact) setEditing(false);
+    else setSelectedKey('');
   }
+  function selectNode(key) { setSelectedKey(key); setEditing(false); }
+  function openEditor(key) { if (key !== undefined) setSelectedKey(key); setEditing(true); }
+  function clearClipboard() { clipboardRef.current = null; setClipboard(null); }
 
   function parentForNewNode() {
     return destinationParent(configRef.current, selectedVariableNode(configRef.current, selectedKey));
@@ -173,6 +183,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
       changeConfig({ ...source, variables: [...source.variables, variable], expandedObjectIds: expanded });
       setSelectedKey(nodeKey("variable", variable.id));
     }
+    openEditor();
     setAddOpen(false);
     setContextMenu(null);
     requestAnimationFrame(() => nameInputRef.current?.select());
@@ -234,6 +245,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
   function openContextMenu(event, node) {
     event.preventDefault();
     event.stopPropagation();
+    if (compact) { selectNode(node.id); return; }
     setAddOpen(false);
     if (node.fixed) return;
     setSelectedKey(node.id);
@@ -254,7 +266,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
 
   function askDelete(target) {
     const item = target.kind === "object" ? configRef.current.objects.find((entry) => entry.id === target.id) : configRef.current.variables.find((entry) => entry.id === target.id);
-    if (!item) return;
+    if (!item || target.id === VARIABLE_INITIALIZATION_OBJECT_ID) return;
     const label = target.kind === "object" ? item.name : item.title;
     setDeleteTarget({ ...target, title: `删除“${label || "未命名条目"}”？`, message: target.kind === "object" ? "变量组内的子变量组和变量也会一起删除，保存后生效。" : "变量会在保存后删除。" });
     setContextMenu(null);
@@ -263,26 +275,34 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
   function confirmDelete() {
     if (!deleteTarget) return;
     changeConfig((current) => deleteVariableNode(current, deleteTarget), false);
-    closeInspector();
+    selectNode('');
     setDeleteTarget(null);
   }
 
   function copyOrCut(mode, target) {
+    if (!canTransferVariableNode(configRef.current, target, '')) return;
     clipboardRef.current = { mode, target };
+    setClipboard(clipboardRef.current);
+    if (compact) selectNode('');
     setContextMenu(null);
   }
 
   function paste(parentId) {
     const clipboard = clipboardRef.current;
     if (!clipboard) return;
+    if (!canTransferVariableNode(configRef.current, clipboard.target, parentId)) {
+      setError('不能粘贴到此变量组，请选择其他位置。'); return;
+    }
     if (clipboard.mode === "cut") {
       changeConfig((current) => moveVariableNode(current, clipboard.target, parentId, Number.MAX_SAFE_INTEGER), false);
-      clipboardRef.current = null;
+      setSelectedKey(nodeKey(clipboard.target.kind, clipboard.target.id));
     } else {
       const copied = copyVariableNode(configRef.current, clipboard.target, parentId);
       changeConfig(copied.config, false);
       setSelectedKey(copied.key);
     }
+    if (parentId) handleExpandedKeysChange([...new Set([...expandedRef.current, parentId])].map(id => nodeKey('object', id)));
+    clearClipboard();
     setContextMenu(null);
   }
 
@@ -297,7 +317,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     const ids = next.expandedObjectIds || [];
     expandedRef.current = ids;
     setExpandedIds(ids);
-    closeInspector();
+    selectNode('');
   }
 
   useEffect(() => {
@@ -320,12 +340,15 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [dirty, saving, selectedKey, config]);
 
-  if (!config) return <div className="variable-loading">{error || "正在读取…"}</div>;
+  if (!config && !compact) return <div className="variable-loading">{error || "正在读取…"}</div>;
 
   return (
     <EditorSidebarLayout className="variable-layout" aria-label="变量配置"
+      inspectorTitle={selected.value?.id === VARIABLE_INITIALIZATION_OBJECT_ID ? '变量运行配置' : selected.kind === 'object' ? '编辑变量组' : '编辑变量'}
+      onCloseInspector={closeInspector}
+      feedback={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />}
       onMouseDown={() => { setAddOpen(false); setContextMenu(null); }}
-      inspector={selected.value ? (
+      inspector={selected.value && (!compact || editing) ? (
         <VariableConfigInspector
           config={config}
           selected={selected}
@@ -339,28 +362,43 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
       <div className="variable-browser">
         <div className="variable-toolbar" onMouseDown={(event) => event.stopPropagation()}>
           <label className="variable-search"><MagnifyingGlass size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索变量" aria-label="搜索变量" /></label>
-          <div className="variable-add-wrap">
+          {!compact && <div className="variable-add-wrap">
             <button type="button" className="variable-create-button" aria-expanded={addOpen} onClick={() => setAddOpen((open) => !open)}><Plus size={16} />新建</button>
             {addOpen ? <div className="variable-popover" role="menu"><button type="button" role="menuitem" onClick={() => addNode("object")}><VariableGroupIcon size={16} />变量组</button><button type="button" role="menuitem" onClick={() => addNode("variable")}><VariableEntryIcon type="string" size={16} />变量</button></div> : null}
-          </div>
-          <button type="button" className="variable-manage-button" aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
+          </div>}
+          <button type="button" className="variable-manage-button" disabled={!config} aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
           <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
         </div>
-        <div className="variable-tree editor-sidebar-directory" onContextMenu={openBackgroundMenu} onMouseDown={(event) => { if (event.button === 0 && !event.target.closest('[role="treeitem"]')) closeInspector(); }}>
-          <VariableTreeActionsContext.Provider value={{ openContextMenu, toggleNode }}>
+        <div className="variable-tree editor-sidebar-directory" onContextMenu={openBackgroundMenu} onMouseDown={(event) => { if (event.button === 0 && !event.target.closest('[role="treeitem"]')) selectNode(''); }}>
+          <VariableTreeActionsContext.Provider value={{ openContextMenu, toggleNode, openEditor: compact ? openEditor : undefined }}>
             <VariableConfigTree
               key={characterId}
               nodes={nodes}
+              touchReorder={compact && !clipboard}
+              dragEnabled={!clipboard}
               query={query}
               selectedId={selectedKey}
               expandedIds={expandedIds.map((id) => nodeKey("object", id))}
-              onSelectedIdChange={setSelectedKey}
+              onSelectedIdChange={selectNode}
               onExpandedIdsChange={handleExpandedKeysChange}
               onMove={handleMove}
             />
           </VariableTreeActionsContext.Provider>
-          {!searchHasResults ? <p className="variable-empty">没有匹配的变量</p> : null}
+          {!config ? <p className="variable-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p> : !searchHasResults ? <p className="variable-empty">没有匹配的变量</p> : null}
         </div>
+        {compact && config && <MobileEditorActions label="变量操作" selectionId={selectedKey}
+          canEdit={Boolean(selected.value)} canModify={Boolean(selected.value) && selected.value.id !== VARIABLE_INITIALIZATION_OBJECT_ID}
+          clipboard={clipboard} canPaste={Boolean(clipboard && canTransferVariableNode(config, clipboard.target, parentForNewNode()))}
+          onEdit={openEditor} onMove={() => copyOrCut('cut', parseNodeKey(selectedKey))}
+          onPaste={() => paste(parentForNewNode())} onCancel={clearClipboard} onDelete={() => askDelete(parseNodeKey(selectedKey))}
+          createItems={[
+            { label: '变量组', Icon: VariableGroupIcon, run: () => addNode('object') },
+            { label: '变量', Icon: VariableEntryIcon, run: () => addNode('variable') },
+          ]}
+          moreItems={selected.value && selected.value.id !== VARIABLE_INITIALIZATION_OBJECT_ID ? [
+            { label: '复制', Icon: Copy, run: () => copyOrCut('copy', parseNodeKey(selectedKey)) },
+            { label: '重命名', Icon: PencilSimple, run: () => { openEditor(); requestAnimationFrame(() => nameInputRef.current?.select()); } },
+          ] : []} />}
       </div>
 
       {managerOpen ? (

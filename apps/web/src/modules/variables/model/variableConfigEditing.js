@@ -2,8 +2,8 @@ import {
   DEFAULT_VARIABLE_CONFIG_VERSION_ID,
   VARIABLE_INITIALIZATION_OBJECT_ID,
   VARIABLE_INITIALIZATION_OBJECT_NAME,
-} from "../../../../../../packages/product-shared/src/contracts/variables/schemas.ts";
-import { generatedInitialStateJson } from "../../../../../../packages/product-shared/src/foundation/variables/initialState.ts";
+} from "../../../../../../packages/shared/src/contracts/variables/schemas.ts";
+import { generatedInitialStateJson } from "../../../../../../packages/shared/src/foundation/variables/initialState.ts";
 
 export const VARIABLE_NODE_KINDS = Object.freeze({ object: "object", variable: "variable" });
 
@@ -141,14 +141,20 @@ function reorderParent(config, parentId, preferred = null) {
   };
 }
 
+export function canTransferVariableNode(config, target, destinationParentId) {
+  if (!config || !['object', 'variable'].includes(target?.kind) || !target.id || target.id === VARIABLE_INITIALIZATION_OBJECT_ID
+    || destinationParentId === VARIABLE_INITIALIZATION_OBJECT_ID) return false;
+  const source = target.kind === 'object' ? config.objects : config.variables;
+  if (!source.some(item => item.id === target.id)) return false;
+  if (destinationParentId && !config.objects.some(item => item.id === destinationParentId)) return false;
+  return target.kind !== 'object' || !descendantsOf(config, target.id).has(destinationParentId);
+}
+
 export function moveVariableNode(config, moved, destinationParentId, destinationIndex) {
-  if (!moved?.id || moved.id === VARIABLE_INITIALIZATION_OBJECT_ID || destinationParentId === VARIABLE_INITIALIZATION_OBJECT_ID) return config;
+  if (!canTransferVariableNode(config, moved, destinationParentId)) return config;
   const source = moved.kind === "object"
     ? config.objects.find((item) => item.id === moved.id)
     : config.variables.find((item) => item.id === moved.id);
-  if (!source) return config;
-  if (destinationParentId && !config.objects.some((item) => item.id === destinationParentId && item.id !== VARIABLE_INITIALIZATION_OBJECT_ID)) return config;
-  if (moved.kind === "object" && descendantsOf(config, moved.id).has(destinationParentId)) return config;
   const sourceParentId = moved.kind === "object" ? source.parentId : source.objectId;
   const movedKey = nodeKey(moved.kind, moved.id);
   let next = {
@@ -176,7 +182,7 @@ export function deleteVariableNode(config, target) {
 }
 
 export function copyVariableNode(config, target, destinationParentId) {
-  if (!target?.id || target.id === VARIABLE_INITIALIZATION_OBJECT_ID) return { config, key: "" };
+  if (!canTransferVariableNode(config, target, destinationParentId)) return { config, key: '' };
   if (target.kind === "variable") {
     const source = config.variables.find((item) => item.id === target.id);
     if (!source) return { config, key: "" };
@@ -227,6 +233,7 @@ function valueDraft(config, title, objectId, value, treeViewOrder, preserved) {
   let type = "string";
   let defaultValue = value == null ? "" : String(value);
   if (Array.isArray(value)) { type = "array"; defaultValue = JSON.stringify(value, null, 2); }
+  else if (value === null) { type = "null"; defaultValue = "null"; }
   else if (typeof value === "number") type = "number";
   else if (typeof value === "boolean") type = "boolean";
   return {

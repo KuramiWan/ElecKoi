@@ -1,5 +1,5 @@
 diff --git a/lib/client.js b/lib/client.js
-index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0b32c2144 100644
+index f997683d803c6745088936385ab0632cea49ea6f..0a45eb7c1643bf347b8afa7d8d450de4864bbf02 100644
 --- a/lib/client.js
 +++ b/lib/client.js
 @@ -3613,7 +3613,7 @@ window.__ModuleLoader__.load({
@@ -48,11 +48,11 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
  		* ordered business Node crosses the keyed renderer seat.
  		*/
 -		function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot, sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions, usePresentation, useProjection, t }) {
-+		function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot, runningStatusTarget, presentTurnNavigation, sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions, usePresentation, useProjection, t }) {
++		function ChatView({ useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot, runningStatusTarget, presentTurnNavigation, followTailRequestId, sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions, usePresentation, useProjection, t }) {
  			const order = useChat((s) => s.order);
  			const groupedEntries = useConversation((snapshot) => snapshot.views.grouped("chat")?.entries);
  			const entries = (0, react.useMemo)(() => groupedEntries ?? order.map((key) => ({
-@@ -5236,13 +5241,18 @@ window.__ModuleLoader__.load({
+@@ -5236,13 +5241,24 @@ window.__ModuleLoader__.load({
  				submissionId: visibleSubmissions.at(-1)?.requestId ?? null,
  				loadedTurns: turnNavigationItems
  			});
@@ -60,6 +60,12 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
 +				const navigation = { items: railItems, activeTurn: scroll.activeTurn, busyTurn: scroll.busyTurn };
 +				return presentTurnNavigation ? presentTurnNavigation(navigation) : navigation;
 +			}, [railItems, scroll.activeTurn, scroll.busyTurn, presentTurnNavigation]);
++			const followedRequest = (0, react.useRef)(void 0);
++			(0, react.useLayoutEffect)(() => {
++				if (openState !== "open" || followTailRequestId === void 0 || followedRequest.current === followTailRequestId) return;
++				followedRequest.current = followTailRequestId;
++				scroll.returnToBottom();
++			}, [openState, followTailRequestId, scroll.returnToBottom]);
  			return (0, react_jsx_runtime.jsxs)("div", {
  				className: ChatView_module_css_default.frame,
 +				"data-chat-view": "",
@@ -74,7 +80,7 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
  						onNavigate: scroll.navigateToTurn,
  						t
  					}),
-@@ -5252,15 +5262,13 @@ window.__ModuleLoader__.load({
+@@ -5252,15 +5268,13 @@ window.__ModuleLoader__.load({
  						children: (0, react_jsx_runtime.jsx)("div", {
  							ref: scroll.listRef,
  							className: ChatView_module_css_default.scroll,
@@ -92,7 +98,7 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
  									openState === "error" && openError !== null && (0, react_jsx_runtime.jsx)("div", {
  										className: ChatView_module_css_default.openError,
  										children: t("chat.loadError", {
-@@ -5281,7 +5289,7 @@ window.__ModuleLoader__.load({
+@@ -5281,7 +5295,7 @@ window.__ModuleLoader__.load({
  										openExternalLink,
  										openFile: requestOpenFile,
  										fileImages,
@@ -101,7 +107,7 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
  											entries,
  											pendingInputs,
  											lastInputTurn,
-@@ -5302,9 +5310,9 @@ window.__ModuleLoader__.load({
+@@ -5302,9 +5316,9 @@ window.__ModuleLoader__.load({
  											fileMentions,
  											renderSlot,
  											t
@@ -113,7 +119,7 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
  										startTime: runningStartTime,
  										t
  									})
-@@ -5312,8 +5320,13 @@ window.__ModuleLoader__.load({
+@@ -5312,8 +5326,13 @@ window.__ModuleLoader__.load({
  							})
  						})
  					}),
@@ -127,7 +133,144 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
  						children: (0, react_jsx_runtime.jsx)("button", {
  							type: "button",
  							className: ChatView_module_css_default.toBottom,
-@@ -12403,7 +12416,15 @@ window.__ModuleLoader__.load({
+@@ -5493,6 +5512,7 @@ window.__ModuleLoader__.load({
+ 			"message.context.recall.truncated": "已截断",
+ 			"message.compaction": "上下文已压缩",
+ 			"message.compaction.running": "正在压缩…",
++			"message.compaction.interrupted": "压缩已中断",
+ 			"message.compaction.completed": "已压缩 {items} 条历史记录（约 {tokens} tokens）",
+ 			"message.compaction.expand": "点击查看压缩摘要",
+ 			"message.compaction.unavailable": "压缩摘要不可用",
+@@ -5682,6 +5702,7 @@ window.__ModuleLoader__.load({
+ 			"message.context.recall.truncated": "truncated",
+ 			"message.compaction": "Context compacted",
+ 			"message.compaction.running": "Compacting context…",
++			"message.compaction.interrupted": "Context compaction interrupted",
+ 			"message.compaction.completed": "Compacted {items} history items (~{tokens} tokens)",
+ 			"message.compaction.expand": "View compaction summary",
+ 			"message.compaction.unavailable": "Compaction summary unavailable",
+@@ -6111,7 +6132,15 @@ window.__ModuleLoader__.load({
+ 		//#endregion
+ 		//#region lib/types/client/chat/CompactionCommandCard.js
+ 		/** Render one manual compaction lifecycle without duplicating its checkpoint marker. */
+-		function CompactionCommandCard({ node, compaction, t }) {
++		function CompactionCommandCard({ node, compaction, interrupted, t }) {
++            if (interrupted && node.outcome === null) return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
++                (0, react_jsx_runtime.jsx)(GenericCommandCard, {
++                    node: { ...node, outcome: { kind: "error", text: t("message.compaction.interrupted") } }, t
++                }),
++                compaction === void 0 ? null : (0, react_jsx_runtime.jsx)(CompactionItem, {
++                    node: compaction, title: t("message.compaction.commandTitle"), t
++                })
++            ] });
+ 			if (compaction !== void 0) return (0, react_jsx_runtime.jsx)(CompactionItem, {
+ 				node: compaction,
+ 				title: t("message.compaction.commandTitle"),
+@@ -6152,6 +6181,7 @@ window.__ModuleLoader__.load({
+ 				className: ChatView_module_css_default.callRow,
+ 				children: (0, react_jsx_runtime.jsx)(CompactionCommandCard, {
+ 					node: data.command,
++					interrupted: data.interrupted,
+ 					...data.compaction === null ? {} : { compaction: data.compaction },
+ 					t
+ 				})
+@@ -8723,7 +8753,46 @@ window.__ModuleLoader__.load({
+ 		function partialContributionChanged(previous, next) {
+ 			return previous?.partial?.blocks !== next.partial?.blocks || previous?.partial?.turn !== next.partial?.turn || previous?.partial?.step !== next.partial?.step || ((previous?.partial ?? null) !== null || next.partial !== null) && previous?.anchorSeq !== next.anchorSeq;
+ 		}
+-		/** Incremental keyed Chat builder registered under the `chat` target. */
++		/** Formal seed boundaries retire only unfinished compactions in the restored prefix. */
++        var CompactionRecoveryProjector = class {
++            boundarySeq = -1;
++            pending = new Map();
++            replace(nodes) {
++                this.boundarySeq = -1;
++                this.pending.clear();
++                this.readBoundaries(nodes);
++                return nodes.map(node => this.project(node));
++            }
++            apply(upserts) {
++                const previousBoundary = this.boundarySeq;
++                this.readBoundaries(upserts);
++                const projected = upserts.map(node => this.project(node));
++                if (this.boundarySeq !== previousBoundary) {
++                    for (const node of this.pending.values()) {
++                        if (node.data.command.seq < this.boundarySeq) projected.push(this.project(node));
++                    }
++                }
++                return projected;
++            }
++            readBoundaries(nodes) {
++                for (const node of nodes) {
++                    if (node.kind === "compaction-session-end") this.boundarySeq = Math.max(this.boundarySeq, node.data.seq);
++                }
++            }
++            project(node) {
++                if (node.kind !== "manual-compaction" || node.data.command.outcome !== null) {
++                    this.pending.delete(node.key);
++                    return node;
++                }
++                if (node.data.command.seq >= this.boundarySeq) {
++                    this.pending.set(node.key, node);
++                    return node;
++                }
++                this.pending.delete(node.key);
++                return { ...node, data: { ...node.data, interrupted: true } };
++            }
++        };
++        /** Incremental keyed Chat builder registered under the `chat` target. */
+ 		var ChatSnapshotBuilder = class {
+ 			store = new MutableChatNodeStore();
+ 			locations = new MutableChatLocationIndex();
+@@ -8731,6 +8800,7 @@ window.__ModuleLoader__.load({
+ 			legacy = new LegacySliceBuilder();
+ 			referenceLabels = new ReferenceLabelProjector();
+ 			skillNames = new SkillNameProjector();
++			compactionRecovery = new CompactionRecoveryProjector();
+ 			order = EMPTY_KEYS;
+ 			latestGroupInput;
+ 			readGroupNode = (key) => this.store.get(key);
+@@ -8754,7 +8824,7 @@ window.__ModuleLoader__.load({
+ 				};
+ 			}
+ 			replace(input) {
+-				const nodes = this.skillNames.replace(this.referenceLabels.replace(input.nodes));
++				const nodes = this.compactionRecovery.replace(this.skillNames.replace(this.referenceLabels.replace(input.nodes)));
+ 				this.store.replace(nodes);
+ 				this.order = orderedVisibleChatNodes(nodes).map((node) => node.key);
+ 				this.locations.rebuild(this.order, this.store);
+@@ -8772,7 +8842,7 @@ window.__ModuleLoader__.load({
+ 				return this.snapshot(input.timeline, this.legacy.replace(nodes, input.timeline));
+ 			}
+ 			apply(input) {
+-				const upserts = this.skillNames.apply(this.referenceLabels.apply(input.upserts, this.store), this.store);
++				const upserts = this.compactionRecovery.apply(this.skillNames.apply(this.referenceLabels.apply(input.upserts, this.store), this.store));
+ 				const processTurns = /* @__PURE__ */ new Set();
+ 				let structural = false;
+ 				const contentOnly = [];
+@@ -9072,9 +9142,18 @@ window.__ModuleLoader__.load({
+ 		* Register the command lifecycle business contribution.
+ 		* @param ctx - owning UI Conversation context.
+ 		*/
+-		function registerCommandConversationNode(ctx) {
+-			ctx.uiConversation.events.register(commandDefinition);
+-		}
++		const compactionSessionEndDefinition = {
++            kind: "compaction-session-end", target: "chat",
++            match: event => event.type === "session/end-seed" ? { id: String(event.seq), role: "start" } : null,
++            start: (_context, match) => ({ seq: match.event.seq }),
++            update: context => context.state,
++            buildViewNode: context => context.state === void 0 ? null
++                : chatNode(context, "compaction-session-end", context.state.seq, context.state, { visibility: "hidden" })
++        };
++        function registerCommandConversationNode(ctx) {
++            ctx.uiConversation.events.register(commandDefinition);
++            ctx.uiConversation.events.register(compactionSessionEndDefinition);
++        }
+ 		//#endregion
+ 		//#region lib/types/client/conversation-nodes/compaction.js
+ 		function fallbackState$3(context) {
+@@ -12403,7 +12482,15 @@ window.__ModuleLoader__.load({
  						"conversation.message.images": {
  							kind: "single",
  							scope: "session"
@@ -144,11 +287,40 @@ index f997683d803c6745088936385ab0632cea49ea6f..050ab155413880320643c65d8cf032d0
  					},
  					store: chatStore,
  					inject: (sessionId) => {
+diff --git a/lib/types/client/chat/CompactionCommandCard.d.ts b/lib/types/client/chat/CompactionCommandCard.d.ts
+index b10ef6b8a7fa629afc5fd04b882cd540f5a5f3a2..0e9c4e418fd11aebe19cc418265975e41f405281 100644
+--- a/lib/types/client/chat/CompactionCommandCard.d.ts
++++ b/lib/types/client/chat/CompactionCommandCard.d.ts
+@@ -1,8 +1,9 @@
+ import type { ChatViewSlotProps, CommandRowOwnerProps } from '../contract/slots.ts';
+ interface CompactionCommandCardProps extends CommandRowOwnerProps {
+     t: ChatViewSlotProps['t'];
++    interrupted?: boolean;
+ }
+ /** Render one manual compaction lifecycle without duplicating its checkpoint marker. */
+-export declare function CompactionCommandCard({ node, compaction, t }: CompactionCommandCardProps): import("react").JSX.Element;
++export declare function CompactionCommandCard({ node, compaction, interrupted, t }: CompactionCommandCardProps): import("react").JSX.Element;
+ export {};
+ //# sourceMappingURL=CompactionCommandCard.d.ts.map
+\ No newline at end of file
+diff --git a/lib/types/client/contract/chat-nodes.d.ts b/lib/types/client/contract/chat-nodes.d.ts
+index a1f8be93f9103722de2390ab82592b50be428bb7..418fd1dcf5998a361797abdb1690c28f522d98a5 100644
+--- a/lib/types/client/contract/chat-nodes.d.ts
++++ b/lib/types/client/contract/chat-nodes.d.ts
+@@ -40,6 +40,8 @@ export interface ToolChatData {
+ export interface ManualCompactionChatData {
+     readonly command: CommandNode;
+     readonly compaction: CompactionSummaryNode | null;
++    /** Unfinished command belongs to the prefix closed by a Session seed boundary. */
++    readonly interrupted?: true;
+ }
+ /** One durable retry chain rendered as a single row. */
+ export interface RetryChatData {
 diff --git a/lib/types/client/contract/slots.d.ts b/lib/types/client/contract/slots.d.ts
-index a3f4a4246318a741b3049c2de50bed1cb41bd981..787a10c00248af22a6099cea9a8bef7fbe4ad24d 100644
+index a3f4a4246318a741b3049c2de50bed1cb41bd981..260f897c2e8427e5cf5c14556a74873e0829f814 100644
 --- a/lib/types/client/contract/slots.d.ts
 +++ b/lib/types/client/contract/slots.d.ts
-@@ -214,7 +214,17 @@ export interface ChatViewInjected {
+@@ -214,7 +214,19 @@ export interface ChatViewInjected {
      fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined;
  }
  /** Full Chat view props. */
@@ -163,11 +335,13 @@ index a3f4a4246318a741b3049c2de50bed1cb41bd981..787a10c00248af22a6099cea9a8bef7f
 +    runningStatusTarget?: Element | null;
 +    /** Present the rail without changing execution IDs, anchors, or scroll/navigation behavior. */
 +    presentTurnNavigation?: (navigation: ChatTurnNavigationPresentation) => ChatTurnNavigationPresentation;
++    /** Explicit input continuation intent; each identity uses the official return-to-bottom action once. */
++    followTailRequestId?: string | number;
 +};
  /** Full props of the durable-message image renderer. */
  export type MessageImagesProps = PropsRuntime<'conversation.message.images'> & PropsLocale<'conversation'>;
  declare module '@deepseek-ai/dsh-client-ui-slots' {
-@@ -227,6 +237,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
+@@ -227,6 +239,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
          chat: import('../locale.ts').ChatKey;
      }
      interface SlotMap {
@@ -189,3 +363,48 @@ index a3f4a4246318a741b3049c2de50bed1cb41bd981..787a10c00248af22a6099cea9a8bef7f
          /**
           * Final Chat node renderer, keyed by `ChatNodeKind`. The component receives
           * the typed node, shared Chat actions, and Turn-data hook. Reusing a key
+diff --git a/lib/types/client/conversation-nodes/chat-snapshot-builder.d.ts b/lib/types/client/conversation-nodes/chat-snapshot-builder.d.ts
+index 9a24b9d21229537a42084692c0a17c4a581e0136..b501231fb449a1489fb7538db1d163c3b99c7b29 100644
+--- a/lib/types/client/conversation-nodes/chat-snapshot-builder.d.ts
++++ b/lib/types/client/conversation-nodes/chat-snapshot-builder.d.ts
+@@ -71,6 +71,7 @@ export declare class ChatSnapshotBuilder implements ConversationViewBuilder<Chat
+     private readonly legacy;
+     private readonly referenceLabels;
+     private readonly skillNames;
++    private readonly compactionRecovery;
+     private order;
+     private latestGroupInput;
+     private readonly readGroupNode;
+diff --git a/lib/types/client/conversation-nodes/command.d.ts b/lib/types/client/conversation-nodes/command.d.ts
+index 11b1485797f77a302f93ad30d1ec91d5cde0b549..575303228bf48b37288ba1e28fbf68358033069d 100644
+--- a/lib/types/client/conversation-nodes/command.d.ts
++++ b/lib/types/client/conversation-nodes/command.d.ts
+@@ -6,6 +6,8 @@ declare module '../contract/chat-nodes.ts' {
+         command: CommandNode;
+         /** Manual compact command combined with its compaction transaction. */
+         'manual-compaction': ManualCompactionChatData;
++        /** Hidden Session restore boundary for manual-compaction recovery. */
++        'compaction-session-end': { readonly seq: number };
+     }
+ }
+ type CommandId = CommandNode['commandId'];
+diff --git a/lib/types/client/locale.d.ts b/lib/types/client/locale.d.ts
+index 843b46305f06193895204866ef7989b38b4a2844..46753380972b907796beccb21be9f66a1c6589cb 100644
+--- a/lib/types/client/locale.d.ts
++++ b/lib/types/client/locale.d.ts
+@@ -133,6 +133,7 @@ export declare const zh: {
+     'message.context.recall.truncated': string;
+     'message.compaction': string;
+     'message.compaction.running': string;
++    'message.compaction.interrupted': string;
+     'message.compaction.completed': string;
+     'message.compaction.expand': string;
+     'message.compaction.unavailable': string;
+@@ -324,6 +325,7 @@ export declare const en: {
+     'message.context.recall.truncated': string;
+     'message.compaction': string;
+     'message.compaction.running': string;
++    'message.compaction.interrupted': string;
+     'message.compaction.completed': string;
+     'message.compaction.expand': string;
+     'message.compaction.unavailable': string;

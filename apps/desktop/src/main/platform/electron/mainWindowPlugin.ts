@@ -5,6 +5,7 @@ import { windowsAppUserModelId } from './windowsAppIdentity'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import { assertTrustedDshClientFrame, isAllowedExternalUrl, isAppRendererUrl, isDshAppUrl, isDshChildUrl } from './validateSender'
 import { ElectronWindowHost } from './ElectronWindowHost'
+import { installTextContextMenu } from './textContextMenu'
 import { installWindowsNativeFrame } from './windowsNativeFrame'
 import { DesktopBrowserGuests } from './desktopBrowserGuests'
 import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, isDshClientAsset, resolveElecKoiClientAssets, serveDshClientAsset, serveElecKoiClientAsset } from './dshClientDocument'
@@ -53,6 +54,7 @@ export const mainWindowPlugin = {
         await window.loadURL(url)
       },
       afterCreate: (window) => {
+        installTextContextMenu(window)
         configureWindowsAppDetails(appPaths, window)
         installWindowsNativeFrame(window)
         window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
@@ -224,6 +226,7 @@ function windowOptions(appPaths: Context['appPaths'], child: boolean, payload?: 
 }
 
 function configureMainWindow(appPaths: Context['appPaths'], appLog: Context['appLog'], windows: ElectronWindowHost, window: BrowserWindow): void {
+  installTextContextMenu(window)
   configureWindowsAppDetails(appPaths, window)
   installWindowsNativeFrame(window)
   window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))

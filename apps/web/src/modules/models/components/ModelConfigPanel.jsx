@@ -43,7 +43,9 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   onNotify,
   onDirtyChange,
   renderEditor,
+  renderDetail,
   renderLayout,
+  showHeader = true,
   navigationGuardRef,
 }, ref) {
   const [form, setForm] = useState(config);
@@ -592,15 +594,11 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     />
   );
 
-  const builtInMainPanel = <ModelConfigDetail
-    activeProvider={activeProvider}
-    isImageProvider={isImageProvider}
-    hasUnsavedChanges={hasUnsavedChanges}
-    saving={saving}
-    saveBlockedByParameters={saveBlockedByParameters}
-    onCancel={cancelCurrentChanges}
-    onSave={saveCurrentConfig}
-    basicEditor={{
+  const detailProps = {
+    showHeader, activeProvider, isImageProvider, hasUnsavedChanges, saving, saveBlockedByParameters,
+    onCancel: cancelCurrentChanges,
+    onSave: saveCurrentConfig,
+    basicEditor: {
       form, activeProvider, isImageProvider, versionPickerRef, versionMenuOpen, setVersionMenuOpen,
       selectedVersionName, providerVersionItems, selectedConfigId, selectConfigId, createConfigPlaceholder,
       willClearCurrentConfig, confirmDeleteConfig, setConfirmDeleteConfig, canDeleteCurrent, currentVersionConfig,
@@ -608,16 +606,17 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       setModelMenuOpen, modelItems, removableModelIds, selectModel, deleteModel, loadingModels, fetchModels, manualModelOpen, setManualModelOpen,
       manualModelName, setManualModelName, addManualModel, connectionTest, testingConnection, testConnection, updateField,
       onRevealApiKey, onCredentialError: message => showNotice("error", message),
-    }}
-    parameterEditor={{
+    },
+    parameterEditor: {
       form, imageParameterError, activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError, modelCapabilities,
       onUpdateImageSettings: (settings) => updateField("image_settings", settings),
       onUpdateModelOption: updateActiveModelOption,
-    }}
-    networkEditor={{
+    },
+    networkEditor: {
       form, draftHeader, setDraftHeader, onUpdateField: updateField, onUpdateHeader: updateHeader, onAddHeader: addHeader,
-    }}
-  />;
+    },
+  };
+  const builtInMainPanel = renderDetail?.(detailProps) ?? <ModelConfigDetail {...detailProps} />;
   const mainPanel = renderEditor?.({
     configId: form.id || '',
     providerId: activeProviderId,
@@ -626,6 +625,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     isImageProvider,
     dirty: hasUnsavedChanges,
     saving,
+    canSave: hasUnsavedChanges && !saving && !saveBlockedByParameters,
     error: imageParameterError || parameterError || '',
     onChange: (patch) => {
       const next = { ...formRef.current, ...patch };

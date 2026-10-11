@@ -12,7 +12,7 @@ const pages = [
 
 describe('ElecKoi DSH main pages', () => {
   it.each(pages)('%s contributes a real %s page and navigation item', (feature, id) => {
-    const source = readFileSync(new URL(`../packages/dsh-client-${feature}/src/client.js`, import.meta.url), 'utf8')
+    const source = readFileSync(new URL(`../packages/client/features/dsh-client-${feature}/src/client.js`, import.meta.url), 'utf8')
     let registration: any
     const entries: Array<{ options: any; component: any }> = []
     const disposers: Array<() => void> = []

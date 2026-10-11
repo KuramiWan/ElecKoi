@@ -3,18 +3,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
-import { SettingLibraryRepository } from '../packages/dsh-product-data/src/domain/settingLibraries'
-import { VariableConfigRepository } from '../packages/dsh-product-data/src/domain/variables/VariableConfigRepository'
-import { VariableStateRepository } from '../packages/dsh-product-data/src/domain/variables/VariableStateRepository'
-import { resolveConversationSeed } from '../packages/dsh-product-data/src/domain/conversations/conversationSeed'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
+import { SettingLibraryRepository } from '../packages/host/product-data/src/domain/settingLibraries'
+import { VariableConfigRepository } from '../packages/host/product-data/src/domain/variables/VariableConfigRepository'
+import { VariableStateRepository } from '../packages/host/product-data/src/domain/variables/VariableStateRepository'
+import { ElecKoiVariableProcessing } from '@eleckoi/dsh-product-api'
+import { resolveConversationSeed } from '../packages/host/product-data/src/domain/conversations/conversationSeed'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { encodeSettingLibrarySnapshot, decodeSettingLibrarySnapshot, encodeVariableConfigSnapshot, decodeVariableConfigSnapshot } from '../packages/dsh-product-data/src/domain/characterTransfer/portableSnapshots'
+import { encodeSettingLibrarySnapshot, decodeSettingLibrarySnapshot, encodeVariableConfigSnapshot, decodeVariableConfigSnapshot } from '../packages/host/product-data/src/domain/characterTransfer/portableSnapshots'
 // @ts-expect-error 工具插件为无声明文件的 JavaScript 入口。
 import { apply as applyVariableTools } from '../apps/desktop/resources/dsh/variable-tools.mjs'
-import type { VariableConfigVersion } from '../packages/product-shared/src/contracts/variables/schemas'
+import type { VariableConfigVersion } from '../packages/shared/src/contracts/variables/schemas'
 
 const fixtures: Array<{ database: SqliteDatabase; directory: string }> = []
 afterEach(() => {
@@ -89,9 +90,10 @@ describe('opening variable version bindings', () => {
       initialState: JSON.parse(selected.initialStateJson), schemaCode: selected.schemaCode,
       objects: selected.objects, variables: selected.variables,
     }, state: JSON.parse(selected.stateJson) }))
-    writeFileSync(join(snapshotRoot, `${id}.json`), JSON.stringify({ variableStateFile: file, variablesEnabled: true }))
+    writeFileSync(join(snapshotRoot, `${id}.json`), JSON.stringify({ conversationId: id, variableStateFile: file, variablesEnabled: true }))
     const tools = new Map<string, { execute(args: unknown, execution: unknown): Promise<any> }>()
-    applyVariableTools({ tools: { register(definition: any) { tools.set(definition.name, definition); return () => {} } } })
+    applyVariableTools({ eleckoiVariableProcessing: new ElecKoiVariableProcessing({} as any),
+      tools: { register(definition: any) { tools.set(definition.name, definition); return () => {} } } })
     const execution = { agent: { session: { id } } }
     const patch = tools.get('eleckoi_apply_variable_patch')!
     expect(await patch.execute({ operations: [{ op: 'replace', path: '/status/energy', value: 50 }] }, execution)).toMatchObject({ status: 'ok' })
@@ -131,10 +133,10 @@ describe('opening variable version bindings', () => {
     f.variables.save('synthetic-character', { ...config, ...config.versions[1]!, activeVersionId: 'variant-b' })
     f.database.close()
     const legacy = new Database(f.path)
-    legacy.exec('CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE ); PRAGMA user_version=10;')
+    legacy.exec('DROP TABLE script_libraries; CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE ); PRAGMA user_version=10;')
     legacy.close()
     f.database.open()
-    expect(f.database.native.pragma('user_version', { simple: true })).toBe(9)
+    expect(f.database.native.pragma('user_version', { simple: true })).toBe(10)
     expect(f.variables.get('synthetic-character').activeVersionId).toBe('variant-b')
     expect(f.variables.forConversation(id, 'synthetic-character').activeVersionId).toBe('variant-a')
     expect(f.states.viewerStates(id)).toEqual(before)
@@ -142,16 +144,16 @@ describe('opening variable version bindings', () => {
     expect(f.database.native.pragma('integrity_check', { simple: true })).toBe('ok')
   }, 20000)
 
-  it('migrates a real v8 chat directly to v9 with current values intact and fixes its version before later editor changes', () => {
+  it('migrates a real v8 chat with current values intact and fixes its version before later editor changes', () => {
     const f = fixture()
     const id = f.conversations.create({ metadata: { characterId: 'synthetic-character' } }).conversation.id
     f.states.replaceCurrent(id, '{"status":{"energy":7}}')
     f.database.close()
     const legacy = new Database(f.path)
-    legacy.exec('ALTER TABLE agent_conversations DROP COLUMN variableVersionId; PRAGMA user_version=8;')
+    legacy.exec('DROP TABLE script_libraries; ALTER TABLE agent_conversations DROP COLUMN variableVersionId; PRAGMA user_version=8;')
     legacy.close()
     f.database.open()
-    expect(f.database.native.pragma('user_version', { simple: true })).toBe(9)
+    expect(f.database.native.pragma('user_version', { simple: true })).toBe(10)
     const config = f.variables.get('synthetic-character')
     f.variables.save('synthetic-character', { ...config, ...config.versions[1]!, activeVersionId: 'variant-b' })
     expect(f.variables.forConversation(id, 'synthetic-character').activeVersionId).toBe('variant-a')

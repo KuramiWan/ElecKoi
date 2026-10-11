@@ -165,6 +165,21 @@
   color: #cf3737;
 }
 
+.setting-library-error-detail-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.setting-library-error-detail-button:hover {
+  text-decoration: underline;
+}
+
 .setting-library-popover,
 .setting-library-context-menu {
   z-index: 120;
@@ -525,14 +540,14 @@
   width: 28px;
   height: 28px;
   place-items: center;
-  color: var(--muted);
+  color: var(--dsw-alias-label-tertiary, var(--soft-text));
   border-radius: 6px;
 }
 
 .setting-library-inspector-header button:hover,
 .setting-library-opening-tools button:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--active);
+  color: var(--dsw-alias-label-secondary, var(--muted));
+  background: var(--dsw-alias-interactive-bg-hover, var(--active));
 }
 
 .setting-library-inspector-body {

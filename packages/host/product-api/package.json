@@ -1,0 +1,457 @@
+{
+  "name": "@eleckoi/dsh-product-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./lib/types/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    "./frontends": {
+      "types": "./lib/types/frontend-project-types.d.ts",
+      "default": "./lib/types/frontend-project-types.js"
+    },
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/types/index.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types/types.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts",
+    "lib/typert.remote-client.d.ts.map",
+    "cordis.patch.yml",
+    "locale/*.json"
+  ],
+  "scripts": {
+    "build:host": "tsc -b tsconfig.host.json --force && node ../../../scripts/generate-dsh-product-remote.mjs",
+    "build:client": "tsc -b tsconfig.client.json --force && tsdown --config tsdown.client.config.ts",
+    "build": "node scripts/clean.mjs && pnpm build:host && pnpm build:client"
+  },
+  "dependencies": {
+    "@eleckoi/author-sdk": "workspace:*",
+    "fflate": "0.8.3",
+    "@eleckoi/dsh-client-roleplay": "workspace:*",
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-api-gateway": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent-default-model": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-config-editor": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session-persistence": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.2",
+    "@eleckoi/dsh-product-data": "workspace:*",
+    "zod": "4.4.3",
+    "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm-deepseek-api-key": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-cordis-host-runner": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-cordis-client-runner": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-util-values": "0.2.0-rc.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.3.0",
+    "@deepseek-ai/dsh-typert-generator": "0.2.0-rc.2",
+    "tsdown": "0.16.6",
+    "typescript": "7.0.2"
+  },
+  "description": "ElecKoi 产品能力的 DSH Host Remote 接口。",
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiAuthorFrontends",
+        "kind": "remote",
+        "title": "原生作者前端项目",
+        "description": "按明确应用或角色归属管理文件项目、资源、选择与清单，监听不含源码正文的修改通知。",
+        "mode": "call-and-listen",
+        "scope": "host",
+        "relation": "provides",
+        "owner": "eleckoiAuthorFrontends",
+        "members": [
+          "workspace",
+          "importProject",
+          "select",
+          "delete",
+          "readFile",
+          "writeFile",
+          "exportProject",
+          "setMessageRenderer",
+          "updateProject",
+          "replaceFiles",
+          "restoreDefault",
+          "changes"
+        ]
+      },
+      {
+        "id": "eleckoiAuthorScripts",
+        "kind": "remote",
+        "title": "原生作者脚本运行",
+        "description": "读取明确声明原生标准的启用脚本，通过唯一运行页面的双向流等待候选规则结果；桌面默认启动装配尚在实施。",
+        "mode": "call-and-listen",
+        "scope": "host",
+        "relation": "provides",
+        "owner": "eleckoiAuthorScripts",
+        "members": [
+          "read",
+          "connect",
+          "getSettings",
+          "setSettings"
+        ]
+      },
+      {
+        "id": "eleckoiAuthorVariables",
+        "kind": "remote",
+        "title": "原生作者变量",
+        "description": "读取原生聊天变量与配置，将 SDK 修改交给同一作者规则处理流程，并在成功后保存和发布消息变更。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "owner": "eleckoiAuthorVariables",
+        "members": [
+          "getState",
+          "getConfig",
+          "setState",
+          "merge",
+          "applyPatch",
+          "reset"
+        ]
+      },
+      {
+        "id": "eleckoiSystem",
+        "kind": "remote",
+        "title": "桌面运行状态",
+        "description": "读取当前 ElecKoi DSH Host 的架构版本与 Remote 协议状态。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "status"
+        ],
+        "owner": "eleckoiSystem"
+      },
+      {
+        "id": "eleckoiCharactersRemote",
+        "kind": "remote",
+        "title": "角色数据",
+        "description": "通过 DSH Host 读取和维护角色、分组及角色卡导入导出。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "list",
+          "create",
+          "update",
+          "select",
+          "saveGroups",
+          "delete",
+          "export",
+          "prepareImport",
+          "commitImport",
+          "discardImport"
+        ],
+        "owner": "eleckoiCharacters"
+      },
+      {
+        "id": "eleckoiCharacterChangesRemote",
+        "kind": "remote",
+        "title": "角色数据变更通知",
+        "description": "通过 DSH Remote stream 通知角色、分组和当前角色发生变化。",
+        "mode": "listen",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "changes"
+        ],
+        "owner": "eleckoiCharacters"
+      },
+      {
+        "id": "eleckoiPersonaRemote",
+        "kind": "remote",
+        "title": "用户资料数据",
+        "description": "通过 DSH Host 读取并保存用户名称与头像资料。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "read",
+          "save"
+        ],
+        "owner": "eleckoiPersona"
+      },
+      {
+        "id": "eleckoiPersonaChangesRemote",
+        "kind": "remote",
+        "title": "用户资料变更通知",
+        "description": "通过 DSH Remote stream 通知用户资料发生变化。",
+        "mode": "listen",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "changes"
+        ],
+        "owner": "eleckoiPersona"
+      },
+      {
+        "id": "eleckoiCharacterConfiguration",
+        "kind": "remote",
+        "title": "角色配置数据",
+        "description": "通过 DSH Host 读取和保存设定库、变量、正则与全局、角色、预设脚本库。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "readSettingLibrary",
+          "replaceSettingLibraryContent",
+          "updateSettingLibraryEntries",
+          "saveSettingLibrary",
+          "saveSettingLibraryViewState",
+          "readConversationSettingLibraries",
+          "saveConversationSettingLibrary",
+          "resetConversationSettingLibrary",
+          "saveConversationSettingLibraryVersion",
+          "readVariableConfig",
+          "saveVariableConfig",
+          "saveVariableConfigViewState",
+          "readRegexRules",
+          "saveRegexRules",
+          "importRegexRules",
+          "exportRegexRules",
+          "testRegexRule",
+          "readScriptLibrary",
+          "readScriptWorkspace",
+          "saveScriptLibrary",
+          "saveScriptLibraries"
+        ],
+        "owner": "eleckoiCharacterConfiguration"
+      },
+      {
+        "id": "eleckoiCharacterConfigurationChanges",
+        "kind": "remote",
+        "title": "角色配置变更通知",
+        "description": "通过 DSH Remote stream 通知设定库、变量、正则、脚本库和 Agent 预设变化。",
+        "mode": "listen",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "changes"
+        ],
+        "owner": "eleckoiCharacterConfiguration"
+      },
+      {
+        "id": "eleckoiAgentPresetsRemote",
+        "kind": "remote",
+        "title": "Agent 预设数据",
+        "description": "通过 DSH Host 管理 Agent 预设、分组及导入导出。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "catalog",
+          "read",
+          "save",
+          "updateEntries",
+          "create",
+          "import",
+          "export",
+          "setActive",
+          "createGroup",
+          "renameGroup",
+          "assignGroup",
+          "deleteGroup",
+          "delete"
+        ],
+        "owner": "eleckoiAgentPresets"
+      },
+      {
+        "id": "eleckoiCreatorStudioRemote",
+        "kind": "remote",
+        "title": "创作项目数据",
+        "description": "通过 DSH Host 读取、创建和删除创作工作室项目。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "list",
+          "create",
+          "delete"
+        ],
+        "owner": "eleckoiCreatorStudio"
+      },
+      {
+        "id": "eleckoiCreatorStudioChangesRemote",
+        "kind": "remote",
+        "title": "创作项目变更通知",
+        "description": "通过 DSH Remote stream 通知创作项目目录发生变化。",
+        "mode": "listen",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "changes"
+        ],
+        "owner": "eleckoiCreatorStudio"
+      },
+      {
+        "id": "eleckoiDisplayPreferencesRemote",
+        "kind": "remote",
+        "title": "显示偏好配置",
+        "description": "通过 DSH Host 读取和保存显示偏好，并将本地壁纸写入媒体库。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "read",
+          "updateUi",
+          "setChatDisplay"
+        ],
+        "owner": "eleckoiDisplayPreferences"
+      },
+      {
+        "id": "eleckoiConversationModelsRemote",
+        "kind": "remote",
+        "title": "全局模型选择",
+        "description": "读取并选择全部聊天下一轮共同使用的模型。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "current",
+          "select"
+        ],
+        "owner": "eleckoiConversationModels"
+      },
+      {
+        "id": "eleckoiConversationsRemote",
+        "kind": "remote",
+        "title": "聊天记录目录",
+        "description": "通过 DSH Host 读取聊天目录与角色关联元数据；消息正文、分页和运行状态由 DSH Session 协议提供。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "list",
+          "details",
+          "requestPreview",
+          "projectDisplay",
+          "variableTimeline",
+          "authorState",
+          "replaceVariableState",
+          "exportArchive",
+          "importArchive",
+          "revealFile",
+          "create",
+          "delete",
+          "rename",
+          "fork",
+          "preparePrompt",
+          "waitForGeneration",
+          "editMessage",
+          "deleteMessagesFrom",
+          "regenerateMessage",
+          "selectOpening",
+          "updateOpening",
+          "startRegeneration"
+        ],
+        "owner": "eleckoiConversations"
+      },
+      {
+        "id": "eleckoiConversationChangesRemote",
+        "kind": "remote",
+        "title": "聊天变更通知",
+        "description": "通过 DSH Remote stream 通知聊天目录和消息投影发生变化；消息正文仍由 DSH Session 协议读取。",
+        "mode": "listen",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "changes"
+        ],
+        "owner": "eleckoiConversations"
+      },
+      {
+        "id": "eleckoiRequestPreviewsRemote",
+        "kind": "remote",
+        "title": "运行期间请求目录",
+        "description": "订阅本次 Host 运行期间实际发起的请求；目录不含请求正文，关闭后不恢复。",
+        "mode": "listen",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "requestPreviews"
+        ],
+        "owner": "eleckoiConversations"
+      },
+      {
+        "id": "eleckoiWebSearchRemote",
+        "kind": "remote",
+        "title": "联网搜索配置",
+        "description": "通过 DSH Host 选择搜索提供商并验证 Tavily 连接。密钥由 DSH Credentials 独立管理。",
+        "mode": "call",
+        "scope": "host",
+        "relation": "provides",
+        "members": [
+          "selection",
+          "select",
+          "testTavily"
+        ],
+        "owner": "eleckoiWebSearch"
+      },
+      {
+        "title": "模型连接测试",
+        "scope": "host",
+        "id": "eleckoiModelsRemote",
+        "kind": "remote",
+        "description": "通过官方 LLM 适配器测试工具调用，不创建聊天或 Session。",
+        "members": [
+          "testConnection",
+          "discoverModels",
+          "revealApiKey"
+        ],
+        "mode": "call",
+        "relation": "provides",
+        "owner": "eleckoiModels"
+      }
+    ]
+  }
+}

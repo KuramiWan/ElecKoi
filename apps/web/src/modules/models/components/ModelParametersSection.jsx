@@ -7,7 +7,11 @@ function optionalNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-export function ModelParametersSection({ form, activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError, modelCapabilities, showReasoningProfileEditor = false, onChange }) {
+function compactTokens(value) {
+  return value >= 1000 ? `${Number((value / 1000).toFixed(3))}K` : String(value);
+}
+
+export function ModelParametersSection({ form, activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError, modelCapabilities, showReasoningProfileEditor = false, compact = false, onChange }) {
   const options = reasoningOptions(modelCapabilities.reasoningEfforts);
   const selectedEffort = options.some((item) => item.id === activeModelOption?.reasoningEffort)
     ? activeModelOption.reasoningEffort
@@ -34,40 +38,40 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
     });
   }
   return (
-    <section className="model-form-section">
+    <section className={`model-form-section${compact ? " mobile-model-section mobile-model-parameters" : ""}`}>
       <div className="model-section-heading">
-        <h3>模型参数</h3>
-        <span>{form.model ? `仅作用于 ${form.model}` : "先选择模型后设置"}</span>
+        <h3>{compact ? "参数" : "模型参数"}</h3>
+        {!compact && <span>{form.model ? `仅作用于 ${form.model}` : "先选择模型后设置"}</span>}
       </div>
       <div className="model-parameter-grid">
         <label>
-          <span>上下文窗口 <small>自动 {automaticContextWindow.toLocaleString()}</small></span>
+          <span>上下文窗口 <small>{compact ? `= ${compactTokens(effectiveContextWindow)}` : `自动 ${automaticContextWindow.toLocaleString()}`}</small></span>
           <input type="number" min="4096" max="4000000" disabled={!form.model} value={activeModelOption?.contextWindowTokens ?? ""} onChange={(event) => onChange({ contextWindowTokens: optionalNumber(event.target.value) })} placeholder={String(automaticContextWindow)} />
         </label>
         <label>
-          <span>自动压缩阈值 <small>默认占上下文 80%</small></span>
-          <input type="number" min="1024" max={effectiveContextWindow} disabled={!form.model} value={activeModelOption?.autoCompactTokenLimit ?? ""} onChange={(event) => onChange({ autoCompactTokenLimit: optionalNumber(event.target.value) })} placeholder={String(Math.floor(effectiveContextWindow * 0.8))} />
+          <span>自动压缩阈值 <small>{compact ? `= ${compactTokens(activeModelOption?.autoCompactTokenLimit ?? Math.floor(effectiveContextWindow * 0.8))} · ${activeModelOption?.autoCompactTokenLimit == null ? '占上下文 80%' : '自定义'}` : '默认占上下文 80%'}</small></span>
+          <input type="number" min="1024" max={effectiveContextWindow} disabled={!form.model} value={activeModelOption?.autoCompactTokenLimit ?? ""} onChange={(event) => onChange({ autoCompactTokenLimit: optionalNumber(event.target.value) })} placeholder={`${compact ? '自动 ' : ''}${Math.floor(effectiveContextWindow * 0.8)}`} />
         </label>
         <label>
-          <span>单次最大输出 <small>留空由上游决定</small></span>
+          <span>单次最大输出 <small>{compact && activeModelOption?.maxOutputTokens != null ? `= ${compactTokens(activeModelOption.maxOutputTokens)}` : '留空由上游决定'}</small></span>
           <input type="number" min="1" max="4000000" disabled={!form.model} value={activeModelOption?.maxOutputTokens ?? ""} onChange={(event) => onChange({ maxOutputTokens: optionalNumber(event.target.value) })} placeholder="自动" />
         </label>
         <label>
-          <span>推理强度 <small>当前请求 · DSH / pi-ai</small></span>
+          <span>推理强度 <small>{compact ? '当前请求' : '当前请求 · DSH / pi-ai'}</small></span>
           <select disabled={!form.model || !reasoningAvailable} value={selectedEffort} onChange={(event) => updateReasoningEffort(event.target.value)}>
-            {options.map((effort) => <option key={effort.id} value={effort.id}>{effort.label}</option>)}
+            {options.map((effort) => <option key={effort.id} value={effort.id}>{compact && !effort.id ? '上游默认' : effort.label}</option>)}
           </select>
         </label>
         <label>
-          <span>温度 <small>0–2</small></span>
-          <input type="number" min="0" max="2" step="0.01" disabled={!form.model} value={activeModelOption?.temperature ?? ""} onChange={(event) => onChange({ temperature: optionalNumber(event.target.value) })} placeholder="上游默认" />
+          <span>温度 <small>{compact ? '留空不发送' : '0–2'}</small></span>
+          <input type="number" min="0" max="2" step="0.01" disabled={!form.model} value={activeModelOption?.temperature ?? ""} onChange={(event) => onChange({ temperature: optionalNumber(event.target.value) })} placeholder={compact ? '留空' : '上游默认'} />
         </label>
         <label>
-          <span>Top P <small>0–1</small></span>
-          <input type="number" min="0" max="1" step="0.01" disabled={!form.model} value={activeModelOption?.topP ?? ""} onChange={(event) => onChange({ topP: optionalNumber(event.target.value) })} placeholder="上游默认" />
+          <span>Top P <small>{compact ? '留空不发送' : '0–1'}</small></span>
+          <input type="number" min="0" max="1" step="0.01" disabled={!form.model} value={activeModelOption?.topP ?? ""} onChange={(event) => onChange({ topP: optionalNumber(event.target.value) })} placeholder={compact ? '留空' : '上游默认'} />
         </label>
         <label className="model-capability-toggle">
-          <span>图片输入 <small>声明当前模型接受图片</small></span>
+          <span>{compact ? '支持图片输入' : '图片输入'} {!compact && <small>声明当前模型接受图片</small>}</span>
           <input type="checkbox" disabled={!form.model} checked={activeModelOption?.supportsImageInput === true} onChange={(event) => onChange({ supportsImageInput: event.target.checked })} />
         </label>
         {showReasoningProfileEditor && modelCapabilities.canDeclareReasoning ? (

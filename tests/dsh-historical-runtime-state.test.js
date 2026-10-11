@@ -2,9 +2,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { historicalRuntimeState } from '../packages/dsh-client-roleplay/src/host/historical-runtime-state.mjs'
-import { installRoleplaySessionRuntime } from '../packages/dsh-client-roleplay/src/host/session-runtime.mjs'
-import { writeSessionSnapshot } from '../packages/dsh-client-roleplay/src/host/session-snapshot.mjs'
+import { historicalRuntimeState } from '../packages/client/features/dsh-client-roleplay/src/host/historical-runtime-state.mjs'
+import { installRoleplaySessionRuntime } from '../packages/client/features/dsh-client-roleplay/src/host/session-runtime.mjs'
+import { writeSessionSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-snapshot.mjs'
 
 const cleanups = []
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup() })
@@ -56,7 +56,7 @@ describe('saved old runtime state', () => {
       settingLibraryEnabled: true, settingStateFile: join(f.root, 'not-a-persisted-setting.json') })
     f.ctx.eleckoiProductData.commitConversationRuntime = vi.fn()
     let completion
-    f.ctx.eleckoiConversationLifecycle = { matches: () => true, track: (_conversation, _id, operation) => { completion = operation() }, afterSave: async () => {} }
+    f.ctx.eleckoiConversationLifecycle = { matches: () => true, track: (_conversation, _id, operation) => { completion = operation() } }
     f.ctx.eleckoiProductData.snapshotConversationRuntime.mockReturnValue({
       variableStateJson: '{}', settingLibraryStateJson: '[]'
     })
@@ -74,7 +74,7 @@ describe('saved old runtime state', () => {
       variableStateJson: '{"score":2}', settingLibraryStateJson: '[]'
     })
     const stored = JSON.parse(readFileSync(f.checkpoints, 'utf8'))
-    expect(stored).toEqual({ version: 1, checkpoints: [{ beforeTurn: 1, state: {
+    expect(stored).toEqual({ version: 2, checkpoints: [{ turn: 1, phase: 'before', state: {
       variableStateJson: '{"score":2}', settingLibraryStateJson: '[]'
     } }] })
     // Once converted, normal rewind does not depend on the historical ledger.
@@ -135,15 +135,114 @@ describe('saved old runtime state', () => {
   it('exposes the exact committed variable snapshot for each DSH reply turn', () => {
     const f = runtime()
     f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 1).apply()
-    writeFileSync(f.checkpoints, JSON.stringify({ version: 1, checkpoints: [
-      { beforeTurn: 1, state: { variableStateJson: '{"score":0}', settingLibraryStateJson: '[]' } },
-      { beforeTurn: 2, state: { variableStateJson: '{"score":1}', settingLibraryStateJson: '[]' } },
-      { beforeTurn: 3, state: { variableStateJson: '{"score":2}', settingLibraryStateJson: '[]' } }
+    writeFileSync(f.checkpoints, JSON.stringify({ version: 2, checkpoints: [
+      { turn: 1, phase: 'before', state: { variableStateJson: '{"score":0}', settingLibraryStateJson: '[]' } },
+      { turn: 1, phase: 'after', state: { variableStateJson: '{"score":1}', settingLibraryStateJson: '[]' } },
+      { turn: 2, phase: 'before', state: { variableStateJson: '{"score":9}', settingLibraryStateJson: '[]' } },
+      { turn: 2, phase: 'after', state: { variableStateJson: '{"score":2}', settingLibraryStateJson: '[]' } }
     ] }))
 
     expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toEqual({
       1: '{"score":1}',
       2: '{"score":2}'
     })
+  })
+
+  it('preserves old boundary records without reclassifying them as committed reply snapshots', () => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    const states = [1, 2].map(beforeTurn => ({ beforeTurn, state: {
+      variableStateJson: JSON.stringify({ score: beforeTurn }), settingLibraryStateJson: '[]'
+    } }))
+    writeFileSync(f.checkpoints, JSON.stringify({ version: 1, checkpoints: states }))
+    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toEqual({})
+    expect(JSON.parse(readFileSync(f.checkpoints, 'utf8'))).toEqual({ version: 2,
+      checkpoints: states.map(({ beforeTurn, state }) => ({ turn: beforeTurn, phase: 'before', state })) })
+    f.saved.tables.agent_responses = []
+    const restore = f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 2)
+    expect(restore.state.variableStateJson).toBe('{"score":2}')
+  })
+
+  it.each([1, 2])('refuses duplicate v%s boundaries without changing the saved file', version => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    const state = { variableStateJson: '{"score":1}', settingLibraryStateJson: '[]' }
+    const record = version === 1 ? { beforeTurn: 2, state } : { turn: 1, phase: 'after', state }
+    const content = JSON.stringify({ version, checkpoints: [record, record] })
+    writeFileSync(f.checkpoints, content)
+    expect(() => f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toThrow('检查点重复')
+    expect(readFileSync(f.checkpoints, 'utf8')).toBe(content)
+    expect(f.ctx.eleckoiProductData.restoreConversationRuntime).not.toHaveBeenCalled()
+  })
+
+  it.each(['', 'null', '[]', 'invalid'])('preserves an invalid old variable record without defaulting it to an empty object: %s', variableStateJson => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    const content = JSON.stringify({ version: 1, checkpoints: [{ beforeTurn: 2,
+      state: { variableStateJson, settingLibraryStateJson: '[]' } }] })
+    writeFileSync(f.checkpoints, content)
+    expect(() => f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toThrow()
+    expect(readFileSync(f.checkpoints, 'utf8')).toBe(content)
+    expect(f.ctx.eleckoiProductData.restoreConversationRuntime).not.toHaveBeenCalled()
+  })
+
+  it('keeps earlier completed state when rewinding and restores every boundary on rollback', () => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    const record = (turn, phase, score) => ({ turn, phase, state: {
+      variableStateJson: JSON.stringify({ score }), settingLibraryStateJson: '[]'
+    } })
+    const content = JSON.stringify({ version: 2, checkpoints: [record(1, 'after', 10),
+      record(2, 'before', 20), record(2, 'after', 30), record(3, 'before', 40)] })
+    writeFileSync(f.checkpoints, content)
+    const restore = f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 2)
+    expect(restore.state.variableStateJson).toBe('{"score":20}')
+    restore.apply()
+    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toEqual({ 1: '{"score":10}' })
+    expect(JSON.parse(readFileSync(f.checkpoints, 'utf8')).checkpoints).toEqual([
+      record(1, 'after', 10), record(2, 'before', 20)
+    ])
+    restore.rollback()
+    expect(readFileSync(f.checkpoints, 'utf8')).toBe(content)
+    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toEqual({ 1: '{"score":10}', 2: '{"score":30}' })
+  })
+
+  it('uses only the immediately preceding completed state when a new turn has not been prepared', () => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    writeFileSync(f.checkpoints, JSON.stringify({ version: 2, checkpoints: [{ turn: 1, phase: 'after',
+      state: { variableStateJson: '{"score":10}', settingLibraryStateJson: '[]' } }] }))
+    const restore = f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 2)
+    expect(restore.state.variableStateJson).toBe('{"score":10}')
+    expect(() => f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn('chat', 'session', 3)).toThrow('缺少第 3 轮')
+  })
+
+  it('does not substitute an old pre-input boundary for a requested completed fork state', async () => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    writeFileSync(f.checkpoints, JSON.stringify({ version: 1, checkpoints: [{ beforeTurn: 2,
+      state: { variableStateJson: '{"score":20}', settingLibraryStateJson: '[]' } }] }))
+    await expect(f.ctx.eleckoiRoleplaySessions.adoptFork('new-chat', 'chat', 1, true)).rejects.toThrow('完成后')
+    expect(f.ctx.eleckoiProductData.restoreConversationRuntime).not.toHaveBeenCalled()
+  })
+
+  it.each(['aborted', 'error'])('does not publish pre-input or current variables as completed history after %s', async kind => {
+    const f = runtime()
+    mkdirSync(join(f.root, 'chat'))
+    const content = JSON.stringify({ version: 2, checkpoints: [{ turn: 1, phase: 'before',
+      state: { variableStateJson: '{"score":10}', settingLibraryStateJson: '[]' } }] })
+    writeFileSync(f.checkpoints, content)
+    writeSessionSnapshot(f.root, 'session', { conversationId: 'chat', operationId: 'synthetic-operation' })
+    f.ctx.eleckoiProductData.commitConversationRuntime = vi.fn()
+    let completion
+    f.ctx.eleckoiConversationLifecycle = { matches: () => true, track: (_chat, _id, operation) => { completion = operation() } }
+    const reason = kind === 'aborted' ? { kind, reason: { kind: 'user' } }
+      : { kind, error: { message: 'Synthetic generation failure', code: 'UNKNOWN' } }
+    f.listeners.get('session/event')({ id: 'session' }, { type: 'turn/end', data: { turn: 1, reason } })
+    if (kind === 'error') await expect(completion).rejects.toThrow('Synthetic generation failure')
+    else await completion
+    expect(f.ctx.eleckoiProductData.commitConversationRuntime).not.toHaveBeenCalled()
+    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn('chat')).toEqual({})
+    expect(readFileSync(f.checkpoints, 'utf8')).toBe(content)
   })
 })

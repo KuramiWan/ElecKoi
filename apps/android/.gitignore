@@ -1,0 +1,6 @@
+.gradle/
+local.properties
+**/build/
+runtime-assets/
+app/src/*/jniLibs/
+app/src/debug/assets/licenses/glibc-probe/

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { testTavilyConnection } from '../packages/dsh-product-api/lib/types/tavily.js'
+import { testTavilyConnection } from '../packages/host/product-api/lib/types/tavily.js'
 
 afterEach(() => vi.unstubAllGlobals())
 

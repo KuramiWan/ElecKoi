@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CopyIcon, XIcon } from "../icons/index.jsx";
@@ -72,7 +73,7 @@ export function AppErrorDialog({ notice, onDismiss }) {
       : "";
 
   const dialog = (
-    <div className="app-error-overlay" role="presentation" onMouseDown={() => onDismiss?.()}>
+    <SystemBarOverlay className="app-error-overlay" role="presentation" onMouseDown={() => onDismiss?.()}>
       <section
         ref={dialogRef}
         className="app-error-dialog"
@@ -102,7 +103,7 @@ export function AppErrorDialog({ notice, onDismiss }) {
           </div>
         </div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 
   const portalTarget = typeof document === "undefined" ? null : document.body;

@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -120,7 +121,7 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
   }, []);
 
   const dialog = (
-    <div className="app-update-overlay" role="presentation" onMouseDown={() => !installing && onClose()}>
+    <SystemBarOverlay className="app-update-overlay" role="presentation" onMouseDown={() => !installing && onClose()}>
       <section
         ref={dialogRef}
         className="app-update-dialog"
@@ -178,7 +179,7 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
           </div>
         </footer>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 
   return createPortal(dialog, document.body);

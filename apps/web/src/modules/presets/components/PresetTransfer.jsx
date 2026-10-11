@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect } from 'react';
 import { ChevronRightIcon, ImportIcon, XIcon } from '../../../ui/icons/index.jsx';
 
@@ -8,7 +9,7 @@ export function PresetImportDialog({ onSelect, onClose }) {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
 
-  return <div className="preset-import-overlay" role="presentation" onMouseDown={onClose}>
+  return <SystemBarOverlay className="preset-import-overlay" role="presentation" onMouseDown={onClose}>
     <section className="preset-import-dialog" role="dialog" aria-modal="true" aria-labelledby="preset-import-title" onMouseDown={(event) => event.stopPropagation()}>
       <header>
         <h3 id="preset-import-title">导入预设</h3>
@@ -23,7 +24,7 @@ export function PresetImportDialog({ onSelect, onClose }) {
         </button>
       </div>
     </section>
-  </div>;
+  </SystemBarOverlay>;
 }
 
 export function fileBase64(file) {

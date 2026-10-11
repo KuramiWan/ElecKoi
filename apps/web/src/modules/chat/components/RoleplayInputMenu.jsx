@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { DshNewChatIcon, DshRefreshIcon } from "../../../ui/icons/dshComposerIcons.jsx";
 import { ChatHistoryIcon, MenuIcon, PlugIcon } from "../../../ui/icons/openSourceIcons.jsx";
 import { TrashIcon } from "../../../ui/icons/index.jsx";
-import { Database, TextAlignLeft } from "@phosphor-icons/react";
+import { CaretDown, Code, Database, TextAlignLeft } from "../../../ui/icons/interfaceIcons.jsx";
 
 /** Roleplay-only actions placed immediately after the native DSH plus button. */
 export function RoleplayInputMenu({
@@ -16,8 +16,12 @@ export function RoleplayInputMenu({
   canDeleteMessages = false,
   onRegenerate,
   regenerateTargetMessageId,
+  scriptButtons = [],
+  scriptsReady = false,
+  onRunScriptButton,
 }) {
   const [open, setOpen] = useState(false);
+  const [scriptsOpen, setScriptsOpen] = useState(false);
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -56,13 +60,26 @@ export function RoleplayInputMenu({
         <MenuIcon size={17} weight="bold" />
       </button>
       {open ? (
-        <div className="composer-more-menu" role="menu" aria-label="扮演菜单">
+        <div className="composer-more-menu" data-menu-material="translucent" role="menu" aria-label="扮演菜单">
           <button type="button" role="menuitem" onClick={() => run(onOpenHistory)}>
             <ChatHistoryIcon size={18} /><span>聊天记录</span>
           </button>
           <button type="button" role="menuitem" onClick={() => run(onOpenTools)}>
             <PlugIcon size={18} /><span>工具</span>
           </button>
+          <button type="button" role="menuitem" aria-expanded={scriptsOpen} onClick={() => setScriptsOpen(value => !value)}>
+            <Code size={18} /><span>脚本</span><CaretDown size={14} />
+          </button>
+          {scriptsOpen ? <div className="native-script-menu" role="group" aria-label="脚本按钮">
+            {scriptButtons.length ? scriptButtons.map(button => <div key={button.key}>
+              <button type="button" role="menuitem" title={`${button.scriptName} · ${button.label}`}
+                disabled={!scriptsReady || button.busy} aria-busy={button.busy}
+                onClick={() => run(() => onRunScriptButton?.(button.key))}>
+                <span>{button.label}</span><small>{button.scriptName}</small>
+              </button>
+              {button.error ? <p role="alert">{button.error}</p> : null}
+            </div>) : <p>暂无可用按钮</p>}
+          </div> : null}
           <button type="button" role="menuitem" onClick={() => run(onOpenRequestPreview)}>
             <TextAlignLeft size={18} weight="regular" /><span>请求上下文预览</span>
           </button>

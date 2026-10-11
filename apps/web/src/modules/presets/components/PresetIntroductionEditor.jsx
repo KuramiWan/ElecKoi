@@ -1,7 +1,8 @@
 import { useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
-import { CaretRight, CaretUp, DotsThree, NotePencil, Plus } from '@phosphor-icons/react';
+import { CaretRight, CaretUp, DotsThree, NotePencil, Plus } from '../../../ui/icons/interfaceIcons.jsx';
 import { TrashIcon } from '../../../ui/icons/index.jsx';
 import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
+import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { calendarDateValue, createTimelineDraft, createUsageDraft, introductionDraftPatch, isIntroductionDraftDirty, visibleTimelineRecords } from '../model/presetIntroductionDraft.js';
 import '../styles/preset-usage.css';
 
@@ -61,6 +62,7 @@ function RecordActions({ item, saving, onEdit, onDelete }) {
 }
 
 export function PresetIntroductionEditor({ preset, editorRef, saving, error, onClearError, onSaveProfile }) {
+  const { compact } = useEditorPresentation();
   const profile = preset.profile;
   const [draft, setDraft] = useState(() => profile.usageInstructions ? null : createUsageDraft(profile));
   const [validation, setValidation] = useState('');
@@ -159,7 +161,7 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
       {!profile.timeline.length && !draft?.isNew ? <div className="preset-updates-empty">暂无更新记录</div> : null}
     </section>
     {!draft && error && !deleting ? <p className="preset-content-error" role="alert">{error}</p> : null}
-    <span className="preset-content-sr-only" role="status">{notice}</span>
+    {(!compact || notice !== '已保存') && <span className="preset-content-sr-only" role="status">{notice}</span>}
     <UnsavedChangesDialog
       open={Boolean(pending)}
       title="保存修改？"

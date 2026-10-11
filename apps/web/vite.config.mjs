@@ -19,7 +19,7 @@ const platformExports = {
   ],
   'react/jsx-runtime': ['Fragment', 'jsx', 'jsxs'],
   'react/jsx-dev-runtime': ['Fragment', 'jsxDEV'],
-  'react-dom': ['createPortal', 'flushSync'],
+  'react-dom': ['createPortal', 'flushSync', 'unstable_batchedUpdates'],
   'react-dom/client': ['createRoot', 'hydrateRoot']
 }
 
@@ -54,7 +54,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@renderer': resolve(webRoot, 'src'),
-      '@shared': resolve(workspaceRoot, 'packages/product-shared/src')
+      '@shared': resolve(workspaceRoot, 'packages/shared/src')
     }
   },
   plugins: [dshPlatformReact(), authorVendorPlugin(workspaceRoot), react(), tailwindcss()],

@@ -10,7 +10,7 @@ const loaded = new Module(sourcePath, module)
 loaded.paths = module.paths
 loaded._compile(buildSync({ entryPoints: [sourcePath], bundle: true, write: false,
   platform: 'node', format: 'cjs', external: ['electron', '@eleckoi/dsh-product-data/media'],
-  alias: { '@shared': resolve('packages/product-shared/src') },
+  alias: { '@shared': resolve('packages/shared/src') },
 }).outputFiles[0].text, sourcePath)
 const media = loaded.exports
 protocol.registerSchemesAsPrivileged([media.localMediaScheme, { scheme: 'dsh-app', privileges: {

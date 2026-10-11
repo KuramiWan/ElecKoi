@@ -7,6 +7,7 @@
 ## 决定
 
 - 保留 ElecKoi 模型页面，所有配置通过 DSH settings/profile/credentials 保存。
+- 通用提供商尚未添加模型时，允许单独保存地址、协议、请求头和密钥。未完成的 profile 只保存在 `eleckoi-client-models` 设置条目的 `draftProfile` 中，密钥仍由 credentials 持有，不向 pi-ai 注册空模型路由。手动添加或读取模型后，通过官方设置校验写入 `llm-pi-ai`，同时移除待配置 profile；移除最后一个模型时先保留待配置 profile，再撤下运行路由。读取模型不是保存配置的前置条件。
 - 密钥小眼睛通过产品 Typert Remote 按当前配置引用调用官方 credentials.resolve；明文仅保存在正在展示的输入区域内，隐藏或切换配置时清除，不进入配置快照或保存草稿。
 - 聊天沿用官方 Session 的 running、promptError 与 lastAgentError；Agent 运行失败通过独立控制事件终止产品等待并保留原始错误。发送与重新生成失败时先解除忙碌状态并报告错误，再刷新历史，不能让刷新阻塞错误呈现。
 - DeepSeek Messages 读取锁定版本专用适配器的正式模型目录；通用协议使用同版本 pi-ai discovery。草稿发现通过 Typert Remote 在临时 Cordis Context 中装配官方适配器，使用当前地址、请求头和一次性凭据，不修改持久设置。

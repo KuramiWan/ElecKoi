@@ -1,7 +1,7 @@
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
-import source from '../packages/dsh-client-conversations/src/client.js?raw'
+import source from '../packages/client/features/dsh-client-conversations/src/client.js?raw'
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 

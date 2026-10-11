@@ -17,7 +17,7 @@ bundle 的 `eleckoi.developerInterfaces` 描述接口标题和用途，但人工
 
 ## 锁定版本适配
 
-官方 Cordis 目录投影器只匹配上游 `packages/<分组>/<包>/src`，而本仓库产品包使用 `packages/<包>/src`。在既有 generator 补丁中允许这两种目录深度，保留 Host / Client 分离、同包声明归属、JSDoc 校验、类型链接与官方渲染机制。升级时核对同版本官方实现；上游支持此布局后删除该路径适配。
+官方 Cordis 目录投影器只匹配上游 `packages/<分组>/<包>/src`。本仓库在 [ADR 0030](0030-package-responsibility-groups.md) 中采用不同层级的职责分组；既有 generator 补丁改为使用官方 `PackageModel.root` 与声明的包身份确认源码归属，保留 Host / Client 分离、同包声明归属、JSDoc 校验、类型链接与官方渲染机制。文档生成后必须核对全部公开服务都进入目录，缺项直接失败。升级时核对同版本官方实现；上游支持此布局后删除该路径适配。
 
 ## 验收
 

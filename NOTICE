@@ -14,6 +14,8 @@ Distribution-specific notices are retained in:
 
 - LICENSE
 - resources/licenses/THIRD_PARTY_NOTICES.txt
+- resources/author-runtime/THIRD_PARTY_LICENSES.txt
+- packages/compatibility/tavern-shared/LICENSE and asset-specific notices
 - LICENSE.electron.txt and LICENSES.chromium.html in packaged Electron builds
 
 ------------------------------------------------------------------------------
@@ -55,3 +57,16 @@ fonts and icons are retained in resources/licenses/THIRD_PARTY_NOTICES.txt.
 Font-family names such as Segoe UI, Microsoft YaHei, Consolas, Cascadia Code and
 SFMono-Regular are operating-system font fallbacks only; their font files are
 not distributed by this repository or its Windows package.
+
+------------------------------------------------------------------------------
+Author page presentation resources
+------------------------------------------------------------------------------
+
+The shared presentation package contains SillyTavern resources under AGPL-3.0
+and bundled browser libraries under their respective licenses. The package's
+LICENSE, provenance manifests, vendor license files and asset notices identify
+those components and remain with the distributed resources.
+
+The native author page runtime also bundles browser libraries. Their versions,
+attributions and supplied license texts are recorded in
+resources/author-runtime/THIRD_PARTY_LICENSES.txt.

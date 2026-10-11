@@ -4,27 +4,27 @@ import { isAbsolute, join, relative } from 'node:path'
 import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getTableColumns, getTableName } from 'drizzle-orm'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { commonTables } from '../packages/dsh-product-data/src/storage/sqlite/schema/common'
-import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../packages/dsh-product-data/src/storage/sqlite/installSchema'
-import { commonSchemaSql } from '../packages/dsh-product-data/src/storage/sqlite/migrations/commonSchemaSql'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { MessageRepository } from '../packages/dsh-product-data/src/domain/conversations/MessageRepository'
-import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
-import { PersonaRepository } from '../packages/dsh-product-data/src/domain/personas/PersonaRepository'
-import { resolveConversationSeed } from '../packages/dsh-product-data/src/domain/conversations/conversationSeed'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { commonTables } from '../packages/host/product-data/src/storage/sqlite/schema/common'
+import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../packages/host/product-data/src/storage/sqlite/installSchema'
+import { commonSchemaSql } from '../packages/host/product-data/src/storage/sqlite/migrations/commonSchemaSql'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
+import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
+import { PersonaRepository } from '../packages/host/product-data/src/domain/personas/PersonaRepository'
+import { resolveConversationSeed } from '../packages/host/product-data/src/domain/conversations/conversationSeed'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { SettingLibraryRepository } from '../packages/dsh-product-data/src/domain/settingLibraries/SettingLibraryRepository'
-import { emptyEntry } from '../packages/dsh-product-data/src/domain/settingLibraries/settingLibraryNormalization'
-import { readEntry, writeEntry } from '../packages/dsh-product-data/src/domain/settingLibraries/settingLibraryCodec'
-import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets/AgentPresetRepository'
-import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '../packages/dsh-product-data/src/domain/agentTools'
-import { defaultRoleplayPlanSettings } from '../packages/product-shared/src/contracts/presets/roleplayPlan'
-import { DEFAULT_HIDDEN_TOOL_TIMELINE_CONTENT } from '../packages/product-shared/src/contracts/presets/builtIns'
-import { settingLibraryEntrySchema, settingLibraryPromptPositionSchema, settingLibraryStoredEntrySchema } from '../packages/product-shared/src/contracts/settingLibrary/schemas'
-import { VariableConfigRepository } from '../packages/dsh-product-data/src/domain/variables/VariableConfigRepository'
-import { VariableStateRepository } from '../packages/dsh-product-data/src/domain/variables/VariableStateRepository'
-import { VARIABLE_INITIALIZATION_OBJECT_ID } from '../packages/product-shared/src/contracts/variables/schemas'
+import { SettingLibraryRepository } from '../packages/host/product-data/src/domain/settingLibraries/SettingLibraryRepository'
+import { emptyEntry } from '../packages/host/product-data/src/domain/settingLibraries/settingLibraryNormalization'
+import { readEntry, writeEntry } from '../packages/host/product-data/src/domain/settingLibraries/settingLibraryCodec'
+import { AgentPresetRepository } from '../packages/host/product-data/src/domain/agentPresets/AgentPresetRepository'
+import { DEFAULT_AGENT_TOOL_GROUP_IDS } from '../packages/host/product-data/src/domain/agentTools'
+import { defaultRoleplayPlanSettings } from '../packages/shared/src/contracts/presets/roleplayPlan'
+import { DEFAULT_HIDDEN_TOOL_TIMELINE_CONTENT } from '../packages/shared/src/contracts/presets/builtIns'
+import { settingLibraryEntrySchema, settingLibraryPromptPositionSchema, settingLibraryStoredEntrySchema } from '../packages/shared/src/contracts/settingLibrary/schemas'
+import { VariableConfigRepository } from '../packages/host/product-data/src/domain/variables/VariableConfigRepository'
+import { VariableStateRepository } from '../packages/host/product-data/src/domain/variables/VariableStateRepository'
+import { VARIABLE_INITIALIZATION_OBJECT_ID } from '../packages/shared/src/contracts/variables/schemas'
 
 const directories: string[] = []
 const connections: Array<{ close(): void }> = []
@@ -60,6 +60,7 @@ describe('unreleased database baseline consolidation', () => {
     new VariableStateRepository(database, new VariableConfigRepository(database)).replaceCurrent(conversationId, '{"score":7}')
     database.close()
     const legacy = new Database(path)
+    legacy.exec('DROP TABLE script_libraries')
     legacy.exec(unreleasedGenerationTableSql)
     legacy.prepare('INSERT INTO conversation_generation_results VALUES (?,?,?)').run('synthetic-operation', conversationId, '{}')
     if (version === 9) legacy.exec('ALTER TABLE agent_conversations DROP COLUMN variableVersionId')
@@ -69,7 +70,8 @@ describe('unreleased database baseline consolidation', () => {
     const reopened = new SqliteDatabase(path)
     reopened.open()
     try {
-      expect(reopened.native.pragma('user_version', { simple: true })).toBe(9)
+      expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+      expect(reopened.native.prepare('SELECT * FROM script_libraries').all()).toEqual([])
       expect(reopened.native.prepare("SELECT 1 FROM sqlite_master WHERE name='conversation_generation_results'").get()).toBeUndefined()
       expect(productRecords(reopened.native)).toEqual(before)
       expect(new ConversationRepository(reopened).get(conversationId).title).toBe('合成迁移聊天')
@@ -79,7 +81,7 @@ describe('unreleased database baseline consolidation', () => {
     } finally { reopened.close() }
     reopened.open()
     try {
-      expect(reopened.native.pragma('user_version', { simple: true })).toBe(9)
+      expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(productRecords(reopened.native)).toEqual(before)
     } finally { reopened.close() }
   }, 30_000)
@@ -90,7 +92,7 @@ describe('unreleased database baseline consolidation', () => {
     database.close()
     const legacy = new Database(path)
     try {
-      legacy.exec(`${unreleasedGenerationTableSql}; ALTER TABLE agent_conversations DROP COLUMN variableVersionId;
+      legacy.exec(`DROP TABLE script_libraries; ${unreleasedGenerationTableSql}; ALTER TABLE agent_conversations DROP COLUMN variableVersionId;
         CREATE TRIGGER synthetic_binding_failure BEFORE UPDATE ON agent_conversations BEGIN SELECT RAISE(ABORT, 'synthetic update failure'); END;
         PRAGMA user_version = 9;`)
       const schema = schemaObjects(legacy)
@@ -107,7 +109,7 @@ describe('unreleased database baseline consolidation', () => {
     database.close()
     const legacy = new Database(path)
     try {
-      legacy.exec('CREATE TABLE conversation_generation_results (unexpected TEXT); INSERT INTO conversation_generation_results VALUES (\'preserved\'); PRAGMA user_version = 10;')
+      legacy.exec('DROP TABLE script_libraries; CREATE TABLE conversation_generation_results (unexpected TEXT); INSERT INTO conversation_generation_results VALUES (\'preserved\'); PRAGMA user_version = 10;')
       const schema = schemaObjects(legacy)
       expect(() => installSchema(legacy)).toThrow('生成结果表结构不匹配')
       expect(schemaObjects(legacy)).toEqual(schema)
@@ -122,13 +124,15 @@ function schemaObjects(db: Database.Database) {
 
 // Older fixtures must retain the released table shape until the v7 → v8 step.
 const schemaV7Sql = commonSchemaSql
+  .replace(/^CREATE TABLE IF NOT EXISTS `script_libraries` .*;$/m, '')
   .replace(", `variableVersionId` TEXT NOT NULL DEFAULT ''", '')
   .replace(/^CREATE TABLE IF NOT EXISTS `chat_sessions` .*;$/m,
     'CREATE TABLE IF NOT EXISTS `chat_sessions` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `characterId` TEXT NOT NULL, `characterName` TEXT NOT NULL, `characterAvatar` TEXT NOT NULL, `historyMessageCount` INTEGER NOT NULL, `historyUserMessageCount` INTEGER NOT NULL, `createdAt` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`id`));')
   .replace(/^PRAGMA user_version = \d+;$/m, 'PRAGMA user_version = 7;')
 
 function productRecords(database: Database.Database) {
-  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> 'conversation_generation_results' ORDER BY name")
+  // Script libraries have separate migration and data-retention assertions.
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('conversation_generation_results', 'script_libraries') ORDER BY name")
     .all() as { name: string }[]
   return Object.fromEntries(tables.map(({ name }) => [name,
     (database.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[])

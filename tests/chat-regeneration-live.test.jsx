@@ -4,8 +4,14 @@ import { createRoot } from 'react-dom/client'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
+import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
+import { OfficialStatsPills, OfficialContextMeter } from './helpers/officialTrajectory.js'
 import { useChatSessions } from '../apps/web/src/modules/chat/hooks/useChatSessions.js'
-import source from '../packages/dsh-client-conversations/src/client.js?raw'
+import { RichMessageFrame } from '../apps/web/src/modules/authorFrontend/components/RichMessageFrame.jsx'
+import { detectRichMessagePresentation } from '../packages/shared/src/foundation/richMessage'
+import * as frontendLibraries from '@eleckoi/compatibility-tavern-shared/browser-libraries'
+import source from '../packages/client/features/dsh-client-conversations/src/client.js?raw'
+import roleplaySource from '../packages/client/features/dsh-client-roleplay/src/client.js?raw'
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
@@ -132,6 +138,8 @@ function runtimeFixture({ firstTurn = false } = {}) {
     provide: (_name, value) => { model = value }, effect: run => { dispose = run() }, on: () => () => {} })
   return {
     model, remote, sessions, dispose: () => dispose(),
+    readProjection: key => stats[key], subscribeProjections: subscribe(statsListeners),
+    updateStats(value) { stats = value; for (const listener of statsListeners) listener() },
     completePreparation: () => completePreparation(), rejectPreparation: () => rejectPreparation(),
     live(text) {
       nodes.set('live-3', { kind: 'assistant-step', data: { turn: 3, step: 1, status: 'running',
@@ -157,6 +165,147 @@ function runtimeFixture({ firstTurn = false } = {}) {
 }
 
 describe('regeneration with the official Session client projection', () => {
+  it('keeps a retained regex iframe mounted throughout regeneration using the existing display projection cache', async () => {
+    vi.stubGlobal('React', React)
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const runtime = runtimeFixture()
+    const rich = '<!-- eleckoi:rich-replacement:start --><section>Retained card</section><!-- eleckoi:rich-replacement:end -->'
+    runtime.remote.eleckoiConversations.projectDisplay = async (_id, input) => ({ ok: true,
+      value: input.map(message => ({ id: message.id, sourceContent: message.content,
+        displayContent: message.content.includes('前轮回复') ? rich : message.content, variableStateJson: message.variableStateJson })) })
+    const state = { status: 'ready', error: '', methods: [] }
+    window.__ElecKoiClientCompatibility = { assetsBaseUrl: '/eleckoi/compat/', sdk: frontendLibraries,
+      getSnapshot: () => state, subscribe: () => () => {}, realm: { release() {} } }
+    await runtime.model.open('chat-1')
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    let chat
+    const props = { conversations: runtime.model, characters: [],
+      modelConfigs: [{ id: 'test-provider', model: 'test-model' }],
+      setStatus: vi.fn(), setActiveSectionState: vi.fn(), notify: vi.fn() }
+    function Probe() {
+      chat = useChatSessions(props)
+      return <section>{chat.messages.map(message => {
+        const document = message.role === 'assistant'
+          ? detectRichMessagePresentation(message.displayContent ?? message.content, false)?.parts.find(part => part.kind === 'rich')?.document
+          : null
+        return document ? <RichMessageFrame key={message.renderKey || message.id} message={message} document={document} />
+          : <p key={message.renderKey || message.id}>{message.displayContent ?? message.content}</p>
+      })}</section>
+    }
+    try {
+      await act(async () => { root.render(<Probe />); await flush() })
+      const frame = container.querySelector('iframe')
+      expect(frame).not.toBeNull()
+      const source = frame.srcdoc
+      const stable = () => { expect(container.querySelector('iframe')).toBe(frame); expect(frame.srcdoc).toBe(source) }
+      let regenerating
+      await act(async () => { regenerating = chat.regenerateReply({ targetMessageId: 'reply-2-7' }); await flush() })
+      stable()
+      await act(async () => { runtime.completePreparation(); await flush() })
+      stable()
+      await act(async () => { runtime.live('<FINAL>合成新回复'); await flush() })
+      stable()
+      await act(async () => { runtime.complete('<FINAL>合成新回复</FINAL>'); await regenerating; await flush() })
+      stable()
+      expect(props.notify).not.toHaveBeenCalled()
+    } finally {
+      await act(async () => root.unmount())
+      runtime.dispose(); container.remove()
+      delete window.__ElecKoiClientCompatibility
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it.each(['complete', 'prepare-failed'])('keeps the actual projected DSH statistics strip mounted through a %s regeneration', async mode => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const runtime = runtimeFixture({ firstTurn: true })
+    await runtime.model.open('chat-1')
+    const slots = new SlotCore()
+    const releases = []
+    slots.inject = (name, register) => {
+      let release
+      const sync = () => { release?.(); release = slots.spec(name) ? register() : undefined }
+      const stop = slots.subscribeDeclaration(name, sync)
+      sync()
+      releases.push(() => { stop(); release?.() })
+    }
+    releases.push(slots.register({ name: 'root', children: {
+      'eleckoi.roleplay': { kind: 'chain', scope: 'root' },
+      'conversation.composer.dock': { kind: 'list', scope: 'session' },
+      'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
+    } }, () => null))
+    let registration
+    runInNewContext(roleplaySource, { window: { __ModuleLoader__: { load: item => { registration = item } } } })
+    registration.factory(name => {
+      if (name !== 'react') throw new Error(`Unexpected Client dependency: ${name}`)
+      return React
+    }).apply({ sessions: runtime.sessions, slots, eleckoiConversations: runtime.model })
+    releases.push(slots.register({ name: 'conversation.composer.dock', id: 'stats' }, OfficialStatsPills))
+    releases.push(slots.register({ name: 'conversation.composer.bar' }, OfficialContextMeter))
+    await flush()
+    const component = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')
+      .find(entry => entry.options.id === 'dsh:conversation.composer.dock:stats').component
+    const bar = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.bar')[0].component
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const settled = { legacy: { nodes: [] } }
+    const t = (key, values) => `${key}${values ? ':' + Object.values(values).join(',') : ''}`
+    function Probe() {
+      useSyncExternalStore(runtime.model.subscribeChat, runtime.model.getChatSnapshot)
+      // SessionProvider can replace its projection hook when the writer is rebound.
+      const useProjection = key => useSyncExternalStore(runtime.subscribeProjections, () => runtime.readProjection(key))
+      const props = { sessionId: 'session-1', useProjection,
+        useChat: select => select(settled), usePerformanceUsage: select => select('detailed'), t }
+      return <>{React.createElement(component, props)}{React.createElement(bar, props)}</>
+    }
+    try {
+      await act(async () => { root.render(<Probe />); await flush() })
+      const strip = container.querySelector('[data-composer-stats]')
+      expect(strip).not.toBeNull()
+      const previous = container.textContent
+      let regenerating
+      await act(async () => {
+        regenerating = runtime.model.regenerate({ conversationId: 'chat-1', requestId: 'synthetic-stats', eventSeq: 5 })
+        await flush()
+      })
+      expect(container.querySelector('[data-composer-stats]')).toBe(strip)
+      if (mode === 'prepare-failed') {
+        await act(async () => {
+          runtime.rejectPreparation()
+          await expect(regenerating).rejects.toThrow('测试回退失败')
+        })
+        expect(container.querySelector('[data-composer-stats]')).toBe(strip)
+        expect(container.textContent).toBe(previous)
+        return
+      }
+      await act(async () => { runtime.completePreparation(); await flush() })
+      expect(runtime.readProjection('sessionStats').steps).toBe(0)
+      expect(runtime.model.getStatsSnapshot().stats.sessionStats.steps).toBe(3)
+      expect.soft(container.querySelector('[data-composer-stats]')).toBe(strip)
+      expect.soft(container.textContent).toBe(previous)
+      await act(async () => runtime.live('<FINAL>合成新回复'))
+      expect.soft(container.querySelector('[data-composer-stats]')).toBe(strip)
+      await act(async () => { runtime.complete('<FINAL>合成新回复</FINAL>'); await regenerating })
+      expect(container.querySelector('[data-composer-stats]')).toBe(strip)
+      expect(strip.textContent).toContain('stats.counts:2,2')
+      // A later authoritative zero is accepted once regeneration has settled.
+      await act(async () => runtime.updateStats({
+        sessionStats: { turns: 0, steps: 0, decodeMs: 0, decodeTokens: 0 },
+        tokenUsage: { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 },
+        contextPressure: {},
+      }))
+      expect(container.querySelector('[data-composer-stats]')).toBeNull()
+      expect(container.textContent).toBe('')
+    } finally {
+      await act(async () => root.unmount())
+      for (const release of releases.reverse()) release()
+      runtime.dispose(); container.remove(); vi.unstubAllGlobals()
+    }
+  })
+
   it('edits the retained user event before generating without unmounting its row', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const runtime = runtimeFixture()
@@ -186,6 +335,7 @@ describe('regeneration with the official Session client projection', () => {
       })
       expect(container.querySelector(selector)).toBe(row)
       expect(row.textContent).toBe('本轮输入')
+      expect(chat.scrollRequest).toMatchObject({ source: 'regeneration', behavior: 'auto' })
       await act(async () => { runtime.completePreparation(); await flush() })
       expect(runtime.remote.eleckoiConversations.regenerateMessage).toHaveBeenCalledWith(
         'chat-1', 5, expect.any(String), '合成编辑后的输入')

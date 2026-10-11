@@ -8,8 +8,8 @@ import { sessionFormatLogFilename } from '@deepseek-ai/dsh-session-format'
 import { releasedV3SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readDshSessionLog } from '../packages/dsh-runtime/src/trajectory'
-import { recoverStartupSessions } from '../packages/dsh-runtime/src/sessionStartupRecovery'
+import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
+import { recoverStartupSessions } from '../packages/host/runtime/src/sessionStartupRecovery'
 
 const cleanups = []
 afterEach(async () => {

@@ -1,4 +1,6 @@
-#eleckoi-root {
+#eleckoi-root,
+html[data-eleckoi-mobile="true"] .agent-process-backdrop,
+html[data-eleckoi-mobile="true"] .mobile-conversation-overlay {
   --shell-backdrop: var(--dsw-alias-bg-base, #ffffff);
   --rail: var(--dsw-specific-sidebar-fill, #f9fafb);
   --list: var(--dsw-specific-sidebar-fill, #f9fafb);

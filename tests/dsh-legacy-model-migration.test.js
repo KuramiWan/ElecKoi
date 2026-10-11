@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   migrateLegacyGlobalModelSelection,
   refreshSessionModelSnapshot
-} from '../packages/dsh-client-roleplay/src/host/model-selection-migration.mjs'
-import { writeSessionSnapshot } from '../packages/dsh-client-roleplay/src/host/session-snapshot.mjs'
+} from '../packages/client/features/dsh-client-roleplay/src/host/model-selection-migration.mjs'
+import { writeSessionSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-snapshot.mjs'
 
 const cleanups = []
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup() })

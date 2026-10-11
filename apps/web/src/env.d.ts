@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { DshDesktopProductApi } from '../../../packages/product-shared/src/contracts/desktopShell'
+import type { DshDesktopProductApi } from '../../../packages/shared/src/contracts/desktopShell'
 
 declare global {
   interface Window {

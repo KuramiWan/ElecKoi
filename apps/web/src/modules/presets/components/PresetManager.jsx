@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from '../../../ui/ui/Avatar.jsx';
 import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
@@ -239,7 +240,7 @@ export function PresetManager({ catalogModel, catalog, selectedGroup, selectedPr
 }
 
 function PresetGroupDialog({ title, value, onChange, onConfirm, onCancel }) {
-  return <div className="preset-group-dialog-backdrop">
+  return <SystemBarOverlay className="preset-group-dialog-backdrop">
     <form className="preset-group-dialog" role="dialog" aria-modal="true" aria-label={title} onSubmit={(event) => { event.preventDefault(); onConfirm(); }}>
       <h3>{title}</h3>
       <input value={value} onChange={(event) => onChange(event.target.value)} placeholder="填写分组" autoFocus />
@@ -248,5 +249,5 @@ function PresetGroupDialog({ title, value, onChange, onConfirm, onCancel }) {
         <button type="button" onClick={onCancel}>取消</button>
       </div>
     </form>
-  </div>;
+  </SystemBarOverlay>;
 }

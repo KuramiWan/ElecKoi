@@ -510,8 +510,7 @@ async function renderEjsController(target, candidates, state, messages) {
     matchChatMessages: createMessageMatcher(messages),
     _: createLodashCompat(),
     lastMessageId,
-    lastUserMessage,
-    TavernHelper: { getLastMessageId: () => lastMessageId }
+    lastUserMessage
   }
 
   async function render(source) {

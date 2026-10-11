@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createBackupOpening,
   createEntryDraft,
+  canTransferSettingNode,
+  copySettingNode,
   deleteOpening,
   duplicateOpening,
   moveBackupOpening,
@@ -245,3 +247,31 @@ describe('setting-library editor model', () => {
   })
 
 })
+
+
+describe('setting folder transfer', () => {
+  const group = (id, parentId) => ({ id, name: id, parentId, treeViewOrder: 1 });
+  const library = () => ({ groups: [group('folder-a', ''), group('nested-a', 'folder-a'), group('folder-b', '')],
+    entries: [{ ...createEntryDraft('nested-a', 1, []), id: 'item-a', title: '合成设定', content: '合成正文' }] });
+  it('copies a complete subtree with new ids and leaves its source intact', () => {
+    const source = library();
+    const copy = copySettingNode(source, { kind: 'group', id: 'folder-a' }, 'folder-b');
+    const rootId = copy.key.slice('group:'.length);
+    expect(copy.library.groups.find(group => group.id === rootId).parentId).toBe('folder-b');
+    const nested = copy.library.groups.find(group => group.parentId === rootId);
+    expect(nested.id).not.toBe('nested-a');
+    const entry = copy.library.entries.find(entry => entry.groupId === nested.id);
+    expect(entry.id).not.toBe('item-a'); expect(entry.content).toBe('合成正文');
+    expect(source.groups).toHaveLength(3); expect(source.entries).toHaveLength(1);
+  });
+  it('rejects descendant, missing and fixed destinations and keeps the input untouched', () => {
+    const source = library();
+    for (const parentId of ['folder-a', 'nested-a', 'missing-folder']) {
+      expect(canTransferSettingNode(source, { kind: 'group', id: 'folder-a' }, parentId)).toBe(false);
+      expect(copySettingNode(source, { kind: 'group', id: 'folder-a' }, parentId)).toEqual({ library: source, key: '' });
+      expect(moveTreeNode(source, { kind: 'group', id: 'folder-a' }, parentId, 0)).toBe(source);
+    }
+    expect(canTransferSettingNode(source, { kind: 'entry', id: 'fixed-opening-assistant' }, '')).toBe(false);
+    expect(canTransferSettingNode(source, { kind: 'unknown', id: 'item-a' }, '')).toBe(false);
+  });
+});

@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -12,7 +13,7 @@ import {
   Trash,
   UserCircle,
   X,
-} from "@phosphor-icons/react";
+} from "../../../ui/icons/interfaceIcons.jsx";
 import { ExportIcon, ImportIcon } from "../../../ui/icons/index.jsx";
 import { VersionNameDialog } from "../../../ui/ui/VersionNameDialog.jsx";
 import {
@@ -34,13 +35,13 @@ function versionLabel(version) {
 
 function Modal({ title, children, actions, onClose, labelledBy = "setting-library-modal-title" }) {
   return (
-    <div className="setting-library-dialog-overlay" role="presentation" onMouseDown={onClose}>
+    <SystemBarOverlay className="setting-library-dialog-overlay" role="presentation" onMouseDown={onClose}>
       <section className="setting-library-dialog setting-library-manager-dialog" role="dialog" aria-modal="true" aria-labelledby={labelledBy} onMouseDown={(event) => event.stopPropagation()}>
         <h2 id={labelledBy}>{title}</h2>
         <div className="setting-library-manager-dialog-body">{children}</div>
         <div className="setting-library-manager-dialog-actions">{actions}</div>
       </section>
-    </div>
+    </SystemBarOverlay>
   );
 }
 
@@ -285,7 +286,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
   const title = page === "home" ? "设定库管理" : page === "sources" ? "并入设定库" : source?.name || "选择设定";
 
   return (
-    <div className="setting-library-manager-overlay" role="presentation" onMouseDown={onClose}>
+    <SystemBarOverlay className="setting-library-manager-overlay" role="presentation" onMouseDown={onClose}>
       <aside className="setting-library-manager" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
         <input ref={fileInputRef} className="setting-library-file-input" type="file" accept=".json,application/json" onChange={handleFile} />
         <header className="setting-library-manager-header">
@@ -380,6 +381,6 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
         {dialog === "delete" && activeVersion ? <DeleteVersionDialog version={activeVersion} onCancel={() => setDialog("")} onDelete={() => { onChange(deleteActiveLibraryVersion(current)); setDialog(""); setNotice("当前版本已删除，保存后生效"); }} /> : null}
         {mergePreview && pickedVersion ? <MergeConfirmDialog sourceName={source.name} version={pickedVersion} plan={mergePreview.plan} onCancel={() => setMergePreview(null)} onMerge={() => { onChange(mergePreview.library); setMergePreview(null); setCheckedIds(new Set()); setPage("home"); setNotice(`已并入 ${mergePreview.plan.entryCount} 条设定，保存后生效`); }} /> : null}
       </aside>
-    </div>
+    </SystemBarOverlay>
   );
 }

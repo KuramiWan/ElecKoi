@@ -1,0 +1,11 @@
+{
+  "family": "LXGW 975 Yuan SC",
+  "source": "https://github.com/lxgw/975Yuan/releases/download/26.07.13/LXGW975YuanSC-400W.ttf",
+  "source_sha256": "2a28cd6ddf6080d33fcaa93749a89fd9b376221c6f79d946a8eda328438c6685",
+  "delivery": "WOFF2, full character coverage, web font only",
+  "fonttools_version": "4.63.0",
+  "woff2_sha256": "9bc83a2d5b3fe800629bc22656da3c6e50c038f3f3f7bfff43c335e8f14f4480",
+  "glyph_count": 30661,
+  "character_count": 30912,
+  "license": "SIL Open Font License 1.1 with additional web delivery permission"
+}

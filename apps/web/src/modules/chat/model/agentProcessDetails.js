@@ -95,13 +95,13 @@ function operationGroupIcon(presentations) {
     .find((icon) => icons.has(icon)) || 'wrench';
 }
 
-export function processItemDetails(item) {
+export function processItemDetails(item, { mobile = false } = {}) {
   const presentation = processItemPresentation(item);
   const argumentsValue = parseValue(item?.arguments);
   const result = resultRecord(item);
   const toolName = item?.toolName || '';
   const specialized = specializedResult(toolName, result, argumentsValue);
-  const target = targetFor(item, argumentsValue, result, specialized);
+  const target = targetFor(item, argumentsValue, result, specialized, mobile);
   const statusLabel = item?.status === 'running' ? '进行中' : item?.status === 'error' ? '失败' : item?.status === 'cancelled' ? '已取消' : '已完成';
   return {
     ...presentation,
@@ -187,17 +187,28 @@ function specializedResult(toolName, result, args) {
   return null;
 }
 
-function targetFor(item, args, result, specialized) {
+function targetFor(item, args, result, specialized, mobile) {
+  if (mobile && (item?.toolName === SETTING_GLOB || item?.toolName === VARIABLE_GLOB)
+    && args && typeof args === 'object' && !Array.isArray(args)
+    && (args.pattern === undefined || typeof args.pattern === 'string')
+    && (args.path === undefined || typeof args.path === 'string')) {
+    return `“${args.pattern?.trim() || '**'}”${args.path ? ` · ${args.path}` : ''}`;
+  }
   if (specialized?.type === 'glob') {
     const pattern = specialized.pattern || stringValue(args?.pattern) || '全部';
+    if (mobile) return `“${pattern}”${typeof args?.path === 'string' && args.path ? ` · ${args.path}` : ''}`;
     const count = specialized.paths.length;
     return count ? `“${pattern}” · ${count} 项` : `“${pattern}”`;
   }
   if (specialized?.type === 'settings') {
-    return summarize(specialized.entries.map((entry) => entry.title || entry.path), 3);
+    return summarize(specialized.entries.map((entry) => entry.title || entry.path), mobile ? 2 : 3);
   }
   if (specialized?.type === 'variables') {
-    return summarize(specialized.entries.map((entry) => entry.path), 3);
+    return summarize(mobile && Array.isArray(args?.paths) ? args.paths : specialized.entries.map((entry) => entry.path), mobile ? 2 : 3);
+  }
+  if (mobile && (item?.toolName === SETTING_READ || item?.toolName === VARIABLE_READ)
+    && Array.isArray(args?.paths) && args.paths.every((path) => typeof path === 'string')) {
+    return summarize(args.paths, 2);
   }
   const candidate = args?.path || args?.pattern || args?.query || args?.task || args?.command || args?.description
     || result?.path || result?.message || result?.target;

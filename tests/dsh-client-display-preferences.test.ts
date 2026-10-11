@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
-import { apply as applyHost } from '../packages/dsh-client-display-preferences/src/index.js'
+import { apply as applyHost } from '../packages/client/features/dsh-client-display-preferences/src/index.js'
 
-const source = readFileSync(new URL('../packages/dsh-client-display-preferences/src/client.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../packages/client/features/dsh-client-display-preferences/src/client.js', import.meta.url), 'utf8')
 const ok = (value: unknown) => Promise.resolve({ ok: true, value })
 
 function clientHarness() {

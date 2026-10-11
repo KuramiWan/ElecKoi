@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RotateLeftIcon, RotateRightIcon, XIcon } from "../icons/index.jsx";
@@ -241,7 +242,7 @@ export function AvatarCropModal({
   };
 
   const modal = (
-    <div className="avatar-crop-overlay" role="dialog" aria-modal="true" aria-label={title} onPointerDown={(event) => {
+    <SystemBarOverlay className="avatar-crop-overlay" role="dialog" aria-modal="true" aria-label={title} onPointerDown={(event) => {
       if (event.target === event.currentTarget && !saving) onCancel?.();
     }}>
       <div ref={windowRef} className="avatar-crop-window">
@@ -308,7 +309,7 @@ export function AvatarCropModal({
           </button>
         </div>
       </div>
-    </div>
+    </SystemBarOverlay>
   );
 
   const portalTarget = typeof document === "undefined" ? null : document.body;

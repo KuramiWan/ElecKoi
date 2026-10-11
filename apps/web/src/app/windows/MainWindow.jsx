@@ -4,9 +4,8 @@ import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
 import { AppToast } from "../../ui/ui/AppToast.jsx";
-import { SidebarRail } from "./shell/components/SidebarRail.jsx";
+import { SidebarContent } from "./shell/components/SidebarContent.jsx";
 import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
-import { SidePanelShell } from "./shell/components/SidePanelShell.jsx";
 import { PluginCenterSurface, PluginListPanel } from "./shell/components/PluginCenter.jsx";
 import { SidePanelResizeHandle } from "./shell/components/SidePanelResizeHandle.jsx";
 import { TitleBar, WindowControls } from "./shell/components/TitleBar.jsx";
@@ -51,9 +50,12 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
     document.title = "ElecKoi";
   }, []);
 
-  useEffect(() => window.dshDesktop.host?.subscribeFailure((message) => {
-    chat.notify("error", message);
-  }), [chat.notify]);
+  useEffect(() => {
+    if (globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === "android") return undefined;
+    return window.dshDesktop.host?.subscribeFailure((message) => {
+      chat.notify("error", message);
+    });
+  }, [chat.notify]);
 
   const changeActiveSection = useCallback((section) => {
     if (chat.activeSection === "model" && section !== "model" && modelNavigationGuardRef.current) {
@@ -83,10 +85,7 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
   }
 
   function renderWindowLayout({ sidePanel, mainPanel, overlays = null }) {
-    const renderSidebarContent = (renderSidebarSlot) => <>
-      <section className="navigation-rail-shell" aria-label="功能导航栏">
-        <div className="navigation-rail-title" data-tauri-drag-region />
-        <SidebarRail
+    const renderSidebarContent = (renderSidebarSlot) => <SidebarContent
           activeSection={chat.activeSection}
           navigationItems={navigation?.items}
           renderSidebarSlot={renderSidebarSlot}
@@ -105,18 +104,11 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
             setSettingsPage("chat");
             changeActiveSection("settings");
           }}
-        />
-      </section>
-
-      <SidePanelShell
         collapsed={sidePanelLayout.sidePanelCollapsed || isPluginPanel}
         onCollapse={sidePanelLayout.collapseSidePanel}
-        renderSidebarSlot={renderSidebarSlot}
-        footerActions={navigation?.hasSidebarFooterActions ? renderSidebarSlot?.("sidebar.footer.action", { wide: true }) : null}
-      >
-        {renderSidebarSlot?.("sidebar.workspaces", { wide: true, content: sidePanel }) || sidePanel}
-      </SidePanelShell>
-    </>;
+        hasFooterActions={navigation?.hasSidebarFooterActions}
+        sidePanel={sidePanel}
+      />;
     return (
       <>
         {navigation?.renderSidebar ? navigation.renderSidebar(renderSidebarContent) : renderSidebarContent(null)}

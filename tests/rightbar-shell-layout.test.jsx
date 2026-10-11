@@ -35,7 +35,7 @@ const preloadSource = readFileSync(
   "utf8",
 );
 const desktopShellSource = readFileSync(
-  new URL("../packages/product-shared/src/contracts/desktopShell.ts", import.meta.url),
+  new URL("../packages/shared/src/contracts/desktopShell.ts", import.meta.url),
   "utf8",
 );
 

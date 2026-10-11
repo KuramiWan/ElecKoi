@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Native author browser fixture</title>
+<style>
+  body { margin: 24px; font: 16px system-ui; color: #202020; background: white; }
+  input, button { font: inherit; padding: 8px; }
+  label { display: block; margin-bottom: 8px; }
+  iframe { width: 100%; max-width: 600px; height: 260px; border: 1px solid #ccc; }
+  iframe[hidden] { display: none; }
+  output { display: block; margin: 12px 0; overflow-wrap: anywhere; }
+</style>
+<body>
+  <label>Chat draft <input id="composer" value="Synthetic draft"></label>
+  <output id="runtime-status">idle</output>
+  <output id="messages"></output>
+  <div id="author-root"></div>
+<script>
+  window.__ModuleLoader__ = { load(entry) { window.__nativeEntry = entry; } };
+  window.__syntheticStops = 0;
+  window.prepareNativeFixture = async () => {
+    class Feed {
+      constructor(signal) {
+        this.queue = []; this.closed = false;
+        signal.addEventListener('abort', () => this.dispose(), { once: true });
+      }
+      push(value) { this.queue.push(value); this.wake?.(); this.wake = undefined; }
+      dispose() { this.closed = true; this.queue.length = 0; this.wake?.(); }
+      async *[Symbol.asyncIterator]() {
+        while (!this.closed) {
+          if (this.queue.length) yield this.queue.shift();
+          else await new Promise(resolve => { this.wake = resolve; });
+        }
+      }
+    }
+    const objectUrls = new Set(), createUrl = URL.createObjectURL.bind(URL), revokeUrl = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = value => { const url = createUrl(value); objectUrls.add(url); return url; };
+    URL.revokeObjectURL = url => { objectUrls.delete(url); revokeUrl(url); };
+    const libraryListeners = new Set(), detailListeners = new Set(), generationListeners = new Set(),
+      streamListeners = new Set(), statsListeners = new Set(), pending = new Map(), messageOperations = [];
+    const cleanups = [];
+    const audioElements = [], createElement = document.createElement.bind(document);
+    document.createElement = (...args) => { const element = createElement(...args); if (args[0] === 'audio') audioElements.push(element); return element; };
+    let rules, state = { score: 1 }, generation = 1;
+    let helper = 'export const derive = n => n * 2;';
+    let source = `import { derive } from '../helpers/derive.js';
+    export default ({api,signal}) => {
+      if (globalThis.TavernHelper || globalThis.Mvu) throw new Error('Unexpected compatibility resource');
+      const stop = api.variables.registerRule({id:'derive',stage:'after',async run(context) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+        context.signal.throwIfAborted();
+        const current = await api.variables.getState();
+        if (current.score < 0) throw new Error('Synthetic score must not be negative');
+        await api.variables.merge({derived: derive(current.score)});
+      }});
+      return () => { stop(); parent.__syntheticStops++; };
+    }`;
+    window.__syntheticScriptAsset = file => file === 'scripts/entry.js' ? source : file === 'helpers/derive.js' ? helper : null;
+    const selected = { id: 'synthetic-chat', status: 'ready', error: '', details: {
+      conversation: { id: 'synthetic-chat', title: 'Synthetic chat', preview: 'Synthetic preview',
+        createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }, runtimeSessionId: 'synthetic-session',
+      metadata: { characterId: 'synthetic-character', characterName: 'Synthetic character', characterAvatar: '',
+        characterPersona: { assistant_name: 'Synthetic character', assistant_avatar: '', assistant_square: '',
+        assistant_cover: '', image_prompt: 'Synthetic existing persona' } }, messages: [], hasMore: false, beforeSequence: null,
+    } };
+    let catalogItems = [{ ...selected.details.conversation, metadata: selected.details.metadata }];
+    let stream = { id: selected.id, status: 'idle', runId: '', messageId: '', content: '', sequence: 0, process: [] };
+    let stats = { id: selected.id, stats: null };
+    const subscribe = listeners => listener => { listeners.add(listener); return () => listeners.delete(listener); };
+    let navigationHeld = false, navigationFinish, navigationUnmount;
+    const navigationOperations = [];
+    const waitNavigation = () => navigationHeld ? new Promise(resolve => { navigationFinish = resolve; }) : Promise.resolve();
+    let settingLibrary = { characterId: 'synthetic-character', name: 'Synthetic library', entries: [], groups: [], promptPositions: [],
+      activeVersionId: 'synthetic-library-version', versions: [], listAllExpanded: false, expandedGroupIds: [] };
+    const remote = {
+      eleckoiCharacterConfiguration: {
+        readSettingLibrary: async () => ({ ok: true, value: structuredClone(settingLibrary) }),
+        replaceSettingLibraryContent: async (_id, library, signal) => {
+          signal.throwIfAborted(); settingLibrary = { ...settingLibrary, ...structuredClone(library) };
+          return { ok: true, value: structuredClone(settingLibrary) };
+        },
+      },
+      eleckoiCharacters: { list: async () => ({ ok: true, value: { active_character_id: '', groups: [],
+        items: [{ id: 'synthetic-character', name: 'Synthetic character', persona: { assistant_name: 'Synthetic character',
+          assistant_avatar: '', assistant_square: '', assistant_cover: '', image_prompt: 'Synthetic current persona' } }] } }) },
+      eleckoiAuthorScripts: {
+        read: async () => ({ ok: true, value: {
+          conversationId: selected.id, characterId: 'synthetic-character', presetId: 'synthetic-preset', version: `${selected.id}-${generation}`,
+          scripts: [{ key: JSON.stringify(['character','synthetic-character','synthetic-script']), id: 'synthetic-script', name: 'Synthetic script',
+            scope: 'character', ownerId: 'synthetic-character', source,
+            entryUrl: `/eleckoi/scripts/character/synthetic-character/${generation}/scripts/entry.js`, settings: {}, librarySettings: {} }],
+        } }),
+        connect: (_id, version, signal) => {
+          rules = new Feed(signal);
+          rules.send = reply => { const job = pending.get(reply.id); if (!job) throw new Error('Unknown synthetic task'); pending.delete(reply.id);
+            if (reply.ok) job.resolve(JSON.parse(reply.stateJson)); else job.reject(new Error(reply.message)); };
+          rules.push({ kind: 'ready', version }); return rules;
+        },
+      },
+      eleckoiAuthorVariables: {
+        getState: async () => ({ ok: true, value: JSON.stringify(state) }),
+        getConfig: async () => ({ ok: true, value: null }),
+        merge: async (_id, json, signal) => {
+          const before = structuredClone(state), runId = crypto.randomUUID();
+          const stage = (name, candidate) => new Promise((resolve, reject) => {
+            const id = crypto.randomUUID(); pending.set(id, { resolve, reject });
+            rules.push({ kind: 'process', id, runId, conversationId: 'synthetic-chat', stage: name,
+              stateJson: JSON.stringify(candidate), beforeJson: JSON.stringify(before),
+              scriptSettings: name === 'before' ? [{ key: JSON.stringify(['character','synthetic-character','synthetic-script']), settings: {}, librarySettings: {} }] : null });
+          });
+          try {
+            let candidate = await stage('before', structuredClone(state));
+            Object.assign(candidate, JSON.parse(json)); candidate = await stage('after', candidate);
+            candidate = await stage('afterSchema', candidate); signal.throwIfAborted(); state = candidate;
+            return { ok: true, value: JSON.stringify(state) };
+          } catch (error) { rules.push({ kind: 'cancel', runId }); throw error; }
+        },
+      },
+      eleckoiConversations: { changes: signal => new Feed(signal) },
+      eleckoiAuthorFrontends: {
+        workspace: async () => ({ ok: true, value: window.syntheticProjectWorkspace }),
+        readFile: async (_owner, id, query) => {
+          if (id !== 'synthetic-project' || query.path !== 'pages/main.html') throw new Error('Unknown synthetic file');
+          return { ok: true, value: { path: query.path, content: window.syntheticProjectSource, mimeType: 'text/html' } };
+        },
+        changes: (_owner, signal) => { const feed = new Feed(signal); feed.push({ kind: 'snapshot', revision: 1 }); return feed; },
+      },
+    };
+    const conversations = {
+      subscribeGeneration: subscribe(generationListeners),
+      subscribeStream: subscribe(streamListeners),
+      subscribeStats: subscribe(statsListeners),
+      getDetailsSnapshot: () => selected,
+      getStreamSnapshot: () => stream,
+      getStatsSnapshot: () => stats,
+      getGenerationReply: (session, turn, seq) => ({ status: 'ready', message: selected.details.messages.find(message =>
+        message.runtimeSessionId === session && message.dshTurn === turn && message.sessionEventSeq === seq) }),
+      readTrajectory: async id => {
+        if (id !== selected.id) throw new Error('Synthetic trajectory chat mismatch');
+        return {
+          eventNodes: [{ kind: 'assistant', seq: 5, time: 50, turn: 1, step: 1, messageId: 'synthetic-trajectory-reply',
+            blocks: [{ kind: 'reasoning', text: 'Synthetic recorded reasoning' }, { kind: 'text', text: 'Synthetic recorded reply' }] }],
+          eventLocations: new Map([[5, { kind: 'step', turn: { turn: 1, status: 'closed', data: { get() {} } },
+            step: { step: 1, status: 'closed', data: { get() {} } } }]]),
+          requests: [{ purpose: 'assistant', startSeq: 3, startedAt: 30, completedAt: 50, status: 'complete', turn: 1, step: 1, resultSeq: 5 }],
+          callSchemas: new Map(), partial: null, runningCalls: [],
+        };
+      },
+      refresh: async () => structuredClone(catalogItems),
+      open: async id => {
+        navigationOperations.push({ kind: 'open', id });
+        const target = catalogItems.find(item => item.id === id);
+        const details = { conversation: { ...target, title: 'Synthetic loaded title' }, metadata: target.metadata,
+          runtimeSessionId: '', messages: [] };
+        Object.assign(selected, { id, status: 'loading', details: null });
+        for (const listener of detailListeners) listener();
+        navigationUnmount?.();
+        await waitNavigation();
+        Object.assign(selected, { status: 'ready', details });
+        for (const listener of detailListeners) listener();
+        return details;
+      },
+      delete: async id => {
+        navigationOperations.push({ kind: 'delete', id });
+        await waitNavigation();
+        catalogItems = catalogItems.filter(item => item.id !== id);
+        if (selected.id === id) {
+          Object.assign(selected, { id: '', status: 'idle', details: null });
+          for (const listener of detailListeners) listener();
+          navigationUnmount?.();
+        }
+      },
+      create: async input => ({ ...selected.details, conversation: { ...selected.details.conversation,
+        id: 'synthetic-created-chat', title: input.title ?? 'Synthetic new chat' }, metadata: input.metadata }),
+      readModelSelection: async () => ({ provider: 'synthetic-config', model: 'synthetic-model' }),
+      selectModel: async (_id, selection) => selection,
+      subscribeDetails: listener => { detailListeners.add(listener); return () => detailListeners.delete(listener); },
+      send: async input => {
+        document.querySelector('#messages').textContent = input.text;
+        return { cancelled: false, details: { ...selected.details, messages: [
+          { id: 'synthetic-input', requestId: input.requestId, role: 'user', content: input.text },
+        ] } };
+      },
+      editMessage: async (id, eventSeq, role, content) => {
+        messageOperations.push({ kind: 'edit', id, eventSeq, role, content });
+        selected.details = { ...selected.details, messages: selected.details.messages.map(message =>
+          message.sessionEventSeq === eventSeq && message.role === role ? { ...message, content, displayContent: content } : message) };
+        return selected.details;
+      },
+      deleteMessagesFrom: async (id, eventSeq, role) => {
+        messageOperations.push({ kind: 'delete', id, eventSeq, role });
+        selected.details = { ...selected.details, messages: selected.details.messages.filter(message => message.sessionEventSeq < eventSeq) };
+        return { deletedMessageCount: 1, remainingMessageCount: 1, details: selected.details };
+      },
+      regenerate: async input => {
+        messageOperations.push({ kind: 'regenerate', eventSeq: input.eventSeq, replacementMessage: input.replacementMessage });
+        const user = selected.details.messages.find(message => message.role === 'user' && message.sessionEventSeq === input.eventSeq);
+        selected.details = { ...selected.details, messages: [
+          { ...user, content: input.replacementMessage ?? user.content },
+          { ...user, id: 'synthetic-new-reply', role: 'assistant', sessionEventSeq: 30, sequence: 30,
+            inputEventSeq: input.eventSeq, content: 'Synthetic regenerated reply', nativeVariableStateJson: JSON.stringify(state) },
+        ] };
+        return { cancelled: false, details: selected.details };
+      },
+      cancelGeneration: async () => false,
+    };
+    const plugin = window.__nativeEntry.factory(name => { throw new Error(`Unexpected browser dependency: ${name}`); });
+    await plugin.apply({ remote, eleckoiConversations: conversations,
+      eleckoiModels: { refresh: async () => [{ id: 'synthetic-config', name: 'Synthetic model route', provider: 'custom',
+        enabled: true, model: 'synthetic-model', api_key: 'synthetic-private-value',
+        model_options: [{ id: 'synthetic-model', name: 'Synthetic model', reasoningEfforts: false }] }] },
+      eleckoiScriptLibraries: { subscribeChanges: listener => { libraryListeners.add(listener); return () => libraryListeners.delete(listener); } },
+      provide(name, value) {
+        if (name === 'eleckoiAuthorRuntime') window.nativeRuntime = value;
+        else if (name === 'eleckoiFrontendProjects') window.nativeFrontends = value;
+        else throw new Error('Unexpected service');
+      },
+      async effect(run) { cleanups.push(await run()); }, on: () => () => {},
+    });
+    const runtime = window.nativeRuntime;
+    runtime.subscribe(() => { document.querySelector('#runtime-status').textContent = runtime.getSnapshot().status; });
+    document.querySelector('#runtime-status').textContent = runtime.getSnapshot().status;
+    const input = document.querySelector('#composer');
+    runtime.registerChatUi('synthetic-chat', {
+      'input.get': () => ({ text: input.value }),
+      'input.set': params => { input.value = params.text; return { text: input.value }; },
+      'input.append': params => { input.value += params.text; return { text: input.value }; },
+      'input.clear': () => { input.value = ''; return { text: '' }; },
+    });
+    const unmount = window.mountNativeProjectFixture ? window.mountNativeProjectFixture(runtime, window.nativeFrontends) : window.mountNativeMessageFixture(runtime);
+    window.nativeFixture = {
+      generate(reason, turn) {
+        const publish = events => { for (const listener of generationListeners) listener({ conversationId: selected.id,
+          runtimeSessionId: 'synthetic-session', kind: 'live', running: true, events }); };
+        publish([{ type: 'turn/start', seq: turn * 10, data: { turn } }]);
+        stream = { id: selected.id, status: 'running', runId: 'synthetic-session', messageId: '', dshTurn: turn,
+          content: 'Synthetic generated body', sequence: 1, process: [] };
+        for (const listener of streamListeners) listener();
+        stats = { id: selected.id, stats: { sessionStats: { steps: 1, turns: 1 } } };
+        for (const listener of statsListeners) listener();
+        if (reason === 'completed') {
+          selected.details.messages = [...selected.details.messages, { id: 'synthetic-generated-reply', role: 'assistant',
+            content: 'Synthetic generated body', status: 'complete', runtimeSessionId: 'synthetic-session',
+            dshTurn: turn, sessionEventSeq: turn * 10 + 1, createdAt: '', nativeVariableStateJson: JSON.stringify(state) }];
+          for (const listener of detailListeners) listener();
+          publish([{ type: 'assistant/message', seq: turn * 10 + 1, data: { turn, step: 1 } }]);
+        }
+        const outcome = reason === 'error' ? { kind: 'error', error: { code: 'SYNTHETIC_FAILURE', message: 'Synthetic generation failure' } }
+          : reason === 'cancelled' ? { kind: 'aborted', reason: 'user' } : { kind: 'completed' };
+        publish([{ type: 'turn/end', seq: turn * 10 + 2, data: { turn, reason: outcome } }]);
+        stream = { ...stream, status: 'idle' }; for (const listener of streamListeners) listener();
+      },
+      seedNavigation(id) { catalogItems.push({ ...catalogItems[0], id }); },
+      holdNavigation(unmount) { navigationHeld = true; navigationUnmount = unmount; },
+      finishNavigation() { navigationHeld = false; navigationFinish?.(); navigationFinish = undefined; navigationUnmount = undefined; },
+      navigation: () => ({ waiting: !!navigationFinish, operations: structuredClone(navigationOperations), selectedId: selected.id }),
+      seedMessages() {
+        const base = { conversationId: 'synthetic-chat', runtimeSessionId: 'synthetic-session', status: 'complete',
+          createdAt: '2026-01-01T00:00:00Z', dshTurn: 2 };
+        selected.details = { ...selected.details, hasMore: false, beforeSequence: 20, messages: [
+          { ...base, id: 'synthetic-input', role: 'user', sessionEventSeq: 20, sequence: 20, content: 'Synthetic input' },
+          { ...base, id: 'synthetic-reply', role: 'assistant', sessionEventSeq: 25, sequence: 25, inputEventSeq: 20,
+            content: 'Synthetic reply', nativeVariableStateJson: JSON.stringify(state), variableStateJson: '{"score":999}' },
+        ] };
+      },
+      messageOperations: () => structuredClone(messageOperations),
+      snapshot: () => ({ state, pending: pending.size, objectUrls: objectUrls.size, stops: window.__syntheticStops,
+        liveAudio: audioElements.filter(element => element.getAttribute('src')).length,
+        audioPaused: audioElements.every(element => element.paused),
+        status: runtime.getSnapshot(), frameCount: document.querySelectorAll('iframe[hidden]').length,
+        detailsSubscriptions: detailListeners.size, librarySubscriptions: libraryListeners.size,
+        generationSubscriptions: generationListeners.size, streamSubscriptions: streamListeners.size, statsSubscriptions: statsListeners.size }),
+      async edit(value) { source = value; generation++; for (const listener of libraryListeners) listener(); },
+      async editHelper(value) { helper = value; generation++; for (const listener of libraryListeners) listener(); },
+      dispose: async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); },
+      selectChat(active) { selected.id = active ? 'synthetic-chat' : ''; selected.status = active ? 'ready' : 'idle'; for (const listener of detailListeners) listener(); },
+      unmount,
+    };
+  };
+</script>
+</body>
+</html>

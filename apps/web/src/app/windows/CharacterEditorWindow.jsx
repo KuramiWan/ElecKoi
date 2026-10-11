@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpenText,
+  CaretLeft,
+  CaretRight,
   BracketsCurly,
   FolderSimple,
   IdentificationCard,
   TreeStructure,
+  FileCode,
+  Browsers,
 } from "@phosphor-icons/react";
 import logoIcon from "../../assets/eleckoi-app-icon.png";
 import {
@@ -14,16 +18,24 @@ import { applyAppearanceTheme } from "../../modules/appearance/index.js";
 import { DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/settingLibraries/index.js";
 import { VariableConfigPanel } from "../../modules/variables/index.js";
 import { RegexRulesPanel } from "../../modules/regex/index.js";
+import { ScriptLibrariesPanel } from '../../modules/scripts/index.js';
+import { CharacterFrontendPanel } from '../../modules/authorFrontend/index.js';
+import { useCharacterEditorSidebarState } from "../../modules/settings/index.js";
+import { AppErrorDialog } from "../../ui/ui/AppErrorDialog.jsx";
 import { UnsavedChangesDialog } from "../../ui/ui/UnsavedChangesDialog.jsx";
 import { characterName } from "../../utils/characterDisplay.js";
 import { appWindow, showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
+import { EditorPresentationContext, useEditorFeedbackHost } from '../../ui/ui/EditorPresentationContext.jsx';
+import { usePageFade } from '../../ui/hooks/usePageFade.js';
 
 const EDITOR_SECTIONS = [
   { id: "card", label: "基础资料", Icon: IdentificationCard },
   { id: "lore", label: "设定库", Icon: BookOpenText },
   { id: "variables", label: "变量", Icon: TreeStructure },
   { id: "regex", label: "正则", Icon: BracketsCurly },
+  { id: 'scripts', label: '脚本', Icon: FileCode },
+  { id: 'frontend', label: '前端', Icon: Browsers },
   { id: "dynamic", label: "分支设定", Icon: FolderSimple },
 ];
 
@@ -43,27 +55,45 @@ function editableCharacterSnapshot(character) {
   });
 }
 
-export function CharacterEditorWindow({ characterCatalog, characterConfiguration, renderCharacterEditorSection }) {
+export function CharacterEditorWindow({ characterCatalog, characterConfiguration, renderCharacterEditorSection, embeddedCharacterId, navigationGuardRef, renderHeader, onClose, compact = false, registerBackHandler }) {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const characterId = params.get("character") || "";
+  const characterId = embeddedCharacterId ?? params.get("character") ?? "";
   const [character, setCharacter] = useState(null);
   const [persistedCharacter, setPersistedCharacter] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [activeSection, setActiveSection] = useState("card");
+  const workspaceRef = usePageFade(activeSection, compact, '.editor-sidebar-directory, .dynamic-settings-conversation-list, .character-basic-content');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [basicSaveNotice, setBasicSaveNotice] = useState("");
   const [loreDirty, setLoreDirty] = useState(false);
   const [variablesDirty, setVariablesDirty] = useState(false);
   const [regexDirty, setRegexDirty] = useState(false);
+  const [scriptsDirty, setScriptsDirty] = useState(false);
+  const [frontendDirty, setFrontendDirty] = useState(false);
   const [dynamicDirty, setDynamicDirty] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(CHARACTER_EDITOR_SIDEBAR_DEFAULT_WIDTH);
+  const sidebarPreference = useCharacterEditorSidebarState();
+  const sidebarCollapsed = sidebarPreference.collapsed;
   const [sidebarResize, setSidebarResize] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
+  const [subpage, setSubpage] = useState(null);
+  const { feedback, registerSaveFeedback } = useEditorFeedbackHost();
+  const registerSubpage = useCallback(page => {
+    setSubpage(page);
+    return () => setSubpage(current => current === page ? null : current);
+  }, []);
+  const presentation = useMemo(() => ({ compact, registerSubpage, registerBackHandler, registerSaveFeedback }), [compact, registerSubpage, registerBackHandler, registerSaveFeedback]);
+  useEffect(() => {
+    if (!compact || !subpage || !registerBackHandler) return undefined;
+    return registerBackHandler(() => { subpage.back(); return true; });
+  }, [compact, subpage, registerBackHandler]);
   const collectionRef = useRef(null);
   const settingLibraryRef = useRef(null);
   const variableConfigRef = useRef(null);
   const regexRulesRef = useRef(null);
+  const scriptsRef = useRef(null);
+  const frontendRef = useRef(null);
   const dynamicSettingsRef = useRef(null);
   const allowCloseRef = useRef(false);
 
@@ -97,13 +127,17 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       ? variablesDirty
       : activeSection === "regex"
         ? regexDirty
+        : activeSection === 'scripts'
+          ? scriptsDirty
+        : activeSection === 'frontend'
+          ? frontendDirty
         : activeSection === "dynamic"
           ? dynamicDirty
         : basicDirty;
 
   useEffect(() => {
-    applyAppearanceTheme(null);
-  }, []);
+    if (embeddedCharacterId === undefined) applyAppearanceTheme(null);
+  }, [embeddedCharacterId]);
 
   useEffect(() => {
     let active = true;
@@ -116,12 +150,12 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         setCharacter(found);
         setPersistedCharacter(found);
       })
-      .catch(() => {})
+      .catch((error) => { if (active) setSaveError(error instanceof Error ? error.message : String(error)); })
       .finally(() => {
         if (active) setLoaded(true);
       });
 
-    showCurrentWindow().catch(() => {});
+    if (embeddedCharacterId === undefined) showCurrentWindow().catch(() => {});
     return () => {
       active = false;
     };
@@ -180,7 +214,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   }
 
   async function saveCurrentDraft() {
-    if (activeSection !== "lore" && activeSection !== "variables" && activeSection !== "regex" && activeSection !== "dynamic") return saveBasicInfo();
+    if (!["lore", "variables", "regex", 'scripts', 'frontend', "dynamic"].includes(activeSection)) return saveBasicInfo();
     if (saving) return false;
     setSaving(true);
     try {
@@ -190,11 +224,17 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
           ? variableConfigRef.current
           : activeSection === "regex"
             ? regexRulesRef.current
+            : activeSection === 'scripts'
+              ? scriptsRef.current
+            : activeSection === 'frontend'
+              ? frontendRef.current
             : dynamicSettingsRef.current;
       const saved = await editor?.save?.() || false;
       if (saved && activeSection === "lore") setLoreDirty(false);
       if (saved && activeSection === "variables") setVariablesDirty(false);
       if (saved && activeSection === "regex") setRegexDirty(false);
+      if (saved && activeSection === 'scripts') setScriptsDirty(false);
+      if (saved && activeSection === 'frontend') setFrontendDirty(false);
       if (saved && activeSection === "dynamic") setDynamicDirty(false);
       return saved;
     } finally {
@@ -204,11 +244,13 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
 
   function completePendingAction(action) {
     setPendingAction(null);
+    if (action?.type === "navigate") { action.run(); return; }
     if (action?.type === "section") {
       setActiveSection(action.sectionId);
       return;
     }
     if (action?.type === "close") {
+      if (onClose) { onClose(); return; }
       allowCloseRef.current = true;
       appWindow.close().catch(() => {
         allowCloseRef.current = false;
@@ -230,6 +272,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       setPendingAction({ type: "close" });
       return;
     }
+    if (onClose) { onClose(); return; }
     allowCloseRef.current = true;
     appWindow.close().catch(() => {
       allowCloseRef.current = false;
@@ -247,6 +290,12 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     } else if (activeSection === "regex") {
       regexRulesRef.current?.discard?.();
       setRegexDirty(false);
+    } else if (activeSection === 'scripts') {
+      scriptsRef.current?.discard?.();
+      setScriptsDirty(false);
+    } else if (activeSection === 'frontend') {
+      frontendRef.current?.discard?.();
+      setFrontendDirty(false);
     } else if (activeSection === "dynamic") {
       dynamicSettingsRef.current?.discard?.();
       setDynamicDirty(false);
@@ -261,6 +310,14 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   }
 
   const activeLabel = EDITOR_SECTIONS.find((section) => section.id === activeSection)?.label || "基础资料";
+  useEffect(() => {
+    if (!navigationGuardRef) return;
+    navigationGuardRef.current = run => {
+      if (dirty) setPendingAction({ type: 'navigate', run });
+      else run();
+    };
+    return () => { navigationGuardRef.current = null; };
+  }, [dirty, navigationGuardRef]);
 
   useEffect(() => {
     document.title = character ? `${characterName(character)} - 角色编辑器 - ElecKoi` : "角色编辑器 - ElecKoi";
@@ -337,6 +394,21 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         onDirtyChange: setRegexDirty,
         setController: (controller) => { regexRulesRef.current = controller; },
       }, fallback) ?? fallback;
+    } else if (activeSection === 'scripts') {
+      const fallback = <ScriptLibrariesPanel ref={scriptsRef} characterId={character.id}
+        scriptLibraries={characterConfiguration.scripts} scriptRuntimeConnection={characterConfiguration.scriptRuntimeConnection}
+        onDirtyChange={setScriptsDirty} />;
+      editorContent = renderCharacterEditorSection?.('scripts', {
+        characterId: character.id, dirty: scriptsDirty, saving,
+        configuration: characterConfiguration.scripts, onDirtyChange: setScriptsDirty,
+        setController: controller => { scriptsRef.current = controller; },
+      }, fallback) ?? fallback;
+    } else if (activeSection === 'frontend') {
+      const fallback = <CharacterFrontendPanel ref={frontendRef} characterId={character.id} onDirtyChange={setFrontendDirty} />;
+      editorContent = renderCharacterEditorSection?.('frontend', {
+        characterId: character.id, dirty: frontendDirty, saving, onDirtyChange: setFrontendDirty,
+        setController: controller => { frontendRef.current = controller; },
+      }, fallback) ?? fallback;
     } else if (activeSection === "dynamic") {
       const fallback = <DynamicSettingsPanel
         ref={dynamicSettingsRef}
@@ -354,7 +426,8 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   }
 
   return (
-    <main className="qq-shell qq-character-editor-window-shell" style={{ "--character-editor-sidebar-width": `${sidebarWidth}px` }}>
+    <EditorPresentationContext.Provider value={presentation}>
+    <main className={`qq-shell qq-character-editor-window-shell${compact && subpage ? ' is-editor-subpage' : ''}${compact && sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`} style={{ "--character-editor-sidebar-width": `${sidebarWidth}px` }}>
       <aside className="character-editor-side-panel">
         <header className="side-panel-header" data-tauri-drag-region>
           <div className="side-panel-brand">
@@ -362,11 +435,12 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
             <strong>ElecKoi</strong>
           </div>
         </header>
-        <nav className="character-editor-navigation" aria-label="角色编辑器功能">
+        <nav id="character-editor-navigation" className="character-editor-navigation" aria-label="角色编辑器功能">
           {EDITOR_SECTIONS.map(({ id, label, Icon }) => (
             <button
               key={id}
               type="button"
+              aria-label={label}
               aria-current={activeSection === id ? "page" : undefined}
               onClick={() => requestSection(id)}
             >
@@ -375,6 +449,11 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
             </button>
           ))}
         </nav>
+        {compact && <button type="button" className="character-editor-sidebar-toggle"
+          aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'} aria-expanded={!sidebarCollapsed}
+          aria-controls="character-editor-navigation" disabled={sidebarPreference.busy} onClick={sidebarPreference.toggle}>
+          {sidebarCollapsed ? <CaretRight size={20} aria-hidden="true" /> : <CaretLeft size={20} aria-hidden="true" />}
+        </button>}
         <div
           className={`character-editor-sidebar-resizer${sidebarResize ? " is-resizing" : ""}`}
           role="separator"
@@ -400,13 +479,14 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       </aside>
 
       <section className="character-editor-main-panel">
-        <TitleBar splitSurface onClose={requestClose} />
+        {renderHeader ? renderHeader({ character, dirty, saving, save: saveCurrentDraft, subpage, feedback: activeSection === 'card' ? { error: saveError, notice: basicSaveNotice } : feedback }) : <TitleBar splitSurface onClose={requestClose} />}
         <section
-          className={`character-editor-workspace${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
+          className={`character-editor-workspace${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === 'scripts' ? ' is-scripts' : ''}${activeSection === 'frontend' ? ' is-frontend' : ''}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
           aria-label={activeLabel}
+          ref={workspaceRef}
         >
           {loaded && !character
-            ? <p className="character-editor-missing">角色不存在</p>
+            ? <p className="character-editor-missing" role={saveError ? 'alert' : undefined}>{saveError || '角色不存在'}</p>
             : editorContent || <h1 id="character-editor-section-title">{activeLabel}</h1>}
         </section>
       </section>
@@ -419,6 +499,9 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         onDiscard={discardAndContinue}
         onSave={saveAndContinue}
       />
+      {compact && <AppErrorDialog notice={sidebarPreference.error ? { id: sidebarPreference.error, message: sidebarPreference.error } : null}
+        onDismiss={sidebarPreference.dismissError} />}
     </main>
+    </EditorPresentationContext.Provider>
   );
 }

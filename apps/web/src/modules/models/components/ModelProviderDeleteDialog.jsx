@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -53,7 +54,7 @@ export function ModelProviderDeleteDialog({ target, deleting = false, error = ""
     : "这个尚未保存的模型入口将被移除。";
 
   return createPortal(
-    <div className="model-provider-delete-overlay" role="presentation" onMouseDown={() => !deleting && onCancel()}>
+    <SystemBarOverlay className="model-provider-delete-overlay" role="presentation" onMouseDown={() => !deleting && onCancel()}>
       <section
         ref={dialogRef}
         className="model-provider-delete-dialog"
@@ -76,7 +77,7 @@ export function ModelProviderDeleteDialog({ target, deleting = false, error = ""
           </button>
         </div>
       </section>
-    </div>,
+    </SystemBarOverlay>,
     document.body,
   );
 }

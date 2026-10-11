@@ -6,6 +6,8 @@ import { modelOptionsKey } from "../model/modelProviderCatalog.js";
 import { modelParameterState } from "../model/modelConfigDraft.js";
 import { useModelCapabilities } from "../hooks/useModelCapabilities.js";
 import { ModelParametersSection } from "./ModelParametersSection.jsx";
+import { MobileChatModelPicker } from '../../../mobile/MobileChatModelPicker.jsx';
+import { isMobilePresentation } from '../../../mobile/MobileConversationOverlay.jsx';
 import {
   DshChevronDownIcon,
   DshCloseIcon,
@@ -59,6 +61,7 @@ export function ModelPicker({
   onSaveModelConfig,
   onNotify,
 }) {
+  const mobile = isMobilePresentation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("models");
   const [changedConfigIds, setChangedConfigIds] = useState([]);
@@ -112,7 +115,7 @@ export function ModelPicker({
     || draftSelection.model !== committedSelection.model;
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || mobile) return undefined;
     const closeOnEscape = (event) => {
       if (event.key !== "Escape" || leaveDialogOpen) return;
       event.preventDefault();
@@ -121,7 +124,7 @@ export function ModelPicker({
     };
     window.addEventListener("keydown", closeOnEscape, true);
     return () => window.removeEventListener("keydown", closeOnEscape, true);
-  }, [hasChanges, leaveDialogOpen, open, saving]);
+  }, [hasChanges, leaveDialogOpen, open, saving, mobile]);
 
   function openPicker() {
     const nextConfigs = configs.map(cloneConfig);
@@ -260,7 +263,14 @@ export function ModelPicker({
   return (
     <div className="chat-model-picker">
       {trigger}
-      {open ? createPortal(
+      {open && mobile ? <MobileChatModelPicker title={title} elevated={elevated} configs={activeConfigs} focusedConfig={focusedConfig}
+        selectedConfig={draftSelectedConfig} selectedModelId={selectedModelId} followingMain={followingMain} allowFollowMain={allowFollowMain}
+        tab={tab} setTab={setTab} query={query} setQuery={setQuery} visibleModels={visibleModels} loading={Boolean(loadingConfigId)} saving={saving}
+        hasChanges={hasChanges} canEditParameters={Boolean(onSaveModelConfig)} parameterForm={parameterForm} parameterState={parameterState}
+        modelCapabilities={modelCapabilities} onParameters={updateParameters} onChooseConfig={chooseConfig} onChooseModel={chooseModel}
+        onOpenConfig={config => { setFocusedConfigId(config.id); setQuery(''); }} onFollowMain={followMainModel} onRefresh={refreshModels}
+        onSave={saveChanges} onClose={discardAndClosePicker} beforeClose={() => { if (hasChanges) { requestClosePicker(); return false; } return true; }} selectionIndicator={ModelSelectionIndicator}
+      /> : open ? createPortal(
         <div className={`chat-model-backdrop${elevated ? " is-elevated" : ""}`} role="presentation" onMouseDown={requestClosePicker}>
           <section className="chat-model-panel" role="dialog" aria-modal="true" aria-label={title} aria-busy={saving} onMouseDown={(event) => event.stopPropagation()}>
             <header>

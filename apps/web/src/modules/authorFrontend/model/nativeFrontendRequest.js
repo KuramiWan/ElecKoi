@@ -1,0 +1,31 @@
+/** UI commands map only to the generated native project service. */
+export async function requestNativeFrontend(service, owner, method, params = {}) {
+  if (!service) throw new Error('原生前端插件未启用');
+  const remote = service.projects;
+  const result = await invoke();
+  if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
+  return result.value;
+  function invoke() {
+  switch (method) {
+    case 'frontends.workspace': return remote.workspace(owner);
+    case 'frontends.import': return remote.importProject(owner, params);
+    case 'frontends.select': return remote.select(owner, params.projectId);
+    case 'frontends.delete': return remote.delete(owner, params.projectId);
+    case 'frontends.readFile': return remote.readFile(owner, params.projectId, {
+      ...(params.path !== undefined ? { path: params.path } : {}), ...(params.encoding !== undefined ? { encoding: params.encoding } : {}),
+    });
+    case 'frontends.writeFile': return remote.writeFile(owner, params.projectId, {
+      path: params.path, content: params.content, ...(params.encoding !== undefined ? { encoding: params.encoding } : {}),
+    });
+    case 'frontends.export': return remote.exportProject(owner, params.projectId);
+    case 'frontends.setMessageRenderer': return remote.setMessageRenderer(owner, params.enabled);
+    case 'frontends.updateProject': return remote.updateProject(owner, params.projectId, params.patch);
+    case 'frontends.replaceFiles': return remote.replaceFiles(owner, params.projectId, {
+      files: params.files, ...(params.deletePaths !== undefined ? { deletePaths: params.deletePaths } : {}),
+      ...(params.entryFile !== undefined ? { entryFile: params.entryFile } : {}), ...(params.manifest !== undefined ? { manifest: params.manifest } : {}),
+    });
+    case 'frontends.restoreDefault': return remote.restoreDefault(owner);
+    default: throw new Error(`未知的原生前端操作：${method}`);
+  }
+  }
+}

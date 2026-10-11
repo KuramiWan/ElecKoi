@@ -1,0 +1,49 @@
+{
+  "name": "@eleckoi/dsh-client-tavern-shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": {
+      "types": "./src/client/types.ts",
+      "default": "./src/client.js"
+    },
+    "./runtime": "./src/runtime.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "dependencies": {
+    "@eleckoi/compatibility-tavern-shared": "workspace:*"
+  },
+  "scripts": {},
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiTavernShared",
+        "kind": "service",
+        "title": "HTML 显示资源",
+        "description": "导入 HTML 使用的通用浏览器库，不提供外部作者 SDK 或后台脚本运行器。",
+        "mode": "call-and-listen",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe"
+        ]
+      }
+    ]
+  }
+}

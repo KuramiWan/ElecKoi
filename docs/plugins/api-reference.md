@@ -4,7 +4,7 @@
 
 本表从桌面运行清单与各 bundle 的 `package.json.eleckoi.developerInterfaces` 生成。DSH 基准为 `0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 
-当前共 **14 个 bundle、89 个开发接口**：56 个界面插槽、15 个服务、0 个事件、1 个贡献点、17 个 Remote 合同。
+当前共 **17 个 bundle、100 个开发接口**：60 个界面插槽、18 个服务、0 个事件、2 个贡献点、20 个 Remote 合同。
 
 接口标题和说明用于插件中心展示；真实调用合同以对应类型导出和实现为准。完整参数、返回值和数据字段见 [Client 参考](api-client.md)、[Host 参考](api-host.md) 与 [Remote 调用声明](api-remote.md)。使用方法见 [界面插槽](ui-slots.md)、[服务接口](services.md) 与 [能力贡献](contributions.md)。
 
@@ -12,8 +12,8 @@
 
 | Bundle | 界面插槽 | 服务 | 事件 | 贡献点 | Remote | 合计 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `@eleckoi/dsh-client-characters` | 8 | 1 | 0 | 0 | 0 | 9 |
-| `@eleckoi/dsh-client-character-configuration` | 0 | 3 | 0 | 0 | 0 | 3 |
+| `@eleckoi/dsh-client-characters` | 10 | 1 | 0 | 0 | 0 | 11 |
+| `@eleckoi/dsh-client-character-configuration` | 0 | 4 | 0 | 0 | 0 | 4 |
 | `@eleckoi/dsh-client-conversations` | 1 | 1 | 0 | 0 | 0 | 2 |
 | `@eleckoi/dsh-client-creator-studio` | 0 | 1 | 0 | 0 | 0 | 1 |
 | `@eleckoi/dsh-client-display-preferences` | 0 | 1 | 0 | 0 | 0 | 1 |
@@ -21,9 +21,12 @@
 | `@eleckoi/dsh-client-persona` | 1 | 1 | 0 | 0 | 0 | 2 |
 | `@eleckoi/dsh-client-presets` | 6 | 1 | 0 | 0 | 0 | 7 |
 | `@eleckoi/dsh-client-web-search` | 0 | 1 | 0 | 0 | 0 | 1 |
-| `@eleckoi/dsh-client-shell` | 15 | 1 | 0 | 0 | 0 | 16 |
-| `@eleckoi/dsh-client-roleplay` | 25 | 1 | 0 | 0 | 0 | 26 |
-| `@eleckoi/dsh-product-api` | 0 | 1 | 0 | 0 | 17 | 18 |
+| `@eleckoi/dsh-client-shell` | 16 | 1 | 0 | 0 | 0 | 17 |
+| `@eleckoi/dsh-client-roleplay` | 26 | 1 | 0 | 0 | 0 | 27 |
+| `@eleckoi/dsh-client-author` | 0 | 2 | 0 | 0 | 0 | 2 |
+| `@eleckoi/dsh-client-tavern-shared` | 0 | 1 | 0 | 0 | 0 | 1 |
+| `@eleckoi/dsh-compatibility-host` | 0 | 0 | 0 | 1 | 0 | 1 |
+| `@eleckoi/dsh-product-api` | 0 | 0 | 0 | 0 | 20 | 20 |
 | `@eleckoi/dsh-runtime` | 0 | 1 | 0 | 0 | 0 | 1 |
 | `@eleckoi/dsh-web-search-tavily` | 0 | 0 | 0 | 1 | 0 | 1 |
 
@@ -31,7 +34,7 @@
 
 展示角色列表和资料，提供角色操作入口。
 
-来源：`packages/dsh-client-characters/package.json`
+来源：`packages/client/features/dsh-client-characters/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -42,6 +45,8 @@
 | `eleckoi.character.editor.lore` | 设定库编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色设定库编辑。 | — |
 | `eleckoi.character.editor.variables` | 变量编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色变量编辑。 | — |
 | `eleckoi.character.editor.regex` | 正则编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色正则规则编辑。 | — |
+| `eleckoi.character.editor.scripts` | 脚本库编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色配置中的全局、角色和当前预设脚本编辑。 | — |
+| `eleckoi.character.editor.frontend` | 角色前端编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色配置中的前端文件项目导入、编辑、预览和启用。 | — |
 | `eleckoi.character.editor.dynamic` | 分支设定编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展分支设定编辑。 | — |
 | `eleckoi.character.manager` | 角色卡管理器 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换角色卡导入、导出和批量管理界面。 | — |
 
@@ -49,30 +54,31 @@
 
 读取、保存并更新设定库、变量、正则和分支设定。
 
-来源：`packages/dsh-client-character-configuration/package.json`
+来源：`packages/client/features/dsh-client-character-configuration/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `eleckoiSettingLibraries` | 设定库服务 | 服务 | 提供 | `call` | `client` | 读取、保存和订阅角色设定库及对话设定。 | `getSnapshot`、`subscribe`、`read`、`readUntracked`、`save`、`saveViewState`、`getConversationSnapshot`、`readConversations`、`saveConversation`、`resetConversation`、`saveConversationVersion` |
 | `eleckoiVariables` | 角色变量服务 | 服务 | 提供 | `call` | `client` | 读取、保存和订阅角色变量配置。 | `getSnapshot`、`subscribe`、`read`、`readUntracked`、`save`、`saveViewState` |
+| `eleckoiScriptLibraries` | 脚本库服务 | 服务 | 提供 | `call-and-listen` | `client` | 按全局、角色和当前预设归属读取、保存与订阅正式脚本库。 | `getSnapshot`、`read`、`save`、`saveAll`、`subscribe`、`subscribeChanges`、`activePreset`、`openDirectory` |
 | `eleckoiRegexRules` | 角色正则服务 | 服务 | 提供 | `call` | `client` | 读取、保存、导入、导出并测试角色正则。 | `getSnapshot`、`subscribe`、`read`、`readUntracked`、`save`、`import`、`export`、`test` |
 
 ## `@eleckoi/dsh-client-conversations`
 
 管理聊天列表、历史消息和当前聊天状态。
 
-来源：`packages/dsh-client-conversations/package.json`
+来源：`packages/client/features/dsh-client-conversations/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `eleckoiConversations` | 聊天记录服务 | 服务 | 提供 | `call` | `client` | 读取聊天列表、消息、轨迹和当前生成状态。 | `getSnapshot`、`subscribe`、`getDetailsSnapshot`、`subscribeDetails`、`getChatSnapshot`、`subscribeChat`、`getTimelineSnapshot`、`subscribeTimeline`、`getStreamSnapshot`、`subscribeStream`、`refresh`、`create`、`open`、`pageOlder`、`observeRequestPreviews`、`readRequestPreview`、`openTimeline`、`closeTimeline`、`uploadFile`、`prepareNativeInput`、`send`、`regenerate`、`cancelRequest`、`readSelection`、`saveSelection`、`readModelSelection`、`readTrajectory`、`exportArchive`、`importArchive`、`revealFile`、`selectModel`、`selectOpening`、`updateOpening`、`rememberSession`、`preferredSession`、`forgetSession`、`readAuthorState`、`replaceAuthorVariableState`、`editMessage`、`deleteMessagesFrom`、`delete`、`getModelSelectionSnapshot`、`subscribeModelSelection` |
+| `eleckoiConversations` | 聊天记录服务 | 服务 | 提供 | `call` | `client` | 读取聊天列表、消息、轨迹和当前生成状态。 | `getSnapshot`、`subscribe`、`getDetailsSnapshot`、`subscribeDetails`、`getStatsSnapshot`、`subscribeStats`、`getChatSnapshot`、`subscribeChat`、`getTimelineSnapshot`、`subscribeTimeline`、`getStreamSnapshot`、`readImage`、`subscribeStream`、`subscribeGeneration`、`getGenerationReply`、`refresh`、`create`、`open`、`pageOlder`、`observeRequestPreviews`、`readRequestPreview`、`openTimeline`、`closeTimeline`、`uploadFile`、`readInputDraft`、`writeInputDraft`、`submitInput`、`prepareNativeInput`、`send`、`regenerate`、`cancelRequest`、`cancelGeneration`、`readSelection`、`saveSelection`、`readModelSelection`、`readTrajectory`、`exportArchive`、`importArchive`、`revealFile`、`selectModel`、`selectOpening`、`updateOpening`、`rememberSession`、`preferredSession`、`forgetSession`、`readAuthorState`、`replaceAuthorVariableState`、`editMessage`、`deleteMessagesFrom`、`delete`、`getModelSelectionSnapshot`、`subscribeModelSelection` |
 | `eleckoi.conversation.list` | 聊天列表 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换聊天列表。 | — |
 
 ## `@eleckoi/dsh-client-creator-studio`
 
 管理创作工作室项目目录。
 
-来源：`packages/dsh-client-creator-studio/package.json`
+来源：`packages/client/features/dsh-client-creator-studio/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -82,7 +88,7 @@
 
 通过 DSH Settings 保存 ElecKoi 的显示偏好。
 
-来源：`packages/dsh-client-display-preferences/package.json`
+来源：`packages/client/features/dsh-client-display-preferences/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -92,7 +98,7 @@
 
 通过 DSH Settings、Credentials 和 Remote 管理模型配置并提供模型选择。
 
-来源：`packages/dsh-client-models/package.json`
+来源：`packages/client/features/dsh-client-models/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -102,7 +108,7 @@
 
 管理用户名称、头像和角色扮演身份。
 
-来源：`packages/dsh-client-persona/package.json`
+来源：`packages/client/features/dsh-client-persona/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -113,7 +119,7 @@
 
 管理预设内容、提示词、工具策略和正则。
 
-来源：`packages/dsh-client-presets/package.json`
+来源：`packages/client/features/dsh-client-presets/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -129,7 +135,7 @@
 
 通过 DSH Settings、Credentials 与 Remote 管理联网搜索配置。
 
-来源：`packages/dsh-client-web-search/package.json`
+来源：`packages/client/features/dsh-client-web-search/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -139,10 +145,11 @@
 
 提供主窗口、导航、设置和插件中心。
 
-来源：`packages/dsh-client-shell/package.json`
+来源：`packages/client/features/dsh-client-shell/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `eleckoi.shell.window` | 窗口呈现 | 界面插槽 | 提供 | `replace` | `root` | 按运行平台装配窗口页面，保留共享 Client 业务服务和导航合同。 | — |
 | `layout` | 桌面布局服务 | 服务 | 提供 | `call` | `client` | 切换主面板并控制桌面导航和侧栏。 | `selectPanel`、`beginNavigation`、`toggleSidebar`、`openRightbar`、`closeRightbar` |
 | `sidebar.brand.mark` | 品牌图标 | 界面插槽 | 提供 | `replace` | `root` | 提供侧边栏品牌图标。 | — |
 | `sidebar.brand.name` | 品牌名称 | 界面插槽 | 提供 | `replace` | `root` | 提供侧边栏品牌名称。 | — |
@@ -164,7 +171,7 @@
 
 提供角色聊天界面，并将角色配置接入 DSH 对话运行。
 
-来源：`packages/dsh-client-roleplay/package.json`
+来源：`packages/client/features/dsh-client-roleplay/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -193,30 +200,58 @@
 | `eleckoi.roleplay.conversation.plan-review.actions` | 计划审核操作 | 界面插槽 | 提供 | `append` | `session` | 在输入区被计划审核组件接管时追加操作。 | — |
 | `eleckoi.roleplay.trajectory.images` | 轨迹图片预览 | 界面插槽 | 提供 | `replace` | `session` | 提供轨迹详情中的图片预览。 | — |
 | `eleckoi.roleplay.trajectory` | 角色聊天轨迹 | 界面插槽 | 提供 | `replace` | `session` | 替换角色聊天轨迹视图，读取正式 Session 轨迹。 | — |
+| `eleckoi.roleplay.chat.frontend` | 角色聊天前端 | 界面插槽 | 提供 | `replace` | `session` | 包装角色前端或默认聊天内容区，不替换现有输入框和会话操作。 | — |
 | `eleckoiRequestPreviews` | 运行期间请求预览 | 服务 | 提供 | `call` | `host` | 在实际发送位置捕获请求，运行期间共用未变化的消息内容；不写入日志、数据库或投影缓存。 | `capture`、`list`、`read`、`stream`、`forget`、`close` |
+
+## `@eleckoi/dsh-client-author`
+
+来源：`packages/client/features/dsh-client-author/package.json`
+
+| ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `eleckoiAuthorRuntime` | 原生作者运行环境 | 服务 | 提供 | `call` | `client` | 启动正式脚本库中的原生程序，处理变量规则并绑定当前聊天的作者页面与输入框。 | `getSnapshot`、`subscribe`、`getUiSnapshot`、`subscribeUi`、`invokeButton`、`dismissPanel`、`mountScriptPanelDocument`、`registerChatUi`、`mountDocument`、`mountProjectDocument` |
+| `eleckoiFrontendProjects` | 原生前端项目 | 服务 | 提供 | `call` | `client` | 通过正式 Remote 管理应用和角色文件项目，按明确归属订阅最新工作区。 | `watch` |
+
+## `@eleckoi/dsh-client-tavern-shared`
+
+来源：`packages/client/features/dsh-client-tavern-shared/package.json`
+
+| ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `eleckoiTavernShared` | HTML 显示资源 | 服务 | 提供 | `call-and-listen` | `client` | 导入 HTML 使用的通用浏览器库，不提供外部作者 SDK 或后台脚本运行器。 | `getSnapshot`、`subscribe` |
+
+## `@eleckoi/dsh-compatibility-host`
+
+来源：`packages/host/compatibility-host/package.json`
+
+| ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `eleckoiHtmlResources` | HTML 显示资源 | 贡献点 | 接入 | `serve-assets` | `host` | 为导入的 HTML 提供同源浏览器库和静态显示资源，不启动外部脚本库。 | 所属：`webServer` |
 
 ## `@eleckoi/dsh-product-api`
 
 ElecKoi 产品能力的 DSH Host Remote 接口。
 
-来源：`packages/dsh-product-api/package.json`
+来源：`packages/host/product-api/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `eleckoiConversationLifecycle` | 聊天流程参与 | 服务 | 提供 | `call` | `host` | Host 插件注册生成前准备、保存后收尾及消息回退处理，回调完成后继续原流程。 | `register` |
+| `eleckoiAuthorFrontends` | 原生作者前端项目 | Remote 合同 | 提供 | `call-and-listen` | `host` | 按明确应用或角色归属管理文件项目、资源、选择与清单，监听不含源码正文的修改通知。 | `workspace`、`importProject`、`select`、`delete`、`readFile`、`writeFile`、`exportProject`、`setMessageRenderer`、`updateProject`、`replaceFiles`、`restoreDefault`、`changes` |
+| `eleckoiAuthorScripts` | 原生作者脚本运行 | Remote 合同 | 提供 | `call-and-listen` | `host` | 读取明确声明原生标准的启用脚本，通过唯一运行页面的双向流等待候选规则结果；桌面默认启动装配尚在实施。 | `read`、`connect`、`getSettings`、`setSettings` |
+| `eleckoiAuthorVariables` | 原生作者变量 | Remote 合同 | 提供 | `call` | `host` | 读取原生聊天变量与配置，将 SDK 修改交给同一作者规则处理流程，并在成功后保存和发布消息变更。 | `getState`、`getConfig`、`setState`、`merge`、`applyPatch`、`reset` |
 | `eleckoiSystem` | 桌面运行状态 | Remote 合同 | 提供 | `call` | `host` | 读取当前 ElecKoi DSH Host 的架构版本与 Remote 协议状态。 | `status` |
 | `eleckoiCharactersRemote` | 角色数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和维护角色、分组及角色卡导入导出。 | `list`、`create`、`update`、`select`、`saveGroups`、`delete`、`export`、`prepareImport`、`commitImport`、`discardImport` |
 | `eleckoiCharacterChangesRemote` | 角色数据变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知角色、分组和当前角色发生变化。 | `changes` |
 | `eleckoiPersonaRemote` | 用户资料数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取并保存用户名称与头像资料。 | `read`、`save` |
 | `eleckoiPersonaChangesRemote` | 用户资料变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知用户资料发生变化。 | `changes` |
-| `eleckoiCharacterConfiguration` | 角色配置数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和保存设定库与变量配置。 | `readSettingLibrary`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`readConversationSettingLibraries`、`saveConversationSettingLibrary`、`resetConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`readVariableConfig`、`saveVariableConfig`、`saveVariableConfigViewState`、`readRegexRules`、`saveRegexRules`、`importRegexRules`、`exportRegexRules`、`testRegexRule` |
-| `eleckoiCharacterConfigurationChanges` | 角色配置变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知设定库、变量、正则和 Agent 预设变化。 | `changes` |
-| `eleckoiAgentPresetsRemote` | Agent 预设数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 管理 Agent 预设、分组及导入导出。 | `catalog`、`read`、`save`、`create`、`import`、`export`、`setActive`、`createGroup`、`renameGroup`、`assignGroup`、`deleteGroup`、`delete` |
+| `eleckoiCharacterConfiguration` | 角色配置数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和保存设定库、变量、正则与全局、角色、预设脚本库。 | `readSettingLibrary`、`replaceSettingLibraryContent`、`updateSettingLibraryEntries`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`readConversationSettingLibraries`、`saveConversationSettingLibrary`、`resetConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`readVariableConfig`、`saveVariableConfig`、`saveVariableConfigViewState`、`readRegexRules`、`saveRegexRules`、`importRegexRules`、`exportRegexRules`、`testRegexRule`、`readScriptLibrary`、`readScriptWorkspace`、`saveScriptLibrary`、`saveScriptLibraries` |
+| `eleckoiCharacterConfigurationChanges` | 角色配置变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知设定库、变量、正则、脚本库和 Agent 预设变化。 | `changes` |
+| `eleckoiAgentPresetsRemote` | Agent 预设数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 管理 Agent 预设、分组及导入导出。 | `catalog`、`read`、`save`、`updateEntries`、`create`、`import`、`export`、`setActive`、`createGroup`、`renameGroup`、`assignGroup`、`deleteGroup`、`delete` |
 | `eleckoiCreatorStudioRemote` | 创作项目数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取、创建和删除创作工作室项目。 | `list`、`create`、`delete` |
 | `eleckoiCreatorStudioChangesRemote` | 创作项目变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知创作项目目录发生变化。 | `changes` |
 | `eleckoiDisplayPreferencesRemote` | 显示偏好配置 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和保存显示偏好，并将本地壁纸写入媒体库。 | `read`、`updateUi`、`setChatDisplay` |
 | `eleckoiConversationModelsRemote` | 全局模型选择 | Remote 合同 | 提供 | `call` | `host` | 读取并选择全部聊天下一轮共同使用的模型。 | `current`、`select` |
-| `eleckoiConversationsRemote` | 聊天记录目录 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取聊天目录与角色关联元数据；消息正文、分页和运行状态由 DSH Session 协议提供。 | `list`、`details`、`requestPreview`、`projectDisplay`、`variableTimeline`、`authorState`、`replaceVariableState`、`exportArchive`、`importArchive`、`revealFile`、`create`、`delete`、`preparePrompt`、`waitForGeneration`、`editMessage`、`deleteMessagesFrom`、`regenerateMessage`、`selectOpening`、`updateOpening`、`startRegeneration` |
+| `eleckoiConversationsRemote` | 聊天记录目录 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取聊天目录与角色关联元数据；消息正文、分页和运行状态由 DSH Session 协议提供。 | `list`、`details`、`requestPreview`、`projectDisplay`、`variableTimeline`、`authorState`、`replaceVariableState`、`exportArchive`、`importArchive`、`revealFile`、`create`、`delete`、`rename`、`fork`、`preparePrompt`、`waitForGeneration`、`editMessage`、`deleteMessagesFrom`、`regenerateMessage`、`selectOpening`、`updateOpening`、`startRegeneration` |
 | `eleckoiConversationChangesRemote` | 聊天变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知聊天目录和消息投影发生变化；消息正文仍由 DSH Session 协议读取。 | `changes` |
 | `eleckoiRequestPreviewsRemote` | 运行期间请求目录 | Remote 合同 | 提供 | `listen` | `host` | 订阅本次 Host 运行期间实际发起的请求；目录不含请求正文，关闭后不恢复。 | `requestPreviews` |
 | `eleckoiWebSearchRemote` | 联网搜索配置 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 选择搜索提供商并验证 Tavily 连接。密钥由 DSH Credentials 独立管理。 | `selection`、`select`、`testTavily` |
@@ -226,21 +261,30 @@ ElecKoi 产品能力的 DSH Host Remote 接口。
 
 通过正式会话日志修改消息、回退轮次和重新生成。
 
-来源：`packages/dsh-runtime/package.json`
+来源：`packages/host/runtime/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `eleckoiSessionEditor` | 消息编辑服务 | 服务 | 提供 | `call` | `host` | 通过正式 DSH 会话日志修改消息并回退轮次。 | `editMessage`、`rewind` |
+| `eleckoiSessionEditor` | 消息编辑服务 | 服务 | 提供 | `call` | `host` | 通过正式 DSH 会话日志修改消息并回退轮次。 | `editMessage`、`rewind`、`importTranscript` |
 
 ## `@eleckoi/dsh-web-search-tavily`
 
 ElecKoi Tavily search provider for the DSH web capability
 
-来源：`packages/dsh-web-search-tavily/package.json`
+来源：`packages/host/web-search-tavily/package.json`
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `dsh.web.search-provider:tavily` | Tavily 搜索提供器 | 贡献点 | 接入 | `register` | `host` | 向 DSH Web 注册 Tavily 联网搜索实现。 | `registerSearchProvider` |
+
+## Android 专用装配
+
+Android 组合清单为 `apps/android-host/src/androidPluginBundleManifest.json`。共享 bundle 使用上述相同合同，下列专用 bundle 不进入桌面运行组合。
+
+| Bundle | ID | 类型 | 关系 | 所属合同 |
+| --- | --- | --- | --- | --- |
+| `@eleckoi/dsh-client-mobile` | `eleckoi.shell.window` | 界面插槽 | 接入 | `@eleckoi/dsh-client-shell` |
+| `@eleckoi/dsh-client-mobile` | `main` | 界面插槽 | 接入 | `@eleckoi/dsh-client-shell` |
 
 ## 完整性规则
 

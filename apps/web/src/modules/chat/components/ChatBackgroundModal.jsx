@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DshCheckIcon, DshCloseIcon } from "../../../ui/icons/dshComposerIcons.jsx";
@@ -241,7 +242,7 @@ export function ChatBackgroundModal({
   }
 
   return createPortal((<>
-    <div className="chat-background-backdrop" role="presentation" onPointerDown={onClose}>
+    <SystemBarOverlay className="chat-background-backdrop" role="presentation" onPointerDown={onClose}>
       <section
         className="chat-background-dialog"
         role="dialog"
@@ -325,7 +326,7 @@ export function ChatBackgroundModal({
         </footer>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={chooseImage} />
       </section>
-    </div>
+    </SystemBarOverlay>
     <AvatarCropModal
       file={cropFile}
       title="裁剪聊天背景"

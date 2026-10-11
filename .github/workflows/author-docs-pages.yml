@@ -1,0 +1,59 @@
+name: ElecKoi Author SDK Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/author-docs-pages.yml'
+      - 'docs/plugins/author-sdk*'
+      - 'packages/examples/native-author/**'
+      - 'apps/web/src/assets/eleckoi-app-icon.png'
+      - 'scripts/build-author-docs-site.mjs'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: author-docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install documentation dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build SDK documentation site
+        run: pnpm build:author-docs-site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/author-docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy SDK documentation
+        id: deployment
+        uses: actions/deploy-pages@v4

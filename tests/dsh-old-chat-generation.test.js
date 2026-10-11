@@ -13,22 +13,24 @@ import TypertGatewayService from '@deepseek-ai/dsh-api-gateway'
 import { afterEach, describe, expect, it } from 'vitest'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { ConversationChangeFeed, ElecKoiConversationsApi, ElecKoiConversationLifecycle } from '@eleckoi/dsh-product-api'
+import { ConversationChangeFeed, ElecKoiConversationsApi, ElecKoiVariableProcessing } from '@eleckoi/dsh-product-api'
+import { ElecKoiConversationLifecycle } from '../packages/host/product-api/src/conversationLifecycle'
 import { TYPERT } from '@eleckoi/dsh-product-api/typert'
-import { RequestPreviewStore } from '../packages/dsh-client-roleplay/src/host/request-preview.mjs'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { MessageRepository } from '../packages/dsh-product-data/src/domain/conversations/MessageRepository'
-import { readDshSessionLog } from '../packages/dsh-runtime/src/trajectory'
-import * as sessionEditPlugin from '../packages/dsh-runtime/src/sessionEditPlugin'
-import { installRoleplaySessionRuntime } from '../packages/dsh-client-roleplay/src/host/session-runtime.mjs'
-import { writeSessionSnapshot } from '../packages/dsh-client-roleplay/src/host/session-snapshot.mjs'
+import { RequestPreviewStore } from '../packages/client/features/dsh-client-roleplay/src/host/request-preview.mjs'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
+import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
+import * as sessionEditPlugin from '../packages/host/runtime/src/sessionEditPlugin'
+import { installRoleplaySessionRuntime } from '../packages/client/features/dsh-client-roleplay/src/host/session-runtime.mjs'
+import { writeSessionSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-snapshot.mjs'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 
-async function fixture(withOpening = true, { failPreparation = false } = {}) {
+async function fixture(withOpening = true, { failPreparation = false,
+  historicalVariableState = '{}', bindHistory = true, additionalHistoryTurn, finalReply = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'eleckoi-old-generation-'))
   cleanups.push(() => {
     const child = relative(tmpdir(), root)
@@ -57,7 +59,7 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
   let conversationId, userId
   try {
     const conversations = new ConversationRepository(database, () => ({
-      initialVariableStateJson: '{}', openingText: withOpening ? '合成开场白' : '',
+      initialVariableStateJson: historicalVariableState, openingText: withOpening ? '合成开场白' : '',
       openingOptions: [], selectedOpeningId: ''
     }))
     new CharacterRepository(database, conversations, new LocalMediaStore(env.ELECKOI_MEDIA_ROOT)).create({
@@ -70,11 +72,15 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
     const messages = new MessageRepository(database)
     userId = messages.create(conversationId, 'user', '合成旧输入', 'complete').id
     const reply = messages.create(conversationId, 'assistant', '合成旧回复', 'complete', undefined, conversationId)
-    messages.bindHistoricalDshTurn(conversationId, reply.id, conversationId, 1)
+    if (bindHistory) messages.bindHistoricalDshTurn(conversationId, reply.id, conversationId, 1)
+    if (additionalHistoryTurn !== undefined) {
+      const duplicate = messages.create(conversationId, 'assistant', 'Synthetic candidate', 'complete', undefined, conversationId)
+      messages.bindHistoricalDshTurn(conversationId, duplicate.id, conversationId, additionalHistoryTurn)
+    }
     database.native.prepare(`INSERT INTO agent_setting_snapshots(conversationId,ownerType,ownerId,stateJson)
       VALUES (?,'turn',?,'[]')`).run(conversationId, userId)
     // A newly opened ledger cannot supply DSH-owned response bodies.
-    expect(() => new MessageRepository(database).list(conversationId)).toThrow('会话日志无法读取')
+    if (bindHistory) expect(() => new MessageRepository(database).list(conversationId)).toThrow('会话日志无法读取')
     // Variable inspection uses the product ledger snapshots and remains
     // available even when a historical DSH transcript is unavailable.
     expect(new MessageRepository(database).listMetadata(conversationId).map((message) => message.id))
@@ -93,7 +99,7 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
   const input = createUserMessage({ content: [{ type: 'text', text: '合成旧输入' }], source: { kind: 'user' } })
   const userEvent = session.append('user/message', { ...input, id: userId }, { surfaceOp: 'append' })
   session.append('assistant/message', { turn: 1, step: 1, stream: [], message: createAssistantMessage({
-    content: [{ type: 'text', text: '合成旧回复' }], source: { provider: 'test', model: 'test' }
+    content: [{ type: 'text', text: finalReply ? '<FINAL>Synthetic reply</FINAL>' : '合成旧回复' }], source: { provider: 'test', model: 'test' }
   }) }, { surfaceOp: 'append' })
   session.append('step/end', { turn: 1, step: 1 })
   session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
@@ -157,6 +163,9 @@ async function fixture(withOpening = true, { failPreparation = false } = {}) {
     }
   })
   await ctx.plugin(productDataPlugin)
+  const variables = new ElecKoiVariableProcessing(ctx.eleckoiProductData)
+  ctx.provide('eleckoiVariableProcessing', variables)
+  cleanups.push(() => variables.close())
   await ctx.plugin(ElecKoiConversationLifecycle)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(piAi, { providers: { test: { api: 'openai-responses', baseURL: 'http://127.0.0.1:1/v1',
@@ -192,6 +201,65 @@ function contextBridge(f) {
 }
 
 describe('old chat request preparation', { timeout: 30_000 }, () => {
+  it('reads a formally bound main-database history value without using a later pre-input checkpoint or current value', async () => {
+    const f = await fixture(true, { historicalVariableState: '{"score":7}', finalReply: true })
+    f.ctx.eleckoiProductData.replaceConversationVariableState(f.conversationId, '{"score":20}')
+    await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, 'Synthetic next input')
+    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn(f.conversationId)).toEqual({})
+    const timeline = await f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)
+    expect(timeline.current.root).toEqual({ score: 20 })
+    expect(timeline.floors.find(floor => floor.label === '第 1 楼').state.root).toEqual({ score: 7 })
+  })
+
+  it('reports missing historical variables without changing state or blocking the next prompt', async () => {
+    const f = await fixture(true, { historicalVariableState: '{"score":7}', bindHistory: false, finalReply: true })
+    const before = f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId)
+    await expect(f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)).rejects.toThrow('缺少第 1 轮完成后')
+    expect(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId)).toEqual(before)
+    expect(() => f.ctx.eleckoiConversationsApi.details(f.conversationId)).not.toThrow()
+    await expect(f.ctx.eleckoiConversationsApi.preparePrompt(f.conversationId, 'Synthetic next input'))
+      .resolves.toMatchObject({ runtimeSessionId: f.conversationId })
+  })
+
+  it('reports ambiguous historical variables without blocking the next prompt', async () => {
+    const f = await fixture(true, { additionalHistoryTurn: 1, finalReply: true })
+    await expect(f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)).rejects.toThrow('多个历史变量记录')
+    expect(() => f.ctx.eleckoiConversationsApi.details(f.conversationId)).not.toThrow()
+    await expect(f.ctx.eleckoiConversationsApi.preparePrompt(f.conversationId, 'Synthetic next input'))
+      .resolves.toMatchObject({ runtimeSessionId: f.conversationId })
+  })
+
+  it('does not use an unrelated stored turn as the source of a displayed reply', async () => {
+    const f = await fixture(true, { historicalVariableState: '{"score":7}', additionalHistoryTurn: 99, finalReply: true })
+    expect(f.ctx.eleckoiProductData.readRuntimeVariableHistory(f.conversationId, 'unrelated-session')).toEqual([])
+    const timeline = await f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)
+    expect(timeline.floors.find(floor => floor.label === '第 1 楼').state.root).toEqual({ score: 7 })
+  })
+
+  it('keeps the committed reply variables when later edits and prompt preparation change the next input state', async () => {
+    const f = await fixture()
+    const data = f.ctx.eleckoiProductData
+    const operationId = 'synthetic-completion'
+    mkdirSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId), { recursive: true })
+    data.replaceConversationVariableState(f.conversationId, '{"score":10}')
+    writeSessionSnapshot(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, f.conversationId, {
+      conversationId: f.conversationId, operationId, variablesEnabled: false,
+      generationVariableStateJson: '{"score":10}'
+    })
+    f.ctx.sessions.flush = async () => { await f.flush(); return true }
+    f.ctx.eleckoiConversationLifecycle.begin({ operationId, conversationId: f.conversationId,
+      runtimeSessionId: f.conversationId, turn: 1 })
+    const session = f.getAgent().session
+    f.ctx.emit('session/event', session, session.snapshotEvents().find(event => event.type === 'turn/end'))
+    await f.ctx.eleckoiConversationLifecycle.wait(f.conversationId, operationId)
+    expect(JSON.parse(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn(f.conversationId)[1])).toEqual({ score: 10 })
+
+    data.replaceConversationVariableState(f.conversationId, '{"score":20}')
+    await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, 'Synthetic next input')
+    expect(JSON.parse(data.readAuthorConversationState(f.conversationId).currentVariableStateJson)).toEqual({ score: 20 })
+    expect(JSON.parse(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn(f.conversationId)[1])).toEqual({ score: 10 })
+  })
+
   it.each([true, false])('prepares new input with bound old replies and opening=%s', async withOpening => {
     const f = await fixture(withOpening)
     const before = readDshSessionLog(f.sessionRoot, f.conversationId).events

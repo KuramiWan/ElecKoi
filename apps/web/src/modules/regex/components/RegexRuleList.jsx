@@ -1,9 +1,10 @@
-import { CaretDown, FileCode } from "@phosphor-icons/react";
+import { CaretDown, FileCode } from "../../../ui/icons/interfaceIcons.jsx";
 import { REGEX_SCOPES, rulesForScope } from "../model/regexRulesEditing.js";
+import { useTouchReorder } from '../../../ui/tree/useTouchReorder.js';
 
 function RuleSwitch({ checked, onChange, label }) {
   return (
-    <label className="regex-rule-switch" aria-label={label} onClick={(event) => event.stopPropagation()}>
+    <label className="regex-rule-switch" aria-label={label} onDoubleClick={event => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
       <i aria-hidden="true" />
     </label>
@@ -18,11 +19,16 @@ export function RegexRuleList({
   draggedId,
   onToggleSection,
   onSelect,
+  onOpen,
   onToggleRule,
   onMove,
   onDragState,
+  touchReorder = false,
+  dragEnabled = true,
 }) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
+  const touch = useTouchReorder({ enabled: touchReorder && dragEnabled && !normalizedQuery, onSelect,
+    onMove: ({ dragId, parentId, destinationIndex }) => onMove(parentId, dragId, destinationIndex) });
 
   function matches(rule) {
     if (!normalizedQuery) return true;
@@ -30,7 +36,7 @@ export function RegexRuleList({
   }
 
   return (
-    <div className="regex-rule-groups">
+    <div className="regex-rule-groups" {...touch.handlers}>
       {REGEX_SCOPES.map((scope) => {
         const allRules = rulesForScope(collection, scope.id);
         const visibleRules = allRules.filter(matches);
@@ -48,10 +54,13 @@ export function RegexRuleList({
                 {visibleRules.map((rule) => (
                   <div
                     key={rule.id}
-                    className={`regex-rule-row${selectedId === rule.id ? " is-selected" : ""}${draggedId === rule.id ? " is-dragging" : ""}`}
+                    className={`regex-rule-row${selectedId === rule.id ? " is-selected" : ""}${(draggedId === rule.id || touch.preview?.dragId === rule.id) ? " is-dragging" : ""}`}
+                    data-reorder-id={rule.id} data-reorder-parent={scope.id}
+                    data-reorder-target={touch.preview?.targetId === rule.id ? (touch.preview.after ? 'after' : 'before') : undefined}
                     onClick={() => onSelect(rule.id)}
+                    onDoubleClick={() => onOpen?.(rule.id)}
                     onDragOver={(event) => {
-                      if (query || !draggedId || draggedId === rule.id) return;
+                      if (!dragEnabled || query || !draggedId || draggedId === rule.id) return;
                       event.preventDefault();
                       const targetIndex = allRules.findIndex((item) => item.id === rule.id);
                       onMove(scope.id, draggedId, targetIndex);
@@ -59,7 +68,7 @@ export function RegexRuleList({
                   >
                     <div
                       className="regex-rule-main"
-                      draggable={!query}
+                      draggable={dragEnabled && !query}
                       tabIndex={0}
                       aria-label={`${rule.name || "未命名规则"}，拖动排序`}
                       onDragStart={(event) => {
@@ -69,6 +78,8 @@ export function RegexRuleList({
                       }}
                       onDragEnd={() => onDragState("")}
                       onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(rule.id); return; }
+                        if (!dragEnabled || normalizedQuery) return;
                         if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
                         event.preventDefault();
                         const sourceIndex = allRules.findIndex((item) => item.id === rule.id);

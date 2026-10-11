@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { Session } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
-import { turnOutcomesProjection } from '../packages/dsh-client-roleplay/src/host/turn-outcomes-projection.mjs'
+import { turnOutcomesProjection } from '../packages/client/features/dsh-client-roleplay/src/host/turn-outcomes-projection.mjs'
 
 describe('DSH turn outcome projection', () => {
   it('exposes user-aborted turns without classifying completed or failed turns as cancelled', async () => {

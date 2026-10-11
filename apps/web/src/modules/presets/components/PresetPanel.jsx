@@ -6,6 +6,7 @@ import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
 import { SidebarCreateButton } from '../../../ui/ui/SidebarCreateButton.jsx';
 import { useSidebarListScroll } from '../../../ui/hooks/useSidebarListScroll.js';
 import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
+import { useEditorPresentation, useEditorSubpage } from '../../../ui/ui/EditorPresentationContext.jsx';
 import defaultPresetAvatar from '../../../assets/eleckoi-app-icon.png';
 import { SaveControl } from '../../settingLibraries/index.js';
 import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from '../../settings/index.js';
@@ -104,7 +105,7 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
   return <PresetContext.Provider value={value}>{children}</PresetContext.Provider>;
 }
 
-function usePresets() {
+export function usePresets() {
   const value = useContext(PresetContext);
   if (!value) throw new Error('PresetProvider is missing.');
   return value;
@@ -299,7 +300,9 @@ export function PresetWorkspace({
   onNotify,
   onTestRegex,
   renderEditorSection,
+  renderHeader,
 }) {
+  const { compact } = useEditorPresentation();
   const { catalog, catalogModel, selectedPresetId, setCatalog, navigationGuard, refresh, error: catalogError } = usePresets();
   const [preset, setPreset] = useState(null);
   const [persisted, setPersisted] = useState(null);
@@ -321,6 +324,7 @@ export function PresetWorkspace({
   dirtyRef.current = dirty;
   requestedTabRef.current = requestedTab;
   requestedTabHandledRef.current = onRequestedTabHandled;
+  useEditorSubpage(profileEditing, '编辑预设资料', () => navigate(() => setProfileEditing(false)));
 
   function navigate(action) {
     if (savingRef.current) return;
@@ -430,6 +434,7 @@ export function PresetWorkspace({
       setPreset(saved);
       setPersisted(saved);
       await refresh(saved.id);
+      if (compact) onNotify?.('success', '预设已保存');
       return true;
     } catch (cause) {
       setError(cause?.message || '保存预设失败');
@@ -456,15 +461,17 @@ export function PresetWorkspace({
     setCatalog(next);
   }
 
-  if (loading || (!preset && !error && !catalogError)) return <section className="preset-workspace"><p className="preset-workspace-state">正在读取…</p></section>;
-  if (!preset) return <section className="preset-workspace"><p className="preset-workspace-state is-error">{error || catalogError || '没有可编辑的预设'}</p></section>;
+  const active = Boolean(preset && catalog?.activePresetId === preset.id);
+  const header = renderHeader?.({ tab, profileEditing, dirty, saving, error, active, onActivate: preset && !loading ? () => navigate(activate) : undefined, onSave: () => save() });
+  if (loading || (!preset && !error && !catalogError)) return <>{header}<section className="preset-workspace"><p className="preset-workspace-state">正在读取…</p></section></>;
+  if (!preset) return <>{header}<section className="preset-workspace"><p className="preset-workspace-state is-error">{error || catalogError || '没有可编辑的预设'}</p></section></>;
 
   const tabCounts = {
     prompts: preset.entries.length,
     tools: preset.toolGroups.filter((group) => group.included).length,
     regex: preset.regexRules.length,
   };
-  const saveAction = <SaveControl dirty={dirty} error={error} saving={saving} onSave={() => void save()} />;
+  const saveAction = compact ? null : <SaveControl dirty={dirty} error={error} saving={saving} onSave={() => void save()} />;
   const leaveDialog = <UnsavedChangesDialog
     open={Boolean(pendingAction)}
     title="保存修改？"
@@ -518,6 +525,7 @@ export function PresetWorkspace({
       />
     </section>;
     return <>
+      {header}
       {renderEditorSection?.('profile', {
         ...extensionOwner,
         onClose: () => navigate(() => setProfileEditing(false)),
@@ -546,8 +554,9 @@ export function PresetWorkspace({
   const renderedTabEditor = renderEditorSection?.(tab, extensionOwner, tabEditor) ?? tabEditor;
 
   return <>
+    {header}
     <section className="preset-workspace" aria-label="预设编辑器">
-      <PresetProfileHeader preset={preset} active={catalog?.activePresetId === preset.id} onActivate={() => navigate(activate)} onEdit={() => navigate(() => setProfileEditing(true))} />
+      <PresetProfileHeader preset={preset} active={active} showActivate={!compact || !renderHeader} onActivate={() => navigate(activate)} onEdit={() => navigate(() => setProfileEditing(true))} />
       <nav className="preset-workspace-tabs" aria-label="预设编辑区域">
         <div className="preset-workspace-tab-list">{TABS.map((item) => <button type="button" key={item.id} aria-current={tab === item.id ? 'page' : undefined} onClick={() => { if (tab !== item.id) navigate(() => setTab(item.id)); }}><span>{item.label}</span>{tabCounts[item.id] !== undefined ? <em>{tabCounts[item.id]}</em> : null}</button>)}</div>
       </nav>

@@ -1,0 +1,4 @@
+<resources>
+    <item name="runtime_startup_label" type="id" />
+    <item name="runtime_startup_progress" type="id" />
+</resources>

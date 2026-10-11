@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apply as applySettingLibraryTools } from "../apps/desktop/resources/dsh/setting-library-tools.mjs";
 import { requiredSettingCache } from "../apps/desktop/resources/dsh/required-setting-cache.mjs";
-import { settingLibraryEntrySchema } from "../packages/product-shared/src/contracts/settingLibrary/schemas.ts";
+import { settingLibraryEntrySchema } from "../packages/shared/src/contracts/settingLibrary/schemas.ts";
 
 const directories = [];
 

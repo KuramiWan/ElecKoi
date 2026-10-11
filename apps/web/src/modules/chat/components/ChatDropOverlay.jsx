@@ -1,9 +1,10 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { createPortal } from "react-dom";
 import { CHAT_IMAGE_LIMITS } from "@shared/contracts/agent/imageLimits";
 
 export function ChatDropOverlay({ disabled }) {
   return createPortal(
-    <div className="chat-image-drop-overlay" role="status">
+    <SystemBarOverlay className="chat-image-drop-overlay" role="status">
       <div className="chat-image-drop-overlay-content">
         <svg className="chat-image-drop-illustration" width="115" height="84" viewBox="0 0 115 84" fill="none" aria-hidden="true">
           <rect x="4" y="12" width="44" height="44" rx="12" transform="rotate(-23 4 12)" fill="#9CE5ED" />
@@ -21,7 +22,7 @@ export function ChatDropOverlay({ disabled }) {
           图片限制：最多 {CHAT_IMAGE_LIMITS.maxImagesPerMessage} 张，每张 20MB
         </div>}
       </div>
-    </div>,
+    </SystemBarOverlay>,
     document.body,
   );
 }

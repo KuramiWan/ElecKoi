@@ -15,7 +15,7 @@ let registration
 const browser = new Proxy({}, { get: (_target, key) => key === '__ModuleLoader__'
   ? { load: value => { registration = value } }
   : typeof window === 'undefined' ? undefined : window[key] })
-runInNewContext(source.replace('return module.exports;', 'return { ...module.exports, ChatView, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, StatsPills };'), {
+runInNewContext(source.replace('return module.exports;', 'return { ...module.exports, ChatView, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, StatsPills, ManualCompactionNodeView };'), {
   window: browser,
   document: typeof document === 'undefined' ? undefined : document,
   HTMLElement: typeof HTMLElement === 'undefined' ? undefined : HTMLElement,
@@ -37,7 +37,7 @@ const modules = {
   '@deepseek-ai/dsh-client-store': store,
   '@deepseek-ai/dsh-client-ui-primitives': primitives,
 }
-export const { ChatView, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, StatsPills } = registration.factory(name => {
+export const { ChatView, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, StatsPills, ManualCompactionNodeView } = registration.factory(name => {
   if (!(name in modules)) throw new Error(`Unexpected Chat Client dependency: ${name}`)
   return modules[name]
 })

@@ -140,6 +140,8 @@
 .character-editor-workspace.is-setting-library,
 .character-editor-workspace.is-variable-config,
 .character-editor-workspace.is-regex-rules,
+.character-editor-workspace.is-scripts,
+.character-editor-workspace.is-frontend,
 .character-editor-workspace.is-dynamic-settings {
   padding: 0;
   overflow: hidden;
@@ -510,7 +512,7 @@
     clip-path: inset(50%);
   }
 
-  .character-editor-workspace:not(.is-basic-info) {
+  .character-editor-workspace:not(.is-basic-info):not(.is-frontend) {
     padding: 24px;
   }
 

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Plus, Trash } from '@phosphor-icons/react';
+import { ArrowDown, ArrowUp, Plus, Trash } from '../../../ui/icons/interfaceIcons.jsx';
 import { defaultRoleplayPlanSettings } from '@shared/contracts/presets/roleplayPlan';
 
 export function RoleplayPlanEditor({ value, onChange, onSave, saving = false }) {

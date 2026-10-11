@@ -9,7 +9,9 @@
   <strong>English</strong>
 </p>
 
-ElecKoi is a DSH Agent-powered AI character-card creation and roleplay client for Windows PC and Android. This workspace organizes the Windows client under `apps/desktop`, `apps/desktop-host`, and `apps/web`. Android will join the same repository under `apps/android`; its current source is available in [ElecKoi-app](https://github.com/eleckoi/ElecKoi-app).
+ElecKoi is a DSH Agent-powered AI character-card creation and roleplay client for Windows PC and Android. This workspace organizes the Windows client under `apps/desktop`, `apps/desktop-host`, and `apps/web`. The Android shell and local Host are under `apps/android` and `apps/android-host`, sharing product data contracts and the Web Client.
+
+The [Author SDK documentation](https://eleckoi.github.io/ElecKoi/) provides native script and character frontend tutorials, an API reference, and importable examples.
 
 ## Highlights
 
@@ -87,7 +89,7 @@ Thank you to the following open-source projects and creators for advancing the A
 
 - Special thanks to [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) for providing the Agent execution framework. ElecKoi's Agent runtime is based on DSH and connects it to character sessions, creation tools, permission approval, subagents, and the Windows and Android runtime environments. DSH and its upstream code remain subject to the MIT License and their respective third-party licenses.
 - Thanks to [SillyTavern](https://github.com/SillyTavern/SillyTavern) for advancing the ecosystem around character cards, presets, lorebooks, regex rules, and rich-content creation. ElecKoi selectively supports some of its content formats and authoring conventions, but does not aim to reproduce its frontend, extension runtime, or complete behavioral system.
-- Thanks to [Tavern-Helper](https://github.com/N0VI028/JS-Slash-Runner) and the MVU content ecosystem for advancing variable-driven roleplay. ElecKoi carries forward the idea that state can participate in storytelling, implemented through its own hierarchical data model, Agent tools, patch protocol, Zod validation, message snapshots, and transactional commits.
+- Thanks to the MVU content ecosystem for advancing variable-driven roleplay. ElecKoi imports MVU variable configurations and manages variables through its own hierarchical data model, Agent tools, patch protocol, Zod validation, message snapshots, and transactional commits.
 - Thanks to [EJS](https://github.com/mde/ejs) for establishing its template syntax and creative ecosystem. ElecKoi independently implements compatibility with part of the EJS template syntax and does not bundle the upstream EJS runtime.
 
 For the authoritative record of third-party code, binaries, assets, and licenses actually distributed with the app, refer to `NOTICE` and the license files throughout the repository.

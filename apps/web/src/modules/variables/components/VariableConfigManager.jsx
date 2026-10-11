@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useRef, useState } from "react";
 import { CopyIcon, ExportIcon, ImportIcon, PlusIcon, TrashIcon, XIcon } from "../../../ui/icons/index.jsx";
 import { VersionNameDialog } from "../../../ui/ui/VersionNameDialog.jsx";
@@ -42,7 +43,7 @@ export function VariableConfigManager({ config, onChange, onClose, onError }) {
   }
 
   return (
-    <div className="variable-manager-overlay" role="presentation" onMouseDown={onClose}>
+    <SystemBarOverlay className="variable-manager-overlay" role="presentation" onMouseDown={onClose}>
       <aside className="variable-manager" role="dialog" aria-modal="true" aria-label="变量配置管理" onMouseDown={(event) => event.stopPropagation()}>
         <header className="variable-manager-header">
           <strong>变量配置管理</strong>
@@ -81,15 +82,15 @@ export function VariableConfigManager({ config, onChange, onClose, onError }) {
           setDialog(""); setNotice(`已创建“${name}”，保存后生效`);
         }} /> : null}
       {dialog === "delete" ? (
-        <div className="setting-library-dialog-overlay" role="presentation" onMouseDown={() => setDialog("")}>
+        <SystemBarOverlay className="setting-library-dialog-overlay" role="presentation" onMouseDown={() => setDialog("")}>
           <section className="setting-library-dialog" role="alertdialog" aria-modal="true" aria-labelledby="variable-delete-version-title" onMouseDown={(event) => event.stopPropagation()}>
             <h2 id="variable-delete-version-title">删除当前版本？</h2>
             <p>删除会在点击顶部“保存”后生效。</p>
             <div><button type="button" onClick={() => setDialog("")}>取消</button><button type="button" className="is-destructive" onClick={() => { onChange(deleteActiveVariableVersion(config)); setDialog(""); }}>删除</button></div>
           </section>
-        </div>
+        </SystemBarOverlay>
       ) : null}
       </aside>
-    </div>
+    </SystemBarOverlay>
   );
 }

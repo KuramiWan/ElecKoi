@@ -168,6 +168,7 @@ function openingMessageFromJson(value) {
     title: text(value.title),
     content: text(value.content),
     initialVariableStateJson: text(value.initial_variable_state),
+    ...(typeof value.variable_version_id === "string" ? { variableVersionId: value.variable_version_id } : {}),
   };
 }
 
@@ -324,6 +325,7 @@ function parseSillyTavernExport(source) {
       agentSelectionHint: constant ? "酒馆世界书常驻条目，Agent 必读" : "酒馆世界书关键词命中时读取",
       agentReadStrategy: constant ? "required" : "keyword",
       dynamicMode: "standard",
+      contentMode: "plain_text",
       keywords: constant ? [] : keys,
       keywordScanDepth: 1,
       conditionKeywords: constant ? [] : secondary,
@@ -399,6 +401,7 @@ function entryToJson(entry) {
     opening_messages: entry.openingMessages.map((message) => ({
       id: message.id, title: message.title, content: message.content,
       initial_variable_state: message.initialVariableStateJson,
+      ...(typeof message.variableVersionId === "string" ? { variable_version_id: message.variableVersionId } : {}),
     })),
     default_opening_message_id: entry.defaultOpeningMessageId,
     agent_selection_hint: entry.agentSelectionHint, agent_read_strategy: entry.agentReadStrategy,

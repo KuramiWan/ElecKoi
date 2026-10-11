@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, CaretRight, Copy, Plus, Trash } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, CaretRight, Copy, Plus, Trash } from "../../../ui/icons/interfaceIcons.jsx";
 import {
   createBackupOpening,
   duplicateOpening,

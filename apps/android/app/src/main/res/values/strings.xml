@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="first_runtime_installation">首次启动需要准备运行环境，耗时较长</string>
+    <string name="runtime_starting">正在启动…</string>
+    <string name="runtime_page_loading">正在加载界面…</string>
+    <string name="app_name">ElecKoi</string>
+</resources>

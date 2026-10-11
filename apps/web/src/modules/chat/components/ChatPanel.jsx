@@ -7,12 +7,13 @@ import { AgentProcessDialog } from "./AgentProcessDialog.jsx";
 import { VariableViewerDialog } from "./VariableViewerDialog.jsx";
 import { RequestPreviewDialog } from "./RequestPreviewDialog.jsx";
 import { AgentToolsDialog } from "./AgentToolsDialog.jsx";
+import { NativeScriptPanel } from "../../scripts/index.js";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
 import { DshAgentPresetIcon, DshNewChatIcon } from "../../../ui/icons/dshComposerIcons.jsx";
-import { SlidersHorizontal } from "@phosphor-icons/react";
-import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { SlidersHorizontal } from "../../../ui/icons/interfaceIcons.jsx";
+import { lazy, memo, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   chatDisplayCssVariables,
   chatTextColorCssVariables,
@@ -24,6 +25,13 @@ import {
 import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.js";
 import { selectRoleplayChatSeat, selectRoleplayPendingInput } from "../model/chatViewSeats.js";
 import { revealChatFile } from "../api/chatApi.js";
+import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
+import { CharacterFrontendView } from '../../authorFrontend/index.js';
+
+const noAuthorSubscription = () => () => {};
+const noAuthorRuntime = () => null;
+const emptyAuthorUi = { buttons: [], panel: null };
+const noAuthorUi = () => emptyAuthorUi;
 
 const TrajectoryView = lazy(() => import("./TrajectoryDialog.jsx").then((module) => ({
   default: module.TrajectoryView,
@@ -32,7 +40,9 @@ export function ChatPanel({
   hasActiveChat,
   hasCharacters,
   currentTitle,
+  headerLeading,
   conversationId,
+  characterId,
   conversationModel,
   presetCatalog,
   persona,
@@ -68,6 +78,7 @@ export function ChatPanel({
   onSelectOpening,
   onGoCharacterSettings,
   scrollRef,
+  scrollRequest,
   isLoadingOlderMessages = false,
   chatDisplay,
   runtimeSessionId = "",
@@ -114,6 +125,55 @@ export function ChatPanel({
   const chatPanelRef = useRef(null);
   const composerRegionRef = useRef(null);
   const headerMenuRef = useRef(null);
+  const pageView = useContext(MainPageContext);
+  const authorConnection = pageView?.characterConfiguration?.scriptRuntimeConnection;
+  const nativeAuthorRuntime = useSyncExternalStore(authorConnection?.subscribe || noAuthorSubscription,
+    authorConnection?.getSnapshot || noAuthorRuntime, noAuthorRuntime);
+  const nativeAuthorUi = useSyncExternalStore(nativeAuthorRuntime?.subscribeUi || noAuthorSubscription,
+    nativeAuthorRuntime?.getUiSnapshot || noAuthorUi, noAuthorUi);
+  const nativeAuthorStatus = useSyncExternalStore(nativeAuthorRuntime?.subscribe || noAuthorSubscription,
+    nativeAuthorRuntime?.getSnapshot || noAuthorRuntime, noAuthorRuntime);
+  const inputStateRef = useRef(input);
+  inputStateRef.current = input;
+  useEffect(() => {
+    if (!nativeAuthorRuntime || !conversationId) return undefined;
+    const handlers = {
+      'input.get': () => ({ text: inputStateRef.current || '' }),
+      'input.set': params => { const text = String(params.text ?? ''); inputStateRef.current = text; setInput(text); return { text }; },
+      'input.append': params => { const text = String(inputStateRef.current || '') + String(params.text ?? ''); inputStateRef.current = text; setInput(text); return { text }; },
+      'input.clear': () => { inputStateRef.current = ''; setInput(''); return { text: '' }; },
+      'input.send': async () => {
+        const text = inputStateRef.current;
+        if (!String(text || '').trim() && !inputImages.length && !inputFiles.length) return { submitted: false };
+        if (!onSend) throw new Error('当前对话没有发送入口。');
+        return { submitted: await onSend({ preventDefault() {} }, text) !== false };
+      },
+      'presentation.current': () => ({ conversationId, title: currentTitle, messages, isGenerating: isSending, persona, chatDisplay }),
+      'ui.showProcess': params => {
+        const message = messages.find(value => value.id === params.id);
+        if (!message) throw new Error(`显示消息不存在：${params.id}`);
+        setProcessMessage(message); return null;
+      }
+    };
+    if (onOpenChatBackground) handlers['ui.openBackground'] = () => { onOpenChatBackground(); return null; };
+    if (onOpenHistory) {
+      handlers['ui.openHistory'] = () => { onOpenHistory(); return null; };
+      handlers['chats.openHistory'] = handlers['ui.openHistory'];
+    }
+    const stops = [];
+    if (nativeAuthorRuntime) {
+      const readDraft = () => conversationModel.readInputDraft(conversationId);
+      const writeDraft = text => ({ text: conversationModel.writeInputDraft(conversationId, text) });
+      stops.push(nativeAuthorRuntime.registerChatUi(conversationId, { ...handlers,
+        'input.get': () => ({ text: readDraft() }),
+        'input.set': params => writeDraft(params.text),
+        'input.append': params => writeDraft(readDraft() + params.text),
+        'input.clear': () => writeDraft(''),
+        'input.send': () => ({ submitted: conversationModel.submitInput(conversationId) }),
+      }));
+    }
+    return () => stops.forEach(stop => stop());
+  }, [nativeAuthorRuntime, conversationModel, conversationId, currentTitle, messages, isSending, persona, chatDisplay, setInput, onSend, onOpenChatBackground, onOpenHistory, inputImages.length, inputFiles.length]);
 
   useLayoutEffect(() => {
     const panel = chatPanelRef.current;
@@ -302,6 +362,11 @@ export function ChatPanel({
     onCreateChat={onCreateChat}
     onOpenHistory={onOpenHistory}
     onOpenTools={() => setToolsOpen(true)}
+    scriptButtons={nativeAuthorUi.buttons.filter(button => button.conversationId === conversationId)}
+    scriptsReady={nativeAuthorStatus?.status === 'ready'}
+    onRunScriptButton={key => { void nativeAuthorRuntime.invokeButton(key).catch(error => {
+      if (nativeAuthorRuntime.getUiSnapshot().buttons.some(button => button.key === key)) onNotify?.('error', error.message || String(error));
+    }); }}
     onOpenVariables={() => setVariablesOpen(true)}
     onOpenRequestPreview={() => setRequestPreviewOpen(true)}
     onEnterDeleteMode={enterDeleteMode}
@@ -360,6 +425,7 @@ export function ChatPanel({
     ...dshConversation?.viewOwner,
     before: opening,
     runningStatusTarget,
+    followTailRequestId: scrollRequest?.source === "regeneration" ? scrollRequest.revision : undefined,
     renderChatNode: ({ node }) => {
       const seat = selectRoleplayChatSeat(displayedMessages, runtimeSessionId, node);
       if (seat && !seat.item.conversationId) seat.item = { ...seat.item, conversationId };
@@ -370,6 +436,11 @@ export function ChatPanel({
       return <MessageList {...rowProps} seat={{ ...seat, item: { ...seat.item, conversationId } }} />;
     },
   });
+  const frontend = isSwitchingChat ? null : <CharacterFrontendView key={`${characterId}:${conversationId}`}
+    characterId={characterId} conversationId={conversationId} fallback={officialChat ?? opening} />;
+  const chatContent = activeView === 'chat' && !isSwitchingChat
+    ? renderRoleplaySlotChain?.('eleckoi.roleplay.chat.frontend', { characterId, conversationId, fallback: frontend }, { fallback: frontend }) ?? frontend
+    : null;
 
   return (
     <section
@@ -379,6 +450,7 @@ export function ChatPanel({
     >
       <header className="chat-header">
         <div className="chat-header-title-row">
+          {headerLeading}
           <div className="chat-header-title-cluster">
             <h1>{currentTitle}</h1>
             {activePresetName ? <span className="chat-header-preset" title={activePresetName}>
@@ -424,7 +496,7 @@ export function ChatPanel({
           aria-busy={isSwitchingChat || isLoadingOlderMessages || undefined}
         >
           <div className="chat-transcript-region">
-            {activeView === "chat" ? officialChat ?? (isSwitchingChat ? null : opening) : activeView === "trajectory" ? <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
+            {activeView === "chat" ? chatContent : activeView === "trajectory" ? <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
               <TrajectoryView
                 key={`${conversationId}:${trajectoryRevision}`}
                 conversationId={conversationId}
@@ -477,6 +549,8 @@ export function ChatPanel({
         />
       ) : null}
       {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
+      {nativeAuthorUi.panel?.conversationId === conversationId ? <NativeScriptPanel key={nativeAuthorUi.panel.key}
+        runtime={nativeAuthorRuntime} panel={nativeAuthorUi.panel} /> : null}
       {requestPreviewOpen ? <RequestPreviewDialog key={conversationId} conversationId={conversationId} conversationModel={conversationModel} onClose={() => setRequestPreviewOpen(false)} /> : null}
       {toolsOpen ? <AgentToolsDialog
         presetCatalog={presetCatalog}

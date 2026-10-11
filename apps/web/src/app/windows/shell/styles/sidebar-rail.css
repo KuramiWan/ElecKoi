@@ -1,5 +1,5 @@
 .qq-rail {
-  --rail-icon-stroke: 1.4;
+  --rail-icon-stroke: 1.5;
   --rail-hover-bg: color-mix(in srgb, var(--rail-fg) 6%, var(--rail));
   --rail-pressed-bg: color-mix(in srgb, var(--rail-fg) 10%, var(--rail));
   position: relative;

@@ -1,4 +1,9 @@
-export type AuthorSurface = 'message-renderer' | 'chat-ui'
+import type { AuthorVariablePatch } from './variables'
+import type { AuthorVariableRule } from './scripts'
+import type { AuthorAgentTrajectory } from './trajectory'
+export * from './trajectory'
+
+export type AuthorSurface = 'message-renderer' | 'chat-ui' | 'application-frontend' | 'character-frontend'
 
 export interface AuthorAppInfo {
   name: 'ElecKoi'
@@ -8,11 +13,14 @@ export interface AuthorAppInfo {
 
 export interface AuthorContext {
   surface: AuthorSurface
-  scope: 'current-character'
+  scope: 'current-character' | 'application'
   conversationId: string
   conversationTitle: string
   messageId: string
   characterId: string
+  projectId?: string
+  entryFile?: string
+  view?: string
 }
 
 export type AuthorMessageRole = 'user' | 'assistant'
@@ -38,14 +46,14 @@ export interface AuthorAgentProcessItem {
 
 export type AuthorMediaType = 'image' | 'audio' | 'video' | 'file'
 
-/** A browser-loadable media object. The URL may be remote, a data URL, or an ElecKoi local-media URL. */
+/** Media metadata; URL is null when browser delivery is not available. */
 export interface AuthorMediaResource {
   id: string
   type: AuthorMediaType
-  url: string
-  mimeType: string
+  url: string | null
+  mimeType: string | null
   name: string
-  size: number
+  size: number | null
   width: number | null
   height: number | null
   duration: number | null
@@ -160,13 +168,40 @@ export interface AuthorSettingLibrary {
   }>
 }
 
+export type AuthorSettingEntryChanges = Partial<Omit<AuthorSettingLibraryEntry,
+  'id' | 'kind' | 'openingMessages' | 'defaultOpeningMessageId' | 'createdAt' | 'updatedAt'>>
+export interface AuthorSettingEntryUpdate { id: string; changes: AuthorSettingEntryChanges }
+
+export const AUTHOR_SETTING_ENTRY_MUTABLE_FIELDS = [
+  'title', 'iconId', 'groupId', 'content', 'agentSelectionHint', 'agentReadStrategy',
+  'dynamicMode', 'contentMode', 'keywords', 'keywordScanDepth', 'conditionKeywords',
+  'keywordCondition', 'keywordUseRegex', 'keywordIgnoreCase', 'keywordWholeWord',
+  'keywordRecursionDepth', 'triggerMode', 'enabled', 'position', 'promptPositionId',
+  'insertRole', 'order', 'viewOrder', 'groupViewOrder', 'treeViewOrder'
+] as const satisfies readonly (keyof AuthorSettingEntryChanges)[]
+
+export interface AuthorPreset {
+  id: string
+  name: string
+  activeVersionId: string
+  entries: AuthorSettingLibraryEntry[]
+  groups: AuthorSettingLibrary['groups']
+  promptPositions: AuthorSettingLibrary['promptPositions']
+}
+
+export interface AuthorPresetCatalog {
+  activePresetId: string
+  items: Array<{ id: string; name: string; activeVersionId: string; entryCount: number }>
+}
+
 export interface AuthorMessage {
   id: string
   conversationId: string
   role: AuthorMessageRole
   content: string
   displayContent: string
-  variableState: Record<string, unknown>
+  /** Exact native history, or null when no historical snapshot is available. */
+  variableState: Record<string, unknown> | null
   status: AuthorMessageStatus
   createdAt: string
   turnId: string
@@ -179,6 +214,12 @@ export interface AuthorMessage {
   attachments: AuthorMediaResource[]
   openingOptions: AuthorOpening[]
   selectedOpeningId: string
+}
+
+export interface AuthorMessagePage {
+  items: AuthorMessage[]
+  hasMore: boolean
+  beforeSequence: number | null
 }
 
 export interface AuthorChatSummary {
@@ -200,12 +241,13 @@ export interface AuthorRunAccepted {
 }
 
 export interface AuthorChatModelCatalog {
-  current: { configId: string; model: string }
+  current: { configId: string; model: string; reasoningEffort?: string }
   items: Array<{
     configId: string
     name: string
     provider: string
     defaultModel: string
+    enabled?: boolean
     models: Array<{
       id: string
       name: string
@@ -214,7 +256,9 @@ export interface AuthorChatModelCatalog {
       maxOutputTokens?: number | null
       temperature?: number | null
       topP?: number | null
-      reasoningEffort?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null
+      reasoningEffort?: string | null
+      reasoningEfforts?: false | Record<string, string | null>
+      inputModalities?: ('text' | 'image')[]
       supportsImageInput?: boolean
     }>
   }>
@@ -237,17 +281,17 @@ export interface AuthorTokenUsage {
 }
 
 export interface AuthorGenerationStats {
-  turns: number
-  steps: number
-  llmMs: number
-  toolMs: number
-  ttftMs: number
-  ttftSteps: number
-  decodeMs: number
-  decodeTokens: number
-  tokenUsage: AuthorTokenUsage
-  contextPressure: { pressureTokens?: number; projectedTokens?: number; contextWindow?: number }
-  contextBreakdown: { systemTokens: number; toolsTokens: number; messageTokens: number }
+  turns?: number
+  steps?: number
+  llmMs?: number
+  toolMs?: number
+  ttftMs?: number
+  ttftSteps?: number
+  decodeMs?: number
+  decodeTokens?: number
+  tokenUsage?: AuthorTokenUsage
+  contextPressure?: { pressureTokens?: number; projectedTokens?: number; contextWindow?: number }
+  contextBreakdown?: { systemTokens: number; toolsTokens: number; messageTokens: number }
 }
 
 export type AuthorGenerationState = {
@@ -258,69 +302,33 @@ export type AuthorGenerationState = {
   active: true
   conversationId: string
   runId: string
+  /** Client observation identity; null before a formal turn is observable. */
+  generationId: string | null
+  turn: number | null
   messageId: string
   accumulated: string
   sequence: number
   stats: AuthorGenerationStats | null
 }
 
-export type AuthorTrajectoryStatus = 'running' | 'complete' | 'error' | 'cancelled'
-
-export interface AuthorAgentTrajectoryRequest {
-  number: number
-  seq: number
-  turn: number | null
-  step: number | null
-  status: AuthorTrajectoryStatus
-  reason: string
-  provider: string
-  model: string
-  detail: string
-  rawJson: string
-  timeMillis: number | null
-  durationMillis: number | null
-}
-
-export interface AuthorAgentTrajectoryRecord {
-  id: string
-  index: number
-  seq: number
-  type: string
-  kind: 'system' | 'user' | 'context' | 'assistant' | 'tool' | 'compaction'
-  title: string
-  preview: string
-  source: string
-  input: string
-  output: string
-  detail: string
-  rawJson: string
-  timeMillis: number | null
-  durationMillis: number | null
-  turn: number | null
-  step: number | null
-  status: AuthorTrajectoryStatus
-  requests: AuthorAgentTrajectoryRequest[]
-}
-
-export interface AuthorAgentTrajectory {
+export interface AuthorGenerationIdentity {
   conversationId: string
-  runtimeThreadId: string | null
-  records: AuthorAgentTrajectoryRecord[]
-  totalRecords: number
-  hasMore: boolean
-  beforeIndex: number | null
-  startedAtMillis: number | null
-  completedAtMillis: number | null
+  /** The owning native runtime Session. */
+  runId: string
+  /** Unique for this live observation, including regeneration in the same Session. */
+  generationId: string
+  turn: number
 }
 
 export interface AuthorEventMap {
   'messages.changed': { conversationId: string; reason: AuthorMessagesChangedReason; messageIds: string[] }
-  'agent.output.delta': { conversationId: string; runId: string; messageId: string; sequence: number; delta: string }
-  'agent.run.finished': { conversationId: string; runId: string; message: AuthorMessage }
-  'agent.run.failed': { conversationId: string; runId: string; messageId: string; code: string; message: string }
-  'agent.state.changed': { conversationId: string; state: AuthorAgentState; detail?: string }
-  'agent.process.updated': { conversationId: string; runId: string; messageId: string; item: AuthorAgentProcessItem }
-  'agent.generation.stats': { conversationId: string; runId: string; stats: AuthorGenerationStats }
+  'agent.output.delta': AuthorGenerationIdentity & { messageId: string; sequence: number; operation: 'append' | 'replace'; delta: string; accumulated: string }
+  'agent.run.finished': AuthorGenerationIdentity & { reason: 'completed' | 'output-limit' | 'blocked'; message: AuthorMessage | null }
+  'agent.run.cancelled': AuthorGenerationIdentity & { messageId: string; reason: 'cancelled' | 'interrupted' }
+  'agent.run.failed': AuthorGenerationIdentity & { messageId: string; code: string; message: string }
+  'agent.state.changed': AuthorGenerationIdentity & { state: AuthorAgentState; detail?: string }
+  'agent.process.updated': AuthorGenerationIdentity & { messageId: string; item: AuthorAgentProcessItem }
+  'agent.generation.stats': AuthorGenerationIdentity & { stats: AuthorGenerationStats }
   'audio.state.changed': { conversationId: string; state: AuthorAudioState }
   'audio.time.updated': { conversationId: string; state: AuthorAudioState }
 }
@@ -331,6 +339,7 @@ export const AUTHOR_CONVERSATION_EVENT_NAMES: readonly AuthorEventName[] = [
   'messages.changed',
   'agent.output.delta',
   'agent.run.finished',
+  'agent.run.cancelled',
   'agent.run.failed',
   'agent.state.changed',
   'agent.process.updated',
@@ -353,6 +362,17 @@ export interface ElecKoiAuthorEvents {
   off<TName extends AuthorEventName>(name: TName, listener: (payload: AuthorEventMap[TName]) => void): boolean | undefined
 }
 
+export interface AuthorScriptSettings { revision: number; values: Record<string, unknown> }
+
+export interface AuthorScriptButton {
+  id: string
+  label: string
+  /** Use this invocation's API for user actions; it never joins a rule's pending candidate. */
+  onClick(context: { api: ElecKoiAuthorApi; signal: AbortSignal }): void | Promise<void>
+}
+
+export interface AuthorScriptPanel { id: string; title: string; html: string }
+
 export interface ElecKoiAuthorApi {
   readonly api: { readonly stage: 'preview'; readonly version: string }
   call<TResult = unknown>(method: string, params?: Record<string, unknown>): Promise<TResult>
@@ -361,17 +381,28 @@ export interface ElecKoiAuthorApi {
     getCapabilities(): Promise<AuthorCapability[]>
   }
   readonly context: { current(): Promise<AuthorContext> }
+  readonly script: {
+    /** Only installed for an explicitly owned running script. */
+    getSettings(): Promise<AuthorScriptSettings>
+    setSettings(values: Record<string, unknown>, expectedRevision: number): Promise<AuthorScriptSettings>
+    getLibrarySettings(): Promise<AuthorScriptSettings>
+    setLibrarySettings(values: Record<string, unknown>, expectedRevision: number): Promise<AuthorScriptSettings>
+  }
+  readonly ui: {
+    /** Running script only. IDs are unique within that script, not across scopes. */
+    registerButton(button: AuthorScriptButton): () => void
+    /** Accepts a native document; relative resources resolve against the owning script file. */
+    openPanel(panel: AuthorScriptPanel): Promise<{ id: string }>
+    closePanel(id: string): Promise<{ closed: boolean }>
+  }
   readonly variables: {
     getState(options?: { messageId?: string }): Promise<Record<string, unknown>>
     getConfig(): Promise<unknown>
     setState(state: Record<string, unknown>): Promise<Record<string, unknown>>
     merge(state: Record<string, unknown>): Promise<Record<string, unknown>>
-    applyPatch(patch: Array<{
-      op: 'add' | 'replace' | 'remove'
-      path: string
-      value?: unknown
-    }>): Promise<Record<string, unknown>>
+    applyPatch(patch: AuthorVariablePatch[]): Promise<Record<string, unknown>>
     reset(): Promise<Record<string, unknown>>
+    registerRule(rule: AuthorVariableRule): () => void
   }
   readonly openings: {
     list(): Promise<{ items: AuthorOpening[] }>
@@ -379,7 +410,10 @@ export interface ElecKoiAuthorApi {
     select(id: string): Promise<{ selectedId: string }>
   }
   readonly messages: {
+    /** Messages currently loaded by the native conversation view. */
     list(): Promise<AuthorMessage[]>
+    getPage(): Promise<AuthorMessagePage>
+    pageOlder(beforeSequence: number): Promise<AuthorMessagePage>
     get(id: string): Promise<AuthorMessage>
     current(): Promise<AuthorMessage>
     setContent(id: string, text: string): Promise<AuthorMessage>
@@ -391,17 +425,21 @@ export interface ElecKoiAuthorApi {
     current(): Promise<AuthorChatSummary>
     list(): Promise<{ items: AuthorChatSummary[] }>
     getGenerationState(): Promise<AuthorGenerationState>
-    getAgentTrajectory(options?: { beforeIndex?: number; limit?: number }): Promise<AuthorAgentTrajectory>
+    /** Reads current loaded history, or loads the exact preceding history cursor first. */
+    getAgentTrajectory(options?: { beforeSequence?: number }): Promise<AuthorAgentTrajectory>
     getModels(): Promise<AuthorChatModelCatalog>
     send(text: string, options?: { attachments?: AuthorSendAttachment[] }): Promise<AuthorRunAccepted>
     stopGeneration(): Promise<{ cancelled: boolean }>
     create(options?: { title?: string }): Promise<{ chat: AuthorChatSummary }>
-    open(sessionId: string): Promise<{ chat: AuthorChatSummary }>
-    delete(sessionId: string): Promise<{ deletedId: string; chat: AuthorChatSummary }>
-    selectModel(options: { configId: string; model: string }): Promise<{ configId: string; model: string }>
+    /** Opens an explicitly identified chat belonging to the same role. */
+    open(conversationId: string): Promise<{ chat: AuthorChatSummary }>
+    /** Does not select or create a replacement chat after deleting the current one. */
+    delete(conversationId: string): Promise<{ deletedId: string; chat: AuthorChatSummary | null }>
+    selectModel(options: { configId: string; model: string; reasoningEffort?: string }): Promise<{ configId: string; model: string; reasoningEffort?: string }>
   }
   readonly character: { current(): Promise<Record<string, unknown> | null> }
   readonly settingLibrary: {
+    /** The bound character's original unexpanded library, without story overrides or preset entries. */
     current(): Promise<AuthorSettingLibrary | null>
     getSummary(): Promise<{
       characterId: string
@@ -410,7 +448,23 @@ export interface ElecKoiAuthorApi {
       entryCount: number
       groupCount: number
     } | null>
+    /** Replaces the bound character's current library content, preserving other versions and management settings. */
     replace(library: AuthorSettingLibrary): Promise<AuthorSettingLibrary>
+    getEntry(id: string): Promise<AuthorSettingLibraryEntry>
+    updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSettingLibraryEntry>
+    /** Atomically edits the character's ordinary entries and active version, leaving story overrides unchanged. */
+    updateEntries(updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>
+  }
+  readonly presets: {
+    list(): Promise<AuthorPresetCatalog>
+    current(): Promise<AuthorPreset | null>
+    get(presetId: string): Promise<AuthorPreset>
+    getEntry(presetId: string, id: string): Promise<AuthorSettingLibraryEntry>
+    /** Edits the stored preset and active version, affecting all chats using that preset. */
+    updateEntry(presetId: string, id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSettingLibraryEntry>
+    updateEntries(presetId: string, updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>
+    /** Selects the global preset for subsequent requests, not just the current chat. */
+    select(presetId: string): Promise<AuthorPresetCatalog>
   }
   readonly media: {
     getMessageAttachments(messageId?: string): Promise<{ items: AuthorMediaResource[] }>
@@ -434,6 +488,7 @@ export interface ElecKoiAuthorApi {
     set(text: string): Promise<{ text: string }>
     append(text: string): Promise<{ text: string }>
     clear(): Promise<{ text: '' }>
+    /** Requests submission of the official composer; submitted is not a generation receipt. */
     send(): Promise<{ submitted: boolean }>
   }
   readonly events: ElecKoiAuthorEvents
@@ -442,5 +497,6 @@ export interface ElecKoiAuthorApi {
 declare global {
   interface Window {
     ElecKoi: ElecKoiAuthorApi
+    readonly ElecKoiReady: Promise<ElecKoiAuthorApi>
   }
 }

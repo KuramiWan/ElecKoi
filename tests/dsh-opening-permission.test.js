@@ -7,12 +7,13 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
-import { ElecKoiConversationsApi, ConversationChangeFeed, ElecKoiConversationLifecycle } from '@eleckoi/dsh-product-api'
-import { RequestPreviewStore } from '../packages/dsh-client-roleplay/src/host/request-preview.mjs'
+import { ElecKoiConversationsApi, ConversationChangeFeed, ElecKoiVariableProcessing } from '@eleckoi/dsh-product-api'
+import { ElecKoiConversationLifecycle } from '../packages/host/product-api/src/conversationLifecycle'
+import { RequestPreviewStore } from '../packages/client/features/dsh-client-roleplay/src/host/request-preview.mjs'
 import { TYPERT } from '@eleckoi/dsh-product-api/typert'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { MessageRepository } from '../packages/dsh-product-data/src/domain/conversations/MessageRepository'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const cleanups = []
@@ -68,6 +69,9 @@ async function fixture() {
   ctx.provide('sessionPersistence', {})
   ctx.provide('eleckoiProductData', { runtimeSessionId: () => conversation.id,
     selectConversationOpening: select, updateConversationOpening: update })
+  const variables = new ElecKoiVariableProcessing(ctx.eleckoiProductData)
+  ctx.provide('eleckoiVariableProcessing', variables)
+  cleanups.push(() => variables.close())
   ctx.provide('eleckoiRoleplaySessions', {})
   ctx.provide('eleckoiSessionEditor', {})
   ctx.provide('eleckoiConversationChanges', new ConversationChangeFeed())

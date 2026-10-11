@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 
 export interface UiPreferences {
+  character_editor_sidebar_collapsed?: boolean
   conversation_content_width?: number
   [key: string]: unknown
 }
@@ -26,3 +27,10 @@ export const DisplayPreferencesProvider: ComponentType<{
   children?: unknown
 }>
 export function useDshDisplayPreferences(): DisplayPreferencesModel | null
+export function useCharacterEditorSidebarState(): {
+  collapsed: boolean
+  toggle(): Promise<void>
+  busy: boolean
+  error: string
+  dismissError(): void
+}

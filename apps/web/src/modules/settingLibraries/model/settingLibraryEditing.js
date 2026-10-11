@@ -104,21 +104,47 @@ function descendantGroupIds(groups, groupId) {
   return ids;
 }
 
+export function canTransferSettingNode(library, moved, destinationParentId) {
+  if (!library || !['group', 'entry'].includes(moved?.kind) || !moved.id || PINNED_ENTRY_IDS.has(moved.id)) return false;
+  const source = moved.kind === 'group' ? library.groups : library.entries;
+  if (!source.some(item => item.id === moved.id)) return false;
+  if (destinationParentId && !library.groups.some(group => group.id === destinationParentId)) return false;
+  return moved.kind !== 'group' || !descendantGroupIds(library.groups, moved.id).has(destinationParentId);
+}
+
+export function copySettingNode(library, target, destinationParentId) {
+  if (!canTransferSettingNode(library, target, destinationParentId)) return { library, key: '' };
+  const stamp = new Date().toISOString();
+  const order = 1 + Math.max(0, ...orderedTreeChildren(library, destinationParentId).map(node => node.value.treeViewOrder));
+  if (target.kind === 'entry') {
+    const source = library.entries.find(entry => entry.id === target.id);
+    const names = new Set(library.entries.filter(entry => entry.groupId === destinationParentId).map(entry => entry.title));
+    const entry = { ...structuredClone(source), id: createId('setting'), groupId: destinationParentId,
+      title: uniqueName(`${source.title || '新建设定'} 副本`, names), treeViewOrder: order, createdAt: stamp, updatedAt: stamp };
+    return { library: { ...library, entries: [...library.entries, entry] }, key: `entry:${entry.id}` };
+  }
+  const source = library.groups.find(group => group.id === target.id);
+  const subtree = descendantGroupIds(library.groups, target.id);
+  const ids = new Map([...subtree].map(id => [id, createId('group')]));
+  const names = new Set(library.groups.filter(group => group.parentId === destinationParentId).map(group => group.name));
+  const groups = library.groups.filter(group => subtree.has(group.id)).map(group => ({ ...group, id: ids.get(group.id),
+    parentId: group.id === target.id ? destinationParentId : ids.get(group.parentId),
+    name: group.id === target.id ? uniqueName(`${source.name} 副本`, names) : group.name,
+    treeViewOrder: group.id === target.id ? order : group.treeViewOrder, createdAt: stamp, updatedAt: stamp }));
+  const entries = library.entries.filter(entry => subtree.has(entry.groupId) && !PINNED_ENTRY_IDS.has(entry.id))
+    .map(entry => ({ ...structuredClone(entry), id: createId('setting'), groupId: ids.get(entry.groupId), createdAt: stamp, updatedAt: stamp }));
+  return { library: { ...library, groups: [...library.groups, ...groups], entries: [...library.entries, ...entries] }, key: `group:${ids.get(target.id)}` };
+}
+
 /**
  * Apply a controlled tree move after the drag library has resolved the drop
  * target. `destinationIndex` is the post-removal index among movable siblings.
  */
 export function moveTreeNode(library, moved, destinationParentId, destinationIndex) {
+  if (!canTransferSettingNode(library, moved, destinationParentId)) return library;
   const movedValue = moved.kind === "group"
     ? library.groups.find((group) => group.id === moved.id)
     : library.entries.find((entry) => entry.id === moved.id);
-  if (!movedValue || PINNED_ENTRY_IDS.has(moved.id)) return library;
-  if (
-    moved.kind === "group" &&
-    destinationParentId &&
-    descendantGroupIds(library.groups, moved.id).has(destinationParentId)
-  ) return library;
-
   const sourceParentId = treeParentId({ ...moved, value: movedValue });
   const movedNode = { ...moved, value: movedValue };
   const destinationSiblings = orderedTreeChildren(library, destinationParentId)

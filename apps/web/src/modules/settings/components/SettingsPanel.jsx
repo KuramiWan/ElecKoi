@@ -10,14 +10,15 @@ import {
   SlidersHorizontal,
   TextT,
   UserCircle,
-} from "@phosphor-icons/react";
-import { DEFAULT_CHAT_DISPLAY_PREFERENCES, DEFAULT_CHAT_TEXT_COLORS } from "@shared/contracts/settings/schemas";
+} from "../../../ui/icons/interfaceIcons.jsx";
+import { DEFAULT_CHAT_TEXT_COLORS } from "@shared/contracts/settings/schemas";
 import { BotIcon, PaletteIcon, PencilIcon, ProfileIcon } from "../../../ui/icons/index.jsx";
 import { avatarSetFromPersona, AvatarManagerEditor } from "../../../ui/ui/AvatarSlotsEditor.jsx";
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { TunerSliderRow } from "../../../ui/ui/TunerSliderRow.jsx";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { AboutSettings } from "./AboutSettings.jsx";
+import { chatDisplaySettings, chatDisplayTuners, chatLayouts, avatarShapes, reasoningDisplayModes, textColorOptions } from "../model/chatDisplaySettings.js";
 import {
   chatDisplayCssVariables,
   chatTextColorCssVariables,
@@ -44,24 +45,7 @@ const sidebarArtworkModes = [
   { id: "avatar", label: "头像" },
 ];
 
-const chatLayouts = [
-  { id: "roleplay", label: "角色扮演", disabled: false },
-  { id: "agent", label: "Agent", disabled: false },
-  { id: "social", label: "社交软件", disabled: true },
-];
-
-const avatarShapes = [
-  { id: "circle", label: "圆形" },
-  { id: "rounded_square", label: "圆角正方形" },
-  { id: "portrait", label: "圆角矩形" },
-];
-
-const reasoningDisplayModes = [
-  { id: "collapsed", label: "适当收起" },
-  { id: "expanded", label: "全量展开" },
-];
-
-function ChatDisplayPreview({ preferences, persona }) {
+export function ChatDisplayPreview({ preferences, persona }) {
   const { layout, profile } = resolveChatDisplayProfile(preferences);
   const avatarShape = resolveChatAvatarShape(layout, profile.avatar_shape);
   const style = {
@@ -108,56 +92,16 @@ function ChatDisplaySettings({
   chatDisplay,
   onChatDisplayChange,
 }) {
-  const preferences = chatDisplay || DEFAULT_CHAT_DISPLAY_PREFERENCES;
-  const { layout, profile } = resolveChatDisplayProfile(preferences);
-  const defaults = DEFAULT_CHAT_DISPLAY_PREFERENCES.profiles[layout];
+  const { preferences, layout, profile, defaults, selectLayout, updateProfile, resetProfile, updateTextColor } = chatDisplaySettings(chatDisplay, onChatDisplayChange);
 
-  function selectLayout(nextLayout) {
-    if (chatLayouts.find((item) => item.id === nextLayout)?.disabled) return;
-    onChatDisplayChange({ ...preferences, layout: nextLayout });
-  }
-
-  function updateProfile(patch) {
-    onChatDisplayChange({
-      ...preferences,
-      profiles: {
-        ...preferences.profiles,
-        [layout]: { ...profile, ...patch },
-      },
-    });
-  }
-
-  function resetProfile() {
-    onChatDisplayChange({
-      ...preferences,
-      profiles: {
-        ...preferences.profiles,
-        [layout]: { ...defaults },
-      },
-    });
-  }
-
-  function updateTextColor(key, value) {
-    onChatDisplayChange({
-      ...preferences,
-      text_colors: { ...preferences.text_colors, [key]: value },
-    });
-  }
-
-  const textColorOptions = [
-    { key: "italics", label: "斜体文本" },
-    { key: "underline", label: "下划线文本" },
-    { key: "quote", label: "引号内文本" },
-  ];
-
-  const slider = (label, key, min, max, step = 1, suffix = "px") => (
+  const slider = (label, key) => (
     <TunerSliderRow
       label={label}
       value={profile[key]}
-      min={min}
-      max={max}
-      step={step}
-      suffix={suffix}
+      min={chatDisplayTuners[key].min}
+      max={chatDisplayTuners[key].max}
+      step={chatDisplayTuners[key].step}
+      suffix={chatDisplayTuners[key].suffix ?? "px"}
       defaultValue={defaults[key]}
       onChange={(value) => updateProfile({ [key]: value })}
     />
@@ -303,28 +247,28 @@ function ChatDisplaySettings({
             })}
           </div>
           <div className="chat-display-tuners">
-            {slider("头像大小", "avatar_size", 24, 96, 0.5)}
-            {layout !== "social" ? slider("名字大小", "name_font_size", 10, 18, 0.5) : null}
-            {slider(layout === "social" ? "头像与气泡间距" : "头像与名字间距", "name_avatar_spacing", 0, 20)}
+            {slider("头像大小", "avatar_size")}
+            {layout !== "social" ? slider("名字大小", "name_font_size") : null}
+            {slider(layout === "social" ? "头像与气泡间距" : "头像与名字间距", "name_avatar_spacing")}
           </div>
         </section>
 
         <section className="chat-settings-group chat-display-section">
           <div className="setting-row-copy setting-row-title"><TextT /><strong>正文文字</strong></div>
           <div className="chat-display-tuners">
-            {slider("字号", "message_font_size", 9, 20, 0.5)}
-            {slider("字重", "message_font_weight", 100, 600, 100, "")}
-            {slider("行距", "line_height_multiplier", 0.8, 1.6, 0.05, "×")}
-            {slider("字距", "letter_spacing", -1, 4, 0.5)}
-            {slider("段距", "paragraph_spacing", 0, 24)}
+            {slider("字号", "message_font_size")}
+            {slider("字重", "message_font_weight")}
+            {slider("行距", "line_height_multiplier")}
+            {slider("字距", "letter_spacing")}
+            {slider("段距", "paragraph_spacing")}
           </div>
         </section>
 
         <section className="chat-settings-group chat-display-section">
           <div className="setting-row-copy setting-row-title"><ArrowsOutLineVertical /><strong>间距与留白</strong></div>
           <div className="chat-display-tuners">
-            {layout !== "social" ? slider("回复间距", "reply_spacing", 0, 32) : null}
-            {slider(layout === "agent" ? "轮次间距" : "消息间距", "turn_spacing", 0, 32)}
+            {layout !== "social" ? slider("回复间距", "reply_spacing") : null}
+            {slider(layout === "agent" ? "轮次间距" : "消息间距", "turn_spacing")}
           </div>
         </section>
 
@@ -343,7 +287,7 @@ function ChatDisplaySettings({
               </button>
             ) : null}
             <div className="chat-display-tuners">
-              {slider("圆角", "bubble_corner_radius", 0, 24)}
+              {slider("圆角", "bubble_corner_radius")}
             </div>
           </section>
         ) : null}
@@ -357,7 +301,7 @@ function ChatDisplaySettings({
   );
 }
 
-function UserProfileSettings({ persona, onUpdateUserProfile, renderUserProfileEditor }) {
+export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserProfileEditor, renderProfile, renderAvatarManager }) {
   const displayName = persona?.user_name || "你";
   const [name, setName] = useState(displayName);
   const [avatars, setAvatars] = useState(() => avatarSetFromPersona(persona, "user"));
@@ -406,7 +350,7 @@ function UserProfileSettings({ persona, onUpdateUserProfile, renderUserProfileEd
   }
 
   if (editingAvatars) {
-    return (
+    const editor = (
       <AvatarManagerEditor
         value={avatars}
         name={name || displayName}
@@ -415,6 +359,7 @@ function UserProfileSettings({ persona, onUpdateUserProfile, renderUserProfileEd
         onSave={saveAvatars}
       />
     );
+    return renderAvatarManager?.({ onBack: () => setEditingAvatars(false), saving }, editor) ?? editor;
   }
 
   const fallback = (
@@ -455,7 +400,8 @@ function UserProfileSettings({ persona, onUpdateUserProfile, renderUserProfileEd
     onSave: commitProfile,
     onManageAvatars: () => setEditingAvatars(true),
   };
-  return renderUserProfileEditor?.(owner, fallback) ?? fallback;
+  const presentation = renderProfile?.(owner) ?? fallback;
+  return renderUserProfileEditor?.(owner, presentation) ?? presentation;
 }
 
 export function SettingsPanel({

@@ -6,7 +6,8 @@ const manifests = [
   ['workspace', readManifest('package.json')],
   ['desktop', readManifest('apps/desktop/package.json')],
   ['desktop-host', readManifest('apps/desktop-host/package.json')],
-  ['@eleckoi/dsh-runtime', readManifest('packages/dsh-runtime/package.json')]
+  ['android-host', readManifest('apps/android-host/package.json')],
+  ['@eleckoi/dsh-runtime', readManifest('packages/host/runtime/package.json')]
 ]
 const packages = new Map()
 

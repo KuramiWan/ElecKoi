@@ -2,17 +2,17 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { decodeCharacterCard } from '../packages/dsh-product-data/src/domain/characterTransfer/characterCardFormats'
-import { CharacterTransferService } from '../packages/dsh-product-data/src/domain/characterTransfer/CharacterTransferService'
-import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
-import { RegexRuleRepository } from '../packages/dsh-product-data/src/domain/regexRules/RegexRuleRepository'
-import { AgentPresetRepository } from '../packages/dsh-product-data/src/domain/agentPresets'
-import { SettingLibraryRepository } from '../packages/dsh-product-data/src/domain/settingLibraries/SettingLibraryRepository'
-import { VariableConfigRepository } from '../packages/dsh-product-data/src/domain/variables/VariableConfigRepository'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { APP_DEFAULT_CHAT_BACKGROUND } from '../packages/product-shared/src/contracts/characters/chatBackground'
+import { decodeCharacterCard } from '../packages/host/product-data/src/domain/characterTransfer/characterCardFormats'
+import { CharacterTransferService } from '../packages/host/product-data/src/domain/characterTransfer/CharacterTransferService'
+import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
+import { RegexRuleRepository } from '../packages/host/product-data/src/domain/regexRules/RegexRuleRepository'
+import { AgentPresetRepository } from '../packages/host/product-data/src/domain/agentPresets'
+import { SettingLibraryRepository } from '../packages/host/product-data/src/domain/settingLibraries/SettingLibraryRepository'
+import { VariableConfigRepository } from '../packages/host/product-data/src/domain/variables/VariableConfigRepository'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { APP_DEFAULT_CHAT_BACKGROUND } from '../packages/shared/src/contracts/characters/chatBackground'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { decodeSettingLibrarySnapshot } from '../packages/dsh-product-data/src/domain/characterTransfer/portableSnapshots'
+import { decodeSettingLibrarySnapshot } from '../packages/host/product-data/src/domain/characterTransfer/portableSnapshots'
 import { readPngText } from '@eleckoi/dsh-product-data/media'
 
 const encoder = new TextEncoder()
@@ -58,6 +58,7 @@ function tavernCard(name = '测试角色甲') {
     spec_version: '3.0',
     data: {
       name,
+      creator_notes: 'Synthetic creator notes.\n\n**Import instructions** remain display-only.',
       description: '用于验证导入流程的虚构角色。',
       first_mes: '你好。',
       alternate_greetings: ['晚上好。', '你好。'],
@@ -113,6 +114,7 @@ describe('character card import', () => {
 
     expect(decoded.packageData.character).toMatchObject({
       name: '测试角色甲',
+      profileLike: tavernCard().data.creator_notes,
       opening: '你好。',
       showOpening: true
     })
@@ -133,6 +135,21 @@ describe('character card import', () => {
       expect.objectContaining({ name: '保留双表面标记', enabled: false, displayOnly: true, promptOnly: true })
     ])
     expect(decoded.summary).toContain('开场白 2')
+    expect(decoded.packageData.scriptLibrary).toBeUndefined()
+    expect(decoded.settingLibrary?.entries.some(entry => entry.content.includes('Synthetic creator notes'))).toBe(false)
+  })
+
+  it('preserves multiline creator notes in JSON and PNG without substituting model description', () => {
+    const card = tavernCard(), notes = 'Synthetic author notes\n\n' + 'Display-only notes. '.repeat(150)
+    card.data.creator_notes = notes
+    const encoded = Buffer.from(JSON.stringify(card)).toString('base64')
+    for (const bytes of [jsonBytes(card), pngText([['chara', encoded]])]) {
+      const decoded = decodeCharacterCard(bytes, 'sillytavern')
+      expect(decoded.packageData.character.profileLike).toBe(notes)
+      expect(decoded.settingLibrary?.entries.find(entry => entry.title === '角色描述')?.content).toBe(card.data.description)
+    }
+    const { creator_notes: _notes, ...data } = card.data
+    expect(decodeCharacterCard(jsonBytes({ ...card, data }), 'sillytavern').packageData.character.profileLike).toBe('')
   })
 
   it('uses ccv3 before chara and accepts the same card as PNG', () => {
@@ -154,9 +171,11 @@ describe('character card import', () => {
     source.data.extensions.tavern_helper = {
       variables: {},
       scripts: [{
+        type: 'script',
         name: 'MVU变量结构',
         enabled: true,
         content: `
+          import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';
           const Schema = z.object({
             user: z.object({
               名称: z.string().prefault('🎲 主角'),
@@ -319,6 +338,7 @@ describe('character card import', () => {
     expect(result.collection.items[0]).toMatchObject({
       id: characterId,
       name: '测试角色甲',
+      profileLike: tavernCard().data.creator_notes,
       chatBackground: '',
       chatBackgroundOpacity: 0.72,
       chatBackgroundBlur: 2,
@@ -330,6 +350,11 @@ describe('character card import', () => {
       '清理测试标签',
       '保留双表面标记'
     ])
+    for (const format of ['json', 'png'] as const) {
+      const exported = transfers.export(characterId, format)
+      const decoded = decodeCharacterCard(Buffer.from(exported.base64, 'base64'), 'eleckoi')
+      expect(decoded.packageData.character.profileLike).toBe(tavernCard().data.creator_notes)
+    }
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 

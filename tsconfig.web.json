@@ -16,8 +16,8 @@
     "allowSyntheticDefaultImports": true,
     "paths": {
       "@renderer/*": ["./apps/web/src/*"],
-      "@shared/*": ["./packages/product-shared/src/*"]
+      "@shared/*": ["./packages/shared/src/*"]
     }
   },
-  "include": ["apps/web/src/**/*.ts", "apps/web/src/**/*.tsx", "packages/product-shared/src/**/*.ts"]
+  "include": ["apps/web/src/**/*.ts", "apps/web/src/**/*.tsx", "packages/shared/src/**/*.ts"]
 }

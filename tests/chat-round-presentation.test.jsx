@@ -4,8 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TurnNavigator, mergeTurnRailItems, StatsPills, ChatView, chatFixture, userNode } from './helpers/officialChatView.jsx'
 import { createInputRoundIndex, presentChatTurnNavigation, adaptChatSessionStats } from './helpers/roleplayPresentation.js'
-import { inputContinuationsProjection } from '../packages/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
-import { historyStatsProjection } from '../packages/dsh-client-roleplay/src/host/history-stats-projection.mjs'
+import { inputContinuationsProjection } from '../packages/client/features/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
+import { historyStatsProjection } from '../packages/client/features/dsh-client-roleplay/src/host/history-stats-projection.mjs'
 
 const identities = {
   inputs: [1, 3, 5].map((turn, index) => ({ turn, eventSeq: turn * 10 + 1, messageId: `input-${index + 1}` })),

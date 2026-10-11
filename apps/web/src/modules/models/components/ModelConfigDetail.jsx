@@ -5,6 +5,7 @@ import { ModelParametersSection } from "./ModelParametersSection.jsx";
 import { ProviderLogo } from "./ProviderLogo.jsx";
 
 export function ModelConfigDetail({
+  showHeader = true,
   activeProvider,
   isImageProvider,
   hasUnsavedChanges,
@@ -19,7 +20,7 @@ export function ModelConfigDetail({
   return (
     <section className="model-config-detail">
       <div className="model-detail-body">
-        <header className="model-detail-header">
+        {showHeader && <header className="model-detail-header">
           <h2>模型配置</h2>
           <div className="model-save-actions">
             <button className="model-cancel-button" type="button" disabled={!hasUnsavedChanges || saving} onClick={onCancel}>
@@ -29,7 +30,7 @@ export function ModelConfigDetail({
               {saving ? "保存中..." : "保存配置"}
             </button>
           </div>
-        </header>
+        </header>}
 
         <div className="model-detail-hero">
           <div className="model-hero-logo">

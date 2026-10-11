@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "architecture": "arm64-v8a",
+  "upstreamCommit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+  "rootfs": {
+    "version": "24.04.4",
+    "url": "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
+    "file": "ubuntu-base-24.04.4-arm64.tar.gz",
+    "sha256": "04207713ece899c3740823d33690441ad3a7f0ded1101aca744e2b0f37ac7ff2"
+  },
+  "node": {
+    "version": "24.19.0",
+    "url": "https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-arm64.tar.gz",
+    "file": "node-v24.19.0-linux-arm64.tar.gz",
+    "sha256": "d28c8a5bf0a808f0ed434a1dce8c54ae98f0371c0bd86ac58abc613f73e6643f",
+    "abi": 137
+  },
+  "sqlite": {
+    "version": "12.11.1",
+    "url": "https://github.com/WiseLibs/better-sqlite3/releases/download/v12.11.1/better-sqlite3-v12.11.1-node-v137-linux-arm64.tar.gz",
+    "file": "better-sqlite3-v12.11.1-node-v137-linux-arm64.tar.gz",
+    "sha256": "60da4cbe1b1714c8db62f2ee71a9928cde5303dab57bde14c02debd12a784439"
+  }
+}

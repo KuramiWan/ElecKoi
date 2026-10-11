@@ -1,11 +1,16 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import vm from 'node:vm'
+import { createRequire } from 'node:module'
+import { readWorkspacePackages } from './workspace-packages.mjs'
 import {
   WorkspaceAnalyzer, CordisCatalogProjector, TypeGraphRenderer,
   FaceModelEmitter, renderPageRegion
 } from '@deepseek-ai/dsh-typert-generator'
+
+const require = createRequire(import.meta.url)
+const ts = createRequire(require.resolve('@deepseek-ai/dsh-typert-generator'))('typescript')
 
 const foundationTypes = new Set([
   'Promise', 'AsyncIterable', 'AsyncIterator', 'Iterator', 'Array', 'ReadonlyArray',
@@ -14,6 +19,8 @@ const foundationTypes = new Set([
 ])
 const privateHostServices = new Map([
   ['eleckoiProductData', 'SQLite 唯一写入者和内部准备数据。'],
+  ['eleckoiConversationLifecycle', '聊天操作互斥和本轮产品保存等待，不提供第三方插件回调。'],
+  ['eleckoiVariableProcessing', '原生变量候选处理及作者 Web 回调装配；不开放另一套产品数据读写入口。'],
   ['eleckoiConversationChanges', '产品 Remote 拥有的通知发布器。'],
   ['eleckoiCharacterConfigurationChanges', '产品 Remote 拥有的配置通知发布器。'],
   ['eleckoiProductRecordChanges', '产品 Remote 拥有的目录通知发布器。']
@@ -31,14 +38,9 @@ export async function generatePluginApiReference(root, { check = false } = {}) {
   const runtime = JSON.parse(await readFile(resolve(root, 'apps/desktop/resources/dsh/runtime-manifest.json'), 'utf8'))
   const upstream = `https://github.com/deepseek-ai/deepseek-harness/blob/${runtime.upstream.commit}`
   const manifests = []
-  for (const entry of await readdir(resolve(root, 'packages'), { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const path = resolve(root, 'packages', entry.name, 'package.json')
-    const content = await readFile(path, 'utf8').catch(error => { if (error.code === 'ENOENT') return null; throw error })
-    if (content === null) continue
-    const manifest = JSON.parse(content)
+  for (const { manifest, directory } of readWorkspacePackages(root)) {
     if (runtime.desktopProfile.bundles.includes(manifest.name)) {
-      manifests.push({ root: `packages/${entry.name}`, ...manifest })
+      manifests.push({ root: directory, ...manifest })
     }
   }
   const rows = manifests.flatMap(manifest => (manifest.eleckoi?.developerInterfaces ?? [])
@@ -95,11 +97,14 @@ export async function generatePluginApiReference(root, { check = false } = {}) {
     const exemptions = Object.fromEntries(closure.filter(type => !type.location.file.startsWith('packages/'))
       .map(type => [type.name, `${upstream}/docs/subsystems/README.zh.md`]))
     exemptions.Session = `${upstream}/packages/core/session/src/index.ts`
+    exemptions.RemoteStream = `${upstream}/docs/api-gateway.zh.md`
     exemptions.GenerateOptions = `${upstream}/packages/llm/llm/src/types.ts`
     const policy = { linkedTypePages: links, foundationTypeNames: foundationTypes,
       typeLinkExemptions: exemptions, inheritedServices: [], inheritedEvents: [] }
     const projector = new CordisCatalogProjector(selected, sources.filter(source => source.face === original.face), policy)
     const model = projector.project()
+    assertMembers(`${original.face} 公开服务目录`, model.services.map(service => service.key),
+      [...new Set(selected.packages.flatMap(pkg => pkg.services.map(service => service.key)))].filter(key => key !== 'layout'))
     models.set(original.face, model)
     const banner = `<!-- 由 pnpm generate:plugin-docs 使用锁定的 DSH 官方生成器生成，请勿手工修改。 -->\n\n`
     const header = `${banner}# ${original.face === 'host' ? 'Host' : 'Client'} 完整服务参考\n\nDSH 基准：\`${runtime.upstream.version}\`，提交 \`${runtime.upstream.commit}\`。\n\n`
@@ -132,7 +137,7 @@ export async function generatePluginApiReference(root, { check = false } = {}) {
     }
     artifacts.set(`docs/plugins/${typePage}`, typeLines.join('\n') + '\n')
     const runtimePath = original.face === 'host' ? 'src/cordisApi.generated.ts' : 'src/client/cordisApi.generated.ts'
-    artifacts.set(`packages/dsh-product-api/${runtimePath}`, projector.renderRuntimeApi(model)
+    artifacts.set(`packages/host/product-api/${runtimePath}`, projector.renderRuntimeApi(model)
       .replace(/^\/\*\*[\s\S]*?\*\//, '/** 由 pnpm generate:plugin-docs 生成。公开服务的只读目录，与完整参考使用同一份源码分析结果。 */'))
   }
 
@@ -151,7 +156,7 @@ export async function generatePluginApiReference(root, { check = false } = {}) {
     namespace, hostService: invocations.find(call => call.namespace === namespace).service,
     methods: invocations.filter(call => call.namespace === namespace).map(call => ({ name: call.method, mode: call.mode }))
   }))
-  artifacts.set('packages/dsh-product-api/src/client/remoteApi.generated.ts',
+  artifacts.set('packages/host/product-api/src/client/remoteApi.generated.ts',
     '/** 由 pnpm generate:plugin-docs 生成。Remote 调用声明直接使用官方 Host-for-Client 生成结果。 */\n'
     + `export const REMOTE_API = ${JSON.stringify(directory, null, 2)} as const\n`
     + `export const REMOTE_DECLARATION = ${JSON.stringify(remote.dts)}\n`)
@@ -183,14 +188,37 @@ async function checkClientImplementation(root, row, members) {
   let plugin
   const services = new Map()
   const react = { lazy: () => () => null, createElement: () => null }
-  vm.runInNewContext(await readFile(resolve(root, row.packageRoot, 'src/client.js'), 'utf8'), {
-    window: { __ModuleLoader__: { load: entry => { plugin = entry.factory(name => {
-      if (name === 'react') return react
-      throw new Error(`接口探针不支持执行依赖：${name}`)
-    }) } } }, AbortController, AbortSignal, console
+  const assetsBaseUrl = 'https://eleckoi.invalid/probe/'
+  const document = { createElement: () => ({}), head: { appendChild: script => queueMicrotask(() => script.onload()) } }
+  const window = { document, __ELECKOI_COMPATIBILITY_ASSETS__: { baseUrl: assetsBaseUrl }, location: { href: assetsBaseUrl }, __ModuleLoader__: { load: entry => { plugin = entry.factory(name => {
+    if (name === 'react') return react
+    throw new Error(`接口探针不支持执行依赖：${name}`)
+  }) } } }
+  const manifest = JSON.parse(await readFile(resolve(root, row.packageRoot, 'package.json'), 'utf8'))
+  const clientExport = manifest.exports['./client']
+  const clientPath = typeof clientExport === 'string' ? clientExport : clientExport.default
+  const source = ts.createSourceFile('client.js', await readFile(resolve(root, row.packageRoot, clientPath), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
+  const transformed = ts.transform(source, [context => {
+    const visit = node => ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      ? ts.factory.updateCallExpression(node, ts.factory.createIdentifier('__probeImport'), node.typeArguments, node.arguments)
+      : ts.visitEachChild(node, visit, context)
+    return node => ts.visitNode(node, visit)
+  }])
+  const probe = ts.createPrinter().printFile(transformed.transformed[0])
+  transformed.dispose()
+  vm.runInNewContext(probe, {
+    window, document, URL, AbortController, AbortSignal, console,
+    __probeImport: specifier => {
+      if (row.packageName !== '@eleckoi/dsh-client-tavern-shared' || specifier !== assetsBaseUrl + 'client/runtime.js') {
+        throw new Error(`接口探针没有登记浏览器模块：${specifier}`)
+      }
+      return import(pathToFileURL(resolve(root, row.packageRoot, 'src/runtime.js')).href)
+    }
   }, { filename: `${row.packageRoot}/src/client.js`, timeout: 1000 })
-  plugin.apply({ remote: {}, provide: (key, value) => services.set(key, value),
-    effect: () => {}, on: () => () => {}, slots: { inject: () => {} } })
+  await plugin.apply({ remote: {},
+    eleckoiConversations: { getDetailsSnapshot: () => ({ id: null }) },
+    provide: (key, value) => services.set(key, value), effect: () => {}, on: () => () => {},
+    slots: { inject: () => {}, entriesOfSlot: () => [], subscribe: () => () => {} } })
   const service = services.get(row.id)
   if (!service) throw new Error(`实现没有提供 ctx.${row.id}`)
   for (const member of members) {

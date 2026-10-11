@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, CaretRight, X } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowRight, CaretRight, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { AgentToolGroupIcon } from '../../../ui/icons/index.jsx';
 import { RoleplayPlanEditor, SubagentSettingsLink, WebSearchSettings } from '../../agentTools/index.js';
 import { loadAgentTools, setAgentToolGroupEnabled, setRoleplayPlanSettings } from '../api/agentToolsApi.js';
+import { MobileConversationOverlay, MobileOverlayScroll, isMobilePresentation } from '../../../mobile/MobileConversationOverlay.jsx';
 
 export function AgentToolsDialog({
   presetCatalog,
@@ -11,6 +13,8 @@ export function AgentToolsDialog({
   onManage,
   onNotify,
 }) {
+  const mobile = isMobilePresentation();
+  const scrollPositions = useRef(new Map()).current;
   const [catalog, setCatalog] = useState(null);
   const [selectedId, setSelectedId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -29,6 +33,7 @@ export function AgentToolsDialog({
   }, [onNotify, presetCatalog]);
 
   useEffect(() => {
+    if (mobile) return undefined;
     const closeOnEscape = (event) => {
       if (event.key !== 'Escape') return;
       if (selectedId) setSelectedId('');
@@ -36,7 +41,7 @@ export function AgentToolsDialog({
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose, selectedId]);
+  }, [onClose, selectedId, mobile]);
 
   async function changeEnabled(group, enabled) {
     if (changingId) return;
@@ -75,14 +80,7 @@ export function AgentToolsDialog({
     }
   }
 
-  return createPortal(<div className="agent-tools-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="agent-tools-dialog" role="dialog" aria-modal="true" aria-label="预设工具" onMouseDown={(event) => event.stopPropagation()}>
-      <header>
-        {selected ? <button type="button" onClick={() => setSelectedId('')} aria-label="返回工具列表"><ArrowLeft /></button> : <span />}
-        <h2>预设工具</h2>
-        <button type="button" onClick={onClose} aria-label="关闭"><X /></button>
-      </header>
-      <div className="agent-tools-content">
+  const content = <div className="agent-tools-content">
         {selected ? <ToolDetail
           group={selected}
           changing={changingId === selected.id}
@@ -95,20 +93,36 @@ export function AgentToolsDialog({
           onRoleplayPlanSave={saveRoleplayPlan}
         /> : (
           <div className="agent-tools-list">
-            {loading ? <p className="agent-tools-state">正在读取工具</p> : catalog?.groups.map((group) => (
+            {loading ? <p className="agent-tools-state">正在读取工具</p> : mobile ? [...new Set(catalog?.groups.map(group => group.source))].map(source => <section className="mobile-tool-group" key={source}>
+              <h3>{source === 'built_in' ? '内置工具' : source === 'mcp' ? 'MCP' : '扩展'}</h3>
+              <div>{catalog.groups.filter(group => group.source === source).map(group => <ToolRow key={group.id} group={group} changing={changingId === group.id} onOpen={() => setSelectedId(group.id)} onChange={enabled => changeEnabled(group, enabled)} />)}</div>
+            </section>) : catalog?.groups.map((group) => (
               <ToolRow key={group.id} group={group} changing={changingId === group.id} onOpen={() => setSelectedId(group.id)} onChange={(enabled) => changeEnabled(group, enabled)} />
             ))}
             {!loading && !catalog?.groups.length ? <p className="agent-tools-state">当前预设还没有添加工具</p> : null}
           </div>
         )}
-      </div>
+      </div>;
+  const manage = <button type="button" className="agent-tools-manage" onClick={() => { onClose(); onManage?.(); }}>管理预设工具 <ArrowRight aria-hidden="true" /></button>;
+  if (mobile) return <MobileConversationOverlay title={selected?.name || '工具'} className="mobile-agent-tools" onClose={onClose}
+    onBack={selected ? () => setSelectedId('') : undefined} footer={manage}>
+    <MobileOverlayScroll key={selectedId || 'list'} scrollKey={selectedId || 'list'} positions={scrollPositions} direction={selected ? 'forward' : 'back'}>{content}</MobileOverlayScroll>
+  </MobileConversationOverlay>;
+  return createPortal(<SystemBarOverlay className="agent-tools-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="agent-tools-dialog" role="dialog" aria-modal="true" aria-label="预设工具" onMouseDown={(event) => event.stopPropagation()}>
+      <header>
+        {selected ? <button type="button" onClick={() => setSelectedId('')} aria-label="返回工具列表"><ArrowLeft /></button> : <span />}
+        <h2>预设工具</h2>
+        <button type="button" onClick={onClose} aria-label="关闭"><X /></button>
+      </header>
+      {content}
       <footer>
         <button type="button" className="agent-tools-manage" onClick={() => { onClose(); onManage?.(); }}>
           管理预设工具 <ArrowRight aria-hidden="true" />
         </button>
       </footer>
     </section>
-  </div>, document.body);
+  </SystemBarOverlay>, document.body);
 }
 
 function ToolRow({ group, changing, onOpen, onChange }) {

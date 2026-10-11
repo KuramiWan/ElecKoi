@@ -30,15 +30,20 @@ dev-dist/
 dist/
 out/
 release/
-packages/dsh-product-api/lib/
-packages/dsh-product-data/lib/
-packages/dsh-client-*/lib/
+packages/host/product-api/lib/
+packages/host/product-data/lib/
+packages/host/compatibility-host/lib/
+packages/client/features/*/lib/
+packages/client/mobile/*/lib/
 apps/desktop/resources/native/
 coverage/
+build/
 playwright-report/
 test-results/
 .tmp-boot-diagnostics/
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # Local maintenance and review material
 /AGENTS.md

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowsInSimple, ArrowsOutSimple, DotsSixVertical, X } from "@phosphor-icons/react";
+import { ArrowsInSimple, ArrowsOutSimple, DotsSixVertical, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { assetSrc } from "../../../app/services/assets.js";
 
 const EDGE = 12;

@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -44,7 +45,7 @@ export function DeleteCharacterDialog({ character, deleting = false, error = "",
   }, [returnFocus]);
 
   return createPortal(
-    <div className="character-delete-overlay" role="presentation" onMouseDown={() => !deleting && onCancel()}>
+    <SystemBarOverlay className="character-delete-overlay" role="presentation" onMouseDown={() => !deleting && onCancel()}>
       <section
         ref={dialogRef}
         className="character-delete-dialog"
@@ -65,7 +66,7 @@ export function DeleteCharacterDialog({ character, deleting = false, error = "",
           </button>
         </div>
       </section>
-    </div>,
+    </SystemBarOverlay>,
     document.body,
   );
 }

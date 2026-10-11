@@ -1,7 +1,8 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { generatePluginApiReference } from './generate-plugin-api-reference.mjs'
+import { readWorkspacePackages } from './workspace-packages.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const outputPath = join(root, 'docs', 'plugins', 'api-reference.md')
@@ -10,25 +11,16 @@ const allowedKinds = new Set(['ui-slot', 'service', 'event', 'contribution', 're
 const allowedRelations = new Set(['provides', 'contributes'])
 
 const runtimeManifest = JSON.parse(await readFile(join(root, 'apps', 'desktop', 'resources', 'dsh', 'runtime-manifest.json'), 'utf8'))
-const packageDirs = await readdir(join(root, 'packages'), { withFileTypes: true })
 const manifests = new Map()
 
-for (const entry of packageDirs) {
-  if (!entry.isDirectory()) continue
-  const packagePath = join(root, 'packages', entry.name, 'package.json')
-  let manifest
-  try {
-    manifest = JSON.parse(await readFile(packagePath, 'utf8'))
-  } catch (error) {
-    if (error?.code === 'ENOENT') continue
-    throw error
-  }
+for (const { manifest, packagePath } of readWorkspacePackages(root)) {
   if (Array.isArray(manifest.eleckoi?.developerInterfaces)) {
     manifests.set(manifest.name, { manifest, packagePath })
   }
 }
 
 const bundles = runtimeManifest.desktopProfile?.bundles
+const androidBundles = JSON.parse(await readFile(join(root, 'apps/android-host/src/androidPluginBundleManifest.json'), 'utf8'))
 if (!Array.isArray(bundles) || bundles.length === 0) {
   throw new Error('apps/desktop/resources/dsh/runtime-manifest.json 没有 desktopProfile.bundles')
 }
@@ -56,8 +48,8 @@ for (const packageName of bundles) {
 }
 
 for (const packageName of manifests.keys()) {
-  if (!bundles.includes(packageName)) {
-    throw new Error(`${packageName} 声明了开发接口，但不在 desktopProfile.bundles 中`)
+  if (!bundles.includes(packageName) && !androidBundles.includes(packageName)) {
+    throw new Error(`${packageName} 声明了开发接口，但不在任何应用的正式 bundle 清单中`)
   }
 }
 
@@ -107,6 +99,24 @@ for (const packageName of bundles) {
       ? row.members.map(member => `\`${member}\``).join('、')
       : row.owner ? `所属：\`${row.owner}\`` : '—'
     lines.push(`| \`${escapeCell(row.id)}\` | ${escapeCell(row.title)} | ${kindNames[row.kind]} | ${relationNames[row.relation]} | \`${escapeCell(row.mode)}\` | \`${escapeCell(row.scope)}\` | ${escapeCell(row.description)} | ${detail} |`)
+  }
+}
+
+const mobileOnly = androidBundles.filter(name => !bundles.includes(name))
+if (mobileOnly.length) {
+  lines.push('', '## Android 专用装配', '',
+    'Android 组合清单为 `apps/android-host/src/androidPluginBundleManifest.json`。共享 bundle 使用上述相同合同，下列专用 bundle 不进入桌面运行组合。', '',
+    '| Bundle | ID | 类型 | 关系 | 所属合同 |', '| --- | --- | --- | --- | --- |')
+  for (const name of mobileOnly) {
+    const info = manifests.get(name)
+    if (!info) throw new Error(`Android bundle ${name} 缺少开发接口声明`)
+    for (const row of info.manifest.eleckoi.developerInterfaces) {
+      for (const field of ['id', 'kind', 'title', 'description', 'mode', 'scope', 'relation']) {
+        if (typeof row[field] !== 'string' || !row[field]) throw new Error(`${name} 的开发接口缺少 ${field}`)
+      }
+      if (!allowedKinds.has(row.kind) || !allowedRelations.has(row.relation)) throw new Error(`${name} 的开发接口类别或关系无效`)
+      lines.push(`| \`${name}\` | \`${escapeCell(row.id)}\` | ${kindNames[row.kind]} | ${relationNames[row.relation]} | \`${row.owner ?? name}\` |`)
+    }
   }
 }
 

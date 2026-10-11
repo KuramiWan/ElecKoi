@@ -5,7 +5,7 @@ import { WorkspaceTypertGenerator } from '@deepseek-ai/dsh-typert-generator'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const packageName = '@eleckoi/dsh-product-api'
-const output = resolve(root, 'packages/dsh-product-api/lib')
+const output = resolve(root, 'packages/host/product-api/lib')
 const generator = new WorkspaceTypertGenerator(root, { checkDiagnostics: false })
 const artifacts = generator.generate([packageName], ['host'])
 

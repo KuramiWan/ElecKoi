@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { createEntryDraft } from '../apps/web/src/modules/settingLibraries/model/settingLibraryEditing.js';
 import { createPositionDraft, fixedPlacementRowSelectable, moveCustomPosition, positionManagementRows, positionPickerRows, removeCustomPosition, savePositionDraft } from '../apps/web/src/modules/settingLibraries/model/customPositions.js';
 import { CustomPositionManager } from '../apps/web/src/modules/settingLibraries/components/CustomPositionManager.jsx';
+import { HIDDEN_TOOL_TIMELINE_PROMPT_POSITION_ID, normalizeAgentPresetPrompts } from '../packages/shared/src/contracts/presets/builtIns';
 import { SettingLibraryEntryEditor, VisualPositionPicker } from '../apps/web/src/modules/settingLibraries/components/SettingLibraryEntryEditor.jsx';
 
 vi.stubGlobal('React', React);
@@ -91,12 +92,53 @@ describe('custom position editing', () => {
     expect(moved.positions.find((item) => item.id === 'world')).toMatchObject({ anchor: 'insert_point_3', side: 'before_setting_position', order: 1 });
     expect(moved.entries[0]).toEqual({ ...entry, position: 'insert_point_3' });
   });
+  it.each([
+    ['last', 'custom:middle', false, ['first', 'last', 'middle']],
+    ['middle', 'custom:last', true, ['first', 'last', 'middle']],
+    ['last', 'custom:first', false, ['last', 'first', 'middle']],
+  ])('moves %s relative to %s inside the last placement group', (movingId, target, down, expected) => {
+    const positions = ['first', 'middle', 'last'].map((id, index) => ({
+      ...position, id, name: id, anchor: 'insert_point_5', order: index + 1,
+    }));
+    const entries = positions.map((item) => ({ ...entry, id: `entry-${item.id}`, promptPositionId: item.id, position: item.anchor }));
+    const moved = moveCustomPosition(positions, entries, movingId, target, down);
+    const customRows = positionManagementRows(moved.positions).filter((row) => row.type === 'custom');
+    expect(customRows.map((row) => row.position.id)).toEqual(expected);
+    expect(customRows.map((row) => row.position.order)).toEqual([1, 2, 3]);
+    expect(moved.entries).toEqual(entries);
+    expect(positions.map((item) => item.id)).toEqual(['first', 'middle', 'last']);
+  });
+  it('inserts into another placement group using the destination order rather than the old order', () => {
+    const positions = [
+      { ...position, id: 'moving', order: 1 },
+      { ...position, id: 'upper', anchor: 'insert_point_5', order: 1 },
+      { ...position, id: 'lower', anchor: 'insert_point_5', order: 2 },
+    ];
+    const linkedEntry = { ...entry, promptPositionId: 'moving' };
+    const moved = moveCustomPosition(positions, [linkedEntry], 'moving', 'custom:lower', true);
+    expect(positionManagementRows(moved.positions).filter((row) => row.type === 'custom').map((row) => row.position.id))
+      .toEqual(['upper', 'lower', 'moving']);
+    expect(moved.entries).toEqual([{ ...linkedEntry, position: 'insert_point_5' }]);
+  });
+  it('keeps the moved built-in position order through preset normalization and serialized readback', () => {
+    const positions = [
+      { ...position, id: 'upper', anchor: 'insert_point_5', order: 1 },
+      { ...position, id: HIDDEN_TOOL_TIMELINE_PROMPT_POSITION_ID, anchor: 'insert_point_5', order: 2 },
+    ];
+    const moved = moveCustomPosition(positions, [], HIDDEN_TOOL_TIMELINE_PROMPT_POSITION_ID, 'custom:upper', false);
+    const saved = normalizeAgentPresetPrompts([], moved.positions);
+    const restored = JSON.parse(JSON.stringify(saved.promptPositions));
+    expect(positionManagementRows(restored).filter((row) => row.type === 'custom').map((row) => row.position.id))
+      .toEqual([HIDDEN_TOOL_TIMELINE_PROMPT_POSITION_ID, 'upper']);
+    expect(positionPickerRows(restored).filter((row) => row.type === 'custom').map((row) => row.position.id))
+      .toEqual([HIDDEN_TOOL_TIMELINE_PROMPT_POSITION_ID, 'upper']);
+  });
   it('shows a fixed guide and draggable custom nodes without an insert-position field', () => {
     const html = renderToStaticMarkup(<CustomPositionManager entry={entry} positions={[position]} entries={[entry]} onChange={() => {}} onBack={() => {}} />);
     expect(html).toContain('返回插入配置');
     expect(html).toContain('世界状态');
     expect(html).toContain('管理位置：世界状态');
-    expect(html).toContain('draggable="true"');
+    expect(html).toContain('aria-label="拖动排序：世界状态"');
     expect(html).not.toContain('<input');
     expect(html).not.toContain('<select');
     expect(html).not.toContain('插入位置');

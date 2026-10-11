@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CHAT_DISPLAY_PREFERENCES,
   chatDisplayPreferencesSchema,
-} from "../packages/product-shared/src/contracts/settings/schemas.ts";
+} from "../packages/shared/src/contracts/settings/schemas.ts";
 import {
   chatDisplayCssVariables,
   chatTextColorCssVariables,

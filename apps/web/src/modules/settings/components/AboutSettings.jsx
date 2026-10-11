@@ -3,10 +3,12 @@ import appIcon from "../../../assets/eleckoi-app-icon.png";
 const BUSY_PHASES = new Set(["checking", "downloading", "installing"]);
 
 export function AboutSettings({ updates }) {
+  const android = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === "android";
   const status = updates?.status ?? null;
   const phase = status?.phase ?? "idle";
   const busy = BUSY_PHASES.has(phase);
-  const message = updateStatusMessage(status, updates?.error);
+  const message = android ? "" : updateStatusMessage(status, updates?.error);
+  const currentVersion = android ? globalThis.__ELECKOI_CLIENT_PLATFORM__.version : status?.currentVersion;
 
   async function checkForUpdates() {
     try {
@@ -25,16 +27,16 @@ export function AboutSettings({ updates }) {
         <img src={appIcon} alt="" aria-hidden="true" draggable="false" />
         <div className="about-version-copy">
           <strong>ElecKoi</strong>
-          <span>当前版本 {status?.currentVersion ? `v${status.currentVersion}` : "—"}</span>
+          <span>当前版本 {currentVersion ? `v${currentVersion}` : "—"}</span>
         </div>
-        <button
+        {!android ? <button
           type="button"
           className="settings-secondary-button about-update-button"
           disabled={busy}
           onClick={checkForUpdates}
         >
           {phase === "checking" ? "正在检查…" : "检查更新"}
-        </button>
+        </button> : null}
         {message ? (
           <p className={`about-update-status${phase === "error" || updates?.error ? " is-error" : ""}`} role="status">
             {message}

@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useDshDisplayPreferences } from "../../settings/index.js";
@@ -5,6 +6,7 @@ import { HistoryExportIcon, HistoryImportIcon, TrashIcon, XIcon } from "../../..
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
 import { applyChatHistoryPolicy, exportChatHistory, importChatHistory } from "../api/chatApi.js";
+import { MobileConversationOverlay, isMobilePresentation } from '../../../mobile/MobileConversationOverlay.jsx';
 
 const EMPTY_SNAPSHOT = Object.freeze({ status: "loading", ui: Object.freeze({}) });
 const EMPTY_SUBSCRIBE = () => () => {};
@@ -25,6 +27,7 @@ function timeTitle(value) {
 }
 
 export function HistoryModal({ open, sessions, sessionId, chatCharacter, conversationModel, onClose, onLoadChat, onDeleteChat, onHistoryPolicyChange }) {
+  const mobile = isMobilePresentation();
   const preferences = useDshDisplayPreferences();
   const preferenceSnapshot = useSyncExternalStore(
     preferences?.subscribe || EMPTY_SUBSCRIBE,
@@ -36,6 +39,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
   const [transferError, setTransferError] = useState("");
   const [transferring, setTransferring] = useState(false);
   const importInput = useRef(null);
+  const confirmRef = useRef(null);
   const currentSession = (sessions || []).find((item) => item.id === sessionId);
   const currentCharacterId = currentSession?.character_id || chatCharacter?.character_id || "";
   const characterName = currentSession?.character_name || chatCharacter?.assistant_name || chatCharacter?.character_name || "";
@@ -44,6 +48,13 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
     if (!open || preferenceSnapshot.status !== "ready") return;
     setSaveMode(preferenceSnapshot.ui?.history_save_mode === "recent10" ? "recent10" : "all");
   }, [open, preferenceSnapshot.status, preferenceSnapshot.ui]);
+
+  useEffect(() => {
+    if (!mobile || !confirmAction) return undefined;
+    const previous = document.activeElement;
+    confirmRef.current?.querySelector('button')?.focus({ preventScroll: true });
+    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }); };
+  }, [mobile, confirmAction]);
 
   const filteredGroups = useMemo(() => {
     const key = keyword.trim().toLowerCase();
@@ -151,28 +162,19 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
 
   if (!open) return null;
 
-  return createPortal((
-    <div className="history-overlay" onMouseDown={onClose}>
-      <section className="history-window" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="history-titlebar">
-          <strong>{characterName}</strong>
-          <button type="button" onClick={onClose} title="关闭">
-            <XIcon />
-          </button>
-        </header>
-
+  const body = <>
         <DshSearchField
           className="history-search"
           value={keyword}
           onValueChange={setKeyword}
           placeholder="搜索历史对话…"
           ariaLabel="搜索历史对话"
-          autoFocus
+          autoFocus={!mobile}
         />
 
         <div className="history-toolbar">
           <div className="history-retention" role="radiogroup" aria-label="当前策略">
-            <b>当前策略</b>
+            {!mobile && <b>当前策略</b>}
             <button
               className={saveMode === "all" ? "active" : ""}
               type="button"
@@ -181,7 +183,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
               onClick={() => chooseSaveMode("all")}
             >
               <span />
-              保留全部记录
+              {mobile ? '保留全部' : '保留全部记录'}
             </button>
             <button
               className={saveMode === "recent10" ? "active" : ""}
@@ -191,13 +193,14 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
               onClick={() => chooseSaveMode("recent10")}
             >
               <span />
-              仅保留最新10条
+              {mobile ? '最新10条' : '仅保留最新10条'}
             </button>
           </div>
           <div className="history-actions" aria-label="历史对话操作">
-            <input ref={importInput} type="file" accept=".json,application/json" hidden onChange={importHistory} />
+            <input ref={importInput} type="file" accept=".json,.jsonl,application/json" hidden onChange={importHistory} />
             <button type="button" title="导入聊天记录" aria-label="导入聊天记录" disabled={transferring} onClick={() => importInput.current?.click()}>
               <HistoryImportIcon />
+              {mobile && <span>导入记录</span>}
             </button>
           </div>
         </div>
@@ -240,7 +243,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
                     <button className="history-item-export" type="button" title="导出这条记录" aria-label="导出这条记录" disabled={transferring} onClick={() => exportHistory(item)}>
                       <HistoryExportIcon />
                     </button>
-                    <button className="history-item-delete" type="button" title="删除这条记录" onClick={() => requestDeleteChat(item)}>
+                    <button className="history-item-delete" type="button" title="删除这条记录" aria-label="删除这条记录" onClick={() => requestDeleteChat(item)}>
                       <TrashIcon />
                     </button>
                   </div>
@@ -252,7 +255,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
 
         {confirmAction ? (
           <div className="history-confirm-backdrop" onMouseDown={() => setConfirmAction(null)}>
-            <section className="history-confirm" onMouseDown={(event) => event.stopPropagation()}>
+            <section ref={confirmRef} className="history-confirm" role="alertdialog" aria-modal="true" aria-label={confirmAction.type === 'policy' ? '切换保留策略' : '删除历史对话'} onMouseDown={(event) => event.stopPropagation()}>
               <strong>{confirmAction.type === "policy" ? "切换保留策略" : "删除历史对话"}</strong>
               <span>
                 {confirmAction.type === "policy"
@@ -270,7 +273,13 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
             </section>
           </div>
         ) : null}
-      </section>
-    </div>
-  ), document.body);
+  </>;
+  if (mobile) return <MobileConversationOverlay title={characterName || '聊天记录'} subtitle={characterName ? '聊天记录' : undefined} className="mobile-history"
+    onClose={onClose} onBack={confirmAction ? () => setConfirmAction(null) : undefined} beforeClose={() => { if (confirmAction) { setConfirmAction(null); return false; } return true; }}>{body}</MobileConversationOverlay>;
+  return createPortal(<SystemBarOverlay className="history-overlay" onMouseDown={onClose}>
+    <section className="history-window" onMouseDown={event => event.stopPropagation()}>
+      <header className="history-titlebar"><strong>{characterName}</strong><button type="button" onClick={onClose} title="关闭"><XIcon /></button></header>
+      {body}
+    </section>
+  </SystemBarOverlay>, document.body);
 }

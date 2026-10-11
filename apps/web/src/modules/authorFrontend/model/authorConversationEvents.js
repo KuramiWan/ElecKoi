@@ -1,6 +1,7 @@
-import { AUTHOR_CONVERSATION_EVENT_NAMES } from '@eleckoi/author-sdk';
-
-export const authorConversationEventNames = AUTHOR_CONVERSATION_EVENT_NAMES;
+export const authorConversationEventNames = [
+  'messages.changed', 'agent.output.delta', 'agent.run.finished', 'agent.run.failed',
+  'agent.state.changed', 'agent.process.updated', 'agent.generation.stats',
+];
 
 const subscriptionsByModel = new WeakMap();
 

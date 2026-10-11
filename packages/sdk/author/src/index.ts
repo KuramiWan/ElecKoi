@@ -1,11 +1,23 @@
-export const AUTHOR_API_VERSION = '0.1.0'
-export const AUTHOR_API_STAGE = 'preview'
+import { AuthorApiError } from './errors'
+import { AUTHOR_API_STAGE, AUTHOR_API_VERSION } from './version'
+
+export { AUTHOR_API_STAGE, AUTHOR_API_VERSION } from './version'
 
 export * from './contracts'
+export * from './browser'
+export * from './errors'
+export * from './variables'
+export * from './scripts'
+export * from './rule-registry'
+export * from './script-session'
+export * from './document'
 
 export const authorApiPermissions = {
   appRead: 'app.read',
   contextRead: 'context.read',
+  scriptRead: 'script.read',
+  scriptWrite: 'script.write',
+  uiWrite: 'ui.write',
   variablesRead: 'variables.read',
   variablesWrite: 'variables.write',
   openingsRead: 'openings.read',
@@ -18,6 +30,8 @@ export const authorApiPermissions = {
   characterRead: 'character.read',
   settingLibraryRead: 'setting_library.read',
   settingLibraryWrite: 'setting_library.write',
+  presetsRead: 'presets.read',
+  presetsWrite: 'presets.write',
   inputRead: 'input.read',
   inputWrite: 'input.write',
   mediaRead: 'media.read',
@@ -48,6 +62,12 @@ export const authorApiDefinitions: readonly AuthorApiDefinition[] = [
   definition('app.getInfo', 'app', '读取应用与作者 API 版本信息', authorApiPermissions.appRead),
   definition('app.getCapabilities', 'app', '读取当前页面可调用的完整 API 清单', authorApiPermissions.appRead),
   definition('context.current', 'context', '读取当前页面上下文', authorApiPermissions.contextRead),
+  definition('script.getSettings', 'script', '读取当前脚本的设置与修改版本', authorApiPermissions.scriptRead),
+  definition('script.setSettings', 'script', '保存当前脚本设置，不重新启动程序', authorApiPermissions.scriptWrite),
+  definition('script.getLibrarySettings', 'script', '读取当前脚本所属库的共享设置', authorApiPermissions.scriptRead),
+  definition('script.setLibrarySettings', 'script', '保存当前脚本所属库的共享设置', authorApiPermissions.scriptWrite),
+  definition('ui.openPanel', 'ui', '打开所属脚本的原生作者面板', authorApiPermissions.uiWrite),
+  definition('ui.closePanel', 'ui', '关闭所属脚本的原生作者面板', authorApiPermissions.uiWrite),
   definition('variables.getState', 'variables', '读取当前变量状态', authorApiPermissions.variablesRead),
   definition('variables.getConfig', 'variables', '读取角色变量结构与初始配置', authorApiPermissions.variablesRead),
   definition('variables.setState', 'variables', '替换当前聊天变量状态', authorApiPermissions.variablesWrite),
@@ -58,6 +78,8 @@ export const authorApiDefinitions: readonly AuthorApiDefinition[] = [
   definition('openings.current', 'openings', '读取当前选中的开场白', authorApiPermissions.openingsRead),
   definition('openings.select', 'openings', '切换当前聊天的开场白', authorApiPermissions.openingsWrite),
   definition('messages.list', 'messages', '读取当前聊天的消息列表', authorApiPermissions.messagesRead),
+  definition('messages.getPage', 'messages', '读取已加载消息与历史分页游标', authorApiPermissions.messagesRead),
+  definition('messages.pageOlder', 'messages', '按当前游标加载更早的消息', authorApiPermissions.messagesRead),
   definition('messages.get', 'messages', '按消息 ID 读取一条消息', authorApiPermissions.messagesRead),
   definition('messages.current', 'messages', '读取当前最后一条消息', authorApiPermissions.messagesRead),
   definition('messages.setContent', 'messages', '改写指定消息正文', authorApiPermissions.messagesWrite),
@@ -65,20 +87,30 @@ export const authorApiDefinitions: readonly AuthorApiDefinition[] = [
   definition('messages.regenerate', 'messages', '从指定 AI 消息重新生成', authorApiPermissions.messagesWrite),
   definition('messages.editAndRegenerate', 'messages', '修改用户消息并从该处重新生成', authorApiPermissions.messagesWrite),
   definition('chat.current', 'chat', '读取当前聊天会话摘要', authorApiPermissions.chatRead),
-  definition('chat.list', 'chat', '读取聊天会话列表', authorApiPermissions.chatRead),
+  definition('chat.list', 'chat', '读取当前角色的聊天会话列表', authorApiPermissions.chatRead),
   definition('chat.getGenerationState', 'chat', '读取 AI 生成状态', authorApiPermissions.chatRead),
   definition('chat.getAgentTrajectory', 'chat', '读取当前聊天的完整 Agent 处理轨迹', authorApiPermissions.chatRead),
-    definition('chat.getModels', 'chat', '读取全局生效的模型摘要', authorApiPermissions.chatRead),
+  definition('chat.getModels', 'chat', '读取模型目录与全局生效的模型', authorApiPermissions.chatRead),
   definition('chat.send', 'chat', '发送消息并开始 AI 回复', authorApiPermissions.chatSend),
   definition('chat.stopGeneration', 'chat', '停止当前 AI 回复', authorApiPermissions.chatWrite),
   definition('chat.create', 'chat', '为角色创建新对话', authorApiPermissions.chatWrite),
   definition('chat.open', 'chat', '切换当前对话', authorApiPermissions.chatWrite),
   definition('chat.delete', 'chat', '删除指定对话', authorApiPermissions.chatWrite),
-    definition('chat.selectModel', 'chat', '选择全局模型与生成参数', authorApiPermissions.chatWrite),
+  definition('chat.selectModel', 'chat', '选择全局模型与明确的推理档位', authorApiPermissions.chatWrite),
   definition('character.current', 'character', '读取当前角色摘要', authorApiPermissions.characterRead),
-  definition('settingLibrary.current', 'settingLibrary', '读取当前聊天实际生效的设定库内容', authorApiPermissions.settingLibraryRead),
-  definition('settingLibrary.getSummary', 'settingLibrary', '读取当前角色设定库摘要', authorApiPermissions.settingLibraryRead),
-  definition('settingLibrary.replace', 'settingLibrary', '替换当前聊天实际生效的设定库内容', authorApiPermissions.settingLibraryWrite),
+  definition('settingLibrary.current', 'settingLibrary', '读取所属角色的设定库原稿', authorApiPermissions.settingLibraryRead),
+  definition('settingLibrary.getSummary', 'settingLibrary', '读取所属角色设定库摘要', authorApiPermissions.settingLibraryRead),
+  definition('settingLibrary.replace', 'settingLibrary', '替换所属角色的当前设定库内容', authorApiPermissions.settingLibraryWrite),
+  definition('settingLibrary.getEntry', 'settingLibrary', '按编号读取角色设定条目原稿', authorApiPermissions.settingLibraryRead),
+  definition('settingLibrary.updateEntry', 'settingLibrary', '修改角色设定库的指定条目', authorApiPermissions.settingLibraryWrite),
+  definition('settingLibrary.updateEntries', 'settingLibrary', '原子修改角色设定库的一组条目', authorApiPermissions.settingLibraryWrite),
+  definition('presets.list', 'presets', '读取预设目录及全局选中的预设编号', authorApiPermissions.presetsRead),
+  definition('presets.current', 'presets', '读取全局选中的预设原稿', authorApiPermissions.presetsRead),
+  definition('presets.get', 'presets', '按编号读取预设原稿', authorApiPermissions.presetsRead),
+  definition('presets.getEntry', 'presets', '按编号读取预设条目', authorApiPermissions.presetsRead),
+  definition('presets.updateEntry', 'presets', '修改指定预设原稿的条目', authorApiPermissions.presetsWrite),
+  definition('presets.updateEntries', 'presets', '原子修改指定预设原稿的一组条目', authorApiPermissions.presetsWrite),
+  definition('presets.select', 'presets', '选择全部聊天后续请求使用的预设', authorApiPermissions.presetsWrite),
   definition('media.getMessageAttachments', 'media', '读取一条消息里的全部媒体附件', authorApiPermissions.mediaRead),
   definition('media.getMessageAttachment', 'media', '读取一条消息里的指定媒体附件', authorApiPermissions.mediaRead),
   definition('audio.play', 'audio', '播放背景音乐、环境音、语音或音效', authorApiPermissions.audioWrite),
@@ -103,6 +135,9 @@ export const authorApiDefinitions: readonly AuthorApiDefinition[] = [
 export const characterConversationPermissions: ReadonlySet<AuthorApiPermission> = new Set([
   authorApiPermissions.appRead,
   authorApiPermissions.contextRead,
+  authorApiPermissions.scriptRead,
+  authorApiPermissions.scriptWrite,
+  authorApiPermissions.uiWrite,
   authorApiPermissions.variablesRead,
   authorApiPermissions.variablesWrite,
   authorApiPermissions.messagesRead,
@@ -115,6 +150,8 @@ export const characterConversationPermissions: ReadonlySet<AuthorApiPermission> 
   authorApiPermissions.characterRead,
   authorApiPermissions.settingLibraryRead,
   authorApiPermissions.settingLibraryWrite,
+  authorApiPermissions.presetsRead,
+  authorApiPermissions.presetsWrite,
   authorApiPermissions.mediaRead,
   authorApiPermissions.audioRead,
   authorApiPermissions.audioWrite,
@@ -122,13 +159,6 @@ export const characterConversationPermissions: ReadonlySet<AuthorApiPermission> 
   authorApiPermissions.inputWrite,
   authorApiPermissions.eventsRead
 ])
-
-export class AuthorApiError extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message)
-    this.name = 'AuthorApiError'
-  }
-}
 
 export interface AuthorApiRequest {
   id: string
@@ -217,144 +247,3 @@ export class AuthorBridgeRequestGate {
     if (this.inFlight > 0) this.inFlight -= 1
   }
 }
-
-interface AuthorTransport {
-  postMessage(value: string): void
-  onmessage?: (event: { data: string }) => void
-}
-
-interface AuthorWindow {
-  ElecKoiNative?: AuthorTransport
-  ElecKoi?: unknown
-  __ElecKoiAuthorPendingCount?: () => number
-  setTimeout: typeof setTimeout
-  clearTimeout: typeof clearTimeout
-  dispatchEvent(event: Event): boolean
-  CustomEvent: typeof CustomEvent
-  fetch: typeof fetch
-  btoa(value: string): string
-}
-
-function installElecKoiAuthorApi(global: AuthorWindow): void {
-  'use strict'
-  const API_VERSION = '0.1.0'
-  const existing = global.ElecKoi as { api?: { version?: string } } | undefined
-  if (existing?.api?.version === API_VERSION) return
-  const pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timeoutId: ReturnType<typeof setTimeout> }>()
-  const listeners = new Map<string, Set<(payload: unknown) => void>>()
-  let sequence = 0
-  const notifyPending = () => global.dispatchEvent(new global.CustomEvent('eleckoi:author-pending-change', { detail: { pendingCount: pending.size } }))
-  Object.defineProperty(global, '__ElecKoiAuthorPendingCount', { value: () => pending.size, configurable: false })
-  const apiError = (code: string, message: string) => Object.assign(new Error(message), { code })
-  const call = <TResult = unknown>(method: string, params: Record<string, unknown> = {}): Promise<TResult> => {
-    const transport = global.ElecKoiNative
-    if (!transport || typeof transport.postMessage !== 'function') {
-      return Promise.reject(apiError('BRIDGE_UNAVAILABLE', '当前页面不支持 ElecKoi 作者 API 桥接'))
-    }
-    const id = `author-${Date.now()}-${++sequence}`
-    return new Promise<TResult>((resolve, reject) => {
-      const timeoutId = global.setTimeout(() => {
-        pending.delete(id)
-        notifyPending()
-        reject(apiError('REQUEST_TIMEOUT', `API 调用超时：${method}`))
-      }, 10_000)
-      pending.set(id, { resolve, reject, timeoutId })
-      notifyPending()
-      transport.postMessage(JSON.stringify({ id, apiVersion: API_VERSION, method, params }))
-    })
-  }
-  const transport = global.ElecKoiNative
-  if (transport) transport.onmessage = (event) => {
-    let message: { type?: string; event?: string; payload?: unknown; id?: string; ok?: boolean; result?: unknown; error?: { code?: string; message?: string } }
-    try { message = JSON.parse(event.data) as typeof message } catch { return }
-    if (message.type === 'event' && message.event) {
-      listeners.get(message.event)?.forEach((listener) => listener(message.payload))
-      return
-    }
-    const request = pending.get(message.id ?? '')
-    if (!request) return
-    global.clearTimeout(request.timeoutId)
-    pending.delete(message.id ?? '')
-    notifyPending()
-    if (message.ok) request.resolve(message.result)
-    else request.reject(apiError(message.error?.code ?? 'API_ERROR', message.error?.message ?? 'API 调用失败'))
-  }
-  const on = (name: string, listener: (payload: unknown) => void) => {
-    const values = listeners.get(name) ?? new Set()
-    values.add(listener)
-    listeners.set(name, values)
-    return () => { values.delete(listener) }
-  }
-  const off = (name: string, listener: (payload: unknown) => void) => listeners.get(name)?.delete(listener)
-  const serializeAttachment = async (source: { type?: string; mimeType?: string; name?: string; data?: string; url?: string }) => {
-    if (!source || source.type !== 'image') throw apiError('INVALID_PARAMS', '当前聊天只支持把图片作为 Agent 附件发送')
-    if (source.data) return { type: 'image', mediaType: source.mimeType, name: source.name, data: source.data }
-    if (!source.url) throw apiError('INVALID_PARAMS', '图片附件必须提供 data 或 url')
-    const response = await global.fetch(source.url)
-    if (!response.ok) throw apiError('MEDIA_LOAD_FAILED', `读取图片失败：${response.status}`)
-    const blob = await response.blob()
-    const mediaType = source.mimeType || blob.type
-    const bytes = new Uint8Array(await blob.arrayBuffer())
-    let binary = ''
-    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)))
-    }
-    return { type: 'image', mediaType, name: source.name, data: global.btoa(binary) }
-  }
-  const api = Object.freeze({
-    api: Object.freeze({ stage: 'preview', version: API_VERSION }), call,
-    app: Object.freeze({ getInfo: () => call('app.getInfo'), getCapabilities: () => call('app.getCapabilities') }),
-    context: Object.freeze({ current: () => call('context.current') }),
-    variables: Object.freeze({
-      getState: (options = {}) => call('variables.getState', options), getConfig: () => call('variables.getConfig'),
-      setState: (state: unknown) => call('variables.setState', { state }), merge: (state: unknown) => call('variables.merge', { state }),
-      applyPatch: (patch: unknown) => call('variables.applyPatch', { patch }), reset: () => call('variables.reset')
-    }),
-    openings: Object.freeze({ list: () => call('openings.list'), current: () => call('openings.current'), select: (id: string) => call('openings.select', { id }) }),
-    messages: Object.freeze({
-      list: () => call('messages.list'), get: (id: string) => call('messages.get', { id }), current: () => call('messages.current'),
-      setContent: (id: string, text: string) => call('messages.setContent', { id, text }),
-      deleteFrom: (id: string) => call('messages.deleteFrom', { id }),
-      regenerate: (id: string) => call('messages.regenerate', { id }), editAndRegenerate: (id: string, text: string) => call('messages.editAndRegenerate', { id, text })
-    }),
-    chat: Object.freeze({
-      current: () => call('chat.current'), list: () => call('chat.list'), getGenerationState: () => call('chat.getGenerationState'),
-      getAgentTrajectory: (options = {}) => call('chat.getAgentTrajectory', options),
-      getModels: () => call('chat.getModels'), send: async (text: string, options: { attachments?: Array<{ type?: string; mimeType?: string; name?: string; data?: string; url?: string }> } = {}) => call('chat.send', {
-        text, attachments: await Promise.all((options.attachments ?? []).map(serializeAttachment))
-      }), stopGeneration: () => call('chat.stopGeneration'),
-      create: (options = {}) => call('chat.create', options), open: (sessionId: string) => call('chat.open', { sessionId }),
-      delete: (sessionId: string) => call('chat.delete', { sessionId }), selectModel: (options: Record<string, unknown>) => call('chat.selectModel', options)
-    }),
-    character: Object.freeze({ current: () => call('character.current') }),
-    settingLibrary: Object.freeze({
-      current: () => call('settingLibrary.current'), getSummary: () => call('settingLibrary.getSummary'),
-      replace: (library: unknown) => call('settingLibrary.replace', { library })
-    }),
-    media: Object.freeze({
-      getMessageAttachments: (messageId?: string) => call('media.getMessageAttachments', { messageId }),
-      getMessageAttachment: (messageId: string, attachmentId: string) => call('media.getMessageAttachment', { messageId, attachmentId })
-    }),
-    audio: Object.freeze({
-      play: (options: Record<string, unknown>) => call('audio.play', options),
-      pause: (channel = 'bgm') => call('audio.pause', { channel }),
-      resume: (channel = 'bgm') => call('audio.resume', { channel }),
-      stop: (channel = 'bgm') => call('audio.stop', { channel }),
-      seek: (seconds: number, channel = 'bgm') => call('audio.seek', { channel, seconds }),
-      getState: (channel = 'bgm') => call('audio.getState', { channel }),
-      getPlaylist: (channel = 'bgm') => call('audio.getPlaylist', { channel }),
-      setPlaylist: (channel: string, items: unknown[], options: Record<string, unknown> = {}) => call('audio.setPlaylist', { channel, items, ...options }),
-      appendPlaylist: (channel: string, items: unknown[]) => call('audio.appendPlaylist', { channel, items }),
-      getSettings: () => call('audio.getSettings'),
-      setSettings: (settings: Record<string, unknown>) => call('audio.setSettings', { settings })
-    }),
-    input: Object.freeze({
-      get: () => call('input.get'), set: (text: string) => call('input.set', { text }), append: (text: string) => call('input.append', { text }),
-      clear: () => call('input.clear'), send: () => call('input.send')
-    }),
-    events: Object.freeze({ list: () => call('events.list'), on, off })
-  })
-  global.ElecKoi = api
-}
-
-export const AUTHOR_FRONTEND_SOURCE = `(${installElecKoiAuthorApi.toString()})(window);`

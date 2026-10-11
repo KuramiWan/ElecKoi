@@ -2,6 +2,9 @@ import { SearchSettingIcon, ToolWrenchIcon } from '../../../ui/icons/elecKoiMess
 import { ReasoningMascot } from './ReasoningMascot.jsx';
 
 const iconPaths = {
+  'arrow-back': 'M19 11H7.83l4.88-4.88c.39-.39.39-1.03 0-1.42s-1.02-.39-1.41 0l-6.59 6.59c-.39.39-.39 1.02 0 1.41l6.59 6.59c.39.39 1.02.39 1.41 0s.39-1.02 0-1.41L7.83 13H19c.55 0 1-.45 1-1s-.45-1-1-1Z',
+  close: 'M18.3 5.71c-.39-.39-1.02-.39-1.41 0L12 10.59 7.11 5.7c-.39-.39-1.02-.39-1.41 0s-.39 1.02 0 1.41L10.59 12 5.7 16.89c-.39.39-.39 1.02 0 1.41s1.02.39 1.41 0L12 13.41l4.89 4.89c.39.39 1.02.39 1.41 0s.39-1.02 0-1.41L13.41 12l4.89-4.89c.38-.38.38-1.02 0-1.4Z',
+  'chevron-right': 'M15.88 9.29 12 13.17 8.12 9.29c-.39-.39-1.02-.39-1.41 0s-.39 1.02 0 1.41l4.59 4.59c.39.39 1.02.39 1.41 0l4.59-4.59c.39-.39.39-1.02 0-1.41s-1.03-.39-1.42 0Z',
   bolt: 'M10.67 21c-.35 0-.62-.31-.57-.66L11 14H7.5c-.88 0-.33-.75-.31-.78c1.26-2.23 3.15-5.53 5.65-9.93a.577.577 0 0 1 1.07.37l-.9 6.34h3.51c.4 0 .62.19.4.66c-3.29 5.74-5.2 9.09-5.75 10.05c-.1.18-.29.29-.5.29z',
   check: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10s10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8s8 3.59 8 8s-3.59 8-8 8zm3.88-11.71L10 14.17l-1.88-1.88a.996.996 0 1 0-1.41 1.41l2.59 2.59c.39.39 1.02.39 1.41 0L17.3 9.7a.996.996 0 0 0 0-1.41c-.39-.39-1.03-.39-1.42 0z',
   list: 'M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5s1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5S5.5 6.83 5.5 6S4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5s1.5-.68 1.5-1.5s-.67-1.5-1.5-1.5zM8 19h12c.55 0 1-.45 1-1s-.45-1-1-1H8c-.55 0-1 .45-1 1s.45 1 1 1zm0-6h12c.55 0 1-.45 1-1s-.45-1-1-1H8c-.55 0-1 .45-1 1s.45 1 1 1zM7 6c0 .55.45 1 1 1h12c.55 0 1-.45 1-1s-.45-1-1-1H8c-.55 0-1 .45-1 1z',
@@ -15,10 +18,11 @@ const iconPaths = {
 };
 
 export function AgentProcessIcon({ name, size = 20, className, animated = false }) {
-  if (name === 'search-setting') return <SearchSettingIcon size={size} className={className} />;
-  if (name === 'wrench') return <ToolWrenchIcon size={size} className={className} />;
+  if (name === 'search-setting') return <SearchSettingIcon size={size} className={`agent-process-icon-search-setting ${className || ''}`} />;
+  if (name === 'wrench') return <ToolWrenchIcon size={size} className={`agent-process-icon-wrench ${className || ''}`} />;
   if (name === 'reasoning') return <ReasoningMascot size={size} animated={animated} className={className} />;
+  const mirrorRead = name === 'read' && document.documentElement.dataset.eleckoiMobile === 'true';
   return <svg width={size} height={size} className={className} viewBox="0 0 24 24" aria-hidden="true">
-    <path d={iconPaths[name] || iconPaths.description} fill="currentColor" />
+    <path d={iconPaths[name] || iconPaths.description} transform={mirrorRead ? 'translate(24 0) scale(-1 1)' : name === 'chevron-right' ? 'rotate(-90 12 12)' : undefined} fill="currentColor" />
   </svg>;
 }

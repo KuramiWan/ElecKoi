@@ -12,6 +12,81 @@ DSH 基准：`0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 
 由公开源码和 JSDoc 生成。用 `pnpm generate:plugin-docs` 更新，用 `pnpm check:plugin-docs` 核对。Cordis 生命周期和依赖用法见 [服务接口](services.md)。
 
+<a id="ctxeleckoiauthorruntime--eleckoiauthorruntime"></a>
+
+### `ctx.eleckoiAuthorRuntime` — `ElecKoiAuthorRuntime`
+
+正式原生作者页面与脚本运行服务。
+
+```ts cordis-catalog
+/** 读取当前运行状态。
+ * @returns 当前聊天与各脚本的运行状态。
+ */
+getSnapshot(): NativeAuthorRuntimeSnapshot
+
+/** 订阅运行状态。
+ * @param listener - 状态变化回调。
+ * @returns 取消订阅函数。
+ */
+subscribe(listener: () => void): () => void
+
+/** 读取当前脚本按钮与作者面板。
+ * @returns 仅包含当前程序代际的界面注册。
+ */
+getUiSnapshot(): NativeAuthorUiSnapshot
+
+/** 订阅按钮与作者面板变化。
+ * @param listener - 界面变化回调。
+ * @returns 取消订阅函数。
+ */
+subscribeUi(listener: () => void): () => void
+
+/** 执行明确编号的脚本按钮，重复点击或失效按钮会报错。
+ * @param key - 界面快照中的完整按钮编号。
+ * @returns 作者回调完成后结束，失败时拒绝。
+ */
+invokeButton(key: string): Promise<void>
+
+/** 关闭仍与编号对应的面板，不影响后来打开的面板。
+ * @param key - 界面快照中的面板编号。
+ * @returns 是否关闭该面板。
+ */
+dismissPanel(key: string): boolean
+
+/** 在作者面板安装所属脚本的 SDK 和设置接口。
+ * @param target - 同源面板窗口。
+ * @param key - 界面快照中的面板编号。
+ * @returns 撤回本页面 SDK 的函数。
+ */
+mountScriptPanelDocument(target: Window, key: string): () => void
+
+/** 注册指定聊天的输入框操作。
+ * @param conversationId - 聊天编号。
+ * @param handlers - 页面实际实现的操作。
+ * @returns 撤回本次注册的函数。
+ */
+registerChatUi(conversationId: string, handlers: NativeAuthorChatHandlers): () => void
+
+/** 在作者页面安装固定聊天作用域的 SDK。
+ * @param target - 同源作者页面窗口。
+ * @param conversationId - 所属聊天编号。
+ * @param messageId - 所属消息编号；聊天页面传空字符串。
+ * @returns 关闭该页面 SDK 的函数。
+ */
+mountDocument(target: Window, conversationId: string, messageId: string): () => void
+
+/** 在项目页面安装 SDK；应用项目跟随选择，角色项目只操作明确所属角色的聊天。
+ * @param target - 同源项目页面窗口。
+ * @param project - 明确项目编号、入口、窗口及所属角色；聊天页面还须提供所属聊天。
+ * @returns 关闭该页面 SDK 的函数。
+ */
+mountProjectDocument(target: Window, project: NativeAuthorProjectContext): () => void
+```
+
+Types: [NativeAuthorChatHandlers](types-client.md#nativeauthorchathandlers) · [NativeAuthorProjectContext](types-client.md#nativeauthorprojectcontext) · [NativeAuthorRuntimeSnapshot](types-client.md#nativeauthorruntimesnapshot) · [NativeAuthorUiSnapshot](types-client.md#nativeauthoruisnapshot)
+
+Source: [`packages/client/features/dsh-client-author/src/client/types.ts`](../../packages/client/features/dsh-client-author/src/client/types.ts)
+
 <a id="ctxeleckoicharacters--eleckoicharacters"></a>
 
 ### `ctx.eleckoiCharacters` — `ElecKoiCharacters`
@@ -107,7 +182,7 @@ exportCharacters(characterIds: string[], format: CharacterExportFormat): Promise
 
 Types: [CharacterCatalogSnapshot](types-client.md#charactercatalogsnapshot) · [CharacterDownloadResult](types-client.md#characterdownloadresult)
 
-Source: [`packages/dsh-client-characters/src/client/types.ts`](../../packages/dsh-client-characters/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-characters/src/client/types.ts`](../../packages/client/features/dsh-client-characters/src/client/types.ts)
 
 <a id="ctxeleckoiconversations--eleckoiconversations"></a>
 
@@ -161,6 +236,19 @@ getDetailsSnapshot(): ConversationDetailsSnapshot
 subscribeDetails(listener: () => void): () => void
 
 /**
+ * 读取当前聊天的统计显示快照。
+ * @returns 来自 DSH 投影、在重新生成期间保持连续的统计。
+ */
+getStatsSnapshot(): ConversationStatsSnapshot
+
+/**
+ * 订阅当前聊天的统计显示变化。
+ * @param listener - 状态变化回调。
+ * @returns 取消本次订阅的函数。
+ */
+subscribeStats(listener: () => void): () => void
+
+/**
  * 同时读取当前聊天的消息和生成状态。
  * @returns 当前页面保存的状态对象。
  */
@@ -193,6 +281,14 @@ subscribeTimeline(listener: () => void): () => void
 getStreamSnapshot(): ConversationStreamSnapshot
 
 /**
+ * 读取同一 Session 的正式图片资源，复用官方图片所有者。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param attachment - 正式图片引用。
+ * @returns 浏览器可加载的资源 URL。
+ */
+readImage(conversationId: string, attachment: ImageAttachmentRef): Promise<string>
+
+/**
  * 订阅当前回复的流式输出。
  * @param listener - 状态变化回调。
  * @returns 取消本次订阅的函数。
@@ -200,10 +296,48 @@ getStreamSnapshot(): ConversationStreamSnapshot
 subscribeStream(listener: () => void): () => void
 
 /**
+ * 订阅当前正式 Session 的生成边界；基线只用于同步正在观察的轮次，不代表新生成。
+ * @param listener - 接收当前绑定身份、实时事件或重建基线。
+ * @returns 取消本次订阅的函数。
+ */
+subscribeGeneration(listener: (change: ConversationGenerationChange) => void): () => void
+
+/**
+ * 按正式生成身份读取结算后的显示消息；空消息只在明确关闭节点确认后返回。
+ * @param runtimeSessionId - 当前绑定的正式 Session。
+ * @param turn - 已结束的正式轮次。
+ * @param eventSeq - 对应 assistant/message 的正式事件位置。
+ * @returns 投影等待、唯一结算消息或明确不可用原因。
+ */
+getGenerationReply(runtimeSessionId: string, turn: number, eventSeq: number): ConversationGenerationReply
+
+/**
  * 重新读取聊天目录。
  * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
  */
 refresh(): Promise<ConversationSummary[]>
+
+/**
+ * 读取当前聊天官方输入框的实际草稿，不读取页面内部状态。
+ * @param conversationId - 当前聊天编号。
+ * @returns 官方输入框的文本投影；未就绪或不属于当前聊天时抛出错误。
+ */
+readInputDraft(conversationId: string): string
+
+/**
+ * 通过官方输入框写入草稿，保留其编辑与引用处理规则。
+ * @param conversationId - 当前聊天编号。
+ * @param text - 要写入的完整文本。
+ * @returns 官方输入框接受的实际文本。
+ */
+writeInputDraft(conversationId: string, text: string): string
+
+/**
+ * 请求官方输入框提交当前草稿及其附件，不等待生成完成。
+ * @param conversationId - 当前聊天编号。
+ * @returns 是否请求了提交；空输入或正在裁决、提交时返回 false。
+ */
+submitInput(conversationId: string): boolean
 
 /**
  * 创建聊天并返回关联的官方 Session 编号和产品消息元数据。
@@ -278,6 +412,13 @@ regenerate(input: ConversationRegenerateInput): Promise<ConversationRunResult>
  * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
  */
 cancelRequest(conversationId: string, requestId: string): Promise<boolean>
+
+/**
+ * 停止当前打开聊天的生成，包括由官方输入框提交的请求。
+ * @param conversationId - 当前 ElecKoi 聊天编号。
+ * @returns 匹配正在执行的请求或 Session 时返回 true；不取消其他聊天。
+ */
+cancelGeneration(conversationId: string): Promise<boolean>
 
 /**
  * 读取当前聊天及各角色首选聊天。
@@ -409,7 +550,7 @@ editMessage(conversationId: string, eventSeq: number, role: 'user' | 'assistant'
  * @param role - 要修改或回退的消息角色。
  * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
  */
-deleteMessagesFrom(conversationId: string, eventSeq: number, role: 'user' | 'assistant'): Promise<ConversationClientDetails | null>
+deleteMessagesFrom(conversationId: string, eventSeq: number, role: 'user' | 'assistant'): Promise<{ details: ConversationClientDetails | null deletedMessageCount: number remainingMessageCount: number }>
 
 /**
  * 删除聊天及对应 Session，刷新目录。
@@ -432,9 +573,9 @@ getModelSelectionSnapshot(): ConversationModelSelection
 subscribeModelSelection(listener: () => void): () => void
 ```
 
-Types: [ConversationCatalogSnapshot](types-client.md#conversationcatalogsnapshot) · [ConversationChatSnapshot](types-client.md#conversationchatsnapshot) · [ConversationClientDetails](types-client.md#conversationclientdetails) · [ConversationDetailsSnapshot](types-client.md#conversationdetailssnapshot) · [ConversationRegenerateInput](types-client.md#conversationregenerateinput) · [ConversationRunResult](types-client.md#conversationrunresult) · [ConversationSelection](types-client.md#conversationselection) · [ConversationSendInput](types-client.md#conversationsendinput) · [ConversationStreamSnapshot](types-client.md#conversationstreamsnapshot) · [ConversationTimelineSnapshot](types-client.md#conversationtimelinesnapshot) · [ConversationUploadedFile](types-client.md#conversationuploadedfile)
+Types: [ConversationCatalogSnapshot](types-client.md#conversationcatalogsnapshot) · [ConversationChatSnapshot](types-client.md#conversationchatsnapshot) · [ConversationClientDetails](types-client.md#conversationclientdetails) · [ConversationDetailsSnapshot](types-client.md#conversationdetailssnapshot) · [ConversationGenerationChange](types-client.md#conversationgenerationchange) · [ConversationGenerationReply](types-client.md#conversationgenerationreply) · [ConversationRegenerateInput](types-client.md#conversationregenerateinput) · [ConversationRunResult](types-client.md#conversationrunresult) · [ConversationSelection](types-client.md#conversationselection) · [ConversationSendInput](types-client.md#conversationsendinput) · [ConversationStatsSnapshot](types-client.md#conversationstatssnapshot) · [ConversationStreamSnapshot](types-client.md#conversationstreamsnapshot) · [ConversationTimelineSnapshot](types-client.md#conversationtimelinesnapshot) · [ConversationUploadedFile](types-client.md#conversationuploadedfile)
 
-Source: [`packages/dsh-client-conversations/src/client/types.ts`](../../packages/dsh-client-conversations/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-conversations/src/client/types.ts`](../../packages/client/features/dsh-client-conversations/src/client/types.ts)
 
 <a id="ctxeleckoicreatorstudio--eleckoicreatorstudio"></a>
 
@@ -486,7 +627,7 @@ selectDirectory(signal?: AbortSignal): Promise<string | null>
 
 Types: [CreatorStudioSnapshot](types-client.md#creatorstudiosnapshot)
 
-Source: [`packages/dsh-client-creator-studio/src/client/types.ts`](../../packages/dsh-client-creator-studio/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-creator-studio/src/client/types.ts`](../../packages/client/features/dsh-client-creator-studio/src/client/types.ts)
 
 <a id="ctxeleckoidisplaypreferences--eleckoidisplaypreferences"></a>
 
@@ -531,7 +672,25 @@ setChatDisplay(value: Record<string, DisplayPreferenceValue>): Promise<ClientDis
 
 Types: [ClientDisplayPreferencesSnapshot](types-client.md#clientdisplaypreferencessnapshot)
 
-Source: [`packages/dsh-client-display-preferences/src/client/types.ts`](../../packages/dsh-client-display-preferences/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-display-preferences/src/client/types.ts`](../../packages/client/features/dsh-client-display-preferences/src/client/types.ts)
+
+<a id="ctxeleckoifrontendprojects--nativefrontendclient"></a>
+
+### `ctx.eleckoiFrontendProjects` — `NativeFrontendClient`
+
+Native file projects use the generated Remote, independently of chat/script readiness.
+
+```ts cordis-catalog
+/** 订阅明确工作区的最新状态，串行重读并释放旧连接。
+ * @param owner - 应用或明确角色的工作区。
+ * @param listener - 最新状态回调。
+ * @param onError - 未取消的读取或连接错误。
+ * @returns 取消订阅函数。
+ */
+watch(owner: FrontendOwner, listener: (workspace: FrontendWorkspace) => void, onError: (error: unknown) => void): () => void
+```
+
+Source: [`packages/client/features/dsh-client-author/src/frontends.ts`](../../packages/client/features/dsh-client-author/src/frontends.ts)
 
 <a id="ctxeleckoimodels--eleckoimodels"></a>
 
@@ -605,7 +764,7 @@ revealApiKey(configId: string): Promise<string>
 
 Types: [ClientModelConfig](types-client.md#clientmodelconfig) · [ClientModelOption](types-client.md#clientmodeloption) · [ModelCatalogSnapshot](types-client.md#modelcatalogsnapshot)
 
-Source: [`packages/dsh-client-models/src/client/types.ts`](../../packages/dsh-client-models/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-models/src/client/types.ts`](../../packages/client/features/dsh-client-models/src/client/types.ts)
 
 <a id="ctxeleckoipersona--eleckoipersona"></a>
 
@@ -643,7 +802,7 @@ save(profile: PersonaProfile): Promise<PersonaProfile>
 
 Types: [PersonaSnapshot](types-client.md#personasnapshot)
 
-Source: [`packages/dsh-client-persona/src/client/types.ts`](../../packages/dsh-client-persona/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-persona/src/client/types.ts`](../../packages/client/features/dsh-client-persona/src/client/types.ts)
 
 <a id="ctxeleckoipresets--eleckoipresets"></a>
 
@@ -772,7 +931,7 @@ refresh(): Promise<AgentPresetCatalog>
 
 Types: [PresetCatalogSnapshot](types-client.md#presetcatalogsnapshot) · [PresetDetailSnapshot](types-client.md#presetdetailsnapshot)
 
-Source: [`packages/dsh-client-presets/src/client/types.ts`](../../packages/dsh-client-presets/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-presets/src/client/types.ts`](../../packages/client/features/dsh-client-presets/src/client/types.ts)
 
 <a id="ctxeleckoiregexrules--eleckoiregexrules"></a>
 
@@ -847,7 +1006,77 @@ test(text: string, rule: RegexRule, target: RegexRuleTarget): Promise<RegexRuleT
 
 Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
 
-Source: [`packages/dsh-client-character-configuration/src/client/types.ts`](../../packages/dsh-client-character-configuration/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
+
+<a id="ctxeleckoiscriptlibraries--eleckoiscriptlibraries"></a>
+
+### `ctx.eleckoiScriptLibraries` — `ElecKoiScriptLibraries`
+
+按正式归属读取、保存和订阅全局、角色与预设脚本库。
+
+```ts cordis-catalog
+/**
+ * 在 Host 桌面打开指定脚本库的源码目录，不保存当前界面草稿。
+ * @param scope - 全局、角色或预设作用域。
+ * @param ownerId - 所属编号；全局使用空字符串。
+ * @returns 本机目录打开后完成；失败抛出错误。
+ */
+openDirectory(scope: ScriptLibraryScope, ownerId: string): Promise<void>
+
+/**
+ * 读取已加载的脚本库状态。
+ * @param scope - 脚本库作用域。
+ * @param ownerId - 所属编号；全局为一个空字符串。
+ * @returns 当前状态与仍有效的已加载内容。
+ */
+getSnapshot(scope: ScriptLibraryScope, ownerId: string): ConfigurationSnapshot<ScriptLibrary>
+
+/**
+ * 读取并刷新脚本库。
+ * @param scope - 脚本库作用域。
+ * @param ownerId - 所属编号；全局为一个空字符串。
+ * @returns 当前正式脚本库。
+ */
+read(scope: ScriptLibraryScope, ownerId: string): Promise<ScriptLibrary>
+
+/**
+ * 保存完整脚本库并检查修改版本。
+ * @param library - 保留读取版本的完整待保存配置。
+ * @returns 保存后的配置与新修改版本。
+ */
+save(library: ScriptLibrary): Promise<ScriptLibrary>
+
+/**
+ * 原子保存多个脚本库；任一版本冲突时不修改其他库。
+ * @param libraries - 修改过的库及其读取版本。
+ * @returns 保存后的完整配置。
+ */
+saveAll(libraries: ScriptLibrary[]): Promise<ScriptLibrary[]>
+
+/**
+ * 订阅已加载库的状态变化。
+ * @param listener - 含作用域、所属编号与状态的回调。
+ * @returns 取消订阅函数。
+ */
+subscribe(listener: (scope: ScriptLibraryScope, ownerId: string, snapshot: ConfigurationSnapshot<ScriptLibrary>) => void): () => void
+
+/**
+ * 订阅脚本配置及当前预设变更。
+ * @param listener - 刷新当前作用域和运行上下文的回调。
+ * @returns 取消订阅函数。
+ */
+subscribeChanges(listener: () => void): () => void
+
+/**
+ * 读取当前明确选择的 Agent 预设。
+ * @returns 当前预设的编号与名称；选择无效时拒绝。
+ */
+activePreset(): Promise<{ id: string; name: string }>
+```
+
+Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
+
+Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
 
 <a id="ctxeleckoisettinglibraries--eleckoisettinglibraries"></a>
 
@@ -943,7 +1172,30 @@ saveConversationVersion(characterId: string, sessionId: string, name: string): P
 
 Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
 
-Source: [`packages/dsh-client-character-configuration/src/client/types.ts`](../../packages/dsh-client-character-configuration/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
+
+<a id="ctxeleckoitavernshared--eleckoitavernshared"></a>
+
+### `ctx.eleckoiTavernShared` — `ElecKoiTavernShared`
+
+Imported HTML presentation resources; no author or script execution API.
+
+```ts cordis-catalog
+/**
+ * Read presentation resource availability.
+ * @returns The resource readiness state and its error text.
+ */
+getSnapshot(): { status: 'ready'; error: string }
+
+/**
+ * Subscribe to resource availability changes.
+ * @param listener - Called when the resource state changes.
+ * @returns Stops this subscription.
+ */
+subscribe(listener: () => void): () => void
+```
+
+Source: [`packages/client/features/dsh-client-tavern-shared/src/client/types.ts`](../../packages/client/features/dsh-client-tavern-shared/src/client/types.ts)
 
 <a id="ctxeleckoivariables--eleckoivariables"></a>
 
@@ -999,7 +1251,7 @@ saveViewState(characterId: string, expandedIds: string[]): Promise<string[]>
 
 Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
 
-Source: [`packages/dsh-client-character-configuration/src/client/types.ts`](../../packages/dsh-client-character-configuration/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
 
 <a id="ctxeleckoiwebsearch--eleckoiwebsearch"></a>
 
@@ -1057,7 +1309,7 @@ removeKey(): Promise<WebSearchSnapshot>
 
 Types: [WebSearchSnapshot](types-client.md#websearchsnapshot)
 
-Source: [`packages/dsh-client-web-search/src/client/types.ts`](../../packages/dsh-client-web-search/src/client/types.ts)
+Source: [`packages/client/features/dsh-client-web-search/src/client/types.ts`](../../packages/client/features/dsh-client-web-search/src/client/types.ts)
 <!-- END GENERATED cordis-surface -->
 
 ## 官方布局服务

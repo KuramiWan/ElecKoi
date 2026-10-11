@@ -1,13 +1,17 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { OfficialMarkdown } from '../../../ui/messages/OfficialMarkdown.jsx';
 import { DshCloseIcon } from '../../../ui/icons/dshComposerIcons.jsx';
 import { MessageChevronLeftIcon, MessageChevronRightIcon } from '../../../ui/icons/elecKoiMessageIcons.jsx';
 import { isSubagentItem, processBlocks, processItemDetails, subagentDetailPresentation } from '../model/agentProcessDetails.js';
+import { processArgumentSummary } from '../model/agentProcessArguments.js';
 import { delegatedProcessItems } from '../model/agentProcessHierarchy.js';
 import { AgentProcessIcon } from './AgentProcessIcon.jsx';
+import { useBottomSheetDismiss } from '../../../ui/hooks/useBottomSheetDismiss.js';
 
 export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed', onClose }) {
+  const { overlayRef, sheetRef: dialogRef, closing, dismiss } = useBottomSheetDismiss(onClose);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [selectedItemPath, setSelectedItemPath] = useState([]);
   const scrollPositionsRef = useRef(new Map());
@@ -27,16 +31,24 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
   const hasFinal = message?.status === 'complete' && Boolean(message?.content?.trim());
   const showingDetails = Boolean(selectedGroup || selectedItem);
 
+  useLayoutEffect(() => {
+    if (document.documentElement.dataset.eleckoiMobile !== 'true') return undefined;
+    const previous = document.activeElement;
+    dialogRef.current?.focus({ preventScroll: true });
+    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }); };
+  }, []);
+
   useEffect(() => {
     const closeOnEscape = (event) => {
       if (event.key !== 'Escape') return;
+      if (closing) return;
       if (selectedItemId) setSelectedItemPath((current) => current.slice(0, -1));
       else if (selectedGroupId) setSelectedGroupId('');
-      else onClose();
+      else dismiss();
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [onClose, selectedGroupId, selectedItemId]);
+  }, [closing, dismiss, selectedGroupId, selectedItemId]);
 
   const goBack = () => {
     if (selectedItemId) setSelectedItemPath((current) => current.slice(0, -1));
@@ -56,17 +68,17 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
     setSelectedGroupId(block.id);
   };
 
-  return createPortal(<div className="agent-process-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="agent-process-dialog" role="dialog" aria-modal="true" aria-label={showingDetails ? '详情' : '处理过程'} onMouseDown={(event) => event.stopPropagation()}>
+  return createPortal(<SystemBarOverlay ref={overlayRef} className="agent-process-backdrop" data-sheet-closing={closing || undefined} role="presentation" onMouseDown={dismiss}>
+    <section ref={dialogRef} className="agent-process-dialog" tabIndex={-1} role="dialog" aria-modal="true" aria-label={showingDetails ? '详情' : '处理过程'} onMouseDown={(event) => event.stopPropagation()}>
       <header>
-        {showingDetails ? <button type="button" className="agent-process-back" onClick={goBack} aria-label="返回"><MessageChevronLeftIcon /></button> : <span />}
+        {showingDetails ? <button type="button" className="agent-process-back" onClick={goBack} aria-label="返回">{isMobilePresentation() ? <AgentProcessIcon name="arrow-back" size={24} /> : <MessageChevronLeftIcon />}</button> : <span />}
         <h2>{showingDetails ? '详情' : `处理过程${duration ? ` · ${duration}` : ''}`}</h2>
-        <button type="button" className="agent-process-close" onClick={onClose} aria-label="关闭"><DshCloseIcon /></button>
+        <button type="button" className="agent-process-close" onClick={dismiss} aria-label="关闭">{isMobilePresentation() ? <AgentProcessIcon name="close" size={24} /> : <DshCloseIcon />}</button>
       </header>
       {selectedItem
         ? <ProcessDetail
           item={selectedItem}
-          details={processItemDetails(selectedItem)}
+          details={detailPresentation(selectedItem)}
           delegatedItems={selectedDelegatedItems}
           reasoningDisplayMode={reasoningDisplayMode}
           scrollKey={`item:${selectedItemPath.join('/')}`}
@@ -87,7 +99,7 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
             onSelectBlock={selectOverviewBlock}
           />}
     </section>
-  </div>, document.body);
+  </SystemBarOverlay>, document.body);
 }
 
 function ProcessOverview({ blocks, hasFinal, scrollPositions, onSelectBlock }) {
@@ -101,7 +113,7 @@ function ProcessOverview({ blocks, hasFinal, scrollPositions, onSelectBlock }) {
         <span className="agent-process-label">
           <span className="agent-process-title-line"><strong>{block.presentation.title}</strong></span>
         </span>
-        {block.presentation.status === 'running' ? <i className="agent-process-spinner" /> : <MessageChevronRightIcon size={17} />}
+        {block.presentation.status === 'running' ? <i className="agent-process-spinner" /> : <ProcessChevron size={16} />}
       </button>;
     })}</div>
     {hasFinal ? <div className="agent-process-protocol">
@@ -123,12 +135,18 @@ function ProcessGroupDetail({ group, reasoningDisplayMode, scrollPositions, onSe
     {group.items.map((item) => {
       if (item.kind === 'reasoning' || item.toolName === 'reasoning') {
         const text = typeof item.detail === 'string' && item.detail.trim() ? item.detail : item.summary || '';
-        return <ReasoningOverview key={item.id} block={{ item, text }} displayMode={reasoningDisplayMode} />;
+        return <ProcessTimelineNode key={item.id} bodyRail><ReasoningOverview block={{ item, text }} displayMode={reasoningDisplayMode} /></ProcessTimelineNode>;
       }
-      const details = processItemDetails(item);
-      return <OperationRow key={item.id} item={item} details={details} onClick={() => onSelectItem(item.id)} />;
+      const details = detailPresentation(item);
+      return <ProcessTimelineNode key={item.id}><OperationRow item={item} details={details} onClick={() => onSelectItem(item.id)} /></ProcessTimelineNode>;
     })}
   </ProcessScrollPane>;
+}
+
+function ProcessTimelineNode({ bodyRail = false, children }) {
+  return isMobilePresentation()
+    ? <div className={`agent-process-timeline-node${bodyRail ? ' has-body-rail' : ''}`}>{children}</div>
+    : children;
 }
 
 function ProcessScrollPane({ className, scrollKey, scrollPositions, children }) {
@@ -159,7 +177,7 @@ function OperationRow({ item, details, onClick }) {
         {details.target ? <small>{details.target}</small> : null}
       </span>
     </span>
-    {item.status === 'running' ? <i className="agent-process-spinner" /> : onClick ? <MessageChevronRightIcon size={17} /> : <span />}
+    {item.status === 'running' ? <i className="agent-process-spinner" /> : onClick ? <ProcessChevron size={17} /> : <span />}
   </>;
   return onClick
     ? <button type="button" className="agent-process-item" onClick={onClick}>{content}</button>
@@ -215,12 +233,15 @@ function ProcessDetail({ item, details, delegatedItems, reasoningDisplayMode, sc
     />;
   }
   const rawResult = details.result || parseValue(item.summary) || item.summary || item.detail;
+  const argumentSummary = isMobilePresentation() ? processArgumentSummary(item.toolName, item.arguments) : null;
   return <ProcessScrollPane className="agent-process-detail" scrollKey={scrollKey} scrollPositions={scrollPositions}>
     <div className="agent-process-detail-intro">
-      <div><h3>{details.title}</h3>{details.target ? <p className="target">{details.target}</p> : null}</div>
+      <div><h3>{details.title}</h3>{details.target || isMobilePresentation() ? <p className="target">{details.target || item.toolName}</p> : null}</div>
       <span className={`agent-process-status status-${item.status}`}>{details.statusLabel}</span>
     </div>
-    {item.arguments ? <DetailBlock label="调用参数" value={pretty(item.arguments)} /> : null}
+    {item.arguments ? argumentSummary
+      ? <DetailTextBlock label="调用参数" value={argumentSummary} />
+      : <DetailBlock label="调用参数" value={pretty(item.arguments)} /> : null}
     {details.specialized ? <SpecializedResult result={details.specialized} /> : rawResult ? <DetailBlock label="结果" value={pretty(rawResult)} /> : null}
     {details.specialized && rawResult ? <RawResult value={rawResult} /> : null}
     {item.detail && !details.specialized && item.detail !== item.summary && !sameJson(item.detail, rawResult)
@@ -274,8 +295,8 @@ function DelegatedTimeline({ parentId, items, reasoningDisplayMode, onSelectItem
     <div className="agent-process-detail-timeline">{blocks.flatMap((block) => {
       if (block.type === 'narrative') return [<p className="agent-process-phase" key={block.id}>{block.text}</p>];
       return block.items.map((item) => item.kind === 'reasoning' || item.toolName === 'reasoning'
-        ? <ReasoningOverview key={item.id} block={{ item, text: item.detail || item.summary || '' }} displayMode={reasoningDisplayMode} />
-        : <OperationRow key={item.id} item={item} details={processItemDetails(item)} onClick={() => onSelectItem(item.id)} />);
+        ? <ProcessTimelineNode key={item.id} bodyRail><ReasoningOverview block={{ item, text: item.detail || item.summary || '' }} displayMode={reasoningDisplayMode} /></ProcessTimelineNode>
+        : <ProcessTimelineNode key={item.id}><OperationRow item={item} details={detailPresentation(item)} onClick={() => onSelectItem(item.id)} /></ProcessTimelineNode>);
     })}
       {reply?.summary || reply?.detail ? <ChildAgentReply item={reply} /> : null}
     </div>
@@ -311,7 +332,7 @@ function GlobResult({ result }) {
   const fixedRequired = result.settingLibrary ? result.required.filter((path) =>
     (requiredByPath.get(path) || detailsByPath.get(path))?.read_strategy === 'required') : [];
   const turnRequired = result.settingLibrary ? result.required.length - fixedRequired.length : 0;
-  return <section className="agent-process-result-section">
+  return <section className="agent-process-result-section agent-process-glob-result">
     <h4>结果</h4>
     <div className="agent-process-result-meta">
       <strong>{result.required.length ? `返回目录 · ${displayed.length} 项` : `匹配结果 · ${result.paths.length} 项`}</strong>
@@ -348,13 +369,14 @@ function SettingEntries({ entries }) {
 
 function SettingCard({ entry }) {
   const [expanded, setExpanded] = useState(false);
-  return <article className={`agent-process-card${expanded ? ' is-expanded' : ''}`}>
+  return <article className={`agent-process-card agent-process-setting-card${entry.references.length ? ' has-references' : ''}${expanded ? ' is-expanded' : ''}`}>
     <div className="agent-process-card-body">
       <div className="agent-process-card-title"><strong>{entry.title}</strong>{entry.truncated ? <em className="is-error">已截断</em> : null}{entry.readStrategy ? <em className={`strategy-${entry.readStrategy}`}>{strategyLabel(entry.readStrategy)}</em> : null}</div>
       <p className="agent-process-card-path">{entry.groupPath || parentPath(entry.path) || '根目录'}</p>
       {entry.references.length ? <p className="agent-process-card-note is-keyword">本回合引用：{entry.references.map((reference) => reference?.title).filter(Boolean).join('、')}</p> : null}
       {entry.selectionHint ? <p className="agent-process-card-note">作者注释：{entry.selectionHint}</p> : null}
-      <div className={`agent-process-card-content${expanded ? '' : ' is-clamped'}`}>{entry.content || '没有正文内容'}</div>
+      <div className={`agent-process-card-content${expanded ? '' : ' is-clamped'}`}>{expanded && isMobilePresentation() && entry.content
+        ? <OfficialMarkdown content={entry.content} /> : entry.content || '没有正文内容'}</div>
     </div>
     <ExpandAction expanded={expanded} collapsedLabel="展开正文" expandedLabel="收起正文" onClick={() => setExpanded((value) => !value)} />
   </article>;
@@ -369,7 +391,7 @@ function VariableEntries({ entries }) {
 
 function VariableCard({ entry }) {
   const [expanded, setExpanded] = useState(false);
-  return <article className={`agent-process-card${expanded ? ' is-expanded' : ''}`}>
+  return <article className={`agent-process-card agent-process-variable-card${expanded ? ' is-expanded' : ''}`}>
     <div className="agent-process-card-body">
       <div className="agent-process-card-title"><strong>{displayName(entry.path) || '未命名变量'}</strong>{entry.type ? <em>{entry.type}</em> : null}</div>
       <p className="agent-process-card-path">{entry.path}</p>
@@ -407,8 +429,10 @@ function PlanEntries({ steps }) {
 }
 
 function ExpandAction({ expanded, collapsedLabel, expandedLabel, onClick }) {
-  return <button type="button" className="agent-process-expand" onClick={onClick}>{expanded ? expandedLabel : collapsedLabel}<MessageChevronRightIcon /></button>;
+  return <button type="button" className="agent-process-expand" onClick={onClick}>{expanded ? expandedLabel : collapsedLabel}<ProcessChevron /></button>;
 }
+
+function ProcessChevron({ size = 18 }) { return isMobilePresentation() ? <AgentProcessIcon name="chevron-right" size={size} /> : <MessageChevronRightIcon size={17} />; }
 
 function RawResult({ value }) { return <details className="agent-process-raw"><summary>原始结果</summary><pre>{pretty(value)}</pre></details>; }
 function DetailBlock({ label, value }) { return <section><h4>{label}</h4><pre>{value}</pre></section>; }
@@ -422,6 +446,8 @@ function parentPath(path) { const clean = typeof path === 'string' ? path.replac
 function strategyLabel(value) { return value === 'required' ? '必读' : value === 'normal' || value === 'on_demand' ? '选读' : value === 'keyword' ? '关键词' : value; }
 function operationLabel(value) { return ({ replace: '替换', add: '新增', remove: '删除', delta: '增减', write_file: '写入', edit_file: '编辑', move_file: '移动', delete_file: '删除' })[value] || value; }
 function statusLabel(value) { return ({ pending: '待处理', in_progress: '进行中', complete: '已完成', completed: '已完成', failed: '失败' })[value] || value; }
+function isMobilePresentation() { return document.documentElement.dataset.eleckoiMobile === 'true'; }
+function detailPresentation(item) { return processItemDetails(item, { mobile: isMobilePresentation() }); }
 function durationText(items) {
   if (!items.length) return '';
   const start = Math.min(...items.map((item) => item.startedAtMillis || Infinity));

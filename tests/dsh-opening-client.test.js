@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
 import { mapChatDetails } from '../apps/web/src/modules/chat/api/chatApi.js'
 
-const source = readFileSync(new URL('../packages/dsh-client-conversations/src/client.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../packages/client/features/dsh-client-conversations/src/client.js', import.meta.url), 'utf8')
 
 async function fixture() {
   const listeners = new Map()
@@ -23,7 +23,7 @@ async function fixture() {
   // the complete input projection, not the paginated transcript.
   const target = { getSnapshot: () => ({ nodes: new Map(), order: [], timeline: { turns: new Map() } }),
     subscribe: listener => { listeners.set('target', listener); return () => {} } }
-  const binding = { session, eventSource: { getSnapshot: () => ({ hasMore: true, entries: [] }) } }
+  const binding = { session, eventSource: { getSnapshot: () => ({ hasMore: true, entries: [] }), subscribe: () => () => {} } }
   const conversation = { id: 'synthetic-chat', runtimeSessionId: 'synthetic-session' }
   const details = { conversation, metadata: {}, runtimeSessionId: conversation.runtimeSessionId,
     messages: [{ id: 'opening', role: 'assistant', content: '合成开场', status: 'complete',

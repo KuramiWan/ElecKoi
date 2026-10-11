@@ -2,14 +2,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { SettingLibraryRepository } from '../packages/dsh-product-data/src/domain/settingLibraries/SettingLibraryRepository'
-import { emptyEntry } from '../packages/dsh-product-data/src/domain/settingLibraries/settingLibraryNormalization'
+import { SettingLibraryRepository } from '../packages/host/product-data/src/domain/settingLibraries/SettingLibraryRepository'
+import { emptyEntry } from '../packages/host/product-data/src/domain/settingLibraries/settingLibraryNormalization'
 import { apply as applySettingLibraryTools } from '../apps/desktop/resources/dsh/setting-library-tools.mjs'
-import { writeSessionSnapshot } from '../packages/dsh-client-roleplay/src/host/session-snapshot.mjs'
+import { writeSessionSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-snapshot.mjs'
 
 const directories = []
 const connections = []
@@ -106,5 +106,4 @@ describe('persisted tool-created branch settings', () => {
       else process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = previousRoot
     }
   }, 30_000)
-
 })

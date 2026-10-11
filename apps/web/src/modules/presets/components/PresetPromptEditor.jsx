@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Code, Copy, FileText, LinkSimple, MagnifyingGlass, PencilSimple, Plus } from '@phosphor-icons/react';
+import { Code, Copy, FileText, LinkSimple, MagnifyingGlass, PencilSimple, Plus } from '../../../ui/icons/interfaceIcons.jsx';
 import { isHiddenToolTimelineEntry } from '@shared/contracts/presets/builtIns';
 import { TrashIcon } from '../../../ui/icons/index.jsx';
 import { DshFolderClosedIcon } from '../../../ui/icons/dshTreeIcons.jsx';
 import { SETTING_LIBRARY_CREATE_ICONS } from '../../../ui/icons/settingLibraryCreateIcons.jsx';
+import { EditorSidebarLayout } from '../../../ui/ui/EditorSidebarLayout.jsx';
+import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import {
   ConfirmationDialog,
   PINNED_ENTRY_IDS,
   SettingLibraryInspector,
   SettingLibraryTree,
   SettingTreeActionsContext,
+  canTransferSettingNode,
   createEntryDraft,
   createGroupDraft,
   hasSearchResults,
@@ -34,9 +38,12 @@ export function shouldConfirmHiddenTimelineDisable(entry, nextEnabled) {
 }
 
 export function PresetPromptEditor({ preset, onChange, saveAction }) {
+  const { compact } = useEditorPresentation();
   const [query, setQuery] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [moving, setMoving] = useState(null);
   const [pendingHiddenTimelineDisableId, setPendingHiddenTimelineDisableId] = useState('');
   const nameInputRef = useRef(null);
   const context = usePresetContextMenu();
@@ -61,6 +68,8 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
 
   useEffect(() => {
     setSelected(null);
+    setEditing(false);
+    setMoving(null);
     setQuery('');
     context.close();
   }, [preset.id]);
@@ -86,6 +95,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
     }
     setAddOpen(false);
     setQuery('');
+    setEditing(true);
     requestAnimationFrame(() => nameInputRef.current?.select());
   }
 
@@ -99,6 +109,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
 
   function renameNode(target) {
     setSelected({ kind: target.kind, id: target.value.id });
+    setEditing(true);
     requestAnimationFrame(() => nameInputRef.current?.select());
   }
 
@@ -169,6 +180,12 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
   }
 
   function openTreeNodeContextMenu(event, data) {
+    if (compact) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelected({ kind: data.nodeKind, id: data.recordId });
+      return;
+    }
     setAddOpen(false);
     if (data.fixed) {
       context.open(event);
@@ -183,8 +200,48 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
 
   function openTreeContextMenu(event) {
     setAddOpen(false);
+    if (compact) { event.preventDefault(); return; }
     context.open(event);
   }
+
+  function openEditor(key = selected ? nodeKey(selected.kind, selected.id) : '') {
+    const next = parseNodeKey(key);
+    if (!next.id) return;
+    setSelected(next);
+    setEditing(true);
+  }
+
+  function closeEditor() {
+    if (compact) setEditing(false);
+    else setSelected(null);
+  }
+
+  const destinationId = selected?.kind === 'group' ? selected.id : selectedValue?.groupId || '';
+  const canModify = Boolean(selectedValue) && !PINNED_ENTRY_IDS.has(selectedValue.id);
+  function pasteMove() {
+    if (!moving || !canTransferSettingNode(preset, moving.target, destinationId)) return;
+    handleMove({ dragId: nodeKey(moving.target.kind, moving.target.id), parentId: destinationId ? nodeKey('group', destinationId) : '',
+      destinationIndex: Number.MAX_SAFE_INTEGER, expandParentId: destinationId ? nodeKey('group', destinationId) : '' });
+    setSelected(moving.target);
+    setMoving(null);
+  }
+
+  const inspector = selectedValue && (!compact || editing) ? <SettingLibraryInspector
+    selected={{ kind: selected.kind, value: selectedValue }}
+    library={library}
+    allowCustomPromptPositions
+    nameInputRef={nameInputRef}
+    SelectedIcon={selected.kind === 'group' ? DshFolderClosedIcon : selectedValue.contentMode === 'ejs' ? Code : selectedValue.dynamicMode === 'ejs_reference' ? LinkSimple : FileText}
+    onClose={closeEditor}
+    onUpdateGroup={(patch) => onChange({ ...preset, groups: preset.groups.map((group) => group.id === selected.id ? { ...group, ...patch } : group) })}
+    onDeleteGroup={() => deleteGroup(selected.id)}
+    onUpdateEntry={updateEntry}
+    onEntriesChange={(entries) => onChange({ ...preset, entries })}
+    onOpenEntry={(entryId) => { setSelected({ kind: 'entry', id: entryId }); setEditing(true); }}
+    onRequestDeleteOpening={() => {}}
+    onPromptPositionsChange={(promptPositions, entries = preset.entries) => onChange({ ...preset, promptPositions, entries })}
+  /> : null;
+  const Layout = compact ? EditorSidebarLayout : 'section';
 
   const menuTarget = context.menu?.target;
   const createTarget = menuTarget ? { kind: menuTarget.kind, id: menuTarget.value.id } : null;
@@ -200,21 +257,22 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
   );
 
   return (
-    <section className="preset-prompt-editor setting-library-layout" aria-label="预设提示词" onMouseDown={() => setAddOpen(false)}>
+    <Layout className="preset-prompt-editor setting-library-layout" aria-label="预设提示词" onMouseDown={() => setAddOpen(false)}
+      {...(compact ? { inspector, inspectorTitle: selected?.kind === 'group' ? '文件夹' : selectedValue?.title || '提示词', onCloseInspector: closeEditor } : {})}>
       <div className="setting-library-browser">
         <div className="setting-library-toolbar" onMouseDown={(event) => event.stopPropagation()}>
           <label className="setting-library-search">
             <MagnifyingGlass size={15} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索提示词" aria-label="搜索提示词" />
           </label>
-          <div className="setting-library-add-wrap">
+          {!compact && <div className="setting-library-add-wrap">
             <button type="button" className="setting-library-create-button" aria-expanded={addOpen} onClick={() => setAddOpen((value) => !value)}><Plus size={16} />新建</button>
             {addOpen ? <div className="setting-library-popover" role="menu">
               <button type="button" role="menuitem" onClick={() => createNode('group')}><CreateFolderIcon size={16} />文件夹</button>
               <button type="button" role="menuitem" onClick={() => createNode('entry')}><CreateEntryIcon size={16} />提示词</button>
               <button type="button" role="menuitem" onClick={() => createNode('reference')}><CreateReferenceIcon size={16} />EJS引用设定</button>
             </div> : null}
-          </div>
+          </div>}
           {saveAction}
         </div>
         <div
@@ -226,16 +284,19 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
           }}
           onContextMenu={openTreeContextMenu}
         >
-          <SettingTreeActionsContext.Provider value={{ openContextMenu: openTreeNodeContextMenu, updateEntryById: updateTreeEntry }}>
+          <SettingTreeActionsContext.Provider value={{ openContextMenu: openTreeNodeContextMenu, updateEntryById: updateTreeEntry, openEditor: compact ? openEditor : undefined }}>
             <SettingLibraryTree
               key={preset.id}
               nodes={nodes}
+              touchReorder={compact && !moving}
+              dragEnabled={!moving}
               query={query}
               selectedId={selected ? nodeKey(selected.kind, selected.id) : ''}
               expandedIds={preset.expandedGroupIds.map((id) => nodeKey('group', id))}
               onSelectedIdChange={(id) => {
                 const next = parseNodeKey(id);
                 setSelected(next.id ? next : null);
+                setEditing(false);
               }}
               onExpandedIdsChange={handleExpandedIdsChange}
               onMove={handleMove}
@@ -245,23 +306,24 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
           {!query && !nodes.length ? <p className="setting-library-empty">还没有预设提示词</p> : null}
           {query && !searchHasResults ? <p className="setting-library-empty">没有匹配的提示词</p> : null}
         </div>
+        {compact && <MobileEditorActions label="提示词操作" selectionId={selected ? nodeKey(selected.kind, selected.id) : ''}
+          canEdit={Boolean(selectedValue)} canModify={canModify} clipboard={moving}
+          canPaste={Boolean(moving && canTransferSettingNode(preset, moving.target, destinationId))}
+          onEdit={() => openEditor()} onMove={() => { setMoving({ target: selected }); setSelected(null); }}
+          onPaste={pasteMove} onCancel={() => setMoving(null)}
+          onDelete={() => selected.kind === 'group' ? deleteGroup(selected.id) : deleteEntry(selected.id)}
+          createItems={[
+            { label: '文件夹', Icon: CreateFolderIcon, run: () => createNode('group') },
+            { label: '提示词', Icon: CreateEntryIcon, run: () => createNode('entry') },
+            { label: 'EJS引用设定', Icon: CreateReferenceIcon, run: () => createNode('reference') },
+          ]}
+          moreItems={canModify ? [
+            ...(selected.kind === 'entry' ? [{ label: '复制', Icon: Copy, run: () => duplicateEntry(selectedValue) }] : []),
+            { label: '重命名', Icon: PencilSimple, run: () => renameNode({ kind: selected.kind, value: selectedValue }) },
+          ] : []} />}
       </div>
 
-      {selectedValue ? <SettingLibraryInspector
-        selected={{ kind: selected.kind, value: selectedValue }}
-        library={library}
-        allowCustomPromptPositions
-        nameInputRef={nameInputRef}
-        SelectedIcon={selected.kind === 'group' ? DshFolderClosedIcon : selectedValue.contentMode === 'ejs' ? Code : selectedValue.dynamicMode === 'ejs_reference' ? LinkSimple : FileText}
-        onClose={() => setSelected(null)}
-        onUpdateGroup={(patch) => onChange({ ...preset, groups: preset.groups.map((group) => group.id === selected.id ? { ...group, ...patch } : group) })}
-        onDeleteGroup={() => deleteGroup(selected.id)}
-        onUpdateEntry={updateEntry}
-        onEntriesChange={(entries) => onChange({ ...preset, entries })}
-        onOpenEntry={(entryId) => setSelected({ kind: 'entry', id: entryId })}
-        onRequestDeleteOpening={() => {}}
-        onPromptPositionsChange={(promptPositions, entries = preset.entries) => onChange({ ...preset, promptPositions, entries })}
-      /> : null}
+      {!compact && inspector}
       {context.menu ? <PresetContextMenu menu={context.menu} actions={menuActions} onClose={context.close} /> : null}
       <ConfirmationDialog
         target={pendingHiddenTimelineDisableId ? HIDDEN_TIMELINE_DISABLE_CONFIRMATION : null}
@@ -269,7 +331,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
         onCancel={() => setPendingHiddenTimelineDisableId('')}
         onConfirm={confirmHiddenTimelineDisable}
       />
-    </section>
+    </Layout>
   );
 }
 

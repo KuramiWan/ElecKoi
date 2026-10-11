@@ -1,0 +1,61 @@
+{
+  "format": "eleckoi.agent-preset",
+  "version": 1,
+  "preset": {
+    "name": "原生 SDK 示例预设",
+    "model_family": "general",
+    "entries": [
+      {
+        "id": "example-brief",
+        "kind": "normal",
+        "title": "简洁回复",
+        "content": "请使用简洁回复。",
+        "enabled": true,
+        "trigger_mode": "always",
+        "position": "instructions",
+        "insert_role": "system"
+      },
+      {
+        "id": "example-detailed",
+        "kind": "normal",
+        "title": "详细回复",
+        "content": "请使用详细回复。",
+        "enabled": false,
+        "trigger_mode": "always",
+        "position": "instructions",
+        "insert_role": "system"
+      }
+    ],
+    "script_library": {
+      "enabled": false,
+      "variables": {},
+      "trees": [
+        {
+          "type": "script",
+          "id": "example-preset-options",
+          "name": "预设选项",
+          "enabled": false,
+          "content": "export default context => context.api.ui.registerButton({\n  id: 'brief-mode',\n  label: '切换简洁回复',\n  async onClick({ api }) {\n    const preset = await api.presets.current();\n    if (!preset || preset.id !== context.ownerId) throw new Error('所属预设已不再是当前预设');\n    const { briefEntryId, detailedEntryId } = context.settings;\n    if (typeof briefEntryId !== 'string' || typeof detailedEntryId !== 'string') {\n      throw new Error('请在脚本设置中提供两个明确的预设条目编号');\n    }\n    const brief = await api.presets.getEntry(preset.id, briefEntryId);\n    await api.presets.updateEntries(preset.id, [\n      { id: briefEntryId, changes: { enabled: !brief.enabled } },\n      { id: detailedEntryId, changes: { enabled: brief.enabled } },\n    ]);\n  },\n});\n",
+          "info": "",
+          "data": {
+            "briefEntryId": "example-brief",
+            "detailedEntryId": "example-detailed"
+          },
+          "button": {
+            "enabled": true,
+            "buttons": []
+          },
+          "export_with": {
+            "data": true,
+            "button": true
+          },
+          "runtime": {
+            "kind": "eleckoi-module",
+            "apiVersion": 1
+          }
+        }
+      ],
+      "files": []
+    }
+  }
+}

@@ -7,7 +7,7 @@ import { ELECKOI_DESKTOP_BUNDLES, ELECKOI_INSTALL_ANCHOR, registerDesktopBundles
 
 describe('desktop bundle registration', () => {
   it('ships every official optional bundle with the locked version and leaves activation to the user', () => {
-    const runtime = JSON.parse(readFileSync('packages/dsh-runtime/package.json', 'utf8'))
+    const runtime = JSON.parse(readFileSync('packages/host/runtime/package.json', 'utf8'))
     const desktop = JSON.parse(readFileSync('package.json', 'utf8'))
     for (const name of OPTIONAL_BUNDLES) {
       expect(runtime.dependencies[name]).toBe('0.2.0-rc.2')

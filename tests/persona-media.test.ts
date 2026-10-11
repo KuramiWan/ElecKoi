@@ -2,12 +2,12 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ConversationRepository } from '../packages/dsh-product-data/src/domain/conversations/ConversationRepository'
-import { MessageRepository } from '../packages/dsh-product-data/src/domain/conversations/MessageRepository'
-import { CharacterRepository } from '../packages/dsh-product-data/src/domain/personas/CharacterRepository'
-import { PersonaRepository } from '../packages/dsh-product-data/src/domain/personas/PersonaRepository'
+import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
+import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
+import { PersonaRepository } from '../packages/host/product-data/src/domain/personas/PersonaRepository'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
-import { SqliteDatabase } from '../packages/dsh-product-data/src/storage/sqlite/SqliteDatabase'
+import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
 
 const directories: string[] = []
 const databases: SqliteDatabase[] = []

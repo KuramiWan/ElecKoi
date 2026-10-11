@@ -21,7 +21,7 @@ import {
   VideoCamera,
   Waveform,
   X,
-} from "@phosphor-icons/react";
+} from "../../../ui/icons/interfaceIcons.jsx";
 
 export const CANVAS_NODE_TYPES = [
   { type: "text", label: "文本", emptyTitle: "未命名文本", subtitle: "书写、整理或生成文字", Icon: FileText },

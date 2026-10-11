@@ -9,8 +9,8 @@ import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import SessionProjectionCache, { projectionCacheDomainSpec } from '@deepseek-ai/dsh-session-projection-cache'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { retireRequestContextCache } from '../packages/dsh-client-roleplay/src/host/request-cache-retirement.mjs'
-import { ElecKoiConversationsApi } from '../packages/dsh-product-api/lib/types/index.js'
+import { retireRequestContextCache } from '../packages/client/features/dsh-client-roleplay/src/host/request-cache-retirement.mjs'
+import { ElecKoiConversationsApi } from '../packages/host/product-api/lib/types/index.js'
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 describe('bounded conversation catalog and retired request caches', () => {

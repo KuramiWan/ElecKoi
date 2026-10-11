@@ -11,12 +11,12 @@ import { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { installConversationContext, projectRequestInput, requestContextItems } from '../packages/dsh-client-roleplay/src/host/conversation-context.mjs'
-import { RequestPreviewStore } from '../packages/dsh-client-roleplay/src/host/request-preview.mjs'
-import { inputContinuationsProjection } from '../packages/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
-import { rewindDshSession } from '../packages/dsh-runtime/src/sessionRewind'
-import { editDshSessionMessage } from '../packages/dsh-runtime/src/sessionMessageEdit'
-import { readDshSessionLog } from '../packages/dsh-runtime/src/trajectory'
+import { installConversationContext, projectRequestInput, requestContextItems } from '../packages/client/features/dsh-client-roleplay/src/host/conversation-context.mjs'
+import { RequestPreviewStore } from '../packages/client/features/dsh-client-roleplay/src/host/request-preview.mjs'
+import { inputContinuationsProjection } from '../packages/client/features/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
+import { rewindDshSession } from '../packages/host/runtime/src/sessionRewind'
+import { editDshSessionMessage } from '../packages/host/runtime/src/sessionMessageEdit'
+import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })

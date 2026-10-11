@@ -8,14 +8,14 @@ import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { apply as installSessionStats } from '@deepseek-ai/dsh-session-stats'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { afterEach, describe, expect, it } from 'vitest'
-import { recoverSessionHistory } from '../packages/dsh-runtime/src/sessionHistoryRecovery'
-import { readDshSessionLog } from '../packages/dsh-runtime/src/trajectory'
-import { rewindDshSession } from '../packages/dsh-runtime/src/sessionRewind'
+import { recoverSessionHistory } from '../packages/host/runtime/src/sessionHistoryRecovery'
+import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
+import { rewindDshSession } from '../packages/host/runtime/src/sessionRewind'
 import { legacyFixtureRequest } from './helpers/legacyRequestContext.js'
-import { projectProductHistory } from '../packages/dsh-client-roleplay/src/host/conversation-context.mjs'
+import { projectProductHistory } from '../packages/client/features/dsh-client-roleplay/src/host/conversation-context.mjs'
 
-import { refreshSessionProjections } from '../packages/dsh-runtime/src/sessionProjectionRefresh'
-import { historyStatsProjection } from '../packages/dsh-client-roleplay/src/host/history-stats-projection.mjs'
+import { refreshSessionProjections } from '../packages/host/runtime/src/sessionProjectionRefresh'
+import { historyStatsProjection } from '../packages/client/features/dsh-client-roleplay/src/host/history-stats-projection.mjs'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })

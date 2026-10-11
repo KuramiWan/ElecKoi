@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
 
-const source = readFileSync(new URL('../packages/dsh-client-web-search/src/client.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../packages/client/features/dsh-client-web-search/src/client.js', import.meta.url), 'utf8')
 const ok = (value: unknown) => Promise.resolve({ ok: true, value })
 
 function harness() {

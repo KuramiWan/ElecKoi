@@ -4,7 +4,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { CommunityDialog } from "../apps/web/src/app/windows/shell/components/CommunityDialog.jsx";
 import { SidebarRail } from "../apps/web/src/app/windows/shell/components/SidebarRail.jsx";
 import { CommunityNavIcon, CreatorStudioNavIcon, MessageNavIcon, ModelNavIcon, PersonNavIcon, PresetNavIcon } from "../apps/web/src/ui/icons/navIcons.jsx";
-import { ELECKOI_QQ_GROUP_NUMBER } from "../packages/product-shared/src/foundation/community";
+import { ELECKOI_QQ_GROUP_NUMBER } from "../packages/shared/src/foundation/community";
 
 vi.stubGlobal("React", React);
 afterAll(() => vi.unstubAllGlobals());

@@ -1,4 +1,4 @@
-import { DEFAULT_VARIABLE_CONFIG_VERSION_ID, VARIABLE_INITIALIZATION_OBJECT_ID } from "../../../../../../packages/product-shared/src/contracts/variables/schemas.ts";
+import { DEFAULT_VARIABLE_CONFIG_VERSION_ID, VARIABLE_INITIALIZATION_OBJECT_ID, variableValueTypeSchema } from "../../../../../../packages/shared/src/contracts/variables/schemas.ts";
 import { activateVariableVersion, createVariableId, syncActiveVersion, uniqueVariableName, withGeneratedInitialState } from "./variableConfigEditing.js";
 
 function stamp() {
@@ -87,7 +87,7 @@ function parseObject(value, index, idMap) {
 }
 
 function parseVariable(value, index, objectIdMap) {
-  const type = ["", "number", "string", "boolean", "array"].includes(value?.type) ? value.type : "";
+  const type = variableValueTypeSchema.parse(value?.type ?? "");
   return {
     id: text(value?.id) || createVariableId("variable"), title: text(value?.title).slice(0, 60),
     objectId: objectIdMap.get(text(value?.object_id)) || "", enabled: value?.enabled !== false,

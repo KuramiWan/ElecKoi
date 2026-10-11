@@ -1,3 +1,4 @@
+import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowSquareOut,
@@ -10,7 +11,7 @@ import {
   SquaresFour,
   UserFocus,
   X,
-} from "@phosphor-icons/react";
+} from "../../../ui/icons/interfaceIcons.jsx";
 import {
   DshCheckIcon,
   DshChevronDownIcon,
@@ -359,7 +360,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
     }
   };
 
-  return <div className="creator-studio-dialog-backdrop" role="presentation" onMouseDown={(event) => {
+  return <SystemBarOverlay className="creator-studio-dialog-backdrop" role="presentation" onMouseDown={(event) => {
     if (event.target === event.currentTarget && !busy) onClose();
   }}>
     <section className="creator-studio-create-dialog" role="dialog" aria-modal="true" aria-labelledby="creator-studio-create-title">
@@ -405,7 +406,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
         </footer>
       </form>
     </section>
-  </div>;
+  </SystemBarOverlay>;
 }
 
 function LibraryPage({ page }) {
