@@ -1,7 +1,14 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
 import { dshClientPages } from './dsh-client-pages.mjs'
+import { dshBundleAssets, verifyDshBundleAssets } from './dsh-bundle-assets.mjs'
+
+const require = createRequire(import.meta.url)
+const manifest = JSON.parse(readFileSync(join(process.cwd(), 'apps/desktop/resources/dsh/runtime-manifest.json'), 'utf8'))
+const bundleAssets = Object.fromEntries(await Promise.all(manifest.desktopProfile.bundles.map(async name =>
+  [name, await dshBundleAssets(dirname(require.resolve(`${name}/package.json`)))])))
 
 const unpacked = process.env.ELECKOI_UNPACKED_DIR ?? join(process.cwd(), 'release', 'win-unpacked')
 const executable = join(unpacked, 'ElecKoi.exe')
@@ -25,6 +32,8 @@ const probe = `
     const { pathToFileURL } = await import('node:url')
     const unpacked = ${JSON.stringify(unpacked)}
     const appAsar = ${JSON.stringify(appAsar)}
+    const verifyBundleAssets = ${verifyDshBundleAssets.toString()}
+    const bundleAssets = ${JSON.stringify(bundleAssets)}
     const mainSource = await readFile(join(appAsar, 'out', 'main', 'main.js'), 'utf8')
     const externalUpdaterDependencies = ['electron-updater', 'builder-util-runtime', 'debug', 'sax']
     for (const dependency of externalUpdaterDependencies) {
@@ -78,7 +87,7 @@ const probe = `
       const patches = declaration.dsh?.bundle?.patch
       if (!patches) throw new Error('Packaged plugin has no bundle declaration: ' + name)
       for (const patch of Array.isArray(patches) ? patches : [patches]) await access(join(directory, patch))
-      await access(join(directory, 'locale', 'zh.json'))
+      await verifyBundleAssets(directory, bundleAssets[name])
     }
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-conversations', 'src', 'client.js'))
     await access(join(appAsar, 'node_modules', '@eleckoi', 'dsh-client-creator-studio', 'src', 'client.js'))

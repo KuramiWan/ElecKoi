@@ -71,14 +71,20 @@ jobs:
       - name: Verify Electron DSH runtime
         run: pnpm check:electron-dsh
 
-      - name: Package Windows installer and update metadata
+      - name: Assemble Windows application
         env:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: pnpm exec electron-builder --projectDir apps/desktop --win --x64 --publish never
+        run: pnpm exec electron-builder --projectDir apps/desktop --win --x64 --dir --publish never
 
       - name: Verify packaged DSH runtime
         run: pnpm verify:packaged-dsh
+
+      - name: Package verified Windows installer and update metadata
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: pnpm exec electron-builder --projectDir apps/desktop --win --x64 --prepackaged ../../release/win-unpacked --publish never
 
       - name: Publish verified GitHub Release
         env:

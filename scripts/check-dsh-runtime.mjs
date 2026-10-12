@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
 import { OPTIONAL_BUNDLES } from '@deepseek-ai/dsh-app-boot'
+import { dshBundleAssets } from './dsh-bundle-assets.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(resolve(root, 'package.json'))
@@ -48,6 +49,7 @@ for (const bundle of manifest.desktopProfile.bundles) {
     throw new Error(`${bundle} 必须由桌面运行时携带。`)
   }
   const bundleManifest = require(`${bundle}/package.json`)
+  await dshBundleAssets(dirname(require.resolve(`${bundle}/package.json`)))
   if (!bundleManifest.dsh?.bundle?.patch) throw new Error(`${bundle} 未声明 DSH 组合包。`)
   const developerInterfaces = bundleManifest.eleckoi?.developerInterfaces
   if (!Array.isArray(developerInterfaces) || developerInterfaces.length === 0) {
