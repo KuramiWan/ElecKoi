@@ -54,9 +54,9 @@ Windows-only Release 不触发 Android 更新。每个正式 Android 或双端 R
   "schemaVersion": 1,
   "platform": "android",
   "applicationId": "com.eleckoi.app",
-  "versionCode": 2,
-  "versionName": "0.2.9",
-  "apkAsset": "ElecKoi-0.2.9-android-arm64.apk",
+  "versionCode": 3,
+  "versionName": "0.2.10",
+  "apkAsset": "ElecKoi-0.2.10-android-arm64.apk",
   "sha256": "<实际 APK 的 64 位小写 SHA-256>"
 }
 ```

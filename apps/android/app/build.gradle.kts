@@ -16,8 +16,8 @@ android {
         applicationId = "com.eleckoi.app"
         minSdk = 27
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.9"
+        versionCode = 3
+        versionName = "0.2.10"
         ndk { abiFilters += "arm64-v8a" }
     }
     sourceSets.getByName("main").assets.directories += runtimeAssets.absolutePath
