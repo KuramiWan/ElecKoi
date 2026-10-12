@@ -6,7 +6,7 @@ import { dshClientPages } from './dsh-client-pages.mjs'
 import { dshBundleAssets, verifyDshBundleAssets } from './dsh-bundle-assets.mjs'
 
 const require = createRequire(import.meta.url)
-const { verifyWindowsUpdaterConfig } = require('./windows-updater-config.cjs')
+const { verifyWindowsUpdaterConfig } = require('../apps/desktop/scripts/windows-updater-config.cjs')
 const unpacked = process.env.ELECKOI_UNPACKED_DIR ?? join(process.cwd(), 'release', 'win-unpacked')
 verifyWindowsUpdaterConfig(unpacked, process.cwd())
 const manifest = JSON.parse(readFileSync(join(process.cwd(), 'apps/desktop/resources/dsh/runtime-manifest.json'), 'utf8'))

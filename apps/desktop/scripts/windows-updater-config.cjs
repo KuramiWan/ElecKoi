@@ -9,7 +9,7 @@ const { AppInfo } = builderLibRequire('./out/appInfo.js')
 const { serializeToYaml } = builderLibRequire('builder-util')
 const { load } = builderLibRequire('js-yaml')
 
-// The directory assembly must include the config before the verified installer stage.
+// Write the updater configuration before the verified installer stage.
 async function afterPack(context) {
   if (context.electronPlatformName !== 'win32') return
   const config = await getAppUpdatePublishConfiguration(context.packager, null, context.arch, true)

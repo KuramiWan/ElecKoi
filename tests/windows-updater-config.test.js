@@ -9,9 +9,10 @@ const lib = createRequire(builderRequire.resolve('app-builder-lib/package.json')
 const { PublishManager } = lib('./out/publish/PublishManager.js')
 const { resolveFunction } = lib('./out/util/resolve.js')
 const { AppInfo } = lib('./out/appInfo.js')
+const { Packager } = lib('./out/packager.js')
 const { Platform } = lib('./out/index.js')
 const { load } = lib('js-yaml')
-const hook = require('../scripts/windows-updater-config.cjs')
+const hook = require('../apps/desktop/scripts/windows-updater-config.cjs')
 const directories = []
 afterEach(() => {
   for (const directory of directories.splice(0)) {
@@ -34,7 +35,9 @@ it('adds the official updater configuration to the directory stage that skips th
   const context = { packager, appOutDir, arch: 1, electronPlatformName: 'win32', targets: [{ name: 'dir' }] }
   await handlers[0](context)
   expect(existsSync(join(appOutDir, 'resources/app-update.yml'))).toBe(false)
-  const resolvedHook = await resolveFunction('module', config.afterPack, 'afterPack', resolve('.'))
+  const applicationPackager = new Packager({ projectDir: resolve('apps/desktop') })
+  const hookRoot = await applicationPackager.getWorkspaceRoot()
+  const resolvedHook = await resolveFunction('module', config.afterPack, 'afterPack', hookRoot)
   await resolvedHook(context)
   expect(hook.verifyWindowsUpdaterConfig(appOutDir, resolve('.'))).toMatchObject({
     provider: 'github', owner: 'eleckoi', repo: 'ElecKoi', updaterCacheDirName: appInfo.updaterCacheDirName
