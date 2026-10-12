@@ -50,8 +50,8 @@ export function stageProductionClosure(repo, output, { links = true } = {}) {
       }
       if (optional) {
         const child = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'))
-        if (!matchesPlatform(child.os, 'linux') || !matchesPlatform(child.cpu, 'arm64')) {
-          missingOptional.push({ owner: manifest.name, name, reason: 'not-linux-arm64' })
+        if (!matchesPlatform(child.os, 'linux') || !matchesPlatform(child.cpu, 'arm64') || !matchesPlatform(child.libc, 'glibc')) {
+          missingOptional.push({ owner: manifest.name, name, reason: 'not-linux-arm64-glibc' })
           continue
         }
       }

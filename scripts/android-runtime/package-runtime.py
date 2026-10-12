@@ -405,6 +405,44 @@ def add_directory(output, source, prefix, record_name=None):
         output.addfile(item)
 
 
+def canonicalize_native_records(records, overlays):
+    """Replace installed platform copies by their exact verified overlay identities."""
+    registered = {}
+    for _, _, _, record in overlays:
+        identity = (record["name"], record["version"])
+        if identity in registered:
+            raise ValueError("Duplicate native overlay identity")
+        registered[identity] = record
+    replaced = {}
+    for record in records:
+        canonical = registered.get((record["name"], record["version"]))
+        if canonical is not None and canonical["directory"] != record["directory"]:
+            replaced[record["directory"]] = canonical["directory"]
+    records[:] = [record for record in records if record["directory"] not in replaced]
+    for record in records:
+        for edge in record["dependencies"]:
+            edge["directory"] = replaced.get(edge["directory"], edge["directory"])
+
+
+def resolve_native_dependencies(records, overlays):
+    """Resolve duplicate identities through the explicitly registered Android overlays."""
+    native_directories = {record["directory"] for _, _, _, record in overlays}
+    for _, _, manifest, record in overlays:
+        dependency_names = {**manifest.get("dependencies", {}), **manifest.get("optionalDependencies", {})}
+        for name in dependency_names:
+            candidates = [candidate for candidate in records if candidate["name"] == name]
+            if not candidates and name in manifest.get("optionalDependencies", {}):
+                continue
+            if len({candidate["version"] for candidate in candidates}) > 1:
+                raise ValueError(f"Regenerate closure for ambiguous native dependency: {record['name']} -> {name}")
+            canonical = [candidate for candidate in candidates if candidate["directory"] in native_directories]
+            if canonical:
+                candidates = canonical
+            if len(candidates) != 1:
+                raise ValueError(f"Regenerate closure for ambiguous native dependency: {record['name']} -> {name}")
+            record["dependencies"].append({"name": name, "directory": candidates[0]["directory"]})
+
+
 def package_app(closure, downloads, output, lock):
     inventory = read_json(closure / "production-closure.json")
     records = inventory["packages"]
@@ -438,16 +476,9 @@ def package_app(closure, downloads, output, lock):
             parent["dependencies"] = [edge for edge in parent["dependencies"] if edge["name"] != component["name"]]
             parent["dependencies"].append({"name": component["name"], "directory": directory})
         overlays.append((source, directory, manifest, record))
-    # Resolve native package's own declared dependencies against the exact installed identities.
-    for _, _, manifest, record in overlays:
-        dependency_names = {**manifest.get("dependencies", {}), **manifest.get("optionalDependencies", {})}
-        for name in dependency_names:
-            candidates = [candidate for candidate in records if candidate["name"] == name]
-            if not candidates and name in manifest.get("optionalDependencies", {}):
-                continue
-            if len(candidates) != 1:
-                raise ValueError(f"Regenerate closure for ambiguous native dependency: {record['name']} -> {name}")
-            record["dependencies"].append({"name": name, "directory": candidates[0]["directory"]})
+    canonicalize_native_records(records, overlays)
+    by_directory = {record["directory"]: record for record in records}
+    resolve_native_dependencies(records, overlays)
     sqlite = [record for record in records if record["name"] == "better-sqlite3"]
     if len(sqlite) != 1 or sqlite[0]["version"] != lock["sqlite"]["version"]:
         raise ValueError("SQLite closure differs from pinned ARM64 binary")

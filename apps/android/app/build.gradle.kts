@@ -4,6 +4,11 @@ import java.security.MessageDigest
 plugins { id("com.android.application") }
 val runtimeAssets = providers.gradleProperty("unifiedRuntimeAssetsDir")
     .map { rootProject.file(it) }.getOrElse(rootProject.file("runtime-assets"))
+val releaseSigningValues = listOf("ELECKOI_RELEASE_STORE_FILE", "ELECKOI_RELEASE_STORE_PASSWORD",
+    "ELECKOI_RELEASE_KEY_ALIAS", "ELECKOI_RELEASE_KEY_PASSWORD").associateWith { name ->
+    providers.environmentVariable(name).orElse(providers.gradleProperty(name)).orNull?.trim()?.takeIf { it.isNotEmpty() }
+}
+val releaseSigningConfigured = releaseSigningValues.values.all { it != null }
 android {
     namespace = "com.eleckoi.app"
     compileSdk = 35
@@ -19,13 +24,40 @@ android {
     androidResources { noCompress += "archive" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     packaging { jniLibs { useLegacyPackaging = true } }
-    buildTypes { getByName("release") { isMinifyEnabled = false } }
+    signingConfigs {
+        create("release") {
+            if (releaseSigningConfigured) {
+                storeFile = file(checkNotNull(releaseSigningValues["ELECKOI_RELEASE_STORE_FILE"]))
+                storePassword = checkNotNull(releaseSigningValues["ELECKOI_RELEASE_STORE_PASSWORD"])
+                keyAlias = checkNotNull(releaseSigningValues["ELECKOI_RELEASE_KEY_ALIAS"])
+                keyPassword = checkNotNull(releaseSigningValues["ELECKOI_RELEASE_KEY_PASSWORD"])
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
 }
 dependencies {
     implementation("androidx.core:core:1.13.1")
     implementation("androidx.webkit:webkit:1.12.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+}
+
+val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
+    group = "verification"
+    doLast {
+        val missing = releaseSigningValues.filterValues { it == null }.keys
+        check(missing.isEmpty()) { "Release signing is not configured. Set: ${missing.joinToString()}." }
+        check(file(checkNotNull(releaseSigningValues["ELECKOI_RELEASE_STORE_FILE"])).isFile) { "Release keystore is missing." }
+    }
+}
+tasks.matching { it.name == "packageRelease" || it.name == "bundleRelease" }.configureEach {
+    dependsOn(verifyReleaseSigning)
 }
 
 val verifyRuntimeAssets = tasks.register("verifyRuntimeAssets") {
@@ -68,8 +100,22 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.con
 afterEvaluate {
     listOf("Debug", "Release").forEach { variant ->
         val outputDirectory = layout.buildDirectory.dir("outputs/apk/${variant.lowercase()}")
-        val descriptor = tasks.register<Exec>("write${variant}UpdateDescriptor") {
+        val verification = tasks.register<Exec>("verify${variant}Apk") {
+            group = "verification"
             dependsOn("package$variant")
+            doFirst {
+                val directory = outputDirectory.get().asFile.canonicalFile
+                val metadata = JsonSlurper().parse(directory.resolve("output-metadata.json")) as Map<*, *>
+                val elements = metadata["elements"] as? List<*> ?: error("APK output metadata is missing elements")
+                check(elements.size == 1) { "Expected one Android APK output" }
+                val output = (elements.single() as Map<*, *>)["outputFile"] as? String ?: error("APK output file is missing")
+                val apk = directory.resolve(output).canonicalFile
+                check(apk.parentFile == directory && apk.isFile && apk.extension == "apk") { "Invalid APK output file" }
+                commandLine("python", rootProject.file("../../scripts/android-runtime/check-apk.py"), apk)
+            }
+        }
+        val descriptor = tasks.register<Exec>("write${variant}UpdateDescriptor") {
+            dependsOn(verification)
             inputs.file(outputDirectory.map { it.file("output-metadata.json") })
             outputs.file(outputDirectory.map { it.file("android-update.json") })
             outputs.upToDateWhen { false }

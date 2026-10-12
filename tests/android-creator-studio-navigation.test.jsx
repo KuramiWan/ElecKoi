@@ -9,8 +9,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.React = React;
 const cleanups = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function mount() {
-  const current = { sessionId: 'synthetic-current', characterId: '', presetId: 'synthetic-creator' };
+async function mount(selectedCharacter = false) {
+  const current = { sessionId: 'synthetic-current', characterId: selectedCharacter ? 'synthetic-character' : '', presetId: 'synthetic-creator' };
   let snapshot = { status: 'ready', active: current, reference: {}, error: '', items: [
     { ...current, title: '合成对话', updatedAt: Date.now(), pinned: false, pinIndex: -1 },
   ] };
@@ -22,7 +22,7 @@ async function mount() {
     pin: vi.fn(async id => { snapshot = { ...snapshot, items: snapshot.items.map(item => item.sessionId === id ? { ...item, pinned: true, pinIndex: 0 } : item) }; listeners.forEach(listener => listener()); }),
     rename: vi.fn(async () => {}), delete: vi.fn(async () => {}), search: vi.fn(async () => ({ items: [], hasMore: false })),
   };
-  const characterSnapshot = { collection: { items: [], groups: [] }, status: 'ready', error: '' };
+  const characterSnapshot = { collection: { items: selectedCharacter ? [{ id: 'synthetic-character', name: '合成角色', avatar: '' }] : [], groups: [] }, status: 'ready', error: '' };
   const view = { creatorStudio: { sessions: model }, characters: { subscribe: () => () => {}, getSnapshot: () => characterSnapshot },
     renderCreatorStudioConversation: vi.fn(() => <div>合成会话内容</div>), goBack: vi.fn(), registerBackHandler: () => () => {} };
   const node = document.createElement('div'); document.body.append(node);
@@ -33,6 +33,17 @@ async function mount() {
   return { node, model, view, click };
 }
 describe('Android AI creator studio navigation', () => {
+  it('places the selected character in the sidebar without taking space above the conversation', async () => {
+    const f = await mount(true);
+    expect(f.node.querySelector('.creator-studio-target')).toBeNull();
+    expect(f.node.textContent).not.toContain('合成角色');
+    await f.click('工作室侧边栏');
+    const choice = f.node.querySelector('.creator-studio-sidebar-character');
+    expect(choice.lastElementChild.textContent).toBe('合成角色');
+    expect(choice.querySelector('.avatar')).not.toBeNull();
+    await f.click('选择角色 合成角色');
+    expect(f.node.querySelector('.creator-studio-character-picker')).not.toBeNull();
+  });
   it('restores recent history and places the shared new-chat control immediately after the sidebar control', async () => {
     const f = await mount();
     expect(f.model.restoreRecent).toHaveBeenCalledOnce();

@@ -16,6 +16,27 @@ function navigationPage() {
 }
 
 describe('Android IME and root navigation', () => {
+  it('uses a compact centered row for bottom navigation buttons and restores gesture spacing', () => {
+    const { page, applyIme } = navigationPage()
+    try {
+      const { window } = page
+      const nav = window.document.querySelector('.mobile-bottom-nav')
+      nav.querySelector('button').innerHTML = '<span>预设</span>'
+      const script = activity.match(/web\.evaluateJavascript\("([^"\n]+)" \+ bottomButtonNavigation \+ "([^"\n]+)", null\);/)
+      expect(script).not.toBeNull()
+      window.eval(`${script[1]}true${script[2]}`)
+      expect(window.getComputedStyle(nav).minHeight).toBe('48px')
+      expect(window.getComputedStyle(nav.querySelector('button')).height).toBe('48px')
+      expect(window.getComputedStyle(nav.querySelector('span')).transform).toBe('none')
+      applyIme(true)
+      expect(window.getComputedStyle(nav).display).toBe('none')
+      applyIme(false)
+      expect(window.getComputedStyle(nav).display).toBe('flex')
+      window.eval(`${script[1]}false${script[2]}`)
+      expect(window.getComputedStyle(nav.querySelector('button')).height).toBe('64px')
+      expect(window.getComputedStyle(nav.querySelector('span')).transform).toBe('translateY(-8px)')
+    } finally { page.window.close() }
+  })
   it('removes the navigation from layout while the keyboard is visible and restores it on dismissal', () => {
     const { page, applyIme } = navigationPage()
     try {

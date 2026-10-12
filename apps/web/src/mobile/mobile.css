@@ -72,6 +72,9 @@
 :root[data-eleckoi-ime-visible] .mobile-shell .mobile-bottom-nav { display: none; }
 .mobile-bottom-nav > button { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 48px; height: 64px; padding: 0; border: 0; background: transparent; font-size: 16px; line-height: 20px; font-weight: 400; color: color-mix(in oklab, var(--muted) 45%, var(--soft-text) 55%); }
 .mobile-bottom-nav > button > span { transform: translateY(-8px); }
+:root[data-eleckoi-button-navigation] .mobile-shell .mobile-bottom-nav { min-height: 48px; padding-bottom: 0; }
+:root[data-eleckoi-button-navigation] .mobile-shell .mobile-bottom-nav > button { height: 48px; }
+:root[data-eleckoi-button-navigation] .mobile-shell .mobile-bottom-nav > button > span { transform: none; }
 .mobile-bottom-nav > button[aria-current="page"] { color: var(--text); font-weight: 600; }
 .mobile-create-tab > .mobile-create-mark { display: inline-flex; justify-content: center; align-items: center; width: 36px; height: 30px; border: 1.5px solid var(--text); border-radius: 9px; color: var(--text); }
 .mobile-drawer-overlay { position: absolute; inset: 0; z-index: 0; }

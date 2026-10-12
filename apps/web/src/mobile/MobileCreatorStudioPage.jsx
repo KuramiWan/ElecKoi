@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Check, Plus, UserCircle, PushPin } from '@phosphor-icons/react';
 import { useMainPageView } from '../app/windows/MainPageContext.jsx';
 import { Avatar } from '../ui/ui/Avatar.jsx';
+import { characterAvatar, characterName } from '../utils/characterDisplay.js';
 import { DshPanelLeftIcon, DshNewChatIcon, DshEllipsisIcon, DshEditIcon, DshTrashIcon, DshSearchIcon } from '../ui/icons/dshComposerIcons.jsx';
 import { MobileDialog, MobileHeader, MobileSearch, useMobileBack } from './MobileChrome.jsx';
 import { MobileCreatorStudioConversation } from './MobileCreatorStudioConversation.jsx';
@@ -50,16 +51,13 @@ export function MobileCreatorStudioPage() {
       <button type="button" aria-label="新建工作室对话" disabled={busy} onClick={() => void create()}><DshNewChatIcon size={22} /></button>
     </MobileHeader>
     {error || state.error ? <p className="creator-studio-error" role="alert">{error || state.error}</p> : null}
-    {target && <button type="button" className="creator-studio-target" onClick={() => setPicker(true)} disabled={busy}>
-      <Avatar as="span" src={target.avatar} name={target.name} /><span>{target.name}</span>
-    </button>}
     <section className="creator-studio-conversation" aria-label="工作室对话">
       {state.reference ? view.renderCreatorStudioConversation({ reference: state.reference, component: MobileCreatorStudioConversation,
         props: { model, editing: state.editingSessionId === state.active?.sessionId, onCreate: create, onSelectCharacter: () => setPicker(true), onError: setError } }) :
         <div className="creator-studio-start">{busy || state.status === 'loading' ? <span className="creator-studio-spinner" role="status" aria-label="加载对话" /> :
           <button type="button" onClick={() => void perform(() => model.restoreRecent())}>重试</button>}</div>}
     </section>
-    {drawer && !picker && <CreatorStudioSidebar model={model} state={state} busy={busy} error={error || state.error} perform={perform}
+    {drawer && !picker && <CreatorStudioSidebar model={model} state={state} target={target} busy={busy} error={error || state.error} perform={perform}
       onCreate={create} onSelectCharacter={() => setPicker(true)} onClose={() => setDrawer(false)} />}
     {picker && <CreatorStudioCharacterPicker characters={characters} selectedId={state.active?.characterId || ''} busy={busy} error={error} onSelect={choose} onClose={() => setPicker(false)} />}
   </div>;
@@ -77,7 +75,7 @@ function sessionGroups(items) {
   return [...groups];
 }
 
-export function CreatorStudioSidebar({ model, state, busy, error, perform, onCreate, onSelectCharacter, onClose }) {
+export function CreatorStudioSidebar({ model, state, target, busy, error, perform, onCreate, onSelectCharacter, onClose }) {
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState(null);
   const [searchError, setSearchError] = useState('');
@@ -129,7 +127,10 @@ export function CreatorStudioSidebar({ model, state, busy, error, perform, onCre
         <div className="creator-studio-sidebar-search"><DshSearchIcon size={20} /><input type="search" aria-label="搜索对话内容" placeholder="搜索对话内容…" value={query} onChange={event => setQuery(event.target.value)} /></div>
         <div className="creator-studio-sidebar-actions">
           <button type="button" className="creator-studio-sidebar-action" disabled={busy} onClick={onCreate}><DshNewChatIcon size={20} />新对话</button>
-          <button type="button" className="creator-studio-sidebar-action" disabled={busy} onClick={onSelectCharacter}><UserCircle size={20} />选择角色</button>
+          <button type="button" className="creator-studio-sidebar-action creator-studio-sidebar-character" aria-label={target ? `选择角色 ${characterName(target)}` : '选择角色'} disabled={busy} onClick={onSelectCharacter}>
+            {target ? <Avatar as="span" src={characterAvatar(target)} name={characterName(target)} /> : <UserCircle size={20} />}
+            <span>{target ? characterName(target) : '选择角色'}</span>
+          </button>
         </div>
       </>}
       {error || searchError ? <p className="creator-studio-error" role="alert">{error || searchError}</p> : null}

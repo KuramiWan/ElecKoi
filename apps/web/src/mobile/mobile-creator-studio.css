@@ -12,8 +12,6 @@
 @keyframes studio-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .creator-studio-spinner { animation: none; } }
 .creator-studio-error { color: var(--danger, #c63939); margin: 8px 16px; }
-.creator-studio-target { align-self: flex-start; display: flex; gap: 8px; align-items: center; border: 0; background: transparent; margin: 0 16px 8px; padding: 4px 8px; color: var(--muted); }
-.creator-studio-target .avatar { width: 28px; height: 28px; border-radius: 8px; }
 .creator-studio-drawer { justify-content: flex-start; padding: 0; }
 .creator-studio-drawer .mobile-dialog { width: min(86vw, 360px); height: 100%; max-height: 100%; border-radius: 0 18px 18px 0; display: flex; flex-direction: column; padding: 16px; overflow: visible; }
 .creator-studio-drawer .mobile-dialog > header { margin-bottom: 14px; flex: none; }
@@ -22,6 +20,8 @@
 .creator-studio-sidebar-actions { display: flex; flex-direction: column; margin-top: 12px; align-items: stretch; }
 .creator-studio-select-trigger { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); }
 .creator-studio-sidebar-action { display: flex; align-items: center; gap: 12px; border: 0; border-radius: 10px; padding: 10px 12px; background: transparent; text-align: left; }
+.creator-studio-sidebar-character .avatar { flex: none; width: 28px; height: 28px; border-radius: 8px; }
+.creator-studio-sidebar-character > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .creator-studio-session-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 12px; padding-bottom: 8px; }
 .creator-studio-group-heading { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin-top: 6px; }
 .creator-studio-session-list h3 { font-size: 13px; font-weight: 400; color: var(--muted); margin: 0 10px; }

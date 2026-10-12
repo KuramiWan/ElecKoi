@@ -36,6 +36,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private boolean bound;
     private WebView web;
     private boolean imeVisible;
+    private boolean bottomButtonNavigation;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private long pageStartedAt;
     private String clientReadyUrl = "";
@@ -93,7 +94,13 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         page = new FrameLayout(this);
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         page.setOnApplyWindowInsetsListener((view, insets) -> {
-            boolean visible = WindowInsetsCompat.toWindowInsetsCompat(insets, view).isVisible(WindowInsetsCompat.Type.ime());
+            WindowInsetsCompat compat = WindowInsetsCompat.toWindowInsetsCompat(insets, view);
+            boolean buttons = compat.getInsets(WindowInsetsCompat.Type.tappableElement()).bottom > 0;
+            if (bottomButtonNavigation != buttons) {
+                bottomButtonNavigation = buttons;
+                applyNavigationLayout();
+            }
+            boolean visible = compat.isVisible(WindowInsetsCompat.Type.ime());
             if (imeVisible != visible) {
                 imeVisible = visible;
                 applyImeVisibility();
@@ -104,7 +111,8 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             } else {
                 view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
             }
-            return insets;
+            // The container already applies these insets to the WebView bounds.
+            return WindowInsetsCompat.CONSUMED.toWindowInsets();
         });
         runtimePanel = new LinearLayout(this); runtimePanel.setOrientation(LinearLayout.VERTICAL); runtimePanel.setElevation(0f);
         runtimePanel.setPadding(dp(20), dp(16), dp(20), dp(16));
@@ -173,6 +181,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
                 if (sameHost(url)) {
                     view.evaluateJavascript(platformSource, null);
                     applyImeVisibility();
+                    applyNavigationLayout();
                 }
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
@@ -252,6 +261,10 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private void applyImeVisibility() {
         if (web == null || !sameHost(web.getUrl())) return;
         web.evaluateJavascript("document.documentElement?.toggleAttribute('data-eleckoi-ime-visible'," + imeVisible + ");", null);
+    }
+    private void applyNavigationLayout() {
+        if (web == null || !sameHost(web.getUrl())) return;
+        web.evaluateJavascript("document.documentElement?.toggleAttribute('data-eleckoi-button-navigation'," + bottomButtonNavigation + ");", null);
     }
     private GradientDrawable panelButtonBackground(boolean primary) {
         GradientDrawable drawable = new GradientDrawable(); drawable.setCornerRadius(dp(10));

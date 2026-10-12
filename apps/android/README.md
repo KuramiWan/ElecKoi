@@ -25,7 +25,7 @@ python scripts/android-runtime/check-apk.py apps/android/app/build/outputs/apk/d
 
 APK 位于 `apps/android/app/build/outputs/apk/debug/app-debug.apk`。应用包名为 `com.eleckoi.app`，与原工程分开安装。启动图标使用当前 PC 的 `apps/desktop/resources/icons/eleckoi-app-icon.png`；校验器检查图像文件一致性。
 
-修改大体积离线资产后先清理 Android 应用构建输出，防止增量 APK 留下失效的 ZIP 数据块；校验器拒绝有效条目外超过 1 MiB 的包。手机首次准备新运行时前检查解压峰值空间，只有新 Host 完成健康和页面握手后才清理旧安装目录；数据库、Session、home、媒体与 workspace 不参与清理。
+修改大体积离线资产后先清理 Android 应用构建输出，防止增量 APK 留下失效的 ZIP 数据块；`assembleDebug/assembleRelease` 自动校验实际 APK，通过后才生成更新描述，校验器拒绝有效条目外超过 1 MiB 的包。校验需要 Python 3、Pillow，以及通过 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 或 PATH 提供的 AAPT2。手机首次准备新运行时前检查解压峰值空间，只有新 Host 完成健康和页面握手后才清理旧安装目录；数据库、Session、home、媒体与 workspace 不参与清理。
 
 原生启动遮罩覆盖运行环境准备、Host 启动和 Web Client 实际绘制前的等待。普通启动显示像素鲸鱼娘与加载文字，头像轻微浮动并眨眼；实际 Client 绘制完成后用 440 ms 的小跳和淡出撤掉遮罩，不设置最低等待时长。首次准备新运行时时另显示耗时提示和实际进度，复制显示当前包实际写入的百分比，解压显示包序号与不定进度。已安装资源直接复用。启动失败立即停止动画并显示现有错误与重试入口，应用进入后台时停止循环；系统关闭动画时显示静态头像并直接进入界面。
 
@@ -38,6 +38,10 @@ Android 平台辅助程序使用锁定的 NDK 在 Windows 交叉编译，具体�
 `build/android-runtime/assets/runtime/manifest.json` 由脚本生成，声明协议版本、Node 路径、Host 入口及每份归档的 SHA-256 与字节数。Gradle 和手机安装器都拒绝缺失或不匹配的资源。归档用 `.archive` 后缀避免 AAPT2 解压改写 gzip 资产；Ubuntu 硬链接转换为内容相同的普通文件，其余内容、权限、属主和符号链接由校验器逐项核对。
 
 工作区依赖版本变化后，旧闭包不能猜测重用。准备脚本会报告需要重新生成的依赖；删除经过确认的 `build/android-runtime/closure` 构建目录后重新准备即可。运行时目录、下载缓存、编译后的 `jniLibs` 和 APK 不属于版本控制内容；源码、来源锁定及许可证记录保留在仓库。
+
+## Release 签名
+
+Release 构建复用环境变量或 Gradle 用户属性中的 `ELECKOI_RELEASE_STORE_FILE`、`ELECKOI_RELEASE_STORE_PASSWORD`、`ELECKOI_RELEASE_KEY_ALIAS`、`ELECKOI_RELEASE_KEY_PASSWORD`。密钥保存在仓库外；缺少参数或密钥文件时构建明确失败，不生成未签名发布包。运行 `:app:assembleRelease` 后，APK 和更新描述位于 `app/build/outputs/apk/release/`，该目录由 Git 忽略。
 
 ## 更新检查
 

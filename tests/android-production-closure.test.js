@@ -5,6 +5,31 @@ import { describe, expect, it } from 'vitest'
 import { prepareProductionClosure } from '../scripts/android-runtime/stage-production-closure.mjs'
 
 describe('Android production dependency staging', () => {
+  it('excludes installed musl-only optional packages from the glibc runtime', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'eleckoi-platform-'))
+    try {
+      mkdirSync(join(repo, 'apps/android-host'), { recursive: true })
+      writeFileSync(join(repo, 'apps/android-host/package.json'), JSON.stringify({
+        name: 'synthetic-host', version: '1.0.0',
+        optionalDependencies: { 'synthetic-glibc': '1.0.0', 'synthetic-musl': '1.0.0' }
+      }))
+      for (const libc of ['glibc', 'musl']) {
+        const source = join(repo, 'node_modules', `synthetic-${libc}`)
+        mkdirSync(source, { recursive: true })
+        writeFileSync(join(source, 'package.json'), JSON.stringify({
+          name: `synthetic-${libc}`, version: '1.0.0', os: ['linux'], cpu: ['arm64'], libc: [libc]
+        }))
+      }
+      const inventory = prepareProductionClosure(repo, join(repo, 'build/android-runtime/closure'))
+      expect(inventory.packages.map(pkg => pkg.name)).toEqual(['synthetic-host', 'synthetic-glibc'])
+      expect(inventory.missingOptional).toContainEqual({
+        owner: 'synthetic-host', name: 'synthetic-musl', reason: 'not-linux-arm64-glibc'
+      })
+    } finally {
+      expect(resolve(repo).startsWith(resolve(tmpdir()) + sep)).toBe(true)
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
   it('ships current patched bytes and removes obsolete files when the package version stays the same', () => {
     const repo = mkdtempSync(join(tmpdir(), 'eleckoi-closure-'))
     const output = join(repo, 'build/android-runtime/closure')
