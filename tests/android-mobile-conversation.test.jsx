@@ -3,6 +3,7 @@ import React, { act, useLayoutEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { MainPageContext } from '../apps/web/src/app/windows/MainPageContext.jsx';
 import { MobileMessagesPage } from '../apps/web/src/mobile/MobileMessagesPage.jsx';
 import { MobileConversationPage } from '../apps/web/src/mobile/MobileConversationPage.jsx';
@@ -77,6 +78,55 @@ describe('Android conversation wallpaper', () => {
     try { await render(); await run(container, render); }
     finally { await act(async () => root.unmount()); container.remove(); }
   }
+
+  it('keeps artwork visible through the actual display-contents slot boundaries and restores an opaque plain panel', async () => {
+    const view = conversationView();
+    const renderRoleplay = view.renderRoleplay;
+    view.renderRoleplay = props => ['eleckoi.roleplay', 'eleckoi.roleplay.session', 'eleckoi.roleplay.session.header', 'eleckoi.roleplay.session.body']
+      .reduceRight((child, slot) => <div data-slot={slot} style={{ display: 'contents' }}>{child}</div>, renderRoleplay(props));
+    view.chat.chatBackgroundCharacter = { chatBackground: '' };
+    view.chat.chatPersona.assistant_cover = imageA;
+    const style = document.createElement('style');
+    style.textContent = '.chat-panel { background: white; }' + readFileSync('apps/web/src/mobile/mobile.css', 'utf8');
+    document.head.append(style);
+    try {
+      await mountWallpaper(view, async (container, render) => {
+        const panel = container.querySelector('.chat-panel');
+        expect(panel.parentElement.dataset.slot).toBe('eleckoi.roleplay.session.body');
+        const wallpaperRule = [...style.sheet.cssRules].find(rule => rule.selectorText?.includes('.has-chat-wallpaper') && rule.style?.background === 'transparent');
+        expect(wallpaperRule).toBeDefined();
+        expect(panel.matches(wallpaperRule.selectorText)).toBe(true);
+        expect(wallpaperRule.style.zIndex).toBe('1');
+        expect(getComputedStyle(panel).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+        view.chat.chatBackgroundCharacter = { chatBackground: APP_DEFAULT_CHAT_BACKGROUND };
+        await render();
+        expect(container.querySelector('.chat-shell-backdrop')).toBeNull();
+        expect(panel.matches(wallpaperRule.selectorText)).toBe(false);
+        expect(getComputedStyle(panel).backgroundColor).toBe('rgb(255, 255, 255)');
+      });
+    } finally { style.remove(); }
+  });
+
+  it('loads persisted character and custom media through the shared authenticated Android image route', async () => {
+    document.documentElement.dataset.eleckoiMobile = 'true';
+    const reference = `eleckoi-media://asset/v1/${'a'.repeat(64)}/portrait/${'b'.repeat(64)}.png`;
+    const view = conversationView();
+    view.chat.chatBackgroundCharacter = { chatBackground: '' };
+    view.chat.chatPersona.assistant_cover = reference;
+    try {
+      await mountWallpaper(view, async (container, render) => {
+        const verify = () => {
+          const url = new URL(container.querySelector('.chat-shell-backdrop img').src);
+          expect(url.origin).toBe(window.location.origin);
+          expect(url.pathname).toBe('/eleckoi/media/asset');
+          expect(url.searchParams.get('reference')).toBe(reference);
+        };
+        verify();
+        view.chat.chatBackgroundCharacter = { chatBackground: reference };
+        await render(); verify();
+      });
+    } finally { delete document.documentElement.dataset.eleckoiMobile; }
+  });
 
   it('displays the current character artwork and applies saved custom images without retaining another character background', async () => {
     const view = conversationView();

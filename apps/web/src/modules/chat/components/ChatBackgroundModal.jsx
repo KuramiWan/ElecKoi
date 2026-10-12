@@ -1,4 +1,5 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
+import { assetSrc } from '../../../app/services/assets.js';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DshCheckIcon, DshCloseIcon } from "../../../ui/icons/dshComposerIcons.jsx";
@@ -85,7 +86,7 @@ function ChatBackgroundPreview({ image, opacity, blur, scrim, persona, messages,
       data-has-image={image ? "true" : "false"}
       style={{ "--preview-bubble-radius": `${clampNumber(profile?.bubble_corner_radius ?? 10, 0, 24)}px` }}
     >
-      {image ? <img className="chat-background-preview-image" src={image} alt="" draggable="false" style={{ opacity: opacity / 100, filter: `blur(${blur}px)` }} /> : null}
+      {image ? <img className="chat-background-preview-image" src={assetSrc(image)} alt="" draggable="false" style={{ opacity: opacity / 100, filter: `blur(${blur}px)` }} /> : null}
       <i className="chat-background-preview-scrim" style={{ opacity: image ? scrim / 100 : 0 }} />
       <div className="chat-background-preview-messages" aria-label={`${LAYOUT_NAMES[layout] || "聊天"}布局预览`}>
         {rows.map((row) => (

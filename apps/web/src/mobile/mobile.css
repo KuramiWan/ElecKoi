@@ -48,6 +48,7 @@
 :root[data-eleckoi-mobile="true"] :is(.regex-rule-switch, .regex-inline-switch) input:focus-visible + i { outline-color: color-mix(in srgb, var(--text) 38%, transparent); }
 :root[data-eleckoi-mobile="true"] .avatar-manager-preview-button:focus-visible .avatar-manager-result-avatar { box-shadow: 0 0 0 4px color-mix(in srgb, var(--text) 18%, transparent); }
 :root[data-eleckoi-mobile="true"] .tuner-slider:focus-visible::-webkit-slider-thumb { border-color: color-mix(in srgb, var(--text) 38%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
+:root[data-eleckoi-mobile="true"] .tuner-slider:focus-visible::-moz-range-thumb { border-color: color-mix(in srgb, var(--text) 38%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
 .mobile-front-surface {
   position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%;
   transform-origin: center;
@@ -63,7 +64,7 @@
 .mobile-root-page, .mobile-conversation-page { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .mobile-conversation-page.has-chat-wallpaper { position: relative; isolation: isolate; }
 .mobile-conversation-page.has-chat-wallpaper > .chat-shell-backdrop { inset: 0; }
-.mobile-conversation-page.has-chat-wallpaper > .chat-panel { z-index: 1; background: transparent; }
+.mobile-conversation-page.has-chat-wallpaper .chat-panel { z-index: 1; background: transparent; }
 .mobile-header { position: relative; display: flex; align-items: center; flex: none; height: var(--mobile-header-height); padding: 0 9px 0 8px; background: var(--mobile-header-bg); }
 .mobile-header > button, .mobile-header-actions > button { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex: none; padding: 0; border: 0; background: transparent; }
 .mobile-header h1 { position: absolute; left: 112px; right: 113px; pointer-events: none; min-width: 0; margin: 0; font-size: 19px; line-height: 1.4; font-weight: 500; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

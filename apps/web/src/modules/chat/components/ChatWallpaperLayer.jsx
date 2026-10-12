@@ -1,3 +1,5 @@
+import { assetSrc } from '../../../app/services/assets.js';
+
 export function ChatWallpaperLayer({ wallpaper }) {
   if (!wallpaper?.image) return null;
   return (
@@ -10,7 +12,7 @@ export function ChatWallpaperLayer({ wallpaper }) {
         "--wallpaper-scrim": wallpaper.scrim,
       }}
     >
-      <img src={wallpaper.image} alt="" draggable="false" />
+      <img src={assetSrc(wallpaper.image)} alt="" draggable="false" />
       <i />
     </div>
   );
