@@ -1320,8 +1320,7 @@ function officialFinalReplyText(value: string): string {
   const markerIndex = value.indexOf(FinalOpenTag)
   if (markerIndex < 0) return ''
   const content = value.slice(markerIndex + FinalOpenTag.length).replace(/^(?:\r\n|\r|\n)/, '')
-  const closingIndex = content.indexOf(FinalCloseTag)
-  return (closingIndex < 0 ? content : content.slice(0, closingIndex))
+  return content.replaceAll(FinalCloseTag, '')
     .replace(/(?:\r\n|\r|\n)$/, '')
 }
 

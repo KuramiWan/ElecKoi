@@ -32,20 +32,15 @@ window.__ModuleLoader__.load({
       const markerIndex = value.indexOf(FinalOpenTag)
       if (markerIndex < 0) return value
       const content = removeLeadingLineBreak(value.slice(markerIndex + FinalOpenTag.length))
-      const closingIndex = content.indexOf(FinalCloseTag)
-      return removeTrailingLineBreak(closingIndex < 0 ? content : content.slice(0, closingIndex))
+      return removeTrailingLineBreak(content.replace(/(?:\r\n|\r|\n)?<\/FINAL>/g, ''))
     }
 
     function liveFinalReply(value) {
       const markerIndex = value.indexOf(FinalOpenTag)
       if (markerIndex < 0) return { started: false, content: '' }
-      const content = removeLeadingLineBreak(value.slice(markerIndex + FinalOpenTag.length))
-      const closingIndex = content.indexOf(FinalCloseTag)
       return {
         started: true,
-        content: closingIndex < 0
-          ? withoutPartialFinalClose(content)
-          : removeTrailingLineBreak(content.slice(0, closingIndex))
+        content: withoutPartialFinalClose(finalReplyText(value))
       }
     }
 
@@ -460,7 +455,7 @@ window.__ModuleLoader__.load({
           const finalNode = node.data?.finalNode
           return [{
             role: 'assistant', seq: finalNode?.seq ?? node.data?.seq ?? node.anchorSeq ?? Number.MAX_SAFE_INTEGER,
-            time: node.data?.time, content: live.started ? live.content : '',
+            time: node.data?.time, content: raw,
             displayContent: live.started ? live.content : '',
             dshMessageId: finalNode?.messageId || '', nodeKey: entry.key, dshTurn: turn,
             // Only a durable assistant/message has a mutation target. DSH can
@@ -552,7 +547,7 @@ window.__ModuleLoader__.load({
           role: item.role, content: item.content,
           // Product projection owns an explicit display value, including an
           // intentional empty result. Only an unmapped live message uses the
-          displayContent: source?.content === item.content && typeof source.displayContent === 'string'
+          displayContent: !item.pending && source?.content === item.content && typeof source.displayContent === 'string'
             ? source.displayContent
             : item.displayContent ?? item.content,
           // The DSH turn is the stable identity after regeneration. Its
@@ -1001,7 +996,8 @@ window.__ModuleLoader__.load({
             id: message.id,
             role: message.role,
             content: message.content,
-            variableStateJson: typeof message.variableStateJson === 'string' ? message.variableStateJson : '{}',
+            variableStateJson: typeof message.nativeVariableStateJson === 'string' ? message.nativeVariableStateJson
+              : typeof message.variableStateJson === 'string' ? message.variableStateJson : '{}',
             status: message.status,
             createdAt: message.createdAt
           }))
@@ -1009,13 +1005,12 @@ window.__ModuleLoader__.load({
 
       applyDisplayProjection(next) {
         if (next.status !== 'ready' || !next.details || this.displayProjectionResults.size === 0) return next
-        const input = this.displayProjectionInput(next.details.messages || [])
-        const inputKeys = new Map(input.map(message => [message.id, JSON.stringify(message)]))
         let changed = false
         const messages = next.details.messages.map(message => {
+          if (message.role === 'assistant' && message.status === 'streaming') return message
           const cached = this.displayProjectionResults.get(message.id)
           const result = cached?.result
-          if (!cached || cached.inputKey !== inputKeys.get(message.id)
+          if (!cached || cached.role !== message.role
             || !result || result.sourceContent !== message.content
             || typeof result.displayContent !== 'string'
             || typeof result.variableStateJson !== 'string') return message
@@ -1031,7 +1026,13 @@ window.__ModuleLoader__.load({
         const projectDisplay = this.remote?.eleckoiConversations?.projectDisplay
         if (this.disposed || !id || typeof projectDisplay !== 'function') return null
         const input = this.displayProjectionInput(details.messages || [])
-        const key = `${id}\u0000${JSON.stringify(input)}`
+        // Live text is rendered directly. Keep its row for depth calculations,
+        // but only settled text changes request a regex display projection.
+        const key = `${id}\u0000${JSON.stringify(input.map(message => {
+          if (message.role !== 'assistant' || message.status !== 'streaming') return message
+          const { content, ...identity } = message
+          return identity
+        }))}`
         if (key === this.displayProjectionKey) return this.displayProjectionPromise
         this.displayProjectionKey = key
         const generation = ++this.displayProjectionGeneration
@@ -1048,7 +1049,7 @@ window.__ModuleLoader__.load({
             if (!result || result.sourceContent !== message.content
               || typeof result.displayContent !== 'string'
               || typeof result.variableStateJson !== 'string') continue
-            projectedResults.set(message.id, { inputKey: JSON.stringify(message), result })
+            projectedResults.set(message.id, { role: message.role, result })
           }
           this.displayProjectionResults = projectedResults
           const projected = this.applyDisplayProjection(current)

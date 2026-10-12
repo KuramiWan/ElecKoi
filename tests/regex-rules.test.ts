@@ -69,6 +69,18 @@ function harness() {
 const EMPTY_PRESET_REGEX_REVISION = '0'.repeat(64)
 
 describe('regex processor', () => {
+  it('maps a text position through global replacements and restored rich documents', () => {
+    const position = { offset: 'prefix [CARD] <FINAL>'.length }
+    const content = 'prefix [CARD] <FINAL>Body</FINAL> tail'
+    const transformed = transformWithRegexRules(content, [
+      rule({ pattern: '/\\[CARD\\]/g', replacement: '<section>Front panel</section>' }),
+      rule({ id: 'wrapper', pattern: '<FINAL>([\\s\\S]*?)</FINAL>', replacement: '<article>$1</article>' })
+    ], 'AiOutput', { position, protectDecoratedReplacements: true,
+      replacementDecorator: value => `<rich>${value}</rich>` })
+    expect(transformed.slice(0, position.offset)).toBe('prefix <rich><section>Front panel</section></rich> ')
+    expect(transformed.slice(position.offset)).toBe('<rich><article>Body</article></rich> tail')
+  })
+
   it('accepts extra configuration fields without persisting them', () => {
     const { repository } = harness()
     const current = repository.get('card-a')

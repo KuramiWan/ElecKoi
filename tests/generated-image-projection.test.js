@@ -29,13 +29,25 @@ function fixture(status = 'ready', image = attachment) {
   ];
 }
 const details = { conversation: { id: 'synthetic-chat' }, runtimeSessionId: 'synthetic-session', messages: [], hasMore: false };
-function project(values) {
+function project(values, running = false, messages = []) {
   const chat = officialChatFixture().replace(values);
   const illustrations = values.reduce((state, event) => illustrationProjection.apply(state, event), []);
   const process = client.officialProcess(chat, { illustrations });
-  return client.officialMessages(chat, details, 'synthetic-session', process, [], false, [], [], undefined, illustrations);
+  return client.officialMessages(chat, { ...details, messages }, 'synthetic-session', process, [], running, [], [], undefined, illustrations);
 }
 describe('generated images and prompt capture in the current Session', () => {
+  it('keeps live narrative instead of an early product regex result until the official turn ends', () => {
+    const values = fixture().filter(value => value.type !== 'turn/end');
+    const finalEvent = values.find(value => value.type === 'assistant/message');
+    const reply = project(values, true, [{ id: 'synthetic-product-reply', role: 'assistant',
+      sessionEventSeq: finalEvent.seq, dshMessageId: finalEvent.data.message.id,
+      content: finalEvent.data.message.content[0].text, displayContent: '<section>Early panel</section>'
+    }]).find(message => message.role === 'assistant');
+    expect(reply.status).toBe('streaming');
+    expect(reply.displayContent).toBe('合成回复\n[[IMAGE:1]]');
+    expect(reply.displayContent).not.toContain('Early panel');
+  });
+
   it('updates an already completed reply when the image finishes after turn/end', () => {
     const values = fixture(), completed = values.find(value => value.type === 'eleckoi/illustration' && value.data.status === 'complete');
     const waiting = values.filter(value => value !== completed);

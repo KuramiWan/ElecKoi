@@ -14,6 +14,8 @@ interface ParsedPattern {
 export interface RegexTransformOptions {
   replacementDecorator?: (replacement: string) => string
   protectDecoratedReplacements?: boolean
+  /** A source text position remapped through every replacement. */
+  position?: { offset: number }
   depth?: number
   isEdit?: boolean
   expandMacros?: (text: string, escape?: (value: string) => string) => string
@@ -94,21 +96,27 @@ function applyRule(text: string, rule: RegexRule, replacementDecorator?: (replac
   }
   const trimStrings = (rule.trimStrings ?? []).map(value => expand(value))
   const replacementForMatch = (match: RegExpExecArray) => expand(replacementFor(match, rule.replacement, trimStrings))
-  if (!parsed.flags.includes('g')) {
-    const match = expression.exec(text)
-    if (!match) return text
-    const replacement = replacementForMatch(match)
-    return text.slice(0, match.index) + (replacementDecorator?.(replacement) ?? replacement) + text.slice(match.index + match[0].length)
-  }
+  const sourceOffset = options.position?.offset
+  let projectedOffset: number | undefined
   let cursor = 0
   let output = ''
   let matched = false
   for (let match = expression.exec(text); match; match = expression.exec(text)) {
     matched = true
     const replacement = replacementForMatch(match)
-    output += text.slice(cursor, match.index) + (replacementDecorator?.(replacement) ?? replacement)
+    const decorated = replacementDecorator?.(replacement) ?? replacement
+    const matchEnd = match.index + match[0].length
+    if (sourceOffset !== undefined && projectedOffset === undefined && sourceOffset <= matchEnd) {
+      projectedOffset = sourceOffset < match.index ? output.length + sourceOffset - cursor
+        : output.length + match.index - cursor + (sourceOffset === matchEnd && match[0].length > 0 ? decorated.length : 0)
+    }
+    output += text.slice(cursor, match.index) + decorated
     cursor = match.index + match[0].length
+    if (!parsed.flags.includes('g')) break
     if (match[0].length === 0) expression.lastIndex += 1
+  }
+  if (matched && options.position && sourceOffset !== undefined) {
+    options.position.offset = projectedOffset ?? output.length + sourceOffset - cursor
   }
   return matched ? output + text.slice(cursor) : text
 }
@@ -117,10 +125,20 @@ function protectedReplacementToken(index: number): string {
   return `\uE000eleckoi-regex:${index}:\uE001`
 }
 
-function restoreDecoratedSegments(text: string, protectedSegments: string[]): string {
-  return text.replace(/\uE000eleckoi-regex:(\d+):\uE001/g, (token, rawIndex: string) => (
-    protectedSegments[Number(rawIndex)] ?? token
-  ))
+function restoreDecoratedSegments(text: string, protectedSegments: string[], position?: { offset: number }): string {
+  const sourceOffset = position?.offset
+  let delta = 0
+  let projectedOffset: number | undefined
+  const restored = text.replace(/\uE000eleckoi-regex:(\d+):\uE001/g, (token, rawIndex: string, index: number) => {
+    const segment = protectedSegments[Number(rawIndex)] ?? token
+    if (sourceOffset !== undefined && projectedOffset === undefined && sourceOffset < index + token.length) {
+      projectedOffset = delta + (sourceOffset <= index ? sourceOffset : index)
+    }
+    delta += segment.length - token.length
+    return segment
+  })
+  if (position && sourceOffset !== undefined) position.offset = projectedOffset ?? sourceOffset + delta
+  return restored
 }
 
 export function transformWithRegexRules(
@@ -150,7 +168,7 @@ export function transformWithRegexRules(
     output = applyRule(output, rule, decorateReplacement, options)
   }
   return protectedSegments
-    ? restoreDecoratedSegments(output, protectedSegments)
+    ? restoreDecoratedSegments(output, protectedSegments, options.position)
     : output
 }
 

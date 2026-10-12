@@ -2,7 +2,7 @@ import type { ChatMessage } from '@shared/contracts/entities/chat'
 import type { RegexRuleCollection, RegexRuleTarget } from '@shared/contracts/regex/schemas'
 import { decorateRichDisplayReplacement } from '@shared/foundation/richMessage'
 import { finalReplyText } from '@shared/foundation/finalReply'
-import { rulesForSurface, transformWithRegexRules } from '@shared/foundation/regex/RegexRuleProcessor'
+import { rulesForSurface, transformWithRegexRules, type RegexTransformOptions } from '@shared/foundation/regex/RegexRuleProcessor'
 import type { MessageDisplayCompatibility } from './MessageDisplayCompatibility'
 import {
   resolveCharacterCardMacros,
@@ -54,27 +54,37 @@ export class MessageDisplayProjector {
     }
 
     const rules = rulesForSurface(collection, target, 'Display')
-    const prepared = message.role === 'assistant'
+    const streamingAssistant = message.role === 'assistant' && !completedAssistant
+    const prepared = message.role === 'assistant' && !streamingAssistant
       ? this.compatibility.prepareAssistantText(
-        finalReplyText(message.content),
+        message.content,
         completedAssistant,
         rules.map((rule) => rule.pattern)
       )
       : message.content
-    const transformed = transformWithRegexRules(prepared, rules, target, {
+    const opening = message.role === 'assistant' ? message.content.indexOf('<FINAL>') : -1
+    const position = { offset: opening >= 0 ? opening + '<FINAL>'.length
+      : message.role === 'assistant' && !completedAssistant ? prepared.length : 0 }
+    const options: RegexTransformOptions = {
       replacementDecorator: decorateRichDisplayReplacement,
       protectDecoratedReplacements: true,
+      position,
       ...(depth === undefined ? {} : { depth }),
       expandMacros: (text, escape) => {
         const source = macroValues ? resolveCharacterCardMacros(text, { userName: escape?.(macroValues.userName) ?? macroValues.userName,
           characterName: escape?.(macroValues.characterName) ?? macroValues.characterName }) : text
         return this.compatibility.resolveVariableMacros(source, message.variableStateJson)
       }
-    })
+    }
+    const transformed = streamingAssistant ? prepared : transformWithRegexRules(prepared, rules, target, options)
+    const visible = message.role === 'assistant' ? finalReplyText(transformed, {
+      streaming: !completedAssistant,
+      bodyStart: position.offset
+    }) : transformed
     const displayVariableStateJson = macroValues
       ? resolveCharacterCardMacrosInJson(message.variableStateJson, macroValues)
       : message.variableStateJson
-    const variableDisplayContent = this.compatibility.resolveVariableMacros(transformed, displayVariableStateJson)
+    const variableDisplayContent = this.compatibility.resolveVariableMacros(visible, displayVariableStateJson)
     const displayContent = macroValues
       ? resolveCharacterCardMacros(variableDisplayContent, macroValues)
       : variableDisplayContent

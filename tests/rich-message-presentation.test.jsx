@@ -1,0 +1,67 @@
+// @vitest-environment jsdom
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as libraries from '@eleckoi/dsh-client-html-resources/browser-libraries';
+import { MessageBubble } from './helpers/officialMarkdown.jsx';
+import { decorateRichDisplayReplacement } from '../packages/shared/src/foundation/richMessage';
+
+let root, container;
+beforeEach(() => {
+  vi.stubGlobal('React', React);
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const ready = { status: 'ready', error: '' };
+  window.__ElecKoiHtmlResources = { assetsBaseUrl: '/eleckoi/html/', sdk: libraries,
+    getSnapshot: () => ready, subscribe: () => () => {} };
+  container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+});
+afterEach(async () => {
+  await act(() => root.unmount()); container.remove();
+  delete window.__ElecKoiHtmlResources; vi.unstubAllGlobals();
+});
+
+const message = { id: 'synthetic-reply', conversationId: 'synthetic-chat', role: 'assistant',
+  content: '<FINAL>Narrative</FINAL>\n[PANEL-A]\n[PANEL-B]', status: 'complete', pending: false };
+const displayContent = 'Narrative\n' + decorateRichDisplayReplacement('<section>First panel</section>')
+  + decorateRichDisplayReplacement('<section>Second panel</section>');
+const render = value => act(() => root.render(<MessageBubble message={value} />));
+async function signal(frame, type, payload = {}) {
+  const channel = JSON.parse(frame.srcdoc.match(/const channel=("[^"\n]+");/)[1]);
+  await act(() => window.dispatchEvent(new MessageEvent('message', {
+    source: frame.contentWindow, data: { type, channel, ...payload },
+  })));
+}
+
+describe('settled rich message presentation', () => {
+  it('shows a frontend failure instead of waiting forever behind the previous text', async () => {
+    await render({ ...message, displayContent });
+    const frames = [...container.querySelectorAll('iframe')];
+    await signal(frames[0], 'eleckoi:frontend-error', { message: 'Synthetic load failure' });
+    await signal(frames[1], 'eleckoi:frontend-ready');
+    await signal(frames[1], 'eleckoi:rich-height', { height: 90 });
+    expect(container.querySelector('.rich-message-staging').style.visibility).not.toBe('hidden');
+    expect(container.querySelector('[role="alert"]').textContent).toContain('Synthetic load failure');
+    expect(container.textContent).not.toContain('[PANEL-A]');
+  });
+
+  it('keeps the final text visible until every frontend has loaded and measured, then switches once', async () => {
+    await render({ ...message, pending: true, status: 'streaming', displayContent: 'Narrative\n[PANEL-A]\n[PANEL-B]' });
+    expect(container.querySelector('iframe')).toBeNull();
+    await render({ ...message, displayContent });
+    expect(container.textContent).toContain('[PANEL-A]');
+    const frames = [...container.querySelectorAll('iframe')];
+    expect(frames).toHaveLength(2);
+    expect(container.querySelector('.rich-message-staging').style.visibility).toBe('hidden');
+    await signal(frames[0], 'eleckoi:frontend-ready');
+    await signal(frames[0], 'eleckoi:rich-height', { height: 80 });
+    expect(container.textContent).toContain('[PANEL-A]');
+    await signal(frames[1], 'eleckoi:rich-height', { height: 90 });
+    expect(container.textContent).toContain('[PANEL-A]');
+    await signal(frames[1], 'eleckoi:frontend-ready');
+    expect(container.textContent).not.toContain('[PANEL-A]');
+    expect(container.querySelector('.rich-message-staging').style.visibility).not.toBe('hidden');
+    await render({ ...message, displayContent, createdAt: '2026-10-10T00:01:00.000Z' });
+    expect([...container.querySelectorAll('iframe')]).toEqual(frames);
+    expect(frames.map(frame => frame.style.height)).toEqual(['80px', '90px']);
+  });
+});

@@ -23,6 +23,26 @@ const props = { message: { id: 'rich-a', conversationId: 'chat-a' }, document: {
 const publish = status => act(() => { state = { ...state, status }; listeners.forEach(listener => listener()); });
 
 describe('rich message document lifecycle', () => {
+  it('keeps the measured height through a width change until the document reports its new height', async () => {
+    const callbacks = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) { callbacks.push(callback); }
+      observe() {}
+      disconnect() {}
+    });
+    await act(() => root.render(<RichMessageFrame {...props} />));
+    const frame = container.querySelector('iframe');
+    const channel = JSON.parse(frame.srcdoc.match(/const channel=("[^"\n]+");/)[1]);
+    await act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow,
+      data: { type: 'eleckoi:rich-height', channel, height: 80 } })));
+    Object.defineProperty(frame, 'clientWidth', { value: 420 });
+    await act(() => callbacks.forEach(callback => callback([])));
+    expect(frame.style.height).toBe('80px');
+    await act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow,
+      data: { type: 'eleckoi:rich-height', channel, height: 95 } })));
+    expect(frame.style.height).toBe('95px');
+  });
+
   it('keeps an unchanged iframe through streaming and later durable message refreshes', async () => {
     await act(() => root.render(<RichMessageFrame {...props} />));
     const frame = container.querySelector('iframe'), source = frame.srcdoc;

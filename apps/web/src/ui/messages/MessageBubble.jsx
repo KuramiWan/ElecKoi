@@ -15,6 +15,7 @@ import { TurnUsage } from "../../modules/chat/components/TurnUsage.jsx";
 import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
 import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
+import { finalReplyText } from "@shared/foundation/finalReply";
 import { normalizeMarkdownForRendering } from "./normalizeMarkdownForRendering.js";
 import { prepareMarkdownTextTones, registerMarkdownTextToneHighlights } from "./markdownTextTones.js";
 import { useMessageToolbarMotion } from "../hooks/useMessageToolbarMotion.js";
@@ -87,8 +88,26 @@ function MessagePresentation({ message, content, streaming, renderMessageContent
   };
   if (message.role !== "assistant") return renderMarkdown(content, "message");
   if (!presentation) return renderMarkdown(content, "message");
+  const fallback = message.generatedImageAttachments?.length
+    ? presentation.parts.filter(part => part.kind === 'markdown').map(part => part.source).join('\n')
+    : finalReplyText(message.content || '');
+  return <SettledRichPresentation message={message} presentation={presentation} renderMarkdown={renderMarkdown} fallback={fallback} />;
+}
+
+function SettledRichPresentation({ message, presentation, renderMarkdown, fallback }) {
+  const [settled, setSettled] = useState({ presentation: null, parts: [] });
+  const ready = settled.presentation === presentation
+    && presentation.parts.filter(part => part.kind === 'rich').every(part => settled.parts.includes(part.id));
+  const markSettled = id => setSettled(previous => {
+    const parts = previous.presentation === presentation ? previous.parts : [];
+    return parts.includes(id) ? previous : { presentation, parts: [...parts, id] };
+  });
   let rootIndex = 0;
-  return <div className="rich-message-presentation">{presentation.parts.map((part) => {
+  return <div style={{ position: 'relative' }}>
+    {!ready ? renderMarkdown(fallback, 'frontend-pending') : null}
+    <div className="rich-message-presentation rich-message-staging" aria-hidden={!ready}
+      style={ready ? undefined : { position: 'absolute', insetInline: 0, top: 0, visibility: 'hidden' }}>
+      {presentation.parts.map((part) => {
     if (part.kind !== "rich") return renderMarkdown(part.source, part.id);
     const currentRootIndex = rootIndex;
     rootIndex += 1;
@@ -97,8 +116,9 @@ function MessagePresentation({ message, content, streaming, renderMessageContent
       message={message}
       document={part.document}
       rootIndex={currentRootIndex}
+      onSettled={() => markSettled(part.id)}
     />;
-  })}</div>;
+  })}</div></div>;
 }
 
 function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onRegenerateImage, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {

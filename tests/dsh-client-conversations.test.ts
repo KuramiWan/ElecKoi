@@ -1145,7 +1145,7 @@ describe('DSH ElecKoi conversation client model', () => {
         } })
         publish()
         expect(messages().filter((message: any) => message.role === 'user')).toHaveLength(inputCount)
-        expect(messages().at(-1)).toMatchObject({ role: 'assistant', status: 'streaming', content: '新的合成回复' })
+        expect(messages().at(-1)).toMatchObject({ role: 'assistant', status: 'streaming', content: '<FINAL>新的合成回复', displayContent: '新的合成回复' })
         running = false
         turns = new Map(turns).set(turn, { turn, status: 'closed' })
         nodes = new Map(nodes).set(`tail-${turn}`, reply(turn, assistantSeq, '新的合成回复'))
@@ -1732,7 +1732,7 @@ describe('DSH ElecKoi conversation client model', () => {
     targetListener()
     expect(catalog.getDetailsSnapshot()).not.toBe(detailsWithTool)
     expect(catalog.getDetailsSnapshot().details.messages.at(-1)).toMatchObject({
-      role: 'assistant', status: 'streaming', content: '第一段'
+      role: 'assistant', status: 'streaming', content: '准备工具调用<FINAL>\n第一段</FIN', displayContent: '第一段'
     })
     expect(catalog.getStreamSnapshot()).toMatchObject({
       status: 'running', messageId: '', content: '第一段', runId: 'runtime-1',
@@ -1751,11 +1751,28 @@ describe('DSH ElecKoi conversation client model', () => {
     })
     targetListener()
     expect(catalog.getDetailsSnapshot().details.messages.at(-1)).toMatchObject({
-      role: 'assistant', status: 'streaming', content: '第一段正文。'
+      role: 'assistant', status: 'streaming', content: '准备工具调用<FINAL>\n第一段正文。\n</FINAL>', displayContent: '第一段正文。'
     })
     expect(catalog.getStreamSnapshot()).toMatchObject({
       status: 'running', messageId: '', content: '第一段正文。', runId: 'runtime-1'
     })
+
+    const appendAfterClose = '准备工具调用<FINAL>\n第一段正文。\n</FINAL>\n合成附加模块'
+    allLiveNodes.set('assistant-live', {
+      ...allLiveNodes.get('assistant-live'),
+      data: { ...allLiveNodes.get('assistant-live').data, blocks: [{ kind: 'text', text: appendAfterClose }] }
+    })
+    targetListener()
+    expect(catalog.getDetailsSnapshot().details.messages.at(-1)).toMatchObject({
+      content: appendAfterClose, displayContent: '第一段正文。\n合成附加模块', status: 'streaming'
+    })
+    expect(catalog.getStreamSnapshot()).toMatchObject({ status: 'running', content: '第一段正文。\n合成附加模块' })
+    allLiveNodes.set('assistant-live', {
+      ...allLiveNodes.get('assistant-live'),
+      data: { ...allLiveNodes.get('assistant-live').data,
+        blocks: [{ kind: 'text', text: '准备工具调用<FINAL>\n第一段正文。\n</FINAL>' }] }
+    })
+    targetListener()
 
     // The assistant can already contain final-marked text while the Session
     // has not published a turn-tail at all. Ending the Session here must also

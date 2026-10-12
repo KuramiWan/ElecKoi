@@ -18,6 +18,7 @@ const explicitRichMarker = /<!--\s*eleckoi\s*:\s*rich\s*-->/i
 const richReplacementStartMarker = '<!-- eleckoi:rich-replacement:start -->'
 const richReplacementEndMarker = '<!-- eleckoi:rich-replacement:end -->'
 const richReplacementStart = /<!--\s*eleckoi\s*:\s*rich-replacement\s*:\s*start\s*-->/i
+const richReplacementEnd = /<!--\s*eleckoi\s*:\s*rich-replacement\s*:\s*end\s*-->/i
 const htmlDocumentMarker = /(?:<!doctype\s+html\b|<(?:html|head|body)(?:\s|>))/is
 const htmlDocumentClose = /<\/(?:body|html)\s*>/is
 const scriptOrStyleBlock = /<(script|style)(?:\s[^>]*)?>.*?<\/\1\s*>/is
@@ -224,6 +225,21 @@ function promoteFrontendFences(
     }
   }
   return { parts }
+}
+
+/** Exact ranges owned by completed rich display replacements. */
+export function richDisplayReplacementRanges(source: string): Array<{ start: number; end: number }> {
+  const startPattern = new RegExp(richReplacementStart.source, 'gi')
+  const endPattern = new RegExp(richReplacementEnd.source, 'gi')
+  const ranges: Array<{ start: number; end: number }> = []
+  for (let start = startPattern.exec(source); start; start = startPattern.exec(source)) {
+    endPattern.lastIndex = startPattern.lastIndex
+    const end = endPattern.exec(source)
+    if (!end) break
+    ranges.push({ start: start.index, end: endPattern.lastIndex })
+    startPattern.lastIndex = endPattern.lastIndex
+  }
+  return ranges
 }
 
 function detectMarkedPresentation(source: string): RichMessagePresentation | null {

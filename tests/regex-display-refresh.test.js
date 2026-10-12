@@ -5,6 +5,7 @@ import { dshClientPlugin } from './helpers/dshClientPlugin'
 import { MessageDisplayProjector } from '../packages/host/product-data/src/domain/conversations/MessageDisplayProjector'
 import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
 import { preserveMessageRenderKeys } from '../apps/web/src/modules/chat/hooks/useConversationMessages.js'
+import { finalReplyText } from '../packages/shared/src/foundation/finalReply'
 
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)) }
 const scopes = ['globalRules', 'agentPresetRules', 'characterRules']
@@ -53,6 +54,7 @@ async function mount(scope, message = sourceMessage) {
   let regexRules
   let catalog
   let rendered = []
+  const publications = []
   const cleanups = []
   const changes = feed()
   const conversationChanges = feed()
@@ -81,7 +83,8 @@ async function mount(scope, message = sourceMessage) {
       changes: signal => conversationChanges.open(signal),
       list: async () => ({ ok: true, value: [{ id: 'chat-1' }] }),
       details: async () => ({ ok: true, value: { conversation: { id: 'chat-1' },
-        metadata: { characterId: 'character-1' }, runtimeSessionId: '', messages: [{ ...message }],
+        metadata: { characterId: 'character-1' }, runtimeSessionId: '', messages: [{ ...message,
+          ...(message.status === 'streaming' ? { displayContent: finalReplyText(message.content, { streaming: true }) } : {}) }],
         hasMore: false, beforeSequence: null } }), projectDisplay
     }
   }
@@ -92,19 +95,191 @@ async function mount(scope, message = sourceMessage) {
     eleckoiRegexRules: regexRules, provide: (_name, value) => { catalog = value } })
   catalog.subscribeDetails(() => {
     const details = catalog.getDetailsSnapshot().details
-    if (details) rendered = preserveMessageRenderKeys(rendered, details.messages)
+    if (details) {
+      rendered = preserveMessageRenderKeys(rendered, details.messages)
+      publications.push(rendered.map(message => ({ ...message })))
+    }
   })
   await settle()
   await catalog.open('chat-1')
   await settle()
   return { regexRules, catalog, readRules, saveRules, projectDisplay, changes,
-    collection: () => collection, rendered: () => rendered,
+    collection: () => collection, rendered: () => rendered, publications,
     close: () => { for (const cleanup of cleanups.reverse()) cleanup() } }
 }
 
 describe('regex display refresh', () => {
-  it('keeps image prompts in the original message while the real display Remote transforms only the final body', async () => {
-    const prompt = '<ACTION_CALL name="generate_image">{"frames":[{"id":1,"prompt":"synthetic prompt [CARD]"}]}</ACTION_CALL>'
+  it('uses the native variable checkpoint instead of feeding display variables back into projection', async () => {
+    const message = { ...sourceMessage, nativeVariableStateJson: '{"label":"source"}', variableStateJson: '{"label":"display"}' }
+    const app = await mount('agentPresetRules', message)
+    try {
+      expect(app.projectDisplay.mock.calls.at(-1)[1][0].variableStateJson).toBe(message.nativeVariableStateJson)
+      const calls = app.projectDisplay.mock.calls.length
+      await app.catalog.refreshDetails()
+      await settle()
+      expect(app.projectDisplay.mock.calls).toHaveLength(calls)
+    } finally { app.close() }
+  })
+
+  it('keeps a settled frontend visible while refreshed message metadata is projected', async () => {
+    const message = { ...sourceMessage, content: '<FINAL>Narrative</FINAL>\n[CARD]' }
+    const app = await mount('agentPresetRules', message)
+    try {
+      const visible = app.rendered()[0].displayContent
+      const project = app.projectDisplay.getMockImplementation()
+      let finish
+      app.projectDisplay.mockImplementationOnce(async (...args) => {
+        const response = await project(...args)
+        return new Promise(resolve => { finish = () => resolve(response) })
+      })
+      message.createdAt = '2026-10-10T00:00:01.000Z'
+      const refresh = app.catalog.refreshDetails()
+      await settle()
+      expect(app.rendered()[0].displayContent).toBe(visible)
+      finish()
+      await refresh
+      expect(app.rendered()[0].displayContent).toBe(visible)
+    } finally { app.close() }
+  })
+
+  it('does not alternate live text with rich regex output between stream chunks', async () => {
+    const message = { ...sourceMessage, content: '<FINAL>Narrative</FINAL>\n[CARD]', status: 'streaming' }
+    const app = await mount('agentPresetRules', message)
+    try {
+      const initialCalls = app.projectDisplay.mock.calls.length
+      for (const suffix of ['\nFirst suffix', '\nSecond suffix']) {
+        message.content += suffix
+        await app.catalog.refreshDetails()
+        await settle()
+        expect(app.rendered()[0].displayContent).toBe(finalReplyText(message.content, { streaming: true }))
+      }
+      expect(app.projectDisplay.mock.calls).toHaveLength(initialCalls)
+      for (const rows of app.publications) {
+        const live = rows.find(row => row.id === message.id && row.status === 'streaming')
+        if (live) expect(live.displayContent).not.toContain('<section>')
+      }
+      message.status = 'complete'
+      await app.catalog.refreshDetails()
+      await settle()
+      expect(app.rendered()[0].displayContent).toContain('<section>Old card</section>')
+      expect(app.rendered()[0].displayContent).toContain('Second suffix')
+      expect(app.rendered()[0].content).toBe(message.content)
+      expect(app.projectDisplay.mock.calls).toHaveLength(initialCalls + 1)
+    } finally { app.close() }
+  })
+
+  it.each(scopes)('defers saved %s replacements until the live reply has settled', async scope => {
+    const message = { ...sourceMessage, content: '<FINAL>Narrative</FINAL>\n[CARD]', status: 'streaming' }
+    const app = await mount(scope, message)
+    try {
+      const updated = structuredClone(app.collection())
+      updated[scope][0].replacement = '<section>Updated panel</section>'
+      await app.regexRules.save('character-1', updated)
+      await settle()
+      expect(app.rendered()[0].displayContent).toBe('Narrative\n[CARD]')
+      message.status = 'complete'
+      await app.catalog.refreshDetails()
+      await settle()
+      expect(app.rendered()[0].displayContent).toContain('<section>Updated panel</section>')
+      expect(app.rendered()[0].displayContent).not.toContain('Old card')
+    } finally { app.close() }
+  })
+
+  it('keeps panels before, inside and after the final opening in message order', () => {
+    const collection = makeCollection('agentPresetRules')
+    const original = collection.agentPresetRules[0]
+    collection.agentPresetRules.push(
+      { ...original, id: 'footer', pattern: '/\\[FOOTER\\]/g', replacement: '<section>Footer</section>', order: 1 },
+      { ...original, id: 'prompt', pattern: '/\\[PROMPT\\]/g', replacement: '<section>Prompt only</section>',
+        displayOnly: false, promptOnly: true, order: 2 }
+    )
+    const projector = new MessageDisplayProjector(mvuMessageDisplayCompatibility)
+    const content = 'Hidden preparation [CARD]\n<FINAL>Narrative [CARD]</FINAL>\n[FOOTER]\nVisible suffix\n[CARD]\n[PROMPT]'
+    for (const status of ['complete', 'cancelled']) {
+      const projected = projector.project({ ...sourceMessage, content, status }, collection)
+      expect(projected.displayContent.match(/Old card|Footer/g)).toEqual(['Old card', 'Old card', 'Footer', 'Old card'])
+      expect(projected.displayContent).toContain('Visible suffix')
+      expect(projected.displayContent).toContain('[PROMPT]')
+      expect(projected.displayContent).not.toContain('Hidden preparation')
+      expect(projected.displayContent).not.toContain('Prompt only')
+      expect(projected.content).toBe(content)
+    }
+  })
+
+  it('passes final tags to display regexes before projecting the resulting frontend', () => {
+    const collection = makeCollection('agentPresetRules')
+    collection.agentPresetRules[0] = { ...collection.agentPresetRules[0],
+      pattern: '<FINAL>([\\s\\S]*?)</FINAL>', replacement: '<section>$1</section>' }
+    const content = 'Hidden preparation\n<FINAL>Wrapped narrative</FINAL>\nVisible suffix'
+    const projected = new MessageDisplayProjector(mvuMessageDisplayCompatibility).project({ ...sourceMessage, content }, collection)
+    expect(projected.displayContent).toContain('<section>Wrapped narrative</section>')
+    expect(projected.displayContent).toContain('Visible suffix')
+    expect(projected.displayContent).not.toContain('Hidden preparation')
+    expect(projected.content).toBe(content)
+  })
+
+  it('waits for settled text before applying frontend replacements before the final opening', () => {
+    const collection = makeCollection('agentPresetRules')
+    const projector = new MessageDisplayProjector(mvuMessageDisplayCompatibility)
+    const content = 'Hidden preparation [CARD] unfinished'
+    const projected = projector.project({ ...sourceMessage, content, status: 'streaming' }, collection)
+    expect(projected.displayContent).toBe('')
+    expect(projected.displayContent).not.toContain('Hidden preparation')
+    expect(projected.displayContent).not.toContain('unfinished')
+    expect(projected.content).toBe(content)
+    expect(projector.project({ ...sourceMessage, content, status: 'cancelled' }, collection).displayContent).toContain('Old card')
+  })
+
+  it('keeps full live source through successive display projections before and after the closing tag', async () => {
+    const message = { ...sourceMessage, content: 'Hidden preparation [CARD]', status: 'streaming' }
+    const app = await mount('agentPresetRules', message)
+    try {
+      expect(app.rendered()[0].displayContent).toBe('')
+      expect(app.rendered()[0].displayContent).not.toContain('Hidden preparation')
+      message.content += '\n<FINAL>Narrative</FINAL>\nFirst suffix'
+      await app.catalog.refreshDetails()
+      await settle()
+      expect(app.rendered()[0]).toMatchObject({ content: message.content, status: 'streaming' })
+      expect(app.rendered()[0].displayContent).toContain('Narrative\nFirst suffix')
+      message.content += '\nSecond suffix [CARD]'
+      await app.catalog.refreshDetails()
+      await settle()
+      expect(app.rendered()[0].displayContent).toContain('Second suffix')
+      expect(app.rendered()[0].displayContent).not.toContain('Old card')
+      expect(app.rendered()[0].displayContent).toContain('[CARD]')
+      message.status = 'complete'
+      await app.catalog.refreshDetails()
+      await settle()
+      expect(app.rendered()[0].content).toBe(message.content)
+      expect(app.rendered()[0].displayContent).toContain('Second suffix')
+      expect(app.rendered()[0].displayContent.match(/Old card/g)).toHaveLength(2)
+    } finally { app.close() }
+  })
+
+  it.each(scopes)('refreshes full-reply %s matches without hiding unmatched text after the final opening', async scope => {
+    const content = 'Synthetic process [CARD]\n<FINAL>\nSynthetic narrative\n</FINAL>\n[CARD]\nVisible suffix'
+    const app = await mount(scope, { ...sourceMessage, content })
+    try {
+      expect(app.rendered()[0].displayContent).toContain('Synthetic narrative')
+      expect(app.rendered()[0].displayContent.match(/Old card/g)).toHaveLength(2)
+      expect(app.rendered()[0].displayContent).not.toContain('Synthetic process')
+      expect(app.rendered()[0].displayContent).toContain('Visible suffix')
+      expect(app.rendered()[0].content).toBe(content)
+      const updated = structuredClone(app.collection())
+      updated[scope][0].replacement = 'Updated footer'
+      await app.regexRules.save('character-1', updated)
+      await settle()
+      expect(app.rendered()[0].displayContent).toBe('Synthetic narrative\nUpdated footer\nVisible suffix')
+      updated.revision = app.collection().revision
+      updated[scope][0].enabled = false
+      await app.regexRules.save('character-1', updated)
+      await settle()
+      expect(app.rendered()[0].displayContent).toBe('Synthetic narrative\n[CARD]\nVisible suffix')
+    } finally { app.close() }
+  })
+
+  it('keeps nonmatching image instructions in the raw message and projects rich matches from the full reply', async () => {
+    const prompt = '<ACTION_CALL name="generate_image">{"frames":[{"id":1,"prompt":"synthetic prompt"}]}</ACTION_CALL>'
     const content = `${prompt}\n<FINAL>\n[CARD]\n</FINAL>`
     const app = await mount('characterRules', { ...sourceMessage, content })
     try {
