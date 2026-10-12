@@ -12,23 +12,52 @@ function studioSessions(items: Array<{ sessionId: string; title: string; pinned:
   const releases: string[] = []
   const active = (sessionId: string) => ({ sessionId, presetId: 'synthetic-creator-preset', characterId: '' })
   const remote = {
-    list: vi.fn(async () => ({ ok: true, value: items })),
+    list: vi.fn(async () => ({ ok: true, value: items.map(item => ({ ...active(item.sessionId), ...item })) })),
     open: vi.fn(async (id: string) => ({ ok: true, value: active(id) })),
     create: vi.fn(async () => ({ ok: true, value: active('synthetic-new-session') })),
     regenerate: vi.fn(async (_id: string) => ({ ok: true, value: undefined })),
     deleteMessagesFrom: vi.fn(async (_id: string, _seq: number, _role: string) => ({ ok: true, value: undefined })),
   }
+  const selectModel = vi.fn(async (selection: { sessionId: string; provider: string; model: string }) => ({ ok: true, value: { selected: selection } }))
   runInNewContext(source, { AbortController, AbortSignal, window: { __ModuleLoader__: { load(value: unknown) { registration = value } } } })
   dshClientPlugin(registration).apply({
-    remote: { eleckoiCreatorStudioSessions: remote },
+    remote: { eleckoiCreatorStudioSessions: remote, session: { selectModel } },
     sessions: { refresh: async () => {}, retain: (id: string) => ({ ready: Promise.resolve(), release: () => releases.push(id) }) },
     provide: (name: string, value: unknown) => services.set(name, value),
     effect: () => {},
   })
-  return { model: services.get('eleckoiCreatorStudio').sessions, remote, releases }
+  return { model: services.get('eleckoiCreatorStudio').sessions, remote, releases, selectModel }
 }
 
 describe('Studio Session binding and restoration', () => {
+  it('refreshes the exact active Session target after a creation tool and ignores a late previous binding', async () => {
+    const f = studioSessions([{ sessionId: 'synthetic-studio-a', title: '合成工作室甲', pinned: false }])
+    await f.model.open('synthetic-studio-a')
+    const reference = f.model.getSnapshot().reference
+    const item = { sessionId: 'synthetic-studio-a', title: '合成工作室甲', pinned: false,
+      presetId: 'synthetic-creator-preset', characterId: 'synthetic-new-character' }
+    f.remote.list.mockResolvedValueOnce({ ok: true, value: [item] })
+    await f.model.refresh()
+    expect(f.model.getSnapshot().active.characterId).toBe('synthetic-new-character')
+    expect(f.model.getSnapshot().reference).toBe(reference)
+    let finish!: () => void
+    f.remote.list.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ ok: true, value: [item] }) }))
+    const pending = f.model.refresh()
+    await f.model.open('synthetic-studio-b')
+    finish(); await pending
+    expect(f.model.getSnapshot().active).toEqual({ sessionId: 'synthetic-studio-b', presetId: 'synthetic-creator-preset', characterId: '' })
+  })
+  it('sends a model selection only to the explicitly opened Studio Session', async () => {
+    const f = studioSessions([])
+    await expect(f.model.selectModel({ provider: 'synthetic-provider', model: 'synthetic-model' })).rejects.toThrow('尚未打开')
+    expect(f.selectModel).not.toHaveBeenCalled()
+    await f.model.open('synthetic-studio-model-session')
+    await f.model.selectModel({ provider: 'synthetic-provider', model: 'synthetic-model' })
+    expect(f.selectModel).toHaveBeenCalledWith({ sessionId: 'synthetic-studio-model-session', provider: 'synthetic-provider', model: 'synthetic-model' })
+    f.model.release()
+    await expect(f.model.selectModel({ provider: 'synthetic-provider', model: 'synthetic-model' })).rejects.toThrow('尚未打开')
+    expect(f.selectModel).toHaveBeenCalledOnce()
+  })
   it('reopens the activity-ordered latest conversation, independently of sidebar pins', async () => {
     const f = studioSessions([{ sessionId: 'synthetic-recent', title: '最近对话', pinned: false }, { sessionId: 'synthetic-pinned', title: '置顶对话', pinned: true }])
     await f.model.restoreRecent()

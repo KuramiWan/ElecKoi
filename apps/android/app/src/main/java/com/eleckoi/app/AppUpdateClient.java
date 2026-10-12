@@ -9,7 +9,7 @@ import org.json.JSONArray;
 /** Reads the published Android descriptor without selecting Windows-only releases. */
 final class AppUpdateClient {
     static final String ENDPOINT="https://api.github.com/repos/eleckoi/ElecKoi/releases";
-    interface Transport { Reply get(String url, int limit) throws Exception; }
+    interface Transport { Reply get(String url, int limit, String accept) throws Exception; }
     static final class Reply {
         final String body; final boolean next;
         Reply(String body, boolean next) { this.body=body; this.next=next; }
@@ -19,22 +19,22 @@ final class AppUpdateClient {
     AppUpdateRelease latest(String applicationId) throws Exception {
         AppUpdateRelease.Candidate selected=null;
         for (int page=1; page<=20; page++) {
-            Reply response=transport.get(ENDPOINT+"?per_page=100&page="+page, 2*1024*1024);
+            Reply response=transport.get(ENDPOINT+"?per_page=100&page="+page, 2*1024*1024, "application/vnd.github+json");
             selected=AppUpdateRelease.newest(new JSONArray(response.body),selected);
             if (!response.next) {
                 if (selected==null) return null;
-                String url=AppUpdateRelease.assetUrl(selected.release,selected.descriptor);
-                return AppUpdateRelease.read(selected,transport.get(url,64*1024).body,applicationId);
+                String url=AppUpdateRelease.apiAssetUrl(selected.descriptor);
+                return AppUpdateRelease.read(selected,transport.get(url,64*1024,"application/octet-stream").body,applicationId);
             }
         }
         throw new IOException("更新发布列表超过检查范围，请稍后重试。");
     }
     static final class HttpTransport implements Transport {
-        @Override public Reply get(String url, int limit) throws Exception {
+        @Override public Reply get(String url, int limit, String accept) throws Exception {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("更新检查已取消。");
             HttpURLConnection connection=(HttpURLConnection)new URL(url).openConnection();
             connection.setConnectTimeout(15000); connection.setReadTimeout(15000);
-            connection.setRequestProperty("Accept","application/vnd.github+json");
+            connection.setRequestProperty("Accept",accept);
             connection.setRequestProperty("X-GitHub-Api-Version","2022-11-28");
             connection.setRequestProperty("User-Agent","ElecKoi-Android-Update-Check");
             try {

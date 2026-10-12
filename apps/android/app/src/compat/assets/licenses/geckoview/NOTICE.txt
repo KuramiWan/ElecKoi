@@ -1,0 +1,13 @@
+GeckoView 158.0.20261007201254
+Copyright Mozilla contributors.
+This component is distributed under the Mozilla Public License 2.0.
+The full MPL text is included in MPL-2.0.txt. The unmodified upstream component
+license document is included in aboutLicense.xhtml and in Gecko's about:license.
+
+Official artifact:
+https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-arm64-v8a/158.0.20261007201254/
+Corresponding source revision:
+https://hg.mozilla.org/releases/mozilla-release/rev/eb9a6e3a736802c8e080a76c44dc81f409d99d54
+
+ElecKoi uses the unmodified official ARM64 artifact. Its exact binary identity
+and native library hashes are recorded in apps/android/geckoview.lock.json.

@@ -9,7 +9,7 @@ import org.json.JSONObject;
 /** Identifies Android releases by an explicit asset and validates their update contract. */
 final class AppUpdateRelease {
     static final String REPOSITORY = "https://github.com/eleckoi/ElecKoi";
-    static final String DESCRIPTOR = "android-update.json";
+    static final String DESCRIPTOR = "compat".equals(BuildConfig.BROWSER_VARIANT) ? "android-update-compat.json" : "android-update.json";
     final long versionCode, bytes;
     final String versionName, title, notes, publishedAt, releaseUrl, downloadUrl;
     boolean isNewerThan(long installedCode) { return versionCode>installedCode; }
@@ -49,6 +49,7 @@ final class AppUpdateRelease {
         if (integer(manifest,"schemaVersion")!=1 || !text(manifest,"platform").equals("android"))
             throw new IOException("不支持的安卓更新描述版本或平台。");
         if (!text(manifest,"applicationId").equals(applicationId)) throw new IOException("安卓更新包名与当前应用不一致。");
+        if (!text(manifest,"variant").equals(BuildConfig.BROWSER_VARIANT)) throw new IOException("安卓更新变体与当前应用不一致。");
         long code=integer(manifest,"versionCode");
         if (code<=0 || code>2100000000L) throw new IOException("安卓更新 versionCode 无效。");
         String version=text(manifest,"versionName"), name=text(manifest,"apkAsset");
@@ -76,6 +77,12 @@ final class AppUpdateRelease {
         String expected=REPOSITORY+"/releases/download/"+encoded(text(release,"tag_name"))+"/"+encoded(text(asset,"name"));
         if (!url.equals(expected)) throw new IOException("更新资产地址与当前发布不一致。");
         return url;
+    }
+    static String apiAssetUrl(JSONObject asset) throws Exception {
+        long id=integer(asset,"id");
+        String expected=AppUpdateClient.ENDPOINT+"/assets/"+id;
+        if(id<=0 || !text(asset,"url").equals(expected)) throw new IOException("更新附件 API 地址与资产标识不一致。");
+        return expected;
     }
     private static String encoded(String value) throws Exception { return URLEncoder.encode(value,"UTF-8").replace("+","%20"); }
     private static boolean flag(JSONObject object, String key) throws Exception {

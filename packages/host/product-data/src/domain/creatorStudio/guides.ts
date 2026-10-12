@@ -1,7 +1,8 @@
 /** Authoring guidance accompanies discovery, so existing presets receive the current contracts. */
 export const creatorToolsets = [
-  { id: 'character', title: '角色资料', description: '读取和修改当前选定角色的原稿资料。',
-    guide: ['先读后改；所有写入只属于当前选定角色。角色是编辑对象，不是工作室要扮演的身份。'] },
+  { id: 'character', title: '角色资料', description: '新建空角色，读取和修改当前工作室编辑目标的原稿资料。',
+    guide: ['可以调用 character.create 提供 name 和可选 group，从零创建空角色并设为当前工作室编辑目标，不要求先选择角色；已有编辑目标时调用新建，也不会修改原角色。',
+      '读取和修改已有资料仍要求当前工作室明确选择角色，先读后改；不能按目录顺序或名称猜测编辑对象。角色是编辑对象，不是工作室要扮演的身份。'] },
   { id: 'settings', title: '设定库', description: '维护文字设定、选读 EJS 控制器、EJS 引用文字和文件夹。',
     guide: [
       '读取策略只有必读和选读。agentReadStrategy="required" 是必读，"normal" 是选读；不要把选读叫普通或另造读取档位。已有 "keyword" 是选读下的关键词命中开关，不是第三个读取档位。',

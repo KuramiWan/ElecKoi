@@ -4,6 +4,7 @@ import electronUpdater, { type AppUpdater } from 'electron-updater'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import type { Logger } from 'pino'
 import { UpdateService } from './UpdateService'
+import { configureGitHubApiUpdates } from './GitHubApiProvider'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
 import { assertTrustedDshClientFrame } from '@main/platform/electron/validateSender'
 
@@ -42,6 +43,7 @@ export const updatesPlugin = {
     const detachUpdaterLogger = attachUpdaterLogger(updater, appLog)
 
     const enabled = app.isPackaged && process.platform === 'win32'
+    if (enabled) configureGitHubApiUpdates(updater)
     preserveWindowsUpdateInstallDirectory(updater, process.execPath, app.isPackaged, process.platform)
     const updates = new UpdateService({
       updater,

@@ -1,7 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentPresetRegistry from '@deepseek-ai/dsh-agent-preset-registry'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { installModelSelection } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
-async function fixture(stream) {
+async function fixture(stream, creatorTools = true) {
   const root = mkdtempSync(join(tmpdir(), 'eleckoi-studio-'))
   cleanups.push(() => { const child = relative(tmpdir(), root); if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path'); rmSync(root, { recursive: true, force: true }) })
   for (const [key, value] of Object.entries({ ELECKOI_DATABASE_PATH: join(root, 'product.sqlite'), ELECKOI_MEDIA_ROOT: join(root, 'media') })) {
@@ -32,6 +32,10 @@ async function fixture(stream) {
   }
   mkdirSync(join(root, 'media'))
   const ctx = new Context()
+  const modelParameters = { synthetic: {} }
+  ctx.provide('settings', { describe: () => [{ ns: 'eleckoi-client-models', value: { entries: {
+    synthetic: { parameters: modelParameters }
+  } } }] })
   cleanups.push(() => ctx.fiber.dispose())
   for (const plugin of [LlmRuntime, SessionStore, SessionProjectionRegistry, SystemPrompt, ToolRuntime, AgentRegistry]) await ctx.plugin(plugin)
   await ctx.plugin(JsonlSessionPersistence, { root: join(root, 'sessions'), compression: 'none' })
@@ -47,20 +51,21 @@ async function fixture(stream) {
   ctx.loader.builtins['synthetic-studio-agent'] = studioAgent
   await ctx.plugin(AgentPresetRegistry, { default: 'synthetic-studio-preset' })
   const requests = []
+  const modelInfo = { synthetic: { reasoning: { efforts: [{ id: 'high', name: '合成高档位' }] }, defaultMaxTokens: 1024 } }
   class Adapter extends LlmAdapter {
-    async resolveModel(provider, id) { return { provider, id, name: id } }
+    async resolveModel(provider, id) { return { provider, id, name: id, ...modelInfo[id] } }
     async *stream(options) { requests.push(options); yield* stream(options, requests.length) }
   }
   ctx.llm.registerAdapter(['synthetic'], new Adapter())
   const character = ctx.eleckoiProductData.createCharacter({ id: 'synthetic-character', name: '合成编辑目标', group: '', persona: { assistant_name: '合成角色', assistant_avatar: '', assistant_cover: '' } }).items[0]
-  const config = { presetId: 'agent-preset-creator', creatorTools: true }
+  const config = { presetId: 'agent-preset-creator', creatorTools }
   const agentOptions = { provider: 'synthetic', model: 'synthetic' }
   await ctx.agentPresets.register({ id: 'synthetic-studio-preset', plugins: [{ id: 'creator', name: 'cordis:synthetic-studio-agent', config }] })
   const setup = async owner => { await ctx.agentPresets.mount(owner, 'synthetic-studio-preset') }
   let handle = await ctx.agents.create({ sessionId: SessionId('synthetic-studio-session'), meta: { agentPreset: 'synthetic-studio-preset' }, agentOptions, setup })
   handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: config.presetId, characterId: character.id }, { ignorable: true })
   cleanups.push(() => handle.dispose())
-  return { ctx, root, get handle() { return handle }, character, requests,
+  return { ctx, root, modelParameters, modelInfo, get handle() { return handle }, character, requests,
     async close() { await handle.dispose() },
     async reopen() {
       await handle.dispose()
@@ -74,6 +79,86 @@ async function* text(text) {
   yield { type: 'finish', reason: { kind: 'stop' } }
 }
 describe('AI creator studio official Agent integration', { timeout: 30_000 }, () => {
+  it('does not offer creation when the creator tool group is disabled', async () => {
+    const f = await fixture(async function* () { yield* text('合成普通回复') }, false)
+    f.handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: 'agent-preset-creator', characterId: '' }, { ignorable: true })
+    f.handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: '合成输入' }], source: { kind: 'user' } }))
+    await f.handle.agent.whenIdle()
+    expect(f.requests).toHaveLength(1)
+    expect(f.requests[0].tools).toBeUndefined()
+    expect(JSON.stringify(f.requests[0].messages)).not.toContain('character.create')
+  })
+  it('creates its own editing target without a binding, continues authoring and persists only that Session binding', async () => {
+    const f = await fixture(async function* (_options, request) {
+      if (request <= 2) {
+        const args = request === 1 ? { capability_id: 'character.create', arguments: { name: '合成从零角色' } }
+          : { capability_id: 'settings.create', arguments: { title: '合成新目标设定', content: '合成新目标正文' } }
+        yield { type: 'block-start', index: 0, blockType: 'tool-call' }
+        yield { type: 'block-end', index: 0, block: { type: 'tool-call', id: `synthetic-create-${request}`, name: 'eleckoi_call_capability', arguments: JSON.stringify(args) } }
+        yield { type: 'finish', reason: { kind: 'tool-calls' } }
+      } else yield* text('合成创作完成')
+    })
+    const peer = await f.ctx.agents.create({ sessionId: SessionId('synthetic-other-studio-binding'),
+      meta: { agentPreset: 'synthetic-studio-preset' }, agentOptions: { provider: 'synthetic', model: 'synthetic' },
+      setup: owner => f.ctx.agentPresets.mount(owner, 'synthetic-studio-preset').then(() => {}) })
+    cleanups.push(() => peer.dispose())
+    const binding = { presetId: 'agent-preset-creator', characterId: f.character.id }
+    peer.agent.session.append(CREATOR_STUDIO_EVENT, binding, { ignorable: true })
+    f.handle.agent.session.append(CREATOR_STUDIO_EVENT, { ...binding, characterId: '' }, { ignorable: true })
+    const originalSettings = f.ctx.eleckoiProductData.saveSettingLibrary(f.character.id, f.ctx.eleckoiProductData.readSettingLibrary(f.character.id))
+    const before = f.ctx.eleckoiProductData.readCharacters()
+    f.handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: '从零创建合成角色并写设定' }], source: { kind: 'user' } }))
+    await f.handle.agent.whenIdle()
+    const state = f.ctx.sessionProjections.stateOf(f.handle.agent.session, creatorStudioProjection.key)
+    expect(state.characterId).not.toBe('')
+    expect(state.characterId).not.toBe(f.character.id)
+    const created = f.ctx.eleckoiProductData.readCharacters().items.find(item => item.id === state.characterId)
+    expect(created).toMatchObject({ name: '合成从零角色', avatar: '' })
+    expect(f.ctx.eleckoiProductData.readSettingLibrary(state.characterId).entries).toEqual(expect.arrayContaining([expect.objectContaining({ title: '合成新目标设定' })]))
+    expect(f.ctx.eleckoiProductData.readSettingLibrary(f.character.id)).toEqual(originalSettings)
+    expect(f.ctx.eleckoiProductData.readCharacters().active_character_id).toBe(before.active_character_id)
+    expect(f.ctx.sessionProjections.stateOf(peer.agent.session, creatorStudioProjection.key)).toEqual(binding)
+    expect(JSON.stringify(f.requests[1].messages)).toContain(created.id)
+    expect(f.handle.agent.session.snapshotEvents().filter(event => event.type === 'tool/result').every(event => !event.data.isError)).toBe(true)
+    const peerCreated = await peer.agent.ctx.tools.execute({ callId: 'synthetic-peer-create', name: 'eleckoi_call_capability',
+      arguments: { capability_id: 'character.create', arguments: { name: '合成另一工作室新角色' } }, agent: peer.agent, signal: new AbortController().signal })
+    expect(peerCreated.isError).not.toBe(true)
+    const peerState = f.ctx.sessionProjections.stateOf(peer.agent.session, creatorStudioProjection.key)
+    expect(peerState.characterId).not.toBe(binding.characterId)
+    expect(peerState.characterId).not.toBe(state.characterId)
+    expect(f.ctx.sessionProjections.stateOf(f.handle.agent.session, creatorStudioProjection.key)).toEqual(state)
+    await f.reopen()
+    expect(f.ctx.sessionProjections.stateOf(f.handle.agent.session, creatorStudioProjection.key)).toEqual(state)
+  })
+  it('uses saved parameters for the selected Studio model without applying them to a roleplay Agent', async () => {
+    const f = await fixture(async function* () { yield* text('合成回复') })
+    f.modelParameters.synthetic = { temperature: 0.4, topP: 0.9, reasoningEffort: 'high' }
+    const selection = { current: { provider: 'synthetic', model: 'synthetic' }, assembled: undefined }
+    const disposeSelection = installModelSelection(f.handle.agent.ctx, selection)
+    cleanups.push(disposeSelection)
+    const roleplay = await f.ctx.agents.create({ sessionId: SessionId('synthetic-parameter-roleplay'),
+      agentOptions: { provider: 'synthetic', model: 'synthetic' }, setup(owner) {
+        owner.on('agent/request', async (_payload, next) => ({ ...await next(), temperature: 0.7, topP: 0.5 }))
+      } })
+    cleanups.push(() => roleplay.dispose())
+    const send = async handle => {
+      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: '合成参数输入' }], source: { kind: 'user' } }))
+      await handle.agent.whenIdle()
+    }
+    await send(f.handle); await send(roleplay)
+    expect(f.requests.find(request => request.sessionId === f.handle.agent.id), JSON.stringify(f.handle.agent.session.snapshotEvents().at(-1))).toMatchObject({ temperature: 0.4, topP: 0.9, reasoningEffort: 'high', maxTokens: 1024 })
+    expect(f.requests.find(request => request.sessionId === roleplay.agent.id)).toMatchObject({ temperature: 0.7, topP: 0.5 })
+    f.modelParameters['synthetic-peer'] = { temperature: 0.2, topP: 0.8 }
+    f.modelInfo['synthetic-peer'] = { defaultMaxTokens: 512 }
+    selection.current = { provider: 'synthetic', model: 'synthetic-peer' }
+    await send(f.handle)
+    expect(f.requests.at(-1)).toMatchObject({ model: 'synthetic-peer', temperature: 0.2, topP: 0.8, maxTokens: 512 })
+    expect(f.requests.at(-1).reasoningEffort).toBeUndefined()
+    f.modelParameters['synthetic-peer'] = {}
+    await send(f.handle)
+    expect(f.requests.at(-1).temperature).toBeUndefined()
+    expect(f.requests.at(-1).topP).toBeUndefined()
+  })
   it('leaves roleplay requests and tools unchanged while a standing studio preset is active', async () => {
     const f = await fixture(async function* () { yield* text('合成回复') })
     await f.ctx.agentPresets.register({ id: 'synthetic-roleplay-preset', plugins: [] })
@@ -258,6 +343,14 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
     const missing = await execute({ capability_id: 'settings.create', arguments: { title: '不能保存', content: '合成内容' } })
     expect(missing.isError).toBe(true)
     expect(JSON.stringify(missing)).toContain('选择角色')
+    const unchanged = f.ctx.eleckoiProductData.readCharacters()
+    const malformed = await execute({ capability_id: 'character.create', arguments: { name: '   ' } })
+    expect(malformed.isError).toBe(true)
+    expect(f.ctx.eleckoiProductData.readCharacters()).toEqual(unchanged)
+    expect(f.ctx.sessionProjections.stateOf(f.handle.agent.session, creatorStudioProjection.key).characterId).toBe('')
+    const unknown = await execute({ capability_id: 'character.unknown', arguments: {} })
+    expect(unknown.isError).toBe(true)
+    expect(JSON.stringify(unknown)).toContain('未知创作操作')
     f.handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: 'agent-preset-creator', characterId: f.character.id }, { ignorable: true })
     const invalid = await execute({ capability_id: 'settings.unknown', arguments: {} })
     expect(invalid.isError).toBe(true)

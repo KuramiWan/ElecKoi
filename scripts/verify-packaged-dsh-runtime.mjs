@@ -6,11 +6,13 @@ import { dshClientPages } from './dsh-client-pages.mjs'
 import { dshBundleAssets, verifyDshBundleAssets } from './dsh-bundle-assets.mjs'
 
 const require = createRequire(import.meta.url)
+const { verifyWindowsUpdaterConfig } = require('./windows-updater-config.cjs')
+const unpacked = process.env.ELECKOI_UNPACKED_DIR ?? join(process.cwd(), 'release', 'win-unpacked')
+verifyWindowsUpdaterConfig(unpacked, process.cwd())
 const manifest = JSON.parse(readFileSync(join(process.cwd(), 'apps/desktop/resources/dsh/runtime-manifest.json'), 'utf8'))
 const bundleAssets = Object.fromEntries(await Promise.all(manifest.desktopProfile.bundles.map(async name =>
   [name, await dshBundleAssets(dirname(require.resolve(`${name}/package.json`)))])))
 
-const unpacked = process.env.ELECKOI_UNPACKED_DIR ?? join(process.cwd(), 'release', 'win-unpacked')
 const executable = join(unpacked, 'ElecKoi.exe')
 const appAsar = join(unpacked, 'resources', 'app.asar')
 

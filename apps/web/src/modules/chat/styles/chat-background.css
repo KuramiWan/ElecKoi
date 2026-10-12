@@ -54,7 +54,7 @@
   background: transparent;
 }
 
-.qq-shell.has-chat-wallpaper {
+:is(.qq-shell, .mobile-conversation-page).has-chat-wallpaper {
   --chat-wallpaper-canvas: #ffffff;
   --chat-wallpaper-scrim-rgb: 255 255 255;
   --chat-wallpaper-content-fg: #15171a;
@@ -67,18 +67,18 @@
   --bubble-fg-shadow: var(--chat-wallpaper-content-shadow);
 }
 
-:root[data-theme="dark"] .qq-shell.has-chat-wallpaper {
+:root[data-theme="dark"] :is(.qq-shell, .mobile-conversation-page).has-chat-wallpaper {
   --chat-wallpaper-canvas: #171717;
   --chat-wallpaper-scrim-rgb: 23 23 23;
   --chat-wallpaper-content-fg: #f5f5f2;
   --chat-wallpaper-content-shadow: rgba(0, 0, 0, 0.3);
 }
 
-.qq-shell.has-chat-wallpaper .chat-header h1,
-.qq-shell.has-chat-wallpaper .chat-header-action,
-.qq-shell.has-chat-wallpaper .message-area.layout-roleplay .message-author,
-.qq-shell.has-chat-wallpaper .message-area.layout-roleplay .bubble,
-.qq-shell.has-chat-wallpaper .message-area.layout-roleplay .bubble :is(strong, p, li, h1, h2, h3, h4, h5, h6) {
+:is(.qq-shell, .mobile-conversation-page).has-chat-wallpaper .chat-header h1,
+:is(.qq-shell, .mobile-conversation-page).has-chat-wallpaper .chat-header-action,
+:is(.qq-shell, .mobile-conversation-page).has-chat-wallpaper .message-area.layout-roleplay .message-author,
+:is(.qq-shell, .mobile-conversation-page).has-chat-wallpaper .message-area.layout-roleplay .bubble,
+:is(.qq-shell, .mobile-conversation-page).has-chat-wallpaper .message-area.layout-roleplay .bubble :is(strong, p, li, h1, h2, h3, h4, h5, h6) {
   color: var(--chat-wallpaper-content-fg);
   text-shadow: 0 0 1px var(--chat-wallpaper-content-shadow);
 }

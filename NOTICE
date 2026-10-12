@@ -70,3 +70,27 @@ those components and remain with the distributed resources.
 The native author page runtime also bundles browser libraries. Their versions,
 attributions and supplied license texts are recorded in
 resources/author-runtime/THIRD_PARTY_LICENSES.txt.
+
+------------------------------------------------------------------------------
+GeckoView (Android compatibility variant)
+------------------------------------------------------------------------------
+
+The Android compatibility variant bundles the unmodified Mozilla GeckoView
+ARM64 artifact, version 158.0.20261007201254, under the Mozilla Public License
+2.0 and the component-specific terms included by Mozilla. Exact artifact and
+native library identities are recorded in apps/android/geckoview.lock.json.
+
+Official artifact:
+https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview-arm64-v8a/158.0.20261007201254/
+Corresponding source revision:
+https://hg.mozilla.org/releases/mozilla-release/rev/eb9a6e3a736802c8e080a76c44dc81f409d99d54
+
+The repository retains the full MPL 2.0 text, component notice and unmodified
+upstream license document in apps/android/app/src/compat/assets/licenses/geckoview/.
+Compatibility APKs distribute the same documents at:
+
+- assets/licenses/geckoview/MPL-2.0.txt
+- assets/licenses/geckoview/NOTICE.txt
+- assets/licenses/geckoview/aboutLicense.xhtml
+
+The component notices are also available through Gecko's about:license page.

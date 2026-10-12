@@ -55,6 +55,7 @@ const mapScript = (library: ScriptLibrary, scriptId: string, change: (item: z.ou
 
 export interface CreatorCapability {
   id: string; toolsetId: string; title: string; effect: 'read' | 'write'
+  target: 'selected-character' | 'new-character'
   inputSchema: Record<string, unknown>
   execute(characterId: string, input: unknown): unknown
 }
@@ -62,14 +63,21 @@ export interface CreatorCapability {
 /** Permanent character authoring operations. The target identity comes from the Session. */
 export function creatorCapabilities(data: Context['eleckoiProductData']): CreatorCapability[] {
   const catalog: CreatorCapability[] = []
-  function operation<T extends z.ZodType>(toolsetId: string, name: string, title: string, effect: 'read' | 'write', schema: T, execute: (characterId: string, input: z.output<T>) => unknown) {
-    catalog.push({ id: `${toolsetId}.${name}`, toolsetId, title, effect,
+  function operation<T extends z.ZodType>(toolsetId: string, name: string, title: string, effect: 'read' | 'write', schema: T, execute: (characterId: string, input: z.output<T>) => unknown, target: CreatorCapability['target'] = 'selected-character') {
+    catalog.push({ id: `${toolsetId}.${name}`, toolsetId, title, effect, target,
       inputSchema: z.toJSONSchema(schema, { unrepresentable: 'throw' }) as Record<string, unknown>,
       execute(characterId, input) {
-        if (!data.readCharacters().items.some(item => item.id === characterId)) throw new Error('所选角色已不存在，请重新选择角色。')
+        if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new Error('所选角色已不存在，请重新选择角色。')
         return execute(characterId, schema.parse(input))
       } })
   }
+  operation('character', 'create', '新建空角色并设为当前工作室编辑目标', 'write', z.object({
+    name: z.string().trim().min(1).max(120).describe('新角色名称；只创建空白资料，后续通过创作能力补充内容。'),
+    group: z.string().max(120).optional().describe('可选的角色分组。'),
+  }).strict(), (_characterId, input) => {
+    const characterId = `character-${randomUUID()}`
+    return find(data.createCharacter({ id: characterId, name: input.name, group: input.group ?? '' }).items, characterId)
+  }, 'new-character')
   operation('character', 'read', '读取角色资料', 'read', empty, characterId => find(data.readCharacters().items, characterId))
   operation('character', 'update', '修改角色名称和基础资料', 'write', changes(z.object({ name: z.string().min(1).max(120), assistantName: z.string().min(1).max(120), profileAge: z.string(), profileSex: z.string(), profileHeight: z.string(), profileBirthday: z.string(), profileLike: z.string() })), (characterId, { assistantName, ...patch }) => {
     const current = find(data.readCharacters().items, characterId)

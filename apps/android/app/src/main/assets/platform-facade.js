@@ -1,5 +1,37 @@
 (() => {
   if (window.ElecKoiPlatform) return;
+  // Android composers resize with the layout viewport when the IME opens.
+  const viewportPolicy = () => {
+    let viewport = document.querySelector('meta[name="viewport"]');
+    if (!viewport && document.readyState === 'loading') return;
+    if (!viewport) {
+      viewport = document.createElement('meta'); viewport.name = 'viewport';
+      viewport.content = 'width=device-width, initial-scale=1'; document.head.append(viewport);
+    }
+    const options = viewport.content.split(/[,;]/).map(value => value.trim()).filter(Boolean)
+      .filter(value => value.split('=')[0].trim().toLowerCase() !== 'interactive-widget');
+    viewport.content = [...options, 'interactive-widget=resizes-content'].join(', ');
+  };
+  if (document.readyState === 'loading') {
+    const viewportObserver = new MutationObserver(viewportPolicy);
+    viewportObserver.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', () => { viewportObserver.disconnect(); viewportPolicy(); }, { once: true });
+  }
+  viewportPolicy();
+  if (window.ElecKoiAndroidTransport) {
+    const decode = json => {
+      const reply = JSON.parse(json);
+      if (!reply.success) throw new Error(reply.error || 'Android platform operation failed');
+      return reply.result;
+    };
+    const methods = ['clientReady', 'clientFailed', 'tts', 'readTtsAudio', 'releaseTtsAudio', 'saveText',
+      'beginFile', 'writeFile', 'finishFile', 'abortFile', 'reportError', 'openExternal',
+      'notificationSettings', 'updateStatus', 'checkUpdates', 'downloadUpdate', 'appearance', 'version'];
+    window.ElecKoiAndroid = Object.fromEntries(methods.map(method => [method, (...args) => {
+      const reply = window.ElecKoiAndroidTransport.invoke(method, JSON.stringify(args));
+      return reply && typeof reply.then === 'function' ? reply.then(decode) : decode(reply);
+    }]));
+  }
   const pending = new Map();
   window.addEventListener('eleckoi:platform-result', event => {
     for (let index = 0; index < window.frames.length; index++)
@@ -15,6 +47,7 @@
     window.dispatchEvent(new CustomEvent('eleckoi:platform-result', { detail: event.data.detail }));
   });
   const result = json => {
+    if (json && typeof json.then === 'function') return json.then(result);
     const response = JSON.parse(json);
     if (!response.success) throw new Error(response.result);
     return response.result;
@@ -34,7 +67,7 @@
     return btoa(binary);
   };
   const saveBlob = (name, blob, mime = blob.type || 'application/octet-stream') => request(async id => {
-    const token = result(ElecKoiAndroid.beginFile(id, name, mime));
+    const token = await result(ElecKoiAndroid.beginFile(id, name, mime));
     try {
       const reader = blob.stream().getReader();
       try {
@@ -42,18 +75,31 @@
           const { done, value } = await reader.read();
           if (done) break;
           for (let offset = 0; offset < value.length; offset += 64 * 1024)
-            result(ElecKoiAndroid.writeFile(token, encode(value.subarray(offset, offset + 64 * 1024))));
+            await result(ElecKoiAndroid.writeFile(token, encode(value.subarray(offset, offset + 64 * 1024))));
         }
       } finally { reader.releaseLock(); }
-      result(ElecKoiAndroid.finishFile(token));
+      await result(ElecKoiAndroid.finishFile(token));
     } catch (error) {
-      const cleanup = JSON.parse(ElecKoiAndroid.abortFile(token));
+      const cleanup = JSON.parse(await ElecKoiAndroid.abortFile(token));
       if (!cleanup.success) throw new Error(`${error.message}; ${cleanup.result}`);
       throw error;
     }
   });
   window.ElecKoiPlatform = {
     version: 1,
+    browserCommand: ({ type, payload }) => {
+      if (type === 'back') return !window.dispatchEvent(new CustomEvent('eleckoi:platform-back', { cancelable: true }));
+      if (type === 'attribute' && ['data-eleckoi-ime-visible', 'data-eleckoi-button-navigation'].includes(payload.name)) {
+        document.documentElement?.toggleAttribute(payload.name, payload.value === true); return null;
+      }
+      if (type === 'emit' && ['eleckoi:platform-result', 'eleckoi:updates-changed'].includes(payload.event)) {
+        window.dispatchEvent(new CustomEvent(payload.event, { detail: payload.detail })); return null;
+      }
+      if (type === 'download') {
+        window.ElecKoiPlatform.saveUrl(payload.name, payload.url, payload.mime).catch(error => ElecKoiAndroid.reportError(String(error))); return null;
+      }
+      throw new Error(`Unsupported browser command: ${type}`);
+    },
     saveText: (name, text, mime = 'text/plain') => request(id => ElecKoiAndroid.saveText(id, name, mime, String(text))),
     saveBlob,
     saveBytes: (name, bytes, mime = 'application/octet-stream') => saveBlob(name, new Blob([bytes], { type: mime }), mime),
@@ -65,7 +111,7 @@
     openExternal: url => ElecKoiAndroid.openExternal(url),
     notificationSettings: () => ElecKoiAndroid.notificationSettings(),
     updates: {
-      status: async () => JSON.parse(ElecKoiAndroid.updateStatus()),
+      status: async () => JSON.parse(await ElecKoiAndroid.updateStatus()),
       check: () => request(id => ElecKoiAndroid.checkUpdates(id)).then(reply => reply.result),
       download: () => request(id => ElecKoiAndroid.downloadUpdate(id)).then(reply => reply.result),
       subscribe: listener => {

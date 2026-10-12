@@ -223,7 +223,7 @@ export class UpdateService {
       ...this.state,
       phase: 'error',
       progress: null,
-      message: '更新失败，请检查网络后重试。'
+      message: updateErrorMessage(error)
     })
   }
 
@@ -314,4 +314,12 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function asError(value: unknown): Error {
   return value instanceof Error ? value : new Error(String(value))
+}
+
+function updateErrorMessage(error: Error): string {
+  const fileError = error as NodeJS.ErrnoException
+  if (fileError.code === 'ENOENT' && /(?:^|[/\\])app-update\.yml$/.test(fileError.path ?? '')) {
+    return '安装包缺少更新配置（app-update.yml），请重新安装修复后的版本。'
+  }
+  return `更新失败：${error.message}`.slice(0, 300)
 }

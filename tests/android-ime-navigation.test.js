@@ -4,27 +4,33 @@ import { JSDOM } from 'jsdom'
 
 const css = readFileSync(new URL('../apps/web/src/mobile/mobile.css', import.meta.url), 'utf8')
 const activity = readFileSync(new URL('../apps/android/app/src/main/java/com/eleckoi/app/MainActivity.java', import.meta.url), 'utf8')
+const facade = readFileSync(new URL('../apps/android/app/src/main/assets/platform-facade.js', import.meta.url), 'utf8')
 
 function navigationPage() {
   const page = new JSDOM('<!doctype html><html><body><main class="mobile-shell"><div class="mobile-front-content"><section class="mobile-page-seat"><div role="dialog"><input aria-label="名称" /></div></section><nav class="mobile-bottom-nav"><button>预设</button></nav></div></main><nav class="desktop-navigation">桌面</nav></body></html>', { runScripts: 'outside-only' })
   const style = page.window.document.createElement('style')
   style.textContent = css
   page.window.document.head.append(style)
-  const script = activity.match(/web\.evaluateJavascript\("([^"\n]+)" \+ imeVisible \+ "([^"\n]+)", null\);/)
-  expect(script, 'native IME visibility script').not.toBeNull()
-  return { page, applyIme: visible => page.window.eval(`${script[1]}${visible}${script[2]}`) }
+  page.window.ElecKoiAndroid = {}
+  page.window.eval(facade)
+  function applyAttribute(name, variable, value) {
+    expect(activity).toContain(`browserCommand("attribute", attributePayload("${name}", ${variable}), null);`)
+    page.window.ElecKoiPlatform.browserCommand({ type: 'attribute', payload: { name, value } })
+  }
+  return { page,
+    applyIme: visible => applyAttribute('data-eleckoi-ime-visible', 'imeVisible', visible),
+    applyNavigation: buttons => applyAttribute('data-eleckoi-button-navigation', 'bottomButtonNavigation', buttons),
+  }
 }
 
 describe('Android IME and root navigation', () => {
   it('uses a compact centered row for bottom navigation buttons and restores gesture spacing', () => {
-    const { page, applyIme } = navigationPage()
+    const { page, applyIme, applyNavigation } = navigationPage()
     try {
       const { window } = page
       const nav = window.document.querySelector('.mobile-bottom-nav')
       nav.querySelector('button').innerHTML = '<span>预设</span>'
-      const script = activity.match(/web\.evaluateJavascript\("([^"\n]+)" \+ bottomButtonNavigation \+ "([^"\n]+)", null\);/)
-      expect(script).not.toBeNull()
-      window.eval(`${script[1]}true${script[2]}`)
+      applyNavigation(true)
       expect(window.getComputedStyle(nav).minHeight).toBe('48px')
       expect(window.getComputedStyle(nav.querySelector('button')).height).toBe('48px')
       expect(window.getComputedStyle(nav.querySelector('span')).transform).toBe('none')
@@ -32,7 +38,7 @@ describe('Android IME and root navigation', () => {
       expect(window.getComputedStyle(nav).display).toBe('none')
       applyIme(false)
       expect(window.getComputedStyle(nav).display).toBe('flex')
-      window.eval(`${script[1]}false${script[2]}`)
+      applyNavigation(false)
       expect(window.getComputedStyle(nav.querySelector('button')).height).toBe('64px')
       expect(window.getComputedStyle(nav.querySelector('span')).transform).toBe('translateY(-8px)')
     } finally { page.window.close() }

@@ -30,6 +30,7 @@ asarUnpack:
   - node_modules/koffi/**/*
 
 npmRebuild: false
+afterPack: ./scripts/windows-updater-config.cjs
 
 publish:
   provider: github

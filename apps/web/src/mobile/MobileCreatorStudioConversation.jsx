@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useMainPageView } from '../app/windows/MainPageContext.jsx';
 import { RoleplayInputMenu } from '../modules/chat/components/RoleplayInputMenu.jsx';
-import { ChatModelPicker } from '../modules/chat/components/ChatModelPicker.jsx';
+import { ModelPicker } from '../modules/models/index.js';
 import { AgentToolsDialog } from '../modules/chat/components/AgentToolsDialog.jsx';
 import { MobileConversationPage } from './MobileConversationPage.jsx';
 import { MobileDialog } from './MobileChrome.jsx';
@@ -31,6 +31,7 @@ export function MobileCreatorStudioConversation({ model, editing = false, onCrea
     model.readDefaultModel().then(value => { if (active) setDefaultModel(value); }).catch(error => { if (active) onError(error.message); });
     return () => { active = false; };
   }, [model, onError]);
+  useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(error.message)); }, [model, session.running, onError]);
   async function regenerate() {
     try { await model.regenerate(); } catch (error) { onError(error.message); }
   }
@@ -48,7 +49,8 @@ export function MobileCreatorStudioConversation({ model, editing = false, onCrea
     onSelectCharacter={onSelectCharacter} onCreateChat={onCreate} onOpenTools={() => setTools(true)}
     onEnterDeleteMode={openDelete} canDeleteMessages={!session.blank}
     onRegenerate={regenerate} regenerateTargetMessageId={session.blank ? null : sessionId} />;
-  const picker = <ChatModelPicker configs={models.configs} selectedConfigId={selected?.provider}
+  const picker = <ModelPicker configs={models.configs} selectedConfigId={selected?.provider}
+    onSaveModelConfig={config => view.models.save(config)}
     selectedModel={selected?.model} onLoadModels={config => view.models.discover(config)} onNotify={notify}
     onSelect={selection => model.selectModel({ provider: selection.configId, model: selection.model })} />;
   const resident = renderSlot('eleckoi.creator-studio.composer.bar', {

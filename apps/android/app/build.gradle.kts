@@ -1,7 +1,19 @@
 import groovy.json.JsonSlurper
 import java.security.MessageDigest
 
+abstract class PrepareCompatBridgeTask : DefaultTask() {
+    @get:InputFile abstract val facade: RegularFileProperty
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+    @TaskAction fun prepare() {
+        val output = outputDirectory.file("eleckoi-browser/platform-facade.js").get().asFile
+        output.parentFile.mkdirs()
+        facade.get().asFile.copyTo(output, overwrite = true)
+    }
+}
+
 plugins { id("com.android.application") }
+val gecko = JsonSlurper().parse(rootProject.file("geckoview.lock.json")) as Map<*, *>
+check(gecko["schemaVersion"] == 1 && gecko["channel"] == "stable") { "Unsupported GeckoView lock" }
 val runtimeAssets = providers.gradleProperty("unifiedRuntimeAssetsDir")
     .map { rootProject.file(it) }.getOrElse(rootProject.file("runtime-assets"))
 val releaseSigningValues = listOf("ELECKOI_RELEASE_STORE_FILE", "ELECKOI_RELEASE_STORE_PASSWORD",
@@ -11,7 +23,7 @@ val releaseSigningValues = listOf("ELECKOI_RELEASE_STORE_FILE", "ELECKOI_RELEASE
 val releaseSigningConfigured = releaseSigningValues.values.all { it != null }
 android {
     namespace = "com.eleckoi.app"
-    compileSdk = 35
+    compileSdk { version = release(37) { minorApiLevel = 2 } }
     defaultConfig {
         applicationId = "com.eleckoi.app"
         minSdk = 27
@@ -20,10 +32,23 @@ android {
         versionName = "0.2.10"
         ndk { abiFilters += "arm64-v8a" }
     }
+    flavorDimensions += "browser"
+    productFlavors {
+        create("standard") { dimension = "browser"; buildConfigField("String", "BROWSER_VARIANT", "\"standard\"") }
+        create("compat") {
+            dimension = "browser"
+            buildConfigField("String", "BROWSER_VARIANT", "\"compat\"")
+            buildConfigField("String", "GECKOVIEW_VERSION", "\"${gecko["version"]}\"")
+        }
+    }
+    buildFeatures { buildConfig = true; resValues = true }
     sourceSets.getByName("main").assets.directories += runtimeAssets.absolutePath
     androidResources { noCompress += "archive" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    packaging { jniLibs { useLegacyPackaging = true } }
+    packaging { jniLibs {
+        useLegacyPackaging = true
+        keepDebugSymbols += (gecko["native"] as List<Map<String,Any>>).map { "**/" + (it["path"] as String).substringAfterLast('/') }
+    } }
     signingConfigs {
         create("release") {
             if (releaseSigningConfigured) {
@@ -35,6 +60,10 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "ElecKoi 开发版")
+        }
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
@@ -43,7 +72,8 @@ android {
 }
 dependencies {
     implementation("androidx.core:core:1.13.1")
-    implementation("androidx.webkit:webkit:1.12.1")
+    "standardImplementation"("androidx.webkit:webkit:1.12.1")
+    "compatImplementation"("${gecko["group"]}:${gecko["artifact"]}:${gecko["version"]}")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }
@@ -56,8 +86,32 @@ val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
         check(file(checkNotNull(releaseSigningValues["ELECKOI_RELEASE_STORE_FILE"])).isFile) { "Release keystore is missing." }
     }
 }
-tasks.matching { it.name == "packageRelease" || it.name == "bundleRelease" }.configureEach {
+tasks.matching { it.name in listOf("packageStandardRelease", "bundleStandardRelease", "packageCompatRelease", "bundleCompatRelease") }.configureEach {
     dependsOn(verifyReleaseSigning)
+}
+
+val prepareCompatBridge = tasks.register<PrepareCompatBridgeTask>("prepareCompatBridge") {
+    facade.set(layout.projectDirectory.file("src/main/assets/platform-facade.js"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/compatBrowserAssets"))
+}
+androidComponents.onVariants(androidComponents.selector().withFlavor("browser" to "compat")) { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(prepareCompatBridge) { it.outputDirectory }
+}
+
+listOf("Debug", "Release").forEach { buildType ->
+    val check = tasks.register("verifyCompat${buildType}Gecko") {
+        doLast {
+            val artifact = configurations.getByName("compat${buildType}RuntimeClasspath").resolvedConfiguration.resolvedArtifacts.single {
+                it.moduleVersion.id.group == gecko["group"] && it.name == gecko["artifact"] && it.moduleVersion.id.version == gecko["version"]
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            artifact.file.inputStream().use { stream ->
+                val buffer = ByteArray(65536); while(true) { val count=stream.read(buffer); if(count<0) break; digest.update(buffer,0,count) }
+            }
+            check(digest.digest().joinToString("") { "%02x".format(it) } == gecko["sha256"]) { "GeckoView artifact checksum mismatch" }
+        }
+    }
+    tasks.matching { it.name == "preCompat${buildType}Build" }.configureEach { dependsOn(check) }
 }
 
 val verifyRuntimeAssets = tasks.register("verifyRuntimeAssets") {
@@ -98,8 +152,10 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.con
 }
 
 afterEvaluate {
-    listOf("Debug", "Release").forEach { variant ->
-        val outputDirectory = layout.buildDirectory.dir("outputs/apk/${variant.lowercase()}")
+    listOf("standard", "compat").forEach { flavor -> listOf("Debug", "Release").forEach { buildType ->
+        val variant = flavor.replaceFirstChar { it.uppercase() } + buildType
+        val outputDirectory = layout.buildDirectory.dir("outputs/apk/$flavor/${buildType.lowercase()}")
+        val descriptorName = if (flavor == "standard") "android-update.json" else "android-update-compat.json"
         val verification = tasks.register<Exec>("verify${variant}Apk") {
             group = "verification"
             dependsOn("package$variant")
@@ -111,17 +167,21 @@ afterEvaluate {
                 val output = (elements.single() as Map<*, *>)["outputFile"] as? String ?: error("APK output file is missing")
                 val apk = directory.resolve(output).canonicalFile
                 check(apk.parentFile == directory && apk.isFile && apk.extension == "apk") { "Invalid APK output file" }
-                commandLine("python", rootProject.file("../../scripts/android-runtime/check-apk.py"), apk)
+                commandLine("python", rootProject.file("../../scripts/android-runtime/check-apk.py"), apk, "--variant", flavor)
             }
         }
-        val descriptor = tasks.register<Exec>("write${variant}UpdateDescriptor") {
+        if (buildType == "Release") {
+          val descriptor = tasks.register<Exec>("write${variant}UpdateDescriptor") {
             dependsOn(verification)
             inputs.file(outputDirectory.map { it.file("output-metadata.json") })
-            outputs.file(outputDirectory.map { it.file("android-update.json") })
+            outputs.file(outputDirectory.map { it.file(descriptorName) })
             outputs.upToDateWhen { false }
             commandLine("node", rootProject.file("../../scripts/android-runtime/create-update-descriptor.mjs"),
-                outputDirectory.get().file("output-metadata.json").asFile, outputDirectory.get().file("android-update.json").asFile)
+                outputDirectory.get().file("output-metadata.json").asFile, outputDirectory.get().file(descriptorName).asFile, flavor)
+          }
+          tasks.named("assemble$variant").configure { finalizedBy(descriptor) }
+        } else {
+          tasks.named("assemble$variant").configure { finalizedBy(verification) }
         }
-        tasks.named("assemble$variant").configure { finalizedBy(descriptor) }
-    }
+    } }
 }

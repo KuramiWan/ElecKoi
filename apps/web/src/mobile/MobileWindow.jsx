@@ -5,7 +5,7 @@ import { useChatClient } from '../app/hooks/useChatClient.js';
 import { useWindowAppearance } from '../app/hooks/useWindowAppearance.js';
 import { AppToast } from '../ui/ui/AppToast.jsx';
 import { ChatBackgroundModal, HistoryModal } from '../modules/chat/index.js';
-import { useAppUpdates } from '../modules/updates/index.js';
+import { AppUpdateController, useAppUpdates } from '../modules/updates/index.js';
 import { MobileDialog, MobileHeader } from './MobileChrome.jsx';
 import { SidebarContent } from '../app/windows/shell/components/SidebarContent.jsx';
 import { useMobileDrawerMotion } from './useMobileDrawerMotion.js';
@@ -242,6 +242,7 @@ export function MobileWindow(props) {
         <div className="mobile-drawer-scrim" aria-hidden="true" />
       </div>}
       <AppToast notice={chat.notice} onDismiss={chat.dismissNotice} />
+      <AppUpdateController updates={appUpdates} />
       <HistoryModal open={chat.historyOpen} sessions={chat.sessions} sessionId={chat.sessionId} chatCharacter={chat.chatCharacter} conversationModel={props.conversations}
         onClose={chat.closeHistory} onLoadChat={chat.loadChat} onDeleteChat={chat.removeHistoryChat} onHistoryPolicyChange={() => chat.refreshSessionsOnly({ keepSection: true })} />
       <ChatBackgroundModal open={backgroundOpen} character={chat.chatBackgroundCharacter} persona={chat.chatPersona} messages={chat.messages} chatDisplay={appearance.chatDisplay}

@@ -19,10 +19,9 @@ import android.webkit.CookieManager;
 import android.widget.*;
 import android.view.*;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.webkit.ScriptHandler;
-import androidx.webkit.WebViewCompat;
-import androidx.webkit.WebViewFeature;
 import org.json.JSONObject;
+import org.json.JSONArray;
+import java.util.function.Consumer;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -34,7 +33,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private final ExecutorService files = Executors.newSingleThreadExecutor();
     private HostRuntimeService runtime;
     private boolean bound;
-    private WebView web;
+    private BrowserSurface web;
     private boolean imeVisible;
     private boolean bottomButtonNavigation;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -60,14 +59,13 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private int appearanceForeground = Color.rgb(22, 22, 22);
     private int appearanceBorder = Color.rgb(184, 184, 184);
     private AlertDialog diagnosticsDialog;
-    private ValueCallback<Uri[]> fileChoice;
+    private Consumer<Uri[]> fileChoice;
     private PendingSave pendingSave;
     private String platformSource;
-    private ScriptHandler platformDocumentScript;
     private SystemSpeech systemSpeech;
     private AppUpdates updates;
     private final AppUpdates.Listener updateListener = snapshot -> ui.post(() -> {
-        if (web != null && sameHost(web.getUrl())) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('eleckoi:updates-changed',{detail:"+snapshot+"}));",null);
+        try { if (web != null && sameHost(web.getUrl())) emitBrowserEvent("eleckoi:updates-changed", new JSONObject(snapshot)); } catch (Exception error) { showFailure(error.toString()); }
     });
     private final ConcurrentMap<String, StagedSave> stagedSaves = new ConcurrentHashMap<>();
     private final ServiceConnection connection = new ServiceConnection() {
@@ -151,81 +149,28 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         startupProgressPanel.addView(firstInstallationNotice);
         showStartupProgress(null, getString(R.string.runtime_starting));
         applyAppearance(false, null);
-        web = new WebView(this); web.setBackgroundColor(appearanceBackground);
         try (InputStream source = getAssets().open("platform-facade.js")) {
             platformSource = RuntimeInstaller.readText(source);
         } catch (IOException error) { throw new IllegalStateException("Packaged platform facade missing", error); }
-        // Both dimensions must be MATCH_PARENT; wrap_content forces Blink's ICB height to zero.
-        web.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        WebSettings settings = web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(true);
-        settings.setMediaPlaybackRequiresUserGesture(false);
-        CookieManager.getInstance().setAcceptCookie(true); CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
-        WebView.setWebContentsDebuggingEnabled((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0);
-        web.addJavascriptInterface(new PlatformBridge(), "ElecKoiAndroid");
-        web.setWebViewClient(new WebViewClient() {
-            @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                if (!"eleckoi-media".equals(request.getUrl().getScheme())) return null;
-                return localMedia(request);
-            }
-            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (!request.isForMainFrame()) return false;
-                if (sameHost(request.getUrl().toString())) return false;
-                openExternal(request.getUrl().toString()); return true;
-            }
-            @Override public void onPageFinished(WebView view, String url) {
-                installPlatform(view, url);
-            }
-            @Override public void onPageCommitVisible(WebView view, String url) {
-                installPlatform(view, url);
-            }
-            private void installPlatform(WebView view, String url) {
-                if (sameHost(url)) {
-                    view.evaluateJavascript(platformSource, null);
-                    applyImeVisibility();
-                    applyNavigationLayout();
-                }
-            }
-            @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) showFailure("页面加载失败：" + error.getDescription());
-            }
-            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-                if (request.isForMainFrame()) showFailure("页面 HTTP " + response.getStatusCode());
-            }
-        });
-        web.setWebChromeClient(new WebChromeClient() {
-            @Override public boolean onConsoleMessage(ConsoleMessage message) {
-                if ((message.messageLevel() == ConsoleMessage.MessageLevel.ERROR || message.messageLevel() == ConsoleMessage.MessageLevel.WARNING)
-                    && sameHost(web.getUrl()) && clientStartupDiagnostics.record(message.messageLevel() + ": " + message.message(), message.sourceId(), message.lineNumber())) {
+        web = new PlatformBrowser(this, platformSource, new PlatformBridge(), new BrowserSurface.Listener() {
+            public boolean sameHost(String url) { return MainActivity.this.sameHost(url); }
+            public void external(String url) { MainActivity.this.openExternal(url); }
+            public void failure(String message) { showFailure(message); }
+            public void documentReady() { applyImeVisibility(); applyNavigationLayout(); }
+            public void console(String level, String message, String source, int line) { ui.post(() -> {
+                if (("ERROR".equalsIgnoreCase(level) || "WARNING".equalsIgnoreCase(level) || "warn".equals(level))
+                    && sameHost(web.getUrl()) && clientStartupDiagnostics.record(level + ": " + message, source, line)) {
                     if (!clientStartupFailure.isEmpty()) status.setText(clientStartupDiagnostics.failure(clientStartupFailure));
                 }
-                return super.onConsoleMessage(message);
+            }); }
+            public void chooseFiles(String[] types, boolean multiple, boolean save, String name, Consumer<Uri[]> completion) {
+                chooseBrowserFiles(types, multiple, save, name, completion);
             }
-            @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams options) {
-                if (fileChoice != null) fileChoice.onReceiveValue(null);
-                fileChoice = callback;
-                Intent choose = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
-                String[] types = options.getAcceptTypes();
-                if (types.length > 0 && !types[0].trim().isEmpty()) choose.putExtra(Intent.EXTRA_MIME_TYPES, types);
-                choose.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, options.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
-                if (options.getMode() == FileChooserParams.MODE_SAVE)
-                    choose = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                        .setType(types.length > 0 && !types[0].trim().isEmpty() ? types[0] : "application/octet-stream").putExtra(Intent.EXTRA_TITLE, options.getFilenameHint());
-                try { startActivityForResult(choose, PICK_FILES); }
-                catch (Exception error) { fileChoice.onReceiveValue(null); fileChoice = null; showFailure("文件选择失败：" + error.getMessage()); }
-                return true;
-            }
+            public void download(String url, String disposition, String mime, InputStream body) { browserDownload(url, disposition, mime, body); }
+            public BrowserSurface.Resource media(Uri url, String method, java.util.Map<String,String> headers) { return localMedia(url, method, headers); }
         });
-        web.setDownloadListener((url, agent, disposition, mime, length) -> {
-            String name = URLUtil.guessFileName(url, disposition, mime);
-            String type = mime == null ? "application/octet-stream" : mime;
-            if (url.startsWith("blob:") || url.startsWith("data:")) {
-                web.evaluateJavascript("window.ElecKoiPlatform.saveUrl(" + JSONObject.quote(name) + "," + JSONObject.quote(url) + "," + JSONObject.quote(type) + ").catch(e=>ElecKoiAndroid.reportError(String(e)));", null);
-                return;
-            }
-            beginSave(new PendingSave("download-" + System.nanoTime(), name, type, null, url, null));
-        });
-        page.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        web.setBackgroundColor(appearanceBackground);
+        page.addView(web.view(), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         FrameLayout.LayoutParams progressLayout = new FrameLayout.LayoutParams(dp(360), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
         startupProgressOverlay.addView(startupProgressPanel, progressLayout);
         // Keep one native indicator visible until the real Client is painted.
@@ -266,14 +211,66 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         }
         startRuntime(HostRuntimeService.START);
     }
+    private JSONObject attributePayload(String name, boolean value) {
+        try { return new JSONObject().put("name", name).put("value", value); }
+        catch (Exception error) { throw new IllegalArgumentException(error); }
+    }
+    private void emitBrowserEvent(String type, Object detail) {
+        try { web.command("emit", new JSONObject().put("event", type).put("detail", detail), null); }
+        catch (Exception error) { showFailure("平台事件发送失败：" + error); }
+    }
+    private void browserCommand(String type, JSONObject payload, Consumer<String> completion) {
+        web.command(type, payload, completion);
+    }
+    private void chooseBrowserFiles(String[] accepted, boolean multiple, boolean save, String name, Consumer<Uri[]> completion) {
+        if (fileChoice != null) fileChoice.accept(null);
+        fileChoice = completion;
+        String[] types = accepted == null ? new String[0] : accepted;
+        Intent choose = new Intent(save ? Intent.ACTION_CREATE_DOCUMENT : Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+        if (types.length > 0 && !types[0].trim().isEmpty()) choose.putExtra(Intent.EXTRA_MIME_TYPES, types);
+        choose.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+        if (save) choose.setType(types.length > 0 && !types[0].trim().isEmpty() ? types[0] : "application/octet-stream").putExtra(Intent.EXTRA_TITLE, name);
+        try { startActivityForResult(choose, PICK_FILES); }
+        catch (Exception error) { fileChoice.accept(null); fileChoice = null; showFailure("文件选择失败：" + error.getMessage()); }
+    }
+    private void browserDownload(String url, String disposition, String mime, InputStream body) {
+        String name = URLUtil.guessFileName(url, disposition, mime);
+        String type = mime == null ? "application/octet-stream" : mime;
+        if (body != null) {
+            long generation = pageLoadGeneration;
+            files.execute(() -> {
+                File staged = null;
+                try (InputStream input = body) {
+                    staged = File.createTempFile("eleckoi-download-", ".bin", getCacheDir());
+                    try (OutputStream output = new FileOutputStream(staged)) { copy(input, output); }
+                    PendingSave save = new PendingSave("download-" + System.nanoTime(), name, type, null, null, staged);
+                    ui.post(() -> {
+                        if (isDestroyed() || generation != pageLoadGeneration) discardSource(save);
+                        else beginSave(save);
+                    });
+                } catch (Exception error) {
+                    if (staged != null && !staged.delete()) android.util.Log.e("ElecKoiDownload", "Download staging cleanup failed");
+                    showFailure("文件下载失败：" + error);
+                }
+            });
+            return;
+        }
+        if (url.startsWith("blob:") || url.startsWith("data:")) {
+            try { web.command("download", new JSONObject().put("name", name).put("url", url).put("mime", type), null); }
+            catch (Exception error) { showFailure("文件下载失败：" + error); }
+            return;
+        }
+        beginSave(new PendingSave("download-" + System.nanoTime(), name, type, null, url, null));
+    }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void applyImeVisibility() {
         if (web == null || !sameHost(web.getUrl())) return;
-        web.evaluateJavascript("document.documentElement?.toggleAttribute('data-eleckoi-ime-visible'," + imeVisible + ");", null);
+        browserCommand("attribute", attributePayload("data-eleckoi-ime-visible", imeVisible), null);
     }
     private void applyNavigationLayout() {
         if (web == null || !sameHost(web.getUrl())) return;
-        web.evaluateJavascript("document.documentElement?.toggleAttribute('data-eleckoi-button-navigation'," + bottomButtonNavigation + ");", null);
+        browserCommand("attribute", attributePayload("data-eleckoi-button-navigation", bottomButtonNavigation), null);
     }
     private GradientDrawable panelButtonBackground(boolean primary) {
         GradientDrawable drawable = new GradientDrawable(); drawable.setCornerRadius(dp(10));
@@ -398,32 +395,20 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         loadedUrl = value;
         clientReadyUrl = ""; pageStartedAt = SystemClock.elapsedRealtime();
         clientStartupFailure = "";
-        android.content.pm.PackageInfo webViewProvider = WebView.getCurrentWebViewPackage();
-        clientStartupDiagnostics.begin(webViewProvider == null ? "unknown" : webViewProvider.packageName + " " + webViewProvider.versionName,
-            web.getSettings().getUserAgentString());
+        clientStartupDiagnostics.begin(web.identity(), web.userAgent());
         runtimePanel.setVisibility(View.GONE);
         showStartupProgress(null, getString(R.string.runtime_page_loading));
         if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
         pageTimeout = () -> { if (clientReadyUrl.isEmpty()) showFailure("页面启动超时，请重试或查看错误。"); };
         ui.postDelayed(pageTimeout, 120_000);
-        if (platformDocumentScript != null) { platformDocumentScript.remove(); platformDocumentScript = null; }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            Uri url = Uri.parse(value);
-            String origin = url.getScheme() + "://" + url.getEncodedAuthority();
-            platformDocumentScript = WebViewCompat.addDocumentStartJavaScript(web, platformSource, java.util.Collections.singleton(origin));
-        }
         files.execute(() -> {
             try {
                 String cookie = HostPageHandshake.verify(new URL(value));
-                ui.post(() -> HostPageCookies.install(new HostPageCookies.Store() {
-                    @Override public String get(String url) { return CookieManager.getInstance().getCookie(url); }
-                    @Override public void set(String url, String header, HostPageCookies.Completion completion) {
-                        CookieManager.getInstance().setCookie(url, header, completion::complete);
-                    }
-                }, value, cookie, () -> web != null && generation == pageLoadGeneration, () -> {
-                    CookieManager.getInstance().flush();
-                    web.loadUrl(value);
-                }, error -> showFailure("页面认证失败：" + error)));
+                ui.post(() -> {
+                    if (web == null || generation != pageLoadGeneration) return;
+                    web.loadAuthenticated(value, cookie, () -> web != null && generation == pageLoadGeneration,
+                        error -> showFailure("页面认证失败：" + error));
+                });
             } catch (IOException error) {
                 ui.post(() -> { if (web != null && generation == pageLoadGeneration) showFailure("页面认证失败：" + error.getMessage()); });
             }
@@ -456,19 +441,19 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             return actual.getScheme().equals(expected.getScheme()) && actual.getHost().equals(expected.getHost()) && actual.getPort() == expected.getPort();
         } catch (Exception error) { return false; }
     }
-    private WebResourceResponse localMedia(WebResourceRequest request) {
+    private BrowserSurface.Resource localMedia(Uri mediaUrl, String method, java.util.Map<String,String> requestHeaders) {
         HttpURLConnection connection = null;
         try {
             String activeHost = loadedUrl;
-            if (activeHost.isEmpty() || !"GET".equals(request.getMethod())) throw new IOException("Host is not ready for media");
+            if (activeHost.isEmpty() || !"GET".equals(method)) throw new IOException("Host is not ready for media");
             Uri route = Uri.parse(activeHost).buildUpon().path("/eleckoi/media/asset").clearQuery()
-                .appendQueryParameter("reference", request.getUrl().toString()).build();
+                .appendQueryParameter("reference", mediaUrl.toString()).build();
             connection = (HttpURLConnection) new URL(route.toString()).openConnection();
             connection.setConnectTimeout(10_000); connection.setReadTimeout(30_000);
             connection.setInstanceFollowRedirects(false);
-            String cookie = CookieManager.getInstance().getCookie(activeHost);
+            String cookie = web.cookies(activeHost);
             if (cookie != null) connection.setRequestProperty("Cookie", cookie);
-            String range = request.getRequestHeaders().get("Range");
+            String range = requestHeaders.get("Range");
             if (range != null) connection.setRequestProperty("Range", range);
             int code = connection.getResponseCode();
             java.util.Map<String, String> headers = new java.util.HashMap<>();
@@ -483,11 +468,11 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             };
             String type = connection.getContentType();
             if (type == null) type = "application/octet-stream";
-            return new WebResourceResponse(type.split(";", 2)[0], null, code, connection.getResponseMessage(), headers, stream);
+            return new BrowserSurface.Resource(type.split(";", 2)[0], code, connection.getResponseMessage(), headers, stream);
         } catch (Exception error) {
             if (connection != null) connection.disconnect();
             android.util.Log.e("ElecKoiMedia", "Local media request failed", error);
-            return new WebResourceResponse("text/plain", "UTF-8", 502, "Media unavailable", java.util.Collections.emptyMap(),
+            return new BrowserSurface.Resource("text/plain", 502, "Media unavailable", java.util.Collections.emptyMap(),
                 new ByteArrayInputStream("Local media request failed".getBytes(StandardCharsets.UTF_8)));
         }
     }
@@ -506,12 +491,12 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
         if (requestCode == PICK_FILES && fileChoice != null) {
-            Uri[] selected = WebChromeClient.FileChooserParams.parseResult(resultCode, intent);
+            Uri[] selected = resultCode == RESULT_OK && intent != null && intent.getData() != null ? new Uri[]{intent.getData()} : null;
             if (intent != null && intent.getClipData() != null && resultCode == RESULT_OK) {
                 ClipData clip = intent.getClipData(); selected = new Uri[clip.getItemCount()];
                 for (int i = 0; i < selected.length; i++) selected[i] = clip.getItemAt(i).getUri();
             }
-            fileChoice.onReceiveValue(selected); fileChoice = null;
+            fileChoice.accept(selected); fileChoice = null;
         }
         if (requestCode == SAVE_FILE && pendingSave != null) {
             PendingSave request = pendingSave; pendingSave = null;
@@ -535,7 +520,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private void download(String url, OutputStream output) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(30_000); connection.setReadTimeout(60_000);
-        String cookies = CookieManager.getInstance().getCookie(url); if (cookies != null) connection.setRequestProperty("Cookie", cookies);
+        String cookies = sameHost(url) ? web.cookies(url) : null; if (cookies != null) connection.setRequestProperty("Cookie", cookies);
         try {
             if (connection.getResponseCode() != 200) throw new IOException("下载 HTTP " + connection.getResponseCode());
             try (InputStream input = connection.getInputStream()) { copy(input, output); }
@@ -557,12 +542,35 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         runOnUiThread(() -> {
             if (web == null) return;
             try { JSONObject event = new JSONObject().put("id", id).put("success", success).put("result", result);
-                web.evaluateJavascript("window.dispatchEvent(new CustomEvent('eleckoi:platform-result',{detail:" + event + "}));", null);
+                emitBrowserEvent("eleckoi:platform-result", event);
             } catch (Exception error) { showFailure("平台结果发送失败：" + error); }
         });
     }
-    private final class PlatformBridge {
-        @JavascriptInterface public void clientReady(String url) { runOnUiThread(() -> {
+    private final class PlatformBridge implements BrowserSurface.Bridge {
+        public Object invoke(String method, JSONArray a) throws Exception {
+            switch (method) {
+                case "clientReady": clientReady(a.getString(0)); return null;
+                case "clientFailed": clientFailed(a.getString(0), a.getString(1)); return null;
+                case "tts": tts(a.getString(0), a.getString(1), a.getString(2)); return null;
+                case "readTtsAudio": return readTtsAudio(a.getString(0), a.getLong(1), a.getInt(2));
+                case "releaseTtsAudio": return releaseTtsAudio(a.getString(0));
+                case "saveText": saveText(a.getString(0), a.getString(1), a.getString(2), a.getString(3)); return null;
+                case "beginFile": return beginFile(a.getString(0), a.getString(1), a.getString(2));
+                case "writeFile": return writeFile(a.getString(0), a.getString(1));
+                case "finishFile": return finishFile(a.getString(0));
+                case "abortFile": return abortFile(a.getString(0));
+                case "reportError": reportError(a.getString(0)); return null;
+                case "openExternal": openExternal(a.getString(0)); return null;
+                case "notificationSettings": notificationSettings(); return null;
+                case "updateStatus": return updateStatus();
+                case "checkUpdates": checkUpdates(a.getString(0)); return null;
+                case "downloadUpdate": downloadUpdate(a.getString(0)); return null;
+                case "appearance": appearance(a.getString(0), a.getString(1)); return null;
+                case "version": return version();
+                default: throw new IllegalArgumentException("Unsupported Android platform operation: " + method);
+            }
+        }
+        public void clientReady(String url) { runOnUiThread(() -> {
             if (web == null || isFinishing() || !sameHost(url) || !sameHost(web.getUrl()) || !clientReadyUrl.isEmpty()) return;
             clientReadyUrl = loadedUrl;
             clientStartupDiagnostics.complete();
@@ -573,16 +581,16 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             completeStartupProgress();
             android.util.Log.i("ElecKoiStartup", "Web client rendered in " + (SystemClock.elapsedRealtime() - pageStartedAt) + " ms");
         }); }
-        @JavascriptInterface public void clientFailed(String url, String message) { runOnUiThread(() -> {
+        public void clientFailed(String url, String message) { runOnUiThread(() -> {
             if (web != null && sameHost(url) && sameHost(web.getUrl())) showFailure(message);
         }); }
-        @JavascriptInterface public void tts(String id, String method, String json) { runOnUiThread(() -> systemSpeech.invoke(id,method,json)); }
-        @JavascriptInterface public String readTtsAudio(String token, long offset, int count) { return systemSpeech.read(token,offset,count); }
-        @JavascriptInterface public String releaseTtsAudio(String token) { return systemSpeech.release(token); }
-        @JavascriptInterface public void saveText(String id, String name, String mime, String text) {
+        public void tts(String id, String method, String json) { runOnUiThread(() -> systemSpeech.invoke(id,method,json)); }
+        public String readTtsAudio(String token, long offset, int count) { return systemSpeech.read(token,offset,count); }
+        public String releaseTtsAudio(String token) { return systemSpeech.release(token); }
+        public void saveText(String id, String name, String mime, String text) {
             runOnUiThread(() -> { if (sameHost(web.getUrl())) beginSave(new PendingSave(id, name, mime, text, null, null)); else platformResult(id, false, "Host page not active"); });
         }
-        @JavascriptInterface public String beginFile(String id, String name, String mime) {
+        public String beginFile(String id, String name, String mime) {
             try {
                 File source = File.createTempFile("eleckoi-export-", ".bin", getCacheDir());
                 String token = java.util.UUID.randomUUID().toString();
@@ -590,13 +598,13 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
                 return bridgeResult(true, token);
             } catch (Exception error) { return bridgeResult(false, error.toString()); }
         }
-        @JavascriptInterface public String writeFile(String token, String base64) {
+        public String writeFile(String token, String base64) {
             StagedSave save = stagedSaves.get(token);
             if (save == null) return bridgeResult(false, "Unknown file transfer: " + token);
             try { save.output.write(Base64.decode(base64, Base64.DEFAULT)); return bridgeResult(true, ""); }
             catch (Exception error) { abortFile(token); return bridgeResult(false, error.toString()); }
         }
-        @JavascriptInterface public String finishFile(String token) {
+        public String finishFile(String token) {
             StagedSave save = stagedSaves.remove(token);
             if (save == null) return bridgeResult(false, "Unknown file transfer: " + token);
             try {
@@ -605,30 +613,32 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
                 return bridgeResult(true, "");
             } catch (Exception error) { discardSource(save.request); return bridgeResult(false, error.toString()); }
         }
-        @JavascriptInterface public String abortFile(String token) {
+        public String abortFile(String token) {
             StagedSave save = stagedSaves.remove(token);
             if (save == null) return bridgeResult(true, "");
             try { save.output.close(); discardSource(save.request); return bridgeResult(true, ""); }
             catch (Exception error) { discardSource(save.request); return bridgeResult(false, error.toString()); }
         }
-        @JavascriptInterface public void reportError(String message) { runOnUiThread(() -> showFailure("文件导出失败：" + message)); }
-        @JavascriptInterface public void openExternal(String url) { runOnUiThread(() -> MainActivity.this.openExternal(url)); }
-        @JavascriptInterface public void notificationSettings() { runOnUiThread(MainActivity.this::notificationSettings); }
-        @JavascriptInterface public String updateStatus() { return updates.status(); }
-        @JavascriptInterface public void checkUpdates(String id) {
+        public void reportError(String message) { runOnUiThread(() -> showFailure("文件导出失败：" + message)); }
+        public void openExternal(String url) { runOnUiThread(() -> MainActivity.this.openExternal(url)); }
+        public void notificationSettings() { runOnUiThread(MainActivity.this::notificationSettings); }
+        public String updateStatus() { return updates.status(); }
+        public void checkUpdates(String id) {
             updates.check(true,success -> { try { platformResult(id,true,new JSONObject(updates.status())); } catch(Exception error) { platformResult(id,false,error.toString()); } });
         }
-        @JavascriptInterface public void downloadUpdate(String id) { runOnUiThread(() -> {
+        public void downloadUpdate(String id) { runOnUiThread(() -> {
             try { startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(updates.downloadUrl()))); platformResult(id,true,new JSONObject(updates.status())); }
             catch(Exception error) { platformResult(id,false,error.toString()); }
         }); }
-        @JavascriptInterface public void appearance(String mode, String surface) { runOnUiThread(() -> applyAppearance("dark".equals(mode), surface)); }
-        @JavascriptInterface public String version() { return "1"; }
+        public void appearance(String mode, String surface) { runOnUiThread(() -> applyAppearance("dark".equals(mode), surface)); }
+        public String version() { return "1"; }
     }
     @Override public boolean onCreateOptionsMenu(Menu menu) { menu.add("Host 运行详情").setOnMenuItemClickListener(item -> { showDiagnostics(); return true; }); return true; }
     @Override public void onBackPressed() {
-        web.evaluateJavascript("!window.dispatchEvent(new CustomEvent('eleckoi:platform-back',{cancelable:true}))", consumed -> {
+        if (web == null || clientReadyUrl.isEmpty()) { super.onBackPressed(); return; }
+        browserCommand("back", new JSONObject(), consumed -> {
             if ("true".equals(consumed)) return;
+            if (!"false".equals(consumed)) { showFailure("浏览器未返回有效的导航结果"); return; }
             if (web.canGoBack()) web.goBack();
             else MainActivity.super.onBackPressed();
         });
@@ -682,12 +692,11 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         hideStartupProgress();
         if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
         if (runtime != null) runtime.removeObserver(this); if (bound) unbindService(connection);
-        if (fileChoice != null) fileChoice.onReceiveValue(null);
+        if (fileChoice != null) fileChoice.accept(null);
         if (pendingSave != null) { discardSource(pendingSave); platformResult(pendingSave.requestId, false, "Activity closed while saving"); }
         for (String token : stagedSaves.keySet()) new PlatformBridge().abortFile(token);
         systemSpeech.close();
-        if (platformDocumentScript != null) platformDocumentScript.remove();
-        web.removeJavascriptInterface("ElecKoiAndroid"); web.destroy(); web=null;
+        web.destroy(); web=null;
         files.shutdown(); super.onDestroy();
     }
 }

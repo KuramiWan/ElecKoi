@@ -147,6 +147,26 @@ describe('desktop updater', () => {
     service.dispose()
   })
 
+  it.each([
+    [Object.assign(new Error('Missing updater configuration'), { code: 'ENOENT', path: 'resources/app-update.yml' }),
+      '安装包缺少更新配置（app-update.yml），请重新安装修复后的版本。'],
+    [new Error('HTTP 403: API rate limit exceeded'), '更新失败：HTTP 403: API rate limit exceeded'],
+    [Object.assign(new Error('Missing unrelated file'), { code: 'ENOENT', path: 'resources/other.yml' }),
+      '更新失败：Missing unrelated file']
+  ])('keeps the diagnosed update failure visible: %s', async (failure, message) => {
+    const updater = new FakeUpdater()
+    updater.checkForUpdates.mockRejectedValueOnce(failure)
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    const service = new UpdateService({ updater: updater as unknown as AppUpdater, currentVersion: '1.2.3',
+      enabled: true, disabledMessage: '', prepareInstall: async () => true, releaseInstall: async () => {},
+      publish: vi.fn(), logger })
+    service.start()
+    try {
+      expect(await service.check()).toMatchObject({ phase: 'error', message })
+      expect(logger.warn).toHaveBeenCalledWith({ err: failure }, 'ElecKoi 桌面更新失败')
+    } finally { service.dispose() }
+  })
+
   it('ignores a delayed download failure after disposal', async () => {
     const updater = new FakeUpdater()
     let rejectDownload: ((error: Error) => void) | undefined

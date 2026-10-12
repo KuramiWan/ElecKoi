@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { DotsThree, PushPin, Trash } from '@phosphor-icons/react';
 import { MessagesPage } from '../../../../packages/client/features/dsh-client-conversations/src/page.jsx';
 import { useMainPageView } from '../app/windows/MainPageContext.jsx';
+import { resolveChatWallpaper } from '../modules/appearance/index.js';
 import { characterAvatar, characterCover, characterName } from '../utils/characterDisplay.js';
 import { SidebarCharacterArtwork } from '../ui/ui/SidebarCharacterArtwork.jsx';
 import { MobileDialog, MobileHeader, MobileState, useMobileScroll } from './MobileChrome.jsx';
@@ -19,9 +20,13 @@ export function MobileMessagesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const characters = useMemo(() => new Map(chat.characters.items.map(item => [item.id, item])), [chat.characters.items]);
-  if (view.route.kind === 'conversation') return <MobileConversationPage>
-    <MessagesPage submitOnEnter={false} headerLeading={<button type="button" className="mobile-conversation-back" aria-label="返回" onClick={view.goBack}><MobileBackIcon /></button>} />
-  </MobileConversationPage>;
+  if (view.route.kind === 'conversation') {
+    const wallpaper = resolveChatWallpaper({ character: chat.chatBackgroundCharacter, persona: chat.chatPersona,
+      globalWallpaper: view.appearance.globalChatWallpaper });
+    return <MobileConversationPage wallpaper={chat.sessionId || chat.chatCharacter?.character_id ? wallpaper : undefined}>
+      <MessagesPage submitOnEnter={false} headerLeading={<button type="button" className="mobile-conversation-back" aria-label="返回" onClick={view.goBack}><MobileBackIcon /></button>} />
+    </MobileConversationPage>;
+  }
   async function run(action) {
     setBusy(true); setError('');
     try { await action(); setMenu(null); }

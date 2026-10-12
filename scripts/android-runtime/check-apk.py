@@ -15,6 +15,7 @@ repo = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
 parser.add_argument("apk", type=Path)
 parser.add_argument("--aapt2", type=Path)
+parser.add_argument("--variant", choices=["standard", "compat"], required=True)
 args = parser.parse_args()
 
 
@@ -91,6 +92,22 @@ with zipfile.ZipFile(args.apk) as apk:
             raise ValueError(f"APK Debug diagnostic differs from its prepared helper: {name}")
         native_entries.add(entry)
     packaged_native = {name for name in apk.namelist() if name.startswith("lib/") and not name.endswith("/")}
+    gecko = json.loads((repo / "apps/android/geckoview.lock.json").read_text(encoding="utf-8"))
+    if args.variant == "compat":
+        for library in gecko["native"]:
+            value = apk.read(library["path"])
+            if len(value) != library["bytes"] or hashlib.sha256(value).hexdigest() != library["sha256"]:
+                raise ValueError(f"APK Gecko library differs from pinned artifact: {library['path']}")
+            native_entries.add(library["path"])
+        if json.loads(apk.read("assets/eleckoi-browser/manifest.json"))["browser_specific_settings"]["gecko"]["id"] != "android-browser@eleckoi.app":
+            raise ValueError("APK Gecko extension identity mismatch")
+        if apk.read("assets/eleckoi-browser/platform-facade.js") != apk.read("assets/platform-facade.js"):
+            raise ValueError("APK Gecko facade differs from the shared platform facade")
+        for license_file in (repo / "apps/android/app/src/compat/assets/licenses/geckoview").iterdir():
+            if license_file.is_file() and apk.read("assets/licenses/geckoview/" + license_file.name) != license_file.read_bytes():
+                raise ValueError(f"APK Gecko license differs from the declared source: {license_file.name}")
+    elif any(name.startswith("assets/eleckoi-browser/") for name in apk.namelist()):
+        raise ValueError("Standard APK unexpectedly contains the Gecko browser extension")
     if packaged_native != native_entries:
         raise ValueError(f"APK native files differ from the declared runtime: {sorted(packaged_native ^ native_entries)}")
     if icon_path not in apk.namelist():

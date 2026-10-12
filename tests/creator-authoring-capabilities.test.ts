@@ -23,6 +23,23 @@ async function fixture() {
 }
 
 describe('Creator authoring matches the native setting, schema, script and regex contracts', { timeout: 30_000 }, () => {
+  it('creates a blank character without a selected target and preserves existing character identities', async () => {
+    const f = await fixture(), before = f.data.readCharacters()
+    const create = f.operations.find(item => item.id === 'character.create')!
+    expect(create.target).toBe('new-character')
+    const created = create.execute('', { name: '合成新角色', group: '合成新分组' }) as { id: string }
+    const after = f.data.readCharacters()
+    expect(after.items).toHaveLength(before.items.length + 1)
+    expect(after.active_character_id).toBe(before.active_character_id)
+    expect(after.items.find(item => item.id === created.id)).toMatchObject({ name: '合成新角色', group: '合成新分组', avatar: '',
+      persona: { opening: '', assistant_avatar: '', assistant_square: '', assistant_cover: '', show_opening: false } })
+    expect(after.items.filter(item => item.id !== created.id)).toEqual(before.items)
+    for (const input of [{ name: '' }, { name: '   ' }, { name: '合成新角色', characterId: f.characterId }, {}]) {
+      expect(() => create.execute('', input)).toThrow()
+    }
+    expect(f.data.readCharacters()).toEqual(after)
+    expect(() => f.operations.find(item => item.id === 'character.update')!.execute('', { name: '不能改到其他角色' })).toThrow('重新选择角色')
+  })
   it('advertises two reading policies and refuses executable required/reference entries without saving', async () => {
     const f = await fixture()
     const schema = f.operations.find(item => item.id === 'settings.create')!.inputSchema as any

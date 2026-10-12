@@ -7,10 +7,12 @@ import { useMobileScroll } from '../apps/web/src/mobile/MobileChrome.jsx';
 import { MobileWindow } from '../apps/web/src/mobile/MobileWindow.jsx';
 import { UnsavedChangesDialog } from '../apps/web/src/ui/ui/UnsavedChangesDialog.jsx';
 
-const fixture = vi.hoisted(() => ({ chat: null, dialog: false, onCancel: null }));
+const fixture = vi.hoisted(() => ({ chat: null, dialog: false, onCancel: null, updates: null }));
 vi.mock('../apps/web/src/app/hooks/useChatClient.js', () => ({ useChatClient: () => fixture.chat }));
 vi.mock('../apps/web/src/app/hooks/useWindowAppearance.js', () => ({ useWindowAppearance: () => ({}) }));
-vi.mock('../apps/web/src/modules/updates/index.js', () => ({ useAppUpdates: () => ({}) }));
+vi.mock('../apps/web/src/modules/updates/index.js', async importOriginal => ({
+  ...await importOriginal(), useAppUpdates: () => fixture.updates,
+}));
 vi.mock('../apps/web/src/modules/chat/index.js', () => ({ ChatBackgroundModal: () => null, HistoryModal: () => null }));
 vi.mock('../apps/web/src/ui/ui/AppToast.jsx', () => ({ AppToast: () => null }));
 
@@ -44,6 +46,7 @@ async function mount() {
 async function click(label) { await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === label || button.getAttribute('aria-label') === label).click()); }
 beforeEach(() => {
   catalogs = {}; selected = 'messages'; listeners = new Set(); guard = null; rightbar = undefined; fixture.dialog = false;
+  fixture.updates = { status: null, download: vi.fn(), install: vi.fn() };
   fixture.onCancel = vi.fn(() => { fixture.dialog = false; root.render(<Harness />); });
   const sidebar = { shown: false };
   navigation = {
@@ -69,6 +72,23 @@ afterEach(async () => {
   else delete HTMLElement.prototype.animate;
 });
 describe('Android independent conversation navigation', () => {
+  it('shows an automatic update from the mobile root and opens the Android download action', async () => {
+    vi.stubGlobal('__ELECKOI_CLIENT_PLATFORM__', { kind: 'android' });
+    await mount();
+    expect(document.querySelector('.app-update-dialog')).toBeNull();
+    fixture.updates.status = { phase: 'available', availableVersion: '1.2.3', currentVersion: '1.2.2',
+      manualCheck: false, releaseUrl: 'https://github.com/eleckoi/ElecKoi/releases/tag/v1.2.3', releaseNotes: '合成更新说明' };
+    await act(async () => root.render(<Harness />));
+    expect(document.querySelector('.app-update-dialog').textContent).toContain('v1.2.3');
+    expect(document.querySelector('.app-update-release-link').href).toBe(fixture.updates.status.releaseUrl);
+    await act(async () => document.querySelector('.app-update-actions .is-primary').click());
+    expect(fixture.updates.download).toHaveBeenCalledOnce();
+    expect(fixture.updates.install).not.toHaveBeenCalled();
+    fixture.updates.status = { ...fixture.updates.status, phase: 'error', message: '合成网络错误' };
+    await act(async () => root.render(<Harness />));
+    expect(document.querySelector('.app-update-dialog')).toBeNull();
+  });
+
   it('searches all three catalogs without filtering the source page and returns through the source route', async () => {
     const items = [{ id: 'character-a', name: '合成对象甲', persona: {} }];
     const modelSnapshot = { status: 'ready', error: '', configs: [

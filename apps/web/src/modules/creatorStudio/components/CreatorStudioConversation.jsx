@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives';
 import { DshAgentPresetIcon } from '../../../ui/icons/dshComposerIcons.jsx';
-import { RoleplayInputMenu, ChatModelPicker, AgentToolsDialog } from '../../chat/index.js';
+import { RoleplayInputMenu, AgentToolsDialog } from '../../chat/index.js';
+import { ModelPicker } from '../../models/index.js';
 import { openPresetManagerWindow } from '../../presets/index.js';
 
 /** Desktop assembly of the shared Studio Session with native views and resident input. */
@@ -45,7 +46,8 @@ export function CreatorStudioConversation({ model, editing = false, models, pres
   const menu = <RoleplayInputMenu purpose="creator" isSending={session.running} onCreateChat={onCreate} onSelectCharacter={onSelectCharacter}
     onOpenTools={() => setTools(true)} onEnterDeleteMode={showMessages} canDeleteMessages={!session.blank}
     onRegenerate={regenerate} regenerateTargetMessageId={session.blank ? null : sessionId} />;
-  const modelPicker = <ChatModelPicker configs={configs.configs} selectedConfigId={selectedModel?.provider} selectedModel={selectedModel?.model}
+  const modelPicker = <ModelPicker configs={configs.configs} selectedConfigId={selectedModel?.provider} selectedModel={selectedModel?.model}
+    onSaveModelConfig={config => models.save(config)}
     onLoadModels={config => models.discover(config)} onNotify={notify} onSelect={selection => model.selectModel({ provider: selection.configId, model: selection.model })} />;
   const resident = renderSlot('eleckoi.creator-studio.composer.bar', { variant: 'composer', placeholder: '输入消息', leadingAccessory: menu, modelAccessory: modelPicker });
   const inputSeat = renderSlotChain('eleckoi.creator-studio.composer', { sessionId, session, pendingInteraction }, { fallback: resident, overlay: true });

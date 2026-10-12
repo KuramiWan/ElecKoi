@@ -11,10 +11,12 @@ import { inspectDeviceWebView } from './device-webview.mjs'
 
 const { values } = parseArgs({ options: {
   adb: { type: 'string' }, serial: { type: 'string' }, install: { type: 'string' },
+  'package-id': { type: 'string', default: 'com.eleckoi.app.dev' },
+  variant: { type: 'string', default: 'standard' },
   'business-probe': { type: 'boolean', default: false }, help: { type: 'boolean' }
 } })
 if (values.help) {
-  console.log('node scripts/android-runtime/probe-device.mjs [--adb PATH] [--serial SERIAL] [--install APK] [--business-probe]')
+  console.log('node scripts/android-runtime/probe-device.mjs [--adb PATH] [--serial SERIAL] [--package-id ID] [--variant standard] [--install APK] [--business-probe]')
   console.log('Default: start the installed debug Android app and verify its actual ARM64 Host, authenticated Remote and rendered WebView.')
   console.log('--business-probe requires an empty conversation list; temporarily selects a synthetic model, tests send/cancel/process restart, then removes its test data and restores the original selection.')
   console.log('WebView startup and authentication are inspected through its actual debugger. Touch interactions require separate checks. No desktop Host is launched.')
@@ -38,11 +40,13 @@ assert.equal(target.state, 'device', 'The selected Android device must be online
 const adb = args => invokeAdb(['-s', target.serial, ...args])
 const abis = (await adb(['shell', 'getprop', 'ro.product.cpu.abilist'])).split(',')
 assert(abis.includes('arm64-v8a'), 'Device must support arm64-v8a; no emulator or desktop runtime is substituted')
-const packageId = 'com.eleckoi.app'
-const component = `${packageId}/.MainActivity`
+const packageId = values['package-id']
+assert(['com.eleckoi.app', 'com.eleckoi.app.dev'].includes(packageId), 'Unsupported Android application ID')
+assert.equal(values.variant, 'standard', 'This probe requires the system WebView debugging protocol; GeckoView needs its browser integration checks')
+const component = `${packageId}/com.eleckoi.app.MainActivity`
 if (values.install) {
   const apk = resolve(values.install)
-  const checked = await runFile(process.env.PYTHON || 'python', [join(repo, 'scripts/android-runtime/check-apk.py'), apk], { windowsHide: true, timeout: 120_000 })
+  const checked = await runFile(process.env.PYTHON || 'python', [join(repo, 'scripts/android-runtime/check-apk.py'), apk, '--variant', values.variant], { windowsHide: true, timeout: 120_000 })
   console.log(checked.stdout.trim())
   assert.match(await adb(['install', '-r', apk]), /(?:^|\r?\n)Success$/, 'APK installation did not complete successfully')
 }

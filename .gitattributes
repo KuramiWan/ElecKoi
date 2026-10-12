@@ -16,3 +16,4 @@ packages/host/product-api/src/client/cordisApi.generated.ts text eol=lf
 packages/host/product-api/src/client/remoteApi.generated.ts text eol=lf
 # Preserve shipped browser resources, embedded WASM and vendor license bytes.
 packages/client/features/dsh-client-html-resources/assets/** -text -whitespace
+apps/android/app/src/compat/assets/licenses/geckoview/** -text -whitespace

@@ -1,0 +1,12 @@
+{
+  "manifest_version": 2,
+  "name": "ElecKoi Android browser transport",
+  "version": "1.0",
+  "browser_specific_settings": { "gecko": { "id": "android-browser@eleckoi.app" } },
+  "permissions": ["nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons", "cookies", "http://127.0.0.1/*"],
+  "background": { "scripts": ["cookies.js"] },
+  "content_scripts": [
+    { "matches": ["http://127.0.0.1/*"], "js": ["transport.js"], "run_at": "document_start", "world": "ISOLATED" },
+    { "matches": ["http://127.0.0.1/*"], "js": ["page.js", "platform-facade.js"], "run_at": "document_start", "world": "MAIN" }
+  ]
+}

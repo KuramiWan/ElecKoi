@@ -23,8 +23,12 @@ window.__ModuleLoader__.load({
         return result.value
       }
       async refresh() {
+        const generation = this.generation, sessionId = this.snapshot.active?.sessionId
         const items = await this.call('list')
-        this.publish({ items })
+        if (generation !== this.generation) return items
+        const current = this.snapshot.active?.sessionId === sessionId
+          ? items.find(item => item.sessionId === sessionId) : undefined
+        this.publish({ items, ...(current ? { active: { sessionId: current.sessionId, presetId: current.presetId, characterId: current.characterId } } : {}) })
         return items
       }
       async acquire(create, value) {

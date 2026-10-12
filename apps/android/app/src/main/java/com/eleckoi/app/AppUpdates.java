@@ -36,12 +36,13 @@ final class AppUpdates {
             PackageInfo info=context.getPackageManager().getPackageInfo(context.getPackageName(),0);
             version=info.versionName; installedCode=Build.VERSION.SDK_INT>=28?info.getLongVersionCode():info.versionCode;
             JSONObject cached=new JSONObject(preferences.getString("latest","{}"));
-            state=cached.optLong("versionCode",0)>installedCode?cached:empty("idle",null);
+            state=!BuildConfig.DEBUG && BuildConfig.BROWSER_VARIANT.equals(cached.optString("variant")) && cached.optLong("versionCode",0)>installedCode?cached:empty("idle",null);
             state.put("currentVersion",version);
         } catch(Exception error) { throw new IllegalStateException("无法读取安卓应用版本。",error); }
     }
     void scheduleBackground() {
         JobScheduler scheduler=context.getSystemService(JobScheduler.class);
+        if (BuildConfig.DEBUG) { scheduler.cancel(JOB); return; }
         if (scheduler.getPendingJob(JOB)!=null) return;
         int result=scheduler.schedule(new JobInfo.Builder(JOB,new ComponentName(context,AppUpdateJobService.class))
             .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPeriodic(DAY).setPersisted(true)
@@ -49,6 +50,7 @@ final class AppUpdates {
         if(result!=JobScheduler.RESULT_SUCCESS) Log.e("ElecKoiUpdates","Android update job could not be scheduled");
     }
     void startup() {
+        if (BuildConfig.DEBUG) return;
         long elapsed=System.currentTimeMillis()-preferences.getLong("checkedAt",0);
         if(elapsed>=HOUR || elapsed<0) check(false,null);
     }
@@ -56,6 +58,11 @@ final class AppUpdates {
     void observe(Listener listener) { listeners.add(listener); }
     void removeObserver(Listener listener) { listeners.remove(listener); }
     synchronized Runnable check(boolean manual, Consumer<Boolean> completion) {
+        if (BuildConfig.DEBUG) {
+            publish(empty("idle",manual?"开发版不接收正式版更新，请安装新的开发包。":null));
+            if(completion!=null) completion.accept(true);
+            return () -> {};
+        }
         requestedManual |= manual;
         if(completion!=null) completions.add(completion);
         if(!checking) {
@@ -95,7 +102,7 @@ final class AppUpdates {
         for(Consumer<Boolean> callback:waiting) callback.accept(success);
     }
     private JSONObject available(AppUpdateRelease release) throws Exception {
-        return empty("available",null).put("versionCode",release.versionCode).put("availableVersion",release.versionName)
+        return empty("available",null).put("variant",BuildConfig.BROWSER_VARIANT).put("versionCode",release.versionCode).put("availableVersion",release.versionName)
             .put("releaseName",release.title).put("releaseNotes",release.notes.substring(0,Math.min(4000,release.notes.length())))
             .put("releaseDate",release.publishedAt).put("releaseUrl",release.releaseUrl).put("downloadUrl",release.downloadUrl).put("downloadSizeBytes",release.bytes);
     }
@@ -107,6 +114,7 @@ final class AppUpdates {
     }
     private void publish(JSONObject next) { state=next; for(Listener listener:listeners) listener.changed(next.toString()); }
     String downloadUrl() throws Exception {
+        if(BuildConfig.DEBUG) throw new IllegalStateException("开发版不下载正式版更新。");
         JSONObject current=state;
         if(current.optLong("versionCode",0)<=installedCode) throw new IllegalStateException("没有可下载的安卓更新。");
         String url=current.getString("downloadUrl");

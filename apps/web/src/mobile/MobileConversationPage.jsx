@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { ChatWallpaperLayer } from '../modules/chat/index.js';
 
 const textEditors = '[data-composer-input], .message-inline-editor textarea';
 
 /** Editor focus preserves the DSH caret; only a text press requests the Android IME. */
-export function MobileConversationPage({ children }) {
+export function MobileConversationPage({ children, wallpaper }) {
   const inputModes = useRef(new Map());
   const requestedInput = useRef(null);
   const root = useRef(null);
@@ -61,6 +62,9 @@ export function MobileConversationPage({ children }) {
     }
   }
 
-  return <div ref={root} className="mobile-conversation-page" onPointerDownCapture={selectInputMode}
-    onMouseDownCapture={selectInputMode} onClickCapture={selectInputMode} onFocusCapture={focusInput}>{children}</div>;
+  return <div ref={root} className={`mobile-conversation-page${wallpaper?.image ? ' has-chat-wallpaper' : ''}`} onPointerDownCapture={selectInputMode}
+    onMouseDownCapture={selectInputMode} onClickCapture={selectInputMode} onFocusCapture={focusInput}>
+    <ChatWallpaperLayer wallpaper={wallpaper} />
+    {children}
+  </div>;
 }

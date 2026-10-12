@@ -8,6 +8,7 @@ import { MobileMessagesPage } from '../apps/web/src/mobile/MobileMessagesPage.js
 import { MobileConversationPage } from '../apps/web/src/mobile/MobileConversationPage.jsx';
 import { MessagesPage } from '../packages/client/features/dsh-client-conversations/src/page.jsx';
 import { MessageBubble } from './helpers/officialMarkdown.jsx';
+import { APP_DEFAULT_CHAT_BACKGROUND, CUSTOM_CHAT_BACKGROUND, GLOBAL_CHAT_BACKGROUND } from '../apps/web/src/modules/appearance/preferences/chatWallpaper.js';
 
 globalThis.React = React;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,7 +18,7 @@ function conversationView() {
   const selectView = vi.fn();
   const renderComposer = vi.fn(() => null);
   return {
-    route: { kind: 'conversation' }, goBack,
+    route: { kind: 'conversation' }, goBack, scrollPositions: new Map(),
     appearance: {}, conversations: {},
     presets: { refresh: async () => ({ presets: [], activePresetIds: { roleplay: '', creator: 'synthetic-creator' } }) },
     renderLayout: ({ mainPanel }) => mainPanel,
@@ -62,6 +63,84 @@ describe('Android conversation header', () => {
     expect(markup).not.toContain('mobile-conversation-back');
     expect(markup).not.toContain('aria-label="返回"');
     expect(markup).toContain('对话操作');
+  });
+});
+
+describe('Android conversation wallpaper', () => {
+  const imageA = 'data:image/png;base64,aGVsbG8=';
+  const imageB = 'data:image/png;base64,d29ybGQ=';
+  async function mountWallpaper(view, run) {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const container = document.createElement('div'); document.body.append(container);
+    const root = createRoot(container);
+    const render = () => act(async () => root.render(<MainPageContext.Provider value={view}><MobileMessagesPage /></MainPageContext.Provider>));
+    try { await render(); await run(container, render); }
+    finally { await act(async () => root.unmount()); container.remove(); }
+  }
+
+  it('displays the current character artwork and applies saved custom images without retaining another character background', async () => {
+    const view = conversationView();
+    view.chat.chatBackgroundCharacter = { id: 'character-a', chatBackground: '', chatBackgroundOpacity: 0.42, chatBackgroundBlur: 7, chatBackgroundScrim: 0.18 };
+    view.chat.chatPersona.assistant_cover = imageA;
+    await mountWallpaper(view, async (container, render) => {
+      const backdrop = () => container.querySelector('.mobile-conversation-page > .chat-shell-backdrop');
+      expect(backdrop().querySelector('img').getAttribute('src')).toBe(imageA);
+      expect(backdrop().style.getPropertyValue('--wallpaper-opacity')).toBe('0.42');
+      expect(backdrop().style.getPropertyValue('--wallpaper-blur')).toBe('7px');
+      expect(backdrop().style.getPropertyValue('--wallpaper-scrim')).toBe('0.18');
+      expect(backdrop().getAttribute('aria-hidden')).toBe('true');
+      expect(backdrop().nextElementSibling.classList.contains('chat-panel')).toBe(true);
+      view.chat.chatBackgroundCharacter = { ...view.chat.chatBackgroundCharacter, chatBackground: imageB };
+      await render();
+      expect(backdrop().querySelector('img').getAttribute('src')).toBe(imageB);
+      view.chat.chatBackgroundCharacter = { id: 'character-b', chatBackground: '' };
+      view.chat.chatPersona = { ...view.chat.chatPersona, assistant_cover: imageA };
+      await render();
+      expect(backdrop().querySelector('img').getAttribute('src')).toBe(imageA);
+      expect(backdrop().style.getPropertyValue('--wallpaper-opacity')).toBe('0.72');
+      expect(backdrop().style.getPropertyValue('--wallpaper-blur')).toBe('2px');
+    });
+  });
+
+  it('uses shared wallpaper settings and removes the image in plain or unconfigured modes', async () => {
+    const view = conversationView();
+    view.chat.chatPersona.assistant_cover = imageA;
+    view.chat.chatBackgroundCharacter = { chatBackground: GLOBAL_CHAT_BACKGROUND, chatBackgroundOpacity: 0.8 };
+    view.appearance.globalChatWallpaper = { image: imageB, opacity: 0.34, blur: 5, scrim: 0.63 };
+    await mountWallpaper(view, async (container, render) => {
+      const backdrop = container.querySelector('.chat-shell-backdrop');
+      expect(backdrop.querySelector('img').getAttribute('src')).toBe(imageB);
+      expect(backdrop.style.getPropertyValue('--wallpaper-opacity')).toBe('0.34');
+      expect(backdrop.style.getPropertyValue('--wallpaper-blur')).toBe('5px');
+      expect(backdrop.style.getPropertyValue('--wallpaper-scrim')).toBe('0.63');
+      view.appearance.globalChatWallpaper = { image: '' };
+      await render();
+      expect(container.querySelector('.chat-shell-backdrop')).toBeNull();
+      for (const chatBackground of [APP_DEFAULT_CHAT_BACKGROUND, CUSTOM_CHAT_BACKGROUND]) {
+        view.chat.chatBackgroundCharacter = { chatBackground };
+        await render();
+        expect(container.querySelector('.chat-shell-backdrop')).toBeNull();
+        expect(container.querySelector('.has-chat-wallpaper')).toBeNull();
+      }
+    });
+  });
+
+  it('keeps wallpaper inside the character conversation and restores it when returning from the list', async () => {
+    const view = conversationView();
+    view.chat.chatBackgroundCharacter = { chatBackground: imageA };
+    await mountWallpaper(view, async (container, render) => {
+      expect(container.querySelector('.chat-shell-backdrop')).not.toBeNull();
+      view.route = { kind: 'root' };
+      await render();
+      expect(container.querySelector('.chat-shell-backdrop')).toBeNull();
+      view.route = { kind: 'conversation' };
+      await render();
+      expect(container.querySelector('.chat-shell-backdrop img').getAttribute('src')).toBe(imageA);
+      view.chat.sessionId = '';
+      view.chat.chatCharacter = { character_id: '' };
+      await render();
+      expect(container.querySelector('.chat-shell-backdrop')).toBeNull();
+    });
   });
 });
 

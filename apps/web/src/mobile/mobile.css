@@ -61,6 +61,9 @@
 .mobile-shell button.mobile-drawer-dismiss { position: absolute; inset: 0; z-index: 40; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; }
 .mobile-page-seat { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .mobile-root-page, .mobile-conversation-page { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.mobile-conversation-page.has-chat-wallpaper { position: relative; isolation: isolate; }
+.mobile-conversation-page.has-chat-wallpaper > .chat-shell-backdrop { inset: 0; }
+.mobile-conversation-page.has-chat-wallpaper > .chat-panel { z-index: 1; background: transparent; }
 .mobile-header { position: relative; display: flex; align-items: center; flex: none; height: var(--mobile-header-height); padding: 0 9px 0 8px; background: var(--mobile-header-bg); }
 .mobile-header > button, .mobile-header-actions > button { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex: none; padding: 0; border: 0; background: transparent; }
 .mobile-header h1 { position: absolute; left: 112px; right: 113px; pointer-events: none; min-width: 0; margin: 0; font-size: 19px; line-height: 1.4; font-weight: 500; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -447,6 +450,26 @@ html[data-eleckoi-mobile="true"] .agent-process-backdrop[data-sheet-closing] .ag
 @media (min-width: 390px) { .mobile-preset-groups { width: 112px; } }
 @media (min-width: 600px) { .mobile-bottom-nav { justify-content: center; } .mobile-bottom-nav > button { max-width: 140px; } }
 @media (prefers-reduced-motion: reduce) { .mobile-drawer { animation: none; } .mobile-swipe-content { transition: none; } }
+
+/* Keep the official highlight glyphs stationary across Gecko mask animation frames. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-eleckoi-mobile="true"][data-eleckoi-browser="compat"] [data-shimmer] > [aria-hidden="true"] > span {
+    transform: none;
+    mask-image: linear-gradient(105deg, transparent 33.3333%, black 46.6667% 53.3333%, transparent 66.6667%);
+    mask-size: 300% 100%;
+    mask-repeat: no-repeat;
+    mask-position: 100% 0;
+    animation-name: eleckoi-gecko-shimmer-mask;
+  }
+  html[data-eleckoi-mobile="true"][data-eleckoi-browser="compat"] [data-shimmer] > [aria-hidden="true"] > span > span {
+    transform: none;
+    animation: none;
+  }
+}
+@keyframes eleckoi-gecko-shimmer-mask {
+  0% { mask-position: 100% 0; }
+  66.6667%, 100% { mask-position: 0% 0; }
+}
 
 .mobile-character-editor .character-basic-save-status { display: none; }
 :is(.mobile-character-editor, .mobile-preset-editor) .editor-page-feedback:empty { display: none; }
