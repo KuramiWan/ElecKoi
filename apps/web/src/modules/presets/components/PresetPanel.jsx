@@ -19,6 +19,7 @@ import { PresetRegexEditor } from './PresetRegexEditor.jsx';
 import { PresetToolsEditor } from './PresetToolsEditor.jsx';
 import { fileBase64, PresetImportDialog } from './PresetTransfer.jsx';
 import { openPresetManagerWindow } from '../window/openPresetManagerWindow.js';
+import { PresetPurposeSwitch, isDefaultPreset } from './PresetPurposeSwitch.jsx';
 
 const PresetContext = createContext(null);
 const ALL_PRESETS = '全部预设';
@@ -36,7 +37,7 @@ const getEmptyCatalog = () => EMPTY_PRESET_CATALOG;
 export function presetListContextActions(preset, activePresetId, onActivate, onDelete) {
   return [
     ...(preset.id !== activePresetId ? [{ label: '使用此预设', icon: CheckCircle, run: onActivate }] : []),
-    ...(preset.id !== DEFAULT_PRESET_ID ? [{ label: '删除预设', icon: TrashIcon, danger: true, run: onDelete }] : []),
+    ...(!isDefaultPreset(preset.id) ? [{ label: '删除预设', icon: TrashIcon, danger: true, run: onDelete }] : []),
   ];
 }
 
@@ -60,6 +61,8 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
     catalogModel?.getSnapshot || getEmptyCatalog,
   );
   const catalog = snapshot.catalog;
+  const [purpose, commitPurpose] = useState('roleplay');
+  const purposeCatalog = useMemo(() => catalog ? { ...catalog, groups: catalog.groups.filter(item => item.purpose === purpose), presets: catalog.presets.filter(item => item.purpose === purpose) } : null, [catalog, purpose]);
   const [selectedPresetId, commitSelectedPresetId] = useState('');
   const [localError, setError] = useState('');
   const error = localError || snapshot.error;
@@ -77,12 +80,19 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
     else select();
   }
 
+  function setPurpose(next) {
+    if (next === purpose) return;
+    const select = () => { commitPurpose(next); commitSelectedPresetId(catalog?.activePresetIds[next] || ''); };
+    if (navigationGuard.current) navigationGuard.current(select);
+    else select();
+  }
+
   async function refresh(preferredId = '') {
     try {
       const next = await catalogModel.refresh();
       commitSelectedPresetId((current) => {
-        const requested = preferredId || current || next.activePresetId;
-        return next.presets.some((item) => item.id === requested) ? requested : next.presets[0]?.id || '';
+        const requested = preferredId || current || next.activePresetIds[purpose];
+        return next.presets.some((item) => item.id === requested) ? requested : next.activePresetIds[purpose];
       });
       setError('');
       return next;
@@ -97,11 +107,11 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
     if (!catalog) return;
     setError('');
     commitSelectedPresetId((current) => {
-      const requested = current || catalog.activePresetId;
-      return catalog.presets.some((item) => item.id === requested) ? requested : catalog.presets[0]?.id || '';
+      const requested = current || catalog.activePresetIds[purpose];
+      return catalog.presets.some((item) => item.id === requested) ? requested : catalog.activePresetIds[purpose];
     });
-  }, [catalog, catalogModel]);
-  const value = useMemo(() => ({ catalog, catalogModel, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError }), [catalog, catalogModel, selectedPresetId, error]);
+  }, [catalog, catalogModel, purpose]);
+  const value = useMemo(() => ({ catalog, purposeCatalog, purpose, setPurpose, catalogModel, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError }), [catalog, purposeCatalog, purpose, catalogModel, selectedPresetId, error]);
   return <PresetContext.Provider value={value}>{children}</PresetContext.Provider>;
 }
 
@@ -113,7 +123,7 @@ export function usePresets() {
 
 export function PresetListPanel() {
   const scrollRef = useSidebarListScroll();
-  const { catalog, catalogModel, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError } = usePresets();
+  const { purposeCatalog: catalog, purpose, setPurpose, catalogModel, setCatalog, selectedPresetId, setSelectedPresetId, navigationGuard, refresh, error, setError } = usePresets();
   const [keyword, setKeyword] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(ALL_PRESETS);
@@ -156,7 +166,7 @@ export function PresetListPanel() {
     const create = async () => {
       const selectedGroupRecord = groups.find((group) => group.id === selectedGroup);
       const libraryGroupId = selectedGroupRecord?.id || '';
-      const created = await catalogModel.create('新预设', libraryGroupId);
+      const created = await catalogModel.create('新预设', libraryGroupId, purpose);
       await refresh(created.id);
     };
     if (navigationGuard.current) navigationGuard.current(create);
@@ -200,7 +210,7 @@ export function PresetListPanel() {
           displayName: file.name,
           mimeType: file.type,
           base64: await fileBase64(file),
-        });
+        }, purpose);
         setSelectedGroup(ALL_PRESETS);
         await refresh(result.preset.id);
       } catch (cause) {
@@ -243,10 +253,10 @@ export function PresetListPanel() {
         key={preset.id}
         preset={preset}
         selected={preset.id === selectedPresetId}
-        active={preset.id === catalog.activePresetId}
+        active={preset.id === catalog.activePresetIds[purpose]}
         onClick={() => setSelectedPresetId(preset.id)}
         onContextMenu={(event) => {
-          if (preset.id === catalog.activePresetId && preset.id === DEFAULT_PRESET_ID) {
+          if (preset.id === catalog.activePresetIds[purpose] && isDefaultPreset(preset.id)) {
             event.preventDefault();
             event.stopPropagation();
             return;
@@ -259,8 +269,9 @@ export function PresetListPanel() {
 
   return <aside className="character-list-panel preset-list-panel" aria-label="预设列表">
     <div className="preset-list-title-row">
-      <h2>Agent预设</h2>
+      <h2>预设</h2>
     </div>
+    <PresetPurposeSwitch value={purpose} onChange={value => { setPurpose(value); setSelectedGroup(ALL_PRESETS); setKeyword(''); }} />
     <div className="search-row character-list-search preset-list-search">
       <DshSearchField value={keyword} onValueChange={setKeyword} placeholder="搜索预设…" ariaLabel="搜索预设" />
       <SidebarCreateButton title="新建" expanded={createOpen} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCreateOpen((value) => !value); }} />
@@ -278,7 +289,7 @@ export function PresetListPanel() {
     </div>
     {context.menu ? <PresetContextMenu menu={context.menu} onClose={context.close} actions={presetListContextActions(
       context.menu.target,
-      catalog.activePresetId,
+      catalog.activePresetIds[purpose],
       () => activateFromList(context.menu.target),
       () => removeFromList(context.menu.target),
     )} /> : null}
@@ -461,7 +472,7 @@ export function PresetWorkspace({
     setCatalog(next);
   }
 
-  const active = Boolean(preset && catalog?.activePresetId === preset.id);
+  const active = Boolean(preset && catalog?.activePresetIds[preset.purpose] === preset.id);
   const header = renderHeader?.({ tab, profileEditing, dirty, saving, error, active, onActivate: preset && !loading ? () => navigate(activate) : undefined, onSave: () => save() });
   if (loading || (!preset && !error && !catalogError)) return <>{header}<section className="preset-workspace"><p className="preset-workspace-state">正在读取…</p></section></>;
   if (!preset) return <>{header}<section className="preset-workspace"><p className="preset-workspace-state is-error">{error || catalogError || '没有可编辑的预设'}</p></section></>;
@@ -502,7 +513,7 @@ export function PresetWorkspace({
   const extensionOwner = {
     presetId: preset.id,
     preset,
-    active: catalog?.activePresetId === preset.id,
+    active: catalog?.activePresetIds[preset.purpose] === preset.id,
     dirty,
     saving,
     error,

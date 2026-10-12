@@ -30,7 +30,8 @@ ElecKoi 使用 DSH 官方 bundle、Cordis 生命周期和 Web Client Slots 作�
 | [界面插槽](ui-slots.md) | 界面接入点、组合方式、作用域和 owner props |
 | [服务接口](services.md) | 如何导入公开类型、调用服务和查询接口 |
 | [原生作者 SDK](author-sdk.html) / [仓库教程](author-sdk.md) | 角色脚本、作者页面、变量规则、输入与发送 |
-| [格式导入边界](sdk-compatibility.md) | 角色卡、预设、设定库、正则和 MVU 变量的单向转换 |
+| [格式导入边界](sdk-compatibility.md) | 外部资料转换、原生数据归属与 HTML 显示资源 |
+| [AI 创作工作室工具](creator-studio-tools.md) | 设定 EJS、变量 Zod、脚本按钮面板与正则显示替换 |
 | [Client 完整参考](api-client.md) | 客户端服务的全部公开方法与参数 |
 | [Host 完整参考](api-host.md) | Host 产品 API 和 Session 编辑服务 |
 | [Remote 完整声明](api-remote.md) | 官方生成的全部跨端调用声明 |

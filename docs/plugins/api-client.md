@@ -286,7 +286,15 @@ getStreamSnapshot(): ConversationStreamSnapshot
  * @param attachment - 正式图片引用。
  * @returns 浏览器可加载的资源 URL。
  */
-readImage(conversationId: string, attachment: ImageAttachmentRef): Promise<string>
+readImage(conversationId: string, attachment: ImageAttachmentRef | ConversationGeneratedImage): Promise<string>
+
+/**
+ * 用原始 AI 回复中的提示词重新生成选中的一张图片。
+ * @param conversationId - ElecKoi 聊天编号。
+ * @param image - 明确的批次和图片编号。
+ * @returns 图片替换和聊天投影刷新完成。
+ */
+regenerateImage(conversationId: string, image: ConversationGeneratedImage): Promise<void>
 
 /**
  * 订阅当前回复的流式输出。
@@ -573,7 +581,7 @@ getModelSelectionSnapshot(): ConversationModelSelection
 subscribeModelSelection(listener: () => void): () => void
 ```
 
-Types: [ConversationCatalogSnapshot](types-client.md#conversationcatalogsnapshot) · [ConversationChatSnapshot](types-client.md#conversationchatsnapshot) · [ConversationClientDetails](types-client.md#conversationclientdetails) · [ConversationDetailsSnapshot](types-client.md#conversationdetailssnapshot) · [ConversationGenerationChange](types-client.md#conversationgenerationchange) · [ConversationGenerationReply](types-client.md#conversationgenerationreply) · [ConversationRegenerateInput](types-client.md#conversationregenerateinput) · [ConversationRunResult](types-client.md#conversationrunresult) · [ConversationSelection](types-client.md#conversationselection) · [ConversationSendInput](types-client.md#conversationsendinput) · [ConversationStatsSnapshot](types-client.md#conversationstatssnapshot) · [ConversationStreamSnapshot](types-client.md#conversationstreamsnapshot) · [ConversationTimelineSnapshot](types-client.md#conversationtimelinesnapshot) · [ConversationUploadedFile](types-client.md#conversationuploadedfile)
+Types: [ConversationCatalogSnapshot](types-client.md#conversationcatalogsnapshot) · [ConversationChatSnapshot](types-client.md#conversationchatsnapshot) · [ConversationClientDetails](types-client.md#conversationclientdetails) · [ConversationDetailsSnapshot](types-client.md#conversationdetailssnapshot) · [ConversationGeneratedImage](types-client.md#conversationgeneratedimage) · [ConversationGenerationChange](types-client.md#conversationgenerationchange) · [ConversationGenerationReply](types-client.md#conversationgenerationreply) · [ConversationRegenerateInput](types-client.md#conversationregenerateinput) · [ConversationRunResult](types-client.md#conversationrunresult) · [ConversationSelection](types-client.md#conversationselection) · [ConversationSendInput](types-client.md#conversationsendinput) · [ConversationStatsSnapshot](types-client.md#conversationstatssnapshot) · [ConversationStreamSnapshot](types-client.md#conversationstreamsnapshot) · [ConversationTimelineSnapshot](types-client.md#conversationtimelinesnapshot) · [ConversationUploadedFile](types-client.md#conversationuploadedfile)
 
 Source: [`packages/client/features/dsh-client-conversations/src/client/types.ts`](../../packages/client/features/dsh-client-conversations/src/client/types.ts)
 
@@ -691,6 +699,29 @@ watch(owner: FrontendOwner, listener: (workspace: FrontendWorkspace) => void, on
 ```
 
 Source: [`packages/client/features/dsh-client-author/src/frontends.ts`](../../packages/client/features/dsh-client-author/src/frontends.ts)
+
+<a id="ctxeleckoihtmlresources--eleckoihtmlresources"></a>
+
+### `ctx.eleckoiHtmlResources` — `ElecKoiHtmlResources`
+
+Imported HTML presentation resources; no author or script execution API.
+
+```ts cordis-catalog
+/**
+ * Read presentation resource availability.
+ * @returns The resource readiness state and its error text.
+ */
+getSnapshot(): { status: 'ready'; error: string }
+
+/**
+ * Subscribe to resource availability changes.
+ * @param listener - Called when the resource state changes.
+ * @returns Stops this subscription.
+ */
+subscribe(listener: () => void): () => void
+```
+
+Source: [`packages/client/features/dsh-client-html-resources/src/client/types.ts`](../../packages/client/features/dsh-client-html-resources/src/client/types.ts)
 
 <a id="ctxeleckoimodels--eleckoimodels"></a>
 
@@ -858,17 +889,19 @@ save(preset: AgentPreset, expectedRegexRules: RegexRule[]): Promise<AgentPreset>
  * 创建预设并可指定分组。
  * @param name - 保存的名称。
  * @param libraryGroupId - 预设分组编号；省略时不分组。
+ * @param purpose - 目标分类；省略时为角色扮演预设。
  * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
  */
-create(name: string, libraryGroupId?: string): Promise<AgentPreset>
+create(name: string, libraryGroupId?: string, purpose?: AgentPresetPurpose): Promise<AgentPreset>
 
 /**
  * 导入预设文件。
  * @param source - 支持的导入格式。
  * @param document - 待导入的文件内容。
+ * @param purpose - 目标预设分类。
  * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
  */
-import(source: AgentPresetImportSource, document: AgentPresetImportDocument): Promise<AgentPresetImportResult>
+import(source: AgentPresetImportSource, document: AgentPresetImportDocument, purpose?: AgentPresetPurpose): Promise<AgentPresetImportResult>
 
 /**
  * 导出预设文件内容。
@@ -888,9 +921,10 @@ setActive(presetId: string): Promise<AgentPresetCatalog>
 /**
  * 创建预设分组。
  * @param name - 保存的名称。
+ * @param purpose - 所属预设分类。
  * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
  */
-createGroup(name: string): Promise<AgentPresetCatalog>
+createGroup(name: string, purpose?: AgentPresetPurpose): Promise<AgentPresetCatalog>
 
 /**
  * 重命名预设分组。
@@ -1173,29 +1207,6 @@ saveConversationVersion(characterId: string, sessionId: string, name: string): P
 Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
 
 Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
-
-<a id="ctxeleckoitavernshared--eleckoitavernshared"></a>
-
-### `ctx.eleckoiTavernShared` — `ElecKoiTavernShared`
-
-Imported HTML presentation resources; no author or script execution API.
-
-```ts cordis-catalog
-/**
- * Read presentation resource availability.
- * @returns The resource readiness state and its error text.
- */
-getSnapshot(): { status: 'ready'; error: string }
-
-/**
- * Subscribe to resource availability changes.
- * @param listener - Called when the resource state changes.
- * @returns Stops this subscription.
- */
-subscribe(listener: () => void): () => void
-```
-
-Source: [`packages/client/features/dsh-client-tavern-shared/src/client/types.ts`](../../packages/client/features/dsh-client-tavern-shared/src/client/types.ts)
 
 <a id="ctxeleckoivariables--eleckoivariables"></a>
 

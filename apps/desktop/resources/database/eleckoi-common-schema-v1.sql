@@ -125,11 +125,11 @@ CREATE TABLE IF NOT EXISTS `conversation_setting_changes` (`sessionId` TEXT NOT 
 
 CREATE INDEX IF NOT EXISTS `index_conversation_setting_changes_sessionId` ON `conversation_setting_changes` (`sessionId`);
 
-CREATE TABLE IF NOT EXISTS `agent_preset_state` (`singletonId` INTEGER NOT NULL, `activePresetId` TEXT NOT NULL, PRIMARY KEY(`singletonId`));
+CREATE TABLE IF NOT EXISTS `agent_preset_state` (`purpose` TEXT NOT NULL, `activePresetId` TEXT NOT NULL, PRIMARY KEY(`purpose`));
 
-CREATE TABLE IF NOT EXISTS `agent_preset_library_groups` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL, PRIMARY KEY(`id`));
+CREATE TABLE IF NOT EXISTS `agent_preset_library_groups` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL, `purpose` TEXT NOT NULL DEFAULT 'roleplay', PRIMARY KEY(`id`));
 
-CREATE TABLE IF NOT EXISTS `agent_presets` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `modelFamily` TEXT NOT NULL, `modelTagsJson` TEXT NOT NULL DEFAULT '[]', `libraryGroupId` TEXT NOT NULL DEFAULT '', `activeVersionId` TEXT NOT NULL DEFAULT '', `authorName` TEXT NOT NULL DEFAULT '', `authorAvatarPath` TEXT NOT NULL DEFAULT '', `sortIndex` INTEGER NOT NULL, `expandedGroupIdsJson` TEXT NOT NULL, PRIMARY KEY(`id`));
+CREATE TABLE IF NOT EXISTS `agent_presets` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `modelFamily` TEXT NOT NULL, `modelTagsJson` TEXT NOT NULL DEFAULT '[]', `libraryGroupId` TEXT NOT NULL DEFAULT '', `activeVersionId` TEXT NOT NULL DEFAULT '', `authorName` TEXT NOT NULL DEFAULT '', `authorAvatarPath` TEXT NOT NULL DEFAULT '', `sortIndex` INTEGER NOT NULL, `expandedGroupIdsJson` TEXT NOT NULL, `purpose` TEXT NOT NULL DEFAULT 'roleplay', PRIMARY KEY(`id`));
 
 CREATE TABLE IF NOT EXISTS `agent_preset_contents` (`presetId` TEXT NOT NULL, `kind` TEXT NOT NULL, `content` TEXT NOT NULL, PRIMARY KEY(`presetId`, `kind`), FOREIGN KEY(`presetId`) REFERENCES `agent_presets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
 
@@ -172,6 +172,6 @@ CREATE VIEW `setting_library_version_entries` AS SELECT link.characterId, link.v
 
 CREATE TABLE IF NOT EXISTS `script_libraries` (`scope` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `characterId` TEXT, `presetId` TEXT, `enabled` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `treesJson` TEXT NOT NULL, `variablesJson` TEXT NOT NULL, PRIMARY KEY(`scope`, `ownerId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`presetId`) REFERENCES `agent_presets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , CHECK (`enabled` IN (0, 1) AND `revision` >= 0), CHECK ((`scope` = 'global' AND `ownerId` = '' AND `characterId` IS NULL AND `presetId` IS NULL) OR (`scope` = 'character' AND `characterId` IS NOT NULL AND `ownerId` = `characterId` AND `ownerId` <> '' AND `presetId` IS NULL) OR (`scope` = 'preset' AND `presetId` IS NOT NULL AND `ownerId` = `presetId` AND `ownerId` <> '' AND `characterId` IS NULL)));
 
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;
 
 COMMIT;

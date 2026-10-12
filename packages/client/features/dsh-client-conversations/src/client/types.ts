@@ -12,6 +12,8 @@ import type { TokenUsageProjection, ContextPressureProjection, ContextBreakdownP
 export interface ConversationProcessItem { id: string; kind: 'tool' | 'command' | 'file_change' | 'compaction' | 'subagent' | 'action' | 'narrative' | 'reasoning'; status: 'running' | 'complete' | 'error' | 'cancelled'; toolName: string; arguments: string; summary: string; detail: string; startedAtMillis: number; completedAtMillis?: number; parentId?: string; delegatedModel?: string }
 /** 尚未进入正式 Session 的图片预览。 */
 export interface ConversationPendingImage { attachmentId: string; name: string; dataUrl: string; width?: number; height?: number }
+/** 生图结果和原始 AI 回复的明确关联；提示词从回复解析。 */
+export interface ConversationGeneratedImage extends Partial<ImageAttachmentRef> { id: string; batchId: string; frameId: number; status: 'generating' | 'ready' | 'failed'; error?: string; name?: string; width: number; height: number }
 /** 尚未进入正式 Session 的文件信息。 */
 export interface ConversationPendingFile { attachmentId: string; name: string; bytes: number }
 /** 官方 Session 消息和产品显示资料；正文尚未投影时 content 可以不存在。 */
@@ -36,6 +38,7 @@ export interface ConversationClientMessage extends Omit<ConversationMessageMetad
   dshNodeKey?: string
   turnUsage?: TurnTailChatData['tokenUsage']
   inputImageAttachments?: (ImageAttachmentRef | ConversationPendingImage)[]
+  generatedImageAttachments?: ConversationGeneratedImage[]
   inputFileAttachments?: (FileAttachmentRef | ConversationPendingFile)[]
 }
 export interface ConversationClientDetails extends Omit<ConversationDetailsMetadata, 'messages'> { messages: ConversationClientMessage[]; replace?: boolean }
@@ -156,7 +159,14 @@ export interface ElecKoiConversations {
    * @param attachment - 正式图片引用。
    * @returns 浏览器可加载的资源 URL。
    */
-  readImage(conversationId: string, attachment: ImageAttachmentRef): Promise<string>
+  readImage(conversationId: string, attachment: ImageAttachmentRef | ConversationGeneratedImage): Promise<string>
+  /**
+   * 用原始 AI 回复中的提示词重新生成选中的一张图片。
+   * @param conversationId - ElecKoi 聊天编号。
+   * @param image - 明确的批次和图片编号。
+   * @returns 图片替换和聊天投影刷新完成。
+   */
+  regenerateImage(conversationId: string, image: ConversationGeneratedImage): Promise<void>
   /**
    * 订阅当前回复的流式输出。
    * @param listener - 状态变化回调。

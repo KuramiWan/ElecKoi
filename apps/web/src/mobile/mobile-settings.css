@@ -56,7 +56,6 @@
 .mobile-profile-editor { padding-top: 28px; }
 .mobile-shell .mobile-profile-avatar { position: relative; display: block; width: 96px; height: 96px; margin: 0 auto 28px; padding: 0; border: 0; background: transparent; border-radius: 50%; }
 .mobile-profile-avatar .avatar { width: 96px; height: 96px; }
-.mobile-profile-avatar > span { position: absolute; bottom: 0; right: 0; display: grid; place-items: center; width: 32px; height: 32px; border: 2px solid var(--rail); border-radius: 50%; corner-shape: round; background: var(--blue); color: white; }
 .mobile-settings-field { padding: 18px 16px 16px; }
 .mobile-settings-field label { display: grid; gap: 14px; }
 .mobile-settings-field label > span { color: var(--muted); font-size: 13px; }
@@ -64,10 +63,7 @@
 .mobile-settings-error, .mobile-settings-success { padding: 0 4px; font-size: 13px; overflow-wrap: anywhere; }
 .mobile-settings-error { color: var(--error, #d93025); }
 .mobile-settings-success { color: var(--muted); }
-.mobile-profile-avatars .avatar-manager-heading { display: none; }
-.mobile-profile-avatars .avatar-manager-header { display: block; }
-.mobile-profile-avatars .avatar-manager-header-actions { display: flex; flex-wrap: wrap; margin-bottom: 18px; }
-.mobile-shell .mobile-profile-avatars .settings-primary-button { min-height: 44px; border-radius: 14px; corner-shape: round; color: white; font-size: 14px; }
+.mobile-profile-avatars .avatar-manager-header { display: none; }
 .mobile-profile-avatars .avatar-manager-results { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-height: 0; padding: 0; background: transparent; }
 .mobile-profile-avatars .avatar-manager-result-group { min-width: 0; padding: 16px; border-radius: 20px; background: var(--surface-raised); }
 .mobile-profile-avatars .avatar-manager-result-group.is-shared { border: 0; }

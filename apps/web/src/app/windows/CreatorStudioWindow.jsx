@@ -6,13 +6,14 @@ import {
   CanvasDotGrid,
   CreatorStudioCanvas,
   CreatorStudioProjectHome,
+  CreatorStudioSimplePage,
   DEFAULT_CANVAS_VIEWPORT,
 } from "../../modules/creatorStudio/index.js";
 import { DshPanelLeftIcon } from "../../ui/icons/dshComposerIcons.jsx";
 import { showCurrentWindow } from "../services/windowControls.js";
 import { WindowControls } from "./shell/components/TitleBar.jsx";
 
-function CreatorStudioDevelopmentNotice({ onEnter }) {
+function CreatorStudioDevelopmentNotice({ onSimple, onDeveloper }) {
   return <main className="qq-shell creator-studio-shell creator-studio-development-shell" aria-label="AI创作工作室">
     <header className="creator-studio-development-header" data-tauri-drag-region>
       <div className="creator-studio-development-brand" data-tauri-drag-region>
@@ -22,20 +23,23 @@ function CreatorStudioDevelopmentNotice({ onEnter }) {
       <div data-tauri-drag-region />
       <WindowControls />
     </header>
-    <section className="creator-studio-development-content" aria-label="AI创作工作室开发状态">
-      <div className="creator-studio-development-card">
-        <h1>正在开发</h1>
-        <p>别点别进，是空壳，暂时用不了。</p>
-        <button className="creator-studio-development-enter" type="button" onClick={onEnter}>
-          进入创作工作室
-        </button>
+    <section className="creator-studio-development-content" aria-label="工作室入口">
+      <div className="creator-studio-entry-options">
+        <div className="creator-studio-development-card">
+          <h1>简易版</h1>
+          <button className="creator-studio-development-enter" type="button" onClick={onSimple}>进入简易版</button>
+        </div>
+        <div className="creator-studio-development-card is-developer">
+          <h1>开发者专用</h1><p>勿进</p>
+          <button className="creator-studio-development-enter" type="button" onClick={onDeveloper}>进入开发版</button>
+        </div>
       </div>
     </section>
   </main>;
 }
 
-export function CreatorStudioWindow({ characterCatalog, projectCatalog }) {
-  const [showDevelopmentNotice, setShowDevelopmentNotice] = useState(true);
+export function CreatorStudioWindow({ characterCatalog, projectCatalog, models, presetCatalog, renderCreatorStudioConversation }) {
+  const [mode, setMode] = useState('entry');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -50,7 +54,9 @@ export function CreatorStudioWindow({ characterCatalog, projectCatalog }) {
     showCurrentWindow().catch(() => {});
   }, []);
 
-  if (showDevelopmentNotice) return <CreatorStudioDevelopmentNotice onEnter={() => setShowDevelopmentNotice(false)} />;
+  if (mode === 'entry') return <CreatorStudioDevelopmentNotice onSimple={() => setMode('simple')} onDeveloper={() => setMode('developer')} />;
+  if (mode === 'simple') return <CreatorStudioSimplePage characterCatalog={characterCatalog} model={projectCatalog.sessions}
+    models={models} presetCatalog={presetCatalog} renderConversation={renderCreatorStudioConversation} onBack={() => setMode('entry')} />;
 
   const openProject = (project) => {
     setActiveProject(project);

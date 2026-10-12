@@ -71,7 +71,8 @@
     "@deepseek-ai/dsh-web-frontend": "0.2.0-rc.2",
     "@earendil-works/pi-ai": "0.87.1",
     "yaml": "2.9.0",
-    "@eleckoi/dsh-runtime": "workspace:*"
+    "@eleckoi/dsh-runtime": "workspace:*",
+    "@eleckoi/dsh-client-html-resources": "workspace:*"
   },
   "devDependencies": {
     "tsdown": "0.16.6",

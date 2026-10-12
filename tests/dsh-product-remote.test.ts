@@ -992,8 +992,8 @@ describe('ElecKoi DSH Remote contract', () => {
         method: 'catalog',
         args: {}
       }) as AgentPresetCatalog
-      expect(presetCatalog.activePresetId).toBeTruthy()
-      expect(presetCatalog.presets).toContainEqual(expect.objectContaining({ id: presetCatalog.activePresetId }))
+      expect(presetCatalog.activePresetIds.roleplay).toBeTruthy()
+      expect(presetCatalog.presets).toContainEqual(expect.objectContaining({ id: presetCatalog.activePresetIds.roleplay }))
 
       expect(await ctx.typertGateway.invoke({
         namespace: 'eleckoiCreatorStudio',

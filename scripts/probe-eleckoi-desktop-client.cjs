@@ -68,7 +68,7 @@ async function main() {
     registerDesktopBundles(profile)
     const manifest = readProfileManifest('dsh', profile)
     writeProfileBundles(profile, manifest, manifest.dsh.profile.bundles.filter(name =>
-      name !== '@eleckoi/dsh-client-tavern-shared' && name !== '@eleckoi/dsh-compatibility-host'))
+      name !== '@eleckoi/dsh-client-html-resources'))
     writeFileSync(join(profile, 'cordis.patch.yml'), JSON.stringify([
       { id: 'llm-pi-ai', config: { providers: { 'synthetic-native': { api: 'openai-responses', baseURL: endpoint,
         apiKeyEnv: 'ELECKOI_SYNTHETIC_PROBE_KEY', models: [{ id: 'example-model', contextWindow: 65536, maxTokens: 8192 }] } } } },

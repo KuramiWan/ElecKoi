@@ -18,7 +18,7 @@ function conversationView() {
   return {
     route: { kind: 'conversation' }, goBack,
     appearance: {}, conversations: {},
-    presets: { refresh: async () => ({ presets: [], activePresetId: '' }) },
+    presets: { refresh: async () => ({ presets: [], activePresetIds: { roleplay: '', creator: 'synthetic-creator' } }) },
     renderLayout: ({ mainPanel }) => mainPanel,
     renderRoleplay: ({ component: Component, props }) => <Component {...props} dshConversation={{
       activeView: 'chat', tabs: [{ id: 'chat', label: '对话' }, { id: 'trajectory', label: '轨迹' }, { id: 'plugin-view', label: '扩展视图' }], selectView,

@@ -1,4 +1,6 @@
 
+import type { GeneratedImageFrame } from '@eleckoi/dsh-product-data'
+
 /** 修改同一个官方 Session 的消息和回退位置，保留 Session 编号。 */
 export interface ElecKoiSessionEditor {
   /**
@@ -32,4 +34,8 @@ export interface ElecKoiSessionEditor {
   transaction<T>(sessionId: string, operation: () => Promise<T>): Promise<T>
   /** @internal 产品删除流程使用的内部操作。 */
   deleteSession(sessionId: string): Promise<void>
+  /** @internal 在现有会话写入锁下生成并替换指定图片；正文与其他图片不变。 */
+  regenerateImage(sessionId: string, batchId: string, frameId: number, generate: (frame: GeneratedImageFrame) => Promise<GeneratedImageFrame>): Promise<GeneratedImageFrame>
+  /** @internal 立即删除尚未进入有效记录的生图结果。 */
+  discardGeneratedImages(images: NonNullable<GeneratedImageFrame['attachment']>[]): Promise<void>
 }

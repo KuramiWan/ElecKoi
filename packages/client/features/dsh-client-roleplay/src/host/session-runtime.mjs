@@ -11,6 +11,7 @@ import { inputContinuationsProjection } from './input-continuations-projection.m
 import { currentRequestSnapshot } from './model-selection-migration.mjs'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { projectRequestInput, requestProjectionSnapshot, sessionInstructions } from './conversation-context.mjs'
+import { capturedImageResult, prepareIllustration } from './generated-image-result.mjs'
 
 export { requestSnapshot } from './model-selection-migration.mjs'
 
@@ -115,6 +116,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       settingLibraryEnabled: runtime.conversationContext.settingLibrary !== undefined,
       settingLibraryBaseline: runtime.settingLibraryBaseline,
       disabledToolGroupIds: effectiveToolPolicy.disabledGroupIds,
+      toolModelConfigIds: structuredClone(runtime.agentPreset.toolModelConfigIds || {}),
       roleplayPlanSteps: runtime.agentPreset.roleplayPlan.steps,
       historyCompactionInstructions: runtime.agentPreset.historyCompactionInstructions ?? ''
     })
@@ -128,6 +130,37 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
   }
 
   const service = {
+    async readGeneratedImage(conversationId, batchId, frameId, attachmentId, signal) {
+      const runtimeSessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
+      const inspection = await ctx.sessionController.inspect(runtimeSessionId, signal)
+      // Ordered updates replace the declared batch state, including cancellation.
+      let current
+      for (const event of inspection.events) if (event.type === 'eleckoi/illustration' && event.data.batchId === batchId) current = event.data
+      if (!current || current.status === 'generating') throw new Error('图片不在当前聊天记录中。')
+      const frames = current.frames.filter(frame => frame.id === frameId && frame.attachment?.attachmentId === attachmentId)
+      if (frames.length !== 1) throw new Error('图片不在当前聊天记录中。')
+      signal.throwIfAborted()
+      const stored = await ctx.attachments.readImage(frames[0].attachment)
+      return { mediaType: stored.ref.mediaType, data: Buffer.from(stored.data).toString('base64') }
+    },
+    async regenerateImage(conversationId, batchId, frameId, signal) {
+      await ctx.eleckoiConversationLifecycle.drain(conversationId)
+      const runtime = ctx.eleckoiProductData.prepareConversationRuntime(conversationId, '')
+      await requireIdleSession(ctx, runtime.runtimeSessionId)
+      const state = prepareIllustration(ctx.settings, { disabledToolGroupIds: runtime.disabledToolGroupIds,
+        toolModelConfigIds: runtime.agentPreset.toolModelConfigIds })
+      if (!state) throw new Error('当前预设没有启用配图配置。')
+      return ctx.eleckoiSessionEditor.regenerateImage(runtime.runtimeSessionId, batchId, frameId, async previous => {
+        const { seed, attachment, error, status, width, height, ...prompt } = previous
+        let generated
+        try { generated = await ctx.eleckoiImageGeneration.generate(state.entry, state.settings, [prompt], signal) }
+        catch (failure) { generated = { status: 'failed', frames: [], error: String(failure?.message || failure) } }
+        const next = capturedImageResult([prompt], state.settings, generated).frames[0]
+        return next.status === 'failed' && attachment
+          ? { ...previous, error: next.error }
+          : { ...prompt, ...next }
+      })
+    },
     withGenerationOptions(conversationId, options, action) {
       if (generationOptions.has(conversationId)) throw new Error('当前聊天已有 SDK 生成准备。')
       generationOptions.set(conversationId, { ...options })
@@ -410,9 +443,10 @@ async function requireIdleSession(ctx, sessionId) {
   if (resolved.agent.status !== 'idle') throw new Error('当前聊天仍在生成，不能提交新的消息。')
 }
 
-export function materializeAgentPreset(root, templatePath, preset, toolPolicy, mainModel) {
+export function materializeAgentPreset(root, templatePath, preset, toolPolicy, mainModel, options = {}) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(preset.id)) throw new Error('预设编号不能用于 DSH Agent Preset。')
-  const mountedPresetId = ACTIVE_RUNTIME_PRESET_ID
+  const mountedPresetId = options.id ?? ACTIVE_RUNTIME_PRESET_ID
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(mountedPresetId)) throw new Error('DSH 预设编号不正确。')
   const directory = join(root, mountedPresetId)
   mkdirSync(directory, { recursive: true })
   let composition = readFileSync(templatePath, 'utf8')
@@ -427,6 +461,16 @@ export function materializeAgentPreset(root, templatePath, preset, toolPolicy, m
   composition = applyPresetToolPolicy(composition, new Set(toolPolicy.disabledGroupIds))
   const plugins = parseYaml(composition)
   if (!Array.isArray(plugins)) throw new Error('DSH Agent 预设组合必须是插件列表。')
+  if (options.includeUploadedFiles === false) {
+    const index = plugins.findIndex(plugin => plugin.id === 'uploaded-file-tools')
+    if (index === -1) throw new Error('DSH Agent 模板缺少正式的附件工具声明。')
+    plugins.splice(index, 1)
+  }
+  plugins.push(...(options.plugins ?? []))
+  const imageConfigId = preset.toolModelConfigIds?.['builtin:auto-illustration']
+  if (imageConfigId && !toolPolicy.disabledGroupIds.includes('builtin:auto-illustration')) {
+    plugins.push({ id: 'image-generation-tools', name: durableProductPluginSpecifier('image-generation-tools'), config: { configId: imageConfigId } })
+  }
   const definition = {
     id: mountedPresetId,
     name: preset.name,

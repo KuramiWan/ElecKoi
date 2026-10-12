@@ -489,12 +489,17 @@ function lastUnescapedSlash(value) {
 
 async function renderEjsController(target, candidates, state, messages) {
   const references = []
-  const renderStack = []
-  const sources = candidates.filter((candidate) => candidate.raw.id === target.raw.id || candidate.raw.dynamicMode === 'ejs_reference')
+  const sources = candidates.filter((candidate) => candidate.raw.dynamicMode === 'ejs_reference')
   const sourceByName = new Map()
+  const register = (name, source) => {
+    if (!name) return
+    const matches = sourceByName.get(name) || new Set()
+    matches.add(source)
+    sourceByName.set(name, matches)
+  }
   for (const source of sources) {
-    if (source.raw.title) sourceByName.set(source.raw.title, source)
-    if (source.path) sourceByName.set(source.path, source)
+    register(source.raw.title, source)
+    register(source.path, source)
   }
   const getvar = createGetvar(state)
   const getLocalVar = (key, options = {}) => getvar(key, options)
@@ -513,27 +518,20 @@ async function renderEjsController(target, candidates, state, messages) {
     lastUserMessage
   }
 
-  async function render(source) {
-    if (!source.content.includes('<%')) return source.content
-    if (renderStack.includes(source.raw.id)) throw new Error(`getwi 循环引用：${[...renderStack, source.raw.id].join(' -> ')}`)
-    renderStack.push(source.raw.id)
-    try {
-      const getwi = async (...args) => {
-        const requested = [...args].reverse().find((value) => typeof value === 'string' && value.trim())
-        if (!requested) return ''
-        const nested = sourceByName.get(requested)
-        if (!nested) throw new Error(`getwi 找不到条目：${requested}`)
-        references.push({ id: nested.raw.id, title: nested.raw.title || '', path: nested.path })
-        return render(nested)
-      }
-      return await compileEjs(source.content)({ ...context, getwi }, toText)
-    } finally {
-      renderStack.pop()
-    }
+  const getwi = async (referenceOrLibrary, referenceName) => {
+    const requested = referenceName === undefined ? referenceOrLibrary : referenceName
+    if (typeof requested !== 'string' || !requested.trim()) throw new Error('getwi 必须指定 EJS 引用设定的标题或完整路径。')
+    const matches = [...(sourceByName.get(requested) || [])]
+    if (!matches.length) throw new Error(`getwi 找不到 EJS 引用设定：${requested}`)
+    if (matches.length !== 1) throw new Error(`getwi 引用标题不唯一，请使用完整路径：${requested}`)
+    const nested = matches[0]
+    if (nested.raw.contentMode !== 'plain_text') throw new Error(`EJS 引用设定必须使用文字正文：${requested}`)
+    references.push({ id: nested.raw.id, title: nested.raw.title || '', path: nested.path })
+    return nested.content
   }
 
   return {
-    content: await render(target),
+    content: await compileEjs(target.content)({ ...context, getwi }, toText),
     references: [...new Map(references.map((reference) => [reference.id, reference])).values()]
   }
 }

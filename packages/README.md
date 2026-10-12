@@ -11,7 +11,7 @@
 | `host/web-search-tavily/` | Tavily 搜索服务插件。 |
 | `shared/` | 公共合同、数据校验及纯基础函数；不承担数据库和 AI 运行。 |
 | `sdk/` | 作者扩展 SDK。 |
-| `compatibility/` | 当前受支持格式与扩展能力的兼容实现。 |
+| `compatibility/` | 当前受支持的 MVU 变量格式转换。HTML 显示资源位于 `client/features/`。 |
 | `examples/` | 示例插件。 |
 
 后续 Android 专用 Client 装配放在 `client/mobile/`，按实际实现建立。Android 复用当前共享业务与数据模型，平台界面和系统能力分别由移动组件及 `apps/android` 提供。

@@ -30,8 +30,7 @@ window.__ModuleLoader__.load({
       "@eleckoi/dsh-client-shell",
       "@eleckoi/dsh-client-roleplay",
       "@eleckoi/dsh-client-author",
-      "@eleckoi/dsh-client-tavern-shared",
-      "@eleckoi/dsh-compatibility-host",
+      "@eleckoi/dsh-client-html-resources",
       "@eleckoi/dsh-product-api",
       "@eleckoi/dsh-runtime",
       "@eleckoi/dsh-web-search-tavily"
@@ -385,6 +384,7 @@ window.__ModuleLoader__.load({
           renderConversationList: (owner, fallback) => renderSlotChain('eleckoi.conversation.list', { ...owner, fallback }, { fallback }),
           renderPresetEditorSection: (section, owner, fallback) => renderSlotChain(`eleckoi.preset.editor.${section}`, { ...owner, fallback }, { fallback }),
           renderPresetManager: (owner, fallback) => renderSlotChain('eleckoi.preset.manager', { ...owner, fallback }, { fallback }),
+          renderCreatorStudioConversation: owner => renderSlot('eleckoi.creator-studio.conversation', owner),
           renderRoleplay: owner => renderSlotChain('eleckoi.roleplay', owner, {
             fallback: React.createElement('section', {
               className: 'chat-panel chat-panel-empty-state',
@@ -575,7 +575,8 @@ window.__ModuleLoader__.load({
             'eleckoi.preset.editor.tools': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.editor.regex': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.manager': { kind: 'chain', scope: 'root' },
-            'eleckoi.roleplay': { kind: 'chain', scope: 'root' }
+            'eleckoi.roleplay': { kind: 'chain', scope: 'root' },
+            'eleckoi.creator-studio.conversation': { kind: 'single', scope: 'root' }
           },
           inject: () => ({ layout, slots: ctx.slots, subscribeSlots, frontendConnection, locale: ctx.locale,
             theme: ctx.theme, subscribeTheme: listener => ctx.on('theme/change', listener),

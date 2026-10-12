@@ -38,7 +38,7 @@ describe('native author document contract', () => {
     expect(document.querySelector('button')?.textContent).toBe('Confirm')
     expect(document.querySelector('meta[name="viewport"]')).not.toBeNull()
     expect(document.querySelectorAll('script[src],link,script[type="importmap"]')).toHaveLength(0)
-    expect(output).not.toMatch(/TavernHelper|SillyTavern|Mvu|__ElecKoiClientCompatibility|\/eleckoi\/compat\//)
+    expect(output).not.toMatch(/TavernHelper|SillyTavern|Mvu|__ElecKoiHtmlResources|\/eleckoi\/compat\//)
   })
 
   it('resolves project resources relative to the explicit entry folder and preserves an authored base', () => {

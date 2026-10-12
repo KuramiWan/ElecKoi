@@ -1,3 +1,6 @@
+import { DEFAULT_NOVELAI_COMPILER_INSTRUCTION, MAX_STORY_IMAGES, NOVELAI_SAMPLERS } from '@shared/contracts/agent/novelAiImageSettings';
+import './model-image-parameters.css';
+
 const OPENAI_QUALITIES = [
   { id: "auto", label: "自动" },
   { id: "low", label: "低" },
@@ -11,17 +14,6 @@ const OPENAI_BACKGROUNDS = [
   { id: "transparent", label: "透明" },
 ];
 
-const NOVELAI_SAMPLERS = [
-  { id: "k_dpmpp_2m", label: "DPM++ 2M" },
-  { id: "k_euler_ancestral", label: "Euler Ancestral" },
-  { id: "k_euler", label: "Euler" },
-  { id: "k_dpm_2", label: "DPM2" },
-  { id: "k_dpmpp_2s_ancestral", label: "DPM++ 2S Ancestral" },
-  { id: "k_dpmpp_sde", label: "DPM++ SDE" },
-  { id: "k_dpm_fast", label: "DPM Fast" },
-  { id: "ddim_v3", label: "DDIM" },
-];
-
 function numberValue(raw) {
   return raw === "" ? "" : Number(raw);
 }
@@ -32,6 +24,17 @@ export function ModelImageParametersSection({ form, validationMessage, onChange 
   const update = (key, value) => onChange({ ...settings, [key]: value });
 
   return (
+    <>
+    {!openAi && <section className="model-form-section">
+      <h3>剧情分镜数量</h3>
+      <div className="model-parameter-grid">
+        <label><span>数量模式</span><select value={settings.automaticImageCount ? 'automatic' : 'fixed'} onChange={event => update('automaticImageCount', event.target.value === 'automatic')}><option value="fixed">固定数量</option><option value="automatic">自动数量</option></select></label>
+        {settings.automaticImageCount ? <>
+          <label><span>最少分镜数</span><input type="number" min="1" max={MAX_STORY_IMAGES} value={settings.automaticImageMin ?? 1} onChange={event => update('automaticImageMin', numberValue(event.target.value))} /></label>
+          <label><span>最多分镜数</span><input type="number" min="1" max={MAX_STORY_IMAGES} value={settings.automaticImageMax ?? 6} onChange={event => update('automaticImageMax', numberValue(event.target.value))} /></label>
+        </> : <label><span>每轮分镜数</span><input type="number" min="1" max={MAX_STORY_IMAGES} value={settings.fixedImageCount ?? 1} onChange={event => update('fixedImageCount', numberValue(event.target.value))} /></label>}
+      </div>
+    </section>}
     <section className="model-form-section">
       <h3>绘画参数</h3>
       <div className="model-parameter-grid">
@@ -79,5 +82,14 @@ export function ModelImageParametersSection({ form, validationMessage, onChange 
       </div>
       {validationMessage ? <p className="model-parameter-error">{validationMessage}</p> : null}
     </section>
+    {!openAi && <section className="model-form-section">
+      <h3>提示词</h3>
+      <div className="model-parameter-grid novelai-prompt-fields">
+        <label><span>提示词编译指令</span><textarea rows={5} maxLength={8000} value={settings.promptCompilerInstruction ?? ''} placeholder={DEFAULT_NOVELAI_COMPILER_INSTRUCTION} onChange={event => update('promptCompilerInstruction', event.target.value)} /></label>
+        <label><span>全局固定词</span><textarea rows={3} maxLength={4000} value={settings.promptPrefix ?? ''} onChange={event => update('promptPrefix', event.target.value)} /></label>
+        <label><span>负面追加词</span><textarea rows={3} maxLength={2000} value={settings.negativePrompt ?? ''} onChange={event => update('negativePrompt', event.target.value)} /></label>
+      </div>
+    </section>}
+    </>
   );
 }

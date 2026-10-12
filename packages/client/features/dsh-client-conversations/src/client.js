@@ -89,7 +89,7 @@ window.__ModuleLoader__.load({
       const name = settled ? block.call?.name || block.callId : block.name || block.callId
       const item = {
         id: String(block.callId), kind: processKind(name),
-        status: settled ? block.isError ? 'error' : 'complete' : 'running',
+        status: settled ? block.isError || block.meta?.source === 'eleckoi-auto-illustration' && block.meta?.status === 'partial' ? 'error' : 'complete' : 'running',
         toolName: name,
         arguments: settled ? block.call?.argsRaw || '' : block.argsRaw || '',
         summary: name,
@@ -111,11 +111,43 @@ window.__ModuleLoader__.load({
         else byTurn.set(turn, items.map((candidate, at) => at === index ? item : candidate))
       }
       const nodes = orderedChatNodes(snapshot)
+      // Idle maintenance has no turn owner. Only turn-owned requests belong
+      // to an AI processing row; the official command card owns manual work.
+      const compactions = (options.trajectory?.requests || [])
+        .filter(request => request.purpose === 'compaction' && Number.isSafeInteger(request.turn) && request.turn > 0)
+      let nextCompaction = 0
+      const appendCompactionsThrough = seq => {
+        while (nextCompaction < compactions.length && compactions[nextCompaction].startSeq <= seq) {
+          const request = compactions[nextCompaction++]
+          append(request.turn, {
+            id: `compaction:${request.startSeq}`, kind: 'compaction', status: request.status,
+            toolName: 'compaction', arguments: '', summary: '',
+            detail: request.error || processText(request.summary),
+            startedAtMillis: request.startedAt,
+            ...(request.completedAt === null ? {} : { completedAtMillis: request.completedAt }),
+          })
+        }
+      }
       for (const node of nodes) {
+        appendCompactionsThrough(node.anchorSeq)
         const turn = node.location?.kind === 'step' || node.location?.kind === 'turn'
           ? node.location.turn.turn : node.data?.turn
         if (node.kind === 'assistant-step') {
           const blocks = node.data?.blocks || []
+          const raw = assistantText(blocks)
+          const imageOpen = '<ACTION_CALL name="generate_image">'
+          const imageStart = raw.indexOf(imageOpen)
+          const finalStart = raw.indexOf(FinalOpenTag)
+          if (imageStart >= 0 && (finalStart < 0 || imageStart < finalStart)) {
+            const imageEnd = raw.indexOf('</ACTION_CALL>', imageStart + imageOpen.length)
+            const batches = (options.illustrations || []).filter(batch => batch.turn === turn && batch.step === node.data?.step)
+            const batch = batches.length === 1 ? batches[0] : undefined
+            append(turn, { id: `illustration:${turn}:${node.data?.step}`, kind: 'action', toolName: 'generate_image',
+              status: batch ? batch.status === 'generating' ? 'running' : batch.status === 'complete' ? 'complete' : 'error'
+                : node.data?.status === 'running' ? 'running' : 'error',
+              arguments: raw.slice(imageStart + imageOpen.length, imageEnd < 0 ? finalStart < 0 ? undefined : finalStart : imageEnd).trim(),
+              summary: '自动配图', detail: batch?.error || '', startedAtMillis: Number(node.data?.time) || 0 })
+          }
           const hasToolCall = blocks.some(block => block?.kind === 'tool-call')
           blocks.forEach((block, index) => {
             if (block?.kind === 'reasoning' && block.text) append(turn, {
@@ -141,6 +173,7 @@ window.__ModuleLoader__.load({
           for (const item of toolProcess(node.data?.root)) append(turn, item)
         }
       }
+      appendCompactionsThrough(Number.POSITIVE_INFINITY)
       return byTurn
     }
 
@@ -223,8 +256,8 @@ window.__ModuleLoader__.load({
       return items
     }
 
-    function officialProcessWithSubagents(snapshot, catalog, subagentSessions) {
-      const byTurn = officialProcess(snapshot)
+    function officialProcessWithSubagents(snapshot, catalog, subagentSessions, trajectory, illustrations = []) {
+      const byTurn = officialProcess(snapshot, { trajectory, illustrations })
       // DSH records every subagent in an independent child Session. A parent
       // tool call contains only the delegation receipt, so its visible process
       // must join the parent catalog identity with the child's official Chat
@@ -356,16 +389,26 @@ window.__ModuleLoader__.load({
       })
     }
 
-    function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map(), pendingSubmissions = [], sessionRunning, inputLinks = [], abortedTurns = []) {
+    function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map(), pendingSubmissions = [], sessionRunning, inputLinks = [], abortedTurns = [], regeneratingInputTurn, illustrations = []) {
       if (!snapshot) return (details?.messages || []).filter(message => message.id === 'opening')
       const entries = orderedChatEntries(snapshot)
       const nodes = entries.map(entry => entry.node)
+      const imagesByTurn = new Map()
+      for (const batch of illustrations) {
+        const images = batch.frames.map(frame => ({ ...frame.attachment, id: `${batch.batchId}:${frame.id}`,
+          batchId: batch.batchId, frameId: frame.id, width: frame.width, height: frame.height,
+          status: frame.status, ...(frame.error ? { error: frame.error } : {}) }))
+        imagesByTurn.set(batch.turn, [...(imagesByTurn.get(batch.turn) || []), ...images])
+      }
       const failedTurns = new Set(nodes.filter(node => node.kind === 'turn-error').map(nodeTurn))
       const endedTurns = new Set(nodes.filter(node => node.kind === 'turn-tail')
         .map(nodeTurn).filter(Number.isSafeInteger))
       const aborted = new Set(abortedTurns)
       const closedTurns = new Set(nodes.filter(node => node.kind === 'turn-tail' && node.data?.closing)
         .map(nodeTurn).filter(Number.isSafeInteger))
+      const supersededInputTurns = new Set(inputLinks.filter(link => Number.isSafeInteger(link.inputTurn)
+        && link.inputTurn > 0 && link.inputTurn !== link.turn).map(link => link.inputTurn))
+      if (Number.isSafeInteger(regeneratingInputTurn) && regeneratingInputTurn > 0) supersededInputTurns.add(regeneratingInputTurn)
       const latestOpenAssistantByTurn = new Map()
       entries.forEach((entry, index) => {
         const turn = nodeTurn(entry.node)
@@ -392,6 +435,21 @@ window.__ModuleLoader__.load({
             requestId: input.source?.kind === 'user' ? input.source.rpcId || '' : '',
             // `null` means this official input has not entered a DSH turn.
             dshTurn: dshTurn ?? null
+          }]
+        }
+        if (node.kind === 'turn-process') {
+          const turn = nodeTurn(node)
+          const process = processByTurn.get(turn) || []
+          if (!Number.isSafeInteger(turn) || closedTurns.has(turn) || supersededInputTurns.has(turn)
+            || latestOpenAssistantByTurn.has(turn) || process.length === 0) return []
+          // Compaction can precede the first assistant step. Its real DSH
+          // turn-process node owns this row until the assistant takes over.
+          return [{
+            role: 'assistant', seq: node.anchorSeq, time: process[0].startedAtMillis,
+            content: '', displayContent: '', nodeKey: entry.key, dshTurn: turn,
+            pending: sessionRunning === true && !endedTurns.has(turn) && !aborted.has(turn)
+              && node.location?.turn?.status !== 'closed',
+            interrupted: aborted.has(turn),
           }]
         }
         if (node.kind === 'assistant-step') {
@@ -510,9 +568,10 @@ window.__ModuleLoader__.load({
           process: mergedProcess(source?.process, processByTurn.get(item.dshTurn)),
           ...(item.turnUsage || source?.turnUsage ? { turnUsage: item.turnUsage || source.turnUsage } : {}),
           ...(item.images?.length ? { inputImageAttachments: item.images } : {}),
+          ...(item.role === 'assistant' && imagesByTurn.get(item.dshTurn)?.length ? { generatedImageAttachments: imagesByTurn.get(item.dshTurn) } : {}),
           ...(item.files?.length ? { inputFileAttachments: item.files } : {})
         }
-        const hasAttachments = Boolean(message.inputImageAttachments?.length || message.inputFileAttachments?.length)
+        const hasAttachments = Boolean(message.inputImageAttachments?.length || message.generatedImageAttachments?.length || message.inputFileAttachments?.length)
         const hasProcess = Array.isArray(message.process) && message.process.length > 0
         const hasText = String(message.content || '').trim().length > 0
         return { message, keep: hasText || hasAttachments || hasProcess || message.status === 'streaming' }
@@ -564,6 +623,7 @@ window.__ModuleLoader__.load({
         this.selectionWriteQueue = Promise.resolve()
         this.sessionReference = null
         this.sessionTarget = null
+        this.sessionTrajectoryTarget = null
         this.stopSessionTarget = () => {}
         this.stopSessionState = () => {}
         this.stopSessionGeneration = () => {}
@@ -669,7 +729,29 @@ window.__ModuleLoader__.load({
           || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.runtimeSessionId : '')
         if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
         if (this.detailsSnapshot.id === conversationId) await this.bindOfficialSession(conversationId)
+        if (attachment.batchId) {
+          const cached = this.uiConversation.peekImageUrl(runtimeSessionId, attachment)
+          if (cached) return cached
+          const value = this.unwrap(await this.remote.eleckoiConversations.readGeneratedImage(conversationId,
+            attachment.batchId, attachment.frameId, attachment.attachmentId), '图片读取失败。')
+          const url = `data:${value.mediaType};base64,${value.data}`
+          this.uiConversation.seedImageUrl(runtimeSessionId, attachment, url)
+          return url
+        }
         return this.uiConversation.imageUrl(runtimeSessionId, attachment)
+      }
+
+      async regenerateImage(conversationId, image) {
+        if (!image?.batchId || !Number.isSafeInteger(image.frameId)) throw new Error('图片缺少生图指令编号。')
+        let failure
+        try {
+          await this.mutateSession(conversationId, async () => this.unwrap(
+            await this.remote.eleckoiConversations.regenerateImage(conversationId, image.batchId, image.frameId), '图片重新生成失败。'))
+        } catch (error) { failure = error }
+        await this.sessions.refresh()
+        await this.bindOfficialSession(conversationId)
+        await this.refreshDetails()
+        if (failure) throw failure
       }
 
       rememberSession(characterId, sessionId) {
@@ -1251,7 +1333,7 @@ window.__ModuleLoader__.load({
         const session = this.sessionReference?.binding?.session
         const sessionRunning = session ? session.getSnapshot().running === true : undefined
         const next = { ...details, runtimeSessionId, hasMore,
-          messages: chat ? officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId))
+          messages: chat ? officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId), this.regeneratingInputTurn(runtimeSessionId), this.illustrations(runtimeSessionId))
             : details.messages.filter(message => message.id === 'opening') }
         if (chat) next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
         this.publishDetails({
@@ -1305,6 +1387,7 @@ window.__ModuleLoader__.load({
         this.stopProjections = () => {}
         this.releaseSubagentSessions()
         this.sessionTarget = null
+        this.sessionTrajectoryTarget = null
         this.officialProjectionSignature = null
         this.sessionReference?.release()
         this.sessionReference = null
@@ -1328,14 +1411,39 @@ window.__ModuleLoader__.load({
       }
 
       officialProcess(chat) {
-        return officialProcessWithSubagents(chat, this.subagentCatalog, this.subagentSessions)
+        return officialProcessWithSubagents(chat, this.subagentCatalog, this.subagentSessions,
+          this.sessionTrajectoryTarget?.getSnapshot(), this.illustrations(this.sessionReference?.sessionId))
       }
 
       inputContinuations(runtimeSessionId) {
         const reference = this.sessionReference
         if (reference?.sessionId !== runtimeSessionId) return []
         const value = reference.binding.session.projections?.faceOf('eleckoiInputContinuations')?.getSnapshot()
-        return Array.isArray(value?.links) ? value.links : []
+        if (!Array.isArray(value?.links)) return []
+        const inputsBySeq = new Map((value.inputs || []).map(input => [input.eventSeq, input]))
+        return value.links.map(link => {
+          const input = inputsBySeq.get(link.inputEventSeq)
+          // Regeneration preserves the original admission. Its exact event
+          // and message identities distinguish that retired turn from a stop.
+          return { ...link, inputTurn: input && input.messageId === link.inputMessageId ? input.turn : undefined }
+        })
+      }
+
+      illustrations(runtimeSessionId) {
+        const reference = this.sessionReference
+        if (!reference || reference.sessionId !== runtimeSessionId) return []
+        const value = reference.binding.session.projections?.faceOf('eleckoiIllustrations')?.getSnapshot()
+        return Array.isArray(value) ? value : []
+      }
+
+      regeneratingInputTurn(runtimeSessionId) {
+        const input = this.activeRequests.get(this.detailsSnapshot.id)?.regenerationInput
+        const reference = this.sessionReference
+        if (!input || input.runtimeSessionId !== runtimeSessionId || reference?.sessionId !== runtimeSessionId) return undefined
+        // Rewind retains the input's original admission, but removes the old
+        // continuation. Use that exact identity until the new link arrives.
+        const identities = reference.binding.session.projections?.faceOf('eleckoiInputContinuations')?.getSnapshot()
+        return identities?.inputs?.find(candidate => candidate.eventSeq === input.eventSeq)?.turn
       }
 
       abortedTurns(runtimeSessionId) {
@@ -1415,12 +1523,16 @@ window.__ModuleLoader__.load({
           hasMore,
           subagentProjectionRevision: this.subagentProjectionRevision,
           inputContinuationsKey: JSON.stringify(this.inputContinuations(runtimeSessionId)),
+          illustrations: this.sessionReference?.binding.session.projections?.faceOf('eleckoiIllustrations')?.getSnapshot(),
+          regeneratingInputTurn: this.regeneratingInputTurn(runtimeSessionId),
           abortedTurnsKey: JSON.stringify(this.abortedTurns(runtimeSessionId)),
           canChangeOpening: this.openingChangeAllowed(this.detailsSnapshot.id, runtimeSessionId),
           sessionRunning,
           pendingSubmissions,
+          compactions: (this.sessionTrajectoryTarget?.getSnapshot()?.requests || [])
+            .filter(request => request.purpose === 'compaction' && Number.isSafeInteger(request.turn) && request.turn > 0),
           nodes: nodes.filter(node => node.kind === 'user' || node.kind === 'steering'
-            || node.kind === 'turn-tail'
+            || node.kind === 'turn-tail' || node.kind === 'turn-process'
             || node.kind === 'assistant-step' || node.kind === 'tool-call')
         }
       }
@@ -1430,11 +1542,15 @@ window.__ModuleLoader__.load({
           && left?.hasMore === right?.hasMore
           && left?.subagentProjectionRevision === right?.subagentProjectionRevision
           && left?.inputContinuationsKey === right?.inputContinuationsKey
+          && left?.illustrations === right?.illustrations
+          && left?.regeneratingInputTurn === right?.regeneratingInputTurn
           && left?.abortedTurnsKey === right?.abortedTurnsKey
           && left?.canChangeOpening === right?.canChangeOpening
           && left?.sessionRunning === right?.sessionRunning
           && left?.pendingSubmissions?.length === right?.pendingSubmissions?.length
           && left.pendingSubmissions.every((submission, index) => submission === right.pendingSubmissions[index])
+          && left?.compactions?.length === right?.compactions?.length
+          && left.compactions.every((request, index) => request === right.compactions[index])
           && left?.nodes?.length === right?.nodes?.length
           && left.nodes.every((node, index) => node === right.nodes[index])
       }
@@ -1508,11 +1624,15 @@ window.__ModuleLoader__.load({
           if (this.sessionTarget) return
           const target = this.uiConversation.binding(binding).target('chat')
           this.sessionTarget = target
+          const trajectoryTarget = this.uiConversation.binding(binding).target('trajectory')
+          this.sessionTrajectoryTarget = trajectoryTarget
           const publish = () => {
             if (generation !== this.sessionBindingGeneration || this.sessionReference !== reference || this.sessionTarget !== target) return
             this.acceptOfficialSession(id, runtimeSessionId, binding.session, target)
           }
-          this.stopSessionTarget = target.subscribe(publish)
+          const stopChat = target.subscribe(publish)
+          const stopTrajectory = trajectoryTarget.subscribe(publish)
+          this.stopSessionTarget = () => { stopChat(); stopTrajectory() }
           this.stopSessionState = binding.session.subscribe(publish)
           let eventRevision = binding.eventSource.getSnapshot().revision
           const publishGeneration = (kind, entries) => this.publishGeneration({
@@ -1536,6 +1656,7 @@ window.__ModuleLoader__.load({
           const subagentCatalogFace = binding.session.projections?.faceOf('subagentCatalog')
           const inputContinuationsFace = binding.session.projections?.faceOf('eleckoiInputContinuations')
           const turnOutcomesFace = binding.session.projections?.faceOf('eleckoiTurnOutcomes')
+          const illustrationsFace = binding.session.projections?.faceOf('eleckoiIllustrations')
           const inboxFace = binding.session.projections?.faceOf('inbox')
           const publishProjections = () => {
             if (this.disposed || generation !== this.sessionBindingGeneration || id !== this.detailsSnapshot.id) return
@@ -1579,6 +1700,7 @@ window.__ModuleLoader__.load({
             subagentCatalogFace?.subscribe(publishSubagents),
             inputContinuationsFace?.subscribe(() => { publishProjections(); publish() }),
             turnOutcomesFace?.subscribe(publish),
+            illustrationsFace?.subscribe(publish),
             inboxFace?.subscribe(publish),
             this.sessions.list.subscribe?.(publishSubagents),
           ].filter(Boolean)
@@ -1608,7 +1730,7 @@ window.__ModuleLoader__.load({
           if (!this.sameOfficialProjection(signature, this.officialProjectionSignature)) {
             const next = {
               ...details, runtimeSessionId,
-              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn, pendingSubmissions, sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId)),
+              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn, pendingSubmissions, sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId), this.regeneratingInputTurn(runtimeSessionId), this.illustrations(runtimeSessionId)),
               hasMore,
             }
             next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
@@ -1820,6 +1942,8 @@ window.__ModuleLoader__.load({
           error.name = 'AbortError'
           throw error
         }
+        const studio = this.sessions?.binding(input?.sessionId)?.session.projections?.faceOf('eleckoiCreatorStudio')?.getSnapshot()
+        if (studio) return { kind: 'success' }
         const conversationId = this.detailsSnapshot.id
         if (!conversationId || this.runtimeSessionId(conversationId) !== input?.sessionId) {
           return { kind: 'error', text: '当前聊天与输入框会话不一致。' }
@@ -1873,7 +1997,14 @@ window.__ModuleLoader__.load({
           throw error
         } finally {
           if (this.activeRequests.get(input.conversationId) === request) this.activeRequests.delete(input.conversationId)
-          if (this.detailsSnapshot.id === input.conversationId) this.publishDetails(this.detailsSnapshot, this.officialProjectionSignature)
+          if (this.detailsSnapshot.id === input.conversationId) {
+            const reference = this.sessionReference
+            // Releasing a failed/cancelled preparation restores the real
+            // stopped history. An accepted continuation remains authoritative.
+            if (request.regenerationInput && reference?.binding && this.sessionTarget) {
+              this.acceptOfficialSession(input.conversationId, reference.sessionId, reference.binding.session, this.sessionTarget)
+            } else this.publishDetails(this.detailsSnapshot, this.officialProjectionSignature)
+          }
           request.rewindEventSeq = undefined
           if (request.statsPending && this.detailsSnapshot.id === input.conversationId
             && this.latestStatsSnapshot.id === input.conversationId) {
@@ -1961,6 +2092,7 @@ window.__ModuleLoader__.load({
 
       async runOfficialRegeneration(input, request) {
         if (!Number.isSafeInteger(input.eventSeq)) throw new Error('找不到这条输入对应的 DSH 消息。')
+        request.regenerationInput = { eventSeq: input.eventSeq, runtimeSessionId: this.runtimeSessionId(input.conversationId) }
         request.statsPending = this.statsSnapshot.id === input.conversationId && Boolean(this.statsSnapshot.stats)
         this.primeRewindRequest(input, request)
         this.detailGeneration += 1
@@ -2003,7 +2135,10 @@ window.__ModuleLoader__.load({
           await this.remote.eleckoiConversations.startRegeneration(input.conversationId, input.requestId, cancelled),
           '重新生成请求失败。'
         )
-        if (cancelled) return { details: await this.refreshDetails(), cancelled: true }
+        if (cancelled) {
+          request.regenerationInput = undefined
+          return { details: await this.refreshDetails(), cancelled: true }
+        }
         if (accepted.accepted !== true) throw new Error('重新生成请求未被 DSH Session 接受。')
         if (!Number.isSafeInteger(accepted.turn) || accepted.turn < 1) throw new Error('重新生成请求缺少 DSH 执行轮次。')
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
@@ -2110,7 +2245,7 @@ window.__ModuleLoader__.load({
           const sessionRunning = session ? session.getSnapshot().running === true : undefined
           const projected = chat
             ? { ...details, runtimeSessionId, hasMore,
-              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId)) }
+              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId), this.regeneratingInputTurn(runtimeSessionId), this.illustrations(runtimeSessionId)) }
             : details
           if (chat) projected.beforeSequence = projected.messages.find(message => message.id !== 'opening')?.sequence ?? null
           if (generation === this.detailGeneration) {
@@ -2175,7 +2310,7 @@ window.__ModuleLoader__.load({
           const metadata = { ...latest.details, messages: [...page.messages, ...latest.details.messages] }
           const hasMore = Boolean(this.sessionReference.binding.eventSource.getSnapshot().hasMore)
           const sessionRunning = session ? session.getSnapshot().running === true : undefined
-          const messages = officialMessages(chat, { ...metadata, hasMore }, latest.runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(latest.runtimeSessionId), this.abortedTurns(latest.runtimeSessionId))
+          const messages = officialMessages(chat, { ...metadata, hasMore }, latest.runtimeSessionId, this.officialProcess(chat), [], sessionRunning, this.inputContinuations(latest.runtimeSessionId), this.abortedTurns(latest.runtimeSessionId), this.regeneratingInputTurn(latest.runtimeSessionId), this.illustrations(latest.runtimeSessionId))
           const next = { ...latest.details, messages, hasMore,
             beforeSequence: messages.find(message => message.id !== 'opening')?.sequence ?? null }
           this.publishDetails({ ...latest, status: 'ready', error: '', details: next })

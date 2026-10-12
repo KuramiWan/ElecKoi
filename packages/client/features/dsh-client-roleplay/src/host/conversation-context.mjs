@@ -4,12 +4,13 @@ import { readFileSync } from 'node:fs'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
 import { INPUT_CONTINUATIONS_PROJECTION } from './input-continuations-projection.mjs'
+import { illustrationInstructions, prepareIllustration } from './generated-image-result.mjs'
 
 export const name = 'eleckoi-conversation-context'
 export const projectionPlugin = 'eleckoi-request-projection'
 
 /** Install product-owned prompt contributions for every root turn. */
-export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId, previews) {
+export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId, previews, settings) {
   let executionStep
   const disposeStep = agentCtx.on('session/event', (session, event) => {
     if (session.id === sourceSessionId && event.type === 'step/start') executionStep = event.data
@@ -28,8 +29,9 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
     const surface = session.deriveMessages()
     const currentUser = surface.findLast(isDirectUserMessage)
     const prompt = snapshot.conversationContext.currentPromptText
+    const illustration = prepareIllustration(settings, snapshot)
     const transform = {
-      instructions: sessionInstructions(snapshot) || null,
+      instructions: sessionInstructions(snapshot, illustration ? illustrationInstructions(illustration.settings) : '') || null,
       currentPromptText: typeof prompt === 'string' && prompt !== messageText(currentUser)
         ? prompt : null
     }
@@ -53,7 +55,30 @@ export function projectRequestInput(surface, snapshot, transform) {
   const messages = projectRequestMessages(
     projectCurrentUserPrompt(projectProductHistory(surface, snapshot), transform), snapshot.plan
   )
-  const instructions = transform.instructions
+  return appendRequestInstructions(messages, transform.instructions)
+}
+
+/** Add preset positions and instructions without replacing or filtering native Session history. */
+export function extendNativeRequestInput(surface, plan = [], instructions) {
+  const messages = []
+  const firstDialogue = surface.findIndex(message => message.role !== 'system')
+  const prefixIndex = firstDialogue < 0 ? surface.length : firstDialogue
+  const currentUserIndex = surface.findLastIndex(isDirectUserMessage)
+  for (let index = 0; index <= surface.length; index++) {
+    if (index === prefixIndex) messages.push(...messagesForAnchor(plan, 'insert_point_1'), ...messagesForAnchor(plan, 'insert_point_2'))
+    if (index === currentUserIndex) messages.push(...messagesForAnchor(plan, 'insert_point_3'))
+    if (index === surface.length) {
+      if (currentUserIndex < 0) messages.push(...messagesForAnchor(plan, 'insert_point_3'), ...messagesForAnchor(plan, 'insert_point_4'))
+      messages.push(...messagesForAnchor(plan, 'insert_point_5'))
+    } else {
+      messages.push(surface[index])
+      if (index === currentUserIndex) messages.push(...messagesForAnchor(plan, 'insert_point_4'))
+    }
+  }
+  return appendRequestInstructions(messages, instructions)
+}
+
+function appendRequestInstructions(messages, instructions) {
   if (instructions) {
       const systemIndex = messages.findLastIndex((message) => message?.role === 'system')
       if (systemIndex >= 0) {
@@ -70,11 +95,11 @@ export function projectRequestInput(surface, snapshot, transform) {
   return messages
 }
 
-export function sessionInstructions(snapshot) {
+export function sessionInstructions(snapshot, imageInstructions = '') {
   const additions = settingInjections(snapshot.conversationContext)
     .filter((entry) => entry.anchor === 'instructions')
     .map((entry) => entry.content)
-  return [snapshot.model?.systemPrompt, ...additions]
+  return [snapshot.model?.systemPrompt, ...additions, imageInstructions]
     .filter((value) => typeof value === 'string' && value.trim())
     .join('\n\n')
 }

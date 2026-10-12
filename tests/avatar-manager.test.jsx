@@ -22,12 +22,14 @@ describe("avatar manager", () => {
         value={{ circle: "circle.png", square: "square.png", portrait: "portrait.png" }}
         name="你"
         onBack={() => {}}
-        onSave={() => {}}
+        onChange={() => {}}
       />,
     );
 
     expect(html).toContain("头像管理");
-    expect(html).toContain("更换图片");
+    expect(html).not.toContain("更换图片");
+    expect(html).not.toContain('avatar-manager-footer');
+    expect(html).toContain('aria-label="更换圆形头像"');
     expect(html).toContain("矩形头像");
     expect(html).toContain("圆形与方形");
     expect(html).toContain("圆形头像");

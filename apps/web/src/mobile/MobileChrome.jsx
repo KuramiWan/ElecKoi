@@ -33,7 +33,7 @@ export function useMobileBack(action, enabled = true) {
   useEffect(() => enabled ? view.registerBackHandler(() => actionRef.current()) : undefined, [enabled, view.registerBackHandler]);
 }
 
-export function MobileDialog({ title, children, onClose, busy = false, className = '' }) {
+export function MobileDialog({ title, children, onClose, busy = false, className = '', systemBarSurface = false }) {
   const ref = useRef(null);
   useMobileBack(() => { if (!busy) onClose(); return true; });
   useEffect(() => {
@@ -48,7 +48,7 @@ export function MobileDialog({ title, children, onClose, busy = false, className
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   }
-  return <SystemBarOverlay className={`mobile-dialog-overlay ${className}`} onClick={() => !busy && onClose()}>
+  return <SystemBarOverlay className={`mobile-dialog-overlay ${className}`} systemBarSurfaceRef={systemBarSurface ? ref : undefined} onClick={() => !busy && onClose()}>
     <section ref={ref} className="mobile-dialog" role="dialog" aria-modal="true" data-mobile-back-owner="dialog" aria-label={title} onKeyDown={trap} onClick={event => event.stopPropagation()}>
       <header><h2>{title}</h2><button type="button" aria-label="关闭" disabled={busy} onClick={onClose}><X size={22} /></button></header>
       {children}

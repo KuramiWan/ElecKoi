@@ -28,7 +28,7 @@ export function MobileWindow(props) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchHistory, setSearchHistory] = useState([]);
   const selectedPanel = navigation.selectedPanelId;
-  const [routes, setRoutes] = useState([{ panel: selectedPanel, kind: 'root' }]);
+  const [routes, setRoutes] = useState(() => selectedPanel === 'creatorStudio' ? [{ panel: 'messages', kind: 'root' }, { panel: 'creatorStudio', kind: 'creator-studio' }] : [{ panel: selectedPanel, kind: 'root' }]);
   const route = routes.at(-1);
   const [routeBusy, setRouteBusy] = useState(false);
   const [pendingConversation, setPendingConversation] = useState(null);
@@ -67,7 +67,10 @@ export function MobileWindow(props) {
     if (conversationBusyRef.current) return;
     guarded(() => {
     skipPanelGuard.current = true;
-    try { navigation.selectPanel(id); setRoutes([{ panel: id, kind: 'root' }]); }
+    try {
+      navigation.selectPanel(id);
+      setRoutes(current => id === 'creatorStudio' ? current.at(-1).panel === id ? current : [...current, { panel: id, kind: 'creator-studio' }] : [{ panel: id, kind: 'root' }]);
+    }
     finally { skipPanelGuard.current = false; }
     });
   }, [guarded, navigation]);
@@ -97,7 +100,8 @@ export function MobileWindow(props) {
   }), [guarded, navigation.setPanelGuard]);
   useEffect(() => {
     if (routeRef.current.at(-1).panel === selectedPanel) return;
-    if (selectedPanel === 'conversation') setRoutes(current => [...current, { panel: 'conversation', kind: 'official-conversation' }]);
+    if (selectedPanel === 'creatorStudio') setRoutes(current => [...current, { panel: selectedPanel, kind: 'creator-studio' }]);
+    else if (selectedPanel === 'conversation') setRoutes(current => [...current, { panel: 'conversation', kind: 'official-conversation' }]);
     else if (!ROOT_TABS.some(([id]) => id === selectedPanel)) setRoutes(current => [...current, { panel: selectedPanel, kind: 'root' }]);
     else setRoutes([{ panel: selectedPanel, kind: 'root' }]);
   }, [selectedPanel]);

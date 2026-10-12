@@ -8,6 +8,12 @@ const pendingAssistant = {
 };
 
 describe('inline agent process presentation', () => {
+  it('shows compaction progress from the real lifecycle and does not relabel completion as still running', () => {
+    const item = { id: 'compact:9', kind: 'compaction', status: 'running' };
+    expect(liveProcessPresentation([item]).title).toBe('正在自动压缩');
+    expect(liveProcessPresentation([{ ...item, status: 'complete' }]).title).toBe('上下文已自动压缩');
+    expect(liveProcessPresentation([{ ...item, status: 'error' }]).title).toBe('自动压缩失败');
+  });
   it('does not present rejected or unchanged setting tools as successful mutations', () => {
     const tool = { toolName: 'eleckoi_apply_setting_patch', kind: 'file_change', status: 'complete',
       arguments: JSON.stringify({ path: '合成设定' }) };

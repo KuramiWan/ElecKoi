@@ -1,9 +1,84 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
+import { dshClientPlugin } from './helpers/dshClientPlugin'
 
 const source = readFileSync(new URL('../packages/client/features/dsh-client-creator-studio/src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
+
+function studioSessions(items: Array<{ sessionId: string; title: string; pinned: boolean }>) {
+  let registration: any
+  const services = new Map<string, any>()
+  const releases: string[] = []
+  const active = (sessionId: string) => ({ sessionId, presetId: 'synthetic-creator-preset', characterId: '' })
+  const remote = {
+    list: vi.fn(async () => ({ ok: true, value: items })),
+    open: vi.fn(async (id: string) => ({ ok: true, value: active(id) })),
+    create: vi.fn(async () => ({ ok: true, value: active('synthetic-new-session') })),
+    regenerate: vi.fn(async (_id: string) => ({ ok: true, value: undefined })),
+    deleteMessagesFrom: vi.fn(async (_id: string, _seq: number, _role: string) => ({ ok: true, value: undefined })),
+  }
+  runInNewContext(source, { AbortController, AbortSignal, window: { __ModuleLoader__: { load(value: unknown) { registration = value } } } })
+  dshClientPlugin(registration).apply({
+    remote: { eleckoiCreatorStudioSessions: remote },
+    sessions: { refresh: async () => {}, retain: (id: string) => ({ ready: Promise.resolve(), release: () => releases.push(id) }) },
+    provide: (name: string, value: unknown) => services.set(name, value),
+    effect: () => {},
+  })
+  return { model: services.get('eleckoiCreatorStudio').sessions, remote, releases }
+}
+
+describe('Studio Session binding and restoration', () => {
+  it('reopens the activity-ordered latest conversation, independently of sidebar pins', async () => {
+    const f = studioSessions([{ sessionId: 'synthetic-recent', title: '最近对话', pinned: false }, { sessionId: 'synthetic-pinned', title: '置顶对话', pinned: true }])
+    await f.model.restoreRecent()
+    expect(f.remote.open).toHaveBeenCalledWith('synthetic-recent')
+    expect(f.remote.create).not.toHaveBeenCalled()
+    f.model.release()
+    await f.model.restoreRecent()
+    expect(f.remote.open).toHaveBeenCalledTimes(2)
+    expect(f.model.getSnapshot().active.sessionId).toBe('synthetic-recent')
+  })
+  it('creates only when the successful Studio catalog is empty', async () => {
+    const f = studioSessions([])
+    await f.model.restoreRecent()
+    expect(f.remote.create).toHaveBeenCalledOnce()
+    const failed = studioSessions([])
+    failed.remote.list.mockRejectedValueOnce(new Error('synthetic-list-failure'))
+    await expect(failed.model.restoreRecent()).rejects.toThrow('synthetic-list-failure')
+    expect(failed.remote.create).not.toHaveBeenCalled()
+  })
+  it('releases and reacquires the same Session after regeneration, including failure', async () => {
+    const f = studioSessions([{ sessionId: 'synthetic-session', title: '合成对话', pinned: false }])
+    await f.model.open('synthetic-session')
+    await f.model.regenerate()
+    expect(f.remote.regenerate).toHaveBeenCalledWith('synthetic-session')
+    expect(f.releases).toEqual(['synthetic-session'])
+    f.remote.deleteMessagesFrom.mockRejectedValueOnce(new Error('synthetic-delete-failure'))
+    await expect(f.model.deleteMessagesFrom(17, 'assistant')).rejects.toThrow('synthetic-delete-failure')
+    expect(f.remote.deleteMessagesFrom).toHaveBeenCalledWith('synthetic-session', 17, 'assistant')
+    expect(f.model.getSnapshot().active.sessionId).toBe('synthetic-session')
+    expect(f.model.getSnapshot().reference).not.toBeNull()
+  })
+  it('keeps the visible Session while the Host rewinds and restores it', async () => {
+    const f = studioSessions([{ sessionId: 'synthetic-session', title: '合成对话', pinned: false }])
+    await f.model.open('synthetic-session')
+    const reference = f.model.getSnapshot().reference
+    let complete!: () => void
+    f.remote.regenerate.mockImplementationOnce(() => new Promise(resolve => { complete = () => resolve({ ok: true, value: undefined }) }))
+    const pending = f.model.regenerate()
+    await settle()
+    expect(f.model.getSnapshot().reference).toBe(reference)
+    expect(f.model.getSnapshot().active.sessionId).toBe('synthetic-session')
+    expect(f.releases).toEqual([])
+    expect(f.model.getSnapshot().editingSessionId).toBe('synthetic-session')
+    await expect(f.model.regenerate()).rejects.toThrow('等待')
+    complete(); await pending
+    expect(f.model.getSnapshot().reference).not.toBe(reference)
+    expect(f.model.getSnapshot().active.sessionId).toBe('synthetic-session')
+    expect(f.model.getSnapshot().editingSessionId).toBe('')
+  })
+})
 
 function projectChanges() {
   const queue: Array<{ kind: 'snapshot' } | { kind: 'records'; domain: 'creatorProjects' }> = [{ kind: 'snapshot' }]
@@ -49,7 +124,7 @@ describe('DSH ElecKoi creator studio projects', () => {
         __ModuleLoader__: { load(value: typeof registration) { registration = value } }
       }
     })
-    registration!.factory().apply({
+    dshClientPlugin(registration!).apply({
       remote: {
         eleckoiCreatorStudio: {
           list,

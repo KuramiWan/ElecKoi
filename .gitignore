@@ -32,7 +32,6 @@ out/
 release/
 packages/host/product-api/lib/
 packages/host/product-data/lib/
-packages/host/compatibility-host/lib/
 packages/client/features/*/lib/
 packages/client/mobile/*/lib/
 apps/desktop/resources/native/

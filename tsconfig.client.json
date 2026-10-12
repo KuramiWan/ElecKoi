@@ -1,9 +1,15 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/client/features/dsh-client-author/tsconfig.client.json" },
-    { "path": "./packages/client/features/dsh-client-tavern-shared/tsconfig.client.json" },
-    { "path": "./packages/client/mobile/dsh-client-mobile/tsconfig.client.json" },
+    {
+      "path": "./packages/client/features/dsh-client-author/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/client/features/dsh-client-html-resources/tsconfig.client.json"
+    },
+    {
+      "path": "./packages/client/mobile/dsh-client-mobile/tsconfig.client.json"
+    },
     {
       "path": "./packages/client/features/dsh-client-character-configuration/tsconfig.client.json"
     },

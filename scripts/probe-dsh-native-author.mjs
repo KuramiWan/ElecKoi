@@ -8,11 +8,11 @@ import { AUTHOR_API_VERSION } from '@eleckoi/author-sdk'
 
 const root = mkdtempSync(join(tmpdir(), 'eleckoi-native-author-'))
 const profile = join(root, 'home', 'profiles', 'desktop')
-const compatibility = ['@eleckoi/dsh-client-tavern-shared', '@eleckoi/dsh-compatibility-host']
+const htmlResources = ['@eleckoi/dsh-client-html-resources']
 initProfile(profile, [...PROFILE_TEMPLATES.web.bundles, ...ELECKOI_DESKTOP_BUNDLES])
 registerDesktopBundles(profile)
 const manifest = readProfileManifest('dsh', profile)
-writeProfileBundles(profile, manifest, manifest.dsh.profile.bundles.filter(name => !compatibility.includes(name)))
+writeProfileBundles(profile, manifest, manifest.dsh.profile.bundles.filter(name => !htmlResources.includes(name)))
 mkdirSync(join(root, 'workspace'))
 const hosts = []
 const options = {
@@ -30,8 +30,8 @@ async function connect() {
   const entries = boot.value.entries.map(entry => entry.id)
   assert(entries.includes('@eleckoi/dsh-client-author'))
   assert(entries.includes('@eleckoi/dsh-client-character-configuration'))
-  for (const name of compatibility) assert(!entries.includes(name))
-  assert(!readProfileManifest('dsh', profile).dsh.profile.bundles.some(name => compatibility.includes(name)))
+  for (const name of htmlResources) assert(!entries.includes(name))
+  assert(!readProfileManifest('dsh', profile).dsh.profile.bundles.some(name => htmlResources.includes(name)))
   const handshake = await fetch(ready.url, { redirect: 'manual' })
   const cookie = handshake.headers.get('set-cookie')?.split(';', 1)[0]
   await handshake.body?.cancel()
@@ -59,7 +59,7 @@ async function connect() {
     assert(http.ok, `${path}: HTTP ${http.status}`)
     return http.text()
   }
-  const legacy = await fetch(new URL('/eleckoi/compat/assets/tavern-shared.global.js', ready.url), { headers: { cookie } })
+  const legacy = await fetch(new URL('/eleckoi/html/html-libraries.global.js', ready.url), { headers: { cookie } })
   assert.equal(legacy.status, 404)
   await legacy.body?.cancel()
   return { host, call, response, asset }
@@ -69,7 +69,7 @@ try {
   const first = await connect()
   const characterId = 'synthetic-native-character'
   await first.call('eleckoiCharacters/create', { character: { id: characterId, name: 'Synthetic native character' } })
-  const preset = await first.call('eleckoiAgentPresets/create', { name: 'Synthetic native preset', libraryGroupId: '' })
+  const preset = await first.call('eleckoiAgentPresets/create', { name: 'Synthetic native preset', libraryGroupId: '', purpose: 'roleplay' })
   await first.call('eleckoiAgentPresets/setActive', { presetId: preset.id })
   const config = await first.call('eleckoiCharacterConfiguration/readVariableConfig', { characterId })
   const active = config.versions.filter(version => version.id === config.activeVersionId)

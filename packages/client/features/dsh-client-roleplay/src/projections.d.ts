@@ -29,6 +29,15 @@ export interface RoleplayInputContinuationsState extends RoleplayInputContinuati
 
 declare module '@deepseek-ai/dsh-session' {
   interface SessionEventMap {
+    'eleckoi/illustration': {
+      batchId: string
+      turn: number
+      step: number
+      status: 'generating' | 'complete' | 'partial' | 'failed'
+      frames: Array<{ id: number; width: number; height: number; status: 'generating' | 'ready' | 'failed';
+        attachment?: import('@eleckoi/dsh-product-data').ChatUserImageAttachment; seed?: number; error?: string }>
+      error?: string
+    }
     'eleckoi/request-context': {
       requestSeq: number
       context: RoleplayRequestContextItem[]
@@ -44,6 +53,7 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
+    eleckoiIllustrations: import('@deepseek-ai/dsh-session').SessionEventMap['eleckoi/illustration'][]
     eleckoiConversationPreview: string
     eleckoiHistoryStatsAdjustment: { steps: number; turns: number }
     eleckoiTurnOutcomes: { abortedTurns: number[] }

@@ -384,7 +384,7 @@ window.__ModuleLoader__.load({
         async activePreset() {
           const catalog = await bridge.remote.eleckoiAgentPresets.catalog()
           if (!catalog?.ok) throw new Error(catalog?.error?.message || '读取当前预设失败。')
-          const preset = catalog.value.presets.find(item => item.id === catalog.value.activePresetId)
+          const preset = catalog.value.presets.find(item => item.id === catalog.value.activePresetIds.roleplay)
           if (!preset) throw new Error('当前预设不在预设目录中。')
           return { id: preset.id, name: preset.name }
         },

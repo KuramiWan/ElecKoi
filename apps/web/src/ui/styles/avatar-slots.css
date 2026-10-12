@@ -45,22 +45,11 @@
   height: 16px;
 }
 
-.avatar-manager-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding-bottom: 2px;
-}
-
-.avatar-manager-header-actions > span {
-  max-width: 320px;
+.avatar-manager-error {
+  margin: 16px 0 0;
   color: #d93025;
   font-size: 12px;
-  text-align: right;
-}
-
-.avatar-manager-header-actions .settings-primary-button {
-  min-width: 116px;
+  text-align: center;
 }
 
 .avatar-manager-results {
@@ -265,16 +254,6 @@
 @media (max-width: 480px) {
   .avatar-manager-header {
     align-items: end;
-  }
-
-  .avatar-manager-header-actions {
-    display: grid;
-    justify-items: end;
-    gap: 6px;
-  }
-
-  .avatar-manager-header-actions > span {
-    max-width: 180px;
   }
 
   .avatar-manager-results {

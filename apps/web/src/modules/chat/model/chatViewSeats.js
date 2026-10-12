@@ -16,7 +16,7 @@ export function selectRoleplayChatSeat(messages, runtimeSessionId, node) {
     return index < 0 ? null : { item: messages[index], index };
   }
   if (node.kind !== 'user' && node.kind !== 'steering') {
-    return ['turn-error', 'turn-max-tokens', 'model-retry', 'command', 'manual-compaction', 'compaction'].includes(node.kind) ? undefined : null;
+    return ['turn-error', 'turn-max-tokens', 'model-retry', 'command', 'manual-compaction'].includes(node.kind) ? undefined : null;
   }
   const input = node.data;
   const requestId = input.source?.kind === 'user' ? input.source.rpcId : undefined;

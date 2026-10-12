@@ -7,6 +7,7 @@ const settingMutations = new Set([
 ]);
 
 const actions = {
+  generate_image: '生成配图',
   eleckoi_glob_setting_files: '查找设定文件', eleckoi_grep_setting_files: '搜索设定内容',
   eleckoi_read_setting_files: '读取设定正文', eleckoi_glob_variables: '查找变量',
   eleckoi_grep_variables: '搜索变量内容', eleckoi_read_variables: '读取变量',
@@ -53,7 +54,8 @@ export function processItemPresentation(item) {
 export function liveProcessPresentation(items) {
   const latest = [...rootProcessItems(items || [])].reverse().find(Boolean);
   if (!latest) return null;
-  return processItemPresentation(latest.status === 'complete' ? { ...latest, status: 'running' } : latest);
+  return processItemPresentation(latest.status === 'complete' && latest.kind !== 'compaction'
+    ? { ...latest, status: 'running' } : latest);
 }
 
 export function shouldShowInlineAgentProcess(message, displayedContent) {

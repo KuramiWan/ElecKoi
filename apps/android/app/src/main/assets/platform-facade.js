@@ -140,11 +140,12 @@
       painter.fillRect(0, 0, 1, 1);
       const layers = maskLayers().sort((a, b) => stackingOrder(a.mask) - stackingOrder(b.mask)
         || (a.mask.compareDocumentPosition(b.mask) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-      for (const { mask, pseudo } of layers) {
-        const style = getComputedStyle(mask, pseudo || null);
+      for (const { mask, pseudo, surface } of layers) {
+        const paint = surface || mask;
+        const style = getComputedStyle(paint, surface ? null : pseudo || null);
         if (style.display === 'none' || style.visibility === 'hidden') continue;
         let opacity = Number(style.opacity || 1);
-        for (let node = pseudo ? mask : mask.parentElement; node && node !== document.body; node = node.parentElement)
+        for (let node = surface ? surface.parentElement : pseudo ? mask : mask.parentElement; node && node !== document.body; node = node.parentElement)
           opacity *= Number(getComputedStyle(node).opacity || 1);
         painter.globalAlpha = opacity;
         painter.fillStyle = style.backgroundColor;
@@ -180,15 +181,18 @@
     const maskObserver = new MutationObserver(syncMasks);
     const watchMasks = () => {
       maskObserver.disconnect();
-      for (const { mask } of maskLayers())
+      for (const { mask, surface } of maskLayers()) {
         maskObserver.observe(mask, { attributes: true, attributeFilter: ['style', 'class', 'data-sheet-closing'] });
+        if (surface) maskObserver.observe(surface, { attributes: true, attributeFilter: ['style', 'class'] });
+      }
       syncMasks();
     };
     document.addEventListener('eleckoi:system-bar-mask', event => {
-      const { mask, pseudo, active } = event.detail || {};
+      const { mask, pseudo, surface, active } = event.detail || {};
       if (!(mask instanceof HTMLElement) || mask.ownerDocument !== document
-        || !['', '::after', '::before'].includes(pseudo) || typeof active !== 'boolean') return;
-      if (active) masks.set(mask, { mask, pseudo });
+        || !['', '::after', '::before'].includes(pseudo) || typeof active !== 'boolean'
+        || surface !== undefined && (!(surface instanceof HTMLElement) || !mask.contains(surface))) return;
+      if (active) masks.set(mask, { mask, pseudo, surface });
       else masks.delete(mask);
       watchMasks();
     });

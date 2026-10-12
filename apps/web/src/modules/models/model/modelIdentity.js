@@ -5,6 +5,7 @@ import geminiIcon from "../../../assets/model-icons/gemini.svg";
 import grokIcon from "../../../assets/model-icons/grok.svg";
 import kimiIcon from "../../../assets/model-icons/kimi.svg";
 import moonshotIcon from "../../../assets/model-icons/moonshot.svg";
+import novelAiIcon from "../../../assets/model-icons/novelai.svg";
 import openAiIcon from "../../../assets/model-icons/openai.svg";
 import zaiIcon from "../../../assets/model-icons/zai.svg";
 import zhipuIcon from "../../../assets/model-icons/zhipu.svg";
@@ -15,6 +16,7 @@ const modelIcons = {
   zhipu: { label: "智谱", icon: zhipuIcon },
   zai: { label: "Z.ai", icon: zaiIcon, monochrome: true },
   moonshot: { label: "月之暗面", icon: moonshotIcon, monochrome: true },
+  novelai_image: { label: "NovelAI", icon: novelAiIcon, monochrome: true },
   kimi: { label: "Kimi", icon: kimiIcon, monochrome: true },
   openai: { label: "OpenAI", icon: openAiIcon, monochrome: true },
   claude: { label: "Claude", icon: claudeIcon },
@@ -35,7 +37,7 @@ const modelNameRules = [
 
 export function detectModelIconId(modelName, providerId = "") {
   const provider = normalizeProviderIconId(providerId);
-  if (provider === "zhipu" || provider === "zai") return provider;
+  if (provider === "zhipu" || provider === "zai" || provider === "novelai_image") return provider;
   const model = String(modelName || "").trim();
   const detected = modelNameRules.find(([, pattern]) => pattern.test(model))?.[0];
   if (detected) return detected;

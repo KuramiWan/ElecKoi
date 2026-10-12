@@ -1,10 +1,49 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CreatorProjectCollection, CreateCreatorProjectInput } from '@eleckoi/dsh-product-api/types'
+import type { CreatorStudioSession, CreatorStudioSessionSummary, CreatorStudioMessage, ConversationModelSelection } from '@eleckoi/dsh-product-api/types'
+import type { ComponentType } from 'react'
+import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
+
+export interface CreatorStudioConversationSnapshot {
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  active: CreatorStudioSession | null
+  reference: SessionReference | null
+  items: CreatorStudioSessionSummary[]
+  error: string
+  editingSessionId: string
+}
+export interface CreatorStudioSessions {
+  getSnapshot(): CreatorStudioConversationSnapshot
+  subscribe(listener: () => void): () => void
+  refresh(): Promise<CreatorStudioSessionSummary[]>
+  create(characterId?: string): Promise<CreatorStudioSession | undefined>
+  open(sessionId: string): Promise<CreatorStudioSession | undefined>
+  restoreRecent(): Promise<CreatorStudioSession | undefined>
+  rename(sessionId: string, title: string): Promise<void>
+  pin(sessionId: string, pinned: boolean): Promise<void>
+  delete(sessionId: string): Promise<void>
+  search(query: string, signal: AbortSignal): Promise<{ items: import('@deepseek-ai/dsh-api-session-controller/client').SessionSearchResultItem[]; hasMore: boolean }>
+  readDefaultModel(): Promise<ConversationModelSelection>
+  selectModel(selection: ConversationModelSelection): Promise<ConversationModelSelection>
+  messages(): Promise<CreatorStudioMessage[]>
+  regenerate(): Promise<void>
+  deleteMessagesFrom(eventSeq: number, role: 'user' | 'assistant'): Promise<void>
+  selectCharacter(characterId: string): Promise<CreatorStudioSession>
+  release(): void
+}
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'eleckoi.creator-studio.conversation': { kind: 'single'; scope: 'root'; owner: { reference: SessionReference; component: ComponentType<any>; props: Record<string, unknown> } }
+    'eleckoi.creator-studio.session': { kind: 'single'; scope: 'session'; owner: { component: ComponentType<any>; props: Record<string, unknown> } }
+  }
+}
 
 export interface CreatorStudioSnapshot { status: 'loading' | 'ready' | 'error'; collection: CreatorProjectCollection; error: string }
 
 /** 管理创作项目并使用官方目录选择器。 */
 export interface ElecKoiCreatorStudio {
+  readonly sessions: CreatorStudioSessions
   /**
    * 读取项目目录状态。
    * @returns 当前页面保存的状态对象。

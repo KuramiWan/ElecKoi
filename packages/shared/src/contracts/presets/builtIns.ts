@@ -95,10 +95,11 @@ export function withRequiredAgentPresetPromptPositions(
 
 export function normalizeAgentPresetPrompts(
   entries: SettingLibraryEntry[],
-  positions: SettingLibraryPromptPosition[]
+  positions: SettingLibraryPromptPosition[],
+  purpose: 'roleplay' | 'creator' = 'roleplay'
 ): { entries: SettingLibraryEntry[]; promptPositions: SettingLibraryPromptPosition[] } {
-  const requiredEntries = withRequiredAgentPresetEntries(entries)
-  const promptPositions = withRequiredAgentPresetPromptPositions(positions)
+  const requiredEntries = purpose === 'roleplay' ? withRequiredAgentPresetEntries(entries) : entries
+  const promptPositions = purpose === 'roleplay' ? withRequiredAgentPresetPromptPositions(positions) : normalizePromptPositions(positions)
   const positionsById = new Map(promptPositions.map((position) => [position.id, position]))
   const normalizedEntries = requiredEntries.map((entry) => {
     const customPosition = positionsById.get(entry.promptPositionId)
@@ -111,6 +112,14 @@ export function normalizeAgentPresetPrompts(
     return { ...entry, position: null, promptPositionId: '', enabled: false }
   })
   return { entries: normalizedEntries, promptPositions }
+}
+
+export function defaultCreatorPresetEntries(): SettingLibraryEntry[] {
+  return [{
+    ...entryDefaults('creator-studio-instructions', '创作指引'),
+      content: '你是 ElecKoi 的 AI 创作工作室。通过创作能力工具直接维护用户选择的角色资料、设定库、变量与正则。先使用 eleckoi_list_toolsets 查看能力，再使用 eleckoi_describe_toolset 获取准确参数，最后通过 eleckoi_call_capability 执行操作。读取现有内容后再修改，保留仍有效的数据。没有选择角色时先请用户选择角色。创作目标是编辑对象，不是你要扮演的角色。回复采用普通对话，不输出角色扮演正文边界。',
+    triggerMode: 'always', position: 'instructions', agentReadStrategy: 'required'
+  }]
 }
 
 export function presetHistoryCompactionInstructions(entries: SettingLibraryEntry[]): string | undefined {

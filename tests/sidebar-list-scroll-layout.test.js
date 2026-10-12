@@ -42,7 +42,8 @@ describe('sidebar list scrolling', () => {
   it('keeps plugin, character, preset, and conversation lists wheel-scrollable', () => {
     expect(characterStyles).toMatch(/\.character-list-panel\s*\{[^}]*height:\s*100%;[^}]*max-height:\s*100%;[^}]*overflow:\s*hidden;/);
     expect(characterStyles).toMatch(/\.character-list-scroll\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/);
-    expect(presetStyles).toMatch(/\.preset-list-panel\s*\{[^}]*grid-template-rows:\s*auto auto auto minmax\(0, 1fr\);/);
+    expect(presetStyles).toMatch(/\.preset-list-panel\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/);
+    expect(presetStyles).toMatch(/\.preset-list-panel\s*>\s*\.preset-list-scroll\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;/);
     expect(conversationStyles).toMatch(/\.conversation-scroll\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/);
   });
 });

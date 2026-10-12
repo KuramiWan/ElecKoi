@@ -446,7 +446,7 @@
   margin-left: auto;
   padding: 0;
   background: color-mix(in srgb, var(--text) 18%, transparent);
-  border-radius: 999px; corner-shape: round;
+  border-radius: var(--switch-track-radius, 999px); corner-shape: var(--switch-corner-shape, round);
 }
 
 .setting-library-tree-switch span {
@@ -456,7 +456,7 @@
   width: 12px;
   height: 12px;
   background: #fff;
-  border-radius: 50%; corner-shape: round;
+  border-radius: var(--switch-thumb-radius, 50%); corner-shape: var(--switch-corner-shape, round);
   box-shadow: 0 1px 3px rgba(0, 0, 0, .22);
   transition: transform 120ms ease;
 }

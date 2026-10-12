@@ -1,4 +1,5 @@
 import { blankConfigForProvider, normalizeProviderId } from "./modelProviderCatalog.js";
+import { novelAiImageSettingsError } from '@shared/contracts/agent/novelAiImageSettings';
 
 export function initialConfigForProvider(providerId) {
   const provider = normalizeProviderId(providerId);
@@ -89,11 +90,7 @@ export function imageSettingsError(form) {
     return "";
   }
   if (provider === "novelai_image") {
-    const steps = Number(settings.steps);
-    const scale = Number(settings.scale);
-    if (width < 512 || width > 2048 || height < 512 || height > 2048) return "宽高需要在 512 到 2048 之间。";
-    if (!Number.isInteger(steps) || steps < 1 || steps > 50) return "步数需要在 1 到 50 之间。";
-    if (!Number.isFinite(scale) || scale < 0.1 || scale > 10) return "提示词相关性需要在 0.1 到 10 之间。";
+    return novelAiImageSettingsError(settings);
   }
   return "";
 }

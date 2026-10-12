@@ -12,6 +12,7 @@ import { treeNodes } from '../apps/web/src/modules/settingLibraries/model/settin
 import { SettingLibraryInspector } from '../apps/web/src/modules/settingLibraries/components/SettingLibraryInspector.jsx';
 import { TrashIcon } from '../apps/web/src/ui/icons/index.jsx';
 import { SETTING_LIBRARY_CREATE_ICONS } from '../apps/web/src/ui/icons/settingLibraryCreateIcons.jsx';
+import { PresetPurposeSwitch } from '../apps/web/src/modules/presets/components/PresetPurposeSwitch.jsx';
 
 vi.mock('../apps/web/src/modules/settingLibraries/index.js', async () => {
   const react = await import('react');
@@ -64,10 +65,10 @@ describe('preset list consistency', () => {
     expect(entryOffsets.every((offset, index) => offset < referenceOffsets[index])).toBe(true);
   });
 
-  it('uses the Agent preset title in the sidebar', () => {
-    const source = readFileSync(new URL('../apps/web/src/modules/presets/components/PresetPanel.jsx', import.meta.url), 'utf8');
-    expect(source).toContain('<h2>Agent预设</h2>');
-    expect(source).not.toContain('<h2>预设</h2>');
+  it('identifies the active preset category without activating a different global preset', () => {
+    const html = renderToStaticMarkup(<PresetPurposeSwitch value="creator" onChange={() => {}} />);
+    expect(html).toContain('角色扮演预设');
+    expect(html).toContain('aria-pressed="true">创作预设');
   });
 
   it('keeps preset rows to the preset name without an author or prompt-count summary', () => {

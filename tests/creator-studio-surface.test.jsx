@@ -27,13 +27,15 @@ function renderCreatorStudio() {
 }
 
 describe("AI creator studio surface", () => {
-  it("starts with a development notice and a direct entry button", () => {
+  it("places the simple entry before the restricted developer entry", () => {
     const html = renderCreatorStudio();
 
     expect(html).toContain("AI创作工作室");
-    expect(html).toContain("正在开发");
-    expect(html).toContain("别点别进，是空壳，暂时用不了。");
-    expect(html).toContain("进入创作工作室");
+    expect(html).toContain("进入简易版");
+    expect(html).toContain("开发者专用");
+    expect(html).toContain("勿进");
+    expect(html).toContain("进入开发版");
+    expect(html.indexOf("进入简易版")).toBeLessThan(html.indexOf("进入开发版"));
   });
 
   it("paginates the same project collection used by both views", () => {

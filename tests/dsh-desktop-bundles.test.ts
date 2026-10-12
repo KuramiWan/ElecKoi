@@ -6,6 +6,26 @@ import { describe, expect, it } from 'vitest'
 import { ELECKOI_DESKTOP_BUNDLES, ELECKOI_INSTALL_ANCHOR, registerDesktopBundles } from '@eleckoi/desktop-host'
 
 describe('desktop bundle registration', () => {
+  it.each([true, false])('replaces the retired HTML resource pair without re-enabling disabled bundles: %s', enabled => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-html-upgrade-'))
+    try {
+      const old = ['@eleckoi/dsh-client-tavern-shared', '@eleckoi/dsh-compatibility-host']
+      const selected = [...PROFILE_TEMPLATES.web!.bundles, ...old.slice(0, enabled ? 2 : 1), '@test/navigation']
+      initProfile(root, selected)
+      writeFileSync(join(root, '.eleckoi-desktop-bundles-v7'), 'initialized\n')
+      const patch = '- id: synthetic-navigation\n  disabled: true\n'
+      writeFileSync(join(root, 'cordis.patch.yml'), patch)
+      registerDesktopBundles(root)
+      const expected = [...PROFILE_TEMPLATES.web!.bundles,
+        ...(enabled ? ['@eleckoi/dsh-client-html-resources'] : []), '@test/navigation']
+      expect(readProfileManifest('dsh', root).dsh?.profile?.bundles).toEqual(expected)
+      expect(readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toBe(patch)
+      const disabled = expected.filter(name => name !== '@eleckoi/dsh-client-html-resources')
+      writeProfileBundles(root, readProfileManifest('dsh', root), disabled)
+      registerDesktopBundles(root)
+      expect(readProfileManifest('dsh', root).dsh?.profile?.bundles).toEqual(disabled)
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
   it('ships every official optional bundle with the locked version and leaves activation to the user', () => {
     const runtime = JSON.parse(readFileSync('packages/host/runtime/package.json', 'utf8'))
     const desktop = JSON.parse(readFileSync('package.json', 'utf8'))

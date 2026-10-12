@@ -48,7 +48,7 @@ function plugin(path) {
   return dshClientPlugin(registration)
 }
 
-async function mount(scope) {
+async function mount(scope, message = sourceMessage) {
   let collection = makeCollection(scope)
   let regexRules
   let catalog
@@ -81,7 +81,7 @@ async function mount(scope) {
       changes: signal => conversationChanges.open(signal),
       list: async () => ({ ok: true, value: [{ id: 'chat-1' }] }),
       details: async () => ({ ok: true, value: { conversation: { id: 'chat-1' },
-        metadata: { characterId: 'character-1' }, runtimeSessionId: '', messages: [{ ...sourceMessage }],
+        metadata: { characterId: 'character-1' }, runtimeSessionId: '', messages: [{ ...message }],
         hasMore: false, beforeSequence: null } }), projectDisplay
     }
   }
@@ -103,6 +103,25 @@ async function mount(scope) {
 }
 
 describe('regex display refresh', () => {
+  it('keeps image prompts in the original message while the real display Remote transforms only the final body', async () => {
+    const prompt = '<ACTION_CALL name="generate_image">{"frames":[{"id":1,"prompt":"synthetic prompt [CARD]"}]}</ACTION_CALL>'
+    const content = `${prompt}\n<FINAL>\n[CARD]\n</FINAL>`
+    const app = await mount('characterRules', { ...sourceMessage, content })
+    try {
+      expect(app.projectDisplay).toHaveBeenCalled()
+      expect(app.rendered()[0].content).toBe(content)
+      expect(app.rendered()[0].displayContent).toContain('Old card')
+      expect(app.rendered()[0].displayContent).not.toContain('synthetic prompt')
+      expect(app.rendered()[0].displayContent).not.toContain('frames')
+      const updated = structuredClone(app.collection())
+      updated.characterRules[0].replacement = ''
+      await app.saveRules('character-1', updated)
+      await settle()
+      expect(app.rendered()[0].displayContent).toBe('')
+      expect(app.rendered()[0].content).toBe(content)
+    } finally { app.close() }
+  })
+
   it('invalidates the Host cache after an active preset regex revision change', () => {
     const original = makeCollection('agentPresetRules')
     const projector = new MessageDisplayProjector(mvuMessageDisplayCompatibility)

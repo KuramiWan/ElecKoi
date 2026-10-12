@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { AgentPreset, AgentPresetCatalog, RegexRule, AgentPresetImportSource, AgentPresetImportDocument, AgentPresetImportResult, AgentPresetExportFormat, AgentPresetExportResult } from '@eleckoi/dsh-product-api/types'
+import type { AgentPreset, AgentPresetCatalog, RegexRule, AgentPresetPurpose, AgentPresetImportSource, AgentPresetImportDocument, AgentPresetImportResult, AgentPresetExportFormat, AgentPresetExportResult } from '@eleckoi/dsh-product-api/types'
 
 export interface PresetCatalogSnapshot { status: 'loading' | 'ready' | 'error'; catalog: AgentPresetCatalog | null; error: string }
 export interface PresetDetailSnapshot { status: 'idle' | 'ready' | 'error'; preset: AgentPreset | null; error: string }
@@ -47,16 +47,18 @@ export interface ElecKoiPresets {
    * 创建预设并可指定分组。
    * @param name - 保存的名称。
    * @param libraryGroupId - 预设分组编号；省略时不分组。
+   * @param purpose - 目标分类；省略时为角色扮演预设。
    * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
    */
-  create(name: string, libraryGroupId?: string): Promise<AgentPreset>
+  create(name: string, libraryGroupId?: string, purpose?: AgentPresetPurpose): Promise<AgentPreset>
   /**
    * 导入预设文件。
    * @param source - 支持的导入格式。
    * @param document - 待导入的文件内容。
+   * @param purpose - 目标预设分类。
    * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
    */
-  import(source: AgentPresetImportSource, document: AgentPresetImportDocument): Promise<AgentPresetImportResult>
+  import(source: AgentPresetImportSource, document: AgentPresetImportDocument, purpose?: AgentPresetPurpose): Promise<AgentPresetImportResult>
   /**
    * 导出预设文件内容。
    * @param presetId - 预设编号。
@@ -73,9 +75,10 @@ export interface ElecKoiPresets {
   /**
    * 创建预设分组。
    * @param name - 保存的名称。
+   * @param purpose - 所属预设分类。
    * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
    */
-  createGroup(name: string): Promise<AgentPresetCatalog>
+  createGroup(name: string, purpose?: AgentPresetPurpose): Promise<AgentPresetCatalog>
   /**
    * 重命名预设分组。
    * @param groupId - 分组编号。

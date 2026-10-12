@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import * as libraries from '@eleckoi/compatibility-tavern-shared/browser-libraries';
+import * as libraries from '@eleckoi/dsh-client-html-resources/browser-libraries';
 import { buildRichMessageHtml } from '../apps/web/src/modules/authorFrontend/model/buildRichMessageHtml.js';
 
-const runtime = { assetsBaseUrl: '/eleckoi/compat/', sdk: libraries };
+const runtime = { assetsBaseUrl: '/eleckoi/html/', sdk: libraries };
 
 describe('shared rich message document', () => {
   it('loads browser resources without installing external SDK interfaces', () => {
@@ -13,7 +13,7 @@ describe('shared rich message document', () => {
     expect(output).toContain('ElecKoiFrontendContext=null');
     expect(output).toContain('eleckoi:frontend-ready');
     for (const file of [...libraries.BROWSER_LIBRARY_SCRIPTS, ...libraries.BROWSER_LIBRARY_STYLES]) {
-      expect(output).toContain(`/eleckoi/compat/assets/assets/${file}`);
+      expect(output).toContain(`/eleckoi/html/libraries/${file}`);
       expect(output.indexOf(file)).toBeLessThan(output.indexOf('window.cardLoaded'));
     }
     expect(output.indexOf('type="importmap"')).toBeLessThan(output.indexOf('window.cardLoaded'));

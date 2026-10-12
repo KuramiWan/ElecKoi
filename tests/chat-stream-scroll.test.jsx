@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatView, chatFixture, userNode, turnNode, ManualCompactionNodeView } from './helpers/officialChatView.jsx'
 import { MessageList } from './helpers/officialMarkdown.jsx'
 import { selectRoleplayChatSeat, selectRoleplayPendingInput } from '../apps/web/src/modules/chat/model/chatViewSeats.js'
+import { AgentProcessDialog } from '../apps/web/src/modules/chat/components/AgentProcessDialog.jsx'
+import { officialChatFixture } from './helpers/officialTrajectory.js'
+import { interruptedTurnClosers } from '@deepseek-ai/dsh-session'
 
 let observers
 beforeEach(() => {
@@ -54,7 +57,7 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
       seat={selectRoleplayPendingInput(messages, sessionId, owner.input)} />
     return options?.fallback ?? null
   }
-  return { fixture, scroller, root,
+  return { fixture, scroller, root, rowProps,
     async render(nextMessages = messages, next = {}, viewProps = {}) {
       messages = nextMessages
       await act(async () => { fixture.update(next); root.render(<ChatView {...fixture.props} renderSlot={renderSlot} {...viewProps} />) })
@@ -71,6 +74,73 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
 }
 
 describe('official ChatView with roleplay presentation', () => {
+  it.each(['roleplay', 'agent'])('keeps the retired native control from rendering a second AI row during regenerated compaction (%s)', async layoutMode => {
+    const view = mountChat()
+    view.rowProps.layoutMode = layoutMode
+    view.rowProps.onOpenProcess = vi.fn()
+    const event = (type, seq, data, surfaceOp) => ({ type, seq, time: seq * 100, data, ...(surfaceOp ? { surfaceOp } : {}) })
+    const prefix = [event('turn/start', 1, { turn: 1 }),
+      event('compaction/start', 2, { turn: 1, compactionId: 'retired-compaction' }),
+      event('compaction/end', 3, { turn: 1, compactionId: 'retired-compaction', error: 'Synthetic interrupted summary' }),
+      event('step/start', 4, { turn: 1, step: 1 }),
+      event('user/message', 5, { id: 'retained-input', role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: 'Synthetic retained input' }] }, 'append')]
+    const events = [...prefix, ...interruptedTurnClosers(prefix), event('turn/start', 8, { turn: 2 }),
+      event('eleckoi/input-continuation', 9, { turn: 2, inputEventSeq: 5, inputMessageId: 'retained-input' }),
+      event('compaction/start', 10, { turn: 2, compactionId: 'replacement-compaction' })]
+    const snapshot = officialChatFixture().replace(events)
+    const message = { id: 'replacement-process', runtimeSessionId: 'session-render',
+      renderKey: 'dsh-reply-session-render-2', dshTurn: 2, role: 'assistant', pending: true, status: 'streaming', content: '',
+      process: [{ id: 'compaction:10', kind: 'compaction', status: 'running', startedAtMillis: 1000 }] }
+    try {
+      expect([...snapshot.nodes.values()].filter(node => node.kind === 'turn-process')).toHaveLength(2)
+      await view.render([message], { ...snapshot, session: { ...view.fixture.state.session, running: true } })
+      expect(view.scroller.querySelectorAll('.message-flow-row')).toHaveLength(2)
+      expect(view.scroller.textContent.match(/Synthetic retained input/g)).toHaveLength(1)
+      expect(view.scroller.querySelectorAll('[aria-label="查看处理过程：正在自动压缩"]')).toHaveLength(1)
+      const oldControl = [...snapshot.nodes.values()].find(node => node.kind === 'turn-process' && node.data.turn === 1)
+      expect(view.scroller.querySelector(`[data-chat-node-key="${oldControl.key}"] .message-flow-row`)).toBeNull()
+    } finally { await view.close() }
+  })
+
+  it.each(['roleplay', 'agent'])('opens live automatic compaction in the existing processing panel (%s)', async layoutMode => {
+    const view = mountChat()
+    view.rowProps.layoutMode = layoutMode
+    let selectedMessage
+    view.rowProps.onOpenProcess = message => { selectedMessage = message }
+    const control = turnNode('synthetic-process', 2)
+    const compaction = { id: 'compaction:9', kind: 'compaction', status: 'running', toolName: 'compaction',
+      arguments: '', summary: '', detail: '', startedAtMillis: 900 }
+    const message = { id: 'synthetic-live', runtimeSessionId: 'session-render',
+      renderKey: 'dsh-reply-session-render-2', dshTurn: 2, role: 'assistant',
+      pending: true, status: 'streaming', content: '', process: [compaction] }
+    const host = document.createElement('div')
+    document.body.append(host)
+    const dialog = createRoot(host)
+    try {
+      await view.render([message], { order: [control.key], nodes: new Map([[control.key, control]]) })
+      const button = view.scroller.querySelector('[aria-label="查看处理过程：正在自动压缩"]')
+      expect(button).not.toBeNull()
+      await act(async () => button.click())
+      expect(selectedMessage.process).toEqual([compaction])
+      await act(async () => dialog.render(<AgentProcessDialog message={selectedMessage} onClose={() => {}} />))
+      expect(document.querySelector('[role="dialog"]').textContent).toContain('正在自动压缩')
+      const completed = { ...message, process: [{ ...compaction, status: 'complete', completedAtMillis: 1200,
+        detail: 'Synthetic compacted summary' }] }
+      await view.render([completed])
+      await act(async () => dialog.render(<AgentProcessDialog message={completed} onClose={() => {}} />))
+      expect(view.scroller.textContent).toContain('上下文已自动压缩')
+      expect(document.querySelector('[role="dialog"]').textContent).toContain('上下文已自动压缩')
+      expect(document.querySelector('[role="dialog"]').textContent).not.toContain('正在自动压缩')
+      await act(async () => document.querySelector('.agent-process-group').click())
+      expect(document.querySelector('[role="dialog"]').textContent).toContain('Synthetic compacted summary')
+    } finally { await act(async () => dialog.unmount()); await view.close() }
+  })
+  it('does not render a separate automatic compression checkpoint after the AI row', () => {
+    expect(selectRoleplayChatSeat([], 'session-render', {
+      key: 'synthetic-auto-checkpoint', kind: 'compaction', data: { kind: 'compaction', seq: 20 },
+    })).toBeNull()
+  })
   it('retains the official compression progress and failure node in roleplay', async () => {
     const node = { key: 'compact-command', kind: 'manual-compaction', anchorSeq: 12,
       data: { command: { kind: 'command', seq: 12, time: 12, commandId: 'synthetic-command', name: 'compact', outcome: null }, compaction: null } }

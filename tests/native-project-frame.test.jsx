@@ -21,7 +21,7 @@ const render = async props => {
 const load = async frame => act(() => frame.dispatchEvent(new Event('load')));
 beforeEach(() => {
   vi.stubGlobal('React', React); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  delete window.__ElecKoiClientCompatibility;
+  delete window.__ElecKoiHtmlResources;
   const getWindow = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow').get;
   vi.spyOn(HTMLIFrameElement.prototype, 'contentWindow', 'get').mockImplementation(function () {
     const page = getWindow.call(this);
@@ -49,7 +49,7 @@ describe('production native project frame', () => {
     const doc = new DOMParser().parseFromString(frame.srcdoc, 'text/html');
     expect(doc.querySelector('base').getAttribute('href')).toBe(new URL('/eleckoi/frontends/synthetic-project/pages/', document.baseURI).href);
     expect(doc.querySelector('link').getAttribute('href')).toBe('/eleckoi/frontends/synthetic-project/shared.css?revision=1');
-    expect(frame.srcdoc).not.toMatch(/TavernHelper|SillyTavern|Mvu|__ElecKoiClientCompatibility|\/eleckoi\/compat\//);
+    expect(frame.srcdoc).not.toMatch(/TavernHelper|SillyTavern|Mvu|__ElecKoiHtmlResources|\/eleckoi\/compat\//);
     await render({ context: { view: 'main', owner: { conversationId: 'synthetic-chat' }, binding: project.manifest.bindings[0] } });
     expect(container.querySelector('iframe')).toBe(frame);
     expect(frame.contentWindow.ElecKoiFrontendContext.owner.conversationId).toBe('synthetic-chat');
@@ -96,7 +96,7 @@ describe('native project management in the existing UI', () => {
     expect(service.projects.readFile).toHaveBeenCalledExactlyOnceWith({ scope: 'application' }, project.id, { path: 'pages/main.html' });
     expect(runtime.mountProjectDocument).toHaveBeenCalledOnce();
     expect(container.querySelector('[data-application-frontend]').dataset.applicationFrontend).toBe(project.id);
-    expect(window.__ElecKoiClientCompatibility).toBeUndefined();
+    expect(window.__ElecKoiHtmlResources).toBeUndefined();
     await act(() => root.render(null)); stopRoot();
     expect(document.head.querySelector('[data-eleckoi-application-style]')).toBeNull();
     expect(document.querySelector('[data-eleckoi-frontend-recovery]')).toBeNull();

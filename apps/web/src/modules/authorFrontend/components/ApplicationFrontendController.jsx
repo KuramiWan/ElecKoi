@@ -7,7 +7,7 @@ import { AdvancedFrontendFrame } from './AdvancedFrontendFrame.jsx';
 import { FrontendWorkbench } from './FrontendWorkbench.jsx';
 import { registerOverlayBack } from '../../../ui/hooks/overlayBack.js';
 import workbenchStyles from '../styles/applicationFrontend.css?inline';
-import { useSharedFrontendRuntime } from '../../../ui/hooks/useSharedFrontendRuntime.js';
+import { useHtmlResources } from '../../../ui/hooks/useHtmlResources.js';
 
 const ownerContext = owner => Object.fromEntries(Object.entries(owner || {}).filter(([key, value]) =>
   ['characterId', 'conversationId', 'projectId', 'section', 'pageId', 'messageId', 'presetId'].includes(key) && (value == null || ['string', 'number', 'boolean'].includes(typeof value))));
@@ -18,7 +18,7 @@ const resolvedTheme = () => ['light', 'dark'].includes(document.documentElement.
 export function ApplicationFrontendController({ slots, subscribeSlots, navigation, children }) {
   const workspaceState = useApplicationFrontendWorkspace();
   const { workspace, error, loaded, request } = workspaceState;
-  const { runtime } = useSharedFrontendRuntime();
+  const { runtime } = useHtmlResources();
   const [targets, setTargets] = useState([]), [failure, setFailure] = useState(''), [open, setOpen] = useState(false);
   const [previewId, setPreviewId] = useState(null), [previewing, setPreviewing] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);

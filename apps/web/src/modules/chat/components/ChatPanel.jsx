@@ -112,6 +112,10 @@ export function ChatPanel({
     if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
     return conversationModel.readImage(id, image);
   }, [conversationModel]);
+  const regenerateImage = useCallback(image => {
+    if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
+    return conversationModel.regenerateImage(conversationId, image);
+  }, [conversationModel, conversationId]);
   const openFile = useCallback((id, attachmentId, name) => {
     return revealChatFile(id, attachmentId, name, { model: conversationModel });
   }, [conversationModel]);
@@ -215,7 +219,7 @@ export function ChatPanel({
     const load = () => presetCatalog.refresh()
       .then((catalog) => {
         if (!active) return;
-        setActivePresetName(catalog.presets.find((preset) => preset.id === catalog.activePresetId)?.name || "");
+        setActivePresetName(catalog.presets.find((preset) => preset.id === catalog.activePresetIds.roleplay)?.name || "");
       })
       .catch(() => {
         if (active) setActivePresetName("");
@@ -358,6 +362,7 @@ export function ChatPanel({
   const selectedDeleteCount = deleteFromIndex < 0 ? 0 : displayedMessages.length - deleteFromIndex;
 
   const roleplayMenu = <RoleplayInputMenu
+    key={conversationId}
     isSending={isSending}
     onCreateChat={onCreateChat}
     onOpenHistory={onOpenHistory}
@@ -418,7 +423,7 @@ export function ChatPanel({
     onSelectOpening: isSending ? undefined : onSelectOpening,
     onRegenerate: regenerateFrom, deleteMode, deleteFromMessageId,
     onSelectDeleteFrom: setDeleteFromMessageId, runtimeSessionId,
-    renderRoleplaySlot, renderRoleplayMessage, loadImage, onOpenFile: openFile,
+    renderRoleplaySlot, renderRoleplayMessage, loadImage, onRegenerateImage: isSending ? undefined : regenerateImage, onOpenFile: openFile,
   };
   const opening = <MessageList {...rowProps} openingOnly />;
   const officialChat = isSwitchingChat ? null : renderRoleplaySlot?.("eleckoi.roleplay.chat", {
@@ -603,6 +608,7 @@ export function MessageList({
   renderRoleplaySlot,
   renderRoleplayMessage,
   loadImage,
+  onRegenerateImage,
   onOpenFile,
 }) {
   const [isEntering, setIsEntering] = useState(Boolean(entering));
@@ -672,6 +678,7 @@ export function MessageList({
           renderRoleplaySlot={renderRoleplaySlot}
           renderRoleplayMessage={renderRoleplayMessage}
           loadImage={loadImage}
+          onRegenerateImage={onRegenerateImage}
           onOpenFile={onOpenFile}
         />;
       })}
@@ -709,6 +716,7 @@ const MessageRow = memo(function MessageRow({
   renderRoleplaySlot,
   renderRoleplayMessage,
   loadImage,
+  onRegenerateImage,
   onOpenFile,
 }) {
   const pluginScopeActive = !deleteMode && item.runtimeSessionId === runtimeSessionId;
@@ -746,6 +754,7 @@ const MessageRow = memo(function MessageRow({
     pluginAfter={pluginAfter}
     renderMessageContent={renderMessageContent}
     loadImage={loadImage}
+    onRegenerateImage={deleteMode ? undefined : onRegenerateImage}
     onOpenFile={onOpenFile}
   />;
 

@@ -37,6 +37,18 @@ async function renderDialog(mobile = true, processMessage = message) {
 }
 
 describe('mobile process bottom sheet', () => {
+  it('shows the captured image prompt in processing before and after the final boundary', async () => {
+    const action = { id: 'synthetic-image-action', kind: 'action', toolName: 'generate_image', status: 'running',
+      arguments: '{"frames":[{"id":1,"prompt":"synthetic scene","negative_prompt":"synthetic avoid"}]}' };
+    const running = { status: 'streaming', content: '', process: [action] };
+    await renderDialog(true, running);
+    expect(document.querySelector('.agent-process-dialog').textContent).toContain('<ACTION_CALL name="generate_image">');
+    expect(document.querySelector('.agent-process-dialog').textContent).toContain('生图提示词');
+    expect(document.querySelector('.agent-process-dialog').textContent).toContain('synthetic scene');
+    await act(() => root.render(<AgentProcessDialog message={{ ...running, status: 'complete', content: '<FINAL>合成正文</FINAL>', process: [{ ...action, status: 'complete' }] }} onClose={() => {}} />));
+    expect(document.querySelector('.agent-process-dialog').textContent).toContain('synthetic scene');
+    expect(document.querySelector('.agent-process-dialog').textContent).toContain('<FINAL>已识别');
+  });
   it('opens readable tool details from a mixed timeline and keeps raw unknown fields accessible', async () => {
     await renderDialog(true, { status: 'complete', process: [
       { id: 'reasoning', kind: 'reasoning', toolName: 'reasoning', status: 'complete', detail: '合成思考' },

@@ -103,7 +103,7 @@ function presetContent(preset: AgentPreset): AuthorPreset {
 }
 
 function presetCatalog(catalog: AgentPresetCatalog): AuthorPresetCatalog {
-  return { activePresetId: catalog.activePresetId, items: catalog.presets.map(({ id, name, activeVersionId, entryCount }) =>
+  return { activePresetId: catalog.activePresetIds.roleplay, items: catalog.presets.filter(preset => preset.purpose === "roleplay").map(({ id, name, activeVersionId, entryCount }) =>
     ({ id, name, activeVersionId, entryCount })) }
 }
 
@@ -135,7 +135,7 @@ export function createNativePresetBindings(
     'presets.list': async (_params, { signal }) => presetCatalog(await catalog(signal)),
     'presets.current': async (_params, { signal }) => {
       const selected = await catalog(signal)
-      return selected.activePresetId ? presetContent(await read(selected.activePresetId, signal)) : null
+      return selected.activePresetIds.roleplay ? presetContent(await read(selected.activePresetIds.roleplay, signal)) : null
     },
     'presets.get': async (params, { signal }) => presetContent(await read(params.presetId, signal)),
     'presets.getEntry': async (params, { signal }) => findEntry((await read(params.presetId, signal)).entries, params.id),
@@ -144,6 +144,7 @@ export function createNativePresetBindings(
     'presets.updateEntries': async (params, { signal }) => update(params.presetId, params.updates as AuthorSettingEntryUpdate[], signal),
     'presets.select': async (params, { signal }) => {
       if (typeof params.presetId !== 'string' || !params.presetId) throw new AuthorApiError('INVALID_PARAMS', '预设编号不能为空')
+      if ((await read(params.presetId, signal)).purpose !== 'roleplay') throw new AuthorApiError('INVALID_PARAMS', '角色对话只能选择角色扮演预设')
       signal.throwIfAborted()
       const result = await remote.setActive(params.presetId)
       if (!result.ok) throw new AuthorApiError(result.error.code, result.error.message)

@@ -201,6 +201,15 @@
         "mode": "replace",
         "scope": "root",
         "relation": "provides"
+      },
+      {
+        "id": "eleckoi.creator-studio.conversation",
+        "kind": "ui-slot",
+        "title": "AI 创作工作室对话",
+        "description": "以独立工作室会话呈现官方对话和工具流程。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
       }
     ]
   },

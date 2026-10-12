@@ -102,7 +102,7 @@ export class ElecKoiAuthorScriptsApi extends TypertRemoteService {
   read(conversationId: string): NativeAuthorScriptCatalog {
     const data = this.owner.eleckoiProductData
     const characterId = data.readConversationDetails(conversationId).metadata.characterId
-    const presetId = data.readAgentPresetCatalog().activePresetId
+    const presetId = data.readAgentPresetCatalog().activePresetIds.roleplay
     const scripts: NativeAuthorScriptCatalog['scripts'] = []
     for (const scope of ['global', 'preset', 'character'] as const) {
       const ownerId = scope === 'character' ? characterId : scope === 'preset' ? presetId : ''
@@ -197,21 +197,24 @@ export class ElecKoiAuthorScriptsApi extends TypertRemoteService {
     if (this.channels.has(conversationId)) throw failure('OWNER_CONFLICT', '当前聊天已经有原生脚本运行页面。')
     const channel = new RuleChannel(version)
     this.channels.set(conversationId, channel)
-    const cancel = () => channel.close(signal.reason)
+    const close = (error: unknown) => {
+      channel.close(error)
+      if (this.channels.get(conversationId) === channel) this.channels.delete(conversationId)
+      signal.removeEventListener('abort', cancel)
+    }
+    const cancel = () => close(signal.reason)
     signal.addEventListener('abort', cancel, { once: true })
     const consume = (async () => {
       try {
         for await (const reply of invocation.uplink<NativeAuthorRuleReply>()) channel.reply(reply)
-        channel.close(failure('CLIENT_CLOSED', '作者脚本页面已经断开，本次变量修改未保存。'))
-      } catch (error) { channel.close(error) }
+        close(failure('CLIENT_CLOSED', '作者脚本页面已经断开，本次变量修改未保存。'))
+      } catch (error) { close(error) }
     })()
     try {
       yield { kind: 'ready', version }
       yield* channel.tasks()
     } finally {
-      channel.close(failure('CLIENT_CLOSED', '作者脚本页面已经断开，本次变量修改未保存。'))
-      signal.removeEventListener('abort', cancel)
-      if (this.channels.get(conversationId) === channel) this.channels.delete(conversationId)
+      close(failure('CLIENT_CLOSED', '作者脚本页面已经断开，本次变量修改未保存。'))
       void consume
     }
   }

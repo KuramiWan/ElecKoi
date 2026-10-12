@@ -18,6 +18,7 @@ const foundationTypes = new Set([
   'AbortSignal', 'File', 'Blob', 'T', 'K', 'V', 'U', 'S'
 ])
 const privateHostServices = new Map([
+  ['eleckoiCreatorStudioRuntime', 'AI 创作工作室的会话编排，由正式 Remote 服务调用。'],
   ['eleckoiProductData', 'SQLite 唯一写入者和内部准备数据。'],
   ['eleckoiConversationLifecycle', '聊天操作互斥和本轮产品保存等待，不提供第三方插件回调。'],
   ['eleckoiVariableProcessing', '原生变量候选处理及作者 Web 回调装配；不开放另一套产品数据读写入口。'],
@@ -190,7 +191,7 @@ async function checkClientImplementation(root, row, members) {
   const react = { lazy: () => () => null, createElement: () => null }
   const assetsBaseUrl = 'https://eleckoi.invalid/probe/'
   const document = { createElement: () => ({}), head: { appendChild: script => queueMicrotask(() => script.onload()) } }
-  const window = { document, __ELECKOI_COMPATIBILITY_ASSETS__: { baseUrl: assetsBaseUrl }, location: { href: assetsBaseUrl }, __ModuleLoader__: { load: entry => { plugin = entry.factory(name => {
+  const window = { document, __ELECKOI_HTML_RESOURCES__: { baseUrl: assetsBaseUrl }, location: { href: assetsBaseUrl }, __ModuleLoader__: { load: entry => { plugin = entry.factory(name => {
     if (name === 'react') return react
     throw new Error(`接口探针不支持执行依赖：${name}`)
   }) } } }
@@ -209,7 +210,7 @@ async function checkClientImplementation(root, row, members) {
   vm.runInNewContext(probe, {
     window, document, URL, AbortController, AbortSignal, console,
     __probeImport: specifier => {
-      if (row.packageName !== '@eleckoi/dsh-client-tavern-shared' || specifier !== assetsBaseUrl + 'client/runtime.js') {
+      if (row.packageName !== '@eleckoi/dsh-client-html-resources' || specifier !== assetsBaseUrl + 'client/runtime.js') {
         throw new Error(`接口探针没有登记浏览器模块：${specifier}`)
       }
       return import(pathToFileURL(resolve(root, row.packageRoot, 'src/runtime.js')).href)

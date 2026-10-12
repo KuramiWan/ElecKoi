@@ -34,8 +34,13 @@ import type {
   AgentPresetImportDocument,
   AgentPresetImportResult,
   AgentPresetImportSource,
+  AgentPresetPurpose,
   AuthorConversationState,
   CreateCreatorProjectInput,
+  CreatorStudioRuntime,
+  CreatorStudioSession,
+  CreatorStudioSessionSummary,
+  CreatorStudioMessage,
   CharacterCollection,
   CharacterExportFormat,
   CharacterExportResult,
@@ -107,6 +112,7 @@ export type {
   AgentPresetImportDocument,
   AgentPresetImportResult,
   AgentPresetImportSource,
+  AgentPresetPurpose,
   AgentPresetLibraryGroup,
   AgentPresetModelFamily,
   AgentPresetModelTag,
@@ -181,6 +187,8 @@ declare module '@deepseek-ai/cordis' {
     eleckoiCharacterConfigurationApi: ElecKoiCharacterConfigurationApi
     eleckoiAgentPresetsApi: ElecKoiAgentPresetsApi
     eleckoiCreatorStudioApi: ElecKoiCreatorStudioApi
+    eleckoiCreatorStudioSessionsApi: ElecKoiCreatorStudioSessionsApi
+    eleckoiCreatorStudioRuntime: CreatorStudioRuntime
     eleckoiWebSearchApi: ElecKoiWebSearchApi
     eleckoiDisplayPreferencesApi: ElecKoiDisplayPreferencesApi
     eleckoiConversationModelsApi: ElecKoiConversationModelsApi
@@ -194,6 +202,8 @@ declare module '@deepseek-ai/cordis' {
     /** @internal 聊天操作互斥和本轮产品保存等待。 */
     eleckoiConversationLifecycle: ElecKoiConversationLifecycle
     eleckoiRoleplaySessions: {
+      readGeneratedImage(conversationId: string, batchId: string, frameId: number, attachmentId: string, signal: AbortSignal): Promise<{ mediaType: string; data: string }>
+      regenerateImage(conversationId: string, batchId: string, frameId: number, signal: AbortSignal): Promise<import('@eleckoi/dsh-product-data').GeneratedImageFrame>
       create(conversationId: string): Promise<string>
       adoptFork(conversationId: string, sourceConversationId: string, sourceTurn: number, afterTurn: boolean): Promise<string>
       prepareSessionAccess(conversationId: string): Promise<string>
@@ -411,6 +421,38 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   private readonly ownerContext: Context
   private readonly productData: ElecKoiProductDataStore
   private readonly changeFeed: ConversationChangeFeed
+
+  /**
+   * 读取本聊天生图记录引用的单张图片。
+   * @param conversationId - 聊天编号。
+   * @param batchId - 生图指令编号。
+   * @param frameId - 图片编号。
+   * @param attachmentId - 当前正式图片对象编号。
+   * @param signal - 取消图片读取的信号。
+   * @returns 图片媒体类型和 Base64 数据。
+   */
+  @Remote
+  readGeneratedImage(conversationId: string, batchId: string, frameId: number, attachmentId: string, signal: AbortSignal): Promise<{ mediaType: string; data: string }> {
+    return this.ownerContext.eleckoiRoleplaySessions.readGeneratedImage(conversationId, batchId, frameId, attachmentId, signal)
+  }
+
+  /**
+   * 从原始 AI 回复重新解析提示词，只重画选中的单张图片。
+   * @param conversationId - 聊天编号。
+   * @param batchId - 本轮生图指令编号。
+   * @param frameId - 指令中的图片编号。
+   * @param signal - 取消生图请求的信号。
+   * @returns 图片生成与记录保存完成；失败抛出可诊断错误。
+   */
+  @Remote
+  async regenerateImage(conversationId: string, batchId: string, frameId: number, signal: AbortSignal): Promise<void> {
+    if (!batchId || !Number.isSafeInteger(frameId) || frameId < 1) throw new Error('图片重新生成参数不正确。')
+    await this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
+      const result = await this.ownerContext.eleckoiRoleplaySessions.regenerateImage(conversationId, batchId, frameId, signal)
+      this.changeFeed.publish({ kind: 'generation', conversationId, error: result.error || '' })
+      if (result.error) throw new Error(result.error)
+    })
+  }
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiConversationsApi', { namespace: 'eleckoiConversations' })
@@ -1087,7 +1129,7 @@ function storedFilePath(attachmentId: string, name: string): string {
   return join(home, 'attachments', 'v1', 'files', match[1].slice(0, 2), match[1], name)
 }
 
-function requireSessionMessage(
+export function requireSessionMessage(
   inspection: { events: readonly unknown[] },
   eventSeq: number,
   role: 'user' | 'assistant'
@@ -1111,7 +1153,7 @@ function historicalInputId(events: readonly unknown[], index: number): string | 
   return typeof id === 'string' ? id : undefined
 }
 
-function sessionMessageTurn(events: readonly unknown[], index: number): number {
+export function sessionMessageTurn(events: readonly unknown[], index: number): number {
   // DSH normally stamps the turn on assistant events.  The user event is
   // allowed to be queued either before `turn/start` or after it, and some
   // persisted assistant events can omit the redundant stamp.  Resolve both
@@ -1283,7 +1325,7 @@ function officialFinalReplyText(value: string): string {
     .replace(/(?:\r\n|\r|\n)$/, '')
 }
 
-function sessionMessageText(event: Record<string, unknown>): string {
+export function sessionMessageText(event: Record<string, unknown>): string {
   const message = event.type === 'assistant/message'
     ? jsonRecord(jsonRecord(event.data).message)
     : jsonRecord(event.data)
@@ -2024,11 +2066,12 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
    * 创建预设并返回完整预设数据。
    * @param name - 保存的名称或附件文件名。
    * @param libraryGroupId - 预设分组编号。
+   * @param purpose - 角色扮演或创作预设分类。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  create(name: string, libraryGroupId: string): AgentPreset {
-    const created = this.productData.createAgentPreset(name, libraryGroupId)
+  create(name: string, libraryGroupId: string, purpose: AgentPresetPurpose): AgentPreset {
+    const created = this.productData.createAgentPreset(name, libraryGroupId, purpose)
     this.publishChange()
     return created
   }
@@ -2037,11 +2080,12 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
    * 导入文件并保存完整数据。
    * @param source - 支持的导入格式。
    * @param document - 待导入文件内容。
+   * @param purpose - 目标预设分类。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  import(source: AgentPresetImportSource, document: AgentPresetImportDocument): AgentPresetImportResult {
-    const imported = this.productData.importAgentPreset(source, document)
+  import(source: AgentPresetImportSource, document: AgentPresetImportDocument, purpose: AgentPresetPurpose): AgentPresetImportResult {
+    const imported = this.productData.importAgentPreset(source, document, purpose)
     this.publishChange()
     return imported
   }
@@ -2072,11 +2116,12 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
   /**
    * 创建预设分组。
    * @param name - 保存的名称或附件文件名。
+   * @param purpose - 所属预设分类。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  createGroup(name: string): AgentPresetCatalog {
-    const catalog = this.productData.createAgentPresetGroup(name)
+  createGroup(name: string, purpose: AgentPresetPurpose): AgentPresetCatalog {
+    const catalog = this.productData.createAgentPresetGroup(name, purpose)
     this.publishChange()
     return catalog
   }
@@ -2193,6 +2238,96 @@ export class ElecKoiCreatorStudioApi extends TypertRemoteService {
   }
 }
 
+/** AI 创作工作室的 DSH 会话与永久编辑目标。 */
+export class ElecKoiCreatorStudioSessionsApi extends TypertRemoteService {
+  static inject = ['typert', 'eleckoiCreatorStudioRuntime']
+  private readonly runtime: CreatorStudioRuntime
+  constructor(ctx: Context) {
+    super(ctx, 'eleckoiCreatorStudioSessionsApi', { namespace: 'eleckoiCreatorStudioSessions' })
+    this.runtime = ctx.eleckoiCreatorStudioRuntime
+  }
+  /**
+   * 列出工作室的正式 DSH 会话。
+   * @returns 工作室会话目录。
+   */
+  @Remote
+  list(): Promise<CreatorStudioSessionSummary[]> { return this.runtime.list() }
+  /**
+   * 使用当前全局创作预设创建工作室会话。
+   * @param characterId - 编辑目标角色编号；空字符串表示尚未选择。
+   * @returns 创建的会话及其编辑目标。
+   */
+  @Remote
+  create(characterId: string): Promise<CreatorStudioSession> { return this.runtime.create(characterId) }
+  /**
+   * 恢复一个已有工作室会话。
+   * @param sessionId - 正式 DSH 会话编号。
+   * @returns 恢复的会话及其编辑目标。
+   */
+  @Remote
+  open(sessionId: string): Promise<CreatorStudioSession> { return this.runtime.open(sessionId) }
+  /**
+   * 在空闲会话中选择永久编辑目标。
+   * @param sessionId - 正式 DSH 会话编号。
+   * @param characterId - 目标角色编号；空字符串解除选择。
+   * @returns 更新后的工作室会话。
+   */
+  @Remote
+  selectCharacter(sessionId: string, characterId: string): Promise<CreatorStudioSession> { return this.runtime.selectCharacter(sessionId, characterId) }
+
+  /**
+   * 修改工作室对话的正式标题。
+   * @param sessionId - 工作室会话编号。
+   * @param title - 新标题。
+   * @returns 标题保存完成。
+   */
+  @Remote
+  rename(sessionId: string, title: string): Promise<void> { return this.runtime.rename(sessionId, title) }
+
+  /**
+   * 设置工作室对话的置顶状态。
+   * @param sessionId - 工作室会话编号。
+   * @param pinned - 是否置顶。
+   * @returns 置顶状态保存完成。
+   */
+  @Remote
+  pin(sessionId: string, pinned: boolean): Promise<void> { return this.runtime.pin(sessionId, pinned) }
+
+  /**
+   * 删除工作室对话及其正式 Session 文件。
+   * @param sessionId - 工作室会话编号。
+   * @returns 删除完成。
+   */
+  @Remote
+  delete(sessionId: string): Promise<void> { return this.runtime.delete(sessionId) }
+
+  /**
+   * 读取工作室可操作的用户和助手消息。
+   * @param sessionId - 工作室会话编号。
+   * @returns 消息正文及正式事件位置。
+   */
+  @Remote
+  messages(sessionId: string): Promise<CreatorStudioMessage[]> { return this.runtime.messages(sessionId) }
+
+  /**
+   * 从指定消息起删除当前对话的后续消息。
+   * @param sessionId - 工作室会话编号。
+   * @param eventSeq - 起始消息的正式事件序号。
+   * @param role - 起始消息的角色。
+   * @returns 删除完成。
+   */
+  @Remote
+  deleteMessagesFrom(sessionId: string, eventSeq: number, role: 'user' | 'assistant'): Promise<void> { return this.runtime.deleteMessagesFrom(sessionId, eventSeq, role) }
+
+  /**
+   * 保留最近的用户输入并重新生成回复。
+   * @param sessionId - 工作室会话编号。
+   * @returns 重新生成已启动。
+   */
+  @Remote
+  regenerate(sessionId: string): Promise<void> { return this.runtime.regenerate(sessionId) }
+}
+
 
 const eleckoiProductApiPlugin = {
   name: 'eleckoi-product-api',
@@ -2212,6 +2347,7 @@ const eleckoiProductApiPlugin = {
     await ctx.plugin(ElecKoiCharacterConfigurationApi)
     await ctx.plugin(ElecKoiAgentPresetsApi)
     await ctx.plugin(ElecKoiCreatorStudioApi)
+    await ctx.plugin(ElecKoiCreatorStudioSessionsApi)
     await ctx.plugin(ElecKoiWebSearchApi)
     await ctx.plugin(ElecKoiModelsApi)
     await ctx.plugin(ElecKoiDisplayPreferencesApi)

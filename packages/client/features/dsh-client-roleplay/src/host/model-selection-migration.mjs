@@ -123,7 +123,7 @@ export function requestSnapshot(ctx, selection, info) {
     ...(parameters.topP === undefined ? {} : { topP: parameters.topP }),
     ...(parameters.autoCompactTokenLimit === undefined ? {} : { autoCompactTokenLimit: parameters.autoCompactTokenLimit }),
     ...(info?.defaultMaxTokens === undefined ? {} : { maxTokens: info.defaultMaxTokens }),
-    ...(info?.contextWindow === undefined ? {} : { contextWindow: info.contextWindow })
+    ...(info?.context?.contextWindow === undefined ? {} : { contextWindow: info.context.contextWindow })
   }
 }
 

@@ -13,6 +13,7 @@ const ALL_PRESETS = "全部预设";
 
 export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   const [catalog, setCatalog] = useState(null);
+  const [purpose, setPurpose] = useState(() => new URLSearchParams(window.location.search).get('purpose') === 'creator' ? 'creator' : 'roleplay');
   const [selectedGroup, setSelectedGroup] = useState(ALL_PRESETS);
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -25,13 +26,13 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   const acceptCatalog = useCallback((next, preferredId = "") => {
     setCatalog(next);
     setSelectedPresetId((current) => {
-      const requested = preferredId || current || next.activePresetId;
-      return next.presets.some((preset) => preset.id === requested) ? requested : next.presets[0]?.id || "";
+      const requested = preferredId || current || next.activePresetIds[purpose];
+      return next.presets.some((preset) => preset.id === requested && preset.purpose === purpose) ? requested : next.activePresetIds[purpose];
     });
     setSelectedGroup((current) => current === ALL_PRESETS || next.groups.some((group) => group.id === current) ? current : ALL_PRESETS);
     setLoadError("");
     return next;
-  }, []);
+  }, [purpose]);
 
   const refresh = useCallback(async (preferredId = "") => {
     try {
@@ -87,7 +88,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
         displayName: file.name,
         mimeType: file.type,
         base64: await fileBase64(file),
-      });
+      }, purpose);
       setSelectedGroup(ALL_PRESETS);
       await refresh(result.preset.id);
     } catch (cause) {
@@ -103,8 +104,12 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
     downloadPresetFile(await presetCatalog.export(selectedPresetId, format));
   }
 
+  const purposeCatalog = catalog ? { ...catalog, groups: catalog.groups.filter(item => item.purpose === purpose), presets: catalog.presets.filter(item => item.purpose === purpose) } : null;
+  function changePurpose(value) { setPurpose(value); setSelectedGroup(ALL_PRESETS); setSelectedPresetId(catalog?.activePresetIds[value] || ''); }
   const managerOwner = {
-    catalog,
+    catalog: purposeCatalog,
+    purpose,
+    onPurposeChange: changePurpose,
     selectedGroup,
     selectedPresetId,
     importing,
@@ -117,7 +122,9 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   };
   const managerFallback = catalog ? <PresetManager
     catalogModel={presetCatalog}
-    catalog={catalog}
+    catalog={purposeCatalog}
+    purpose={purpose}
+    onPurposeChange={changePurpose}
     selectedGroup={selectedGroup}
     selectedPresetId={selectedPresetId}
     onSelectGroup={setSelectedGroup}
@@ -130,7 +137,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   /> : null;
 
   return (
-    <main className="qq-shell management-window-shell">
+    <main className="qq-shell management-window-shell preset-manager-shell">
       <TitleBar splitSurface />
       <section className="management-window-content">
         {!catalog && !loadError ? <p className="management-window-state">正在读取…</p> : loadError ? (

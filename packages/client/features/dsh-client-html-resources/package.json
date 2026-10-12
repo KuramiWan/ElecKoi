@@ -1,0 +1,93 @@
+{
+  "name": "@eleckoi/dsh-client-html-resources",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ElecKoi HTML 页面使用的同源浏览器库和静态资源。",
+  "main": "./lib/types/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/types/index.js"
+    },
+    "./client": {
+      "types": "./src/client/types.ts",
+      "default": "./src/client.js"
+    },
+    "./runtime": "./src/runtime.js",
+    "./browser-libraries": "./src/browser-libraries.js",
+    "./profile": {
+      "types": "./lib/types/profile.d.ts",
+      "default": "./lib/types/profile.js"
+    },
+    "./assets/*": "./assets/*",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./html/*": "./dist/*"
+  },
+  "files": [
+    "lib/types",
+    "dist",
+    "src/client.js",
+    "src/client/types.ts",
+    "src/runtime.js",
+    "src/browser-libraries.js",
+    "src/browser-modules.js",
+    "assets",
+    "LIBRARY-SOURCE.json",
+    "cordis.patch.yml",
+    "locale/*.json"
+  ],
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -b tsconfig.host.json --force && tsc -b tsconfig.client.json && node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-host-webserver": "0.2.0-rc.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.3.0",
+    "esbuild": "0.25.10",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "dsh": "0.2.0-rc.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "eleckoi": {
+    "developerInterfaces": [
+      {
+        "id": "eleckoiHtmlResources",
+        "kind": "service",
+        "title": "HTML 显示资源",
+        "description": "提供应用内 HTML 浏览器库的资源地址和就绪状态。",
+        "mode": "call-and-listen",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe"
+        ]
+      },
+      {
+        "id": "eleckoiHtmlAssets",
+        "kind": "contribution",
+        "title": "HTML 静态资源",
+        "description": "通过正式 Web Server 注册同源浏览器库、字体、样式和文档解析资源。",
+        "mode": "serve-assets",
+        "scope": "host",
+        "relation": "contributes",
+        "owner": "webServer"
+      }
+    ]
+  }
+}

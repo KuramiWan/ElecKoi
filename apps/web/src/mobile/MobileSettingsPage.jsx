@@ -42,7 +42,7 @@ function ProfileEditor({ owner, onBack }) {
   const view = useMainPageView();
   const [pending, setPending] = useState(null);
   const current = useRef();
-  const dirty = owner.profile.name !== (owner.persona?.user_name || '你');
+  const dirty = owner.dirty;
   current.current = { owner, dirty };
   function navigate(action) {
     if (current.current.owner.saving) return;
@@ -58,11 +58,11 @@ function ProfileEditor({ owner, onBack }) {
     <MobileHeader title="编辑资料" back={() => navigate(onBack)}><MobileSaveFeedback error={owner.message === '已保存' ? '' : owner.message} notice={owner.message === '已保存' ? 'saved' : ''} onNotify={view.chat.notify} successMessage="用户资料已保存" /><button type="button" className="mobile-settings-save" disabled={owner.saving} onClick={() => owner.onSave()}>保存</button></MobileHeader>
     <div className="mobile-settings-scroll mobile-profile-editor">
       <button type="button" className="mobile-profile-avatar" aria-label="管理头像" disabled={owner.saving} onClick={owner.onManageAvatars}>
-        <Avatar src={owner.profile.avatars.circle} name={owner.profile.name || '你'} /><span><Image size={20} /></span>
+        <Avatar src={owner.profile.avatars.circle} name={owner.profile.name || '你'} />
       </button>
-      <div className="mobile-settings-card mobile-settings-field"><label><span>名字</span><input aria-label="名字" maxLength={32} value={owner.profile.name} onChange={event => owner.onChange({ name: event.target.value })} /></label></div>
+      <div className="mobile-settings-card mobile-settings-field"><label><span>名字</span><input aria-label="名字" maxLength={32} disabled={owner.saving} value={owner.profile.name} onChange={event => owner.onChange({ name: event.target.value })} /></label></div>
     </div>
-    <UnsavedChangesDialog open={Boolean(pending)} title="保存用户资料？" description="名字尚未保存。" saving={owner.saving} error={owner.message === '已保存' ? '' : owner.message}
+    <UnsavedChangesDialog open={Boolean(pending)} title="保存用户资料？" description="用户资料尚未保存。" saving={owner.saving} error={owner.message === '已保存' ? '' : owner.message}
       onCancel={() => setPending(null)} onDiscard={() => { const action = pending; setPending(null); action?.(); }}
       onSave={async () => { if (await owner.onSave()) { const action = pending; setPending(null); action?.(); } }} />
   </>;

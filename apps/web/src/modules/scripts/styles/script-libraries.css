@@ -28,8 +28,8 @@
 .script-folder-toggle.is-collapsed > svg { transform: rotate(-90deg); }
 .script-switch { position: relative; display: inline-flex; width: 36px; height: 32px; align-items: center; flex-shrink: 0; cursor: pointer; }
 .script-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-.script-switch i { pointer-events: none; width: 32px; height: 18px; border-radius: 12px; background: var(--control-bg); }
-.script-switch i::before { content: ''; display: block; width: 14px; height: 14px; margin: 2px; border-radius: 50%; background: var(--field-bg); box-shadow: 0 1px 3px var(--shadow-color); }
+.script-switch i { pointer-events: none; width: 32px; height: 18px; border-radius: var(--switch-track-radius, 12px); corner-shape: var(--switch-corner-shape, var(--dsw-corner-shape, round)); background: var(--control-bg); }
+.script-switch i::before { content: ''; display: block; width: 14px; height: 14px; margin: 2px; border-radius: var(--switch-thumb-radius, 50%); corner-shape: var(--switch-corner-shape, var(--dsw-corner-shape, round)); background: var(--field-bg); box-shadow: 0 1px 3px var(--shadow-color); }
 .script-switch input:checked + i { background: var(--blue); }
 .script-switch input:checked + i::before { transform: translateX(14px); }
 .script-switch input:focus-visible + i { outline: 2px solid var(--blue); outline-offset: 3px; }

@@ -9,6 +9,7 @@ import { AvatarPreviewDialog } from "./AvatarPreviewDialog.jsx";
 import { AgentHistoryIcon, AgentPencilIcon, AgentSpeakerIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, MessagePencilIcon, MoreDotsIcon, RefreshMessageIcon, SpeakerIcon } from "../icons/elecKoiMessageIcons.jsx";
 import { AgentProcessIcon } from "../../modules/chat/components/AgentProcessIcon.jsx";
 import { ChatImageGallery } from "./ChatImageGallery.jsx";
+import { generatedImageSegments } from './generatedImagePresentation.js';
 import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
 import { TurnUsage } from "../../modules/chat/components/TurnUsage.jsx";
 import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
@@ -100,10 +101,11 @@ function MessagePresentation({ message, content, streaming, renderMessageContent
   })}</div>;
 }
 
-function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {
+function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onRegenerateImage, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {
   const { role, content, pending = false } = message;
   const displayContent = message.displayContent ?? content;
   const isUser = role === "user";
+  const editableContent = !isUser && message.generatedImageAttachments?.length ? displayContent : content;
   const roleplayTimestamp = layoutMode === "roleplay" && showRoleplayTimestamp
     ? formatMessageTimestamp(message.created_at ?? message.createdAt)
     : "";
@@ -111,7 +113,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
     && Number.isSafeInteger(floorNumber) && floorNumber >= 0;
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(content || "");
+  const [draft, setDraft] = useState(editableContent || "");
   const [jumpOpen, setJumpOpen] = useState(false);
   const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false);
   const [pageInput, setPageInput] = useState("");
@@ -146,7 +148,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
   const requestedIndex = Number.isInteger(requestedPage) ? requestedPage - 1 : -1;
   const requestedPageValid = requestedIndex >= 0 && requestedIndex < options.length;
 
-  useEffect(() => setDraft(content || ""), [content]);
+  useEffect(() => setDraft(editableContent || ""), [editableContent]);
   useEffect(() => {
     if (!openingEnabled) setJumpOpen(false);
     if (!editingEnabled) setEditing(false);
@@ -305,7 +307,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
-              setDraft(content || "");
+              setDraft(editableContent || "");
               setEditing(false);
             } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
               event.preventDefault();
@@ -314,18 +316,21 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
           }}
           autoFocus={typeof document === "undefined" || document.documentElement.dataset.eleckoiMobile !== "true"}
           aria-label="编辑消息"
-        /><div><button type="button" onClick={() => { setDraft(content || ''); setEditing(false); }}>取消</button><button type="button" className="primary" onClick={saveEdit}>保存</button></div></div> : liveProcess ? <button type="button" className="agent-process-inline" onClick={openProcess} aria-label={`查看处理过程：${liveProcess.title}`}>
+        /><div><button type="button" onClick={() => { setDraft(editableContent || ''); setEditing(false); }}>取消</button><button type="button" className="primary" onClick={saveEdit}>保存</button></div></div> : liveProcess ? <button type="button" className="agent-process-inline" onClick={openProcess} aria-label={`查看处理过程：${liveProcess.title}`}>
           <AgentProcessIcon name={liveProcess.icon} size={liveProcess.icon === 'reasoning' ? 27 : 17} animated={liveProcess.icon === 'reasoning'} />
           <span className="agent-process-inline-label">{liveProcess.title}</span>
           <MessageChevronRightIcon size={14} />
         </button> : displayContent ? <div ref={markdownRef} className="bubble markdown-message">
-          <MessagePresentation
+          {!isUser && message.generatedImageAttachments?.length ? generatedImageSegments(markdownTonePresentation.markdown, message.generatedImageAttachments, pending).map((segment, index) => segment.type === 'images'
+            ? <ChatImageGallery key={`images-${index}`} images={segment.images} conversationId={message.conversationId} agentMessage={layoutMode === 'agent'} loadImage={loadImage} onRegenerateImage={onRegenerateImage} />
+            : <MessagePresentation key={`text-${index}`} message={message} content={segment.content} streaming={pending} renderMessageContent={renderMessageContent} />) : <MessagePresentation
             message={message}
             content={markdownTonePresentation.markdown}
             streaming={pending}
             renderMessageContent={renderMessageContent}
-          />
+          />}
         </div> : null}
+        {!isUser && !pending && !displayContent && !editing ? <ChatImageGallery images={message.generatedImageAttachments || []} conversationId={message.conversationId} agentMessage={layoutMode === "agent"} loadImage={loadImage} onRegenerateImage={onRegenerateImage} /> : null}
         {pluginAfter}
         {layoutMode === "agent" && isUser && !pending && !editing ? <div className="agent-user-actions" aria-label="用户消息操作">
           <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || "")} aria-label="复制" title="复制" disabled={!displayContent}><CopyIcon /></button>

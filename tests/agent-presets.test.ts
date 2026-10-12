@@ -153,7 +153,7 @@ describe('agent preset repository', () => {
     const created = repository.create('长篇故事', group?.id)
     expect(created.libraryGroupId).toBe(group?.id)
     expect(created.entries.map((entry) => entry.kind)).toEqual(['hidden_tool_timeline', 'history_compaction'])
-    expect(repository.setActive(created.id).activePresetId).toBe(created.id)
+    expect(repository.setActive(created.id).activePresetIds.roleplay).toBe(created.id)
   })
 
   it('creates an ungrouped preset without inventing a personal group', () => {
@@ -222,7 +222,7 @@ describe('agent preset repository', () => {
   it('converts a SillyTavern preset with required prompts and only the default tool groups enabled', () => {
     const repository = harness()
     repository.ensureInitialized()
-    const activeBeforeImport = repository.catalog().activePresetId
+    const activeBeforeImport = repository.catalog().activePresetIds.roleplay
     const result = repository.import(importDocument({
       name: '合成长篇预设',
       prompts: [
@@ -263,7 +263,7 @@ describe('agent preset repository', () => {
       'builtin:setting-library'
     ])
     expect(result.preset.regexRules).toHaveLength(1)
-    expect(repository.catalog().activePresetId).toBe(activeBeforeImport)
+    expect(repository.catalog().activePresetIds.roleplay).toBe(activeBeforeImport)
   })
 
   it('exports one complete ElecKoi payload as JSON or PNG and restores portable state', () => {
@@ -291,7 +291,7 @@ describe('agent preset repository', () => {
     const jsonExport = repository.export(repository.active().id, 'json')
     const json = Buffer.from(jsonExport.base64, 'base64').toString('utf8')
     const root = JSON.parse(json)
-    expect(root).toMatchObject({ format: 'eleckoi.agent-preset', version: 1 })
+    expect(root).toMatchObject({ format: 'eleckoi.agent-preset', version: 2 })
     expect(root.preset.profile.usage_instructions).toBe('选择角色后开始对话。')
     expect(root.preset.profile.author_avatar).toEqual({
       media_type: 'image/png',

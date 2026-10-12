@@ -24,6 +24,7 @@ function mapMessage(message) {
     process: message.process || [],
     turnUsage: message.turnUsage,
     inputImageAttachments: message.inputImageAttachments || [],
+    generatedImageAttachments: message.generatedImageAttachments || [],
     inputFileAttachments: message.inputFileAttachments || [],
     openingOptions: message.openingOptions || [],
     selectedOpeningId: message.selectedOpeningId || '',

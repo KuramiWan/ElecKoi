@@ -9,6 +9,7 @@
 ```ts
 export interface AgentPreset {
     id: string;
+    purpose: AgentPresetPurpose;
     name: string;
     modelFamily: AgentPresetModelFamily;
     modelTags: AgentPresetModelTag[];
@@ -28,19 +29,19 @@ export interface AgentPreset {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:739](../../packages/host/product-api/src/types.ts#L739)
+源码：[packages/host/product-api/src/types.ts:742](../../packages/host/product-api/src/types.ts#L742)
 
 ## AgentPresetCatalog
 
 ```ts
 export interface AgentPresetCatalog {
-    activePresetId: string;
+    activePresetIds: { roleplay: string; creator: string; };
     groups: AgentPresetLibraryGroup[];
     presets: AgentPresetSummary[];
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:718](../../packages/host/product-api/src/types.ts#L718)
+源码：[packages/host/product-api/src/types.ts:721](../../packages/host/product-api/src/types.ts#L721)
 
 ## AgentPresetExportFormat
 
@@ -48,7 +49,7 @@ export interface AgentPresetCatalog {
 export type AgentPresetExportFormat = 'json' | 'png';
 ```
 
-源码：[packages/host/product-api/src/types.ts:678](../../packages/host/product-api/src/types.ts#L678)
+源码：[packages/host/product-api/src/types.ts:679](../../packages/host/product-api/src/types.ts#L679)
 
 ## AgentPresetExportResult
 
@@ -60,7 +61,7 @@ export interface AgentPresetExportResult {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:772](../../packages/host/product-api/src/types.ts#L772)
+源码：[packages/host/product-api/src/types.ts:776](../../packages/host/product-api/src/types.ts#L776)
 
 ## AgentPresetImportDocument
 
@@ -72,7 +73,7 @@ export interface AgentPresetImportDocument {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:759](../../packages/host/product-api/src/types.ts#L759)
+源码：[packages/host/product-api/src/types.ts:763](../../packages/host/product-api/src/types.ts#L763)
 
 ## AgentPresetImportResult
 
@@ -85,7 +86,7 @@ export interface AgentPresetImportResult {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:765](../../packages/host/product-api/src/types.ts#L765)
+源码：[packages/host/product-api/src/types.ts:769](../../packages/host/product-api/src/types.ts#L769)
 
 ## AgentPresetImportSource
 
@@ -93,19 +94,20 @@ export interface AgentPresetImportResult {
 export type AgentPresetImportSource = 'eleckoi' | 'sillytavern';
 ```
 
-源码：[packages/host/product-api/src/types.ts:677](../../packages/host/product-api/src/types.ts#L677)
+源码：[packages/host/product-api/src/types.ts:678](../../packages/host/product-api/src/types.ts#L678)
 
 ## AgentPresetLibraryGroup
 
 ```ts
 export interface AgentPresetLibraryGroup {
     id: string;
+    purpose: AgentPresetPurpose;
     name: string;
     sortIndex: number;
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:700](../../packages/host/product-api/src/types.ts#L700)
+源码：[packages/host/product-api/src/types.ts:701](../../packages/host/product-api/src/types.ts#L701)
 
 ## AgentPresetModelFamily
 
@@ -113,7 +115,7 @@ export interface AgentPresetLibraryGroup {
 export type AgentPresetModelFamily = 'general' | 'claude' | 'openai' | 'gemini' | 'deepseek' | 'other';
 ```
 
-源码：[packages/host/product-api/src/types.ts:676](../../packages/host/product-api/src/types.ts#L676)
+源码：[packages/host/product-api/src/types.ts:677](../../packages/host/product-api/src/types.ts#L677)
 
 ## AgentPresetModelTag
 
@@ -125,7 +127,7 @@ export interface AgentPresetModelTag {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:680](../../packages/host/product-api/src/types.ts#L680)
+源码：[packages/host/product-api/src/types.ts:681](../../packages/host/product-api/src/types.ts#L681)
 
 ## AgentPresetProfile
 
@@ -138,13 +140,22 @@ export interface AgentPresetProfile {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:693](../../packages/host/product-api/src/types.ts#L693)
+源码：[packages/host/product-api/src/types.ts:694](../../packages/host/product-api/src/types.ts#L694)
+
+## AgentPresetPurpose
+
+```ts
+export type AgentPresetPurpose = 'roleplay' | 'creator';
+```
+
+源码：[packages/host/product-api/src/types.ts:676](../../packages/host/product-api/src/types.ts#L676)
 
 ## AgentPresetSummary
 
 ```ts
 export interface AgentPresetSummary {
     id: string;
+    purpose: AgentPresetPurpose;
     name: string;
     modelFamily: AgentPresetModelFamily;
     modelTags: AgentPresetModelTag[];
@@ -156,7 +167,7 @@ export interface AgentPresetSummary {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:706](../../packages/host/product-api/src/types.ts#L706)
+源码：[packages/host/product-api/src/types.ts:708](../../packages/host/product-api/src/types.ts#L708)
 
 ## AgentPresetTimelineItem
 
@@ -169,7 +180,7 @@ export interface AgentPresetTimelineItem {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:686](../../packages/host/product-api/src/types.ts#L686)
+源码：[packages/host/product-api/src/types.ts:687](../../packages/host/product-api/src/types.ts#L687)
 
 ## AgentToolGroup
 
@@ -185,7 +196,7 @@ export interface AgentToolGroup {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:729](../../packages/host/product-api/src/types.ts#L729)
+源码：[packages/host/product-api/src/types.ts:732](../../packages/host/product-api/src/types.ts#L732)
 
 ## AgentToolMember
 
@@ -196,7 +207,7 @@ export interface AgentToolMember {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:724](../../packages/host/product-api/src/types.ts#L724)
+源码：[packages/host/product-api/src/types.ts:727](../../packages/host/product-api/src/types.ts#L727)
 
 ## AuthorConversationState
 
@@ -566,7 +577,7 @@ export interface ConversationRuntimeSettingLibrary {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:778](../../packages/host/product-api/src/types.ts#L778)
+源码：[packages/host/product-api/src/types.ts:782](../../packages/host/product-api/src/types.ts#L782)
 
 ## ConversationSummary
 
@@ -627,6 +638,44 @@ export type CreatorProjectMode = 'blank' | 'existing';
 
 源码：[packages/host/product-api/src/types.ts:430](../../packages/host/product-api/src/types.ts#L430)
 
+## CreatorStudioMessage
+
+```ts
+export interface CreatorStudioMessage {
+    eventSeq: number;
+    role: 'user' | 'assistant';
+    text: string;
+    turn: number;
+}
+```
+
+源码：[packages/host/product-api/src/types.ts:961](../../packages/host/product-api/src/types.ts#L961)
+
+## CreatorStudioSession
+
+```ts
+export interface CreatorStudioSession {
+    sessionId: string;
+    presetId: string;
+    characterId: string;
+}
+```
+
+源码：[packages/host/product-api/src/types.ts:960](../../packages/host/product-api/src/types.ts#L960)
+
+## CreatorStudioSessionSummary
+
+```ts
+export interface CreatorStudioSessionSummary extends CreatorStudioSession {
+    title: string;
+    updatedAt: number;
+    pinned: boolean;
+    pinIndex: number;
+}
+```
+
+源码：[packages/host/product-api/src/types.ts:962](../../packages/host/product-api/src/types.ts#L962)
+
 ## DisplayPreferencesSnapshot
 
 ```ts
@@ -638,7 +687,7 @@ export interface DisplayPreferencesSnapshot {
 }
 ```
 
-源码：[packages/host/product-api/src/types.ts:949](../../packages/host/product-api/src/types.ts#L949)
+源码：[packages/host/product-api/src/types.ts:954](../../packages/host/product-api/src/types.ts#L954)
 
 ## DisplayPreferenceValue
 
@@ -646,7 +695,7 @@ export interface DisplayPreferencesSnapshot {
 export type DisplayPreferenceValue = null | boolean | number | string | DisplayPreferenceValue[] | { [key: string]: DisplayPreferenceValue; };
 ```
 
-源码：[packages/host/product-api/src/types.ts:946](../../packages/host/product-api/src/types.ts#L946)
+源码：[packages/host/product-api/src/types.ts:951](../../packages/host/product-api/src/types.ts#L951)
 
 ## ElecKoiHostStatus
 
@@ -1384,7 +1433,7 @@ export interface VariableItemConfig {
     title: string;
     objectId: string;
     enabled: boolean;
-    type: '' | 'number' | 'string' | 'boolean' | 'array';
+    type: '' | 'number' | 'string' | 'boolean' | 'object' | 'array' | 'null';
     defaultValue: string;
     description: string;
     updateRule: string;

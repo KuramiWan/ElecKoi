@@ -52,7 +52,7 @@ async function runtime() {
   }
   const data = {
     readConversationDetails(id: string) { if (id !== 'synthetic-chat') throw new Error('Synthetic chat not found'); return { metadata: { characterId } } },
-    readAgentPresetCatalog: () => ({ activePresetId: presetId }),
+    readAgentPresetCatalog: () => ({ activePresetIds: { roleplay: presetId, creator: 'synthetic-creator' } }),
     readScriptWorkspace(scope: string, ownerId: string) {
       const library = libraries.get(JSON.stringify([scope, ownerId]))!
       const scripts = library.trees.flatMap(item => item.type === 'folder' ? item.scripts : [item])
@@ -188,7 +188,7 @@ describe('native author script Host', () => {
     })
     expect(native.getSnapshot().error).toBe('')
     expect(native.getSnapshot().status).toBe('ready')
-    expect(client.get('eleckoiTavernShared', false)).toBeUndefined()
+    expect(client.get('eleckoiHtmlResources', false)).toBeUndefined()
     expect(r.ctx.get('eleckoiCompatibilityApi', false)).toBeUndefined()
     await expect(r.set({ value: -1 })).rejects.toThrow('Synthetic negative value')
     expect(r.save).not.toHaveBeenCalled(); expect(native.getSnapshot().status).toBe('ready')
@@ -200,6 +200,10 @@ describe('native author script Host', () => {
     await native.refresh(true)
     expect(native.getSnapshot().status).toBe('ready')
     await r.set({ value: 5 }); expect(r.state).toEqual({ value: 6 })
+    expect(open.mock.calls.filter(([, endpoint]) => endpoint === 'eleckoiAuthorScripts/connect')).toHaveLength(1)
+    r.library('character').trees[0]!.enabled = true
+    await native.refresh(true)
+    await r.set({ value: 2 }); expect(r.state).toEqual({ value: 3, derived: 4 })
     expect(open.mock.calls.filter(([, endpoint]) => endpoint === 'eleckoiAuthorScripts/connect')).toHaveLength(2)
     expect(report).not.toHaveBeenCalled()
     await native.dispose(); expect(libraryListeners.size).toBe(0)
@@ -276,6 +280,17 @@ describe('native author script Host', () => {
     r.library('character').trees[0]!.content = 'export default () => { /* Synthetic code change */ }'
     await expect(r.open(version)).rejects.toMatchObject({ details: { reason: 'CATALOG_CHANGED' } })
     await r.open()
+    await expect(r.open()).rejects.toMatchObject({ details: { reason: 'OWNER_CONFLICT' } })
+    expect(r.save).not.toHaveBeenCalled()
+  })
+
+  it('releases a cancelled owner before its suspended iterator is drained and preserves its replacement', async () => {
+    const r = await runtime(); r.library('character').trees = [script()]
+    const former = await r.open()
+    former.abort.abort(new Error('Synthetic page closed')); former.inbox.close()
+    const replacement = await r.open()
+    expect(replacement.ready.value).toMatchObject({ kind: 'ready' })
+    await former.iterator.return?.().catch(() => {})
     await expect(r.open()).rejects.toMatchObject({ details: { reason: 'OWNER_CONFLICT' } })
     expect(r.save).not.toHaveBeenCalled()
   })

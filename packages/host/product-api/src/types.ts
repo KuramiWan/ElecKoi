@@ -580,7 +580,7 @@ export interface VariableItemConfig {
   title: string
   objectId: string
   enabled: boolean
-  type: '' | 'number' | 'string' | 'boolean' | 'array'
+  type: '' | 'number' | 'string' | 'boolean' | 'object' | 'array' | 'null'
   defaultValue: string
   description: string
   updateRule: string
@@ -673,6 +673,7 @@ export interface RegexRuleTestResult {
   validationMessage: string | null
 }
 
+export type AgentPresetPurpose = 'roleplay' | 'creator'
 export type AgentPresetModelFamily = 'general' | 'claude' | 'openai' | 'gemini' | 'deepseek' | 'other'
 export type AgentPresetImportSource = 'eleckoi' | 'sillytavern'
 export type AgentPresetExportFormat = 'json' | 'png'
@@ -699,12 +700,14 @@ export interface AgentPresetProfile {
 
 export interface AgentPresetLibraryGroup {
   id: string
+  purpose: AgentPresetPurpose
   name: string
   sortIndex: number
 }
 
 export interface AgentPresetSummary {
   id: string
+  purpose: AgentPresetPurpose
   name: string
   modelFamily: AgentPresetModelFamily
   modelTags: AgentPresetModelTag[]
@@ -716,7 +719,7 @@ export interface AgentPresetSummary {
 }
 
 export interface AgentPresetCatalog {
-  activePresetId: string
+  activePresetIds: { roleplay: string; creator: string }
   groups: AgentPresetLibraryGroup[]
   presets: AgentPresetSummary[]
 }
@@ -738,6 +741,7 @@ export interface AgentToolGroup {
 
 export interface AgentPreset {
   id: string
+  purpose: AgentPresetPurpose
   name: string
   modelFamily: AgentPresetModelFamily
   modelTags: AgentPresetModelTag[]
@@ -862,6 +866,7 @@ export interface ElecKoiProductDataStore {
   createConversation(input: ConversationCreateInput): ConversationDetailsMetadata
   renameConversation(conversationId: string, title: string): ConversationDetailsMetadata
   deleteConversation(conversationId: string): Promise<void>
+  listInputImageReferences(): Array<{ conversationId: string; attachmentId: string }>
   selectConversationOpening(conversationId: string, openingId: string): ConversationDetailsMetadata
   updateConversationOpening(conversationId: string, content: string): ConversationDetailsMetadata
   prepareConversationRuntime(conversationId: string, text: string, options?: { preset?: AgentPreset; persona?: Record<string, unknown>; characterId?: string }): ConversationRuntimePreparation
@@ -921,11 +926,11 @@ export interface ElecKoiProductDataStore {
   readAgentPreset(presetId: string): AgentPreset
   updateAgentPresetEntries(presetId: string, updates: SettingLibraryEntryUpdate[]): SettingLibraryEntry[]
   saveAgentPreset(preset: AgentPreset, expectedRegexRules: RegexRule[], scriptLibrary?: ScriptLibrary): AgentPreset
-  createAgentPreset(name: string, libraryGroupId: string): AgentPreset
-  importAgentPreset(source: AgentPresetImportSource, document: AgentPresetImportDocument): AgentPresetImportResult
+  createAgentPreset(name: string, libraryGroupId: string, purpose: AgentPresetPurpose): AgentPreset
+  importAgentPreset(source: AgentPresetImportSource, document: AgentPresetImportDocument, purpose: AgentPresetPurpose): AgentPresetImportResult
   exportAgentPreset(presetId: string, format: AgentPresetExportFormat): AgentPresetExportResult
   setActiveAgentPreset(presetId: string): AgentPresetCatalog
-  createAgentPresetGroup(name: string): AgentPresetCatalog
+  createAgentPresetGroup(name: string, purpose: AgentPresetPurpose): AgentPresetCatalog
   renameAgentPresetGroup(groupId: string, name: string): AgentPresetCatalog
   assignAgentPresetGroup(presetId: string, groupId: string): AgentPresetCatalog
   deleteAgentPresetGroup(groupId: string): AgentPresetCatalog
@@ -952,7 +957,18 @@ export interface DisplayPreferencesSnapshot {
   writable: boolean
   revision: number
 }
-export interface CreatorAssistantConversation { sessionId: string; title: string; createdAt: string; legacyConversationId?: string }
-export interface CreatorAssistantHistory { projectId: string; activeSessionId: string; items: CreatorAssistantConversation[] }
-export interface CreatorAssistantPromptReceipt { accepted: true; requestId: string }
-export interface CreatorAssistantCancelReceipt { accepted: true }
+export interface CreatorStudioSession { sessionId: string; presetId: string; characterId: string }
+export interface CreatorStudioMessage { eventSeq: number; role: 'user' | 'assistant'; text: string; turn: number }
+export interface CreatorStudioSessionSummary extends CreatorStudioSession { title: string; updatedAt: number; pinned: boolean; pinIndex: number }
+export interface CreatorStudioRuntime {
+  list(): Promise<CreatorStudioSessionSummary[]>
+  create(characterId: string): Promise<CreatorStudioSession>
+  open(sessionId: string): Promise<CreatorStudioSession>
+  selectCharacter(sessionId: string, characterId: string): Promise<CreatorStudioSession>
+  rename(sessionId: string, title: string): Promise<void>
+  pin(sessionId: string, pinned: boolean): Promise<void>
+  delete(sessionId: string): Promise<void>
+  messages(sessionId: string): Promise<CreatorStudioMessage[]>
+  deleteMessagesFrom(sessionId: string, eventSeq: number, role: 'user' | 'assistant'): Promise<void>
+  regenerate(sessionId: string): Promise<void>
+}

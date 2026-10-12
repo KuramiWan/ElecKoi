@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "upstreamCommit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+  "package": "@deepseek-ai/dsh-attachment-local",
+  "version": "0.2.0-rc.2",
+  "file": "lib/index.js",
+  "sourceSha256": "cd39685581b4573a453c6126f8ce73da0bf1257c378827ebb431d6d4064f7662",
+  "helpers": ["android-file-publication.mjs", "android-attachment-storage.mjs"],
+  "helperDependency": { "name": "koffi", "version": "3.1.1" },
+  "replacements": [
+    { "before": "await ensureDurableDirectory(home, parse(home).root);", "after": "await ensureDurableDirectory(home, androidAttachmentBoundary(home));" },
+    { "before": "await link(staged.path, target);", "after": "await publishAndroidFile(staged.path, target);" },
+    { "before": "await unlink(staged.path);", "after": "await removeTemporary(staged.path);" },
+    { "before": "await link(source, target);", "after": "await publishAndroidAlias(source, target);" }
+  ]
+}

@@ -1,4 +1,6 @@
 import { dirname, isAbsolute, join } from 'node:path'
+export type { GeneratedImageFrame, ChatUserImageAttachment } from '@shared/contracts/entities/chat'
+export { normalizeNovelAiImageSettings, NOVELAI_IMAGE_PROVIDER, AUTO_ILLUSTRATION_TOOL_GROUP, DEFAULT_NOVELAI_COMPILER_INSTRUCTION, MAX_STORY_IMAGES } from '@shared/contracts/agent/novelAiImageSettings'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
@@ -17,6 +19,7 @@ export { decodeScriptLibrary } from '@product-data/domain/scripts'
 import { ConversationArchiveRepository, ConversationRepository, MessageDisplayProjector, MessageRepository } from '@product-data/domain/conversations'
 import { resolveConversationSeed } from '@product-data/domain/conversations/conversationSeed'
 import { CreatorProjectRepository } from '@product-data/domain/creatorStudio/CreatorProjectRepository'
+export { creatorCapabilities, creatorToolsets, creatorAuthoringInstructions } from '@product-data/domain/creatorStudio/capabilities'
 import { FrontendIndex, FrontendProjectRepository } from '@product-data/domain/frontends'
 import { SettingLibraryRepository } from '@product-data/domain/settingLibraries/SettingLibraryRepository'
 import { VariableConfigRepository } from '@product-data/domain/variables/VariableConfigRepository'
@@ -61,6 +64,7 @@ import type {
   AgentPresetImportDocument,
   AgentPresetImportResult,
   AgentPresetImportSource,
+  AgentPresetPurpose,
 } from '@shared/contracts/presets/schemas'
 import type {
   RegexRule,
@@ -593,6 +597,11 @@ class ProductDataStore {
     await this.conversations!.delete(conversationId)
   }
 
+  listInputImageReferences() {
+    this.databaseRepositories()
+    return this.messages!.listInputImageReferences()
+  }
+
   normalizeChatDisplaySettings(value: unknown): unknown {
     return normalizeCanonicalChatDisplaySettings(value)
   }
@@ -948,6 +957,12 @@ class ProductDataStore {
     return this.requirePresets().get(presetId)
   }
 
+  creatorPresetRuntime(presetId: string) {
+    const preset = this.readAgentPreset(presetId)
+    if (preset.purpose !== 'creator') throw new Error('AI 创作工作室只能使用创作预设。')
+    return { preset, settingLibrary: projectAgentPresetRuntimeContext(preset) }
+  }
+
   updateAgentPresetEntries(presetId: string, updates: SettingLibraryEntryUpdate[]) {
     this.databaseRepositories()
     return this.requirePresets().updateEntries(presetId, updates)
@@ -964,17 +979,18 @@ class ProductDataStore {
     })
   }
 
-  createAgentPreset(name: string, libraryGroupId: string): AgentPreset {
+  createAgentPreset(name: string, libraryGroupId: string, purpose: AgentPresetPurpose): AgentPreset {
     this.databaseRepositories()
-    return this.requirePresets().create(name, libraryGroupId)
+    return this.requirePresets().create(name, libraryGroupId, purpose)
   }
 
   importAgentPreset(
     source: AgentPresetImportSource,
-    document: AgentPresetImportDocument
+    document: AgentPresetImportDocument,
+    purpose: AgentPresetPurpose
   ): AgentPresetImportResult {
     this.databaseRepositories()
-    return this.requirePresets().import(document, source)
+    return this.requirePresets().import(document, source, purpose)
   }
 
   exportAgentPreset(presetId: string, format: AgentPresetExportFormat): AgentPresetExportResult {
@@ -987,9 +1003,9 @@ class ProductDataStore {
     return this.requirePresets().setActive(presetId)
   }
 
-  createAgentPresetGroup(name: string): AgentPresetCatalog {
+  createAgentPresetGroup(name: string, purpose: AgentPresetPurpose): AgentPresetCatalog {
     this.databaseRepositories()
-    return this.requirePresets().createGroup(name)
+    return this.requirePresets().createGroup(name, purpose)
   }
 
   renameAgentPresetGroup(groupId: string, name: string): AgentPresetCatalog {

@@ -8,7 +8,7 @@ export const AGENT_TOOL_GROUPS: ReadonlyArray<Omit<AgentToolGroup, 'enabled' | '
     'todo_write', 'get_goal', 'create_goal', 'update_goal',
     'job_output', 'job_list', 'job_kill', 'skill', 'workflow'
   ]),
-  group('builtin:creator', '创作能力', '按需发现并调用角色创作、设定库与图片生成能力', [
+  group('builtin:creator', '创作能力', '按需发现并调用角色资料、设定库与变量的创作能力', [
     'eleckoi_list_toolsets', 'eleckoi_describe_toolset', 'eleckoi_call_capability'
   ]),
   group('builtin:variables', '剧情变量', '按路径模式查找或按内容搜索剧情变量，并通过校验后的补丁更新状态', [

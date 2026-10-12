@@ -2,3 +2,4 @@ export { PresetListPanel, PresetProvider, PresetWorkspace } from "./components/P
 export { PresetManager } from "./components/PresetManager.jsx";
 export { downloadPresetFile, fileBase64, PresetImportDialog } from "./components/PresetTransfer.jsx";
 export { openPresetManagerWindow } from "./window/openPresetManagerWindow.js";
+export { PresetPurposeSwitch } from './components/PresetPurposeSwitch.jsx';

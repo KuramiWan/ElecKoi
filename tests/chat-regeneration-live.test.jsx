@@ -9,7 +9,7 @@ import { OfficialStatsPills, OfficialContextMeter } from './helpers/officialTraj
 import { useChatSessions } from '../apps/web/src/modules/chat/hooks/useChatSessions.js'
 import { RichMessageFrame } from '../apps/web/src/modules/authorFrontend/components/RichMessageFrame.jsx'
 import { detectRichMessagePresentation } from '../packages/shared/src/foundation/richMessage'
-import * as frontendLibraries from '@eleckoi/compatibility-tavern-shared/browser-libraries'
+import * as frontendLibraries from '@eleckoi/dsh-client-html-resources/browser-libraries'
 import source from '../packages/client/features/dsh-client-conversations/src/client.js?raw'
 import roleplaySource from '../packages/client/features/dsh-client-roleplay/src/client.js?raw'
 
@@ -174,7 +174,7 @@ describe('regeneration with the official Session client projection', () => {
       value: input.map(message => ({ id: message.id, sourceContent: message.content,
         displayContent: message.content.includes('前轮回复') ? rich : message.content, variableStateJson: message.variableStateJson })) })
     const state = { status: 'ready', error: '', methods: [] }
-    window.__ElecKoiClientCompatibility = { assetsBaseUrl: '/eleckoi/compat/', sdk: frontendLibraries,
+    window.__ElecKoiHtmlResources = { assetsBaseUrl: '/eleckoi/html/', sdk: frontendLibraries,
       getSnapshot: () => state, subscribe: () => () => {}, realm: { release() {} } }
     await runtime.model.open('chat-1')
     const container = document.createElement('div')
@@ -213,7 +213,7 @@ describe('regeneration with the official Session client projection', () => {
     } finally {
       await act(async () => root.unmount())
       runtime.dispose(); container.remove()
-      delete window.__ElecKoiClientCompatibility
+      delete window.__ElecKoiHtmlResources
       vi.unstubAllGlobals()
     }
   })

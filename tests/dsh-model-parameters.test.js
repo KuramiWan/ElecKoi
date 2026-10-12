@@ -1,21 +1,103 @@
 import { createServer } from 'node:http'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { LlmRuntime, BlockAssembler } from '@deepseek-ai/dsh-llm'
+import { LlmRuntime, LlmAdapter, BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as deepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { describe, expect, it } from 'vitest'
-import { requestSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-runtime.mjs'
+import { materializeAgentPreset, requestSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-runtime.mjs'
+import { currentRequestSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/model-selection-migration.mjs'
 
 describe('model request parameters', () => {
   it('carries saved sampling and compaction parameters into main and subagent request snapshots', () => {
     const ctx = { settings: { describe: () => [{ ns: 'eleckoi-client-models', value: { entries: {
       'example-provider': { parameters: { 'example-model': { temperature: 0, topP: 0.96, autoCompactTokenLimit: 32000, reasoningEffort: 'high' } } },
     } } }] } }
-    expect(requestSnapshot(ctx, { provider: 'example-provider', model: 'example-model' }, { contextWindow: 65536, defaultMaxTokens: 8192 }))
+    expect(requestSnapshot(ctx, { provider: 'example-provider', model: 'example-model' }, { context: { contextWindow: 65536 }, defaultMaxTokens: 8192 }))
       .toMatchObject({ temperature: 0, topP: 0.96, autoCompactTokenLimit: 32000, maxTokens: 8192, contextWindow: 65536, reasoningEffort: 'high' })
     expect(requestSnapshot(ctx, { provider: 'example-provider', model: 'example-model', reasoningEffort: 'low' },
-      { contextWindow: 65536, defaultMaxTokens: 8192 })).toMatchObject({ reasoningEffort: 'high' })
+      { context: { contextWindow: 65536 }, defaultMaxTokens: 8192 })).toMatchObject({ reasoningEffort: 'high' })
   })
+
+  it.each([
+    { limit: 7000, compact: true },
+    { limit: 12000, compact: false },
+    { limit: undefined, compact: false },
+  ])('applies the saved $limit threshold to automatic step compaction', async ({ limit, compact }) => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-auto-compaction-'))
+    const ctx = new Context()
+    const calls = []
+    const events = []
+    const selection = { provider: 'synthetic', model: 'synthetic-model' }
+    ctx.provide('agentDefaultModel', { currentSelection: () => selection })
+    ctx.provide('settings', { describe: () => [{ ns: 'eleckoi-client-models', value: { entries: {
+      synthetic: { parameters: { 'synthetic-model': { autoCompactTokenLimit: limit } } },
+    } } }] })
+    try {
+      for (const plugin of [LlmRuntime, SessionStore, SessionProjectionRegistry, SystemPrompt, ToolRuntime, AgentRegistry, TokenMeter]) {
+        await ctx.plugin(plugin)
+      }
+      await ctx.plugin(JsonlSessionPersistence, { root: join(root, 'sessions'), compression: 'none' })
+      class Adapter extends LlmAdapter {
+        async resolveModel(provider, model) {
+          return { provider, id: model, name: 'Synthetic model', context: { contextWindow: 1_000_000 }, defaultMaxTokens: 8192 }
+        }
+        async *stream(request) {
+          calls.push(request)
+          yield { type: 'block-start', index: 0, blockType: 'text' }
+          yield { type: 'block-end', index: 0, block: { type: 'text', text: request.purpose === 'compaction' ? 'Synthetic summary.' : 'Synthetic reply.' } }
+          yield { type: 'finish', reason: { kind: 'stop' } }
+        }
+      }
+      ctx.llm.registerAdapter(['synthetic'], new Adapter())
+      const snapshot = await currentRequestSnapshot(ctx)
+      const preset = materializeAgentPreset(join(root, 'presets'), resolve('apps/desktop/resources/dsh/agent-preset-template/agent.cordis.yml'), {
+        id: 'synthetic-preset', name: 'Synthetic preset', versionId: 'synthetic-version', roleplayPlan: { steps: [] },
+      }, { disabledGroupIds: [] }, snapshot)
+      const definition = JSON.parse(readFileSync(join(root, 'presets', preset.id, 'preset.json'), 'utf8'))
+      const config = definition.plugins.find(plugin => plugin.id === 'compaction').config
+        .find(plugin => plugin.id === 'compaction-basic').config
+      await ctx.plugin(BasicCompactionEngine, config)
+      await ctx.plugin(AgentLoop, { agents: [] })
+      const { agent } = await ctx.agentLoop.createAgent(ctx, {
+        sessionId: SessionId('synthetic-session'), agentOptions: selection,
+      })
+      ctx.on('session/event', (session, event) => { if (session === agent.session) events.push(event) })
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Synthetic history. '.repeat(1800) }], source: { kind: 'user' } }))
+      await agent.whenIdle()
+      const pressure = ctx.tokenMeter.measure(agent.session).totalTokens
+      expect(pressure).toBeGreaterThan(7000)
+      expect(pressure).toBeLessThan(12000)
+      expect(calls.filter(request => request.purpose === 'compaction')).toHaveLength(0)
+
+      agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Synthetic next input.' }], source: { kind: 'user' } }))
+      await agent.whenIdle()
+      expect(calls.filter(request => request.purpose === 'compaction')).toHaveLength(compact ? 1 : 0)
+      expect(events.some(event => event.type === 'compaction/end')).toBe(compact)
+      expect(snapshot.contextWindow).toBe(1_000_000)
+      expect(config).toMatchObject({ thresholdRatio: limit === undefined ? 0.8 : limit / 1_000_000, retainTokens: 0 })
+      if (compact) {
+        expect(ctx.tokenMeter.measure(agent.session).totalTokens).toBeLessThan(7000)
+        expect(calls.at(-2).purpose).toBe('compaction')
+        expect(calls.at(-1).purpose).not.toBe('compaction')
+      }
+      expect(agent.status).toBe('idle')
+    } finally {
+      await ctx.fiber.dispose()
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 
   it.each(['deepseek_messages', 'openai-completions', 'openai-responses'])('sends Top P through the official %s serializer', async api => {
     const requests = []

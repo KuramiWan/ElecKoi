@@ -1,6 +1,0 @@
-- insert:
-    - id: eleckoi-product-compatibility
-      name: '@eleckoi/dsh-product-api/compatibility'
-- insert:
-    - id: eleckoi-compatibility-host
-      name: '@eleckoi/dsh-compatibility-host'

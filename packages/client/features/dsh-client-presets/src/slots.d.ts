@@ -21,6 +21,8 @@ export interface PresetProfileEditorOwner extends PresetEditorOwner {
 export interface PresetManagerOwner {
   fallback: ReactNode
   catalog: Record<string, unknown> | null
+  purpose: 'roleplay' | 'creator'
+  onPurposeChange(purpose: 'roleplay' | 'creator'): void
   selectedGroup: string
   selectedPresetId: string
   importing: boolean

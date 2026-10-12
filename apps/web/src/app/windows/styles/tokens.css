@@ -52,6 +52,12 @@
   --shadow-color: rgba(0, 0, 0, 0.14);
 }
 
+:root:not([data-eleckoi-mobile="true"]) {
+  --switch-track-radius: 12px;
+  --switch-thumb-radius: 50%;
+  --switch-corner-shape: var(--dsw-corner-shape, round);
+}
+
 :root[data-theme="dark"] {
   color-scheme: dark;
   --title-fg: #f2f2f5;

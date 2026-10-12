@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useSharedFrontendRuntime } from '../../../ui/hooks/useSharedFrontendRuntime.js';
+import { useHtmlResources } from '../../../ui/hooks/useHtmlResources.js';
 import { buildRichMessageHtml } from '../model/buildRichMessageHtml.js';
 import { readAuthorDocumentDeclaration } from '@eleckoi/author-sdk';
 import { NativeMessageFrame } from './NativeMessageFrame.jsx';
@@ -18,7 +18,7 @@ export function RichMessageFrame(props) {
 }
 
 function SharedMessageFrame({ message, document, rootIndex = 0 }) {
-  const { runtime, state } = useSharedFrontendRuntime();
+  const { runtime, state } = useHtmlResources();
   const frameRef = useRef(null);
   const [height, setHeight] = useState(minimumHeight);
   const [error, setError] = useState('');

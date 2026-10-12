@@ -99,15 +99,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote create(name: string, libraryGroupId: string): AgentPreset',
+        signature: '@Remote create(name: string, libraryGroupId: string, purpose: AgentPresetPurpose): AgentPreset',
         description: '创建预设并返回完整预设数据。',
-        parameters: [{ name: 'name', description: '保存的名称或附件文件名。' }, { name: 'libraryGroupId', description: '预设分组编号。' }],
+        parameters: [{ name: 'name', description: '保存的名称或附件文件名。' }, { name: 'libraryGroupId', description: '预设分组编号。' }, { name: 'purpose', description: '角色扮演或创作预设分类。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote import(source: AgentPresetImportSource, document: AgentPresetImportDocument): AgentPresetImportResult',
+        signature: '@Remote import(source: AgentPresetImportSource, document: AgentPresetImportDocument, purpose: AgentPresetPurpose): AgentPresetImportResult',
         description: '导入文件并保存完整数据。',
-        parameters: [{ name: 'source', description: '支持的导入格式。' }, { name: 'document', description: '待导入文件内容。' }],
+        parameters: [{ name: 'source', description: '支持的导入格式。' }, { name: 'document', description: '待导入文件内容。' }, { name: 'purpose', description: '目标预设分类。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
@@ -123,9 +123,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote createGroup(name: string): AgentPresetCatalog',
+        signature: '@Remote createGroup(name: string, purpose: AgentPresetPurpose): AgentPresetCatalog',
         description: '创建预设分组。',
-        parameters: [{ name: 'name', description: '保存的名称或附件文件名。' }],
+        parameters: [{ name: 'name', description: '保存的名称或附件文件名。' }, { name: 'purpose', description: '所属预设分类。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
@@ -544,6 +544,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: '管理聊天目录、产品资料和官方 Session 消息修改，通过官方 Typert Remote 公开跨端调用。',
     methods: [
       {
+        signature: '@Remote readGeneratedImage(conversationId: string, batchId: string, frameId: number, attachmentId: string, signal: AbortSignal): Promise<{ mediaType: string; data: string }>',
+        description: '读取本聊天生图记录引用的单张图片。',
+        parameters: [{ name: 'conversationId', description: '聊天编号。' }, { name: 'batchId', description: '生图指令编号。' }, { name: 'frameId', description: '图片编号。' }, { name: 'attachmentId', description: '当前正式图片对象编号。' }, { name: 'signal', description: '取消图片读取的信号。' }],
+        returns: '图片媒体类型和 Base64 数据。',
+      },
+      {
+        signature: '@Remote async regenerateImage(conversationId: string, batchId: string, frameId: number, signal: AbortSignal): Promise<void>',
+        description: '从原始 AI 回复重新解析提示词，只重画选中的单张图片。',
+        parameters: [{ name: 'conversationId', description: '聊天编号。' }, { name: 'batchId', description: '本轮生图指令编号。' }, { name: 'frameId', description: '指令中的图片编号。' }, { name: 'signal', description: '取消生图请求的信号。' }],
+        returns: '图片生成与记录保存完成；失败抛出可诊断错误。',
+      },
+      {
         signature: '@Remote({ mode: \'stream\' }) changes(signal: AbortSignal): AsyncIterable<ConversationChange>',
         description: '订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。',
         parameters: [{ name: 'signal', description: '取消调用或结束订阅流的信号。' }],
@@ -717,6 +729,73 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: '删除指定项目及其关联数据。',
         parameters: [{ name: 'projectId', description: '创作项目编号。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
+      },
+    ],
+  },
+  {
+    key: 'eleckoiCreatorStudioSessionsApi',
+    summary: 'AI 创作工作室的 DSH 会话与永久编辑目标。',
+    description: 'AI 创作工作室的 DSH 会话与永久编辑目标。',
+    methods: [
+      {
+        signature: '@Remote list(): Promise<CreatorStudioSessionSummary[]>',
+        description: '列出工作室的正式 DSH 会话。',
+        parameters: [],
+        returns: '工作室会话目录。',
+      },
+      {
+        signature: '@Remote create(characterId: string): Promise<CreatorStudioSession>',
+        description: '使用当前全局创作预设创建工作室会话。',
+        parameters: [{ name: 'characterId', description: '编辑目标角色编号；空字符串表示尚未选择。' }],
+        returns: '创建的会话及其编辑目标。',
+      },
+      {
+        signature: '@Remote open(sessionId: string): Promise<CreatorStudioSession>',
+        description: '恢复一个已有工作室会话。',
+        parameters: [{ name: 'sessionId', description: '正式 DSH 会话编号。' }],
+        returns: '恢复的会话及其编辑目标。',
+      },
+      {
+        signature: '@Remote selectCharacter(sessionId: string, characterId: string): Promise<CreatorStudioSession>',
+        description: '在空闲会话中选择永久编辑目标。',
+        parameters: [{ name: 'sessionId', description: '正式 DSH 会话编号。' }, { name: 'characterId', description: '目标角色编号；空字符串解除选择。' }],
+        returns: '更新后的工作室会话。',
+      },
+      {
+        signature: '@Remote rename(sessionId: string, title: string): Promise<void>',
+        description: '修改工作室对话的正式标题。',
+        parameters: [{ name: 'sessionId', description: '工作室会话编号。' }, { name: 'title', description: '新标题。' }],
+        returns: '标题保存完成。',
+      },
+      {
+        signature: '@Remote pin(sessionId: string, pinned: boolean): Promise<void>',
+        description: '设置工作室对话的置顶状态。',
+        parameters: [{ name: 'sessionId', description: '工作室会话编号。' }, { name: 'pinned', description: '是否置顶。' }],
+        returns: '置顶状态保存完成。',
+      },
+      {
+        signature: '@Remote delete(sessionId: string): Promise<void>',
+        description: '删除工作室对话及其正式 Session 文件。',
+        parameters: [{ name: 'sessionId', description: '工作室会话编号。' }],
+        returns: '删除完成。',
+      },
+      {
+        signature: '@Remote messages(sessionId: string): Promise<CreatorStudioMessage[]>',
+        description: '读取工作室可操作的用户和助手消息。',
+        parameters: [{ name: 'sessionId', description: '工作室会话编号。' }],
+        returns: '消息正文及正式事件位置。',
+      },
+      {
+        signature: '@Remote deleteMessagesFrom(sessionId: string, eventSeq: number, role: \'user\' | \'assistant\'): Promise<void>',
+        description: '从指定消息起删除当前对话的后续消息。',
+        parameters: [{ name: 'sessionId', description: '工作室会话编号。' }, { name: 'eventSeq', description: '起始消息的正式事件序号。' }, { name: 'role', description: '起始消息的角色。' }],
+        returns: '删除完成。',
+      },
+      {
+        signature: '@Remote regenerate(sessionId: string): Promise<void>',
+        description: '保留最近的用户输入并重新生成回复。',
+        parameters: [{ name: 'sessionId', description: '工作室会话编号。' }],
+        returns: '重新生成已启动。',
       },
     ],
   },
@@ -909,11 +988,11 @@ export const EVENT_API: readonly EventApiEntry[] = [
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentPreset',
-    declaration: 'export interface AgentPreset {\n    id: string;\n    name: string;\n    modelFamily: AgentPresetModelFamily;\n    modelTags: AgentPresetModelTag[];\n    libraryGroupId: string;\n    activeVersionId: string;\n    activeVersionNumber: number;\n    profile: AgentPresetProfile;\n    entries: SettingLibraryEntry[];\n    groups: SettingLibraryGroup[];\n    promptPositions: SettingLibraryPromptPosition[];\n    toolGroups: AgentToolGroup[];\n    subagentModelSelection?: {\n        configId: string;\n        model: string;\n    };\n    toolModelConfigIds?: Record<string, string>;\n    roleplayPlan: {\n        steps: string[];\n    };\n    regexRules: RegexRule[];\n    expandedGroupIds: string[];\n}',
+    declaration: 'export interface AgentPreset {\n    id: string;\n    purpose: AgentPresetPurpose;\n    name: string;\n    modelFamily: AgentPresetModelFamily;\n    modelTags: AgentPresetModelTag[];\n    libraryGroupId: string;\n    activeVersionId: string;\n    activeVersionNumber: number;\n    profile: AgentPresetProfile;\n    entries: SettingLibraryEntry[];\n    groups: SettingLibraryGroup[];\n    promptPositions: SettingLibraryPromptPosition[];\n    toolGroups: AgentToolGroup[];\n    subagentModelSelection?: {\n        configId: string;\n        model: string;\n    };\n    toolModelConfigIds?: Record<string, string>;\n    roleplayPlan: {\n        steps: string[];\n    };\n    regexRules: RegexRule[];\n    expandedGroupIds: string[];\n}',
   },
   {
     name: 'AgentPresetCatalog',
-    declaration: 'export interface AgentPresetCatalog {\n    activePresetId: string;\n    groups: AgentPresetLibraryGroup[];\n    presets: AgentPresetSummary[];\n}',
+    declaration: 'export interface AgentPresetCatalog {\n    activePresetIds: {\n        roleplay: string;\n        creator: string;\n    };\n    groups: AgentPresetLibraryGroup[];\n    presets: AgentPresetSummary[];\n}',
   },
   {
     name: 'AgentPresetExportFormat',
@@ -937,7 +1016,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentPresetLibraryGroup',
-    declaration: 'export interface AgentPresetLibraryGroup {\n    id: string;\n    name: string;\n    sortIndex: number;\n}',
+    declaration: 'export interface AgentPresetLibraryGroup {\n    id: string;\n    purpose: AgentPresetPurpose;\n    name: string;\n    sortIndex: number;\n}',
   },
   {
     name: 'AgentPresetModelFamily',
@@ -952,8 +1031,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AgentPresetProfile {\n    authorName: string;\n    authorAvatarPath: string;\n    usageInstructions: string;\n    timeline: AgentPresetTimelineItem[];\n}',
   },
   {
+    name: 'AgentPresetPurpose',
+    declaration: 'export type AgentPresetPurpose = \'roleplay\' | \'creator\';',
+  },
+  {
     name: 'AgentPresetSummary',
-    declaration: 'export interface AgentPresetSummary {\n    id: string;\n    name: string;\n    modelFamily: AgentPresetModelFamily;\n    modelTags: AgentPresetModelTag[];\n    libraryGroupId: string;\n    activeVersionId: string;\n    activeVersionNumber: number;\n    entryCount: number;\n    profile: AgentPresetProfile;\n}',
+    declaration: 'export interface AgentPresetSummary {\n    id: string;\n    purpose: AgentPresetPurpose;\n    name: string;\n    modelFamily: AgentPresetModelFamily;\n    modelTags: AgentPresetModelTag[];\n    libraryGroupId: string;\n    activeVersionId: string;\n    activeVersionNumber: number;\n    entryCount: number;\n    profile: AgentPresetProfile;\n}',
   },
   {
     name: 'AgentPresetTimelineItem',
@@ -1094,6 +1177,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CreatorProjectMode',
     declaration: 'export type CreatorProjectMode = \'blank\' | \'existing\';',
+  },
+  {
+    name: 'CreatorStudioMessage',
+    declaration: 'export interface CreatorStudioMessage {\n    eventSeq: number;\n    role: \'user\' | \'assistant\';\n    text: string;\n    turn: number;\n}',
+  },
+  {
+    name: 'CreatorStudioSession',
+    declaration: 'export interface CreatorStudioSession {\n    sessionId: string;\n    presetId: string;\n    characterId: string;\n}',
+  },
+  {
+    name: 'CreatorStudioSessionSummary',
+    declaration: 'export interface CreatorStudioSessionSummary extends CreatorStudioSession {\n    title: string;\n    updatedAt: number;\n    pinned: boolean;\n    pinIndex: number;\n}',
   },
   {
     name: 'DisplayPreferencesSnapshot',
@@ -1329,7 +1424,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'VariableItemConfig',
-    declaration: 'export interface VariableItemConfig {\n    id: string;\n    title: string;\n    objectId: string;\n    enabled: boolean;\n    type: \'\' | \'number\' | \'string\' | \'boolean\' | \'array\';\n    defaultValue: string;\n    description: string;\n    updateRule: string;\n    readMode: \'required\' | \'on_demand\';\n    order: number;\n    treeViewOrder: number;\n    createdAt: string;\n    updatedAt: string;\n}',
+    declaration: 'export interface VariableItemConfig {\n    id: string;\n    title: string;\n    objectId: string;\n    enabled: boolean;\n    type: \'\' | \'number\' | \'string\' | \'boolean\' | \'object\' | \'array\' | \'null\';\n    defaultValue: string;\n    description: string;\n    updateRule: string;\n    readMode: \'required\' | \'on_demand\';\n    order: number;\n    treeViewOrder: number;\n    createdAt: string;\n    updatedAt: string;\n}',
   },
   {
     name: 'VariableJsonValue',

@@ -30,7 +30,7 @@ function fixture() {
         if (provider !== 'current-route-a1b2' || model !== 'synthetic-model') {
           throw new Error(`no adapter registered for provider "${provider}"`)
         }
-        return { contextWindow: 64_000, defaultMaxTokens: 8_000 }
+        return { context: { contextWindow: 64_000 }, defaultMaxTokens: 8_000 }
       }
     },
     settings: { describe: () => [
@@ -96,7 +96,7 @@ describe('legacy global model upgrade', () => {
       if (provider !== 'deepseek-official' || model !== 'synthetic-model') {
         throw new Error(`no adapter registered for provider "${provider}"`)
       }
-      return { contextWindow: 64_000, defaultMaxTokens: 8_000 }
+      return { context: { contextWindow: 64_000 }, defaultMaxTokens: 8_000 }
     }
 
     await expect(migrateLegacyGlobalModelSelection(f.ctx)).resolves.toMatchObject({

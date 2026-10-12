@@ -11,8 +11,8 @@
   "@eleckoi/dsh-client-shell",
   "@eleckoi/dsh-client-mobile",
   "@eleckoi/dsh-client-roleplay",
-  "@eleckoi/dsh-client-tavern-shared",
-  "@eleckoi/dsh-compatibility-host",
+  "@eleckoi/dsh-client-author",
+  "@eleckoi/dsh-client-html-resources",
   "@eleckoi/dsh-product-api",
   "@eleckoi/dsh-runtime",
   "@eleckoi/dsh-web-search-tavily"

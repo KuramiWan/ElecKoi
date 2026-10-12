@@ -38,8 +38,10 @@ function resolveRuntimePlugin(plugin, templatePath) {
   if (!plugin || typeof plugin !== 'object' || Array.isArray(plugin)) return plugin
   const productFile = PRODUCT_PLUGIN_FILES.get(plugin.id)
   let name = plugin.name
-  if (typeof name === 'string' && name.startsWith('@deepseek-ai/')) {
+  if (typeof name === 'string' && (name.startsWith('@deepseek-ai/') || name.startsWith('@eleckoi/'))) {
     name = pathToFileURL(resolveRuntimeModule(name)).href
+  } else if (plugin.id === 'image-generation-tools' && name === productSpecifier(plugin.id)) {
+    name = new URL('./image-generation-tools.mjs', import.meta.url).href
   } else if (productFile && name === productSpecifier(plugin.id)) {
     if (!templatePath) throw new Error(`ElecKoi Agent preset ${plugin.id} is missing its runtime template path`)
     name = pathToFileURL(join(dirname(templatePath), '..', productFile)).href

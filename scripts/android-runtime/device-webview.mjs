@@ -40,7 +40,7 @@ export async function inspectDeviceWebView(adb, state) {
         failures: [...document.querySelectorAll('[data-slot-error]')].map(row => row.getAttribute('data-slot-error')),
         richMessageLoading: document.querySelectorAll('.rich-message-loading').length,
         richMessageErrors: document.querySelectorAll('.rich-message-error').length,
-        sharedFrontendStatus: window.__ElecKoiClientCompatibility?.getSnapshot?.().status ?? 'unavailable',
+        sharedFrontendStatus: window.__ElecKoiHtmlResources?.getSnapshot?.().status ?? 'unavailable',
         responseStatus: performance.getEntriesByType('navigation')[0]?.responseStatus ?? null,
         width: innerWidth, height: innerHeight
       })` })

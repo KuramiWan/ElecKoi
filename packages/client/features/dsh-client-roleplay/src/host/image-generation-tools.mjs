@@ -1,102 +1,81 @@
-import { readFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
+import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { readSessionSnapshot } from './session-snapshot.mjs'
+import { capturedImageResult, IMAGE_EVENT, parseImagePrompts, prepareIllustration } from './generated-image-result.mjs'
 
-const installations = new WeakMap()
-const schema = {
-  type: 'object', properties: {
-    frames: { type: 'array', minItems: 1, items: { type: 'object', properties: {
-      id: { type: 'integer' }, prompt: { type: 'string' }, negative_prompt: { type: 'string' },
-      after_paragraph: { type: 'integer', minimum: 0 }, seed: { type: 'integer' },
-      workflow: { type: 'string' }, overrides: { type: 'object', additionalProperties: true }
-    }, required: ['id', 'prompt', 'after_paragraph'], additionalProperties: false } }
-  }, required: ['frames'], additionalProperties: false
-}
+export const name = 'eleckoi-image-generation-tools'
+export const inject = ['llm', 'sessions', 'settings', 'eleckoiImageGeneration', 'eleckoiSessionEditor']
+export const Config = z.object({ configId: z.string().min(1) })
 
-/** Uses the original scoped ToolRuntime and Session events; no second Agent. */
-export async function installImageGenerationTools(agentCtx, snapshotRoot, sessionId) {
-  let state = installations.get(agentCtx)
-  if (state) {
-    state.references++
-    try { await synchronizeImageGenerationTools(agentCtx, snapshotRoot, sessionId) }
-    catch (error) { release(agentCtx, state); throw error }
-    return () => release(agentCtx, state)
-  }
-  state = { references: 1, currentTurn: undefined, pending: new Map(), registration: undefined, description: undefined, retries: new Map(), commits: new Set() }
-  installations.set(agentCtx, state)
-  state.listener = agentCtx.on('session/event', (session, event) => {
-    if (session.id !== sessionId) return
-    if (event.type === 'turn/start') state.currentTurn = event.data.turn
-    if (event.type !== 'turn/end') return
-    const turn = event.data.turn, pending = state.pending.get(turn)
-    state.pending.delete(turn); if (state.currentTurn === turn) state.currentTurn = undefined
-    if (!pending || event.data.reason.kind !== 'completed') return
-    const commit = commitImages(agentCtx, state, pending, turn)
-    state.commits.add(commit)
-    return commit.finally(() => state.commits.delete(commit))
+/** Capture the text command while the same model response continues streaming its final body. */
+export function apply(ctx, config) {
+  Config.parse(config)
+  const positions = new Map(), submitted = new Set(), jobs = new Set()
+  const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
+  const disposePosition = ctx.on('session/event', (session, event) => {
+    if (event.type === 'step/start') positions.set(session.id, event.data)
+    if (event.type === 'turn/end') { positions.delete(session.id); submitted.delete(session.id) }
   })
-  try { await synchronizeImageGenerationTools(agentCtx, snapshotRoot, sessionId) }
-  catch (error) { release(agentCtx, state); throw error }
-  return () => release(agentCtx, state)
-}
-
-function release(agentCtx, state) {
-  if (--state.references > 0) return
-  state.registration?.(); state.listener(); state.pending.clear()
-  installations.delete(agentCtx)
-}
-
-async function commitImages(agentCtx, state, pending, turn) {
-  try {
-    await pending.service.commitLatest(pending.conversationId, pending.images, turn)
-    state.retries.delete(turn)
-  } catch (error) {
-    state.retries.set(turn, pending)
-    agentCtx.logger.error(`ElecKoi 配图保存失败（会话 ${pending.conversationId}，轮次 ${turn}）：${String(error)}`)
-    try { await pending.service.reportCommitFailure(pending.conversationId, pending.images, turn, error) }
-    catch (reportError) { agentCtx.logger.error(`ElecKoi 配图失败诊断保存失败：${String(reportError)}`) }
-    throw error
-  }
-}
-
-/** Runs after the frozen turn snapshot is replaced and before prompt admission. */
-export async function synchronizeImageGenerationTools(agentCtx, snapshotRoot, sessionId) {
-  const state = installations.get(agentCtx)
-  if (!state) return
-  if (state.commits.size) await Promise.all(state.commits)
-  // Retry the original image/message association after its data problem is
-  // corrected; a failed save must remain visible without permanently blocking chat.
-  for (const [turn, pending] of state.retries) await commitImages(agentCtx, state, pending, turn)
-  const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
-  const service = typeof agentCtx.get === 'function' ? agentCtx.get('eleckoiImageGeneration', false) : agentCtx.eleckoiImageGeneration
-  const disabled = snapshot.disabledToolGroupIds?.includes('builtin:auto-illustration') || snapshot.inheritedFromSessionId
-  if (!disabled && snapshot.toolModelConfigIds?.['builtin:auto-illustration'] && !service) throw new Error('The native image generation service is not mounted')
-  const enabled = !disabled && service && await service.enabledForSession(snapshot)
-  if (!enabled) { state.registration?.(); state.registration = undefined; state.description = undefined; return }
-  const description = await service.toolDescription(snapshot)
-  if (typeof description !== 'string' || !description.trim()) throw new TypeError('The native image tool description must contain its generation instructions')
-  if (state.registration && state.description === description) return
-  state.registration?.(); state.registration = undefined
-  state.registration = agentCtx.tools.register({
-    name: 'generate_image', description, parameters: schema,
-    output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }],
-      presentationMeta: () => ({ source: 'eleckoi-auto-illustration', name: 'generate_image' }) },
-    async execute(args, exec) {
-      const turn = state.currentTurn
-      if (!Number.isSafeInteger(turn) || turn < 1) throw new Error('Image generation requires an active original Agent turn')
-      if (exec.agent && exec.agent.id !== sessionId) throw new Error('Image tool execution belongs to a different Session')
-      const frozen = readSessionSnapshot(snapshotRoot, sessionId)
-      const context = JSON.parse(readFileSync(frozen.contextFile, 'utf8')), conversationId = context.conversationId ?? frozen.conversationId
-      if (typeof conversationId !== 'string' || !conversationId) throw new Error('Image generation snapshot has no conversation identity')
-      if (frozen.disabledToolGroupIds?.includes('builtin:auto-illustration') || !await service.enabledForSession(frozen)) throw new Error('Image generation is disabled for this turn')
-      const result = await service.generateTool(frozen, args, exec.signal)
-      if (exec.signal.aborted) throw exec.signal.reason ?? new Error('Image generation was cancelled')
-      if (!result || !Array.isArray(result.images) || typeof result.content !== 'string') throw new TypeError('Image generation returned an invalid tool result')
-      if (state.currentTurn !== turn) throw new Error('Image generation settled after its original Agent turn ended')
-      const pending = state.pending.get(turn)
-      if (pending && pending.conversationId !== conversationId) throw new Error('Image generation turn changed conversation ownership')
-      state.pending.set(turn, { service, conversationId, images: [...(pending?.images ?? []), ...result.images] })
-      return result.content
-    }
+  const disposeStream = ctx.on('llm/stream', async function* (options, next) {
+    if (!isAgentLoopRequest(options)) { yield* next(); return }
+    const session = ctx.sessions.get(options.sessionId)
+    const snapshot = readSessionSnapshot(snapshotRoot, options.sessionId)
+    if (!session || snapshot.toolModelConfigIds?.['builtin:auto-illustration'] !== config.configId) { yield* next(); return }
+    const state = prepareIllustration(ctx.settings, snapshot)
+    if (!state || submitted.has(session.id)) { yield* next(); return }
+    const position = positions.get(session.id)
+    if (!position) throw new Error('自动配图缺少本轮正式步骤。')
+    const batchId = randomUUID()
+    let text = '', frames, job, finished = false
+    const publish = value => session.append(IMAGE_EVENT, { batchId, ...position, ...value }, { ignorable: true })
+    const failed = value => ({ status: 'failed', error: '本轮图片生成已停止。', frames: value.frames.map(({ attachment, seed, ...frame }) => ({ ...frame, status: 'failed', error: '本轮图片生成已停止。' })) })
+    try {
+      for await (const chunk of next()) {
+        if (chunk.type === 'text-delta') {
+          text += chunk.text
+          if (!job && !submitted.has(session.id)) {
+            frames = parseImagePrompts(text)
+            if (frames) {
+              const min = state.settings.automaticImageCount ? state.settings.automaticImageMin : state.settings.fixedImageCount
+              const max = state.settings.automaticImageCount ? state.settings.automaticImageMax : state.settings.fixedImageCount
+              if (frames.length < min || frames.length > max) throw new Error(`本轮分镜数量需要在 ${min} 到 ${max} 之间。`)
+              submitted.add(session.id)
+              session.append(IMAGE_EVENT, { batchId, ...position, status: 'generating', frames: frames.map(frame => ({ id: frame.id, width: state.settings.width, height: state.settings.height, status: 'generating' })) }, { ignorable: true })
+              job = { controller: new AbortController(), settled: false, output: null }
+              jobs.add(job)
+              job.stop = () => job.stopping ??= (async () => {
+                job.controller.abort(new Error('本轮图片生成已停止。'))
+                await job.promise
+                const images = job.output?.frames.flatMap(frame => frame.attachment ? [frame.attachment] : []) || []
+                if (images.length) { publish(failed(job.output)); await ctx.eleckoiSessionEditor.discardGeneratedImages(images) }
+                jobs.delete(job)
+              })()
+              job.promise = ctx.eleckoiImageGeneration.generate(state.entry, state.settings, frames, AbortSignal.any([options.signal, job.controller.signal]))
+                .catch(error => ({ status: 'failed', frames: [], error: String(error?.message || error) }))
+                .then(async generated => {
+                  const value = capturedImageResult(frames, state.settings, generated)
+                  job.output = job.controller.signal.aborted ? failed(value) : value
+                  publish(job.output)
+                  if (job.controller.signal.aborted) await ctx.eleckoiSessionEditor.discardGeneratedImages(value.frames.flatMap(frame => frame.attachment ? [frame.attachment] : []))
+                  job.settled = true
+                  if (finished) jobs.delete(job)
+                })
+              job.promise.catch(error => ctx.logger.error('自动配图结果写入失败', error))
+            }
+          }
+        }
+        if (chunk.type === 'finish') {
+          if (!['stop', 'max-tokens'].includes(chunk.reason.kind)) await job?.stop()
+          finished = true
+          if (job?.settled) jobs.delete(job)
+        }
+        yield chunk
+      }
+    } finally { if (!finished) await job?.stop() }
   })
-  state.description = description
+  return async () => {
+    disposeStream(); disposePosition(); positions.clear(); submitted.clear()
+    await Promise.all([...jobs].map(job => job.stop()))
+  }
 }

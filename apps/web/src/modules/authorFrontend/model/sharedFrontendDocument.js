@@ -10,7 +10,7 @@ export function injectFrontendHead(source, head) {
 /** Imported HTML gets presentation libraries, but no external author SDK. */
 export function buildSharedFrontendDocument(source, runtime, { channel, baseUrl, rich = false, context, globalStyles = [], autoHeight = false } = {}) {
   if (!runtime?.assetsBaseUrl || !runtime.sdk) throw new Error('HTML 显示资源尚未就绪');
-  const sdk = runtime.sdk, libraries = runtime.assetsBaseUrl + 'assets/assets/';
+  const sdk = runtime.sdk, libraries = runtime.assetsBaseUrl + 'libraries/';
   const head = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">`
     + `<script type="importmap">${literal({ imports: sdk.browserModuleImports(runtime.assetsBaseUrl) })}</script>`
     + (baseUrl && !/<base\b/i.test(source) ? `<base href="${attr(baseUrl)}">` : '')

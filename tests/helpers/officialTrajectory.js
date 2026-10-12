@@ -91,6 +91,8 @@ export function officialChatFixture() {
     },
     views: { register: definition => views.set(definition.target, definition) },
     groups: { register() {} },
+    inspectSystemPrompt: conversation.inspectSystemPrompt,
+    inspectRequestPrompt: conversation.inspectRequestPrompt,
   } })
   const engine = new conversation.ConversationNodeAssembler(
     { entries: () => [...definitions.values()], fallbackEntry: () => fallback },

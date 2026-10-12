@@ -5,9 +5,9 @@ import { initProfile, readProfileManifest, writeProfileBundles, writeProfileMani
 import { afterEach, describe, expect, it } from 'vitest'
 import { ELECKOI_ANDROID_BUNDLES, registerAndroidFrontendBundles } from '../apps/android-host/src/androidPluginBundles'
 
-const frontend = ['@eleckoi/dsh-client-tavern-shared', '@eleckoi/dsh-compatibility-host']
+const frontend = ['@eleckoi/dsh-client-html-resources', '@eleckoi/dsh-client-author']
 const directories: string[] = []
-const marker = '.eleckoi-android-frontend-bundles-v1'
+const marker = '.eleckoi-android-frontend-bundles-v3'
 function directory() {
   const path = mkdtempSync(join(tmpdir(), 'eleckoi-android-frontend-'))
   directories.push(path)
@@ -21,7 +21,7 @@ afterEach(() => {
 })
 
 describe('Android shared frontend profile upgrade', () => {
-  it('adds the missing frontend pair to an initialized profile while preserving user configuration', () => {
+  it('adds the missing frontend and author bundles to an initialized profile while preserving user configuration', () => {
     const root = directory()
     const selected = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app',
       ...ELECKOI_ANDROID_BUNDLES.filter(name => !frontend.includes(name) && name !== '@eleckoi/dsh-web-search-tavily'), '@test/navigation']
@@ -48,6 +48,38 @@ describe('Android shared frontend profile upgrade', () => {
     writeProfileBundles(root, updated, laterSelection)
     registerAndroidFrontendBundles(root)
     expect(readProfileManifest('dsh', root).dsh?.profile?.bundles).toEqual(laterSelection)
+  })
+
+  it('registers the author runtime after the previous upgrade without re-enabling user-disabled bundles', () => {
+    const root = directory()
+    const selected = ['@deepseek-ai/dsh-base', '@eleckoi/dsh-client-html-resources', '@test/navigation']
+    initProfile(root, selected)
+    writeFileSync(join(root, '.eleckoi-android-frontend-bundles-v1'), 'initialized\n')
+    registerAndroidFrontendBundles(root)
+    const updated = readProfileManifest('dsh', root)
+    expect(updated.dsh?.profile?.bundles).toEqual([...selected, '@eleckoi/dsh-client-author'])
+    expect(existsSync(join(root, marker))).toBe(true)
+    writeProfileBundles(root, updated, selected)
+    registerAndroidFrontendBundles(root)
+    expect(readProfileManifest('dsh', root).dsh?.profile?.bundles).toEqual(selected)
+  })
+
+  it.each([true, false])('replaces retired resources once while respecting their enabled state: %s', enabled => {
+    const root = directory()
+    const retired = ['@eleckoi/dsh-client-tavern-shared', '@eleckoi/dsh-compatibility-host']
+    const selected = ['@deepseek-ai/dsh-base', ...retired.slice(0, enabled ? 2 : 1), '@test/navigation']
+    initProfile(root, selected)
+    for (const version of [1, 2]) writeFileSync(join(root, `.eleckoi-android-frontend-bundles-v${version}`), 'initialized\n')
+    const patch = '- id: synthetic-navigation\n  disabled: true\n'
+    writeFileSync(join(root, 'cordis.patch.yml'), patch)
+    registerAndroidFrontendBundles(root)
+    const expected = ['@deepseek-ai/dsh-base', ...(enabled ? [frontend[0]!] : []), '@test/navigation']
+    expect(readProfileManifest('dsh', root).dsh?.profile?.bundles).toEqual(expected)
+    expect(readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toBe(patch)
+    const disabled = expected.filter(name => name !== frontend[0])
+    writeProfileBundles(root, readProfileManifest('dsh', root), disabled)
+    registerAndroidFrontendBundles(root)
+    expect(readProfileManifest('dsh', root).dsh?.profile?.bundles).toEqual(disabled)
   })
 
   it.each([{ present: [] }, { present: [frontend[0]!] }, { present: frontend }])('registers a partially upgraded profile without duplicate bundles: %j', ({ present }) => {

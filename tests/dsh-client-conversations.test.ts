@@ -13,6 +13,15 @@ import { detectRichMessagePresentation } from '../packages/shared/src/foundation
 import { JSDOM } from 'jsdom'
 import { NativeAuthorClient } from '@eleckoi/dsh-client-author/runtime'
 import type { ElecKoiAuthorApi } from '@eleckoi/author-sdk'
+// @ts-expect-error The installed browser bundle fixture does not publish declarations.
+import { officialChatFixture, officialTrajectoryFixture } from './helpers/officialTrajectory.js'
+import { interruptedTurnClosers } from '@deepseek-ai/dsh-session'
+// @ts-expect-error The Host projection module does not publish declarations.
+import { inputContinuationsProjection } from '../packages/client/features/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
+// @ts-expect-error The Host projection module does not publish declarations.
+import { turnOutcomesProjection } from '../packages/client/features/dsh-client-roleplay/src/host/turn-outcomes-projection.mjs'
+// @ts-expect-error The Renderer seat adapter does not publish declarations.
+import { selectRoleplayChatSeat } from '../apps/web/src/modules/chat/model/chatViewSeats.js'
 
 const source = readFileSync(new URL('../packages/client/features/dsh-client-conversations/src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -136,6 +145,7 @@ function mountCatalog(
   }
   runInNewContext(source, {
     AbortController,
+    setTimeout, clearTimeout,
     requestAnimationFrame: runtime.requestAnimationFrame,
     cancelAnimationFrame: runtime.cancelAnimationFrame,
     window: {
@@ -163,6 +173,382 @@ function mountCatalog(
 }
 
 describe('DSH ElecKoi conversation client model', () => {
+  it('admits a formally identified Studio Session without preparing a roleplay chat', async () => {
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = mounted.catalog as any
+    await settle()
+    let studio: unknown = { presetId: 'synthetic-creator-preset', characterId: 'synthetic-character' }
+    catalog.sessions = { binding: (id: string) => id === 'synthetic-studio-session'
+      ? { session: { projections: { faceOf: (key: string) => {
+        expect(key).toBe('eleckoiCreatorStudio')
+        return { getSnapshot: () => studio }
+      } } } } : undefined }
+    try {
+      await expect(catalog.prepareNativeInput({ sessionId: 'synthetic-studio-session', text: 'Synthetic edit' })).resolves.toEqual({ kind: 'success' })
+      studio = null
+      await expect(catalog.prepareNativeInput({ sessionId: 'synthetic-studio-session', text: 'Synthetic edit' })).resolves.toEqual({ kind: 'error', text: '当前聊天与输入框会话不一致。' })
+      const signal = AbortSignal.abort()
+      studio = { presetId: 'synthetic-creator-preset', characterId: '' }
+      await expect(catalog.prepareNativeInput({ sessionId: 'synthetic-studio-session', signal })).rejects.toMatchObject({ name: 'AbortError' })
+    } finally { mounted.dispose() }
+  })
+  it.each(['complete', 'error', 'cancelled'])('does not revive the retired compaction-only AI row during regeneration (%s)', async outcome => {
+    const chatFixture = officialChatFixture(), trajectoryFixture = officialTrajectoryFixture()
+    const listeners = new Set<() => void>()
+    const subscribe = (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener) }
+    const event = (type: string, seq: number, data: any, surfaceOp?: any): any => ({
+      type, seq, time: seq * 100, data, ...(surfaceOp ? { surfaceOp } : {})
+    })
+    const input = (id: string, text: string) => ({ id, role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }] })
+    const reply = (id: string, text: string) => ({ id, role: 'assistant', source: { provider: 'synthetic', model: 'synthetic' },
+      content: [{ type: 'text', text: `<FINAL>${text}</FINAL>` }] })
+    const prefix = [
+      event('turn/start', 1, { turn: 1 }), event('step/start', 2, { turn: 1, step: 1 }),
+      event('user/message', 3, input('previous-input', 'Synthetic previous input'), 'append'),
+      event('assistant/message', 4, { turn: 1, step: 1, stream: [], message: reply('previous-reply', 'Synthetic previous reply') }, 'append'),
+      event('step/end', 5, { turn: 1, step: 1 }), event('turn/end', 6, { turn: 1, reason: { kind: 'completed' } }),
+      event('turn/start', 7, { turn: 2 }), event('compaction/start', 8, { turn: 2, compactionId: 'old-compaction' }),
+      event('compaction/summary', 9, { turn: 2, compactionId: 'old-compaction', summary: [{ type: 'text', text: 'Synthetic summary' }],
+        shadowedSeqs: [3, 4], shadowedTokenCount: 8000, provider: 'synthetic', model: 'synthetic' }),
+      event('user/message', 10, { id: 'checkpoint', role: 'user', source: { kind: 'compact-checkpoint', compactionId: 'old-compaction' },
+        content: [{ type: 'text', text: 'Synthetic summary' }] }, { op: 'replace', startSeq: 3, endSeq: 4 }),
+      event('compaction/end', 11, { turn: 2, compactionId: 'old-compaction' }),
+      event('step/start', 12, { turn: 2, step: 1 }), event('user/message', 13, input('retained-input', 'Synthetic retained input'), 'append'),
+    ]
+    let values = [...prefix, ...interruptedTurnClosers(prefix)]
+    let chat = chatFixture.replace(values), trajectory = trajectoryFixture.replace(values), running = false, removed = false
+    const projections = { faceOf: (name: string) => {
+      const projection = name === 'eleckoiInputContinuations' ? inputContinuationsProjection
+        : name === 'eleckoiTurnOutcomes' ? turnOutcomesProjection : undefined
+      return projection ? { subscribe, getSnapshot: () => projection.wire.view(values.reduce(projection.apply, projection.init())) } : undefined
+    } }
+    const binding = { session: { getSnapshot: () => ({ running, removed }), subscribe, projections },
+      eventSource: { getSnapshot: () => ({ hasMore: false, revision: 0, entries: values.map(event => ({ type: 'event', event })) }), subscribe } }
+    const record = { id: 'synthetic-regeneration-chat', runtimeSessionId: 'synthetic-regeneration-session',
+      metadata: { characterId: 'synthetic-character', characterName: 'Synthetic character' } }
+    const r = mountCatalog(async name => name === 'query.conversations.list' ? { ok: true, data: [record] }
+      : { ok: true, data: { conversation: record, metadata: record.metadata, runtimeSessionId: record.runtimeSessionId,
+        messages: [], hasMore: false, beforeSequence: null } }, { allowOtherQueries: true })
+    const catalog = r.catalog as any
+    catalog.sessions = { list: { getSnapshot: () => ({ byId: { [record.runtimeSessionId]: {} } }) },
+      refresh: async () => {}, reloadHistory: async () => { removed = false },
+      retain: () => ({ sessionId: record.runtimeSessionId, binding, ready: Promise.resolve(binding), release: vi.fn() }) }
+    catalog.uiConversation = { binding: () => ({ target: (name: string) => ({ getSnapshot: () => name === 'chat' ? chat : trajectory, subscribe }) }) }
+    const publish = () => {
+      chat = chatFixture.replace(values); trajectory = trajectoryFixture.replace(values)
+      for (const listener of listeners) listener()
+    }
+    const messages = () => catalog.getDetailsSnapshot().details.messages
+    const seats = () => chat.order.map((key: string) => selectRoleplayChatSeat(messages(), record.runtimeSessionId, chat.nodes.get(key)))
+      .filter((seat: any) => seat?.item.role === 'assistant')
+    const assertOneReplacement = (turn: number) => {
+      const assistants = messages().filter((message: any) => message.role === 'assistant')
+      expect(assistants.map((message: any) => message.dshTurn)).toEqual([1, turn])
+      expect(seats().map((seat: any) => seat.item.dshTurn)).toEqual([1, turn])
+      expect(messages().filter((message: any) => message.role === 'user' && message.sessionEventSeq === 13)).toHaveLength(1)
+      expect(assistants[1].renderKey).toBe(`dsh-reply-${record.runtimeSessionId}-${turn}`)
+      return assistants[1]
+    }
+    let releaseStart!: () => void
+    const startGate = new Promise<void>(resolve => { releaseStart = resolve })
+    let starting = false
+    catalog.remote.session = {}
+    catalog.remote.eleckoiConversations.regenerateMessage = async () => {
+      values = [...prefix, ...interruptedTurnClosers(prefix)]
+      chat = chatFixture.replace(values); trajectory = trajectoryFixture.replace(values)
+      removed = true
+      for (const listener of listeners) listener()
+      return { ok: true, value: { runtimeSessionId: record.runtimeSessionId, prepared: true } }
+    }
+    catalog.remote.eleckoiConversations.startRegeneration = async () => {
+      starting = true
+      await startGate
+      return { ok: true, value: { accepted: true, turn: 3 } }
+    }
+    const publications: number[][] = []
+    const stop = catalog.subscribeChat(() => publications.push((catalog.getDetailsSnapshot().details?.messages || []).filter((message: any) => message.role === 'assistant')
+      .map((message: any) => message.dshTurn)))
+    try {
+      await settle(); await catalog.open(record.id)
+      // Stopping without reusing the input must retain its process history.
+      expect(messages().filter((message: any) => message.role === 'assistant').map((message: any) => message.dshTurn)).toEqual([1, 2])
+      values.push(event('turn/start', 16, { turn: 3 }),
+        event('eleckoi/input-continuation', 17, { turn: 3, inputEventSeq: 13, inputMessageId: 'retained-input' }),
+        event('step/start', 18, { turn: 3, step: 1 }),
+        event('assistant/message', 19, { turn: 3, step: 1, stream: [], message: reply('retiring-reply', 'Synthetic retiring reply') }, 'append'),
+        event('step/end', 20, { turn: 3, step: 1 }), event('turn/end', 21, { turn: 3, reason: { kind: 'completed' } }))
+      publish()
+      expect(messages().filter((message: any) => message.role === 'assistant').map((message: any) => message.dshTurn)).toEqual([1, 3])
+      publications.length = 0
+      const regeneration = catalog.regenerate({ conversationId: record.id, requestId: 'synthetic-regeneration', eventSeq: 13 })
+        .then((value: any) => ({ value }), (error: Error) => ({ error }))
+      await settle()
+      expect(starting).toBe(true)
+      // Rebind has completed, but the Host has not yet published the input's
+      // continuation. Observe every publication, not just the final snapshot.
+      await catalog.refreshDetails()
+      expect(messages().filter((message: any) => message.role === 'assistant').map((message: any) => message.dshTurn)).toEqual([1])
+      values.push(event('turn/start', 16, { turn: 3 }))
+      running = true; publish()
+      expect(messages().filter((message: any) => message.role === 'assistant').map((message: any) => message.dshTurn)).toEqual([1])
+      expect(publications.every(turns => !turns.includes(2))).toBe(true)
+      releaseStart()
+      for (const turn of [3, 4]) {
+        values = [...prefix, ...interruptedTurnClosers(prefix),
+          event('turn/start', 16, { turn }),
+          event('eleckoi/input-continuation', 17, { turn, inputEventSeq: 13, inputMessageId: 'retained-input' }),
+          event('compaction/start', 18, { turn, compactionId: `new-compaction-${turn}` })]
+        running = true; publish()
+        expect(assertOneReplacement(turn)).toMatchObject({ status: 'streaming', content: '',
+          process: [{ id: 'compaction:18', status: 'running' }] })
+        if (outcome === 'complete') values.push(
+          event('compaction/summary', 19, { turn, compactionId: `new-compaction-${turn}`, summary: [{ type: 'text', text: 'Synthetic new summary' }],
+            shadowedSeqs: [10], shadowedTokenCount: 8000, provider: 'synthetic', model: 'synthetic' }),
+          event('user/message', 20, { id: `checkpoint-${turn}`, role: 'user', source: { kind: 'compact-checkpoint', compactionId: `new-compaction-${turn}` },
+            content: [{ type: 'text', text: 'Synthetic new summary' }] }, { op: 'replace', startSeq: 10, endSeq: 10 }))
+        values.push(event('compaction/end', 21, { turn, compactionId: `new-compaction-${turn}`,
+          ...(outcome === 'complete' ? {} : { error: 'Synthetic compaction failure' }) }))
+        publish()
+        expect(assertOneReplacement(turn).process).toMatchObject([{ status: outcome === 'complete' ? 'complete' : 'error' }])
+        if (outcome === 'complete') values.push(event('step/start', 22, { turn, step: 1 }),
+          event('assistant/message', 23, { turn, step: 1, stream: [], message: reply(`replacement-${turn}`, 'Synthetic replacement reply') }, 'append'),
+          event('step/end', 24, { turn, step: 1 }))
+        values.push(event('turn/end', 25, { turn, reason: outcome === 'cancelled' ? { kind: 'aborted', reason: { kind: 'user' } }
+          : outcome === 'error' ? { kind: 'error', error: { message: 'Synthetic compaction failure', code: 'UNKNOWN' } } : { kind: 'completed' } }))
+        running = false; publish()
+        if (turn === 3) {
+          const result = await regeneration
+          if (outcome === 'error') expect(result.error?.message).toContain('Synthetic compaction failure')
+          else expect(result.value.cancelled).toBe(outcome === 'cancelled')
+          expect(catalog.activeRequests.size).toBe(0)
+        }
+        expect(assertOneReplacement(turn).status).toBe(outcome === 'cancelled' ? 'cancelled' : 'complete')
+        catalog.releaseOfficialSession(); await catalog.bindOfficialSession(record.id)
+        assertOneReplacement(turn)
+      }
+    } finally { releaseStart(); stop(); r.dispose() }
+  })
+
+  it.each(['rewind-error', 'start-error', 'cancel-before-start'])('restores stopped process history when regeneration is not accepted (%s)', async outcome => {
+    const chatFixture = officialChatFixture(), trajectoryFixture = officialTrajectoryFixture()
+    const listeners = new Set<() => void>()
+    const subscribe = (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener) }
+    const event = (type: string, seq: number, data: any, surfaceOp?: any): any => ({
+      type, seq, time: seq * 100, data, ...(surfaceOp ? { surfaceOp } : {})
+    })
+    const values = [
+      event('turn/start', 1, { turn: 1 }),
+      event('compaction/start', 2, { turn: 1, compactionId: 'stopped-compaction' }),
+      event('compaction/end', 3, { turn: 1, compactionId: 'stopped-compaction', error: 'Synthetic compaction failure' }),
+      event('step/start', 4, { turn: 1, step: 1 }),
+      event('user/message', 5, { id: 'stopped-input', role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: 'Synthetic stopped input' }] }, 'append'),
+    ]
+    values.push(...interruptedTurnClosers(values))
+    const chat = chatFixture.replace(values), trajectory = trajectoryFixture.replace(values)
+    let removed = false
+    const binding = { session: { getSnapshot: () => ({ running: false, removed }), subscribe,
+      projections: { faceOf: (name: string) => name === 'eleckoiInputContinuations'
+        ? { subscribe, getSnapshot: () => inputContinuationsProjection.wire.view(values.reduce(inputContinuationsProjection.apply, inputContinuationsProjection.init())) }
+        : undefined } },
+      eventSource: { getSnapshot: () => ({ hasMore: false, revision: 0, entries: values.map(event => ({ type: 'event', event })) }), subscribe } }
+    const record = { id: 'synthetic-stopped-chat', runtimeSessionId: 'synthetic-stopped-session',
+      metadata: { characterId: 'synthetic-character', characterName: 'Synthetic character' } }
+    const r = mountCatalog(async name => name === 'query.conversations.list' ? { ok: true, data: [record] }
+      : { ok: true, data: { conversation: record, metadata: record.metadata, runtimeSessionId: record.runtimeSessionId,
+        messages: [], hasMore: false, beforeSequence: null } }, { allowOtherQueries: true })
+    const catalog = r.catalog as any
+    catalog.sessions = { list: { getSnapshot: () => ({ byId: { [record.runtimeSessionId]: {} } }) },
+      refresh: async () => {}, reloadHistory: async () => { removed = false },
+      retain: () => ({ sessionId: record.runtimeSessionId, binding, ready: Promise.resolve(binding), release: vi.fn() }) }
+    catalog.uiConversation = { binding: () => ({ target: (name: string) => ({ getSnapshot: () => name === 'chat' ? chat : trajectory, subscribe }) }) }
+    catalog.remote.session = {}
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const errorResult = { ok: false, error: { message: 'Synthetic regeneration failure' } }
+    catalog.remote.eleckoiConversations.regenerateMessage = async () => {
+      if (outcome === 'rewind-error') { await gate; return errorResult }
+      removed = true
+      for (const listener of listeners) listener()
+      return { ok: true, value: { runtimeSessionId: record.runtimeSessionId, prepared: true } }
+    }
+    const start = vi.fn(async (_conversationId: string, _requestId: string, cancelled: boolean) => {
+      await gate
+      return outcome === 'start-error' ? errorResult : { ok: true, value: { accepted: !cancelled } }
+    })
+    catalog.remote.eleckoiConversations.startRegeneration = start
+    const controller = new AbortController()
+    if (outcome === 'cancel-before-start') controller.abort()
+    const assistantTurns = () => catalog.getDetailsSnapshot().details.messages
+      .filter((message: any) => message.role === 'assistant').map((message: any) => message.dshTurn)
+    try {
+      await settle(); await catalog.open(record.id)
+      expect(assistantTurns()).toEqual([1])
+      const regeneration = catalog.regenerate({ conversationId: record.id, requestId: 'synthetic-rejected-regeneration',
+        eventSeq: 5, signal: controller.signal }).then((value: any) => ({ value }), (error: Error) => ({ error }))
+      await settle()
+      if (outcome !== 'rewind-error') {
+        await catalog.refreshDetails()
+        expect(assistantTurns()).toEqual([])
+      }
+      release()
+      const result = await regeneration
+      if (outcome === 'cancel-before-start') {
+        expect(start).toHaveBeenCalledWith(record.id, 'synthetic-rejected-regeneration', true)
+        expect(result.value.cancelled).toBe(true)
+        expect(result.value.details.messages.filter((message: any) => message.role === 'assistant')
+          .map((message: any) => message.dshTurn)).toEqual([1])
+      } else expect(result.error.message).toContain('Synthetic regeneration failure')
+      expect(catalog.activeRequests.size).toBe(0)
+      expect(assistantTurns()).toEqual([1])
+      expect(catalog.getDetailsSnapshot().details.messages.filter((message: any) => message.sessionEventSeq === 5)).toHaveLength(1)
+      catalog.releaseOfficialSession(); await catalog.bindOfficialSession(record.id)
+      expect(assistantTurns()).toEqual([1])
+    } finally { release(); r.dispose() }
+  })
+
+  it.each(['complete', 'error', 'interrupted'])('projects automatic compaction from its first official trajectory update (%s)', async outcome => {
+    const chatFixture = officialChatFixture(), trajectoryFixture = officialTrajectoryFixture()
+    const chatListeners = new Set<() => void>(), trajectoryListeners = new Set<() => void>()
+    const sessionListeners = new Set<() => void>()
+    const subscribe = (listeners: Set<() => void>) => (listener: () => void) => {
+      listeners.add(listener); return () => listeners.delete(listener)
+    }
+    let running = true
+    const values: any[] = []
+    let chat = chatFixture.replace([]), trajectory = trajectoryFixture.replace([])
+    const session = { getSnapshot: () => ({ running }), subscribe: subscribe(sessionListeners) }
+    const targets = {
+      chat: { getSnapshot: () => chat, subscribe: subscribe(chatListeners) },
+      trajectory: { getSnapshot: () => trajectory, subscribe: subscribe(trajectoryListeners) },
+    }
+    const binding = { session, eventSource: { getSnapshot: () => ({ hasMore: false, revision: 0,
+      entries: values.map(event => ({ type: 'event', event })) }), subscribe: () => () => {} } }
+    const record = { id: 'synthetic-compact-chat', runtimeSessionId: 'synthetic-compact-session',
+      metadata: { characterId: 'synthetic-character', characterName: 'Synthetic character' } }
+    const r = mountCatalog(async name => name === 'query.conversations.list' ? { ok: true, data: [record] }
+      : { ok: true, data: { conversation: record, metadata: record.metadata, runtimeSessionId: record.runtimeSessionId,
+        messages: [], hasMore: false, beforeSequence: null } }, { allowOtherQueries: true })
+    const catalog = r.catalog as any
+    catalog.sessions = { list: { getSnapshot: () => ({ byId: { [record.runtimeSessionId]: {} } }) },
+      retain: () => ({ sessionId: record.runtimeSessionId, binding, ready: Promise.resolve(binding), release: vi.fn() }) }
+    catalog.uiConversation = { binding: () => ({ target: (name: keyof typeof targets) => targets[name] }) }
+    const append = (type: string, seq: number, data: any, surfaceOp?: any) => {
+      const event = { type, seq, time: seq * 100, data, ...(surfaceOp ? { surfaceOp } : {}) }
+      values.push(event)
+      chat = chatFixture.append(event)
+      for (const listener of chatListeners) listener()
+      trajectory = trajectoryFixture.append(event)
+      // Compaction does not publish a visible Chat node until its checkpoint.
+      // Its independent target notification must update the processing row.
+      for (const listener of trajectoryListeners) listener()
+    }
+    try {
+      await settle(); await catalog.open(record.id)
+      append('turn/start', 1, { turn: 1 })
+      append('step/start', 2, { turn: 1, step: 1 })
+      append('user/message', 3, { id: 'old-input', role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: 'Synthetic previous input' }] }, 'append')
+      append('assistant/message', 4, { turn: 1, step: 1, stream: [], message: { id: 'old-reply', role: 'assistant',
+        source: { provider: 'synthetic', model: 'synthetic' },
+        content: [{ type: 'text', text: '<FINAL>Synthetic previous reply</FINAL>' }] } }, 'append')
+      append('step/end', 5, { turn: 1, step: 1 })
+      append('turn/end', 6, { turn: 1, reason: { kind: 'completed' } })
+      append('turn/start', 7, { turn: 2 })
+      append('user/message', 8, { id: 'new-input', role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: 'Synthetic next input' }] }, 'append')
+      append('compaction/start', 9, { compactionId: 'synthetic-auto', turn: 2 })
+      expect(catalog.getStreamSnapshot()).toMatchObject({ status: 'running', dshTurn: 2,
+        renderKey: `dsh-reply-${record.runtimeSessionId}-2`, process: [{ kind: 'compaction', status: 'running', startedAtMillis: 900 }] })
+      const processId = catalog.getStreamSnapshot().process[0].id
+      const liveReply = catalog.getDetailsSnapshot().details.messages.find((item: any) => item.role === 'assistant' && item.dshTurn === 2)
+      expect(liveReply).toMatchObject({ status: 'streaming', content: '',
+        renderKey: `dsh-reply-${record.runtimeSessionId}-2`, process: [{ id: processId, status: 'running' }] })
+      expect(liveReply.sessionEventSeq).toBeUndefined()
+      if (outcome === 'complete') {
+        append('compaction/summary', 10, { compactionId: 'synthetic-auto', turn: 2,
+          summary: [{ type: 'text', text: 'Synthetic compacted summary' }], shadowedSeqs: [3, 4], shadowedTokenCount: 8000,
+          provider: 'synthetic', model: 'synthetic' })
+        append('user/message', 11, { id: 'synthetic-checkpoint', role: 'user',
+          source: { kind: 'compact-checkpoint', compactionId: 'synthetic-auto' },
+          content: [{ type: 'text', text: 'Synthetic compacted summary' }] }, { op: 'replace', startSeq: 3, endSeq: 4 })
+      }
+      append('compaction/end', 12, { compactionId: 'synthetic-auto', turn: 2,
+        ...(outcome === 'complete' ? {} : { error: 'Synthetic compaction stopped' }) })
+      expect(catalog.getStreamSnapshot().process).toMatchObject([{ id: processId,
+        status: outcome === 'complete' ? 'complete' : 'error', completedAtMillis: 1200,
+        detail: outcome === 'complete' ? 'Synthetic compacted summary' : 'Synthetic compaction stopped' }])
+      append('step/start', 13, { turn: 2, step: 1 })
+      if (outcome !== 'interrupted') append('assistant/message', 14, { turn: 2, step: 1, stream: [],
+        message: { id: 'new-reply', role: 'assistant', source: { provider: 'synthetic', model: 'synthetic' },
+          content: [{ type: 'text', text: '<FINAL>Synthetic reply</FINAL>' }] } }, 'append')
+      append('step/end', 15, { turn: 2, step: 1 })
+      running = false
+      append('turn/end', 16, { turn: 2, reason: outcome === 'interrupted'
+        ? { kind: 'aborted', reason: { kind: 'user' } } : { kind: 'completed' } })
+      for (const listener of sessionListeners) listener()
+      expect(catalog.getStreamSnapshot().status).toBe('idle')
+      if (outcome !== 'interrupted') {
+        const reply = catalog.getDetailsSnapshot().details.messages.find((item: any) => item.dshTurn === 2 && item.role === 'assistant')
+        expect(reply.process).toMatchObject([{ id: processId, status: outcome === 'complete' ? 'complete' : 'error' }])
+        catalog.releaseOfficialSession()
+        chat = chatFixture.replace(values); trajectory = trajectoryFixture.replace(values)
+        await catalog.bindOfficialSession(record.id)
+        expect(catalog.getDetailsSnapshot().details.messages.find((item: any) => item.id === reply.id).process)
+          .toMatchObject([{ id: processId, status: outcome === 'complete' ? 'complete' : 'error' }])
+      }
+      catalog.releaseOfficialSession()
+      expect(chatListeners.size).toBe(0)
+      expect(trajectoryListeners.size).toBe(0)
+    } finally { r.dispose() }
+  })
+
+  it('does not attach idle manual compaction to an AI processing row', async () => {
+    const trajectory = officialTrajectoryFixture().replace([
+      { type: 'command/run', seq: 1, time: 100, data: { commandId: 'synthetic-command', name: 'compact' } },
+      { type: 'compaction/start', seq: 2, time: 200,
+        data: { compactionId: 'synthetic-manual', sourceCommandId: 'synthetic-command', turn: null } },
+    ])
+    const r = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = r.catalog as any
+    try {
+      catalog.sessionTrajectoryTarget = { getSnapshot: () => trajectory }
+      expect([...catalog.officialProcess(officialChatFixture().replace([])).values()]).toEqual([])
+    } finally { r.dispose() }
+  })
+
+  it('refreshes image outcomes when the image projection changes without new chat nodes', () => {
+    const r = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = r.catalog as any
+    let images: any[] = [{ batchId: 'synthetic-batch', status: 'generating' }]
+    const empty: any[] = []
+    try {
+      catalog.sessionReference = { sessionId: 'synthetic-session', binding: { session: { getSnapshot: () => ({ openState: 'closed' }), projections: {
+        faceOf: (name: string) => ({ getSnapshot: () => name === 'eleckoiIllustrations' ? images : empty })
+      } } } }
+      const chat = officialChatFixture().replace([])
+      const before = catalog.createOfficialProjectionSignature(chat, 'synthetic-session', false, [], false)
+      expect(catalog.sameOfficialProjection(before, catalog.createOfficialProjectionSignature(chat, 'synthetic-session', false, [], false))).toBe(true)
+      images = [{ batchId: 'synthetic-batch', status: 'complete' }]
+      expect(catalog.sameOfficialProjection(before, catalog.createOfficialProjectionSignature(chat, 'synthetic-session', false, [], false))).toBe(false)
+    } finally { catalog.sessionReference = null; r.dispose() }
+  })
+
+  it('orders compaction between earlier and later activity by official event anchors, not timestamps', () => {
+    const r = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = r.catalog as any
+    const node = (key: string, anchorSeq: number) => ({ key, kind: 'assistant-step', anchorSeq,
+      location: { kind: 'step', turn: { turn: 1 } }, data: { step: anchorSeq, time: 100,
+        status: 'complete', blocks: [{ kind: 'reasoning', text: key }] } })
+    const before = node('before', 2), after = node('after', 5)
+    try {
+      catalog.sessionTrajectoryTarget = { getSnapshot: () => ({ requests: [{ purpose: 'compaction',
+        turn: 1, startSeq: 3, startedAt: 100, completedAt: null, status: 'running' }] }) }
+      const process = catalog.officialProcess({ order: [before.key, after.key], nodes: new Map([[before.key, before], [after.key, after]]) })
+      expect(process.get(1).map((item: any) => item.kind)).toEqual(['reasoning', 'compaction', 'reasoning'])
+    } finally { r.dispose() }
+  })
+
   it('delivers native SDK generation events from the pinned official event window, not historical replay or idle guesses', async () => {
     const require = createRequire(import.meta.url)
     const { MutableSessionEventSource } = await import(pathToFileURL(join(dirname(require.resolve('@deepseek-ai/dsh-api-session-controller/package.json')),

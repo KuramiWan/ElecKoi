@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, CaretRight, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { AgentToolGroupIcon } from '../../../ui/icons/index.jsx';
-import { RoleplayPlanEditor, SubagentSettingsLink, WebSearchSettings } from '../../agentTools/index.js';
-import { loadAgentTools, setAgentToolGroupEnabled, setRoleplayPlanSettings } from '../api/agentToolsApi.js';
+import { AutoIllustrationSettings, RoleplayPlanEditor, SubagentSettingsLink, WebSearchSettings } from '../../agentTools/index.js';
+import { loadAgentTools, setAgentToolGroupEnabled, setAutoIllustrationModel, setRoleplayPlanSettings } from '../api/agentToolsApi.js';
 import { MobileConversationOverlay, MobileOverlayScroll, isMobilePresentation } from '../../../mobile/MobileConversationOverlay.jsx';
 
 export function AgentToolsDialog({
@@ -12,6 +12,7 @@ export function AgentToolsDialog({
   onClose,
   onManage,
   onNotify,
+  purpose = 'roleplay',
 }) {
   const mobile = isMobilePresentation();
   const scrollPositions = useRef(new Map()).current;
@@ -25,17 +26,17 @@ export function AgentToolsDialog({
   useEffect(() => {
     let active = true;
     setLoading(true);
-    loadAgentTools(presetCatalog)
+    loadAgentTools(presetCatalog, purpose)
       .then((value) => { if (active) setCatalog(value); })
       .catch(() => { if (active) onNotify?.('error', '读取工具失败'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [onNotify, presetCatalog]);
+  }, [onNotify, presetCatalog, purpose]);
 
   useEffect(() => {
     if (mobile) return undefined;
     const closeOnEscape = (event) => {
-      if (event.key !== 'Escape') return;
+      if (event.defaultPrevented || event.key !== 'Escape') return;
       if (selectedId) setSelectedId('');
       else onClose();
     };
@@ -51,7 +52,7 @@ export function AgentToolsDialog({
       groups: current.groups.map((item) => item.id === group.id ? { ...item, enabled } : item),
     } : current);
     try {
-      setCatalog(await setAgentToolGroupEnabled(presetCatalog, group.id, enabled));
+      setCatalog(await setAgentToolGroupEnabled(presetCatalog, group.id, enabled, purpose));
     } catch {
       setCatalog((current) => current ? {
         ...current,
@@ -85,6 +86,8 @@ export function AgentToolsDialog({
           group={selected}
           changing={changingId === selected.id}
           roleplayPlan={catalog?.roleplayPlan}
+          imageConfigId={catalog?.toolModelConfigIds?.['builtin:auto-illustration'] || ''}
+          onImageConfigChange={async configId => setCatalog(await setAutoIllustrationModel(presetCatalog, catalog.presetId, configId))}
           savingRoleplayPlan={savingRoleplayPlan}
           onChange={(enabled) => changeEnabled(selected, enabled)}
           onNotify={onNotify}
@@ -109,10 +112,10 @@ export function AgentToolsDialog({
     <MobileOverlayScroll key={selectedId || 'list'} scrollKey={selectedId || 'list'} positions={scrollPositions} direction={selected ? 'forward' : 'back'}>{content}</MobileOverlayScroll>
   </MobileConversationOverlay>;
   return createPortal(<SystemBarOverlay className="agent-tools-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="agent-tools-dialog" role="dialog" aria-modal="true" aria-label="预设工具" onMouseDown={(event) => event.stopPropagation()}>
+    <section className={`agent-tools-dialog${selected?.id === 'builtin:auto-illustration' ? ' desktop-illustration-tool-dialog' : ''}`} role="dialog" aria-modal="true" aria-label="预设工具" onMouseDown={(event) => event.stopPropagation()}>
       <header>
         {selected ? <button type="button" onClick={() => setSelectedId('')} aria-label="返回工具列表"><ArrowLeft /></button> : <span />}
-        <h2>预设工具</h2>
+        <h2>{selected?.id === 'builtin:auto-illustration' ? selected.name : '预设工具'}</h2>
         <button type="button" onClick={onClose} aria-label="关闭"><X /></button>
       </header>
       {content}
@@ -140,6 +143,8 @@ function ToolDetail({
   group,
   changing,
   roleplayPlan,
+  imageConfigId,
+  onImageConfigChange,
   savingRoleplayPlan,
   onChange,
   onNotify,
@@ -153,6 +158,7 @@ function ToolDetail({
       <ToolSwitch name={group.name} checked={group.enabled} disabled={changing} onChange={onChange} />
     </div>
     {group.description ? <p className="agent-tool-detail-description">{group.description}</p> : null}
+    {group.id === 'builtin:auto-illustration' && <AutoIllustrationSettings configId={imageConfigId} onSelect={onImageConfigChange} />}
     {group.id === 'builtin:collaboration' ? <SubagentSettingsLink
       onOpen={onOpenSubagentSettings}
       onNotify={onNotify}

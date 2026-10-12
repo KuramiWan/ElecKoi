@@ -234,6 +234,33 @@ describe('Android startup admission', () => {
       expect(appearances.at(-1)).toEqual({ mode: 'dark', surface: '#202020' })
     } finally { page.window.close() }
   })
+  it('paints a declared full-height drawer surface into the native bars and restores its scrim on closing', async () => {
+    const { page, appearances } = clientPage()
+    try {
+      const { window } = page
+      window.document.documentElement.dataset.theme = 'light'
+      mountSurface(window, '#ffffff')
+      const mask = window.document.createElement('div')
+      mask.style.backgroundColor = 'rgba(0,0,0,0.3)'
+      const surface = window.document.createElement('section')
+      surface.style.backgroundColor = '#ffffff'
+      mask.append(surface); window.document.body.append(mask)
+      await paint(window)
+      const notify = (active, declaredSurface) => window.document.dispatchEvent(new window.CustomEvent('eleckoi:system-bar-mask', {
+        detail: { mask, pseudo: '', surface: declaredSurface, active }
+      }))
+      notify(true)
+      expect(appearances.at(-1).surface).not.toBe('#ffffff')
+      notify(true, surface)
+      expect(appearances.at(-1).surface).toBe('#ffffff')
+      surface.style.backgroundColor = '#202020'
+      window.document.documentElement.dataset.theme = 'dark'
+      await paint(window)
+      expect(appearances.at(-1)).toEqual({ mode: 'dark', surface: '#202020' })
+      notify(false, surface)
+      expect(appearances.at(-1).surface).toBe('#ffffff')
+    } finally { page.window.close() }
+  })
   it('sends rasterized sRGB bytes even when Canvas serializes a CSS Color 4 value', async () => {
     const page = new JSDOM('<!doctype html><html data-theme="light"><body><div id="eleckoi-root"><main class="mobile-shell" style="--mobile-system-bar-bg:color(srgb .7 .7 .7)"></main></div></body></html>', { runScripts: 'outside-only' })
     try {

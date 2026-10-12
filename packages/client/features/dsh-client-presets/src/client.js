@@ -98,15 +98,15 @@ window.__ModuleLoader__.load({
         return saved
       }
 
-      async create(name, libraryGroupId = '') {
-        const created = this.assertPreset(await this.call('create', name, libraryGroupId), null)
+      async create(name, libraryGroupId = '', purpose = 'roleplay') {
+        const created = this.assertPreset(await this.call('create', name, libraryGroupId, purpose), null)
         this.adoptDetail(created)
         await this.refresh()
         return created
       }
 
-      async import(source, document) {
-        const result = await this.call('import', source, document)
+      async import(source, document, purpose = 'roleplay') {
+        const result = await this.call('import', source, document, purpose)
         this.adoptDetail(this.assertPreset(result?.preset, result?.preset?.id))
         await this.refresh()
         return result
@@ -122,8 +122,8 @@ window.__ModuleLoader__.load({
         return catalog
       }
 
-      async createGroup(name) {
-        return this.adoptCatalog(await this.call('createGroup', name))
+      async createGroup(name, purpose = 'roleplay') {
+        return this.adoptCatalog(await this.call('createGroup', name, purpose))
       }
 
       async renameGroup(groupId, name) {
@@ -177,11 +177,11 @@ window.__ModuleLoader__.load({
       }
 
       assertCatalog(value) {
-        if (!value || typeof value.activePresetId !== 'string'
+        if (!value || typeof value.activePresetIds?.roleplay !== 'string' || typeof value.activePresetIds?.creator !== 'string'
           || !Array.isArray(value.groups)
-          || value.groups.some(group => !group || typeof group.id !== 'string')
+          || value.groups.some(group => !group || typeof group.id !== 'string' || !['roleplay', 'creator'].includes(group.purpose))
           || !Array.isArray(value.presets)
-          || value.presets.some(preset => !preset || typeof preset.id !== 'string')) {
+          || value.presets.some(preset => !preset || typeof preset.id !== 'string' || !['roleplay', 'creator'].includes(preset.purpose))) {
           throw new Error('预设目录返回的数据格式不正确。')
         }
         return value

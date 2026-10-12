@@ -57,11 +57,11 @@ async function harness() {
     agentReadStrategy: 'normal' as const, triggerMode: 'agent_tool' as const, enabled: true }
   const alternative = { ...entry, id: 'synthetic-alternative', title: 'Synthetic alternative', enabled: false }
   data.saveSettingLibrary(base.characterId, { ...base, entries: [...base.entries, entry, alternative] })
-  const draft = data.createAgentPreset('Synthetic preset', '')
+  const draft = data.createAgentPreset('Synthetic preset', '', 'roleplay')
   const preset = data.saveAgentPreset({ ...draft, entries: [...draft.entries,
     { ...entry, content: 'Synthetic preset option A', triggerMode: 'always', position: 'instructions' },
     { ...alternative, content: 'Synthetic preset option B', triggerMode: 'always', position: 'instructions' }] }, [])
-  const otherDraft = data.createAgentPreset('Synthetic other preset', '')
+  const otherDraft = data.createAgentPreset('Synthetic other preset', '', 'roleplay')
   const otherPreset = data.saveAgentPreset({ ...otherDraft, entries: [...otherDraft.entries,
     { ...entry, content: 'Synthetic other preset option', triggerMode: 'always', position: 'instructions' }] }, [])
   data.setActiveAgentPreset(preset.id)

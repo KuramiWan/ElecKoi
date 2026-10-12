@@ -299,10 +299,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '当前页面保存的状态对象。',
       },
       {
-        signature: 'readImage(conversationId: string, attachment: ImageAttachmentRef): Promise<string>',
+        signature: 'readImage(conversationId: string, attachment: ImageAttachmentRef | ConversationGeneratedImage): Promise<string>',
         description: '读取同一 Session 的正式图片资源，复用官方图片所有者。',
         parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'attachment', description: '正式图片引用。' }],
         returns: '浏览器可加载的资源 URL。',
+      },
+      {
+        signature: 'regenerateImage(conversationId: string, image: ConversationGeneratedImage): Promise<void>',
+        description: '用原始 AI 回复中的提示词重新生成选中的一张图片。',
+        parameters: [{ name: 'conversationId', description: 'ElecKoi 聊天编号。' }, { name: 'image', description: '明确的批次和图片编号。' }],
+        returns: '图片替换和聊天投影刷新完成。',
       },
       {
         signature: 'subscribeStream(listener: () => void): () => void',
@@ -628,6 +634,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'eleckoiHtmlResources',
+    summary: 'Imported HTML presentation resources; no author or script execution API.',
+    description: 'Imported HTML presentation resources; no author or script execution API.',
+    methods: [
+      {
+        signature: 'getSnapshot(): { status: \'ready\'; error: string }',
+        description: 'Read presentation resource availability.',
+        parameters: [],
+        returns: 'The resource readiness state and its error text.',
+      },
+      {
+        signature: 'subscribe(listener: () => void): () => void',
+        description: 'Subscribe to resource availability changes.',
+        parameters: [{ name: 'listener', description: 'Called when the resource state changes.' }],
+        returns: 'Stops this subscription.',
+      },
+    ],
+  },
+  {
     key: 'eleckoiModels',
     summary: '通过官方模型目录、Settings 和 Credentials 管理模型配置。',
     description: '通过官方模型目录、Settings 和 Credentials 管理模型配置。',
@@ -761,15 +786,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'create(name: string, libraryGroupId?: string): Promise<AgentPreset>',
+        signature: 'create(name: string, libraryGroupId?: string, purpose?: AgentPresetPurpose): Promise<AgentPreset>',
         description: '创建预设并可指定分组。',
-        parameters: [{ name: 'name', description: '保存的名称。' }, { name: 'libraryGroupId', description: '预设分组编号；省略时不分组。' }],
+        parameters: [{ name: 'name', description: '保存的名称。' }, { name: 'libraryGroupId', description: '预设分组编号；省略时不分组。' }, { name: 'purpose', description: '目标分类；省略时为角色扮演预设。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'import(source: AgentPresetImportSource, document: AgentPresetImportDocument): Promise<AgentPresetImportResult>',
+        signature: 'import(source: AgentPresetImportSource, document: AgentPresetImportDocument, purpose?: AgentPresetPurpose): Promise<AgentPresetImportResult>',
         description: '导入预设文件。',
-        parameters: [{ name: 'source', description: '支持的导入格式。' }, { name: 'document', description: '待导入的文件内容。' }],
+        parameters: [{ name: 'source', description: '支持的导入格式。' }, { name: 'document', description: '待导入的文件内容。' }, { name: 'purpose', description: '目标预设分类。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
@@ -785,9 +810,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'createGroup(name: string): Promise<AgentPresetCatalog>',
+        signature: 'createGroup(name: string, purpose?: AgentPresetPurpose): Promise<AgentPresetCatalog>',
         description: '创建预设分组。',
-        parameters: [{ name: 'name', description: '保存的名称。' }],
+        parameters: [{ name: 'name', description: '保存的名称。' }, { name: 'purpose', description: '所属预设分类。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
@@ -1006,25 +1031,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
-    key: 'eleckoiTavernShared',
-    summary: 'Imported HTML presentation resources; no author or script execution API.',
-    description: 'Imported HTML presentation resources; no author or script execution API.',
-    methods: [
-      {
-        signature: 'getSnapshot(): { status: \'ready\'; error: string }',
-        description: 'Read presentation resource availability.',
-        parameters: [],
-        returns: 'The resource readiness state and its error text.',
-      },
-      {
-        signature: 'subscribe(listener: () => void): () => void',
-        description: 'Subscribe to resource availability changes.',
-        parameters: [{ name: 'listener', description: 'Called when the resource state changes.' }],
-        returns: 'Stops this subscription.',
-      },
-    ],
-  },
-  {
     key: 'eleckoiVariables',
     summary: '读取和保存角色配置，保留完整字段、触发方式和提示词插入位置。',
     description: '读取和保存角色配置，保留完整字段、触发方式和提示词插入位置。',
@@ -1162,11 +1168,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConversationClientMessage',
-    declaration: 'export interface ConversationClientMessage extends Omit<ConversationMessageMetadata, \'dshTurn\'> {\n    content?: string;\n    displayContent?: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    sequence?: number;\n    productSequence?: number;\n    sessionEventSeq?: number;\n    dshTurn?: number | null;\n    requestId?: string;\n    nativeVariableStateJson?: string;\n    inputEventSeq?: number;\n    process?: ConversationProcessItem[];\n    dshMessageId?: string;\n    runtimeSessionId?: string;\n    renderKey?: string;\n    dshNodeKey?: string;\n    turnUsage?: TurnTailChatData[\'tokenUsage\'];\n    inputImageAttachments?: (ImageAttachmentRef | ConversationPendingImage)[];\n    inputFileAttachments?: (FileAttachmentRef | ConversationPendingFile)[];\n}',
+    declaration: 'export interface ConversationClientMessage extends Omit<ConversationMessageMetadata, \'dshTurn\'> {\n    content?: string;\n    displayContent?: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    sequence?: number;\n    productSequence?: number;\n    sessionEventSeq?: number;\n    dshTurn?: number | null;\n    requestId?: string;\n    nativeVariableStateJson?: string;\n    inputEventSeq?: number;\n    process?: ConversationProcessItem[];\n    dshMessageId?: string;\n    runtimeSessionId?: string;\n    renderKey?: string;\n    dshNodeKey?: string;\n    turnUsage?: TurnTailChatData[\'tokenUsage\'];\n    inputImageAttachments?: (ImageAttachmentRef | ConversationPendingImage)[];\n    generatedImageAttachments?: ConversationGeneratedImage[];\n    inputFileAttachments?: (FileAttachmentRef | ConversationPendingFile)[];\n}',
   },
   {
     name: 'ConversationDetailsSnapshot',
     declaration: 'export interface ConversationDetailsSnapshot {\n    id: string;\n    status: \'idle\' | \'loading\' | \'ready\' | \'error\';\n    details: ConversationClientDetails | null;\n    runtimeSessionId?: string;\n    error: string;\n}',
+  },
+  {
+    name: 'ConversationGeneratedImage',
+    declaration: 'export interface ConversationGeneratedImage extends Partial<ImageAttachmentRef> {\n    id: string;\n    batchId: string;\n    frameId: number;\n    status: \'generating\' | \'ready\' | \'failed\';\n    error?: string;\n    name?: string;\n    width: number;\n    height: number;\n}',
   },
   {
     name: 'ConversationGenerationChange',

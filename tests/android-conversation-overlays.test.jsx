@@ -235,7 +235,7 @@ describe('Android conversation surfaces', () => {
     };
     let preset = { id: 'example-preset', toolGroups: [tool], roleplayPlan: {} };
     const catalog = {
-        refresh: vi.fn(async () => ({ activePresetId: preset.id })),
+        refresh: vi.fn(async () => ({ activePresetIds: { roleplay: preset.id, creator: 'synthetic-creator' } })),
         read: vi.fn(async () => preset),
         save: vi.fn(async (value) => {
           preset = value;

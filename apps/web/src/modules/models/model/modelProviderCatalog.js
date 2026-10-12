@@ -5,6 +5,7 @@ import novelAiIcon from "../../../assets/model-icons/novelai.svg";
 import openAiIcon from "../../../assets/model-icons/openai.svg";
 import zaiIcon from "../../../assets/model-icons/zai.svg";
 import zhipuIcon from "../../../assets/model-icons/zhipu.svg";
+import { normalizeNovelAiImageSettings } from '@shared/contracts/agent/novelAiImageSettings';
 
 export const modelProviderSections = [
   { id: "general", label: "通用大模型" },
@@ -126,13 +127,7 @@ const providerCatalog = [
     defaultBaseUrl: "https://image.novelai.net",
     defaultModel: "nai-diffusion-4-5-full",
     defaultApiFormat: "chat_completions",
-    defaultImageSettings: {
-      width: 832,
-      height: 1216,
-      steps: 28,
-      scale: 5,
-      sampler: "k_euler_ancestral",
-    },
+    defaultImageSettings: normalizeNovelAiImageSettings(),
     section: "image",
     fixed: false,
   },

@@ -32,6 +32,44 @@ const shell = load(resolve('packages/client/features/dsh-client-shell/src/client
 const mobilePath = resolve('packages/client/mobile/dsh-client-mobile/src/client.js');
 
 describe('Android composition with the shared PC sidebar and locked DSH slots', () => {
+  it('mounts Studio and the official Conversation factory without claiming the same child slot', async () => {
+    const ctx = new Cordis.Context();
+    const studio = load(resolve('packages/client/features/dsh-client-creator-studio/src/client.js'));
+    try {
+      await ctx.plugin({ name: 'synthetic-studio-root', apply(owner) {
+        new renderer.SlotRegistry(owner);
+        owner.reflect.provide('sessions', {});
+        owner.reflect.provide('remote', { eleckoiCreatorStudio: {
+          list: async () => ({ ok: true, value: { items: [] } }),
+          changes: async function* () {},
+        } });
+        owner.slots.register({ name: 'root', children: {
+          'eleckoi.creator-studio.conversation': { kind: 'single', scope: 'root' },
+        } }, () => null);
+      } });
+      await ctx.plugin({ name: 'synthetic-studio-client', inject: ['slots', 'remote', 'sessions'], apply: studio.apply });
+      await ctx.plugin({ name: 'synthetic-official-conversation', inject: ['slots'], apply(owner) {
+        owner.slots.registerFactory({ name: 'conversation.content', scope: 'session-maybe', children: {
+          'conversation.session': { kind: 'single', scope: 'session' },
+        } }, () => null);
+        owner.slots.register({ name: 'conversation.session', children: {
+          'conversation.view': { kind: 'list', scope: 'session' },
+        } }, () => null);
+        owner.slots.register({ name: 'conversation.view', id: 'chat', children: {
+          'conversation.chat.node': { kind: 'keyed', scope: 'session' },
+        } }, () => null);
+        owner.slots.register({ name: 'conversation.chat.node', key: 'synthetic-node', children: {
+          'tool.call.toolview': { kind: 'single', scope: 'session' },
+        } }, () => null);
+      } });
+      expect(ctx.slots.spec('conversation.session').scope).toBe('session');
+      expect(ctx.slots.spec('eleckoi.creator-studio.session').scope).toBe('session');
+      expect(ctx.slots.entriesOfSlot('eleckoi.creator-studio.session')).toHaveLength(1);
+      expect(ctx.slots.entriesOfSlot('eleckoi.creator-studio.conversation')).toHaveLength(1);
+      expect(ctx.slots.spec('eleckoi.creator-studio.tool.call.toolview').scope).toBe('session');
+      expect(ctx.slots.spec('eleckoi.creator-studio.composer.bar').scope).toBe('session-maybe');
+    } finally { await ctx.fiber.dispose(); }
+  });
   it('keeps real sidebar contributions and removes them when their Cordis fiber unloads', async () => {
     const ctx = new Cordis.Context();
     try {

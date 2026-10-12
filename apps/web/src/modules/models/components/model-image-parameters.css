@@ -1,0 +1,4 @@
+.novelai-prompt-fields label { grid-column: 1 / -1; }
+.novelai-prompt-fields textarea { width: 100%; min-height: 96px; resize: vertical; padding: 10px; color: var(--text); background: var(--field-bg); border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+:is(.mobile-shell, .mobile-conversation-overlay) .mobile-model-editor.mobile-root-page .model-parameter-grid.novelai-prompt-fields > label { grid-template-columns: minmax(0, 1fr); }
+.mobile-model-editor .novelai-prompt-fields textarea { font-size: 16px; }

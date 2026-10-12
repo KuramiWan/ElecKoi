@@ -5,10 +5,11 @@ import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
 import { GroupAssignmentMenu } from '../../../ui/ui/GroupAssignmentMenu.jsx';
 import { ExportIcon, ImportIcon, PencilIcon, PlusIcon, TrashIcon } from '../../../ui/icons/index.jsx';
 import defaultPresetAvatar from '../../../assets/eleckoi-app-icon.png';
+import { isDefaultPreset, PresetPurposeSwitch } from './PresetPurposeSwitch.jsx';
 
 const ALL_PRESETS = '全部预设';
 
-export function PresetManager({ catalogModel, catalog, selectedGroup, selectedPresetId, onSelectGroup, onSelectPreset, onRefresh, onImport, onExport, importing, importError }) {
+export function PresetManager({ catalogModel, catalog, purpose, onPurposeChange, selectedGroup, selectedPresetId, onSelectGroup, onSelectPreset, onRefresh, onImport, onExport, importing, importError }) {
   const [groupDraft, setGroupDraft] = useState('');
   const [editingGroupId, setEditingGroupId] = useState('');
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -114,7 +115,7 @@ export function PresetManager({ catalogModel, catalog, selectedGroup, selectedPr
   async function addGroup() {
     if (!groupDraft.trim()) return;
     try {
-      await catalogModel.createGroup(groupDraft);
+      await catalogModel.createGroup(groupDraft, purpose);
       setGroupDraft('');
       setGroupDialogOpen(false);
       await onRefresh();
@@ -176,6 +177,7 @@ export function PresetManager({ catalogModel, catalog, selectedGroup, selectedPr
 
   return <section className="preset-manager-window" aria-label="预设管理器">
       <aside className="preset-manager-groups" onContextMenu={(event) => openGroupMenu(event)}>
+        {onPurposeChange && <PresetPurposeSwitch value={purpose} disabled={importing} onChange={onPurposeChange} />}
         <button type="button" className={selectedGroup === ALL_PRESETS ? 'active' : ''} onClick={() => onSelectGroup(ALL_PRESETS)} onContextMenu={(event) => openGroupMenu(event, null)}><span>{ALL_PRESETS}</span><em>{catalog.presets.length}</em></button>
         <small>分组</small>
         <div>{catalog.groups.map((group) => <button type="button" className={selectedGroup === group.id ? 'active' : ''} key={group.id} onClick={() => onSelectGroup(group.id)} onContextMenu={(event) => openGroupMenu(event, group)}><span>{group.name}</span><em>{catalog.presets.filter((preset) => preset.libraryGroupId === group.id).length}</em></button>)}</div>
@@ -203,7 +205,7 @@ export function PresetManager({ catalogModel, catalog, selectedGroup, selectedPr
         </header>
         {error || importError ? <p className="preset-manager-error">{error || importError}</p> : null}
         <div className="preset-manager-grid">{visible.map((preset) => {
-          const removable = preset.id !== 'agent-preset-standard';
+          const removable = !isDefaultPreset(preset.id);
           const selected = selectedSet.has(preset.id);
           return <article className={`preset-manager-card${preset.id === selectedPresetId ? ' is-current' : ''}${deleteMode && removable ? ' is-selectable' : ''}${selected ? ' is-delete-selected' : ''}`} key={preset.id}>
             <button type="button" className="preset-manager-card-open" aria-pressed={deleteMode && removable ? selected : undefined} onClick={() => deleteMode ? (removable && togglePreset(preset.id)) : onSelectPreset(preset.id)} onContextMenu={deleteMode ? undefined : (event) => openPresetGroupMenu(event, preset)}>

@@ -18,7 +18,7 @@ Android 与桌面共用当前产品领域合同和 Host 业务包，但分别拥
 4. Android 使用应用私有目录中的独立产品 SQLite、DSH home、Session、媒体和 workspace。产品 SQLite 继续由 `@eleckoi/dsh-product-data` 打开，Session 继续使用当前 DSH 正式格式。不得导入旧 Room、为旧字段增加业务兼容层，或改变 PC 的数据路径和迁移链。
 5. `scripts/android-runtime` 拥有 Android 运行时构建与资产校验。依赖版本来自当前工作区锁文件；ARM64 Node 原生依赖单独准备，不覆盖 Windows/Electron 原生依赖。
 6. Android 专用页面位于 `apps/web/src/mobile`，由 `packages/client/mobile/dsh-client-mobile` 经 Cordis 和 `eleckoi.shell.window` 窗口链装配；应用组合清单为 `apps/android-host/src/androidPluginBundleManifest.json`。手机沿原 Android 的底部五入口、全宽消息列表、角色封面列表、预设分组与提供方模型列表呈现，不把桌面多列布局作为移动页面。点击消息或角色的对话入口进入独立对话页，返回恢复来源页面与列表位置；暂不改变对话内容区的呈现。角色编辑、预设编辑、模型配置复用现有 Client 服务、当前字段、能力声明、保存流程和编辑器槽位；未保存编辑通过导航守卫处理，不复制 Host 业务或数据库。
-7. Android Host 的标准输入输出协议只承载进程生命周期；业务调用、流式事件和取消均沿官方 Connection、Typert Remote 与 Session 协议。升级共享互动前端时，Android Host 使用官方 profile 读写合同一次性登记 `dsh-client-tavern-shared` 与 `dsh-compatibility-host`；官方 `initProfile` 不会更新已存在的 profile。登记保留既有 bundle 顺序、外部插件依赖和用户 patch，不重新启用其他已关闭的 bundle；完成标记写入后，后续启停仍由用户控制。
+7. Android Host 的标准输入输出协议只承载进程生命周期；业务调用、流式事件和取消均沿官方 Connection、Typert Remote 与 Session 协议。升级共享互动前端时，Android Host 使用官方 profile 读写合同一次性登记 `dsh-client-html-resources` 并移除废弃资源组合；官方 `initProfile` 不会更新已存在的 profile。登记保留既有 bundle 顺序、外部插件依赖和用户 patch，不重新启用其他已关闭的 bundle；完成标记写入后，后续启停仍由用户控制。
 8. 日常 APK 构建复用校验后的离线资产。Windows 只整理归档和已发布的 ARM64 二进制；源码编译需要明确安排原生 ARM64 Runner，不自动启动 Docker、WSL 或模拟器。启动图标使用当前 PC 图像。
 9. Android Host 在官方 index-inject 中声明 Android 平台及应用版本。共享临时界面在此平台不装载 Electron 更新订阅、Host 故障桥或窗口控制按钮；桌面仍使用原有服务。功能页面按 Host 注入的客户端脚本地址解析自身资源，分别使用 Android HTTP 与桌面自定义协议的真实来源。
 10. APK 必须通过有效 ZIP 条目与整体体积校验，离线归档变化后清理 Android 应用构建输出。运行时清单声明按归档成员计算的解压空间预算；安装前保留旧目录并检查峰值空间，只有新 Host 的健康与认证页面握手通过后才删除非当前的受管安装目录。产品数据目录永远不属于运行时清理范围。
@@ -29,11 +29,13 @@ Android 与桌面共用当前产品领域合同和 Host 业务包，但分别拥
 15. 实际 Android 应用沙箱拒绝 JSONL Session 首次写入所用的硬链接发布操作。Android 打包时仅对锁定版本 `dsh-session-persistence-jsonl` 的两处独占文件发布调用应用平台补丁：完整临时文件仍按官方逻辑写入并同步，发布改用 `renameat2(RENAME_NOREPLACE)`，保留碰撞拒绝、目录同步、错误传播与官方事件格式。补丁核对包身份、原文件 SHA-256 和每处调用的唯一匹配；不修改工作区已安装的共享包、PC 构建或通用 `link()` 语义。不新增旧 Android 聊天或 Room 迁移。
 16. Android 与 PC 共用 `dsh-client-shell` 的侧栏槽位装配、`SidebarContent` 和 `SidebarRail`，两端均停用官方 `ui-sidebar` 外壳，不维护第二份移动侧栏实现。手机采用展开标签的呈现，只按正式面板键过滤底部五入口，不呈现新会话和工作区；保留插件导航、社区、用户资料、设置与底部贡献。角色新建对话保留在对话页右上角。手机开合使用阻尼比 0.9、刚度 400 的弹簧，侧栏宽为屏幕 80% 且最多 326 CSS 像素；主页面右移并缩至 95%，左侧圆角 36，近远阴影固定在独立图层，按开合进度改变透明度；弹簧采样一次后交给 Web Animations 执行位移、缩放和透明度，不逐帧修改继承的样式变量、圆角或阴影模糊。动画结束撤销临时合成提示与动画实例，关闭时移除变换；减少动态效果时直接完成。该呈现不取消官方工作区服务或其初始化行为。正式 `main` 面板键、槽位优先级与 Cordis 注入/销毁决定插件页面呈现；共享组件的默认品牌、设置和工作区贡献仍与 PC 一样按现有优先级选取，不保证依赖官方外壳 DOM 的插件生效。官方工作区选择的空面板目标仍保留正式 `activePanelId: null`，Android 窗口以专用呈现字段 `windowPanelId` 区分 `conversation` 与产品 `messages` 页面；不改变官方面板合同或桌面的面板映射。新增插件面板不需要加入底部五入口，仍可从共享抽屉进入。Android 平台覆盖在共享 Agent 配置之后应用，官方工作区沿同版本 Web profile 使用其已注册的 `standard` 默认 Agent Preset；产品角色会话仍由当前产品 Runtime 明确注册并选择自己的预设，不改变 PC 配置。
 
-17. Android 页面装配是应用必需组件，与共享窗口等核心组件沿官方 Plugin Manager 的 `management-required` 合同拒绝停用；Android 启动始终确保该 bundle 已选中，其他插件启停仍保留用户选择。插件页与侧栏目录按 Host 返回的正式 bundle 清单呈现，启用状态只决定开关和运行状态，不能决定条目是否存在；停用的安装提供 bundle 仍可查看并再次启用。
+17. Android 页面装配是应用必需组件，与共享窗口等核心组件沿官方 Plugin Manager 的 `management-required` 合同拒绝停用；Android 启动始终确保该 bundle 已选中，其他插件启停仍保留用户选择。插件页与侧栏目录按 Host 返回的正式 bundle 清单呈现，启用状态只决定开关和运行状态，不能决定条目是否存在；停用的安装提供 bundle 仍可查看并再次启用。原生前端项目和原生脚本运行环境共同由 `@eleckoi/dsh-client-author` 提供，Android 必须在直接依赖与默认 bundle 清单中声明它。已初始化的 profile 通过独立的第二次前端登记补齐作者插件；不得重新启用前一次登记后被用户停用的兼容插件，登记完成后继续保留作者插件的用户启停选择。
 
 18. Git 仓库插件继续由同版本官方 Plugin Manager 和 pnpm 安装。运行包包含 rootfs、Node、Git 与应用四份归档；Git、HTTPS 辅助程序、OpenSSH 客户端、证书及其 ARM64 依赖固定在 `git-tools-lock.json`，核对官方 Debian 包元数据、SHA-256、依赖和许可证后整理，禁止从开发机临时寻找可执行文件。Host 为 Git 声明实际的程序、模板和 CA 路径，保留官方 URL 解析及认证行为。pnpm 11.7 的 hosted Git 解析会在 HTTPS 检查失败后尝试 SSH，因此运行包必须覆盖两种传输；SSH 可执行不代表公开仓库的 HTTPS 故障已经解决，也不代表具备私有仓库凭据。打包与运行时入场检查确认 Git、SSH、HTTPS 辅助程序和 CA 文件存在，缺失时拒绝启动不完整运行环境。隔离探针使用真实 Git 子进程与本地合成 SSH 握手核验传输可执行，再检查正式 Plugin Manager 安装；不修改官方插件管理的预检查或安装协议。官方国内 registry 仅服务 npm 依赖，GitHub 访问仍遵循原仓库地址。
 
 19. Android 应用归档每次从当前已安装的锁定生产依赖图重新整理；包版本相同不代表补丁字节相同。完整复制新暂存目录后替换旧暂存目录，再在最终路径生成依赖链接，避免旧包和 Windows 暂存链接进入新运行包。运行时的安装身份包含所有归档哈希，补丁或工具变化必须形成新的受管安装目录。
+
+20. Android 的附件持久化以原生壳已经创建的 `ELECKOI_RUNTIME_ROOT` 为目录同步边界，要求附件 home 位于该目录内；不再同步沙箱之外的 `/data/user/0` 等祖先。锁定版 `dsh-attachment-local` 的平台转换与 Session 发布转换一样，在打包时核对包身份、完整源码哈希和唯一调用位置。完整附件仍写入、同步后以 `renameat2(RENAME_NOREPLACE)` 发布，保留内容寻址、碰撞校验、只读权限和失败传播；已存在对象的别名先独占复制、同步再发布，保留原对象。转换只进入 Android 归档，PC 与工作区依赖不变。真机回归覆盖保存、读取、重复保存、碰撞内容校验和临时文件清理。
 
 ## 验证与验收
 

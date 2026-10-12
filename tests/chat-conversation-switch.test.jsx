@@ -43,7 +43,7 @@ describe('conversation switching', () => {
       isSending: true,
       modelConfigs: [],
       scrollRef: { current: null },
-      presetCatalog: { refresh: async () => ({ presets: [], activePresetId: '' }) },
+      presetCatalog: { refresh: async () => ({ presets: [], activePresetIds: { roleplay: '', creator: 'synthetic-creator' } }) },
       renderRoleplaySlot,
     };
     const container = document.createElement('div');

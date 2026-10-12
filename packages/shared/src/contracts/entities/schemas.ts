@@ -96,6 +96,10 @@ export const messageSchema = z.object({
     routes: z.array(z.object({ provider: z.string(), model: z.string() })).readonly().optional()
   }).optional(),
   inputImageAttachments: z.array(chatUserImageAttachmentSchema).optional(),
+  generatedImageAttachments: z.array(chatUserImageAttachmentSchema.partial().extend({
+    id: z.string().min(1), batchId: z.string().min(1), frameId: z.number().int().positive(),
+    status: z.enum(['ready', 'failed', 'generating']), error: z.string().optional()
+  })).optional(),
   inputFileAttachments: z.array(chatUserFileAttachmentSchema).optional(),
   openingOptions: z.array(openingMessageOptionSchema).optional(),
   selectedOpeningId: z.string().optional()

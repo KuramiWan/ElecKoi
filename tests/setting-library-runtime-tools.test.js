@@ -410,6 +410,29 @@ describe("DSH character setting-library tools", () => {
     expect(reread.files[0].content).toBe(read.files[0].content);
   });
 
+  it("returns EJS reference bodies literally, even when they contain template delimiters", async () => {
+    const literal = '模板示例：<% throw new Error("不应执行引用正文") %>';
+    const runtime = await tools({ extraEntries: [
+      entry({ id: 'literal-reference', title: '文字素材', content: literal, dynamicMode: 'ejs_reference' }),
+      entry({ id: 'literal-controller', title: '文字控制器', content: '<%- await getwi("文字素材") %>', contentMode: 'ejs' }),
+    ] });
+    const read = await runtime.byName.get('eleckoi_read_setting_files').execute({ paths: ['文字控制器'] });
+    expect(read.files[0].content).toBe(literal);
+  });
+
+  it("refuses ambiguous reference titles and resolves an exact folder path", async () => {
+    const runtime = await tools({ extraEntries: [
+      entry({ id: 'root-reference', title: '天气', content: '合成根目录文字', dynamicMode: 'ejs_reference' }),
+      entry({ id: 'folder-reference', title: '天气', groupId: 'city', content: '合成文件夹文字', dynamicMode: 'ejs_reference' }),
+      entry({ id: 'ambiguous-controller', title: '重名控制器', content: '<%- await getwi("天气") %>', contentMode: 'ejs' }),
+      entry({ id: 'exact-controller', title: '路径控制器', content: '<%- await getwi("世界/城市/天气") %>', contentMode: 'ejs' }),
+    ] });
+    const found = await runtime.byName.get('eleckoi_glob_setting_files').execute({ pattern: '**' });
+    expect(JSON.stringify(found)).toContain('引用标题不唯一');
+    const read = await runtime.byName.get('eleckoi_read_setting_files').execute({ paths: ['路径控制器'] });
+    expect(read.files[0].content).toBe('合成文件夹文字');
+  });
+
   it("exposes the latest user message to EJS setting controllers", async () => {
     const runtime = await tools({
       history: [

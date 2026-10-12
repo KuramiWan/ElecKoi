@@ -42,6 +42,7 @@ import {
 import {
   isHistoryCompactionEntry,
   isHiddenToolTimelineEntry,
+  defaultCreatorPresetEntries,
   normalizeAgentPresetPrompts
 } from '@shared/contracts/presets/builtIns'
 import type {
@@ -51,7 +52,8 @@ import type {
   AgentPresetExportResult,
   AgentPresetImportDocument,
   AgentPresetImportResult,
-  AgentPresetImportSource
+  AgentPresetImportSource,
+  AgentPresetPurpose
 } from '@shared/contracts/presets/schemas'
 import {
   agentPresetCatalogSchema,
@@ -60,7 +62,9 @@ import {
   agentPresetModelTagSchema,
   agentPresetProfileSchema,
   agentPresetSchema,
-  agentPresetTimelineItemSchema
+  agentPresetTimelineItemSchema,
+  agentPresetPurposeSchema,
+  DEFAULT_AGENT_PRESET_IDS
 } from '@shared/contracts/presets/schemas'
 import {
   defaultRoleplayPlanSettings,
@@ -117,50 +121,56 @@ export class AgentPresetRepository {
 
   ensureInitialized(): void {
     if (this.initialized) return
-    const current = this.store.db.select().from(agentPresetState).where(eq(agentPresetState.singletonId, 1)).get()
-    if (!current?.activePresetId || !this.exists(current.activePresetId)) {
-      this.store.withWriteTx((db) => {
+    this.store.withWriteTx((db) => {
+      for (const purpose of ['roleplay', 'creator'] as const) {
+        const id = DEFAULT_AGENT_PRESET_IDS[purpose]
+        const versionId = purpose === 'roleplay' ? DEFAULT_AGENT_PRESET_VERSION_ID : `${id}-v1`
+        const name = purpose === 'roleplay' ? '默认 Agent 预设' : '默认创作预设'
+        const missing = !db.select().from(agentPresets).where(eq(agentPresets.id, id)).get()
         db.insert(agentPresets).values({
-          id: DEFAULT_AGENT_PRESET_ID,
-          name: '默认 Agent 预设',
+          id, purpose, name,
           modelFamily: 'general',
           modelTagsJson: JSON.stringify([{ id: 'general', label: '通用', providerId: '' }]),
           libraryGroupId: '',
-          activeVersionId: DEFAULT_AGENT_PRESET_VERSION_ID,
+          activeVersionId: versionId,
           authorName: '',
           authorAvatarPath: '',
           sortIndex: 0,
           expandedGroupIdsJson: '[]'
         }).onConflictDoNothing().run()
         db.insert(agentPresetVersions).values({
-          presetId: DEFAULT_AGENT_PRESET_ID,
-          versionId: DEFAULT_AGENT_PRESET_VERSION_ID,
+          presetId: id,
+          versionId,
           versionNumber: 1,
-          name: '默认 Agent 预设',
+          name,
           createdAtEpochMs: Date.now(),
           expandedGroupIdsJson: '[]'
         }).onConflictDoNothing().run()
-        for (const [kind, content] of defaultContents()) {
-          db.insert(agentPresetContents).values({ presetId: DEFAULT_AGENT_PRESET_ID, kind, content })
+        for (const [kind, content] of defaultContents(purpose)) {
+          db.insert(agentPresetContents).values({ presetId: id, kind, content })
             .onConflictDoNothing().run()
           db.insert(agentPresetVersionContents).values({
-            presetId: DEFAULT_AGENT_PRESET_ID,
-            versionId: DEFAULT_AGENT_PRESET_VERSION_ID,
+            presetId: id,
+            versionId,
             kind,
             content
           }).onConflictDoNothing().run()
         }
-        db.insert(agentPresetState).values({ singletonId: 1, activePresetId: DEFAULT_AGENT_PRESET_ID })
-          .onConflictDoUpdate({ target: agentPresetState.singletonId, set: { activePresetId: DEFAULT_AGENT_PRESET_ID } }).run()
-      })
-    }
+        if (missing && purpose === 'creator') {
+          const entries = defaultCreatorPresetEntries()
+          replaceEntries(db, id, entries)
+          replaceVersionEntries(db, id, versionId, entries)
+        }
+        db.insert(agentPresetState).values({ purpose, activePresetId: id }).onConflictDoNothing().run()
+      }
+    })
     this.ensureRequiredEntries()
     this.initialized = true
   }
 
   catalog(): AgentPresetCatalog {
     this.ensureInitialized()
-    const state = this.store.db.select().from(agentPresetState).where(eq(agentPresetState.singletonId, 1)).get()
+    const states = this.store.db.select().from(agentPresetState).all()
     const groups = this.store.db.select().from(agentPresetLibraryGroups).orderBy(asc(agentPresetLibraryGroups.sortIndex)).all()
     const presets = this.store.db.select().from(agentPresets).orderBy(asc(agentPresets.sortIndex)).all().map((row) => {
       const contents = this.contentMap(row.id)
@@ -174,6 +184,7 @@ export class AgentPresetRepository {
         .where(eq(agentPresetEntries.presetId, row.id)).all().length
       return {
         id: row.id,
+        purpose: agentPresetPurposeSchema.parse(row.purpose),
         name: row.name,
         modelFamily: agentPresetModelFamilySchema.parse(row.modelFamily),
         modelTags: parseList(row.modelTagsJson, agentPresetModelTagSchema, '预设模型标签'),
@@ -189,10 +200,15 @@ export class AgentPresetRepository {
         })
       }
     })
-    const activePresetId = presets.some((item) => item.id === state?.activePresetId)
-      ? state?.activePresetId ?? ''
-      : presets[0]?.id ?? ''
-    return agentPresetCatalogSchema.parse({ activePresetId, groups, presets })
+    const activePresetIds = { roleplay: '', creator: '' }
+    for (const purpose of ['roleplay', 'creator'] as const) {
+      const state = states.find(item => item.purpose === purpose)
+      if (!presets.some(item => item.id === state?.activePresetId && item.purpose === purpose)) {
+        throw new Error(`预设全局选择的数据不完整：${purpose}`)
+      }
+      activePresetIds[purpose] = state!.activePresetId
+    }
+    return agentPresetCatalogSchema.parse({ activePresetIds, groups, presets })
   }
 
   get(presetId: string): AgentPreset {
@@ -214,11 +230,13 @@ export class AgentPresetRepository {
       .map((item) => settingLibraryGroupSchema.parse(parseObject(item.payloadJson, '预设提示词分组')))
     const prompts = normalizeAgentPresetPrompts(
       entries,
-      parseList(contents.get(CONTENT_PROMPT_POSITIONS) ?? '[]', currentPromptPositionSchema, '预设提示词位置')
+      parseList(contents.get(CONTENT_PROMPT_POSITIONS) ?? '[]', currentPromptPositionSchema, '预设提示词位置'),
+      agentPresetPurposeSchema.parse(row.purpose)
     )
     const toolConfiguration = this.readToolConfiguration(contents.get(CONTENT_TOOL_CONFIGURATION))
     return agentPresetSchema.parse({
       id: row.id,
+      purpose: row.purpose,
       name: row.name,
       modelFamily: agentPresetModelFamilySchema.parse(row.modelFamily),
       modelTags: parseList(row.modelTagsJson, agentPresetModelTagSchema, '预设模型标签'),
@@ -246,6 +264,9 @@ export class AgentPresetRepository {
   save(input: AgentPreset, expectedRegexRules?: AgentPreset['regexRules']): AgentPreset {
     const normalized = normalizePreset(input)
     if (!this.exists(normalized.id)) throw new Error('找不到要保存的预设。')
+    const identity = this.store.db.select({ purpose: agentPresets.purpose }).from(agentPresets).where(eq(agentPresets.id, normalized.id)).get()!
+    if (identity.purpose !== normalized.purpose) throw new Error('不能通过保存修改预设用途。')
+    this.writableGroupId(this.catalog(), normalized.libraryGroupId, normalized.purpose)
     if (expectedRegexRules) {
       const expected = expectedRegexRules.map((rule, order) => regexRuleSchema.parse({ ...rule, order }))
       if (regexRulesRevision(this.get(normalized.id).regexRules) !== regexRulesRevision(expected)) {
@@ -310,7 +331,7 @@ export class AgentPresetRepository {
     return this.store.withWriteTx(db => {
       const current = this.get(presetId)
       const next = applySettingLibraryEntryUpdates(current.entries, updates, new Date().toISOString())
-      const normalized = normalizeAgentPresetPrompts(next.entries, current.promptPositions)
+      const normalized = normalizeAgentPresetPrompts(next.entries, current.promptPositions, current.purpose)
       const groups = new Set(current.groups.map(group => group.id))
       const positions = new Set(current.promptPositions.map(position => position.id))
       for (const entry of next.changed) {
@@ -338,15 +359,17 @@ export class AgentPresetRepository {
     })
   }
 
-  create(name: string, libraryGroupId = ''): AgentPreset {
+  create(name: string, libraryGroupId = '', purpose: AgentPresetPurpose = 'roleplay'): AgentPreset {
     this.ensureInitialized()
     const id = `agent-preset-${randomUUID()}`
     const versionId = `${id}:v1`
     const catalog = this.catalog()
-    const targetGroupId = this.writableGroupId(catalog, libraryGroupId)
-    const preset = emptyPreset(id, uniqueName(name.trim() || '新预设', new Set(catalog.presets.map((item) => item.name))), versionId, targetGroupId)
+    agentPresetPurposeSchema.parse(purpose)
+    const targetGroupId = this.writableGroupId(catalog, libraryGroupId, purpose)
+    const preset = emptyPreset(id, uniqueName(name.trim() || '新预设', new Set(catalog.presets.filter(item => item.purpose === purpose).map((item) => item.name))), versionId, targetGroupId, purpose)
     this.store.db.insert(agentPresets).values({
       id,
+      purpose,
       name: preset.name,
       modelFamily: preset.modelFamily,
       modelTagsJson: JSON.stringify(preset.modelTags),
@@ -360,13 +383,13 @@ export class AgentPresetRepository {
     return this.save(preset)
   }
 
-  import(document: AgentPresetImportDocument, source: AgentPresetImportSource): AgentPresetImportResult {
-    const decoded = decodeAgentPresetImport(document, source)
+  import(document: AgentPresetImportDocument, source: AgentPresetImportSource, purpose: AgentPresetPurpose = 'roleplay'): AgentPresetImportResult {
+    const decoded = decodeAgentPresetImport(document, source, purpose)
     this.ensureInitialized()
     let preparedAvatar: ReturnType<LocalMediaStore['prepareImage']> | undefined
     try {
       const result = this.scripts.transaction((db) => {
-        const created = this.create(decoded.preset.name)
+        const created = this.create(decoded.preset.name, '', purpose)
         preparedAvatar = decoded.authorAvatarBase64 && this.mediaAssets
       ? this.mediaAssets.prepareImage(
         presetMediaOwner(created.id),
@@ -400,7 +423,7 @@ export class AgentPresetRepository {
       const importedVersions = sourceVersions.map((version, index) => ({
         ...version,
         id: `${created.id}:v${index + 1}`,
-        ...rebaseTransferContent(version, created.id, `v${index + 1}`, timestamp, decoded.source === 'eleckoi')
+        ...rebaseTransferContent(version, created.id, `v${index + 1}`, timestamp, decoded.source === 'eleckoi', purpose)
       }))
       const activeVersion = importedVersions[activeSourceIndex]!
       const imported = this.save({
@@ -490,18 +513,20 @@ export class AgentPresetRepository {
   }
 
   setActive(presetId: string): AgentPresetCatalog {
-    if (!this.exists(presetId)) throw new Error('找不到这个预设。')
-    this.store.db.insert(agentPresetState).values({ singletonId: 1, activePresetId: presetId })
-      .onConflictDoUpdate({ target: agentPresetState.singletonId, set: { activePresetId: presetId } }).run()
+    const preset = this.get(presetId)
+    this.store.db.insert(agentPresetState).values({ purpose: preset.purpose, activePresetId: presetId })
+      .onConflictDoUpdate({ target: agentPresetState.purpose, set: { activePresetId: presetId } }).run()
     return this.catalog()
   }
 
-  createGroup(name: string): AgentPresetCatalog {
+  createGroup(name: string, purpose: AgentPresetPurpose = 'roleplay'): AgentPresetCatalog {
+    agentPresetPurposeSchema.parse(purpose)
     const catalog = this.catalog()
-    const normalized = uniqueName(name.trim() || '新建分组', new Set(catalog.groups.map((item) => item.name)))
+    const normalized = uniqueName(name.trim() || '新建分组', new Set(catalog.groups.filter(item => item.purpose === purpose).map((item) => item.name)))
     this.store.db.insert(agentPresetLibraryGroups).values({
       id: `agent-preset-group-${randomUUID()}`,
       name: normalized,
+      purpose,
       sortIndex: catalog.groups.length
     }).run()
     return this.catalog()
@@ -511,7 +536,7 @@ export class AgentPresetRepository {
     const catalog = this.catalog()
     const group = catalog.groups.find((item) => item.id === groupId)
     if (!group) throw new Error('找不到这个分组。')
-    const normalized = uniqueName(name.trim() || group.name, new Set(catalog.groups.filter((item) => item.id !== groupId).map((item) => item.name)))
+    const normalized = uniqueName(name.trim() || group.name, new Set(catalog.groups.filter((item) => item.id !== groupId && item.purpose === group.purpose).map((item) => item.name)))
     this.store.db.update(agentPresetLibraryGroups).set({ name: normalized }).where(eq(agentPresetLibraryGroups.id, groupId)).run()
     return this.catalog()
   }
@@ -519,9 +544,7 @@ export class AgentPresetRepository {
   assignGroup(presetId: string, groupId: string): AgentPresetCatalog {
     if (!this.exists(presetId)) throw new Error('找不到这个预设。')
     const catalog = this.catalog()
-    if (groupId && !catalog.groups.some((group) => group.id === groupId)) {
-      throw new Error('找不到这个分组。')
-    }
+    this.writableGroupId(catalog, groupId, this.get(presetId).purpose)
     this.store.db.update(agentPresets).set({ libraryGroupId: groupId }).where(eq(agentPresets.id, presetId)).run()
     return this.catalog()
   }
@@ -531,9 +554,7 @@ export class AgentPresetRepository {
     const target = catalog.groups.find((item) => item.id === groupId)
     if (!target) throw new Error('找不到这个分组。')
     const hasAssignedPresets = catalog.presets.some((preset) => preset.libraryGroupId === groupId)
-    const fallbackId = hasAssignedPresets
-      ? catalog.groups.find((item) => item.id !== groupId)?.id ?? ''
-      : ''
+    const fallbackId = ''
     this.store.withWriteTx((db) => {
       if (hasAssignedPresets) db.update(agentPresets).set({ libraryGroupId: fallbackId }).where(eq(agentPresets.libraryGroupId, groupId)).run()
       db.delete(agentPresetLibraryGroups).where(eq(agentPresetLibraryGroups.id, groupId)).run()
@@ -542,20 +563,21 @@ export class AgentPresetRepository {
   }
 
   delete(presetId: string): AgentPresetCatalog {
-    if (presetId === DEFAULT_AGENT_PRESET_ID) throw new Error('默认 Agent 预设不能删除。')
+    if (Object.values(DEFAULT_AGENT_PRESET_IDS).includes(presetId as typeof DEFAULT_AGENT_PRESET_IDS[keyof typeof DEFAULT_AGENT_PRESET_IDS])) throw new Error('默认预设不能删除。')
+    const preset = this.get(presetId)
     this.scripts.transaction(db => {
+      db.update(agentPresetState).set({ activePresetId: DEFAULT_AGENT_PRESET_IDS[preset.purpose] })
+        .where(and(eq(agentPresetState.purpose, preset.purpose), eq(agentPresetState.activePresetId, presetId))).run()
       this.scripts.deleteOwnerInTransaction('preset', presetId, db)
       db.delete(agentPresets).where(eq(agentPresets.id, presetId)).run()
     })
     this.mediaAssets?.removeOwner(presetMediaOwner(presetId))
-    const catalog = this.catalog()
-    if (catalog.activePresetId === presetId && catalog.presets[0]) return this.setActive(catalog.presets[0].id)
-    return catalog
+    return this.catalog()
   }
 
-  active(): AgentPreset {
+  active(purpose: AgentPresetPurpose = 'roleplay'): AgentPreset {
     const catalog = this.catalog()
-    return this.get(catalog.activePresetId || catalog.presets[0]?.id || DEFAULT_AGENT_PRESET_ID)
+    return this.get(catalog.activePresetIds[purpose])
   }
 
   readActiveRegexRules(db: ElecKoiDatabase = this.store.db): {
@@ -565,7 +587,7 @@ export class AgentPresetRepository {
     revision: string
   } {
     if (db === this.store.db) this.ensureInitialized()
-    const state = db.select().from(agentPresetState).where(eq(agentPresetState.singletonId, 1)).get()
+    const state = db.select().from(agentPresetState).where(eq(agentPresetState.purpose, 'roleplay')).get()
     const preset = state
       ? db.select().from(agentPresets).where(eq(agentPresets.id, state.activePresetId)).get()
       : undefined
@@ -584,7 +606,7 @@ export class AgentPresetRepository {
   }
 
   replaceActiveRegexRules(rules: AgentPreset['regexRules'], db: ElecKoiDatabase): void {
-    const state = db.select().from(agentPresetState).where(eq(agentPresetState.singletonId, 1)).get()
+    const state = db.select().from(agentPresetState).where(eq(agentPresetState.purpose, 'roleplay')).get()
     const preset = state
       ? db.select().from(agentPresets).where(eq(agentPresets.id, state.activePresetId)).get()
       : undefined
@@ -620,7 +642,7 @@ export class AgentPresetRepository {
   }
 
   private ensureRequiredEntries(): void {
-    const presets = this.store.db.select({ id: agentPresets.id, versionId: agentPresets.activeVersionId }).from(agentPresets).all()
+    const presets = this.store.db.select({ id: agentPresets.id, versionId: agentPresets.activeVersionId, purpose: agentPresets.purpose }).from(agentPresets).all()
     this.store.withWriteTx((db) => {
       for (const preset of presets) {
         const entries = db.select().from(agentPresetEntries).where(eq(agentPresetEntries.presetId, preset.id))
@@ -631,7 +653,7 @@ export class AgentPresetRepository {
           eq(agentPresetContents.kind, CONTENT_PROMPT_POSITIONS)
         )).get()
         const positions = parseList(contents?.content ?? '[]', currentPromptPositionSchema, '预设提示词位置')
-        const normalized = normalizeAgentPresetPrompts(entries, positions)
+        const normalized = normalizeAgentPresetPrompts(entries, positions, agentPresetPurposeSchema.parse(preset.purpose))
         if (JSON.stringify(normalized.entries) !== JSON.stringify(entries)) {
           replaceEntries(db, preset.id, normalized.entries)
         }
@@ -660,7 +682,7 @@ export class AgentPresetRepository {
             eq(agentPresetVersionContents.kind, CONTENT_PROMPT_POSITIONS)
           )).get()
           const versionPositions = parseList(versionContent?.content ?? '[]', currentPromptPositionSchema, '预设版本提示词位置')
-          const normalizedVersion = normalizeAgentPresetPrompts(versionEntries, versionPositions)
+          const normalizedVersion = normalizeAgentPresetPrompts(versionEntries, versionPositions, agentPresetPurposeSchema.parse(preset.purpose))
           if (JSON.stringify(normalizedVersion.entries) !== JSON.stringify(versionEntries)) {
             replaceVersionEntries(db, preset.id, version.versionId, normalizedVersion.entries)
           }
@@ -684,10 +706,12 @@ export class AgentPresetRepository {
     return agentPresetExists(this.store.db, presetId)
   }
 
-  private writableGroupId(catalog: AgentPresetCatalog, requestedId: string): string {
+  private writableGroupId(catalog: AgentPresetCatalog, requestedId: string, purpose: AgentPresetPurpose): string {
+    if (!requestedId) return ''
     const requested = catalog.groups.find((group) => group.id === requestedId)
-    if (requested) return requested.id
-    return ''
+    if (!requested) throw new Error('找不到这个分组。')
+    if (requested.purpose !== purpose) throw new Error('预设和分组的用途不一致。')
+    return requested.id
   }
 
   private contentMap(presetId: string): Map<string, string> {
@@ -710,7 +734,8 @@ export class AgentPresetRepository {
             eq(agentPresetVersionEntries.versionId, version.versionId)
           )).orderBy(asc(agentPresetVersionEntries.sortIndex)).all()
             .map((item) => currentEntrySchema.parse(parseObject(item.payloadJson, '预设版本提示词'))),
-          parseList(contents.get(CONTENT_PROMPT_POSITIONS) ?? '[]', currentPromptPositionSchema, '预设版本提示词位置')
+          parseList(contents.get(CONTENT_PROMPT_POSITIONS) ?? '[]', currentPromptPositionSchema, '预设版本提示词位置'),
+          this.get(presetId).purpose
         )
         return {
           id: version.versionId,
@@ -778,11 +803,12 @@ function rebaseTransferContent(
   presetId: string,
   scope: string,
   timestamp: string,
-  preserveIdentities: boolean
+  preserveIdentities: boolean,
+  purpose: AgentPresetPurpose
 ): AgentPresetTransferContent {
   const sourceGroups = distinctById(content.groups)
   const groupIds = new Map(sourceGroups.map((group, index) => [group.id, preserveIdentities ? group.id : `${presetId}-${scope}-group-${index + 1}`]))
-  const normalizedPrompts = normalizeAgentPresetPrompts(content.entries, distinctById(content.promptPositions))
+  const normalizedPrompts = normalizeAgentPresetPrompts(content.entries, distinctById(content.promptPositions), purpose)
   const sourcePositions = normalizedPrompts.promptPositions
   const promptPositionIds = new Map(sourcePositions.map((position, index) => [position.id, preserveIdentities ? position.id : `${presetId}-${scope}-position-${index + 1}`]))
   const includedIds = new Set(content.toolGroups.filter((group) => group.included).map((group) => group.id))
@@ -890,7 +916,7 @@ function portableAvatar(reference: string, mediaAssets?: LocalMediaStore): {
 function normalizePreset(input: AgentPreset): AgentPreset {
   const validGroupIds = new Set(input.groups.map((group) => group.id))
   const validToolIds = new Set(AGENT_TOOL_GROUPS.map((group) => group.id))
-  const prompts = normalizeAgentPresetPrompts(input.entries, input.promptPositions)
+  const prompts = normalizeAgentPresetPrompts(input.entries, input.promptPositions, input.purpose)
   return agentPresetSchema.parse({
     ...input,
     name: input.name.trim().slice(0, 60) || '未命名预设',
@@ -930,10 +956,11 @@ function normalizePreset(input: AgentPreset): AgentPreset {
   })
 }
 
-function emptyPreset(id: string, name: string, versionId: string, libraryGroupId: string): AgentPreset {
-  const prompts = normalizeAgentPresetPrompts([], [])
+function emptyPreset(id: string, name: string, versionId: string, libraryGroupId: string, purpose: AgentPresetPurpose): AgentPreset {
+  const prompts = normalizeAgentPresetPrompts([], [], purpose)
   return agentPresetSchema.parse({
     id,
+    purpose,
     name,
     modelFamily: 'general',
     modelTags: [{ id: 'general', label: '通用', providerId: '' }],
@@ -944,14 +971,15 @@ function emptyPreset(id: string, name: string, versionId: string, libraryGroupId
     entries: prompts.entries,
     groups: [],
     promptPositions: prompts.promptPositions,
-    toolGroups: agentToolGroups(),
+    toolGroups: purpose === 'creator' ? agentToolGroups(new Set(['builtin:creator'])).map(group => ({ ...group, included: group.id === 'builtin:creator' })) : agentToolGroups(),
     roleplayPlan: defaultRoleplayPlanSettings(),
     regexRules: [],
     expandedGroupIds: []
   })
 }
 
-function defaultContents(): Array<[string, string]> {
+function defaultContents(purpose: AgentPresetPurpose): Array<[string, string]> {
+  const enabledIds = purpose === 'creator' ? ['builtin:creator'] : [...DEFAULT_AGENT_TOOL_GROUP_IDS]
   return [
     [CONTENT_USAGE_INSTRUCTIONS, ''],
     [CONTENT_TIMELINE, '[]'],
@@ -959,8 +987,8 @@ function defaultContents(): Array<[string, string]> {
     [CONTENT_REGEX_RULES, '[]'],
     [CONTENT_TOOL_CONFIGURATION, JSON.stringify({
       version: TOOL_CONFIGURATION_VERSION,
-      includedGroupIds: [...DEFAULT_AGENT_TOOL_GROUP_IDS],
-      enabledGroupIds: [...DEFAULT_AGENT_TOOL_GROUP_IDS],
+      includedGroupIds: enabledIds,
+      enabledGroupIds: enabledIds,
       roleplayPlan: defaultRoleplayPlanSettings()
     })]
   ]

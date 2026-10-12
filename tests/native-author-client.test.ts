@@ -3,6 +3,7 @@ import { JSDOM } from 'jsdom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AUTHOR_EVENT_NAMES, type AuthorScriptProgram, type ElecKoiAuthorApi } from '@eleckoi/author-sdk'
 import { NativeAuthorClient } from '@eleckoi/dsh-client-author/runtime'
+import { creatorToolsets } from '../packages/host/product-data/src/domain/creatorStudio/guides'
 import type { NativeAuthorScript, NativeAuthorScriptCatalog, NativeAuthorRuleTask } from '@eleckoi/dsh-product-api/types'
 import { NativeAudioElement } from './helpers/nativeAudioElement'
 
@@ -899,6 +900,30 @@ describe('native author Client ownership and interaction', () => {
     r.tasks[0]!.push({ kind: 'ready', version: r.catalog.version })
     await starting
     expect(r.runtime.getSnapshot().status).toBe('ready')
+  })
+
+  it('keeps empty script libraries available without claiming a Host runtime owner', async () => {
+    const r = harness([], [])
+    await r.runtime.start()
+    expect(r.runtime.getSnapshot()).toMatchObject({ status: 'ready', error: '', scriptStatuses: {} })
+    expect(r.frames).toHaveLength(0)
+    expect(r.remote.eleckoiAuthorScripts.connect).not.toHaveBeenCalled()
+    r.selected = { ...r.selected, id: 'synthetic-other-chat' }
+    r.catalog = { ...r.catalog, conversationId: 'synthetic-other-chat', version: 'synthetic-empty-other' }
+    await r.runtime.refresh()
+    expect(r.runtime.getSnapshot()).toMatchObject({ status: 'ready', conversationId: 'synthetic-other-chat', error: '' })
+    expect(r.remote.eleckoiAuthorScripts.connect).not.toHaveBeenCalled()
+  })
+
+  it('runs the Studio script example and opens its declared native panel through the SDK', async () => {
+    const source = creatorToolsets.find(item => item.id === 'scripts')!.examples[0].content
+    const program = (await import(`data:text/javascript,${encodeURIComponent(source)}`)).default
+    const r = harness([program]); await r.runtime.start()
+    const button = r.runtime.getUiSnapshot().buttons[0]!
+    expect(button.label).toBe('查看说明')
+    await r.runtime.invokeButton(button.key)
+    expect(r.runtime.getUiSnapshot().panel).toMatchObject({ title: '计算说明' })
+    expect(r.report).not.toHaveBeenCalled()
   })
 
   it('ignores repeated notifications for the same source version and restarts the changed module once', async () => {

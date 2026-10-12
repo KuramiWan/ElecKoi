@@ -61,7 +61,7 @@ export async function apply(ctx) {
   })
   const disposeHandleTracking = installAgentHandleTracking(ctx.agents, (handle) => {
     sessionHandles.set(handle.agent.id, handle)
-  })
+  }, withSessionLock)
   const registerActivePreset = () => {
     const id = ACTIVE_RUNTIME_PRESET_ID
     const path = join(presetRoot, id, 'preset.json')
@@ -175,7 +175,7 @@ export async function apply(ctx) {
       await registerPreset(snapshot.mountedPresetId)
       if (!child) {
         installRequestConfig(agent.ctx, snapshotRoot, agent.id)
-        installConversationContext(agent.ctx, snapshotRoot, agent.id, ctx.eleckoiRequestPreviews)
+        installConversationContext(agent.ctx, snapshotRoot, agent.id, ctx.eleckoiRequestPreviews, ctx.settings)
       }
       applyDisabledPolicy(agent.ctx, snapshot.disabledToolGroupIds)
     } catch (error) {
@@ -184,9 +184,10 @@ export async function apply(ctx) {
       throw error
     }
   })
-  const disposeRuntime = installRoleplaySessionRuntime(ctx, presetRegistrar)
+  const disposeRuntime = ctx.inject(['attachments', 'eleckoiSessionEditor', 'eleckoiImageGeneration'],
+    owner => installRoleplaySessionRuntime(owner, presetRegistrar))
   return async () => {
-    disposeRuntime()
+    await disposeRuntime.dispose()
     disposeHandleTracking()
     await registrationQueue
     await activeRegistration?.dispose()
@@ -201,22 +202,28 @@ function presetRevision(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
 }
 
-export function installAgentHandleTracking(agents, track) {
+export function installAgentHandleTracking(agents, track, withSessionLock) {
   // Cordis services are caller-traced proxies. Patching the proxy only creates
   // a caller-local shadow, so SessionController would bypass it. Patch the
   // exported concrete service target and keep the original caller-bound `this`.
   const target = agents[Symbol.for('cordis.original')] ?? agents
   const originalCreate = target.create
   const originalResume = target.resume
+  // Activation must own the same lock as closed-log edits, including the
+  // interval before the factory publishes its Agent and returns its handle.
   const wrappedCreate = async function (options) {
-    const handle = await Reflect.apply(originalCreate, this, [options])
-    track(handle)
-    return handle
+    return withSessionLock(options.sessionId, async () => {
+      const handle = await Reflect.apply(originalCreate, this, [options])
+      track(handle)
+      return handle
+    })
   }
   const wrappedResume = async function (options) {
-    const handle = await Reflect.apply(originalResume, this, [options])
-    track(handle)
-    return handle
+    return withSessionLock(options.resumeSessionId, async () => {
+      const handle = await Reflect.apply(originalResume, this, [options])
+      track(handle)
+      return handle
+    })
   }
   target.create = wrappedCreate
   target.resume = wrappedResume

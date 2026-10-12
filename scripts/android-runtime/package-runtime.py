@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
 REPO = Path(__file__).resolve().parents[2]
-SHARED_ASSET_PACKAGE = "@eleckoi/compatibility-tavern-shared"
+SHARED_ASSET_PACKAGE = "@eleckoi/dsh-client-html-resources"
 
 
 def read_json(path):
@@ -246,13 +246,27 @@ def patch_session_publication(value):
     return f'import {{ publishAndroidFile }} from "./{spec["helper"]}";\n'.encode() + value
 
 
+def patch_attachment_storage(value):
+    """Apply the locked Android directory boundary and exclusive publications."""
+    spec = read_json(REPO / "native/android-runtime/attachment-storage-lock.json")
+    if hashlib.sha256(value).hexdigest() != spec["sourceSha256"]:
+        raise ValueError("Android attachment source differs from the locked package")
+    for replacement in spec["replacements"]:
+        before, after = replacement["before"].encode(), replacement["after"].encode()
+        if value.count(before) != 1:
+            raise ValueError("Android attachment storage requires one exact match per audited call")
+        value = value.replace(before, after)
+    return (b'import { publishAndroidFile } from "./android-file-publication.mjs";\n'
+            b'import { androidAttachmentBoundary, publishAndroidAlias } from "./android-attachment-storage.mjs";\n' + value)
+
+
 def validate_shared_asset_copies(source):
     """Verify both declared resource paths before storing one physical copy."""
     manifest = read_json(source / "package.json")
     exports = manifest["exports"]
     if (manifest["name"] != SHARED_ASSET_PACKAGE
             or exports.get("./assets/*") != "./assets/*"
-            or exports.get("./runtime") != "./dist/tavern-runtime.global.js"):
+            or exports.get("./html/*") != "./dist/*"):
         raise ValueError("Review the shared resource package exports before packaging")
     def inventory(root):
         if not root.is_dir() or root.is_symlink():
@@ -294,7 +308,9 @@ def verify_shared_asset_layout(packed, inventory):
 
 def add_directory(output, source, prefix, record_name=None):
     publication = read_json(REPO / "native/android-runtime/session-publication-lock.json")
+    attachment = read_json(REPO / "native/android-runtime/attachment-storage-lock.json")
     android_session = record_name == publication["package"]
+    android_attachment = record_name == attachment["package"]
     shared_assets = record_name == SHARED_ASSET_PACKAGE
     if shared_assets:
         validate_shared_asset_copies(source)
@@ -309,6 +325,18 @@ def add_directory(output, source, prefix, record_name=None):
             raise ValueError("Android Session publication source already contains an unverified helper")
         add_bytes(output, posixpath.join(prefix, helper_path),
                   (REPO / "native/android-runtime" / publication["helper"]).read_bytes())
+    if android_attachment:
+        manifest = read_json(source / "package.json")
+        if (manifest["name"], manifest["version"]) != (attachment["package"], attachment["version"]):
+            raise ValueError("Android attachment package identity mismatch")
+        if not (source / attachment["file"]).is_file():
+            raise ValueError("Android attachment source is missing")
+        for helper in attachment["helpers"]:
+            helper_path = posixpath.join(posixpath.dirname(attachment["file"]), helper)
+            if (source / helper_path).exists():
+                raise ValueError("Android attachment source already contains an unverified helper")
+            add_bytes(output, posixpath.join(prefix, helper_path),
+                      (REPO / "native/android-runtime" / helper).read_bytes())
     for directory, dirs, files in os.walk(source, followlinks=False):
         local = Path(directory).relative_to(source)
         if record_name == "@eleckoi/web-client" and local == Path("."):
@@ -330,6 +358,9 @@ def add_directory(output, source, prefix, record_name=None):
             relative = file.relative_to(source).as_posix()
             if android_session and relative == publication["file"]:
                 add_bytes(output, posixpath.join(prefix, relative), patch_session_publication(file.read_bytes()))
+                continue
+            if android_attachment and relative == attachment["file"]:
+                add_bytes(output, posixpath.join(prefix, relative), patch_attachment_storage(file.read_bytes()))
                 continue
             if prefix == "" and relative == "production-closure.json":
                 continue
@@ -398,6 +429,14 @@ def package_app(closure, downloads, output, lock):
     sqlite = [record for record in records if record["name"] == "better-sqlite3"]
     if len(sqlite) != 1 or sqlite[0]["version"] != lock["sqlite"]["version"]:
         raise ValueError("SQLite closure differs from pinned ARM64 binary")
+    attachment = read_json(REPO / "native/android-runtime/attachment-storage-lock.json")
+    owners = [record for record in records if record["name"] == attachment["package"]]
+    dependency = attachment["helperDependency"]
+    helpers = [record for record in records if record["name"] == dependency["name"]]
+    if (len(owners) != 1 or owners[0]["version"] != attachment["version"]
+            or len(helpers) != 1 or helpers[0]["version"] != dependency["version"]):
+        raise ValueError("Android attachment helper dependency differs from the lock")
+    owners[0]["dependencies"].append({"name": dependency["name"], "directory": helpers[0]["directory"]})
     with archive(output) as packed:
         for record in inventory["packages"]:
             source = closure / record["directory"]
@@ -529,6 +568,23 @@ def verify_archives(output):
                 helper = posixpath.join(owner, posixpath.dirname(spec["file"]), spec["helper"])
                 if packed.extractfile(helper).read() != (REPO / "native/android-runtime" / spec["helper"]).read_bytes():
                     raise ValueError("Packaged Android Session publication helper differs from its source")
+                spec = read_json(REPO / "native/android-runtime/attachment-storage-lock.json")
+                owners = [record for record in inventory["packages"] if record["name"] == spec["package"]]
+                if len(owners) != 1 or owners[0]["version"] != spec["version"]:
+                    raise ValueError("Packaged Android attachment identity differs from the lock")
+                owner = owners[0]["directory"]
+                source = output.parent / "closure" / owner / spec["file"]
+                if packed.extractfile(posixpath.join(owner, spec["file"])).read() != patch_attachment_storage(source.read_bytes()):
+                    raise ValueError("Packaged Android attachment patch differs from its locked source")
+                dependency = spec["helperDependency"]
+                helpers = [record for record in inventory["packages"] if record["name"] == dependency["name"]]
+                if (len(helpers) != 1 or helpers[0]["version"] != dependency["version"]
+                        or {"name": dependency["name"], "directory": helpers[0]["directory"]} not in owners[0]["dependencies"]):
+                    raise ValueError("Packaged Android attachment helper dependency differs from the lock")
+                for name in spec["helpers"]:
+                    helper = posixpath.join(owner, posixpath.dirname(spec["file"]), name)
+                    if packed.extractfile(helper).read() != (REPO / "native/android-runtime" / name).read_bytes():
+                        raise ValueError("Packaged Android attachment helper differs from its source")
             for item in packed:
                 provided.add(posixpath.basename(item.name))
                 if item.islnk():

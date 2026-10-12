@@ -1,0 +1,3 @@
+- insert:
+    - id: eleckoi-html-resources
+      name: '@eleckoi/dsh-client-html-resources'

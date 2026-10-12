@@ -8,6 +8,13 @@ import {
 } from '../settingLibrary/schemas'
 import { roleplayPlanSettingsSchema } from './roleplayPlan'
 
+export const agentPresetPurposeSchema = z.enum(['roleplay', 'creator'])
+export type AgentPresetPurpose = z.output<typeof agentPresetPurposeSchema>
+export const DEFAULT_AGENT_PRESET_IDS = {
+  roleplay: 'agent-preset-standard',
+  creator: 'agent-preset-creator'
+} as const
+
 export const agentPresetModelFamilySchema = z.enum([
   'general',
   'claude',
@@ -39,12 +46,14 @@ export const agentPresetProfileSchema = z.object({
 
 export const agentPresetLibraryGroupSchema = z.object({
   id: z.string().min(1),
+  purpose: agentPresetPurposeSchema,
   name: z.string().min(1).max(60),
   sortIndex: z.number().int().nonnegative()
 })
 
 export const agentPresetSummarySchema = z.object({
   id: z.string().min(1),
+  purpose: agentPresetPurposeSchema,
   name: z.string().min(1).max(60),
   modelFamily: agentPresetModelFamilySchema,
   modelTags: z.array(agentPresetModelTagSchema).max(8),
@@ -56,13 +65,14 @@ export const agentPresetSummarySchema = z.object({
 })
 
 export const agentPresetCatalogSchema = z.object({
-  activePresetId: z.string(),
+  activePresetIds: z.object({ roleplay: z.string().min(1), creator: z.string().min(1) }),
   groups: z.array(agentPresetLibraryGroupSchema),
   presets: z.array(agentPresetSummarySchema)
 })
 
 export const agentPresetSchema = z.object({
   id: z.string().min(1),
+  purpose: agentPresetPurposeSchema,
   name: z.string().min(1).max(60),
   modelFamily: agentPresetModelFamilySchema,
   modelTags: z.array(agentPresetModelTagSchema).max(8),

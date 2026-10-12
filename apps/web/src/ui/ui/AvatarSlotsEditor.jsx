@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { Avatar } from "./Avatar.jsx";
 import { AvatarCropModal } from "./AvatarCropModal.jsx";
+import { assetFetchSrc } from "../../app/services/assets.js";
 
 const PORTRAIT_OUTPUT_WIDTH = 900;
 const SQUARE_OUTPUT_WIDTH = 420;
@@ -58,7 +59,7 @@ async function centerCrop(file, outputWidth, outputHeight) {
 }
 
 async function sourceToFile(source, name) {
-  const response = await fetch(source);
+  const response = await fetch(assetFetchSrc(source));
   if (!response.ok) throw new Error("头像图片读取失败");
   const blob = await response.blob();
   return new File([blob], name, { type: blob.type || "image/png" });
@@ -81,14 +82,14 @@ export function avatarSetFromPersona(persona, owner = "assistant") {
 
 function PreviewButton({ className, src, name, label, disabled = false, onClick }) {
   return (
-    <button type="button" className={`avatar-manager-preview-button ${className}`} aria-label={`调整${label}裁剪`} disabled={disabled} onClick={onClick}>
+    <button type="button" className={`avatar-manager-preview-button ${className}`} aria-label={`更换${label}`} disabled={disabled} onClick={onClick}>
       <Avatar src={src} name={name} className="avatar-manager-result-avatar" />
       <span>{label}</span>
     </button>
   );
 }
 
-export function AvatarManagerEditor({ value, name, saving = false, onBack, onSave }) {
+export function AvatarManagerEditor({ value, name, saving = false, onBack, onChange }) {
   const inputRef = useRef(null);
   const [avatars, setAvatars] = useState(() => ({ circle: "", square: "", portrait: "", ...(value || {}) }));
   const [sourceFile, setSourceFile] = useState(null);
@@ -98,8 +99,8 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
   const [error, setError] = useState("");
   const busy = saving || reading || preparing;
 
-  async function persist(nextAvatars) {
-    await onSave?.(nextAvatars);
+  async function updateAvatars(nextAvatars) {
+    await onChange(nextAvatars);
     setAvatars(nextAvatars);
   }
 
@@ -119,7 +120,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
         centerCrop(file, SQUARE_OUTPUT_WIDTH, SQUARE_OUTPUT_WIDTH),
       ]);
       const nextAvatars = { portrait, square, circle: square };
-      await persist(nextAvatars);
+      await updateAvatars(nextAvatars);
       setSourceFile(file);
     } catch (nextError) {
       setError(nextError?.message || "图片处理失败，请稍后重试。");
@@ -156,7 +157,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
       const nextAvatars = cropRequest?.kind === "portrait"
         ? { ...avatars, portrait: cropped }
         : { ...avatars, circle: cropped, square: cropped };
-      await persist(nextAvatars);
+      await updateAvatars(nextAvatars);
       setCropRequest(null);
     } catch (nextError) {
       setError(nextError?.message || "头像保存失败，请稍后重试。");
@@ -165,7 +166,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
   }
 
   return (
-    <section className="profile-avatar-manager-page">
+    <section className="profile-avatar-manager-page" aria-busy={busy || undefined}>
       <header className="avatar-manager-header">
         <div className="avatar-manager-heading">
           <button type="button" className="avatar-manager-back" onClick={onBack}>
@@ -173,12 +174,6 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
             <span>返回用户资料</span>
           </button>
           <h1>头像管理</h1>
-        </div>
-        <div className="avatar-manager-header-actions">
-          {error ? <span className="error" role="alert">{error}</span> : null}
-          <button type="button" className="settings-primary-button" disabled={busy} onClick={chooseImage}>
-            {reading ? "正在处理" : saving ? "正在保存" : preparing ? "正在载入" : "更换图片"}
-          </button>
         </div>
       </header>
 
@@ -194,7 +189,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
             name={name}
             label="矩形头像"
             disabled={busy}
-            onClick={() => openCrop("portrait")}
+            onClick={chooseImage}
           />
         </section>
 
@@ -210,7 +205,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
               name={name}
               label="圆形头像"
               disabled={busy}
-              onClick={() => openCrop("shared")}
+              onClick={chooseImage}
             />
             <PreviewButton
               className="is-square"
@@ -218,11 +213,13 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onSav
               name={name}
               label="方形头像"
               disabled={busy}
-              onClick={() => openCrop("shared")}
+              onClick={chooseImage}
             />
           </div>
         </section>
       </div>
+
+      {error ? <p className="avatar-manager-error" role="alert">{error}</p> : null}
 
       <input
         ref={inputRef}

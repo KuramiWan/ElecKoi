@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, renameSync, rmSync, statSync, writeFileSync }
 import { basename } from 'node:path'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { readDshSessionLog } from './trajectory'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
 type MessageRole = 'user' | 'assistant'
 
@@ -11,15 +12,7 @@ export function editDshSessionMessage(
   sessionRoot: string, sessionId: string, eventSeq: number, role: MessageRole, content: string
 ): void {
   if (!Number.isSafeInteger(eventSeq) || eventSeq < 0 || !content.trim()) throw new Error('消息编辑参数不正确。')
-  const log = readDshSessionLog(sessionRoot, sessionId)
-  if (!log) throw new Error('找不到要编辑的 DSH 会话。')
-  if (log.header.isSeeded || log.inheritedEventCount !== 0) {
-    throw new Error('不能直接修改继承了父会话事件的 DSH 子会话。')
-  }
-  if (log.header.version !== sessionFormatCatalog.currentVersion
-    || basename(log.path) !== `session.v${sessionFormatCatalog.currentVersion}.jsonl`) {
-    throw new Error('DSH 会话必须先迁移到当前格式，才能编辑消息。')
-  }
+  const log = readEditableDshSessionLog(sessionRoot, sessionId)
   const type = role === 'user' ? 'user/message' : 'assistant/message'
   const matches = log.events.filter((event) => event.seq === eventSeq && event.type === type
     && event.surfaceOp === 'append'
@@ -30,6 +23,15 @@ export function editDshSessionMessage(
   const message = (role === 'user' ? data : data.message) as Record<string, unknown>
   if (message.role !== role || !Array.isArray(message.content)) {
     throw new Error('消息角色或内容与编辑目标不一致；原聊天记录未修改。')
+  }
+  if (role === 'assistant') {
+    const raw = message.content.filter(isRecord).filter(block => block.type === 'text').map(block => String(block.text || '')).join('')
+    const bodyStart = raw.indexOf('<FINAL>')
+    const bodyEnd = raw.lastIndexOf('</FINAL>')
+    if (bodyStart >= 0 && raw.slice(0, bodyStart).includes('<ACTION_CALL name="generate_image">')) {
+      if (bodyEnd < bodyStart) throw new Error('原回复缺少完整的最终正文边界，未修改生图提示词。')
+      content = `${raw.slice(0, bodyStart + '<FINAL>'.length)}\n${content}\n${raw.slice(bodyEnd)}`
+    }
   }
   let replaced = false
   const blocks = message.content.flatMap((part: unknown) => {
@@ -43,6 +45,25 @@ export function editDshSessionMessage(
   const editedData = role === 'user' ? editedMessage : { ...data, message: editedMessage }
   const events = log.events.map((event) => event === selected
     ? { ...event, data: editedData } as typeof event : event)
+  rewriteDshSessionEvents(sessionRoot, log, events)
+}
+
+export function readEditableDshSessionLog(sessionRoot: string, sessionId: string): NonNullable<ReturnType<typeof readDshSessionLog>> {
+  const log = readDshSessionLog(sessionRoot, sessionId)
+  if (!log) throw new Error('找不到要编辑的 DSH 会话。')
+  if (log.header.isSeeded || log.inheritedEventCount !== 0) {
+    throw new Error('不能直接修改继承了父会话事件的 DSH 子会话。')
+  }
+  if (log.header.version !== sessionFormatCatalog.currentVersion
+    || basename(log.path) !== `session.v${sessionFormatCatalog.currentVersion}.jsonl`) {
+    throw new Error('DSH 会话必须先迁移到当前格式，才能编辑消息。')
+  }
+  return log
+}
+
+/** Preserve the current official format, identities and all unrelated events. */
+export function rewriteDshSessionEvents(sessionRoot: string, log: NonNullable<ReturnType<typeof readDshSessionLog>>, events: SessionEvent[]): void {
+  const sessionId = log.header.id
   const rows = [sessionFormatCatalog.encodeCurrentHeader(log.header, log.inheritedEventCount),
     ...events.map((event) => sessionFormatCatalog.encodeCurrentEvent(event))]
   const serialized = `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`
@@ -72,9 +93,7 @@ export function editDshSessionMessage(
     committed = true
     const reread = readDshSessionLog(sessionRoot, sessionId)
     if (!reread || reread.events.length !== events.length
-      || !reread.events.some((event) => event.seq === selected.seq
-        && isRecord(event.data)
-        && event.seq === eventSeq)) {
+      || JSON.stringify(reread.events.map(event => sessionFormatCatalog.encodeCurrentEvent(event))) !== JSON.stringify(rows.slice(1))) {
       throw new Error('编辑后的 DSH 会话无法读取。')
     }
   } catch (error) {

@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@shared/contracts/entities/chat'
 import type { RegexRuleCollection, RegexRuleTarget } from '@shared/contracts/regex/schemas'
 import { decorateRichDisplayReplacement } from '@shared/foundation/richMessage'
+import { finalReplyText } from '@shared/foundation/finalReply'
 import { rulesForSurface, transformWithRegexRules } from '@shared/foundation/regex/RegexRuleProcessor'
 import type { MessageDisplayCompatibility } from './MessageDisplayCompatibility'
 import {
@@ -55,7 +56,7 @@ export class MessageDisplayProjector {
     const rules = rulesForSurface(collection, target, 'Display')
     const prepared = message.role === 'assistant'
       ? this.compatibility.prepareAssistantText(
-        message.content,
+        finalReplyText(message.content),
         completedAssistant,
         rules.map((rule) => rule.pattern)
       )

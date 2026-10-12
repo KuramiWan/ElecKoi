@@ -295,7 +295,7 @@ export const conversationSettingChanges = sqliteTable('conversation_setting_chan
 }, (table) => [primaryKey({ columns: [table.sessionId, table.targetType, table.targetId] })])
 
 export const agentPresetState = sqliteTable('agent_preset_state', {
-  singletonId: integer('singletonId').notNull().primaryKey(),
+  purpose: text('purpose').notNull().primaryKey(),
   activePresetId: text('activePresetId').notNull(),
 })
 
@@ -303,6 +303,7 @@ export const agentPresetLibraryGroups = sqliteTable('agent_preset_library_groups
   id: text('id').notNull().primaryKey(),
   name: text('name').notNull(),
   sortIndex: integer('sortIndex').notNull(),
+  purpose: text('purpose').notNull().default(sql.raw("'roleplay'")),
 })
 
 export const agentPresets = sqliteTable('agent_presets', {
@@ -316,6 +317,7 @@ export const agentPresets = sqliteTable('agent_presets', {
   authorAvatarPath: text('authorAvatarPath').notNull().default(sql.raw("''")),
   sortIndex: integer('sortIndex').notNull(),
   expandedGroupIdsJson: text('expandedGroupIdsJson').notNull(),
+  purpose: text('purpose').notNull().default(sql.raw("'roleplay'")),
 })
 
 export const agentPresetContents = sqliteTable('agent_preset_contents', {

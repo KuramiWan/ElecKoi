@@ -5,6 +5,9 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { AgentRegistry } from '@deepseek-ai/dsh-agent'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { ElecKoiVariableProcessing } from '@eleckoi/dsh-product-api'
 import {
   apply as applyAgentPresetBridge,
@@ -22,6 +25,75 @@ afterEach(() => {
 })
 
 describe('DSH subagent runtime context inheritance', () => {
+  it.each(['resume-first', 'rewrite-first'])('serializes writer ownership when the observer resumes during a rewrite (%s)', async order => {
+    const fixture = runtimeFixture(), persistence = new Context(), id = SessionId('synthetic-writer-session')
+    const entered = Promise.withResolvers(), released = Promise.withResolvers()
+    let activeAgent, resumeStarted = false, rewriteStarted = false, writer
+    const ctx = {
+      inject: vi.fn(() => ({ dispose: vi.fn() })),
+      provide: vi.fn(), on: vi.fn(() => () => {}),
+      agents: {
+        get: () => activeAgent,
+        create: vi.fn(),
+        resume: async () => {
+          resumeStarted = true
+          writer = await persistence.sessionPersistence.open(id, 'write')
+          if (order === 'resume-first') { entered.resolve(); await released.promise }
+          activeAgent = { id }
+          return { agent: activeAgent, dispose: async () => { await writer.close(); activeAgent = undefined } }
+        }
+      },
+      agentPresets: { register: vi.fn(async () => async () => {}) }
+    }
+    let resume, rewrite, dispose
+    try {
+      await persistence.plugin(JsonlSessionPersistence, { root: join(fixture.directory, 'sessions'), compression: 'none' })
+      const session = Session.create(id)
+      session.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'Synthetic input' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+      const seed = await persistence.sessionPersistence.create(session.header)
+      await seed.append(session.snapshotEvents())
+      await seed.flush()
+      await seed.close()
+      dispose = await applyAgentPresetBridge(ctx)
+      const handles = ctx.provide.mock.calls.find(([name]) => name === 'eleckoiSessionHandles')[1]
+      const edit = () => handles.withClosed(id, async () => {
+        rewriteStarted = true
+        const probe = await persistence.sessionPersistence.open(id, 'write')
+        try {
+          if (order === 'rewrite-first') { entered.resolve(); await released.promise }
+        } finally { await probe.close() }
+      })
+      if (order === 'resume-first') {
+        resume = ctx.agents.resume({ resumeSessionId: id })
+        void resume.catch(entered.reject)
+        await entered.promise
+        rewrite = edit()
+        void rewrite.catch(() => {})
+        await new Promise(resolve => setImmediate(resolve))
+        expect(rewriteStarted).toBe(false)
+      } else {
+        rewrite = edit()
+        void rewrite.catch(entered.reject)
+        await entered.promise
+        resume = ctx.agents.resume({ resumeSessionId: id })
+        void resume.catch(() => {})
+        await new Promise(resolve => setImmediate(resolve))
+        expect(resumeStarted).toBe(false)
+      }
+      released.resolve()
+      await Promise.all([resume, rewrite])
+      await handles.dispose(id)
+      const probe = await persistence.sessionPersistence.open(id, 'write')
+      await probe.close()
+    } finally {
+      released.resolve()
+      await Promise.allSettled([resume, rewrite])
+      await writer?.close()
+      await dispose?.()
+      await persistence.fiber.dispose()
+    }
+  }, 30000)
+
   it('tracks handles through the concrete Cordis service for every caller context', async () => {
     const ctx = new Context()
     const registry = ctx.plugin(AgentRegistry)
@@ -39,7 +111,7 @@ describe('DSH subagent runtime context inheritance', () => {
       resume: resumeHandle
     })
     const tracked = []
-    const disposeTracking = installAgentHandleTracking(ctx.agents, handle => tracked.push(handle))
+    const disposeTracking = installAgentHandleTracking(ctx.agents, handle => tracked.push(handle), (_id, action) => action())
     const caller = ctx.extend()
 
     await caller.agents.create({ sessionId: 'created-session' })
@@ -76,6 +148,7 @@ describe('DSH subagent runtime context inheritance', () => {
     const originalCreate = vi.fn(async options => ({ agent: { id: options.sessionId }, dispose: vi.fn() }))
     const originalResume = vi.fn(async () => ({ agent, dispose: vi.fn() }))
     const ctx = {
+      inject: vi.fn(() => ({ dispose: vi.fn() })),
       provide: vi.fn(),
       on: vi.fn(),
       agents: { create: originalCreate, resume: originalResume, get: vi.fn(() => agent) },
@@ -131,6 +204,7 @@ describe('DSH subagent runtime context inheritance', () => {
     const originalCreate = vi.fn()
     const originalResume = vi.fn()
     const ctx = {
+      inject: vi.fn(() => ({ dispose: vi.fn() })),
       provide: vi.fn(),
       on: vi.fn(() => () => undefined),
       agents: { create: originalCreate, resume: originalResume },
@@ -190,6 +264,7 @@ describe('DSH subagent runtime context inheritance', () => {
       disabledToolGroupIds: ['builtin:web']
     }))
     const ctx = {
+      inject: vi.fn(() => ({ dispose: vi.fn() })),
       provide: vi.fn(),
       on: vi.fn(() => () => undefined),
       agents: {

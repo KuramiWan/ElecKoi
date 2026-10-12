@@ -29,5 +29,6 @@ ADR 是 Architecture Decision Record，即架构决策记录，用于说明一�
 | 0031 | [Android 本地 Node Host](0031-android-local-node-host.md) | 实施中 | 独立本地运行环境、数据库与平台构建边界。 |
 | 0032 | [原生脚本库与作者 SDK](0032-native-script-libraries.md) | 已实施 | 三类脚本、文件源码、原生变量规则与作者前端。 |
 | 0033 | [导入格式与原生数据存储](0033-native-format-import-storage.md) | 已采纳 | 外部格式转换到原生领域，不保留第二份业务数据。 |
+| 0034 | [生成图片随记录删除](0034-generated-image-record-cleanup.md) | 已采纳 | 正式图片状态、Session 编辑锁与无有效引用的附件清理。 |
 
 本目录没有收录 0006—0011 和 0014；保留编号间隔，不复制内部历史材料来补齐。后续编号须同时核对两个工作树，避免复用未收录编号。

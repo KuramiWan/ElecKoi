@@ -7,6 +7,7 @@ import { getTableColumns, getTableName } from 'drizzle-orm'
 import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
 import { commonTables } from '../packages/host/product-data/src/storage/sqlite/schema/common'
 import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../packages/host/product-data/src/storage/sqlite/installSchema'
+import { schemaV10Sql, restoreV10PresetFixture } from './helpers/presetSchemaV10'
 import { commonSchemaSql } from '../packages/host/product-data/src/storage/sqlite/migrations/commonSchemaSql'
 import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
 import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
@@ -60,6 +61,7 @@ describe('unreleased database baseline consolidation', () => {
     new VariableStateRepository(database, new VariableConfigRepository(database)).replaceCurrent(conversationId, '{"score":7}')
     database.close()
     const legacy = new Database(path)
+    restoreV10PresetFixture(legacy)
     legacy.exec('DROP TABLE script_libraries')
     legacy.exec(unreleasedGenerationTableSql)
     legacy.prepare('INSERT INTO conversation_generation_results VALUES (?,?,?)').run('synthetic-operation', conversationId, '{}')
@@ -91,6 +93,7 @@ describe('unreleased database baseline consolidation', () => {
     conversations.create({ title: '合成回滚聊天' })
     database.close()
     const legacy = new Database(path)
+    restoreV10PresetFixture(legacy)
     try {
       legacy.exec(`DROP TABLE script_libraries; ${unreleasedGenerationTableSql}; ALTER TABLE agent_conversations DROP COLUMN variableVersionId;
         CREATE TRIGGER synthetic_binding_failure BEFORE UPDATE ON agent_conversations BEGIN SELECT RAISE(ABORT, 'synthetic update failure'); END;
@@ -108,6 +111,7 @@ describe('unreleased database baseline consolidation', () => {
     const { path, database } = harness()
     database.close()
     const legacy = new Database(path)
+    restoreV10PresetFixture(legacy)
     try {
       legacy.exec('DROP TABLE script_libraries; CREATE TABLE conversation_generation_results (unexpected TEXT); INSERT INTO conversation_generation_results VALUES (\'preserved\'); PRAGMA user_version = 10;')
       const schema = schemaObjects(legacy)
@@ -123,7 +127,7 @@ function schemaObjects(db: Database.Database) {
 }
 
 // Older fixtures must retain the released table shape until the v7 → v8 step.
-const schemaV7Sql = commonSchemaSql
+const schemaV7Sql = schemaV10Sql
   .replace(/^CREATE TABLE IF NOT EXISTS `script_libraries` .*;$/m, '')
   .replace(", `variableVersionId` TEXT NOT NULL DEFAULT ''", '')
   .replace(/^CREATE TABLE IF NOT EXISTS `chat_sessions` .*;$/m,
@@ -136,9 +140,10 @@ function productRecords(database: Database.Database) {
     .all() as { name: string }[]
   return Object.fromEntries(tables.map(({ name }) => [name,
     (database.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[])
-      .map((row) => Object.fromEntries(Object.entries(row)
+      .map((row) => Object.fromEntries(Object.entries(name === 'agent_preset_state' ? { singletonId: 1, activePresetId: row.activePresetId } : row)
         .filter(([key]) => (name !== 'chat_sessions' || key !== 'historyUserMessageCount')
-          && (name !== 'agent_conversations' || key !== 'variableVersionId'))))
+          && (name !== 'agent_conversations' || key !== 'variableVersionId')
+          && (!['agent_presets', 'agent_preset_library_groups'].includes(name) || key !== 'purpose'))))
   ]))
 }
 

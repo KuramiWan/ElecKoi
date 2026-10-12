@@ -29,6 +29,7 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
   );
   const duration = durationText(items);
   const hasFinal = message?.status === 'complete' && Boolean(message?.content?.trim());
+  const imagePrompts = items.filter(item => item.kind === 'action' && item.toolName === 'generate_image' && item.arguments);
   const showingDetails = Boolean(selectedGroup || selectedItem);
 
   useLayoutEffect(() => {
@@ -95,6 +96,7 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
           : <ProcessOverview
             blocks={blocks}
             hasFinal={hasFinal}
+            imagePrompts={imagePrompts}
             scrollPositions={scrollPositionsRef.current}
             onSelectBlock={selectOverviewBlock}
           />}
@@ -102,7 +104,7 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
   </SystemBarOverlay>, document.body);
 }
 
-function ProcessOverview({ blocks, hasFinal, scrollPositions, onSelectBlock }) {
+function ProcessOverview({ blocks, hasFinal, imagePrompts, scrollPositions, onSelectBlock }) {
   return <ProcessScrollPane className="agent-process-groups" scrollKey="overview" scrollPositions={scrollPositions}>
     <div className="agent-process-timeline">{blocks.map((block) => {
       if (block.type === 'narrative') return <p className="agent-process-phase" key={block.id}>{block.text}</p>;
@@ -116,11 +118,15 @@ function ProcessOverview({ blocks, hasFinal, scrollPositions, onSelectBlock }) {
         {block.presentation.status === 'running' ? <i className="agent-process-spinner" /> : <ProcessChevron size={16} />}
       </button>;
     })}</div>
-    {hasFinal ? <div className="agent-process-protocol">
+    {hasFinal || imagePrompts.length ? <div className="agent-process-protocol">
       <span className="agent-process-glyph"><AgentProcessIcon name="check" size={22} /></span>
       <div className="agent-process-protocol-content">
         <h3>输出协议</h3>
-        <div><code>&lt;FINAL&gt;</code><span>已识别</span></div>
+        {imagePrompts.map(item => <section key={item.id}>
+          <div><code>&lt;ACTION_CALL name="generate_image"&gt;</code></div>
+          <DetailBlock label="生图提示词" value={pretty(item.arguments)} />
+        </section>)}
+        {hasFinal ? <div><code>&lt;FINAL&gt;</code><span>已识别</span></div> : null}
       </div>
     </div> : null}
   </ProcessScrollPane>;

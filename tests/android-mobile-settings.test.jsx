@@ -24,7 +24,11 @@ async function mount(initialPage = 'home') {
     view = {
       settingsPage: page, setSettingsPage: open, settingsSections: sections, renderSettingsSection: renderSection,
       appearance: { chatDisplay: preferences, changeChatDisplay: next => { update(next); setPreferences(next); }, appearanceMode: 'light', sidebarCharacterArtwork: 'cover', changeAppearanceMode: vi.fn(), changeSidebarCharacterArtwork: vi.fn() },
-      chat: { persona, notify: notification, updateUserProfile: async next => { await save(next); setPersona({ ...persona, user_name: next.name }); } },
+      chat: { persona, notify: notification, updateUserProfile: async next => {
+        const saved = await save(next) || { ...persona, user_name: next.name, user_avatar: next.avatars.circle,
+          user_square: next.avatars.square, user_portrait: next.avatars.portrait };
+        setPersona(saved); return saved;
+      } },
       goBack: vi.fn().mockReturnValue(false), selectPanel: vi.fn(), registerBackHandler: vi.fn(() => () => {}),
       guardRef: { current: null }, scrollPositions: new Map(),
     };
@@ -41,7 +45,25 @@ async function click(label) {
 async function input(node, value) {
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(node, value); node.dispatchEvent(new Event('input', { bubbles: true })); });
 }
-afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.replaceChildren(); vi.restoreAllMocks(); });
+afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+async function selectAvatar() {
+  const BrowserURL = globalThis.URL;
+  vi.stubGlobal('URL', class extends BrowserURL { static createObjectURL() { return 'blob:synthetic-avatar'; } static revokeObjectURL() {} });
+  vi.stubGlobal('Image', class { naturalWidth = 640; naturalHeight = 480;
+    set src(value) { queueMicrotask(() => this.onload()); }
+  });
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() });
+  vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(function () { return `data:image/png;base64,${btoa(`${this.width}:${this.height}`)}`; });
+  await click('管理头像');
+  const fileInput = container.querySelector('.avatar-manager-file-input');
+  const choose = vi.spyOn(fileInput, 'click');
+  await click('更换圆形头像');
+  expect(choose).toHaveBeenCalledOnce();
+  Object.defineProperty(fileInput, 'files', { configurable: true, value: [new File(['synthetic-image'], 'avatar.png', { type: 'image/png' })] });
+  await act(async () => fileInput.dispatchEvent(new Event('change', { bubbles: true })));
+  await click('返回');
+}
 
 describe('Android settings presentation with shared PC contracts', () => {
   it('renders the selected list artwork instead of forcing a cover image', async () => {
@@ -117,5 +139,46 @@ describe('Android settings presentation with shared PC contracts', () => {
     await act(async () => [...document.querySelectorAll('[role="alertdialog"] button')].find(item => item.textContent === '取消').click());
     await click('管理头像'); expect(container.querySelectorAll('.mobile-header h1')).toHaveLength(1);
     await click('返回'); expect(container.querySelector('[aria-label="名字"]').value).toBe('尚未保存的合成名字');
+  });
+
+  it('keeps avatar and name edits in one draft and adopts the stored media references only after Save', async () => {
+    await mount('profile');
+    const persisted = { ...view.chat.persona };
+    await input(container.querySelector('[aria-label="名字"]'), '合成新名字');
+    await selectAvatar();
+    expect(save).not.toHaveBeenCalled();
+    expect(view.chat.persona).toEqual(persisted);
+    expect(container.querySelector('[aria-label="名字"]').value).toBe('合成新名字');
+    expect(container.querySelector('.mobile-profile-avatar > span')).toBeNull();
+    const avatar = container.querySelector('.mobile-profile-avatar img').getAttribute('src');
+    expect(avatar).toMatch(/^data:image\/png;base64,/);
+    save.mockRejectedValueOnce(new Error('合成保存失败'));
+    await click('保存');
+    expect(save.mock.lastCall[0]).toMatchObject({ name: '合成新名字', avatars: { circle: avatar, square: avatar } });
+    expect(view.chat.persona).toEqual(persisted);
+    expect(container.querySelector('.mobile-profile-avatar img').getAttribute('src')).toBe(avatar);
+    const reference = slot => `eleckoi-media://asset/v1/${'a'.repeat(64)}/${slot}/${'b'.repeat(64)}.png`;
+    const stored = { user_name: '合成新名字', user_avatar: reference('user-avatar'),
+      user_square: reference('user-square'), user_portrait: reference('user-portrait') };
+    save.mockResolvedValueOnce(stored);
+    await click('保存');
+    expect(view.chat.persona).toEqual(stored);
+    expect(container.querySelector('.mobile-profile-avatar img').getAttribute('src')).toBe(stored.user_avatar);
+    await click('返回');
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(view.settingsPage).toBe('home');
+  });
+
+  it('guards an avatar-only draft and leaves the stored profile untouched when discarded', async () => {
+    await mount('profile');
+    const persisted = { ...view.chat.persona };
+    await selectAvatar();
+    await click('返回');
+    const dialog = document.querySelector('[role="alertdialog"]');
+    expect(dialog).not.toBeNull();
+    await act(async () => [...dialog.querySelectorAll('button')].find(item => item.textContent === '不保存').click());
+    expect(save).not.toHaveBeenCalled();
+    expect(view.chat.persona).toEqual(persisted);
+    expect(view.settingsPage).toBe('home');
   });
 });

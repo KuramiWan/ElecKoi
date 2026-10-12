@@ -53,17 +53,19 @@ DSH 基准：`0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
  * 创建预设并返回完整预设数据。
  * @param name - 保存的名称或附件文件名。
  * @param libraryGroupId - 预设分组编号。
+ * @param purpose - 角色扮演或创作预设分类。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote create(name: string, libraryGroupId: string): AgentPreset
+@Remote create(name: string, libraryGroupId: string, purpose: AgentPresetPurpose): AgentPreset
 
 /**
  * 导入文件并保存完整数据。
  * @param source - 支持的导入格式。
  * @param document - 待导入文件内容。
+ * @param purpose - 目标预设分类。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote import(source: AgentPresetImportSource, document: AgentPresetImportDocument): AgentPresetImportResult
+@Remote import(source: AgentPresetImportSource, document: AgentPresetImportDocument, purpose: AgentPresetPurpose): AgentPresetImportResult
 
 /**
  * 返回导出文件名、格式和文件内容。
@@ -83,9 +85,10 @@ DSH 基准：`0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 /**
  * 创建预设分组。
  * @param name - 保存的名称或附件文件名。
+ * @param purpose - 所属预设分类。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote createGroup(name: string): AgentPresetCatalog
+@Remote createGroup(name: string, purpose: AgentPresetPurpose): AgentPresetCatalog
 
 /**
  * 重命名预设分组。
@@ -118,7 +121,7 @@ DSH 基准：`0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
 @Remote delete(presetId: string): AgentPresetCatalog
 ```
 
-Types: [AgentPreset](types-host.md#agentpreset) · [AgentPresetCatalog](types-host.md#agentpresetcatalog) · [AgentPresetExportFormat](types-host.md#agentpresetexportformat) · [AgentPresetExportResult](types-host.md#agentpresetexportresult) · [AgentPresetImportDocument](types-host.md#agentpresetimportdocument) · [AgentPresetImportResult](types-host.md#agentpresetimportresult) · [AgentPresetImportSource](types-host.md#agentpresetimportsource) · [RegexRule](types-host.md#regexrule) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate)
+Types: [AgentPreset](types-host.md#agentpreset) · [AgentPresetCatalog](types-host.md#agentpresetcatalog) · [AgentPresetExportFormat](types-host.md#agentpresetexportformat) · [AgentPresetExportResult](types-host.md#agentpresetexportresult) · [AgentPresetImportDocument](types-host.md#agentpresetimportdocument) · [AgentPresetImportResult](types-host.md#agentpresetimportresult) · [AgentPresetImportSource](types-host.md#agentpresetimportsource) · [AgentPresetPurpose](types-host.md#agentpresetpurpose) · [RegexRule](types-host.md#regexrule) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate)
 
 Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
@@ -658,6 +661,27 @@ Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-a
 
 ```ts cordis-catalog
 /**
+ * 读取本聊天生图记录引用的单张图片。
+ * @param conversationId - 聊天编号。
+ * @param batchId - 生图指令编号。
+ * @param frameId - 图片编号。
+ * @param attachmentId - 当前正式图片对象编号。
+ * @param signal - 取消图片读取的信号。
+ * @returns 图片媒体类型和 Base64 数据。
+ */
+@Remote readGeneratedImage(conversationId: string, batchId: string, frameId: number, attachmentId: string, signal: AbortSignal): Promise<{ mediaType: string; data: string }>
+
+/**
+ * 从原始 AI 回复重新解析提示词，只重画选中的单张图片。
+ * @param conversationId - 聊天编号。
+ * @param batchId - 本轮生图指令编号。
+ * @param frameId - 指令中的图片编号。
+ * @param signal - 取消生图请求的信号。
+ * @returns 图片生成与记录保存完成；失败抛出可诊断错误。
+ */
+@Remote async regenerateImage(conversationId: string, batchId: string, frameId: number, signal: AbortSignal): Promise<void>
+
+/**
  * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
  * @param signal - 取消调用或结束订阅流的信号。
  * @returns 按发生顺序返回变更通知的异步流。
@@ -897,6 +921,92 @@ Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-a
 ```
 
 Types: [CreateCreatorProjectInput](types-host.md#createcreatorprojectinput) · [CreatorProjectCollection](types-host.md#creatorprojectcollection) · [ProductRecordChange](types-host.md#productrecordchange)
+
+Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
+
+<a id="ctxeleckoicreatorstudiosessionsapi--eleckoicreatorstudiosessionsapi"></a>
+
+### `ctx.eleckoiCreatorStudioSessionsApi` — `ElecKoiCreatorStudioSessionsApi`
+
+AI 创作工作室的 DSH 会话与永久编辑目标。
+
+```ts cordis-catalog
+/**
+ * 列出工作室的正式 DSH 会话。
+ * @returns 工作室会话目录。
+ */
+@Remote list(): Promise<CreatorStudioSessionSummary[]>
+
+/**
+ * 使用当前全局创作预设创建工作室会话。
+ * @param characterId - 编辑目标角色编号；空字符串表示尚未选择。
+ * @returns 创建的会话及其编辑目标。
+ */
+@Remote create(characterId: string): Promise<CreatorStudioSession>
+
+/**
+ * 恢复一个已有工作室会话。
+ * @param sessionId - 正式 DSH 会话编号。
+ * @returns 恢复的会话及其编辑目标。
+ */
+@Remote open(sessionId: string): Promise<CreatorStudioSession>
+
+/**
+ * 在空闲会话中选择永久编辑目标。
+ * @param sessionId - 正式 DSH 会话编号。
+ * @param characterId - 目标角色编号；空字符串解除选择。
+ * @returns 更新后的工作室会话。
+ */
+@Remote selectCharacter(sessionId: string, characterId: string): Promise<CreatorStudioSession>
+
+/**
+ * 修改工作室对话的正式标题。
+ * @param sessionId - 工作室会话编号。
+ * @param title - 新标题。
+ * @returns 标题保存完成。
+ */
+@Remote rename(sessionId: string, title: string): Promise<void>
+
+/**
+ * 设置工作室对话的置顶状态。
+ * @param sessionId - 工作室会话编号。
+ * @param pinned - 是否置顶。
+ * @returns 置顶状态保存完成。
+ */
+@Remote pin(sessionId: string, pinned: boolean): Promise<void>
+
+/**
+ * 删除工作室对话及其正式 Session 文件。
+ * @param sessionId - 工作室会话编号。
+ * @returns 删除完成。
+ */
+@Remote delete(sessionId: string): Promise<void>
+
+/**
+ * 读取工作室可操作的用户和助手消息。
+ * @param sessionId - 工作室会话编号。
+ * @returns 消息正文及正式事件位置。
+ */
+@Remote messages(sessionId: string): Promise<CreatorStudioMessage[]>
+
+/**
+ * 从指定消息起删除当前对话的后续消息。
+ * @param sessionId - 工作室会话编号。
+ * @param eventSeq - 起始消息的正式事件序号。
+ * @param role - 起始消息的角色。
+ * @returns 删除完成。
+ */
+@Remote deleteMessagesFrom(sessionId: string, eventSeq: number, role: 'user' | 'assistant'): Promise<void>
+
+/**
+ * 保留最近的用户输入并重新生成回复。
+ * @param sessionId - 工作室会话编号。
+ * @returns 重新生成已启动。
+ */
+@Remote regenerate(sessionId: string): Promise<void>
+```
+
+Types: [CreatorStudioMessage](types-host.md#creatorstudiomessage) · [CreatorStudioSession](types-host.md#creatorstudiosession) · [CreatorStudioSessionSummary](types-host.md#creatorstudiosessionsummary)
 
 Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 

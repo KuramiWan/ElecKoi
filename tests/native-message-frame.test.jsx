@@ -28,7 +28,7 @@ beforeEach(() => {
     }
     return target;
   });
-  delete window.__ElecKoiClientCompatibility;
+  delete window.__ElecKoiHtmlResources;
   stop = vi.fn(); listeners = new Set();
   runtime = { mountDocument: vi.fn(target => { target.ElecKoi = { api: { version: '0.1.0' } }; return stop; }) }; current = runtime;
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
@@ -41,7 +41,7 @@ describe('native interactive message in the production renderer', () => {
     const frame = container.querySelector('iframe'), complete = await load(frame);
     expect(runtime.mountDocument).toHaveBeenCalledWith(frame.contentWindow, 'synthetic-chat', 'synthetic-message');
     expect(complete).toHaveBeenCalledWith(frame.contentWindow.ElecKoi);
-    expect(frame.srcdoc).not.toContain('__ElecKoiClientCompatibility');
+    expect(frame.srcdoc).not.toContain('__ElecKoiHtmlResources');
     await render({ ...documentValue }); await load(frame);
     expect(container.querySelector('iframe')).toBe(frame);
     expect(runtime.mountDocument).toHaveBeenCalledOnce();

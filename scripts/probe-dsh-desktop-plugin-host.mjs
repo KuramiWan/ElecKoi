@@ -91,7 +91,7 @@ try {
   if (!boot.value.entries.some(entry => entry.id === '@eleckoi/dsh-product-api')) {
     throw new Error('ElecKoi DSH Remote Client assembly is missing from the module graph')
   }
-  if (!boot.value.entries.some(entry => entry.id === '@eleckoi/dsh-client-tavern-shared')) {
+  if (!boot.value.entries.some(entry => entry.id === '@eleckoi/dsh-client-html-resources')) {
     throw new Error('HTML presentation resources are missing from the module graph')
   }
   if (await host.updateTasks('inspect') !== false) {
@@ -121,18 +121,18 @@ try {
   const document = await response.text()
   if (!document.includes('<html')) throw new Error('DSH client boot document was not served')
   const schema = productSchema()
-  if (schema.version !== 10 || schema.objects.filter(row => row.type === 'table').length !== 44) {
+  if (schema.version !== 11 || schema.objects.filter(row => row.type === 'table').length !== 44) {
     throw new Error('Product schema baseline changed during SDK integration')
   }
   await remoteCall(ready, cookie, 'eleckoiCompatibility/capabilities', {}, 404)
   await remoteCall(ready, cookie, 'eleckoiAuthorPlugins/capabilities', {}, 404)
-  const assets = ready.injections.find(row => row?.kind === 'global' && row.name === '__ELECKOI_COMPATIBILITY_ASSETS__')?.value
+  const assets = ready.injections.find(row => row?.kind === 'global' && row.name === '__ELECKOI_HTML_RESOURCES__')?.value
   if (!assets?.baseUrl) throw new Error('HTML presentation asset base is missing')
-  for (const path of ['client/runtime.js', 'assets/tavern-shared.global.js', 'assets/tavern-runtime.global.js', 'assets/assets/jquery.min.js']) {
+  for (const path of ['client/runtime.js', 'html-libraries.global.js', 'zod-module.js', 'libraries/jquery.min.js']) {
     const asset = await fetch(new URL(assets.baseUrl + path, ready.url), { headers: { cookie } })
     if (!asset.ok || !(await asset.text()).trim()) throw new Error(`SDK resource is missing: ${path}`)
   }
-  for (const path of ['assets/mvu-engine.js', 'assets/mvu-schema.js', 'client/application-api.js', 'plugin/synthetic-script', 'panel/synthetic-panel']) {
+  for (const path of ['tavern-runtime.global.js', 'libraries/tiktoken.global.js', 'assets/mvu-engine.js', 'assets/mvu-schema.js', 'client/application-api.js', 'plugin/synthetic-script', 'panel/synthetic-panel']) {
     const response = await fetch(new URL(assets.baseUrl + path, ready.url), { headers: { cookie } })
     await response.body?.cancel()
     if (response.status !== 404) throw new Error(`Retired runtime resource remains available: ${path}`)

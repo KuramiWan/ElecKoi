@@ -308,6 +308,8 @@ export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserPr
   const [editingAvatars, setEditingAvatars] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const savedAvatars = avatarSetFromPersona(persona, "user");
+  const dirty = name !== displayName || Object.keys(savedAvatars).some(kind => avatars[kind] !== savedAvatars[kind]);
 
   useEffect(() => {
     setName(persona?.user_name || "你");
@@ -320,9 +322,9 @@ export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserPr
     try {
       const nextName = candidate.name?.trim() || "你";
       const nextAvatars = candidate.avatars || avatars;
-      await onUpdateUserProfile?.({ name: nextName, avatars: nextAvatars });
-      setName(nextName);
-      setAvatars(nextAvatars);
+      const saved = await onUpdateUserProfile({ name: nextName, avatars: nextAvatars });
+      setName(saved.user_name || "你");
+      setAvatars(avatarSetFromPersona(saved, "user"));
       setMessage("已保存");
       return true;
     } catch (error) {
@@ -338,15 +340,9 @@ export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserPr
     await commitProfile();
   }
 
-  async function saveAvatars(nextAvatars) {
-    setSaving(true);
+  function changeAvatars(nextAvatars) {
     setMessage("");
-    try {
-      await onUpdateUserProfile?.({ name: name.trim() || "你", avatars: nextAvatars });
-      setAvatars(nextAvatars);
-    } finally {
-      setSaving(false);
-    }
+    setAvatars(nextAvatars);
   }
 
   if (editingAvatars) {
@@ -356,7 +352,7 @@ export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserPr
         name={name || displayName}
         saving={saving}
         onBack={() => setEditingAvatars(false)}
-        onSave={saveAvatars}
+        onChange={changeAvatars}
       />
     );
     return renderAvatarManager?.({ onBack: () => setEditingAvatars(false), saving }, editor) ?? editor;
@@ -391,9 +387,11 @@ export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserPr
   const owner = {
     persona,
     profile: { name, avatars },
+    dirty,
     saving,
     message,
     onChange: (patch) => {
+      setMessage("");
       if (Object.hasOwn(patch, "name")) setName(patch.name ?? "");
       if (patch.avatars) setAvatars(patch.avatars);
     },

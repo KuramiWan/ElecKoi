@@ -1,9 +1,3 @@
-.native-script-menu { max-height: 240px; overflow-y: auto; padding-left: 16px; }
-.native-script-menu button { min-height: 38px; min-width: 0; }
-.native-script-menu button > span { min-width: 0; overflow-wrap: anywhere; }
-.native-script-menu small { max-width: 100px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.native-script-menu p { margin: 6px 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.native-script-menu p[role="alert"] { color: var(--danger, #c52d33); }
 .native-script-dialog { width: min(900px, calc(100vw - 32px)); height: min(680px, calc(100dvh - 48px)); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-raised); color: var(--text); }
 .native-script-dialog::backdrop { background: rgba(20, 23, 28, .28); }
 .native-script-dialog-layout { display: grid; grid-template-rows: 48px minmax(0, 1fr); height: 100%; }
@@ -15,3 +9,14 @@
 .native-script-dialog header svg { width: 18px; height: 18px; }
 .native-script-dialog iframe { width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; background: var(--surface-raised); }
 .native-script-panel-error { margin: 16px; color: var(--danger, #c52d33); overflow-wrap: anywhere; }
+.native-script-actions-dialog { width: min(480px, calc(100vw - 32px)); height: fit-content; }
+.native-script-actions-dialog header { min-height: 52px; }
+.native-script-actions-dialog header button { flex-basis: 44px; height: 44px; }
+.native-script-actions-list { margin: 0; padding: 8px; max-height: min(360px, calc(100dvh - 120px)); overflow-y: auto; list-style: none; }
+.native-script-actions-list button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; min-height: 52px; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.native-script-actions-list button:not(:disabled):hover { background: var(--control-bg-hover); }
+.native-script-actions-list button:disabled { opacity: .5; cursor: default; }
+.native-script-actions-list span, .native-script-actions-list small { max-width: 100%; overflow-wrap: anywhere; }
+.native-script-actions-list small { color: var(--muted); font-size: 12px; }
+.native-script-actions-list p { margin: 4px 12px 8px; color: var(--danger, #c52d33); font-size: 12px; overflow-wrap: anywhere; }
+.native-script-actions-empty { margin: 0; padding: 24px 16px; color: var(--muted); font-size: 14px; }

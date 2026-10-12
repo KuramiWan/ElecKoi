@@ -277,6 +277,10 @@ export class NativeAuthorClient {
     }
     await this.stopCurrent()
     if (this.closed || revision !== this.revision) return
+    if (!catalog.scripts.length) {
+      this.publish({ status: 'ready', conversationId: selected.id, error: '', scriptStatuses: {} })
+      return
+    }
     this.publish({ status: 'starting', conversationId: selected.id, error: '', scriptStatuses: {} })
     const session = new AuthorScriptSession({ conversationId: selected.id, scripts: catalog.scripts,
       createFrame: script => (this.options.createFrame || createAuthorScriptFrame)(this.options.window,

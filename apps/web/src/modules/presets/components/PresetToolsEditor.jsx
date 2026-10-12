@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { CaretRight, MagnifyingGlass, MinusCircle, Plus, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { normalizeRoleplayPlanDraft } from '@shared/contracts/presets/roleplayPlan';
 import { AgentToolGroupIcon } from '../../../ui/icons/index.jsx';
-import { RoleplayPlanEditor, SubagentSettingsLink, WebSearchSettings } from '../../agentTools/index.js';
+import { AutoIllustrationSettings, RoleplayPlanEditor, SubagentSettingsLink, WebSearchSettings } from '../../agentTools/index.js';
 import { PresetContextMenu, usePresetContextMenu } from './PresetContextMenu.jsx';
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { MobileConversationOverlay } from '../../../mobile/MobileConversationOverlay.jsx';
@@ -114,6 +114,8 @@ export function PresetToolsEditor({
         compact={compact}
         group={configGroup}
         roleplayPlan={preset.roleplayPlan}
+        imageConfigId={preset.toolModelConfigIds?.['builtin:auto-illustration'] || ''}
+        onImageConfigChange={configId => onChange({ ...preset, toolModelConfigIds: { ...preset.toolModelConfigIds, 'builtin:auto-illustration': configId } })}
         closeBlocked={savePromptOpen}
         onClose={closeConfig}
         onEnabledChange={(enabled) => updateGroup(configGroup.id, { enabled })}
@@ -130,6 +132,8 @@ function PresetToolConfigDialog({
   compact,
   group,
   roleplayPlan,
+  imageConfigId,
+  onImageConfigChange,
   closeBlocked,
   onClose,
   onEnabledChange,
@@ -141,7 +145,7 @@ function PresetToolConfigDialog({
   useEffect(() => {
     if (compact) return undefined;
     function closeOnEscape(event) {
-      if (event.key === 'Escape' && !closeBlocked) onClose();
+      if (!event.defaultPrevented && event.key === 'Escape' && !closeBlocked) onClose();
     }
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
@@ -160,6 +164,7 @@ function PresetToolConfigDialog({
       ><i /></button>
     </section>
     {group.description ? <p className="preset-tool-config-description">{group.description}</p> : null}
+    {group.id === 'builtin:auto-illustration' && <AutoIllustrationSettings configId={imageConfigId} onSelect={onImageConfigChange} />}
     {group.id === 'builtin:collaboration' ? <SubagentSettingsLink
       onBeforeOpen={onBeforeOpenSubagentSettings}
       onOpen={onClose}

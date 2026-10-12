@@ -4,6 +4,8 @@
 
 ## 当前架构
 
+- [生成图片随记录删除](adr/0034-generated-image-record-cleanup.md)：聊天删除、角色删除和重新生成对应的文件清理。
+
 - [原生脚本库与作者 SDK](adr/0032-native-script-libraries.md)：三类脚本、作者规则和前端交互的数据与运行合同。
 - [导入格式与原生数据存储](adr/0033-native-format-import-storage.md)：格式转换、原生数据归属与 MVU 导入提示。
 - [工作区包职责分组](adr/0030-package-responsibility-groups.md)：Client、Host、公共合同和示例的位置。

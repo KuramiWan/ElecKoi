@@ -2,6 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
+import { restoreV10PresetFixture } from './helpers/presetSchemaV10'
+import { CURRENT_SCHEMA_VERSION } from '../packages/host/product-data/src/storage/sqlite/schemaVersion'
 import { afterEach, describe, expect, it } from 'vitest'
 import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
 import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
@@ -133,10 +135,11 @@ describe('opening variable version bindings', () => {
     f.variables.save('synthetic-character', { ...config, ...config.versions[1]!, activeVersionId: 'variant-b' })
     f.database.close()
     const legacy = new Database(f.path)
+    restoreV10PresetFixture(legacy)
     legacy.exec('DROP TABLE script_libraries; CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE ); PRAGMA user_version=10;')
     legacy.close()
     f.database.open()
-    expect(f.database.native.pragma('user_version', { simple: true })).toBe(10)
+    expect(f.database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
     expect(f.variables.get('synthetic-character').activeVersionId).toBe('variant-b')
     expect(f.variables.forConversation(id, 'synthetic-character').activeVersionId).toBe('variant-a')
     expect(f.states.viewerStates(id)).toEqual(before)
@@ -150,10 +153,11 @@ describe('opening variable version bindings', () => {
     f.states.replaceCurrent(id, '{"status":{"energy":7}}')
     f.database.close()
     const legacy = new Database(f.path)
+    restoreV10PresetFixture(legacy)
     legacy.exec('DROP TABLE script_libraries; ALTER TABLE agent_conversations DROP COLUMN variableVersionId; PRAGMA user_version=8;')
     legacy.close()
     f.database.open()
-    expect(f.database.native.pragma('user_version', { simple: true })).toBe(10)
+    expect(f.database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
     const config = f.variables.get('synthetic-character')
     f.variables.save('synthetic-character', { ...config, ...config.versions[1]!, activeVersionId: 'variant-b' })
     expect(f.variables.forConversation(id, 'synthetic-character').activeVersionId).toBe('variant-a')

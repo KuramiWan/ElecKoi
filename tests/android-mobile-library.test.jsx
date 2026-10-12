@@ -109,9 +109,10 @@ describe('Android character and preset library contracts', () => {
     expect(saveGroups).toHaveBeenLastCalledWith(['分组乙', '分组甲'], []);
   });
   it('excludes the protected default preset from batch deletion and retries only failed IDs', async () => {
-    const presets = ['agent-preset-standard', 'preset-a', 'preset-b'].map((id, index) => ({ id, name: `合成预设${index}`, libraryGroupId: '', profile: {}, modelTags: [] }));
+    const presets = ['agent-preset-standard', 'preset-a', 'preset-b'].map((id, index) => ({ id, purpose: 'roleplay', name: `合成预设${index}`, libraryGroupId: '', profile: {}, modelTags: [] }));
     const remove = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('写入失败')).mockResolvedValue({});
-    fixture.presets = { catalog: { presets, groups: [], activePresetId: 'agent-preset-standard' }, catalogModel: { delete: remove }, setSelectedPresetId: vi.fn(), refresh: vi.fn() };
+    const catalog = { presets, groups: [], activePresetIds: { roleplay: 'agent-preset-standard', creator: 'agent-preset-creator' } };
+    fixture.presets = { catalog, purposeCatalog: catalog, purpose: 'roleplay', setPurpose: vi.fn(), catalogModel: { delete: remove }, setSelectedPresetId: vi.fn(), refresh: vi.fn() };
     await mount('presets'); await click('预设操作');
     expect([...document.querySelectorAll('[role="menuitem"]')].map(item => item.textContent)).toEqual(['新建预设', '导入预设', '导出预设', '批量删除']);
     await click('批量删除'); await click('全选');

@@ -1,6 +1,127 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-creator-studio',
-  factory() {
+  factory(require) {
+    const React = require('react')
+    /** Own one independent official Client Session reference for the Studio surface. */
+    class CreatorStudioSessions {
+      constructor(remote, sessions) {
+        this.remote = remote
+        this.sessions = sessions
+        this.snapshot = { status: 'idle', active: null, reference: null, items: [], error: '', editingSessionId: '' }
+        this.listeners = new Set()
+        this.generation = 0
+        this.reference = null
+        this.disposed = false
+        this.messageMutation = false
+      }
+      getSnapshot = () => this.snapshot
+      subscribe = listener => { this.listeners.add(listener); return () => this.listeners.delete(listener) }
+      publish(patch) { if (!this.disposed) { this.snapshot = { ...this.snapshot, ...patch }; for (const listener of this.listeners) listener() } }
+      async call(method, ...args) {
+        const result = await this.remote.eleckoiCreatorStudioSessions[method](...args)
+        if (!result?.ok) throw new Error(result?.error?.message || 'AI 创作工作室操作失败。')
+        return result.value
+      }
+      async refresh() {
+        const items = await this.call('list')
+        this.publish({ items })
+        return items
+      }
+      async acquire(create, value) {
+        if (this.disposed) throw new Error('AI 创作工作室服务已关闭。')
+        const generation = ++this.generation
+        this.publish({ status: 'loading', error: '' })
+        let reference
+        try {
+          const active = await this.call(create ? 'create' : 'open', value)
+          await this.sessions.refresh()
+          reference = this.sessions.retain(active.sessionId, { source: 'mainView' })
+          await reference.ready
+          if (this.disposed || generation !== this.generation) { reference.release(); return }
+          const previous = this.reference
+          this.reference = reference
+          this.publish({ status: 'ready', active, reference, error: '' })
+          previous?.release()
+          await this.refresh()
+          return active
+        } catch (error) {
+          if (reference !== this.reference) reference?.release()
+          if (generation === this.generation) this.publish({ status: 'error', error: String(error?.message || error) })
+          throw error
+        }
+      }
+      create(characterId = '') { return this.acquire(true, characterId) }
+      open(sessionId) { return this.acquire(false, sessionId) }
+      async restoreRecent() {
+        const items = await this.refresh()
+        if (this.snapshot.active) return this.snapshot.active
+        // The Host list is ordered by activity, independently of sidebar pins.
+        return items.length ? this.open(items[0].sessionId) : this.create()
+      }
+      async rename(sessionId, title) { await this.call('rename', sessionId, title); await this.refresh() }
+      async pin(sessionId, pinned) { await this.call('pin', sessionId, pinned); await this.refresh() }
+      async delete(sessionId) {
+        await this.call('delete', sessionId)
+        if (this.snapshot.active?.sessionId === sessionId) this.release()
+        await this.sessions.refresh()
+        await this.refresh()
+      }
+      async search(query, signal) {
+        const result = await this.sessions.search(query, signal)
+        if (!result.ok) throw new Error(result.error.message)
+        return result.value
+      }
+      async readDefaultModel() {
+        const result = await this.remote.eleckoiConversationModels.current('')
+        if (!result.ok) throw new Error(result.error.message)
+        return result.value
+      }
+      async selectModel(selection) {
+        if (!this.snapshot.active) throw new Error('工作室对话尚未打开。')
+        const result = await this.remote.session.selectModel({ sessionId: this.snapshot.active.sessionId, ...selection })
+        if (!result.ok) throw new Error(result.error.message)
+        return result.value.selected
+      }
+      messages() { if (!this.snapshot.active) throw new Error('工作室对话尚未打开。'); return this.call('messages', this.snapshot.active.sessionId) }
+      async mutateMessages(method, ...args) {
+        const active = this.snapshot.active
+        if (!active) throw new Error('工作室对话尚未打开。')
+        if (this.messageMutation) throw new Error('请等待当前消息操作完成。')
+        this.messageMutation = true
+        this.publish({ editingSessionId: active.sessionId })
+        const generation = this.generation
+        try {
+          let failure
+          try { await this.call(method, active.sessionId, ...args) } catch (error) { failure = error }
+          if (this.disposed || generation !== this.generation) { if (failure) throw failure; return }
+          this.release()
+          try { await this.open(active.sessionId) }
+          catch (error) { if (failure) throw new AggregateError([failure, error], `${failure.message}；恢复对话失败：${error.message}`); throw error }
+          if (failure) throw failure
+        } finally {
+          this.messageMutation = false
+          if (this.snapshot.editingSessionId === active.sessionId) this.publish({ editingSessionId: '' })
+        }
+      }
+      regenerate() { return this.mutateMessages('regenerate') }
+      deleteMessagesFrom(eventSeq, role) { return this.mutateMessages('deleteMessagesFrom', eventSeq, role) }
+      async selectCharacter(characterId) {
+        const active = this.snapshot.active
+        if (!active) throw new Error('工作室会话尚未打开。')
+        const selected = await this.call('selectCharacter', active.sessionId, characterId)
+        if (this.snapshot.active?.sessionId === selected.sessionId) this.publish({ active: selected })
+        return selected
+      }
+      release() {
+        ++this.generation
+        const previous = this.reference
+        this.reference = null
+        this.publish({ reference: null, active: null, status: 'idle', error: '', editingSessionId: '' })
+        previous?.release()
+      }
+      dispose() { this.release(); this.disposed = true; this.listeners.clear() }
+    }
+
     class CreatorStudioProjects {
       constructor(remote) {
         this.remote = remote
@@ -131,17 +252,70 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const projects = new CreatorStudioProjects(ctx.remote)
+      const conversations = new CreatorStudioSessions(ctx.remote, ctx.sessions)
+      projects.sessions = conversations
       ctx.provide('eleckoiCreatorStudio', projects)
+      const studioSeat = name => name.startsWith('eleckoi.creator-studio.') ? name : `eleckoi.creator-studio.${name.replace(/^conversation\./, '')}`
+      const projected = new Set()
+      function projectSeat(source, target, entryId, override) {
+        if (projected.has(target)) return
+        projected.add(target)
+        ctx.slots.inject(target, () => {
+          const entries = new Map()
+          const sync = () => {
+            const current = ctx.slots.entriesOfSlot(source).filter(entry => !entryId || entry.options.id === entryId)
+            for (const [entry, dispose] of entries) if (!current.includes(entry)) { dispose(); entries.delete(entry) }
+            for (const entry of current) {
+              if (entries.has(entry)) continue
+              const { name: sourceName, id, key, ...attributes } = entry.options
+              const kind = ctx.slots.spec(target).kind
+              const options = { ...attributes, name: target,
+                ...(kind === 'list' ? { id } : kind === 'keyed' ? { key } : {}),
+                ...(entry.inject ? { inject: entry.inject } : {}), ...(entry.store ? { store: entry.store } : {}),
+                ...(entry.locale ? { locale: entry.locale } : {}), ...(entry.select ? { select: entry.select } : {}) }
+              if (entry.children) {
+                options.children = Object.fromEntries(Object.entries(entry.children).map(([name, spec]) => [studioSeat(name), spec]))
+                for (const name of Object.keys(entry.children)) projectSeat(name, studioSeat(name))
+              }
+              if (override?.children) options.children = { ...options.children, ...override.children }
+              entries.set(entry, ctx.slots.register(options, ({ renderBridgeSlot, ...props }) => React.createElement(override?.component || entry.component, {
+                ...props, renderSlot: (name, owner, renderOptions) => (renderBridgeSlot || props.renderSlot)(studioSeat(name), owner, renderOptions),
+                ...(props.renderSlotChain ? { renderSlotChain: (name, owner, renderOptions) => props.renderSlotChain(studioSeat(name), owner, renderOptions) } : {}),
+              })))
+            }
+          }
+          const unsubscribe = ctx.slots.subscribe(source, sync)
+          sync()
+          return () => { unsubscribe(); for (const dispose of entries.values()) dispose() }
+        })
+      }
+      const composerSeats = {
+        'conversation.composer': { kind: 'chain', scope: 'session' },
+        'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
+        'conversation.input.dock': { kind: 'list', scope: 'session' },
+      }
+      function StudioConversation({ reference, component, props, SessionProvider, renderSlot }) {
+        return React.createElement(SessionProvider, { session: reference, empty: () => null }, renderSlot('eleckoi.creator-studio.session', { component, props }))
+      }
+      ctx.slots.inject('eleckoi.creator-studio.conversation', () => ctx.slots.register({
+        name: 'eleckoi.creator-studio.conversation', registrant: '@eleckoi/dsh-client-creator-studio',
+        children: { 'eleckoi.creator-studio.session': { kind: 'single', scope: 'session' } }
+      }, StudioConversation))
+      projectSeat('conversation.session', 'eleckoi.creator-studio.session', undefined, { children: {
+        ...Object.fromEntries(Object.entries(composerSeats).map(([name, spec]) => [studioSeat(name), spec])),
+      }, component: ({ component, props, ...native }) => React.createElement(component, { ...props, ...native }) })
+      for (const name of Object.keys(composerSeats)) projectSeat(name, studioSeat(name))
       ctx.effect(() => {
         projects.start()
         const stopReset = ctx.on('connection/reset', () => { void projects.refresh().catch(() => {}) })
         return () => {
           stopReset()
           projects.dispose()
+          conversations.dispose()
         }
       }, 'eleckoi: creator studio projects')
     }
 
-    return { inject: ['remote', 'remote.eleckoiCreatorStudio', 'remote.directoryPicker'], apply }
+    return { inject: ['remote', 'remote.eleckoiCreatorStudio', 'remote.eleckoiCreatorStudioSessions', 'remote.eleckoiConversationModels', 'remote.session', 'remote.directoryPicker', 'sessions', 'slots', 'uiSession'], apply }
   }
 })

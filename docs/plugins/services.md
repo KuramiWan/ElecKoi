@@ -66,6 +66,10 @@ Host 插件从 @eleckoi/dsh-product-api 导入 Context 贡献；业务数据类�
 
 正则保存使用 revision 校验并发修改。预设保存需要提交调用方看到的正则规则列表。Client 方法成功时返回类型声明中的值，异步失败时拒绝 Promise；直接 Remote 调用则返回官方 RemoteResult，需要检查 ok。
 
+预设按 `purpose` 区分 `roleplay` 与 `creator`，分组和全局选择各自独立，目录的 `activePresetIds` 分别返回两类选择。新建与导入明确指定当前用途，切换目录不改变启用状态。
+
+AI 创作工作室通过 `eleckoiCreatorStudio.sessions` 创建、打开会话和选择编辑目标。Host 使用官方 Session Controller 管理会话，角色编号及创作预设编号由正式 Session 事件保存；消息、思考和工具调用使用 DSH 原生对话投影。创作操作直接修改所选角色的永久资料、设定库、变量及正则，不注入角色扮演身份。默认创作预设只启用创作能力；工具先发现能力组、读取准确操作参数，再执行操作。
+
 订阅返回取消函数，应随插件停用或组件卸载释放。不要修改页面状态对象，不要把 Client 方法当作数据库事务。SessionEditor 的内部 transaction/deleteSession 方法不属于插件中心公开成员。
 
 ## 在运行时查接口

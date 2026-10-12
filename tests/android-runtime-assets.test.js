@@ -16,11 +16,11 @@ def package(root):
     (root / 'assets/nested').mkdir(parents=True)
     (root / 'dist/assets/nested').mkdir(parents=True)
     (root / 'package.json').write_text(json.dumps({'name': packager.SHARED_ASSET_PACKAGE, 'exports': {
-        './assets/*': './assets/*', './runtime': './dist/tavern-runtime.global.js'}}))
+        './assets/*': './assets/*', './html/*': './dist/*'}}))
     for name, value in [('library.js', b'synthetic browser library'), ('nested/model.json', b'{"synthetic":true}')]:
         (root / 'assets' / name).write_bytes(value)
         (root / 'dist/assets' / name).write_bytes(value)
-    (root / 'dist/tavern-runtime.global.js').write_text('synthetic runtime')
+    (root / 'dist/html-libraries.global.js').write_text('synthetic libraries')
     return root
 `
 function python(body) {
@@ -43,7 +43,8 @@ with tempfile.TemporaryDirectory() as temporary:
         assert link.issym() and link.linkname == '../assets'
         assert not any(m.name.startswith(prefix + '/dist/assets/') for m in archive)
         assert archive.extractfile(prefix + '/assets/library.js').read() == b'synthetic browser library'
-        assert archive.extractfile(prefix + '/dist/tavern-runtime.global.js').read() == b'synthetic runtime'
+        assert archive.extractfile(prefix + '/dist/html-libraries.global.js').read() == b'synthetic libraries'
+        assert not any(m.name.endswith('/tavern-runtime.global.js') for m in archive)
     assert (source / 'dist/assets/library.js').read_bytes() == (source / 'assets/library.js').read_bytes()
 `))
 

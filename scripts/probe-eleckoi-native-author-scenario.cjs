@@ -5,8 +5,9 @@ const { tmpdir } = require('node:os')
 
 /** Exercises the built desktop Client against its real isolated Host and local model endpoint. */
 exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, requests, modelBodies, errors, productDataRoot }) => {
+  process.stdout.write('Native author Client: preparing synthetic role and preset.\n')
   const boot = ready.injections.find(row => row?.kind === 'global' && row.name === '__DSH_BOOT__')
-  assert(!boot.value.entries.some(entry => ['@eleckoi/dsh-client-tavern-shared', '@eleckoi/dsh-compatibility-host'].includes(entry.id)))
+  assert(!boot.value.entries.some(entry => entry.id === '@eleckoi/dsh-client-html-resources'))
   const call = async (method, args) => {
     const response = await fetch(new URL(`/api/${method}`, ready.url), {
       method: 'POST', headers: { cookie, origin: new URL(ready.url).origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' },
@@ -19,7 +20,7 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   }
   const characterId = 'synthetic-native-character'
   await call('eleckoiCharacters/create', { character: { id: characterId, name: 'Synthetic native character' } })
-  const preset = await call('eleckoiAgentPresets/create', { name: 'Synthetic native preset', libraryGroupId: '' })
+  const preset = await call('eleckoiAgentPresets/create', { name: 'Synthetic native preset', libraryGroupId: '', purpose: 'roleplay' })
   const settingLibrary = await call('eleckoiCharacterConfiguration/readSettingLibrary', { characterId })
   const option = { ...settingLibrary.entries.find(entry => entry.kind === 'opening'), kind: 'normal',
     openingMessages: [], defaultOpeningMessageId: '', triggerMode: 'always', position: 'instructions',
@@ -268,6 +269,7 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   assert.equal(await call('eleckoiAuthorVariables/getState', { conversationId }), original); assert.equal(requests(), 0)
   await window.webContents.executeJavaScript(`(() => {const doc=${page}.contentDocument;doc.querySelector('#value').value='5';doc.querySelector('#send').click()})()`)
   await waitFor(`${page}?.contentDocument.querySelector('#result')?.dataset.status==='accepted'`, 'Native page variable retry and direct send did not complete')
+  process.stdout.write('Native author Client: variable rejection, retry and direct generation passed.\n')
   const result = await window.webContents.executeJavaScript(`(() => {const frame=${page};return {
     result:JSON.parse(frame.contentDocument.querySelector('#result').textContent),events:frame.contentWindow.nativeEvents,
     draft:document.querySelector('[data-composer-input]').innerText};})()`)
@@ -300,8 +302,11 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   global.enabled = false; await call('eleckoiCharacterConfiguration/saveScriptLibrary', { library: global })
   await waitFor(`document.querySelectorAll('iframe[title="ElecKoi author script"]').length===2`, 'Disabled global script remained running')
   await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="扮演菜单"]').click()`)
-  await waitFor(`document.querySelectorAll('[aria-label="脚本按钮"] button').length===2`, 'Disabled global script button remained in the menu')
-  await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="收起扮演菜单"]').click()`)
+  await waitFor(`document.querySelector('[role="menu"][aria-label="扮演菜单"]')`, 'Roleplay menu did not open')
+  await window.webContents.executeJavaScript(`[...document.querySelectorAll('[role="menuitem"]')].find(button=>button.textContent.trim()==='脚本').click()`)
+  await waitFor(`document.querySelectorAll('[aria-label="脚本按钮"] button').length===2`, 'Disabled global script button remained in the dialog')
+  await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="关闭脚本"]').click()`)
+  process.stdout.write('Native author Client: scoped script shutdown and button dialog passed.\n')
   const updated = await window.webContents.executeJavaScript(`${page}.contentWindow.ElecKoi.variables.merge({value:7})`)
   assert.deepEqual(updated, { value: 8, globalVisits: 1, presetVisits: 2, characterVisits: 2, derived: 24 })
   await call('eleckoiAuthorFrontends/restoreDefault', { owner })
@@ -313,7 +318,7 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   }
   await waitFor(`!document.querySelector('iframe[title="ElecKoi author script"]')&&window.__nativeScriptPages.every(page=>page.document.body.dataset.cleaned==='yes')`, 'Native script shutdown did not finish cleanup')
   const resources = await window.webContents.executeJavaScript(`performance.getEntriesByType('resource').map(entry=>entry.name)`)
-  assert(!resources.some(name => name.includes('/eleckoi/compat/')))
+  assert(!resources.some(name => name.includes('/eleckoi/html/')))
   assert.equal((await call('eleckoiConversations/details', { conversationId })).runtimeSessionId, created.runtimeSessionId)
   const otherId = 'synthetic-preserved-character'
   await call('eleckoiCharacters/create', { character: { id: otherId, name: 'Synthetic preserved character' } })
@@ -350,11 +355,12 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   assert.equal(removedAsset.status, 404)
   assert.deepEqual(errors, [], JSON.stringify(await window.webContents.executeJavaScript('window.__nativeDeletionFailures')))
   const examples = join(process.cwd(), 'packages', 'examples', 'native-author')
+  process.stdout.write('Native author Client: scoped role deletion passed; importing published examples.\n')
   const importDocument = name => ({ displayName: name, mimeType: 'application/json', base64: readFileSync(join(examples, name)).toString('base64') })
   const preview = await call('eleckoiCharacters/prepareImport', { files: [importDocument('example.character.json')], source: 'eleckoi' })
   assert.equal(preview.items[0].importable, true)
   const exampleId = (await call('eleckoiCharacters/commitImport', { token: preview.token })).importedCharacterIds[0]
-  const examplePreset = (await call('eleckoiAgentPresets/import', { source: 'eleckoi', document: importDocument('example.preset.json') })).preset
+  const examplePreset = (await call('eleckoiAgentPresets/import', { source: 'eleckoi', document: importDocument('example.preset.json'), purpose: 'roleplay' })).preset
   assert.deepEqual(examplePreset.entries.filter(entry => entry.id.startsWith('example-')).map(entry => entry.id), ['example-brief', 'example-detailed'])
   await call('eleckoiAgentPresets/setActive', { presetId: examplePreset.id })
   for (const [scope, ownerId] of [['character', exampleId], ['preset', examplePreset.id], ['global', '']]) {
@@ -385,6 +391,7 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
     await waitFor(`${examplePage}?.contentDocument.querySelector('#update')?.disabled===false&&JSON.parse(${examplePage}.contentDocument.querySelector('#state').textContent).total===${total}`, 'Published example rule did not accept the expected derived state')
   }
   await updateScore(5, 10)
+  process.stdout.write('Native author Client: alternate opening and example derivation passed.\n')
   const openButtons = async () => {
     await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="扮演菜单"]').click()`)
     await waitFor(`document.querySelector('.composer-more-menu')`, 'Example action menu did not open')

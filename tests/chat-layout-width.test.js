@@ -18,6 +18,10 @@ const themeClient = readFileSync(
   new URL('../node_modules/@deepseek-ai/dsh-client-ui-theme/lib/client.js', import.meta.url),
   'utf8',
 );
+const chatClient = readFileSync(
+  new URL('../node_modules/@deepseek-ai/dsh-client-ui-chat/lib/client.js', import.meta.url),
+  'utf8',
+);
 
 function conversationSheet(name) {
   const section = conversationClient.split(`/${name}.module.css.mjs`)[1]?.split('//#endregion')[0];
@@ -66,11 +70,21 @@ describe('chat layout width alignment', () => {
     expect(chatStyles).toMatch(/\.message-area\s*\{[^}]*display:\s*flex;[^}]*flex:\s*1;[^}]*padding:\s*0;[^}]*scrollbar-gutter:\s*stable;/);
     expect(chatStyles).toMatch(/\.chat-composer-region\s*\{[^}]*position:\s*sticky;[^}]*bottom:\s*0;/);
     expect(chatStyles).not.toContain('.message-area [data-chat-to-bottom]');
-    expect(chatStyles).toMatch(/\.message-area \[data-chat-scroll\]\s*\{[^}]*padding:\s*28px var\(--chat-scroll-horizontal-padding\) 34px;/);
+    expect(chatStyles).toMatch(/\.message-area \[data-chat-scroll\]\s*\{[^}]*padding:\s*28px var\(--chat-scroll-horizontal-padding\) 16px;/);
     expect(chatStyles).not.toContain('.chat-to-bottom-slot');
     expect(chatStyles).not.toMatch(/\.message-area(?:::|-)[^{]*scrollbar-thumb/);
     expect(chatStyles).not.toMatch(/\.message-area::-webkit-scrollbar\s*\{/);
     expect(darkStyles).not.toMatch(/\.message-area[^\{]*::-webkit-scrollbar/);
     expect(themeClient).toContain('--dsh-scrollbar-width:5px');
+  });
+
+  it('keeps the transcript tail clearance at the pinned ChatView value for every layout', () => {
+    const section = chatClient.split('/ChatView.module.css.mjs')[1]?.split('//#endregion')[0];
+    const literal = section?.match(/const css\$\d+ = ("(?:[^"\\]|\\.)*");/)?.[1];
+    expect(literal).toBeTruthy();
+    const officialStyles = JSON.parse(literal);
+    const officialPadding = officialStyles.match(/\.[\w]+_scroll\{[^}]*padding:(\d+px)\s/)[1];
+    const productPadding = chatStyles.match(/\.message-area \[data-chat-scroll\]\s*\{[^}]*padding:\s*28px var\(--chat-scroll-horizontal-padding\) (\d+px);/)[1];
+    expect(productPadding).toBe(officialPadding);
   });
 });

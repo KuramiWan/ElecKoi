@@ -2,7 +2,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as libraries from '@eleckoi/compatibility-tavern-shared/browser-libraries';
+import * as libraries from '@eleckoi/dsh-client-html-resources/browser-libraries';
 import { RichMessageFrame } from '../apps/web/src/modules/authorFrontend/components/RichMessageFrame.jsx';
 import { registerOverlayBack } from '../apps/web/src/ui/hooks/overlayBack.js';
 
@@ -10,14 +10,14 @@ let root, container, state, listeners, runtime;
 beforeEach(() => {
   vi.stubGlobal('React', React); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   state = { status: 'ready', error: '', methods: [] }; listeners = new Set();
-  runtime = { assetsBaseUrl: '/eleckoi/compat/', sdk: libraries, getSnapshot: () => state,
+  runtime = { assetsBaseUrl: '/eleckoi/html/', sdk: libraries, getSnapshot: () => state,
     subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); } };
-  window.__ElecKoiClientCompatibility = runtime;
+  window.__ElecKoiHtmlResources = runtime;
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => {
   await act(() => root.unmount()); container.remove();
-  delete window.__ElecKoiClientCompatibility; vi.unstubAllGlobals();
+  delete window.__ElecKoiHtmlResources; vi.unstubAllGlobals();
 });
 const props = { message: { id: 'rich-a', conversationId: 'chat-a' }, document: { contentKey: 'content-a', source: '<div>card</div>' } };
 const publish = status => act(() => { state = { ...state, status }; listeners.forEach(listener => listener()); });

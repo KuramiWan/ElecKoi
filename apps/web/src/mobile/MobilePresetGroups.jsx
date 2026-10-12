@@ -3,7 +3,7 @@ import { MobileHeader } from './MobileChrome.jsx';
 import { MobileConfirm, MobileNameDialog, useMobileOperation } from './MobileLibraryChrome.jsx';
 import { MobileLibraryIcon } from './MobileLibraryIcons.jsx';
 
-export function MobilePresetGroups({ catalog, model, onClose }) {
+export function MobilePresetGroups({ catalog, model, onClose, purpose }) {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [remove, setRemove] = useState(null);
@@ -18,7 +18,7 @@ export function MobilePresetGroups({ catalog, model, onClose }) {
         {deleting && <button type="button" className="mobile-group-manager-icon is-destructive" aria-label={`删除分组 ${group.name}`} disabled={busy} onClick={() => setRemove(group)}><MobileLibraryIcon name="trash" /></button>}
       </div>)}{error && <p className="mobile-inline-error" role="alert">{error}</p>}
     </div>
-    {editing && <MobileNameDialog title={editing.id ? '重命名分组' : '添加分组'} initialName={editing.name} onClose={() => setEditing(null)} onSave={name => editing.id ? model.renameGroup(editing.id, name) : model.createGroup(name)} />}
-    {remove && <MobileConfirm title="删除分组？" onClose={() => setRemove(null)} busy={busy} error={error} onConfirm={() => run(async () => { await model.deleteGroup(remove.id); setRemove(null); })}>“{remove.name}”中的预设将移至{groups.find(group => group.id !== remove.id) ? `“${groups.find(group => group.id !== remove.id).name}”` : '未分组'}。</MobileConfirm>}
+    {editing && <MobileNameDialog title={editing.id ? '重命名分组' : '添加分组'} initialName={editing.name} onClose={() => setEditing(null)} onSave={name => editing.id ? model.renameGroup(editing.id, name) : model.createGroup(name, purpose)} />}
+    {remove && <MobileConfirm title="删除分组？" onClose={() => setRemove(null)} busy={busy} error={error} onConfirm={() => run(async () => { await model.deleteGroup(remove.id); setRemove(null); })}>“{remove.name}”中的预设将移至未分组。</MobileConfirm>}
   </div>;
 }

@@ -13,7 +13,8 @@ afterEach(() => {
 
 describe('persona editor client extension', () => {
   it('hands the real profile editor and its save operation to a DSH client plugin', async () => {
-    const save = vi.fn().mockResolvedValue(undefined)
+    const save = vi.fn(async ({ name, avatars }) => ({ user_name: name, user_avatar: avatars.circle,
+      user_square: avatars.square, user_portrait: avatars.portrait }))
     let extensionOwner
     const renderUserProfileEditor = vi.fn((owner, fallback) => {
       extensionOwner = owner

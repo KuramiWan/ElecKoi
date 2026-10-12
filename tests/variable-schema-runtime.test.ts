@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 import { assertVariableJson, describeVariableRuleFailure, loadVariableSchema } from '../packages/host/product-data/src/domain/variables/variableSchema'
 // @ts-expect-error The browser library contract is a JavaScript entry point.
-import { BROWSER_LIBRARY_VERSIONS } from '../packages/compatibility/tavern-shared/src/browser-libraries.js'
+import { BROWSER_LIBRARY_VERSIONS } from '../packages/client/features/dsh-client-html-resources/src/browser-libraries.js'
 
 describe('author variable schema runtime', () => {
   it('uses the same pinned Zod version as the bundled author browser runtime', () => {
@@ -22,7 +22,7 @@ describe('author variable schema runtime', () => {
   ])('matches browser defaults, preprocessing and transforms for $source', ({ source, input, expected }) => {
     const page = new JSDOM('', { runScripts: 'outside-only' })
     try {
-      page.window.eval(readFileSync(resolve('packages/compatibility/tavern-shared/assets/zod.global.js'), 'utf8'))
+      page.window.eval(readFileSync(resolve('packages/client/features/dsh-client-html-resources/assets/zod.global.js'), 'utf8'))
       const browserSchema = page.window.eval(`(${source})`)
       const browserInput = page.window.JSON.parse(JSON.stringify(input))
       expect(JSON.parse(JSON.stringify(browserSchema.parse(browserInput)))).toEqual(expected)
@@ -33,7 +33,7 @@ describe('author variable schema runtime', () => {
   it('returns the same validation paths and codes as the author browser runtime', () => {
     const page = new JSDOM('', { runScripts: 'outside-only' })
     try {
-      page.window.eval(readFileSync(resolve('packages/compatibility/tavern-shared/assets/zod.global.js'), 'utf8'))
+      page.window.eval(readFileSync(resolve('packages/client/features/dsh-client-html-resources/assets/zod.global.js'), 'utf8'))
       const source = 'z.object({ nested: z.object({ score: z.number().max(5) }) })'
       const input = { nested: { score: 8 } }
       const browser = page.window.eval(`(${source})`).safeParse(page.window.JSON.parse(JSON.stringify(input)))

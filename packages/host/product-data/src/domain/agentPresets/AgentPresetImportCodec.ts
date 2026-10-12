@@ -2,13 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { agentToolGroups } from '@product-data/domain/agentTools'
 import { isPng, readPngText, writePngTextOnly } from '@product-data/storage/media/PngTextChunkCodec'
 import { decodeRegexDocuments } from '@shared/foundation/regexRuleTransfer'
-import { withRequiredAgentPresetEntries } from '@shared/contracts/presets/builtIns'
+import { normalizeAgentPresetPrompts } from '@shared/contracts/presets/builtIns'
+import { agentPresetPurposeSchema } from '@shared/contracts/presets/schemas'
 import { defaultRoleplayPlanSettings, roleplayPlanSettingsSchema } from '@shared/contracts/presets/roleplayPlan'
 import { decodePortableScriptLibrary, type PortableScriptLibrary } from '@product-data/domain/scripts'
 import type {
   AgentPreset,
   AgentPresetImportDocument,
-  AgentPresetImportSource
+  AgentPresetImportSource,
+  AgentPresetPurpose
 } from '@shared/contracts/presets/schemas'
 import type {
   SettingLibraryEntry,
@@ -19,7 +21,7 @@ import type {
 type JsonObject = Record<string, unknown>
 
 const ELECKOI_FORMAT = 'eleckoi.agent-preset'
-const ELECKOI_FORMAT_VERSION = 1
+const ELECKOI_FORMAT_VERSION = 2
 const ELECKOI_PNG_PRESET_KEY = 'eleckoi_agent_preset'
 const SILLY_TAVERN_GLOBAL_PROMPT_ORDER_ID = '100001'
 const SILLY_TAVERN_PROMPT_GROUP_ID = 'tavern-preset-prompts'
@@ -82,14 +84,16 @@ export interface AgentPresetEncodeOptions {
 
 export function decodeAgentPresetImport(
   document: AgentPresetImportDocument,
-  source: AgentPresetImportSource
+  source: AgentPresetImportSource,
+  purpose: AgentPresetPurpose = 'roleplay'
 ): DecodedAgentPresetImport {
+  agentPresetPurposeSchema.parse(purpose)
   const bytes = decodeInput(document.base64)
   if (source === 'sillytavern') {
     if (isPng(bytes)) throw new Error('酒馆预设请选择 JSON 文件。')
-    return decodeSillyTavern(document, parseRoot(new TextDecoder().decode(bytes), '酒馆预设'))
+    return decodeSillyTavern(document, parseRoot(new TextDecoder().decode(bytes), '酒馆预设'), purpose)
   }
-  return decodeElecKoi(document, bytes)
+  return decodeElecKoi(document, bytes, purpose)
 }
 
 export function encodeElecKoiAgentPreset(preset: AgentPreset, options: AgentPresetEncodeOptions = {}): string {
@@ -111,6 +115,7 @@ export function encodeElecKoiAgentPreset(preset: AgentPreset, options: AgentPres
     version: ELECKOI_FORMAT_VERSION,
     preset: {
       name: preset.name,
+      purpose: preset.purpose,
       model_family: preset.modelFamily,
       model_tags: preset.modelTags.map((tag) => ({ id: tag.id, label: tag.label, provider_id: tag.providerId })),
       profile: {
@@ -150,7 +155,7 @@ export function encodeElecKoiAgentPresetPng(json: string, coverPng?: Uint8Array)
   ]))
 }
 
-function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array): DecodedAgentPresetImport {
+function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array, purpose: AgentPresetPurpose): DecodedAgentPresetImport {
   let json: string
   let authorAvatarBase64: string | undefined
   if (isPng(bytes)) {
@@ -162,11 +167,14 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array): 
     json = new TextDecoder().decode(bytes)
   }
   const root = parseRoot(json, 'ElecKoi 预设')
-  if (root.format !== ELECKOI_FORMAT || integerValue(root.version, -1) !== ELECKOI_FORMAT_VERSION) {
+  if (root.format !== ELECKOI_FORMAT || ![1, ELECKOI_FORMAT_VERSION].includes(integerValue(root.version, -1))) {
     throw new Error('这不是当前版本的 ElecKoi 预设文件。')
   }
   const value = objectValue(root.preset)
   if (!value) throw new Error('ElecKoi 预设缺少 preset 数据。')
+  if (root.version === 2 && agentPresetPurposeSchema.parse(value.purpose) !== purpose) {
+    throw new Error('预设文件用途与当前分类不同，请切换到对应的预设分类后导入。')
+  }
   const timestamp = new Date().toISOString()
   const familyValue = stringValue(value.model_family) as AgentPreset['modelFamily']
   const modelFamily = modelFamilies.has(familyValue) ? familyValue : 'general'
@@ -184,7 +192,7 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array): 
   const authorAvatarMediaType = embeddedAvatar
     ? validateAvatarMediaType(stringValue(embeddedAvatar.media_type))
     : authorAvatarBase64 ? 'image/png' : undefined
-  const content = contentFromPortable(value, profile, document.displayName, timestamp)
+  const content = contentFromPortable(value, profile, document.displayName, timestamp, purpose)
   const activeVersionId = stringValue(value.active_version_id) || 'import:v1'
   const activeVersionNumber = Math.max(1, integerValue(value.active_version_number, 1))
   const versions = objectList(value.versions).slice(0, 100).map((version, index) => ({
@@ -192,7 +200,7 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array): 
     number: Math.max(1, integerValue(version.number, index + 1)),
     name: stringValue(version.name).trim().slice(0, 60) || stringValue(value.name).trim() || suggestedName(document.displayName),
     createdAtEpochMs: Math.max(0, integerValue(version.created_at_epoch_ms, Date.now())),
-    ...contentFromPortable(version, version, document.displayName, timestamp)
+    ...contentFromPortable(version, version, document.displayName, timestamp, purpose)
   }))
   return {
     source: 'eleckoi',
@@ -204,6 +212,7 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array): 
     skippedDepthRegexCount: 0,
     preset: {
       id: `agent-preset-import-${randomUUID()}`,
+      purpose,
       name: stringValue(value.name).trim() || suggestedName(document.displayName),
       modelFamily,
       modelTags: tags.length ? tags : [{ id: modelFamily, label: modelFamily === 'general' ? '通用' : modelFamily, providerId: '' }],
@@ -226,7 +235,7 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array): 
   }
 }
 
-function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject): DecodedAgentPresetImport {
+function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject, purpose: AgentPresetPurpose): DecodedAgentPresetImport {
   const definitions = new Map<string, JsonObject>()
   for (const prompt of objectList(root.prompts)) {
     const identifier = stringValue(prompt.identifier).trim()
@@ -281,11 +290,12 @@ function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject
     source: 'sillytavern', skippedUnsupportedEntries, skippedDepthRegexCount, versions: [],
     preset: {
       id: `agent-preset-import-${randomUUID()}`,
+      purpose,
       name: stringValue(root.name).trim() || suggestedName(document.displayName),
       modelFamily: 'general', modelTags: [{ id: 'general', label: '通用', providerId: '' }],
       libraryGroupId: '', activeVersionId: 'import:v1', activeVersionNumber: 1,
       profile: { authorName: '', authorAvatarPath: '', usageInstructions: '', timeline: [] },
-      entries: withRequiredAgentPresetEntries(entries),
+      entries: normalizeAgentPresetPrompts(entries, [], purpose).entries,
       groups: [{
         id: SILLY_TAVERN_PROMPT_GROUP_ID, name: '酒馆提示词', parentId: '', order: 1,
         treeViewOrder: 1, createdAt: timestamp, updatedAt: timestamp
@@ -328,7 +338,8 @@ function contentFromPortable(
   value: JsonObject,
   profile: JsonObject | undefined,
   displayName: string,
-  timestamp: string
+  timestamp: string,
+  purpose: AgentPresetPurpose
 ): AgentPresetTransferContent {
   const groups = objectList(value.groups).map((group, index) => groupFromPortable(group, index, timestamp))
   const promptPositions = objectList(value.prompt_positions)
@@ -351,8 +362,8 @@ function contentFromPortable(
   return {
     usageInstructions: stringValue(profile?.usage_instructions),
     timeline: timelineFromPortable(profile?.timeline),
-    entries: withRequiredAgentPresetEntries(objectList(value.entries)
-      .map((entry, index) => entryFromPortable(entry, index, timestamp))),
+    entries: normalizeAgentPresetPrompts(objectList(value.entries)
+      .map((entry, index) => entryFromPortable(entry, index, timestamp)), promptPositions, purpose).entries,
     groups,
     promptPositions,
     toolGroups,

@@ -7,12 +7,12 @@ const source = readFileSync(new URL('../packages/client/features/dsh-client-pres
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 
 interface Catalog {
-  activePresetId: string
-  groups: Array<{ id: string }>
-  presets: Array<{ id: string }>
+  activePresetIds: { roleplay: string; creator: string }
+  groups: Array<{ id: string; purpose: 'roleplay' | 'creator' }>
+  presets: Array<{ id: string; purpose: 'roleplay' | 'creator' }>
 }
 
-const catalog = (id: string): Catalog => ({ activePresetId: id, groups: [], presets: [{ id }] })
+const catalog = (id: string): Catalog => ({ activePresetIds: { roleplay: id, creator: 'synthetic-creator' }, groups: [], presets: [{ id, purpose: 'roleplay' }] })
 
 function presetChanges() {
   const queue: Array<{ kind: 'snapshot' } | { kind: 'configuration'; domain: 'agentPresets' }> = [{ kind: 'snapshot' }]
@@ -78,13 +78,13 @@ describe('DSH ElecKoi preset client model', () => {
     catalogModel.subscribe(() => { changes += 1 })
     pending[0]!({ ok: true, value: catalog('first') })
     await settle()
-    expect(catalogModel.getSnapshot().catalog?.activePresetId).toBe('first')
+    expect(catalogModel.getSnapshot().catalog?.activePresetIds.roleplay).toBe('first')
     void catalogModel.refresh()
     expect(pending).toHaveLength(2)
     catalogModel.adopt(catalog('saved'))
     pending[1]!({ ok: true, value: catalog('stale') })
     await settle()
-    expect(catalogModel.getSnapshot().catalog?.activePresetId).toBe('saved')
+    expect(catalogModel.getSnapshot().catalog?.activePresetIds.roleplay).toBe('saved')
     expect(changes).toBe(2)
     cleanup()
     expect(changeFeed.isStopped()).toBe(true)

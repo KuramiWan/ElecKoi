@@ -69,7 +69,7 @@ describe('DSH ElecKoi character configuration models', () => {
           inputs.push({ name: 'scripts.openDirectory', input })
           return openFailure ? { ok: false, error: { message: 'Synthetic directory open failure' } } : { ok: true, value: undefined }
         } },
-        eleckoiAgentPresets: { catalog: async () => ({ ok: true, value: { activePresetId: 'preset-1', presets: [{ id: 'preset-1', name: 'Synthetic preset' }] } }) },
+        eleckoiAgentPresets: { catalog: async () => ({ ok: true, value: { activePresetIds: { roleplay: 'preset-1', creator: 'synthetic-creator' }, presets: [{ id: 'preset-1', name: 'Synthetic preset' }] } }) },
         eleckoiConversations: {
           list: async () => {
             calls.push('query.conversations.list')

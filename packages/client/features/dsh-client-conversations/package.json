@@ -75,6 +75,7 @@
           "subscribeTimeline",
           "getStreamSnapshot",
           "readImage",
+          "regenerateImage",
           "subscribeStream",
           "subscribeGeneration",
           "getGenerationReply",

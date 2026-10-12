@@ -103,6 +103,7 @@ describe('DSH Agent preset durability', () => {
     process.env.ELECKOI_PRESET_TEMPLATE_PATH = templatePath
     const registered = []
     const ctx = {
+      inject: vi.fn(() => ({ dispose: vi.fn() })),
       provide: vi.fn(),
       on: vi.fn(() => () => undefined),
       agents: { create: vi.fn(), resume: vi.fn(), get: vi.fn() },

@@ -375,7 +375,7 @@
 /* The official frame and turn rail stay full-bleed. Only the reading column
    receives product clearance; the scroll owner must not inset floating controls. */
 .message-area [data-chat-scroll] {
-  padding: 28px var(--chat-scroll-horizontal-padding) 34px;
+  padding: 28px var(--chat-scroll-horizontal-padding) 16px;
 }
 
 .message-area.layout-roleplay [data-chat-scroll] {
@@ -1662,7 +1662,7 @@
   height: 21px;
   padding: 0;
   border: 0;
-  border-radius: 999px; corner-shape: round;
+  border-radius: var(--switch-track-radius, 999px); corner-shape: var(--switch-corner-shape, round);
   background: color-mix(in srgb, var(--muted) 32%, transparent);
   transition: background-color .14s ease;
 }
@@ -1673,7 +1673,7 @@
   left: 2px;
   width: 17px;
   height: 17px;
-  border-radius: 50%; corner-shape: round;
+  border-radius: var(--switch-thumb-radius, 50%); corner-shape: var(--switch-corner-shape, round);
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
   transition: transform .14s ease;

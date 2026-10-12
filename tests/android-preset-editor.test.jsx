@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MainPageContext } from '../apps/web/src/app/windows/MainPageContext.jsx';
 import { MobilePresetEditor } from '../apps/web/src/mobile/MobilePresetsPage.jsx';
-import { PresetProvider } from '../apps/web/src/modules/presets/components/PresetPanel.jsx';
+import { PresetProvider, usePresets } from '../apps/web/src/modules/presets/components/PresetPanel.jsx';
 import { PresetPromptEditor } from '../apps/web/src/modules/presets/components/PresetPromptEditor.jsx';
 import { createEntryDraft, createGroupDraft } from '../apps/web/src/modules/settingLibraries/model/settingLibraryEditing.js';
 import { withRequiredAgentPresetEntries, withRequiredAgentPresetPromptPositions } from '../packages/shared/src/contracts/presets/builtIns';
@@ -29,14 +29,14 @@ beforeEach(() => {
   guardRef = { current: null };
   const group = { ...createGroupDraft('', 1, new Set()), id: 'synthetic-group', name: '合成文件夹' };
   preset = {
-    id: 'synthetic-preset', name: '合成预设', profile: { authorName: '', authorAvatarPath: '', usageInstructions: '合成说明', timeline: [] },
+    id: 'synthetic-preset', purpose: 'roleplay', name: '合成预设', profile: { authorName: '', authorAvatarPath: '', usageInstructions: '合成说明', timeline: [] },
     modelTags: [{ id: 'general', label: '通用' }], activeVersionId: 'synthetic-version', groups: [group], expandedGroupIds: [],
     entries: withRequiredAgentPresetEntries([{ ...createEntryDraft('', 2, []), id: 'synthetic-entry', title: '合成提示词' }]),
     promptPositions: withRequiredAgentPresetPromptPositions([]), roleplayPlan: { steps: ['合成任务', '输出正文'] },
     toolGroups: [{ id: 'synthetic-tool', name: '合成工具', description: '合成说明', source: 'built_in', included: true, enabled: true, members: [{ name: 'synthetic_read', description: '合成方法' }] }],
     regexRules: [{ id: 'synthetic-regex', name: '合成规则', pattern: '', replacement: '', targets: ['AiOutput'], enabled: true, displayOnly: false, promptOnly: false, runOnEdit: false, order: 0 }],
   };
-  const catalog = { activePresetId: preset.id, presets: [preset], groups: [] };
+  const catalog = { activePresetIds: { roleplay: preset.id, creator: 'synthetic-creator' }, presets: [preset], groups: [] };
   let snapshot = { status: 'ready', catalog, error: '' };
   const listeners = new Set();
   model = { subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },
@@ -57,7 +57,12 @@ afterEach(async () => {
 async function mount() {
   const view = { route: { kind: 'preset-editor' }, routeBusy: false, chat: { notify: notification }, characterConfiguration: { regexRules: { test: vi.fn() } },
     registerBackHandler(handler) { handlers.push(handler); return () => handlers.splice(handlers.indexOf(handler), 1); }, goBack() {}, guardRef };
-  await act(async () => root.render(<MainPageContext.Provider value={view}><PresetProvider catalogModel={model} navigationGuardRef={guardRef}><MobilePresetEditor /></PresetProvider></MainPageContext.Provider>));
+  function EditorRoute() {
+    const { setSelectedPresetId } = usePresets();
+    React.useEffect(() => setSelectedPresetId(preset.id), []);
+    return <MobilePresetEditor />;
+  }
+  await act(async () => root.render(<MainPageContext.Provider value={view}><PresetProvider catalogModel={model} navigationGuardRef={guardRef}><EditorRoute /></PresetProvider></MainPageContext.Provider>));
 }
 const tab = name => [...document.querySelectorAll('.preset-workspace-tabs button')].find(node => node.textContent.startsWith(name));
 const row = title => [...document.querySelectorAll('[role=treeitem]')].find(node => node.querySelector('.setting-library-tree-label')?.textContent === title);
@@ -83,8 +88,8 @@ describe('Android preset presentation', () => {
 
   it('activates from the introduction header and keeps the profile edit control beside the name', async () => {
     const catalog = model.getSnapshot().catalog;
-    catalog.activePresetId = 'synthetic-other-preset';
-    model.setActive = vi.fn(async id => ({ ...catalog, activePresetId: id }));
+    catalog.activePresetIds.roleplay = 'synthetic-other-preset';
+    model.setActive = vi.fn(async id => ({ ...catalog, activePresetIds: { ...catalog.activePresetIds, roleplay: id } }));
     await mount();
     const activate = document.querySelector('.mobile-header .mobile-preset-activate');
     expect(activate.textContent).toBe('启用');

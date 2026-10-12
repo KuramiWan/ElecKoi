@@ -3,6 +3,12 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SessionProjectionCache from '@deepseek-ai/dsh-session-projection-cache'
+import Storage from '@deepseek-ai/dsh-storage'
+import * as StorageJson from '@deepseek-ai/dsh-storage-json'
+import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
+import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local'
+import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -13,7 +19,7 @@ import { ConversationChangeFeed, CharacterConfigurationChangeFeed } from '../pac
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
 import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
 import { VariableStateRepository } from '../packages/host/product-data/src/domain/variables/VariableStateRepository'
@@ -22,6 +28,7 @@ import * as roleplayPlugin from '../packages/client/features/dsh-client-roleplay
 import { readSessionSnapshot, writeSessionSnapshot } from '../packages/client/features/dsh-client-roleplay/src/host/session-snapshot.mjs'
 import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
 import { rewindDshSession } from '../packages/host/runtime/src/sessionRewind'
+import * as sessionEditPlugin from '../packages/host/runtime/src/sessionEditPlugin'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
@@ -32,7 +39,8 @@ async function fixture({ stream } = {}) {
   const path = join(root, 'product.sqlite3')
   for (const [key, value] of Object.entries({ ELECKOI_DATABASE_PATH: path, ELECKOI_MEDIA_ROOT: root,
     ELECKOI_WORKSPACE_ROOT: root, ELECKOI_SESSION_SNAPSHOT_ROOT: root, ELECKOI_PRESET_ROOT: root,
-    ELECKOI_PRESET_TEMPLATE_PATH: root, ELECKOI_SESSION_BRIDGE_ROOT: root })) {
+    ELECKOI_PRESET_TEMPLATE_PATH: root, ELECKOI_SESSION_BRIDGE_ROOT: root,
+    DSH_SESSION_ROOT: join(root, 'sessions') })) {
     const previous = process.env[key]; process.env[key] = value
     cleanups.push(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous })
   }
@@ -43,6 +51,14 @@ async function fixture({ stream } = {}) {
   const ctx = new Context()
   cleanups.push(() => ctx.fiber.dispose())
   for (const plugin of [LlmRuntime, SessionStore, SessionProjectionRegistry, SystemPrompt, ToolRuntime, AgentRegistry]) await ctx.plugin(plugin)
+  await ctx.plugin(Storage)
+  for (const [plugin, config] of [[StorageJson, { root: join(root, 'storage') }], [StorageDomain, { backend: 'json' }]]) {
+    const { name, inject, apply, Config } = plugin
+    await ctx.plugin({ name, inject, apply, Config }, config)
+  }
+  await ctx.plugin(SessionProjectionCache, { writeEveryEvents: 100, writeIntervalMs: 60000 })
+  await ctx.plugin(LocalAttachmentStore, { dshHome: root })
+  await ctx.plugin(LocalCredentialProvider, { dshHome: root, path: join(root, '.credentials.yaml'), watch: false })
   await ctx.plugin(JsonlSessionPersistence, { root: join(root, 'sessions'), compression: 'none' })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(productDataPlugin)
@@ -88,7 +104,14 @@ async function fixture({ stream } = {}) {
     variablesEnabled: true, variableStateFile, contextFile, mountedPresetId: 'eleckoi-active',
     model: { provider: 'synthetic', model: 'synthetic' },
     generationVariableStateJson: ctx.eleckoiProductData.snapshotConversationRuntime(conversationId).variableStateJson })
+  const editor = ctx.plugin(sessionEditPlugin)
   await ctx.plugin(roleplayPlugin)
+  await editor
+  await vi.waitFor(() => {
+    expect(ctx.get('eleckoiSessionEditor')).toBeDefined()
+    expect(ctx.get('eleckoiImageGeneration')).toBeDefined()
+    expect(ctx.get('eleckoiRoleplaySessions')).toBeDefined()
+  })
   const handle = await ctx.agents.create({ sessionId: SessionId(conversationId), agentOptions: { provider: 'synthetic', model: 'synthetic' } })
   return { ctx, root, path, conversationId, input, handle, changes }
 }
