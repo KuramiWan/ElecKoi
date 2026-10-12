@@ -41,6 +41,7 @@ export function ChatPanel({
   hasCharacters,
   currentTitle,
   headerLeading,
+  submitOnEnter = true,
   conversationId,
   characterId,
   conversationModel,
@@ -396,6 +397,7 @@ export function ChatPanel({
     {
       variant: "composer",
       placeholder: "输入消息",
+      submitOnEnter,
       leadingAccessory: roleplayMenu,
       modelAccessory: roleplayModel,
       dockAccessory: roleplayDock,

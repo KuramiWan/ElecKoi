@@ -3,7 +3,7 @@ import { RoleplayPanel } from "../../../../../apps/web/src/app/windows/RoleplayP
 import { useMainPageView } from "../../../../../apps/web/src/app/windows/MainPageContext.jsx";
 export { MessageNavIcon as NavigationIcon } from "../../../../../apps/web/src/ui/icons/navIcons.jsx";
 
-export function MessagesPage({ headerLeading } = {}) {
+export function MessagesPage({ headerLeading, submitOnEnter = true } = {}) {
   const view = useMainPageView();
   const { chat, appearance, conversations, presets, renderRoleplay, renderConversationList, renderLayout, selectConversation, openChatBackground, openPresetTools, openCharacterSection } = view;
   const listOwner = {
@@ -27,6 +27,7 @@ export function MessagesPage({ headerLeading } = {}) {
     mainPanel: <RoleplayPanel
       renderRoleplay={renderRoleplay}
       headerLeading={headerLeading}
+      submitOnEnter={submitOnEnter}
       hasActiveChat={Boolean(chat.sessionId || chat.chatCharacter?.character_id)}
       conversationId={chat.sessionId}
       characterId={chat.chatCharacter?.character_id || ''}

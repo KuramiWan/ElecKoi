@@ -52,7 +52,7 @@ export function MobileCreatorStudioConversation({ model, editing = false, onCrea
     selectedModel={selected?.model} onLoadModels={config => view.models.discover(config)} onNotify={notify}
     onSelect={selection => model.selectModel({ provider: selection.configId, model: selection.model })} />;
   const resident = renderSlot('eleckoi.creator-studio.composer.bar', {
-    variant: 'composer', placeholder: '输入消息', leadingAccessory: menu, modelAccessory: picker,
+    variant: 'composer', placeholder: '输入消息', submitOnEnter: false, leadingAccessory: menu, modelAccessory: picker,
   });
   const composer = renderSlotChain('eleckoi.creator-studio.composer', {
     sessionId, session, pendingInteraction,

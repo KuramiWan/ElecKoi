@@ -15,15 +15,17 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 function conversationView() {
   const goBack = vi.fn();
   const selectView = vi.fn();
+  const renderComposer = vi.fn(() => null);
   return {
     route: { kind: 'conversation' }, goBack,
     appearance: {}, conversations: {},
     presets: { refresh: async () => ({ presets: [], activePresetIds: { roleplay: '', creator: 'synthetic-creator' } }) },
     renderLayout: ({ mainPanel }) => mainPanel,
-    renderRoleplay: ({ component: Component, props }) => <Component {...props} dshConversation={{
+    renderRoleplay: ({ component: Component, props }) => <Component {...props} renderRoleplaySlot={renderComposer} dshConversation={{
       activeView: 'chat', tabs: [{ id: 'chat', label: '对话' }, { id: 'trajectory', label: '轨迹' }, { id: 'plugin-view', label: '扩展视图' }], selectView,
     }} />,
     selectView,
+    renderComposer,
     chat: { sessionId: 'chat-a', characters: { items: [] }, currentTitle: '角色甲', messages: [],
       chatPersona: { user_name: '用户', assistant_name: '角色甲' }, input: '', inputImages: [], inputFiles: [],
       chatModelConfigs: [], scrollRef: { current: null }, filteredSessions: [], pinnedIds: [], keyword: '' },
@@ -40,6 +42,7 @@ describe('Android conversation header', () => {
       await act(async () => root.render(<MainPageContext.Provider value={view}><MobileMessagesPage /></MainPageContext.Provider>));
       expect(container.querySelector('.mobile-header')).toBeNull();
       expect(container.querySelectorAll('h1')).toHaveLength(1);
+      expect(view.renderComposer).toHaveBeenCalledWith('eleckoi.roleplay.conversation.composer.bar', expect.objectContaining({ submitOnEnter: false }));
       const row = container.querySelector('.chat-header-title-row');
       expect(row.firstElementChild.getAttribute('aria-label')).toBe('返回');
       expect(row.querySelector('h1').textContent).toBe('角色甲');
@@ -53,7 +56,9 @@ describe('Android conversation header', () => {
   });
 
   it('leaves the shared PC header without an Android back button', () => {
-    const markup = renderToStaticMarkup(<MainPageContext.Provider value={conversationView()}><MessagesPage /></MainPageContext.Provider>);
+    const view = conversationView();
+    const markup = renderToStaticMarkup(<MainPageContext.Provider value={view}><MessagesPage /></MainPageContext.Provider>);
+    expect(view.renderComposer).toHaveBeenCalledWith('eleckoi.roleplay.conversation.composer.bar', expect.objectContaining({ submitOnEnter: true }));
     expect(markup).not.toContain('mobile-conversation-back');
     expect(markup).not.toContain('aria-label="返回"');
     expect(markup).toContain('对话操作');

@@ -40,6 +40,8 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private final Handler ui = new Handler(Looper.getMainLooper());
     private long pageStartedAt;
     private String clientReadyUrl = "";
+    private final WebClientStartupDiagnostics clientStartupDiagnostics = new WebClientStartupDiagnostics();
+    private String clientStartupFailure = "";
     private Runnable pageTimeout;
     private long pageLoadGeneration;
     private FrameLayout page;
@@ -192,6 +194,13 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onConsoleMessage(ConsoleMessage message) {
+                if ((message.messageLevel() == ConsoleMessage.MessageLevel.ERROR || message.messageLevel() == ConsoleMessage.MessageLevel.WARNING)
+                    && sameHost(web.getUrl()) && clientStartupDiagnostics.record(message.messageLevel() + ": " + message.message(), message.sourceId(), message.lineNumber())) {
+                    if (!clientStartupFailure.isEmpty()) status.setText(clientStartupDiagnostics.failure(clientStartupFailure));
+                }
+                return super.onConsoleMessage(message);
+            }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams options) {
                 if (fileChoice != null) fileChoice.onReceiveValue(null);
                 fileChoice = callback;
@@ -388,6 +397,10 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         web.stopLoading();
         loadedUrl = value;
         clientReadyUrl = ""; pageStartedAt = SystemClock.elapsedRealtime();
+        clientStartupFailure = "";
+        android.content.pm.PackageInfo webViewProvider = WebView.getCurrentWebViewPackage();
+        clientStartupDiagnostics.begin(webViewProvider == null ? "unknown" : webViewProvider.packageName + " " + webViewProvider.versionName,
+            web.getSettings().getUserAgentString());
         runtimePanel.setVisibility(View.GONE);
         showStartupProgress(null, getString(R.string.runtime_page_loading));
         if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
@@ -419,13 +432,15 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private void showFailure(String error) { runOnUiThread(() -> {
         if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
         hideStartupProgress();
-        status.setText(error); runtimePanel.setVisibility(View.VISIBLE);
+        clientStartupFailure = error;
+        status.setText(clientStartupDiagnostics.failure(error)); runtimePanel.setVisibility(View.VISIBLE);
     }); }
     private void showDiagnostics() {
         HostRuntimeService.Snapshot value = runtime == null ? null : runtime.snapshot();
         ScrollView scrolling = new ScrollView(this); TextView text = new TextView(this); text.setTextIsSelectable(true);
         text.setTextSize(13); text.setLineSpacing(dp(3), 1f); text.setPadding(dp(16), dp(12), dp(16), dp(12));
-        text.setText(value == null ? status.getText() : value.phase + "\n" + value.message + "\n\n" + value.diagnostic); scrolling.addView(text);
+        text.setText(value == null ? status.getText() : (clientStartupFailure.isEmpty() ? clientStartupDiagnostics.details() : status.getText())
+            + "\n\n" + value.phase + "\n" + value.message + "\n\n" + value.diagnostic); scrolling.addView(text);
         TextView title = new TextView(this); title.setText("本地 Host 运行详情"); title.setTextSize(17);
         title.setTypeface(null, android.graphics.Typeface.BOLD); title.setPadding(dp(16), dp(16), dp(16), dp(8));
         diagnosticsDialog = new AlertDialog.Builder(this).setCustomTitle(title).setView(scrolling)
@@ -550,6 +565,8 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         @JavascriptInterface public void clientReady(String url) { runOnUiThread(() -> {
             if (web == null || isFinishing() || !sameHost(url) || !sameHost(web.getUrl()) || !clientReadyUrl.isEmpty()) return;
             clientReadyUrl = loadedUrl;
+            clientStartupDiagnostics.complete();
+            clientStartupFailure = "";
             applyImeVisibility();
             if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
             runtimePanel.setVisibility(View.GONE);

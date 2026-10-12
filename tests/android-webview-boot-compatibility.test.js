@@ -17,7 +17,7 @@ function oldWebView(html = '<!doctype html><html><head></head><body></body></htm
   console.on('jsdomError', error => errors.push(error))
   const page = new JSDOM(html, {
     runScripts, virtualConsole: console, url: 'http://127.0.0.1/',
-    beforeParse(window) { delete window.Promise.withResolvers; delete window.AbortSignal.any }
+    beforeParse(window) { delete window.Promise.withResolvers; delete window.AbortSignal.any; delete window.AbortSignal.prototype.throwIfAborted }
   })
   cleanups.push(() => page.window.close())
   return { window: page.window, errors }
@@ -32,22 +32,41 @@ function compatibleWebView() {
 describe('WebView boot API compatibility', () => {
   it('preserves existing APIs and installs missing APIs only once', () => {
     const { window } = oldWebView()
-    const nativePromise = () => {}, nativeAny = () => {}
+    const nativePromise = () => {}, nativeAny = () => {}, nativeThrow = () => {}
     window.Promise.withResolvers = nativePromise
     window.AbortSignal.any = nativeAny
+    window.AbortSignal.prototype.throwIfAborted = nativeThrow
     window.eval(WEBVIEW_BOOT_COMPATIBILITY_SCRIPT)
     expect(window.Promise.withResolvers).toBe(nativePromise)
     expect(window.AbortSignal.any).toBe(nativeAny)
+    expect(window.AbortSignal.prototype.throwIfAborted).toBe(nativeThrow)
     delete window.Promise.withResolvers
     delete window.AbortSignal.any
+    delete window.AbortSignal.prototype.throwIfAborted
     window.eval(WEBVIEW_BOOT_COMPATIBILITY_SCRIPT)
-    const promise = window.Promise.withResolvers, any = window.AbortSignal.any
+    const promise = window.Promise.withResolvers, any = window.AbortSignal.any, throwIfAborted = window.AbortSignal.prototype.throwIfAborted
     window.eval(WEBVIEW_BOOT_COMPATIBILITY_SCRIPT)
     expect(window.Promise.withResolvers).toBe(promise)
     expect(window.AbortSignal.any).toBe(any)
-    for (const [target, key] of [[window.Promise, 'withResolvers'], [window.AbortSignal, 'any']]) {
+    expect(window.AbortSignal.prototype.throwIfAborted).toBe(throwIfAborted)
+    for (const [target, key] of [[window.Promise, 'withResolvers'], [window.AbortSignal, 'any'], [window.AbortSignal.prototype, 'throwIfAborted']]) {
       expect(Object.getOwnPropertyDescriptor(target, key)).toMatchObject({ configurable: true, writable: true, enumerable: false })
     }
+  })
+
+  it('checks cancellation with the original reason and rejects invalid receivers', () => {
+    const window = compatibleWebView()
+    const controller = new window.AbortController()
+    expect(controller.signal.throwIfAborted()).toBeUndefined()
+    const reason = { kind: 'synthetic-cancel' }
+    controller.abort(reason)
+    let thrown
+    try { controller.signal.throwIfAborted() } catch (error) { thrown = error }
+    expect(thrown).toBe(reason)
+    const standard = new window.AbortController()
+    standard.abort()
+    expect(() => standard.signal.throwIfAborted()).toThrow(window.DOMException)
+    expect(() => window.AbortSignal.prototype.throwIfAborted.call({ aborted: false })).toThrow(window.TypeError)
   })
 
   it('settles deferred promises, preserves rejection reasons and supports subclasses', async () => {
@@ -148,7 +167,7 @@ describe('WebView boot API compatibility', () => {
     cleanups.push(() => ctx.fiber.dispose())
     await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 })
     await installWebClientAssets(ctx, directory)
-    const html = '<!doctype html><html><head><script>globalThis.headDeferred = Promise.withResolvers()</script></head><body><script>__DSH_BOOT_READY__.promise.then(() => { headDeferred.resolve(AbortSignal.any([])); globalThis.clientStarted = true })</script></body></html>'
+    const html = '<!doctype html><html><head><script>globalThis.headDeferred = Promise.withResolvers()</script></head><body><script>__DSH_BOOT_READY__.promise.then(() => { const signal = AbortSignal.any([]); signal.throwIfAborted(); headDeferred.resolve(signal); globalThis.clientStarted = true })</script></body></html>'
     const rows = ctx.webServer.collectIndexInjections()
     const withoutCompatibility = renderIndexInjections(html, rows.filter(row => row.kind !== 'script'))
     const negative = oldWebView(withoutCompatibility, 'dangerously')

@@ -20,7 +20,7 @@ export function MobileMessagesPage() {
   const [error, setError] = useState('');
   const characters = useMemo(() => new Map(chat.characters.items.map(item => [item.id, item])), [chat.characters.items]);
   if (view.route.kind === 'conversation') return <MobileConversationPage>
-    <MessagesPage headerLeading={<button type="button" className="mobile-conversation-back" aria-label="返回" onClick={view.goBack}><MobileBackIcon /></button>} />
+    <MessagesPage submitOnEnter={false} headerLeading={<button type="button" className="mobile-conversation-back" aria-label="返回" onClick={view.goBack}><MobileBackIcon /></button>} />
   </MobileConversationPage>;
   async function run(action) {
     setBusy(true); setError('');

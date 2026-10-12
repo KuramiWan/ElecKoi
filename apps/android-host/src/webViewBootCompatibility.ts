@@ -18,6 +18,15 @@ function installWebViewBootCompatibility(): void {
       }
     })
   }
+  if (typeof AbortSignal.prototype.throwIfAborted !== 'function') {
+    const aborted = Object.getOwnPropertyDescriptor(AbortSignal.prototype, 'aborted')!.get!
+    Object.defineProperty(AbortSignal.prototype, 'throwIfAborted', {
+      configurable: true, writable: true,
+      value: function throwIfAborted(this: AbortSignal): void {
+        if (aborted.call(this)) throw this.reason
+      }
+    })
+  }
   if (typeof AbortSignal.any !== 'function') {
     const aborted = Object.getOwnPropertyDescriptor(AbortSignal.prototype, 'aborted')!.get!
     const controllers = new WeakMap<AbortSignal, AbortController>()
