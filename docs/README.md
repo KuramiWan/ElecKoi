@@ -4,6 +4,8 @@
 
 ## 当前架构
 
+- [Android 更新检查](adr/0035-android-update-checks.md)：应用身份、平台发布识别、后台通知和原生壳边界。
+
 - [生成图片随记录删除](adr/0034-generated-image-record-cleanup.md)：聊天删除、角色删除和重新生成对应的文件清理。
 
 - [原生脚本库与作者 SDK](adr/0032-native-script-libraries.md)：三类脚本、作者规则和前端交互的数据与运行合同。

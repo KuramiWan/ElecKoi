@@ -55,7 +55,7 @@ export function MobileMessagesPage() {
 export function MobileMessageList({ sessions, characters, pinnedIds, artworkMode = 'cover', loading, onOpen, onMenu, onPin, onHide }) {
   const ref = useMobileScroll('messages');
   const [openKey, setOpenKey] = useState(null);
-  return <div ref={ref} className="mobile-scroll mobile-message-list">
+  return <div ref={ref} className={`mobile-scroll mobile-message-list${sessions.length ? '' : ' is-empty'}`}>
     {sessions.map(item => {
       const character = characters.get(item.character_id);
       const name = item.character_name || characterName(character);

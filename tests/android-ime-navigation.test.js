@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { JSDOM } from 'jsdom'
 
 const css = readFileSync(new URL('../apps/web/src/mobile/mobile.css', import.meta.url), 'utf8')
-const activity = readFileSync(new URL('../apps/android/app/src/main/java/com/eleckoi/unified/android/MainActivity.java', import.meta.url), 'utf8')
+const activity = readFileSync(new URL('../apps/android/app/src/main/java/com/eleckoi/app/MainActivity.java', import.meta.url), 'utf8')
 
 function navigationPage() {
   const page = new JSDOM('<!doctype html><html><body><main class="mobile-shell"><div class="mobile-front-content"><section class="mobile-page-seat"><div role="dialog"><input aria-label="名称" /></div></section><nav class="mobile-bottom-nav"><button>预设</button></nav></div></main><nav class="desktop-navigation">桌面</nav></body></html>', { runScripts: 'outside-only' })

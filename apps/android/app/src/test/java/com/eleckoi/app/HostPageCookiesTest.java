@@ -1,4 +1,4 @@
-package com.eleckoi.unified.android;
+package com.eleckoi.app;
 
 import org.junit.Test;
 import java.net.CookieManager;

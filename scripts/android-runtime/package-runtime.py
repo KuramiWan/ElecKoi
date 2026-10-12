@@ -260,6 +260,17 @@ def patch_attachment_storage(value):
             b'import { androidAttachmentBoundary, publishAndroidAlias } from "./android-attachment-storage.mjs";\n' + value)
 
 
+def patch_workspace_navigation(value):
+    """Keep Android startup free of unrequested default Workspace creation."""
+    spec = read_json(REPO / "native/android-runtime/workspace-navigation-lock.json")
+    if hashlib.sha256(value).hexdigest() != spec["sourceSha256"]:
+        raise ValueError("Android Workspace navigation source differs from the locked package")
+    before = spec["before"].encode()
+    if value.count(before) != 1:
+        raise ValueError("Android Workspace navigation requires one exact startup block")
+    return value.replace(before, b"")
+
+
 def validate_shared_asset_copies(source):
     """Verify both declared resource paths before storing one physical copy."""
     manifest = read_json(source / "package.json")
@@ -309,9 +320,17 @@ def verify_shared_asset_layout(packed, inventory):
 def add_directory(output, source, prefix, record_name=None):
     publication = read_json(REPO / "native/android-runtime/session-publication-lock.json")
     attachment = read_json(REPO / "native/android-runtime/attachment-storage-lock.json")
+    workspace = read_json(REPO / "native/android-runtime/workspace-navigation-lock.json")
     android_session = record_name == publication["package"]
     android_attachment = record_name == attachment["package"]
+    android_workspace = record_name == workspace["package"]
     shared_assets = record_name == SHARED_ASSET_PACKAGE
+    if android_workspace:
+        manifest = read_json(source / "package.json")
+        if (manifest["name"], manifest["version"]) != (workspace["package"], workspace["version"]):
+            raise ValueError("Android Workspace navigation package identity mismatch")
+        if not (source / workspace["file"]).is_file():
+            raise ValueError("Android Workspace navigation source is missing")
     if shared_assets:
         validate_shared_asset_copies(source)
     if android_session:
@@ -356,6 +375,9 @@ def add_directory(output, source, prefix, record_name=None):
             if file.suffix.lower() in (".exe", ".dll", ".pdb", ".lib", ".obj", ".cmd", ".bat"):
                 continue
             relative = file.relative_to(source).as_posix()
+            if android_workspace and relative == workspace["file"]:
+                add_bytes(output, posixpath.join(prefix, relative), patch_workspace_navigation(file.read_bytes()))
+                continue
             if android_session and relative == publication["file"]:
                 add_bytes(output, posixpath.join(prefix, relative), patch_session_publication(file.read_bytes()))
                 continue

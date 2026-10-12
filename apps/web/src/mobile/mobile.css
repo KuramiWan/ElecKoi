@@ -185,6 +185,9 @@
 .mobile-provider-configs button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 4px 10px; border: 0; background: transparent; text-align: left; }
 .mobile-provider-configs strong { flex: 1; font-size: 14px; overflow-wrap: anywhere; }
 .mobile-state { margin: 24px 18px; text-align: center; color: var(--muted); font-size: 14px; }
+.mobile-message-list.is-empty { display: flex; align-items: center; justify-content: center; }
+.mobile-character-list.is-empty { position: relative; }
+.mobile-character-list.is-empty > .mobile-state { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; }
 .mobile-state p { white-space: pre-wrap; }
 .mobile-dialog-overlay { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgb(0 0 0 / 30%); }
 .mobile-dialog { width: min(100%, 420px); max-height: calc(100% - 24px); overflow: auto; padding: 12px 18px 18px; border-radius: 22px; background: var(--surface-raised); box-shadow: 0 12px 36px rgb(0 0 0 / 15%); }

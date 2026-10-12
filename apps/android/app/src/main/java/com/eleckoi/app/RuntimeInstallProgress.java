@@ -1,4 +1,4 @@
-package com.eleckoi.unified.android;
+package com.eleckoi.app;
 
 /** Byte progress is limited to copying; tar extraction has no byte completion contract. */
 final class RuntimeInstallProgress {

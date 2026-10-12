@@ -1,4 +1,4 @@
-package com.eleckoi.unified.android;
+package com.eleckoi.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

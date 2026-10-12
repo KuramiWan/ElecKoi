@@ -16,6 +16,19 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals() })
 
+it('uses the declared Android release and download action without desktop installation controls', async () => {
+  vi.stubGlobal('__ELECKOI_CLIENT_PLATFORM__',{kind:'android'});
+  const updates={status:{phase:'available',availableVersion:'0.2.9',currentVersion:'0.2.8',releaseUrl:'https://github.com/eleckoi/ElecKoi/releases/tag/android-v0.2.9'},download:vi.fn(),install:vi.fn()};
+  await act(async () => root.render(<AppUpdateController updates={updates} />));
+  expect(document.querySelector('a').href).toBe(updates.status.releaseUrl);
+  expect(document.querySelector('.is-primary').textContent).toBe('前往下载');
+  await act(async () => document.querySelector('.is-primary').click());
+  expect(updates.download).toHaveBeenCalledOnce(); expect(updates.install).not.toHaveBeenCalled();
+  updates.status={...updates.status,phase:'error',manualCheck:false,message:'合成网络错误'};
+  await act(async () => root.render(<AppUpdateController updates={updates} />));
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+})
+
 it('keeps complete notes and update controls through download and install without stealing reading focus', async () => {
   const releaseNotes = Array.from({ length: 100 }, (_, index) => `合成更新条目 ${index}`).join('\n')
   const updates = { status: { phase: 'available', availableVersion: '0.2.8', currentVersion: '0.2.7', releaseNotes },

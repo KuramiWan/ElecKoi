@@ -38,7 +38,7 @@ assert.equal(target.state, 'device', 'The selected Android device must be online
 const adb = args => invokeAdb(['-s', target.serial, ...args])
 const abis = (await adb(['shell', 'getprop', 'ro.product.cpu.abilist'])).split(',')
 assert(abis.includes('arm64-v8a'), 'Device must support arm64-v8a; no emulator or desktop runtime is substituted')
-const packageId = 'com.eleckoi.unified.android'
+const packageId = 'com.eleckoi.app'
 const component = `${packageId}/.MainActivity`
 if (values.install) {
   const apk = resolve(values.install)

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "upstreamCommit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+  "package": "@deepseek-ai/dsh-client-ui-workspace",
+  "version": "0.2.0-rc.2",
+  "file": "lib/client.js",
+  "sourceSha256": "e784543780fb8ac7c38c853afd26b9b1713c6907eec2b07eff37461e07bd3be9",
+  "before": "\t\t\t\tif (target === void 0 && workspaces.items.length === 0 && sessions.ids.length === 0) {\n\t\t\t\t\tconst prepared = await this.initializeDefaultWorkspace(navigation);\n\t\t\t\t\tif (navigation.aborted) return;\n\t\t\t\t\ttarget = prepared?.workspaceId;\n\t\t\t\t}\n"
+}

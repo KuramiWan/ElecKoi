@@ -120,7 +120,7 @@ function CharacterCover({ character }) {
 export function CharacterGrid({ characters, persona, selection, selectedIds, onClick, filters, scrollKey = 'characters' }) {
   const ref = useMobileScroll(scrollKey);
   const author = persona?.user_name || '用户';
-  return <div className="mobile-scroll mobile-character-list" ref={ref}>{filters}<MobileWaterfall>{characters.map((character, index) => <button type="button" key={character.id} aria-label={characterName(character)} className="mobile-character-card" style={{ '--mobile-cover-ratio': [0.76, 0.68, 0.84, 0.72][index % 4] }} onClick={() => onClick(character)} aria-pressed={selection ? selectedIds.includes(character.id) : undefined}>
+  return <div className={`mobile-scroll mobile-character-list${characters.length ? '' : ' is-empty'}`} ref={ref}>{filters}<MobileWaterfall>{characters.map((character, index) => <button type="button" key={character.id} aria-label={characterName(character)} className="mobile-character-card" style={{ '--mobile-cover-ratio': [0.76, 0.68, 0.84, 0.72][index % 4] }} onClick={() => onClick(character)} aria-pressed={selection ? selectedIds.includes(character.id) : undefined}>
     <CharacterCover character={character} /><strong>{characterName(character)}</strong>
     <span className="mobile-character-author"><Avatar as="span" name={author} src={persona?.user_avatar} /><span>{author}</span></span>
     {selection && <CheckCircle className="mobile-card-check" size={23} weight={selectedIds.includes(character.id) ? 'fill' : 'regular'} />}

@@ -1,32 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+const updateService = android => android ? window.ElecKoiPlatform?.updates : window.dshDesktop?.updates;
 export function useAppUpdates() {
   const android = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === "android";
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (android) return undefined;
     let active = true;
-    const updates = window.dshDesktop.updates;
-    if (!updates) {
-      setError("更新服务暂时不可用。");
-      return undefined;
-    }
-    const unsubscribe = updates.subscribe((nextStatus) => {
-      if (!active) return;
-      setStatus(nextStatus);
-      setError("");
-    });
-    void updates.status().then((nextStatus) => {
-      if (!active) return;
-      setStatus(nextStatus);
-      setError("");
-    }).catch((cause) => {
-      if (active) setError(cause?.message || "无法读取版本信息。");
-    });
+    let connected, unsubscribe;
+    const attach = () => {
+      const updates = updateService(android);
+      if (!updates) { if (!android) setError("更新服务暂时不可用。"); return; }
+      if (connected === updates) return;
+      unsubscribe?.(); connected = updates;
+      unsubscribe = updates.subscribe((nextStatus) => {
+        if (!active) return;
+        setStatus(nextStatus);
+        setError("");
+      });
+      void updates.status().then((nextStatus) => {
+        if (!active) return;
+        setStatus(nextStatus);
+        setError("");
+      }).catch((cause) => {
+        if (active) setError(cause?.message || "无法读取版本信息。");
+      });
+    };
+    if (android) window.addEventListener('eleckoi:platform-ready', attach);
+    attach();
     return () => {
       active = false;
-      unsubscribe();
+      unsubscribe?.();
+      window.removeEventListener('eleckoi:platform-ready', attach);
     };
   }, [android]);
 
@@ -43,26 +48,26 @@ export function useAppUpdates() {
   }, []);
 
   const check = useCallback(() => requestStatus(() => {
-    const updates = window.dshDesktop.updates;
+    const updates = updateService(android);
     if (!updates) throw new Error("更新服务暂时不可用。");
     return updates.check();
-  }), [requestStatus]);
+  }), [android, requestStatus]);
   const download = useCallback(() => requestStatus(() => {
-    const updates = window.dshDesktop.updates;
+    const updates = updateService(android);
     if (!updates) throw new Error("更新服务暂时不可用。");
     return updates.download();
-  }), [requestStatus]);
+  }), [android, requestStatus]);
   const install = useCallback(async () => {
     setError("");
     try {
-      const updates = window.dshDesktop.updates;
-      if (!updates) throw new Error("更新服务暂时不可用。");
+      const updates = updateService(android);
+      if (!updates?.install) throw new Error("更新安装服务暂时不可用。");
       return await updates.install();
     } catch (cause) {
       setError(cause?.message || "无法启动安装。");
       throw cause;
     }
-  }, []);
+  }, [android]);
 
-  return useMemo(() => android ? null : ({ status, error, check, download, install }), [android, check, download, error, install, status]);
+  return useMemo(() => ({ status, error, check, download, install }), [check, download, error, install, status]);
 }

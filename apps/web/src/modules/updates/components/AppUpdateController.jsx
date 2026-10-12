@@ -6,6 +6,7 @@ const VISIBLE_PHASES = new Set(["available", "downloading", "ready", "installing
 
 export function AppUpdateController({ updates }) {
   const status = updates?.status ?? null;
+  const android = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === 'android';
   const [dismissedKey, setDismissedKey] = useState("");
   const [actionError, setActionError] = useState("");
 
@@ -18,6 +19,7 @@ export function AppUpdateController({ updates }) {
     status?.availableVersion
     && VISIBLE_PHASES.has(status.phase)
     && dismissedKey !== dialogKey
+    && !(android && status.phase === 'error' && !status.manualCheck)
   );
 
   const close = useCallback(() => {
@@ -64,6 +66,7 @@ export function AppUpdateController({ updates }) {
 }
 
 function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
+  const android = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === 'android';
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef(null);
@@ -76,14 +79,15 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
   const failed = status.phase === "error";
   const progressPercent = Math.round(status.progress?.percent ?? 0);
   const title = installing ? "正在更新" : downloading ? "正在下载" : failed ? "更新失败" : "版本就绪";
-  const releaseUrl = `https://github.com/eleckoi/ElecKoi/releases/tag/${encodeURIComponent(`v${status.availableVersion}`)}`;
+  const releaseUrl = android ? status.releaseUrl : `https://github.com/eleckoi/ElecKoi/releases/tag/${encodeURIComponent(`v${status.availableVersion}`)}`;
   const description = useMemo(() => {
     if (installing) return "正在重启并安装更新…";
     if (ready) return "更新已下载，重启后即可完成安装。";
     if (downloading) return `正在后台下载更新${progressPercent > 0 ? ` · ${progressPercent}%` : "…"}`;
     if (failed) return status.message || "更新失败，请检查网络后重试。";
+    if (android) return "前往下载 APK，下载后由系统确认安装。";
     return "新版本已准备好，下载期间仍可继续使用 ElecKoi。";
-  }, [downloading, failed, installing, progressPercent, ready, status.message]);
+  }, [android, downloading, failed, installing, progressPercent, ready, status.message]);
 
   useEffect(() => {
     const previousFocus = document.activeElement;
@@ -174,7 +178,7 @@ function UpdateDialog({ status, actionError, onClose, onDownload, onInstall }) {
                     ? "重启并更新"
                     : failed
                       ? "重新下载"
-                      : "下载更新"}
+                      : android ? "前往下载" : "下载更新"}
             </button>
           </div>
         </footer>

@@ -1,4 +1,4 @@
-package com.eleckoi.unified.android;
+package com.eleckoi.app;
 
 import android.app.*;
 import android.content.*;
@@ -18,7 +18,7 @@ import java.util.concurrent.*;
 
 /** Owns one actual ARM64 Node Host independently of Activity rotation and WebView lifetime. */
 public final class HostRuntimeService extends Service {
-    static final String START = "com.eleckoi.unified.START", STOP = "com.eleckoi.unified.STOP", RESTART = "com.eleckoi.unified.RESTART";
+    static final String START = "com.eleckoi.app.START", STOP = "com.eleckoi.app.STOP", RESTART = "com.eleckoi.app.RESTART";
     private static final String CHANNEL = "unified-host", PREFIX = "ELECKOI_HOST\t";
     private static final int NOTIFICATION = 41;
     public interface Listener { void changed(Snapshot snapshot); }

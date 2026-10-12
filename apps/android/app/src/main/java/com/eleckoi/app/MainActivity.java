@@ -1,6 +1,10 @@
-package com.eleckoi.unified.android;
+package com.eleckoi.app;
 
 import android.Manifest;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
 import android.app.*;
 import android.content.*;
 import android.content.pm.PackageManager;
@@ -44,6 +48,8 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private FrameLayout startupProgressOverlay;
     private TextView startupProgressLabel, firstInstallationNotice;
     private ProgressBar startupProgressBar;
+    private StartupMascotView startupMascot;
+    private AnimatorSet startupExit;
     private volatile String loadedUrl = "";
     private boolean appearanceDark;
     private int appearanceBackground = Color.rgb(245, 245, 245);
@@ -56,6 +62,10 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private String platformSource;
     private ScriptHandler platformDocumentScript;
     private SystemSpeech systemSpeech;
+    private AppUpdates updates;
+    private final AppUpdates.Listener updateListener = snapshot -> ui.post(() -> {
+        if (web != null && sameHost(web.getUrl())) web.evaluateJavascript("window.dispatchEvent(new CustomEvent('eleckoi:updates-changed',{detail:"+snapshot+"}));",null);
+    });
     private final ConcurrentMap<String, StagedSave> stagedSaves = new ConcurrentHashMap<>();
     private final ServiceConnection connection = new ServiceConnection() {
         @Override public void onServiceConnected(ComponentName name, IBinder binder) {
@@ -77,6 +87,8 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        updates=((ElecKoiApplication)getApplication()).updates();
+        updates.observe(updateListener); updates.startup();
         systemSpeech = new SystemSpeech(this, this::platformResult);
         page = new FrameLayout(this);
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
@@ -107,6 +119,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         startupProgressPanel = new LinearLayout(this); startupProgressPanel.setOrientation(LinearLayout.VERTICAL);
         startupProgressOverlay = new FrameLayout(this);
         startupProgressOverlay.setClickable(true);
+        startupProgressPanel.setClipChildren(false);
         startupProgressPanel.setPadding(dp(8), dp(16), dp(8), dp(16));
         firstInstallationNotice = new TextView(this);
         firstInstallationNotice.setText(R.string.first_runtime_installation); firstInstallationNotice.setTextSize(14);
@@ -115,6 +128,11 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         firstInstallationNotice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         startupProgressLabel = new TextView(this); startupProgressLabel.setTextSize(16); startupProgressLabel.setGravity(Gravity.CENTER);
         startupProgressLabel.setId(R.id.runtime_startup_label);
+        startupProgressLabel.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        startupMascot = new StartupMascotView(this);
+        LinearLayout.LayoutParams mascotLayout = new LinearLayout.LayoutParams(dp(216), dp(132));
+        mascotLayout.gravity = Gravity.CENTER_HORIZONTAL; mascotLayout.bottomMargin = dp(24);
+        startupProgressPanel.addView(startupMascot, mascotLayout);
         startupProgressPanel.addView(startupProgressLabel);
         startupProgressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         startupProgressBar.setId(R.id.runtime_startup_progress); startupProgressBar.setMax(100);
@@ -200,6 +218,13 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             FrameLayout.LayoutParams layout = (FrameLayout.LayoutParams) startupProgressPanel.getLayoutParams();
             int width = Math.min(dp(360), available);
             if (layout.width != width) { layout.width = width; startupProgressPanel.setLayoutParams(layout); }
+            LinearLayout.LayoutParams mascotLayoutParams = (LinearLayout.LayoutParams) startupMascot.getLayoutParams();
+            int mascotWidth = Math.min(dp(216), Math.max(1, width - dp(16)));
+            if (mascotLayoutParams.width != mascotWidth) {
+                mascotLayoutParams.width = mascotWidth;
+                mascotLayoutParams.height = Math.round(mascotWidth * 132f / 216);
+                startupMascot.setLayoutParams(mascotLayoutParams);
+            }
         });
         page.addView(runtimePanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
         setContentView(page);
@@ -290,14 +315,60 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         }
     }
     private void showStartupProgress(RuntimeInstallProgress progress, String message) {
+        cancelStartupExit();
+        startupProgressOverlay.setAlpha(1f);
+        startupProgressLabel.setAlpha(1f);
+        startupMascot.setTranslationY(0f); startupMascot.setScaleX(1f); startupMascot.setScaleY(1f);
         boolean indeterminate = progress == null || progress.indeterminate();
         startupProgressBar.setIndeterminate(indeterminate);
+        startupProgressBar.setVisibility(progress == null ? View.GONE : View.VISIBLE);
         if (!indeterminate) startupProgressBar.setProgress(progress.percent());
         String label = progress == null ? message : progress.message();
         startupProgressLabel.setText(indeterminate ? label : label + "  " + progress.percent() + "%");
         startupProgressBar.setContentDescription(label);
         firstInstallationNotice.setVisibility(progress == null ? View.GONE : View.VISIBLE);
         startupProgressOverlay.setVisibility(View.VISIBLE);
+        startupMascot.showLoading();
+    }
+    private void cancelStartupExit() {
+        if (startupExit == null) return;
+        AnimatorSet exit = startupExit; startupExit = null;
+        exit.removeAllListeners(); exit.cancel();
+    }
+    private void hideStartupProgress() {
+        cancelStartupExit();
+        startupMascot.stopLoading();
+        startupProgressOverlay.setVisibility(View.GONE);
+    }
+    private void completeStartupProgress() {
+        startupMascot.stopLoading();
+        if (!startupMascot.canAnimate()) {
+            hideStartupProgress(); return;
+        }
+        cancelStartupExit();
+        AnimatorSet press = new AnimatorSet();
+        press.playTogether(ObjectAnimator.ofFloat(startupMascot, View.SCALE_X, 1f, 1.03f),
+                ObjectAnimator.ofFloat(startupMascot, View.SCALE_Y, 1f, .95f));
+        press.setDuration(100);
+        AnimatorSet hop = new AnimatorSet();
+        hop.playTogether(ObjectAnimator.ofFloat(startupMascot, View.TRANSLATION_Y, 0f, -dp(14), 0f),
+                ObjectAnimator.ofFloat(startupMascot, View.SCALE_X, 1.03f, 1f),
+                ObjectAnimator.ofFloat(startupMascot, View.SCALE_Y, .95f, 1f));
+        hop.setDuration(240);
+        AnimatorSet movement = new AnimatorSet(); movement.playSequentially(press, hop);
+        ObjectAnimator fade = ObjectAnimator.ofFloat(startupProgressOverlay, View.ALPHA, 1f, 0f);
+        fade.setStartDelay(240); fade.setDuration(200);
+        ObjectAnimator labelFade = ObjectAnimator.ofFloat(startupProgressLabel, View.ALPHA, 1f, 0f);
+        labelFade.setDuration(120);
+        startupExit = new AnimatorSet(); startupExit.playTogether(movement, fade, labelFade);
+        startupExit.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (startupExit != animation) return;
+                startupExit = null;
+                startupProgressOverlay.setVisibility(View.GONE);
+            }
+        });
+        startupExit.start();
     }
     private void loadHostPage(String value) {
         long generation = ++pageLoadGeneration;
@@ -334,7 +405,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     }
     private void showFailure(String error) { runOnUiThread(() -> {
         if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
-        startupProgressOverlay.setVisibility(View.GONE);
+        hideStartupProgress();
         status.setText(error); runtimePanel.setVisibility(View.VISIBLE);
     }); }
     private void showDiagnostics() {
@@ -469,7 +540,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             applyImeVisibility();
             if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
             runtimePanel.setVisibility(View.GONE);
-            startupProgressOverlay.setVisibility(View.GONE);
+            completeStartupProgress();
             android.util.Log.i("ElecKoiStartup", "Web client rendered in " + (SystemClock.elapsedRealtime() - pageStartedAt) + " ms");
         }); }
         @JavascriptInterface public void clientFailed(String url, String message) { runOnUiThread(() -> {
@@ -513,6 +584,14 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         @JavascriptInterface public void reportError(String message) { runOnUiThread(() -> showFailure("文件导出失败：" + message)); }
         @JavascriptInterface public void openExternal(String url) { runOnUiThread(() -> MainActivity.this.openExternal(url)); }
         @JavascriptInterface public void notificationSettings() { runOnUiThread(MainActivity.this::notificationSettings); }
+        @JavascriptInterface public String updateStatus() { return updates.status(); }
+        @JavascriptInterface public void checkUpdates(String id) {
+            updates.check(true,success -> { try { platformResult(id,true,new JSONObject(updates.status())); } catch(Exception error) { platformResult(id,false,error.toString()); } });
+        }
+        @JavascriptInterface public void downloadUpdate(String id) { runOnUiThread(() -> {
+            try { startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(updates.downloadUrl()))); platformResult(id,true,new JSONObject(updates.status())); }
+            catch(Exception error) { platformResult(id,false,error.toString()); }
+        }); }
         @JavascriptInterface public void appearance(String mode, String surface) { runOnUiThread(() -> applyAppearance("dark".equals(mode), surface)); }
         @JavascriptInterface public String version() { return "1"; }
     }
@@ -561,10 +640,16 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         startupProgressBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(appearanceBorder));
         themeDiagnosticsDialog();
     }
-    @Override protected void onResume() { super.onResume(); web.onResume(); }
-    @Override protected void onPause() { web.onPause(); super.onPause(); }
+    @Override protected void onResume() { super.onResume(); web.onResume(); startupMascot.setActive(true); }
+    @Override protected void onPause() {
+        startupMascot.setActive(false);
+        if (startupExit != null) hideStartupProgress();
+        web.onPause(); super.onPause();
+    }
     @Override protected void onDestroy() {
+        updates.removeObserver(updateListener);
         pageLoadGeneration++;
+        hideStartupProgress();
         if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
         if (runtime != null) runtime.removeObserver(this); if (bound) unbindService(connection);
         if (fileChoice != null) fileChoice.onReceiveValue(null);

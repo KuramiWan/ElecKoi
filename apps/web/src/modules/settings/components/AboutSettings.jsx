@@ -7,8 +7,8 @@ export function AboutSettings({ updates }) {
   const status = updates?.status ?? null;
   const phase = status?.phase ?? "idle";
   const busy = BUSY_PHASES.has(phase);
-  const message = android ? "" : updateStatusMessage(status, updates?.error);
-  const currentVersion = android ? globalThis.__ELECKOI_CLIENT_PLATFORM__.version : status?.currentVersion;
+  const message = updateStatusMessage(status, updates?.error);
+  const currentVersion = status?.currentVersion ?? (android ? globalThis.__ELECKOI_CLIENT_PLATFORM__.version : "");
 
   async function checkForUpdates() {
     try {
@@ -29,14 +29,14 @@ export function AboutSettings({ updates }) {
           <strong>ElecKoi</strong>
           <span>当前版本 {currentVersion ? `v${currentVersion}` : "—"}</span>
         </div>
-        {!android ? <button
+        <button
           type="button"
           className="settings-secondary-button about-update-button"
           disabled={busy}
           onClick={checkForUpdates}
         >
           {phase === "checking" ? "正在检查…" : "检查更新"}
-        </button> : null}
+        </button>
         {message ? (
           <p className={`about-update-status${phase === "error" || updates?.error ? " is-error" : ""}`} role="status">
             {message}

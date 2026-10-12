@@ -64,6 +64,16 @@
     },
     openExternal: url => ElecKoiAndroid.openExternal(url),
     notificationSettings: () => ElecKoiAndroid.notificationSettings(),
+    updates: {
+      status: async () => JSON.parse(ElecKoiAndroid.updateStatus()),
+      check: () => request(id => ElecKoiAndroid.checkUpdates(id)).then(reply => reply.result),
+      download: () => request(id => ElecKoiAndroid.downloadUpdate(id)).then(reply => reply.result),
+      subscribe: listener => {
+        const changed = event => listener(event.detail);
+        window.addEventListener('eleckoi:updates-changed', changed);
+        return () => window.removeEventListener('eleckoi:updates-changed', changed);
+      }
+    },
     tts: {
       voices: () => request(id => ElecKoiAndroid.tts(id, 'voices', '{}')).then(reply => reply.result),
       synthesize: options => request(id => ElecKoiAndroid.tts(id, 'synthesize', JSON.stringify(options))).then(reply => reply.result),
@@ -73,6 +83,7 @@
       releaseAudio: token => result(ElecKoiAndroid.releaseTtsAudio(token))
     }
   };
+  window.dispatchEvent(new Event('eleckoi:platform-ready'));
   if (window === window.top && typeof ElecKoiAndroid.clientReady === 'function') {
     const observeClient = () => {
       const observer = new MutationObserver(check);

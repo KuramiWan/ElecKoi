@@ -5,14 +5,14 @@ plugins { id("com.android.application") }
 val runtimeAssets = providers.gradleProperty("unifiedRuntimeAssetsDir")
     .map { rootProject.file(it) }.getOrElse(rootProject.file("runtime-assets"))
 android {
-    namespace = "com.eleckoi.unified.android"
+    namespace = "com.eleckoi.app"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.eleckoi.unified.android"
+        applicationId = "com.eleckoi.app"
         minSdk = 27
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.2.8-android-dev"
+        versionCode = 2
+        versionName = "0.2.9"
         ndk { abiFilters += "arm64-v8a" }
     }
     sourceSets.getByName("main").assets.directories += runtimeAssets.absolutePath
@@ -25,6 +25,7 @@ dependencies {
     implementation("androidx.core:core:1.13.1")
     implementation("androidx.webkit:webkit:1.12.1")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
 
 val verifyRuntimeAssets = tasks.register("verifyRuntimeAssets") {
@@ -62,4 +63,19 @@ val verifyRuntimeAssets = tasks.register("verifyRuntimeAssets") {
 
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
     dependsOn(verifyRuntimeAssets)
+}
+
+afterEvaluate {
+    listOf("Debug", "Release").forEach { variant ->
+        val outputDirectory = layout.buildDirectory.dir("outputs/apk/${variant.lowercase()}")
+        val descriptor = tasks.register<Exec>("write${variant}UpdateDescriptor") {
+            dependsOn("package$variant")
+            inputs.file(outputDirectory.map { it.file("output-metadata.json") })
+            outputs.file(outputDirectory.map { it.file("android-update.json") })
+            outputs.upToDateWhen { false }
+            commandLine("node", rootProject.file("../../scripts/android-runtime/create-update-descriptor.mjs"),
+                outputDirectory.get().file("output-metadata.json").asFile, outputDirectory.get().file("android-update.json").asFile)
+        }
+        tasks.named("assemble$variant").configure { finalizedBy(descriptor) }
+    }
 }
