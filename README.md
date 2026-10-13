@@ -9,7 +9,7 @@
   <a href="./README.en.md">English</a>
 </p>
 
-电子爱是一个由 DSH Agent 驱动的 AI 角色卡创作与演绎客户端，支持 Windows PC 与 Android。两端源码在本仓库统一维护，共享核心功能，各自保留独立的运行环境与构建流程。
+电子爱是一款免费开源的 AI 角色扮演和角色卡创作软件，支持 Windows PC 和 Android。你可以与 AI 角色聊天、体验故事，也可以创建和编辑自己的角色卡，让 AI 帮你完善角色设定。
 
 [作者 SDK 文档](https://eleckoi.github.io/ElecKoi/)包含原生脚本、角色前端的开发教程、接口参考和可导入示例。
 
