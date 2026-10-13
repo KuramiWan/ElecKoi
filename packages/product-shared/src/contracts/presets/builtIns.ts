@@ -1,4 +1,4 @@
-import type { SettingLibraryEntry, SettingLibraryPromptPosition } from '../settingLibrary/schemas'
+import type { SettingLibraryEntry, SettingLibraryPromptPosition } from '../settingLibrary/schemas.js'
 
 export const HIDDEN_TOOL_TIMELINE_ENTRY_ID = 'built-in-hidden-tool-timeline'
 export const HIDDEN_TOOL_TIMELINE_ENTRY_TITLE = '隐藏工具时间线'

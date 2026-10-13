@@ -1,4 +1,8 @@
-import type { UpdateInstallResult, UpdateStatus } from './updates/schemas'
+import type { DesktopHostFailureNotice } from './errors/ipc.js'
+import type { UpdateInstallResult, UpdateStatus } from './updates/schemas.js'
+
+/** 宿主失败通知的线上形状（形状定义在边界⑤ 的合同里，这里只为壳的 API 面转出）。 */
+export type { DesktopHostFailureNotice }
 
 /** Main-issued identity for one Electron browser guest reservation. */
 export type DesktopBrowserLeaseId = string & { readonly __desktopBrowserLeaseId: unique symbol }
@@ -53,6 +57,10 @@ export interface DshDesktopProductApi {
     close(): Promise<void>
   }
   readonly host?: {
-    subscribeFailure(listener: (message: string) => void): () => void
+    /**
+     * 插件宿主意外退出时的通知出口。听众收到的是**失败对象**（码 + 参数化详情 + 诊断指针），
+     * 不是拼好的用户可见句子——用户可见文案只有一个解析点（渲染层，ADR 0002 决定 4/8）。
+     */
+    subscribeFailure(listener: (failure: DesktopHostFailureNotice) => void): () => void
   }
 }

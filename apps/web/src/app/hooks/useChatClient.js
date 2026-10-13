@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChatSessions } from "../../modules/chat/index.js";
 import { getModelMeta, useModelRuntime } from "../../modules/models/index.js";
 import { usePersonaCharacters } from "../../modules/persona/index.js";
+import { useNotices } from "./useNotices.js";
 
 export function useChatClient({ conversations, characters: characterCatalog, models: modelCatalog, persona: personaModel, navigation } = {}) {
   const [localActiveSection, setLocalActiveSection] = useState("messages");
@@ -12,18 +13,8 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
   }, [navigation]);
   const [meta, setMeta] = useState(null);
   const [status, setStatus] = useState("就绪");
-  const [notice, setNotice] = useState(null);
-
-  function notify(type, message) {
-    const id = Date.now();
-    setNotice({ id, type, message });
-    if (type === "error") return;
-    window.setTimeout(() => {
-      setNotice((current) => (current?.id === id ? null : current));
-    }, 3200);
-  }
-
-  const dismissNotice = useCallback(() => setNotice(null), []);
+  // notice 队列；三个单槽缺陷的机制与修法在 useNotices.js 的文件头逐条对着勘查笔记写清了。
+  const { notices, notify, dismissNotice } = useNotices();
 
   const {
     modelConfigs,
@@ -203,7 +194,7 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     setKeyword: chatSessions.setKeyword,
     isSending: chatSessions.isSending,
     status,
-    notice,
+    notices,
     notify,
     dismissNotice,
     language,

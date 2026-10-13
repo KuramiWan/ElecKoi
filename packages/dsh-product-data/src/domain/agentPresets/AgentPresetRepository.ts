@@ -22,7 +22,7 @@ import {
   agentPresetVersions
 } from '@product-data/storage/sqlite/schema/common'
 import type { AgentToolGroup } from '@shared/contracts/agent/tools'
-import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
+import { contractFailure } from '@product-data/contractFailure'
 import { regexRuleSchema } from '@shared/contracts/regex/schemas'
 import type {
   SettingLibraryEntry,
@@ -82,6 +82,13 @@ const currentPromptPositionSchema = settingLibraryPromptPositionSchema
 
 export const DEFAULT_AGENT_PRESET_ID = 'agent-preset-standard'
 const DEFAULT_AGENT_PRESET_VERSION_ID = 'agent-preset-standard-v1'
+
+/**
+ * `eleckoi/conflict/stale-revision` 的 `details.what`：**是哪个对象**过期了。
+ * 这里是预设**自己**的正则规则（`notes/eh-explore-sites.md` 表第 19 行），
+ * 与角色正则 / 角色绑定到的那个预设（`RegexRuleRepository` 的两条）是不同对象。
+ */
+const STALE_AGENT_PRESET_REGEX_RULES = 'agent-preset-regex-rules'
 
 function regexRulesRevision(rules: AgentPreset['regexRules']): string {
   return createHash('sha256').update(JSON.stringify(rules)).digest('hex')
@@ -190,7 +197,13 @@ export class AgentPresetRepository {
   get(presetId: string): AgentPreset {
     this.ensureInitialized()
     const row = this.store.db.select().from(agentPresets).where(eq(agentPresets.id, presetId)).get()
-    if (!row) throw new Error('找不到这个预设。')
+    if (!row) {
+      throw contractFailure(
+        'eleckoi/agent-preset/not-found',
+        `读取 Agent 预设失败：agentPresets 表里没有 id 为 ${presetId} 的行。`,
+        { what: presetId }
+      )
+    }
     const contents = this.contentMap(row.id)
     const version = row.activeVersionId
       ? this.store.db.select().from(agentPresetVersions).where(and(
@@ -235,13 +248,23 @@ export class AgentPresetRepository {
 
   save(input: AgentPreset, expectedRegexRules?: AgentPreset['regexRules']): AgentPreset {
     const normalized = normalizePreset(input)
-    if (!this.exists(normalized.id)) throw new Error('找不到要保存的预设。')
+    if (!this.exists(normalized.id)) {
+      throw contractFailure(
+        'eleckoi/agent-preset/not-found',
+        `保存 Agent 预设失败：agentPresets 表里没有 id 为 ${normalized.id} 的行。`,
+        { what: normalized.id }
+      )
+    }
     if (expectedRegexRules) {
       const expected = expectedRegexRules.map((rule, order) => regexRuleSchema.parse({ ...rule, order }))
-      if (regexRulesRevision(this.get(normalized.id).regexRules) !== regexRulesRevision(expected)) {
-        throw new DesktopError(
-          DESKTOP_ERROR_CODES.CONFLICT,
-          '当前预设正则已在其他窗口更新，请重新打开后再保存。'
+      const expectedRevision = regexRulesRevision(expected)
+      const currentRevision = regexRulesRevision(this.get(normalized.id).regexRules)
+      if (currentRevision !== expectedRevision) {
+        throw contractFailure(
+          'eleckoi/conflict/stale-revision',
+          `保存 Agent 预设失败：预设 ${normalized.id} 自己的正则规则已过期`
+            + `（客户端 revision=${expectedRevision}，当前 ${currentRevision}）。`,
+          { what: STALE_AGENT_PRESET_REGEX_RULES }
         )
       }
     }

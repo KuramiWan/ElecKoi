@@ -9,6 +9,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { RequestPreviewStore } from '../packages/dsh-client-roleplay/src/host/request-preview.mjs'
 import { describe, expect, it, vi } from 'vitest'
+import { productApiClientModule } from './helpers/dshClientPlugin'
 
 const require = createRequire(import.meta.url)
 function clientPlugin(path, modules, expose = false) {
@@ -47,7 +48,11 @@ describe('request preview through the official Client Remote', () => {
       await ctx.plugin(clientPlugin(require.resolve('@deepseek-ai/dsh-api-gateway/client'), { '@deepseek-ai/cordis': Cordis }))
       await ctx.remote.$mount(TYPERT_REMOTE)
       const client = clientPlugin(new URL('../packages/dsh-client-conversations/src/client.js', import.meta.url), {
-        react: { lazy: () => () => null }
+        react: { lazy: () => () => null },
+        // 这个 bundle 的 factory 也 require 这个模块（`dsh.client.inject` 里有它，由
+        // `ELECKOI_DESKTOP_BUNDLES` 与 runtime-manifest 的 bundles 提供）；助手给的是**构建产物**
+        // 里那一份实现，不是用例里另写的一份。
+        '@eleckoi/dsh-product-api/client': productApiClientModule()
       }, true)
       let catalog
       await ctx.plugin({ inject: client.inject.filter(name => name === 'remote' || name === 'remote.eleckoiConversations'), apply(consumer) {

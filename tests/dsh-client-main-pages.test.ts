@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { describe, expect, it } from 'vitest'
+import { productApiClientModule } from './helpers/dshClientPlugin'
 
 const pages = [
   ['conversations', 'messages'],
@@ -35,6 +36,9 @@ describe('ElecKoi DSH main pages', () => {
         lazy: (load: any) => ({ load }),
         createElement: (component: any, props: any, ...children: any[]) => ({ component, props, children })
       }
+      // 这 4 个包都从契约包的 client 半边取「信封不成立」的折叠函数（票 EH-4a），
+      // 真实页面里它是 desktop profile 的 bundle 成员；用例里从产物物化后交给它。
+      if (name === '@eleckoi/dsh-product-api/client') return productApiClientModule()
       throw new Error(`Unexpected client module ${name}`)
     })
     plugin.apply({

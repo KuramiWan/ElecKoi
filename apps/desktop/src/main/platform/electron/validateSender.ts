@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron'
-import { DesktopError, DESKTOP_ERROR_CODES } from '@shared/foundation/DesktopError'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export function isAppRendererUrl(url: string): boolean {
   try {
@@ -51,13 +52,16 @@ export function isDshChildUrl(url: string): boolean {
   }
 }
 
-export function assertTrustedRenderer(sender: WebContents, frameUrl: string, isMainFrame: boolean): void {
-  if (!isMainFrame || frameUrl !== sender.getURL()
-    || (!isAppRendererUrl(frameUrl) && !isDshAppUrl(frameUrl))) {
-    throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi 页面进程的调用。')
-  }
-}
-
+/**
+ * 边界⑤ 的活守卫：发送方必须属于本应用窗口集合，且是 `dsh-app://app` 的主框架（或四个受控子路由之一）。
+ *
+ * 拒绝时抛契约码 `eleckoi/sender/untrusted`（ADR 0002 决定 14），详情按参数名闭集给：
+ * `guard` 说清是哪条守卫拒绝的、`what` 是观察到的发送方帧。
+ *
+ * ⚠️ 本文件里那个零调用者的 legacy 渲染层发送方断言已删除（ADR 0017 的遗留；ADR 0002 实现订正 h
+ * 与票 EH-5 第 1 节）。它的名字不再出现在 `apps/` 与 `tests/` 里——票的判据是
+ * `grep -rn "<旧导出名>" apps/ tests/` 期望空，所以这里也不留它的名字（留了那条判据就会假红）。
+ */
 export function assertTrustedDshClientFrame(
   sender: WebContents,
   frameUrl: string,
@@ -68,6 +72,10 @@ export function assertTrustedDshClientFrame(
     || !isDshAppUrl(frameUrl)
     || (new URL(frameUrl).pathname !== '/')
     || (new URL(frameUrl).search !== '' && !isDshChildUrl(frameUrl))) {
-    throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi DSH 页面进程的桌面调用。')
+    throw new DesktopError(
+      ELECKOI_FAILURE_CODES.senderUntrusted,
+      '拒绝来自非 ElecKoi DSH 页面进程的桌面调用。',
+      { guard: 'assertTrustedDshClientFrame', what: frameUrl === '' ? '(senderFrame 缺失)' : frameUrl }
+    )
   }
 }

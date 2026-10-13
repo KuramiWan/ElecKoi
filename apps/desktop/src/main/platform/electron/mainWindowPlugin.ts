@@ -4,11 +4,13 @@ import { app, BrowserWindow, ipcMain, nativeTheme, protocol, screen, session, sh
 import { windowsAppUserModelId } from './windowsAppIdentity'
 import type { Context, Plugin } from '@deepseek-ai/cordis'
 import { assertTrustedDshClientFrame, isAllowedExternalUrl, isAppRendererUrl, isDshAppUrl, isDshChildUrl } from './validateSender'
+import { handleDesktopShellCall } from './desktopShellIpc'
 import { ElectronWindowHost } from './ElectronWindowHost'
 import { installWindowsNativeFrame } from './windowsNativeFrame'
 import { DesktopBrowserGuests } from './desktopBrowserGuests'
 import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, isDshClientAsset, resolveElecKoiClientAssets, serveDshClientAsset, serveElecKoiClientAsset } from './dshClientDocument'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
+import { desktopHostFailureNoticeOf } from '@shared/foundation/ipcFailure'
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
@@ -86,7 +88,7 @@ export const mainWindowPlugin = {
         return new Response(null, { status: 502 })
       }
     })
-    ipcMain.handle('eleckoi:dsh-client-boot', (event) => {
+    handleDesktopShellCall('eleckoi:dsh-client-boot', (event) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -103,7 +105,7 @@ export const mainWindowPlugin = {
         streamBaseUrl: new URL(ready.url).origin
       }
     })
-    ipcMain.handle('eleckoi:dsh-client-boot-failed', (event, message: unknown) => {
+    handleDesktopShellCall('eleckoi:dsh-client-boot-failed', (event, message: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -134,15 +136,18 @@ export const mainWindowPlugin = {
     const focusMainWindow = () => { void windows.open('main') }
     app.on('activate', focusMainWindow)
     app.on('second-instance', focusMainWindow)
-    const detachPluginFailure = pluginHost.onFailure(() => {
+    const detachPluginFailure = pluginHost.onFailure((failure) => {
+      // 送**失败对象**，本进程不拼用户可见句子（ADR 0002 决定 4/8）：用户在渲染层唯一解析点
+      // （`apps/web/src/utils/failureText.js`）拿到 code / details / 诊断指针后自己拼说法。
+      const notice = desktopHostFailureNoticeOf(failure)
       for (const window of windows.all()) {
         if (!window.isDestroyed()) {
-          window.webContents.send(DESKTOP_SHELL_IPC.hostFailure, '插件服务意外退出，请重新打开插件中心。')
+          window.webContents.send(DESKTOP_SHELL_IPC.hostFailure, notice)
         }
       }
     })
 
-    ipcMain.handle(DESKTOP_SHELL_IPC.windowControl, (event, action: unknown) => {
+    handleDesktopShellCall(DESKTOP_SHELL_IPC.windowControl, (event, action: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -161,7 +166,7 @@ export const mainWindowPlugin = {
       }
       if (action === 'close') target.close()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.browserAcquire, (event, workspace: unknown) => {
+    handleDesktopShellCall(DESKTOP_SHELL_IPC.browserAcquire, (event, workspace: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -170,7 +175,7 @@ export const mainWindowPlugin = {
       )
       return browserGuests.acquire(event.sender, workspace)
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.browserRelease, async (event, lease: unknown) => {
+    handleDesktopShellCall(DESKTOP_SHELL_IPC.browserRelease, async (event, lease: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',

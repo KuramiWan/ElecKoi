@@ -1,6 +1,13 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-display-preferences',
-  factory() {
+  factory(require) {
+    // 信封拆解（含「信封不成立」的折叠）只有一份，住 @eleckoi/dsh-product-api/client
+    // （ADR 0002 决定 8；票 EH-4a，票 EH-11 的 E 项把 23 份抄写收进它）。
+    // 这个包已是 desktop profile 的 bundle 成员，且本插件 inject 了它，所以 require 解析得到。
+    const unwrapOrFail = (result, what) => require('@eleckoi/dsh-product-api/client').unwrapOrFail(result, what)
+    // 结构取消息，不用 instanceof：契约自己写明跨 bundle / 跨 realm 的副本没有同一个原型
+    // （同 foldFailure 的理由），失败的 message 不能因为原型不同就变成 "Error: …"。
+    const failureMessage = error => error && typeof error.message === 'string' ? error.message : String(error)
     const SETTINGS_NAMESPACE = 'eleckoi-display-preferences'
 
     class DisplayPreferences {
@@ -28,9 +35,8 @@ window.__ModuleLoader__.load({
         for (const listener of this.listeners) listener()
       }
 
-      unwrap(result, fallback) {
-        if (!result?.ok) throw new Error(result?.error?.message || fallback)
-        return result.value
+      unwrap(result) {
+        return unwrapOrFail(result, '显示偏好调用没有返回可用的失败对象。')
       }
 
       normalizedObject(value) {
@@ -57,14 +63,13 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const snapshot = this.unwrap(
-            await this.remote.eleckoiDisplayPreferences.read(),
-            '读取显示偏好失败。'
+            await this.remote.eleckoiDisplayPreferences.read()
           )
           if (this.disposed || generation !== this.generation) return this.snapshot
           return this.adopt(snapshot)
         } catch (error) {
           if (!this.disposed && generation === this.generation) {
-            this.publish({ ...this.snapshot, status: 'error', error: error instanceof Error ? error.message : String(error) })
+            this.publish({ ...this.snapshot, status: 'error', error: failureMessage(error), failure: error })
           }
           throw error
         }
@@ -75,12 +80,18 @@ window.__ModuleLoader__.load({
           if (this.disposed) throw new Error('显示偏好服务已关闭。')
           const value = resolveValue()
           const snapshot = this.unwrap(
-            await this.remote.eleckoiDisplayPreferences[method](value, this.snapshot.revision),
-            '保存显示偏好失败。'
+            await this.remote.eleckoiDisplayPreferences[method](value, this.snapshot.revision)
           )
           return this.adopt(snapshot)
         })
-        this.writeQueue = operation.catch(() => {})
+        // 队列吞掉拒绝只是为了让后面的写继续排队；失败本身带上实例发到快照（ADR 0002 决定 12），
+        // 订阅者从 status:'error' 那条快照的 failure 里读到 code 与 details；调用方仍拿到拒绝。
+        this.writeQueue = operation.catch(error => {
+          if (!this.disposed) {
+            this.publish({ ...this.snapshot, status: 'error',
+              error: failureMessage(error), failure: error })
+          }
+        })
         return operation
       }
 

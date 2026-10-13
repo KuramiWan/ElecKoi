@@ -1,5 +1,5 @@
-import type { VariableItemConfig, VariableObjectConfig } from '@shared/contracts/variables/schemas'
-import { VARIABLE_INITIALIZATION_OBJECT_ID } from '@shared/contracts/variables/schemas'
+import type { VariableItemConfig, VariableObjectConfig } from '../../contracts/variables/schemas.js'
+import { VARIABLE_INITIALIZATION_OBJECT_ID } from '../../contracts/variables/schemas.js'
 
 type JsonObject = Record<string, unknown>
 

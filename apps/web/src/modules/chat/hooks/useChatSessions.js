@@ -191,7 +191,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       active_conversation_id: sessionId,
       preferred_sessions: Object.fromEntries(preferredSessionByCharacterRef.current),
     }).catch((error) => {
-      notifyRef.current?.("error", getErrorMessage(error, "保存当前聊天记录失败"));
+      notifyRef.current?.("error", getErrorMessage(error, "保存当前聊天记录失败"), error);
     });
   }, [conversations, selectionReady, selectionRevision, sessionId]);
 
@@ -264,7 +264,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
           }
         }
       } catch (error) {
-        notifyRef.current?.("error", getErrorMessage(error, "读取当前聊天记录失败"));
+        notifyRef.current?.("error", getErrorMessage(error, "读取当前聊天记录失败"), error);
       }
     }
     const data = await readSessions();
@@ -283,7 +283,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     } catch (error) {
       setSessionId("");
       setMessagesWithScroll([], "auto");
-      notifyRef.current?.("error", getErrorMessage(error, "恢复当前聊天记录失败"));
+      notifyRef.current?.("error", getErrorMessage(error, "恢复当前聊天记录失败"), error);
     } finally {
       setSelectionReady(true);
     }
@@ -373,7 +373,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     } catch (error) {
       const message = getErrorMessage(error, "添加对话失败");
       setStatus(message);
-      notifyRef.current?.("error", message);
+      notifyRef.current?.("error", message, error);
     } finally {
       if (selectionGeneration === loadGenerationRef.current) setIsSwitchingChat(false);
     }
@@ -421,7 +421,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     } catch (error) {
       const message = getErrorMessage(error, "新建会话失败");
       setStatus(message);
-      notifyRef.current?.("error", message);
+      notifyRef.current?.("error", message, error);
     } finally {
       if (creationGeneration === loadGenerationRef.current) setIsSwitchingChat(false);
     }
@@ -544,7 +544,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       }).catch((error) => {
         const message = getErrorMessage(error, "停止生成失败");
         setStatus(message);
-        notify?.("error", message);
+        notify?.("error", message, error);
       });
       return;
     }
@@ -668,7 +668,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
         const message = getErrorMessage(error, "重新生成失败");
         setIsSending(false);
         setStatus(message);
-        notify?.("error", message);
+        notify?.("error", message, error);
         let reconciled = false;
         try {
           const durable = await getChat(sessionId, { model: conversations });

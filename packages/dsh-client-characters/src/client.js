@@ -2,6 +2,13 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-characters',
   factory(require) {
     const React = require('react')
+    // 信封拆解（含「信封不成立」的折叠）只有一份，住 @eleckoi/dsh-product-api/client
+    // （ADR 0002 决定 8；票 EH-4a，票 EH-11 的 E 项把 23 份抄写收进它）。
+    // 这个包已是 desktop profile 的 bundle 成员，且本插件 inject 了它，所以 require 解析得到。
+    const unwrapOrFail = (result, what) => require('@eleckoi/dsh-product-api/client').unwrapOrFail(result, what)
+    // 结构取消息，不用 instanceof：契约自己写明跨 bundle / 跨 realm 的副本没有同一个原型
+    // （同 foldFailure 的理由），失败的 message 不能因为原型不同就变成 "Error: …"。
+    const failureMessage = error => error && typeof error.message === 'string' ? error.message : String(error)
     const CharacterPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-character.js')
       .then(module => ({ default: module.CharacterPage })))
     class CharacterCatalog {
@@ -75,8 +82,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiCharacters.list()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取角色列表失败。')
-          const collection = this.assertCollection(result.value)
+          const collection = this.assertCollection(unwrapOrFail(result, '角色列表没有返回可用的失败对象。'))
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', collection, error: '' })
           }
@@ -86,59 +92,56 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               collection: this.snapshot.collection,
-              error: error instanceof Error ? error.message : String(error)
+              error: failureMessage(error), failure: error
             })
           }
           throw error
         }
       }
 
-      async mutate(method, args, failure) {
+      async mutate(method, args) {
         if (this.disposed) throw new Error('ElecKoi 角色列表已关闭。')
         const result = await this.remote.eleckoiCharacters[method](...args)
-        if (!result?.ok) throw new Error(result?.error?.message || failure)
-        const collection = this.assertCollection(result.value)
+        const collection = this.assertCollection(unwrapOrFail(result, `角色操作 ${method} 没有返回可用的失败对象。`))
         this.adopt(collection)
         return collection
       }
 
       create(character) {
-        return this.mutate('create', [character], '新建角色失败。')
+        return this.mutate('create', [character])
       }
 
       update(character) {
-        return this.mutate('update', [character], '保存角色失败。')
+        return this.mutate('update', [character])
       }
 
       select(characterId) {
-        return this.mutate('select', [characterId], '切换角色失败。')
+        return this.mutate('select', [characterId])
       }
 
       saveGroups(groups, assignments = []) {
-        return this.mutate('saveGroups', [groups, assignments], '保存角色分组失败。')
+        return this.mutate('saveGroups', [groups, assignments])
       }
 
       delete(characterIds) {
-        return this.mutate('delete', [characterIds || []], '删除角色失败。')
+        return this.mutate('delete', [characterIds || []])
       }
 
       async prepareImport(source, files) {
         const result = await this.remote.eleckoiCharacters.prepareImport(files, source)
-        if (!result?.ok) throw new Error(result?.error?.message || '角色卡无法读取。')
-        return result.value
+        return unwrapOrFail(result, '角色卡导入准备没有返回可用的失败对象。')
       }
 
       async commitImport(token) {
         const result = await this.remote.eleckoiCharacters.commitImport(token)
-        if (!result?.ok) throw new Error(result?.error?.message || '导入角色卡失败。')
-        const value = result.value
+        const value = unwrapOrFail(result, '角色卡导入提交没有返回可用的失败对象。')
         this.adopt(value.collection)
         return value
       }
 
       async discardImport(token) {
         const result = await this.remote.eleckoiCharacters.discardImport(token)
-        if (!result?.ok) throw new Error(result?.error?.message || '无法清理角色卡导入。')
+        unwrapOrFail(result, '角色卡导入清理没有返回可用的失败对象。')
       }
 
       async exportCharacters(characterIds, format) {
@@ -147,9 +150,9 @@ window.__ModuleLoader__.load({
         for (const characterId of [...new Set(characterIds || [])]) {
           try {
             const result = await this.remote.eleckoiCharacters.export(characterId, format)
-            if (!result?.ok) throw new Error(result?.error?.message || '导出失败。')
-            downloadExport(result.value)
-            written.push({ characterId, fileName: result.value.fileName })
+            const value = unwrapOrFail(result, '角色卡导出没有返回可用的失败对象。')
+            downloadExport(value)
+            written.push({ characterId, fileName: value.fileName })
           } catch (error) {
             failures.push({ characterId, message: error instanceof Error ? error.message : '导出失败。' })
           }

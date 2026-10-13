@@ -1,5 +1,6 @@
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatBackgroundModal, ChatWallpaperLayer, HistoryModal } from "../../modules/chat/index.js";
+import { hostFailureNotice } from "../../utils/hostFailureNotice.js";
 import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
@@ -51,8 +52,11 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
     document.title = "ElecKoi";
   }, []);
 
-  useEffect(() => window.dshDesktop.host?.subscribeFailure((message) => {
-    chat.notify("error", message);
+  useEffect(() => window.dshDesktop.host?.subscribeFailure((failure) => {
+    // 宿主送的是失败对象（码 + 参数化详情 + 诊断指针）。用户可见文案在这里、也只在这里拼：
+    // `hostFailureNotice` 走渲染层唯一的解析点（ADR 0002 决定 4/8）。
+    const notice = hostFailureNotice(failure);
+    chat.notify(notice.type, notice.message, notice.failure);
   }), [chat.notify]);
 
   const changeActiveSection = useCallback((section) => {
@@ -263,7 +267,7 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
         onClose={() => setCommunityOpen(false)}
         onNotify={chat.notify}
       />
-      <AppToast notice={chat.notice} onDismiss={chat.dismissNotice} />
+      <AppToast notices={chat.notices} onDismiss={chat.dismissNotice} />
       <AppUpdateController updates={appUpdates} />
     </main>
   );

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretRight, CheckCircle, WarningCircle } from "@phosphor-icons/react";
 import { ImportIcon, XIcon } from "../../../ui/icons/index.jsx";
+import { failureMessage } from "../../../utils/failureText.js";
 
 const SOURCES = [
   { id: "eleckoi", title: "本项目角色卡", detail: "导入 ElecKoi 导出的角色卡" },
@@ -18,7 +19,17 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
   const [error, setError] = useState("");
 
   const close = useCallback(async () => {
-    if (preview?.token) await onDiscard(preview.token).catch(() => {});
+    if (preview?.token) {
+      try {
+        await onDiscard(preview.token);
+      } catch (caught) {
+        // 放弃导入失败以前被 `.catch(() => {})` 丢掉，对话框照常关闭、用户什么都看不到
+        // （ADR 0002 决定 12）。落点就是这个对话框已经有的 role="alert" 面：失败留在屏幕上，
+        // 不关闭，用户能看到出了什么事并再试一次。
+        setError(failureMessage(caught, "放弃导入失败"));
+        return;
+      }
+    }
     onClose();
   }, [onClose, onDiscard, preview?.token]);
 

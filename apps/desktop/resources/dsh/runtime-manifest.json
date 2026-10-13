@@ -37,6 +37,7 @@
   "localModules": [
     "./conversation-context.mjs",
     "./request-config.mjs",
+    "./runtime-plugin-failure.mjs",
     "./session-snapshot.mjs",
     "./tool-policy.mjs"
   ],

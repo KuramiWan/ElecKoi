@@ -12,7 +12,7 @@ import {
   regexRuleSchema,
   regexRuleTargetSchema
 } from '@shared/contracts/regex/schemas'
-import { DesktopError, DESKTOP_ERROR_CODES } from '@shared/foundation/DesktopError'
+import { contractFailure } from '@product-data/contractFailure'
 import {
   includeImportedRulesInActiveVersion,
   transformCollectionSurface
@@ -37,6 +37,17 @@ export interface AgentPresetRegexPort {
   }
   replaceActiveRegexRules(rules: RegexRule[], db: ElecKoiDatabase): void
 }
+
+/**
+ * `eleckoi/conflict/stale-revision` 的 `details.what`：**是哪个对象**过期了。
+ *
+ * 判据来源：`notes/eh-explore-sites.md` 表第 16–19 行（四条乐观并发，三种对象）：
+ * 角色自己的正则集合、角色正则绑定到的那个 Agent 预设、预设**自己**的正则规则。
+ * 前两种在本文件里；预设自身那一种在 `AgentPresetRepository`。同一对象的两条
+ *（保存 :171 与导入 :211）靠开发者诊断文案里的操作名区分，`what` 只记对象。
+ */
+const STALE_CHARACTER_REGEX_RULES = 'character-regex-rules'
+const STALE_ACTIVE_AGENT_PRESET = 'active-agent-preset'
 
 function parseStringList(raw: string, description: string): string[] {
   try {
@@ -169,16 +180,23 @@ export class RegexRuleRepository {
     const current = db.select().from(regexState).where(eq(regexState.singletonId, 1)).get()
     const revision = current?.revision ?? 0
     if (revision !== expectedRevision) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已在其他窗口更新，请重新打开后再保存。')
+      throw contractFailure(
+        'eleckoi/conflict/stale-revision',
+        `保存角色正则失败：角色 ${characterId} 的正则集合期望 revision ${expectedRevision}，当前 ${revision}。`,
+        { what: STALE_CHARACTER_REGEX_RULES }
+      )
     }
     const activePreset = this.agentPresetRegexes.readActiveRegexRules(db)
     if (
       activePreset.presetId !== normalized.agentPresetId
       || activePreset.revision !== normalized.agentPresetRegexRevision
     ) {
-      throw new DesktopError(
-        DESKTOP_ERROR_CODES.CONFLICT,
-        '当前 Agent 预设或其正则已在其他窗口更新，请重新打开后再保存。'
+      throw contractFailure(
+        'eleckoi/conflict/stale-revision',
+        `保存角色正则失败：角色 ${characterId} 绑定的 Agent 预设已过期`
+          + `（客户端 agentPresetId=${normalized.agentPresetId}、revision=${normalized.agentPresetRegexRevision}；`
+          + `当前 agentPresetId=${activePreset.presetId}、revision=${activePreset.revision}）。`,
+        { what: STALE_ACTIVE_AGENT_PRESET }
       )
     }
     this.persistShared(db, normalized)
@@ -209,7 +227,11 @@ export class RegexRuleRepository {
   ) {
     const current = this.get(characterId)
     if (current.revision !== expectedRevision) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已在其他窗口更新，请重新打开后再导入。')
+      throw contractFailure(
+        'eleckoi/conflict/stale-revision',
+        `导入角色正则失败：角色 ${characterId} 的正则集合期望 revision ${expectedRevision}，当前 ${current.revision}。`,
+        { what: STALE_CHARACTER_REGEX_RULES }
+      )
     }
     const decoded = decodeRegexDocuments(documents, fallbackScope)
     if (decoded.rules.length === 0) {

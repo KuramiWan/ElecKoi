@@ -1,8 +1,23 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { failureDetailLines, resolveFailure } from "../../utils/failureText.js";
 import { CopyIcon, XIcon } from "../icons/index.jsx";
 
-export function AppErrorDialog({ notice, onDismiss }) {
+/**
+ * 错误对话框：一次呈现**全部**未关闭的错误 notice（`useNotices` 的队列）。
+ *
+ * 判据来源：ADR 0002 决定 12（对话框显示失败码 + 参数化详情 + 诊断尾部、能一键复制给维护者；
+ * 用户可见文案只有一个解析点）、tickets/EH-8-error-surface.md §1。两条连续错误各占一条，
+ * 不互相顶掉（用户故事 5）。
+ *
+ * 每条的字段**全部**来自 `apps/web/src/utils/failureText.js` 这个唯一解析点：`text` 是用户可见
+ * 说法，`code` / 详情 / `diagnostic` 原样展示、不翻译。拿不到失败实例的 notice（只有消息字符串）
+ * 会折成兜底码（`foldFailure` 的未知失败路径），那是契约里"码没被保住"的诚实说法。
+ */
+export function AppErrorDialog({ notices, onDismiss }) {
+  const list = (Array.isArray(notices) ? notices : []).filter((notice) => notice?.message || notice?.failure);
+  const entries = list.map(describeNotice);
+  const newestId = list[list.length - 1]?.id;
   const titleId = useId();
   const detailId = useId();
   const statusId = useId();
@@ -14,7 +29,7 @@ export function AppErrorDialog({ notice, onDismiss }) {
   onDismissRef.current = onDismiss;
 
   useEffect(() => {
-    if (!notice?.message || typeof document === "undefined") return undefined;
+    if (!list.length || typeof document === "undefined") return undefined;
     const previousFocus = document.activeElement;
     const focusFrame = window.requestAnimationFrame(() => copyRef.current?.focus());
 
@@ -47,17 +62,17 @@ export function AppErrorDialog({ notice, onDismiss }) {
       window.removeEventListener("keydown", handleKeyDown);
       if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [notice?.id]);
+  }, [newestId]);
 
   useEffect(() => {
     setCopyState("idle");
-  }, [notice?.id]);
+  }, [newestId]);
 
-  if (!notice?.message) return null;
+  if (!list.length) return null;
 
   async function copyError() {
     try {
-      await writeClipboard(notice.message);
+      await writeClipboard(entries.map(copyTextOfNotice).join("\n\n"));
       setCopyState("copied");
     } catch {
       setCopyState("failed");
@@ -88,7 +103,26 @@ export function AppErrorDialog({ notice, onDismiss }) {
             <XIcon size={18} />
           </button>
         </header>
-        <pre id={detailId} className="app-error-detail" tabIndex={0}>{notice.message}</pre>
+        <div id={detailId} className="app-error-details">
+          {entries.map((entry) => (
+            <article key={entry.id} className="app-error-entry">
+              <p className="app-error-text">{entry.text}</p>
+              <dl className="app-error-facts">
+                <div className="app-error-fact">
+                  <dt>失败码</dt>
+                  <dd>{entry.code}</dd>
+                </div>
+                {entry.details.map((detail) => (
+                  <div className="app-error-fact" key={detail.key}>
+                    <dt>{detail.label}</dt>
+                    <dd>{detail.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <pre className="app-error-diagnostic" tabIndex={0}>{entry.diagnostic}</pre>
+            </article>
+          ))}
+        </div>
         <div className="app-error-footer">
           <span id={statusId} className={`app-error-copy-status${copyState === "failed" ? " is-failed" : ""}`} role="status" aria-live="polite">
             {statusText}
@@ -107,6 +141,28 @@ export function AppErrorDialog({ notice, onDismiss }) {
 
   const portalTarget = typeof document === "undefined" ? null : document.body;
   return portalTarget ? createPortal(dialog, portalTarget) : dialog;
+}
+
+/** notice → 界面要展示的字段。解析（码、详情、诊断）只有 `resolveFailure` 一处。 */
+function describeNotice(notice) {
+  const resolved = resolveFailure(notice.failure ?? notice.message, { fallback: notice.message });
+  return {
+    id: notice.id,
+    text: resolved.text,
+    code: resolved.code,
+    details: failureDetailLines(resolved.details),
+    diagnostic: resolved.diagnostic,
+  };
+}
+
+/** 一键复制的内容：维护者要的失败码、参数化详情与诊断尾部。 */
+function copyTextOfNotice(entry) {
+  return [
+    entry.text,
+    `失败码: ${entry.code}`,
+    ...entry.details.map(({ label, value }) => `${label}: ${value}`),
+    `诊断: ${entry.diagnostic}`,
+  ].join("\n");
 }
 
 async function writeClipboard(text) {

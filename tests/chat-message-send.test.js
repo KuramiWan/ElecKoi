@@ -149,7 +149,8 @@ describe('chat message send cancellation', () => {
     images.encodeImageDraft.mockResolvedValue({ mediaType: 'image/png', data: 'iVBORw0KGgo=', name: 'test.png' })
     const durableChat = { id: 'conversation-1', messages: [] }
     api.getChat.mockResolvedValue({ chat: durableChat })
-    api.sendChatMessage.mockRejectedValue(new Error('图片处理失败，请重新添加。'))
+    const sendFailure = new Error('图片处理失败，请重新添加。')
+    api.sendChatMessage.mockRejectedValue(sendFailure)
     const requestRef = { current: null }
     const reconcileChatMessages = vi.fn()
     const notify = vi.fn()
@@ -183,7 +184,7 @@ describe('chat message send cancellation', () => {
 
     expect(api.getChat).toHaveBeenCalledWith('conversation-1', { model: {} })
     expect(reconcileChatMessages).toHaveBeenCalledWith(durableChat)
-    expect(notify).toHaveBeenCalledWith('error', '图片处理失败，请重新添加。')
+    expect(notify).toHaveBeenCalledWith('error', '图片处理失败，请重新添加。', sendFailure)
   })
 
   it('passes official file upload receipts to the same DSH conversation', async () => {

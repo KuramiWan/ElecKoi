@@ -3,6 +3,17 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import eleckoiRemote from '@eleckoi/dsh-product-api/remote'
 import { registerClientApiInspect } from './inspect.js'
 export type {} from '@eleckoi/dsh-product-api/remote'
+export {
+  invalidResponseFailure,
+  MISSING_ERROR_ISSUE_PATH,
+  MISSING_RESULT_ISSUE_PATH,
+  type InvalidResponseFailure
+} from './invalidResponse.js'
+export {
+  failureOrInvalidResponse,
+  unwrapOrFail,
+  type RemoteResultEnvelope
+} from './unwrapFailure.js'
 
 export const inject = ['remote']
 

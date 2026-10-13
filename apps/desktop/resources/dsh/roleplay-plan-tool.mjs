@@ -1,10 +1,16 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { runRuntimePluginApply } from './runtime-plugin-failure.mjs'
 const validStatuses = new Set(['pending', 'inProgress', 'completed'])
 
 export const name = 'eleckoi-roleplay-plan-tool'
 export const inject = ['tools']
 
+// 边界④ 的出口：`apply()` 抛出（含工具注册失败）时先产出带码的可记录对象并写诊断出口。
 export function apply(ctx, config = {}) {
+  return runRuntimePluginApply('roleplay-plan-tool', () => applyRoleplayPlanTool(ctx, config))
+}
+
+function applyRoleplayPlanTool(ctx, config = {}) {
   const steps = Array.isArray(config.steps)
     ? config.steps.map((step) => String(step).trim()).filter(Boolean).slice(0, 20)
     : []

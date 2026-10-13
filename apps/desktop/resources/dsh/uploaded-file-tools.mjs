@@ -1,9 +1,15 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { runRuntimePluginApply } from './runtime-plugin-failure.mjs'
 
 export const name = 'eleckoi-uploaded-file-tools'
 export const inject = ['tools', 'sessionQuery', 'attachments', 'fs']
 
+// 边界④ 的出口：`apply()` 抛出（含工具注册失败）时先产出带码的可记录对象并写诊断出口。
 export function apply(ctx) {
+  return runRuntimePluginApply('uploaded-file-tools', () => applyUploadedFileTools(ctx))
+}
+
+function applyUploadedFileTools(ctx) {
   return ctx.tools.register(defineTool({
     name: 'eleckoi_read_uploaded_file',
     description: '读取当前会话用户上传的文件。传入消息中显示的只读文件路径或完整 sha256 附件编号。每次最多读取 50 KB，可用 offset 继续读取；只允许读取当前会话仍在模型历史中的上传文件。',

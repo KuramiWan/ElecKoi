@@ -119,7 +119,7 @@ export function ChatWindow({ conversations, characters, characterConfiguration, 
         onSaveNewCharacterBackground={appearance.saveNewCharacterBackground}
         onNotify={chat.notify}
       />
-      <AppToast notice={chat.notice} onDismiss={chat.dismissNotice} />
+      <AppToast notices={chat.notices} onDismiss={chat.dismissNotice} />
     </main>
   </MainPageContext.Provider>;
 }

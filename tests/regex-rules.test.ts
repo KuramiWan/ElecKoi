@@ -211,7 +211,7 @@ describe('regex repository', () => {
     expect(repository.transform('card-a', 'foo', 'AiOutput', 'Stored')).toBe('done')
     expect(database.native.prepare("SELECT content FROM agent_preset_contents WHERE kind='regex_rules'").get())
       .toEqual(expect.objectContaining({ content: expect.stringContaining('preset') }))
-    expect(() => repository.save('card-a', saved, empty.revision)).toThrow('其他窗口更新')
+    expect(() => repository.save('card-a', saved, empty.revision)).toThrow('期望 revision 0，当前 1')
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
@@ -236,7 +236,7 @@ describe('regex repository', () => {
       agentPresetId: next.id,
       agentPresetRules: [{ id: 'preset-b' }]
     })
-    expect(() => repository.save('card-a', loaded, loaded.revision)).toThrow('当前 Agent 预设或其正则已在其他窗口更新')
+    expect(() => repository.save('card-a', loaded, loaded.revision)).toThrow('绑定的 Agent 预设已过期')
     expect(agentPresets.active().regexRules.map((item) => item.id)).toEqual(['preset-b'])
   })
 
@@ -252,7 +252,7 @@ describe('regex repository', () => {
     expect(() => repository.save('card-a', {
       ...loaded,
       characterRules: [rule({ id: 'local', name: '本页修改' })]
-    }, loaded.revision)).toThrow('当前 Agent 预设或其正则已在其他窗口更新')
+    }, loaded.revision)).toThrow('绑定的 Agent 预设已过期')
     expect(agentPresets.active().regexRules.map((item) => item.id)).toEqual(['external'])
   })
 
@@ -267,7 +267,7 @@ describe('regex repository', () => {
     expect(() => agentPresets.save({
       ...stale,
       name: '旧页面修改'
-    }, stale.regexRules)).toThrow('当前预设正则已在其他窗口更新')
+    }, stale.regexRules)).toThrow('自己的正则规则已过期')
     expect(agentPresets.active()).toMatchObject({
       name: stale.name,
       regexRules: [{ id: 'external' }]

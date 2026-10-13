@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
+import { dshClientPlugin } from './helpers/dshClientPlugin'
 
 const source = readFileSync(new URL('../packages/dsh-client-creator-studio/src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -49,7 +50,11 @@ describe('DSH ElecKoi creator studio projects', () => {
         __ModuleLoader__: { load(value: typeof registration) { registration = value } }
       }
     })
-    registration!.factory().apply({
+    // 模块表交给助手补齐：这个 bundle 的 factory 收 `require`，它 require
+    // `@eleckoi/dsh-product-api/client`（本包 `package.json` 的 `dsh.client.inject` 里有这一项，
+    // 由 `ELECKOI_DESKTOP_BUNDLES` 与 runtime-manifest 的 bundles 提供）。助手给的是**构建产物**
+    // 里那一份实现，不是用例里另写的一份。
+    dshClientPlugin(registration!).apply({
       remote: {
         eleckoiCreatorStudio: {
           list,

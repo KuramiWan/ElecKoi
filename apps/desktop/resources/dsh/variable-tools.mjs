@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import { readSessionSnapshot } from './session-snapshot.mjs'
+import { runRuntimePluginApply } from './runtime-plugin-failure.mjs'
 
 const fixedObjectId = 'fixed-variable-initialization-object'
 const defaultCollectionPageSize = 20
@@ -14,7 +15,12 @@ const maximumGrepLineChars = 2_000
 export const name = 'eleckoi-variable-tools'
 export const inject = ['tools']
 
+// 边界④ 的出口：`apply()` 抛出（含工具注册失败）时先产出带码的可记录对象并写诊断出口。
 export function apply(ctx) {
+  return runRuntimePluginApply('variable-tools', () => applyVariableTools(ctx))
+}
+
+function applyVariableTools(ctx) {
   return [
     ctx.tools.register(globTool()),
     ctx.tools.register(grepTool()),

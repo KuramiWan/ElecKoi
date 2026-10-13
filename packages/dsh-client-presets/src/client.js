@@ -2,6 +2,13 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-presets',
   factory(require) {
     const React = require('react')
+    // 信封拆解（含「信封不成立」的折叠）只有一份，住 @eleckoi/dsh-product-api/client
+    // （ADR 0002 决定 8；票 EH-4a，票 EH-11 的 E 项把 23 份抄写收进它）。
+    // 这个包已是 desktop profile 的 bundle 成员，且本插件 inject 了它，所以 require 解析得到。
+    const unwrapOrFail = (result, what) => require('@eleckoi/dsh-product-api/client').unwrapOrFail(result, what)
+    // 结构取消息，不用 instanceof：契约自己写明跨 bundle / 跨 realm 的副本没有同一个原型
+    // （同 foldFailure 的理由），失败的 message 不能因为原型不同就变成 "Error: …"。
+    const failureMessage = error => error && typeof error.message === 'string' ? error.message : String(error)
     const PresetsPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-presets.js')
       .then(module => ({ default: module.PresetsPage })))
     class PresetCatalog {
@@ -21,8 +28,7 @@ window.__ModuleLoader__.load({
 
       async call(method, ...args) {
         const result = await this.remote[method](...args)
-        if (!result?.ok) throw new Error(result?.error?.message || 'Agent 预设操作失败。')
-        return result.value
+        return unwrapOrFail(result, `Agent 预设操作 ${method} 没有返回可用的失败对象。`)
       }
 
       getSnapshot = () => this.snapshot
@@ -85,7 +91,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (!this.disposed && generation === this.detailGenerations.get(id)) {
             this.publishDetail(id, { status: 'error', preset: this.getDetailSnapshot(id).preset,
-              error: error instanceof Error ? error.message : String(error) })
+              error: failureMessage(error), failure: error })
           }
           throw error
         }
@@ -212,7 +218,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               catalog: this.snapshot.catalog,
-              error: error instanceof Error ? error.message : String(error)
+              error: failureMessage(error), failure: error
             })
           }
           throw error
