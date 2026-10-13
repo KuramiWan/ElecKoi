@@ -6,10 +6,16 @@ window.__ModuleLoader__.load({
     const protocols = { responses: 'openai-responses', chat_completions: 'openai-completions',
       anthropic_messages: 'anthropic-messages', google_gemini: 'google-generative-ai' }
     const formats = Object.fromEntries(Object.entries(protocols).map(([format, api]) => [api, format]))
-    const valueOf = (result, fallback) => {
-      if (!result?.ok) throw new Error(result?.error?.message || fallback)
-      return result.value
+    const valueOf = result => {
+      return unwrapOrFail(result, '模型目录调用没有返回可用的失败对象。')
     }
+    // 信封拆解（含「信封不成立」的折叠）只有一份，住 @eleckoi/dsh-product-api/client
+    // （ADR 0002 决定 8；票 EH-4a，票 EH-11 的 E 项把 23 份抄写收进它）。
+    // 这个包已是 desktop profile 的 bundle 成员，且本插件 inject 了它，所以 require 解析得到。
+    const unwrapOrFail = (result, what) => require('@eleckoi/dsh-product-api/client').unwrapOrFail(result, what)
+    // 结构取消息，不用 instanceof：契约自己写明跨 bundle / 跨 realm 的副本没有同一个原型
+    // （同 foldFailure 的理由），失败的 message 不能因为原型不同就变成 "Error: …"。
+    const failureMessage = error => error && typeof error.message === 'string' ? error.message : String(error)
     const keyRef = id => `${id.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}_API_KEY`
     const imageProvider = provider => ['openai_image', 'novelai_image'].includes(provider)
     const ModelPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-model.js')
@@ -86,12 +92,21 @@ window.__ModuleLoader__.load({
 
       enqueue(run) {
         const task = this.writeQueue.then(run)
-        this.writeQueue = task.catch(() => {})
+        // 写队列自己吞掉拒绝是为了让后面的写继续排队；被吞掉的这次失败不能消失（ADR 0002
+        // 决定 12），所以带上**失败实例**发到快照，订阅者从 failure 里读到 code 与 details。
+        // 调用方仍然拿到 task 的拒绝（两条路都保留码与详情）。
+        this.writeQueue = task.catch(error => { this.publishWriteFailure(error) })
         return task
       }
 
+      publishWriteFailure(error) {
+        if (this.disposed) return
+        this.publish({ ...this.snapshot,
+          error: failureMessage(error), failure: error })
+      }
+
       async settings() {
-        const document = valueOf(await this.remote.settings.describe(), '读取模型设置失败。')
+        const document = valueOf(await this.remote.settings.describe())
         this.namespaces = new Map(document.namespaces.map(row => [row.ns, row]))
         return this.namespaces
       }
@@ -99,14 +114,14 @@ window.__ModuleLoader__.load({
       async mutate(ns, ops) {
         const row = this.namespaces.get(ns)
         if (!row) throw new Error(`DSH 设置命名空间 ${ns} 未加载。`)
-        const next = valueOf(await this.remote.settings.mutate(ns, ops, row.revision), '保存模型设置失败。')
+        const next = valueOf(await this.remote.settings.mutate(ns, ops, row.revision))
         this.namespaces.set(ns, next)
       }
 
       async configuredCatalog(catalog) {
         const namespaces = await this.settings()
         const entries = namespaces.get(SETTINGS_NAMESPACE)?.value?.entries || {}
-        const routes = valueOf(await this.remote.llm.listConfigurableProviders(), '读取模型提供商失败。')
+        const routes = valueOf(await this.remote.llm.listConfigurableProviders())
           .filter(route => route.settingsNs === 'llm-pi-ai' || route.provider === 'deepseek-official')
         const directory = new Map(routes.map(route => [route.provider, route]))
         // The model picker includes account-authenticated routes that are not
@@ -175,12 +190,12 @@ window.__ModuleLoader__.load({
                 ...(declared.input || declared.inputModalities ? { supportsImageInput: (declared.input || declared.inputModalities).includes('image') } : {}) }
             }), enabled: !imageProvider(provider) }
         })
-        const credentials = valueOf(await this.remote.credentials.describe(configs.map(config => config.credentialRef)), '读取密钥状态失败。')
+        const credentials = valueOf(await this.remote.credentials.describe(configs.map(config => config.credentialRef)))
         return configs.map(config => ({ ...config, credentialConfigured: credentials[config.credentialRef]?.configured === true }))
       }
 
       async revealApiKey(configId) {
-        return valueOf(await this.remote.eleckoiModels.revealApiKey(configId), '读取密钥失败。')
+        return valueOf(await this.remote.eleckoiModels.revealApiKey(configId))
       }
 
       save(config) {
@@ -204,7 +219,7 @@ window.__ModuleLoader__.load({
             }
             await this.mutate(SETTINGS_NAMESPACE, [{ op: 'unset', path: ['entries', config.id] }])
             if (!this.snapshot.configs.some(item => item.id !== config.id && item.credentialRef === ref)) {
-              valueOf(await this.remote.credentials.unset(ref), '清除密钥失败。')
+              valueOf(await this.remote.credentials.unset(ref))
             }
             await this.refresh()
             return this.snapshot.configs.find(item => item.id === config.id)
@@ -242,8 +257,8 @@ window.__ModuleLoader__.load({
             }
           }
           await this.mutate(SETTINGS_NAMESPACE, [{ op: 'set', path: ['entries', config.id], value: extra }])
-          if (config.api_key?.trim()) valueOf(await this.remote.credentials.set(ref, config.api_key.trim()), '保存密钥失败。')
-          else if (config.clearCredential) valueOf(await this.remote.credentials.unset(ref), '清除密钥失败。')
+          if (config.api_key?.trim()) valueOf(await this.remote.credentials.set(ref, config.api_key.trim()))
+          else if (config.clearCredential) valueOf(await this.remote.credentials.unset(ref))
           await this.refresh()
           return this.snapshot.configs.find(item => item.id === config.id)
         })
@@ -265,7 +280,7 @@ window.__ModuleLoader__.load({
           }
           await this.mutate(SETTINGS_NAMESPACE, [{ op: 'unset', path: ['entries', id] }])
           if (!this.snapshot.configs.some(item => item.id !== id && item.credentialRef === config.credentialRef)) {
-            valueOf(await this.remote.credentials.unset(config.credentialRef), '删除密钥失败。')
+            valueOf(await this.remote.credentials.unset(config.credentialRef))
           }
           await this.refresh()
           return this.snapshot.configs[0]
@@ -287,7 +302,7 @@ window.__ModuleLoader__.load({
           api: config.api_format === 'deepseek_messages' ? 'deepseek_messages' : protocols[config.api_format],
           ...(config.api_key?.trim() ? { apiKey: config.api_key.trim() } : {}),
           headers: config.custom_headers || {}
-        }), '读取模型列表失败。')
+        }))
         return models.map(model => ({ ...(unchangedEndpoint ? saved.model_options?.find(item => item.id === model.id) : {}),
           id: model.id, name: model.name || model.id,
           ...(model.contextWindow ? { contextWindowTokens: model.contextWindow } : {}),
@@ -304,7 +319,7 @@ window.__ModuleLoader__.load({
           api: config.api_format === 'deepseek_messages' ? 'deepseek_messages' : protocols[config.api_format],
           apiKey: config.api_key || undefined,
           headers: config.custom_headers || {},
-        }), '工具调用测试失败。')
+        }))
       }
 
       async refresh() {
@@ -312,8 +327,8 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const result = await this.remote.session.modelCatalog()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取 DSH 模型目录失败。')
-          const configs = this.remote.settings ? await this.configuredCatalog(result.value) : this.configsFromCatalog(result.value)
+          const value = unwrapOrFail(result, 'DSH 模型目录没有返回可用的失败对象。')
+          const configs = this.remote.settings ? await this.configuredCatalog(value) : this.configsFromCatalog(value)
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', configs, error: '' })
           }
@@ -321,7 +336,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'error', configs: this.snapshot.configs,
-              error: error instanceof Error ? error.message : String(error) })
+              error: failureMessage(error), failure: error })
           }
           throw error
         }

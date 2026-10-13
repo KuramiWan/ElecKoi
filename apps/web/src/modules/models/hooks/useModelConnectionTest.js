@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { failureMessage } from "../../../utils/failureText.js";
 
 const INITIAL_STEPS = [
   { id: "connection", label: "地址与密钥", hint: "", status: "running", detail: "" },
@@ -54,7 +55,7 @@ export function useModelConnectionTest({ formRef, onProbeModels, onTestConnectio
       patchStep("models", { status: "passed", detail: `${models.length} 个` });
       patchStep("tools", { status: "running" });
     } catch (error) {
-      const message = errorMessage(error, "连接测试失败");
+      const message = failureMessage(error, "连接测试失败");
       patchStep("models", { status: "failed", detail: message });
       if (!String(snapshot.model || "").trim()) {
         patchStep("connection", { status: "failed", detail: message });
@@ -79,7 +80,7 @@ export function useModelConnectionTest({ formRef, onProbeModels, onTestConnectio
       setConnectionTest({ status: "success", message: "连接测试成功" });
       onNotify?.("success", "连接与工具调用测试通过");
     } catch (error) {
-      const message = errorMessage(error, "工具调用测试失败");
+      const message = failureMessage(error, "工具调用测试失败");
       patchStep("tools", { status: "failed", detail: message });
       patchDialog((current) => ({ ...current, steps: current.steps.map((step) => step.id === "connection" && step.status === "running" ? { ...step, status: "failed", detail: message } : step) }));
       patchDialog((current) => ({
@@ -108,8 +109,4 @@ export function useModelConnectionTest({ formRef, onProbeModels, onTestConnectio
     testingConnection,
     testConnection,
   };
-}
-
-function errorMessage(error, fallback) {
-  return error instanceof Error && error.message ? error.message : fallback;
 }

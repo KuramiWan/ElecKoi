@@ -23,6 +23,11 @@ declare module '@deepseek-ai/dsh-session' {
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { installRemoteFailureTranslation } from './remoteFailure.js'
+// 边界② 的适配器对外露出两个入口：`remoteErrorFrom` 给同进程里别的出口复用，
+// `installRemoteFailureTranslation` 给用例断言"装配已装过"与"重复调用幂等"（两处都要**同一个模块实例**，
+// 否则各持一份 `TRANSLATION_INSTALLED` 标记，幂等判据会失真）。
+export { installRemoteFailureTranslation, remoteErrorFrom } from './remoteFailure.js'
 import type {
   AgentPreset,
   AgentPresetCatalog,
@@ -303,6 +308,7 @@ export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiDisplayPreferencesApi', { namespace: 'eleckoiDisplayPreferences' })
+    installRemoteFailureTranslation(this)
     this.ownerContext = ctx
     this.productData = ctx.eleckoiProductData
   }
@@ -384,6 +390,7 @@ export class ElecKoiConversationModelsApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiConversationModelsApi', { namespace: 'eleckoiConversationModels' })
+    installRemoteFailureTranslation(this)
     this.ownerContext = ctx
   }
 
@@ -450,6 +457,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiConversationsApi', { namespace: 'eleckoiConversations' })
+    installRemoteFailureTranslation(this)
     this.ownerContext = ctx
     this.productData = ctx.eleckoiProductData
     this.changeFeed = ctx.eleckoiConversationChanges
@@ -1257,6 +1265,7 @@ export class ElecKoiModelsApi extends TypertRemoteService {
   private readonly ownerContext: Context
   constructor(ctx: Context) {
     super(ctx, 'eleckoiModelsApi', { namespace: 'eleckoiModels' })
+    installRemoteFailureTranslation(this)
     this.ownerContext = ctx
   }
   /**
@@ -1296,6 +1305,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiWebSearchApi', { namespace: 'eleckoiWebSearch' })
+    installRemoteFailureTranslation(this)
     this.ownerContext = ctx
   }
 
@@ -1375,6 +1385,7 @@ export class ElecKoiCharactersApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiCharactersApi', { namespace: 'eleckoiCharacters' })
+    installRemoteFailureTranslation(this)
     this.ownerContext = ctx
     this.productData = ctx.eleckoiProductData
     this.recordChanges = ctx.eleckoiProductRecordChanges
@@ -1526,6 +1537,7 @@ export class ElecKoiSystemApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiSystemApi', { namespace: 'eleckoiSystem' })
+    installRemoteFailureTranslation(this)
   }
 
   /**
@@ -1548,6 +1560,7 @@ export class ElecKoiPersonaApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiPersonaApi', { namespace: 'eleckoiPersona' })
+    installRemoteFailureTranslation(this)
     this.ownerContext = ctx
     this.productData = ctx.eleckoiProductData
     this.recordChanges = ctx.eleckoiProductRecordChanges
@@ -1595,6 +1608,7 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiCharacterConfigurationApi', { namespace: 'eleckoiCharacterConfiguration' })
+    installRemoteFailureTranslation(this)
     this.productData = ctx.eleckoiProductData
     this.changeFeed = ctx.eleckoiCharacterConfigurationChanges
   }
@@ -1827,6 +1841,7 @@ export class ElecKoiAgentPresetsApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiAgentPresetsApi', { namespace: 'eleckoiAgentPresets' })
+    installRemoteFailureTranslation(this)
     this.productData = ctx.eleckoiProductData
     this.configurationChanges = ctx.eleckoiCharacterConfigurationChanges
   }
@@ -1988,6 +2003,7 @@ export class ElecKoiCreatorStudioApi extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiCreatorStudioApi', { namespace: 'eleckoiCreatorStudio' })
+    installRemoteFailureTranslation(this)
     this.productData = ctx.eleckoiProductData
     this.recordChanges = ctx.eleckoiProductRecordChanges
   }

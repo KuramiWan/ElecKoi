@@ -4,8 +4,19 @@ import { existsSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { initProfile, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
+import {
+  ELECKOI_FAILURE_CODES,
+  isEleckoiFailureCode,
+  type EleckoiFailureCode
+} from '@eleckoi/product-shared/contracts/errors/codes'
+import type { EleckoiFailureDetails } from '@eleckoi/product-shared/contracts/errors/details'
 import { ELECKOI_DESKTOP_BUNDLES, registerDesktopBundles } from './desktopPluginBundles'
-import type { ChildHostMessage, ParentHostMessage } from './hostSessionProtocol'
+import {
+  HOST_SESSION_PROTOCOL_VERSION,
+  type ChildHostFatalMessage,
+  type ChildHostMessage,
+  type ParentHostMessage
+} from './hostSessionProtocol'
 
 const require = createRequire(import.meta.url)
 const runtimeRequire = createRequire(require.resolve('@eleckoi/desktop-host'))
@@ -43,21 +54,113 @@ export interface DshDesktopPluginHostOptions {
   agentPatchPath: string
   executablePath: string
   packageManager?: { entryPath: string; nodeBinPath: string }
+  /** 子进程 stdout/stderr 的每一段输出（此前没人接，读出来就丢）。 */
   onDiagnostic?: (message: string) => void
-  onFailure?: (error: Error) => void
+  onFailure?: (failure: DshPluginHostFailure) => void
 }
 
 export type DshDesktopPluginHostEnvironment = Readonly<Record<string, string>>
 
-function isChildMessage(value: unknown): value is ChildHostMessage {
+/**
+ * ③ 边界产出的可记录对象：形状就是 `EleckoiFailure`（`{ code, message, details }`，边界⑦ 要求
+ * 任何边界都产出同一个可记录对象），再带上子进程协议给的两个诊断指针 `stack` / `logPath`
+ * （ADR 决定 10：诊断用指针与 stack 承载，不把整段日志塞进消息）。
+ *
+ * 它同时是 `Error`，因为 ③ 边界有两条路要用同一个对象：`ready` **之前**到达的 `fatal` 走 reject
+ * （`main.ts` 的 `dialog.showErrorBox` 读它），`ready` **之后**到达的走 `onFailure`（宿主日志读它）。
+ * 两条路拿到的都是这一个对象，值不在任一条路上丢。
+ *
+ * 折叠规则（`packages/product-shared/src/contracts/errors/boundaries.ts` 的 ③ 表）：帧带的码在契约码表里
+ * 就原样保留；没带或不在表里（legacy 6 码、更新的子进程发来的码）折成兜底码，原码进 `details.what`
+ * 做诊断——**不许猜**成某个域码。
+ */
+export class DshPluginHostFailure extends Error {
+  readonly code: EleckoiFailureCode
+  readonly details: EleckoiFailureDetails
+  readonly logPath: string | undefined
+
+  constructor(fields: {
+    readonly message: string
+    /** 未校验的原始码：它来自另一个进程，用前必须过码表。 */
+    readonly code?: string
+    /** 子进程侧的 stack；给了就用它做这个失败的 stack（诊断以子进程为准）。 */
+    readonly stack?: string
+    readonly logPath?: string
+  }) {
+    super(fields.message)
+    this.name = 'DshPluginHostFailure'
+    const rawCode = fields.code
+    if (rawCode !== undefined && isEleckoiFailureCode(rawCode)) {
+      this.code = rawCode
+      this.details = {}
+    } else {
+      this.code = ELECKOI_FAILURE_CODES.internal
+      this.details = rawCode === undefined ? {} : { what: rawCode }
+    }
+    this.logPath = fields.logPath
+    if (fields.stack !== undefined) this.stack = fields.stack
+  }
+}
+
+/**
+ * ③ 边界：把**消费侧认过的** `fatal` 帧折成可记录对象（判定在 {@link isChildMessage}，
+ * 这里只折叠、不重新校验形状）。帧里的 `code` / `stack` / `logPath` 一个都不许丢。
+ */
+export function pluginHostFailureOf(frame: ChildHostFatalMessage): DshPluginHostFailure {
+  return new DshPluginHostFailure({
+    message: frame.message,
+    code: frame.code,
+    stack: frame.stack,
+    logPath: frame.logPath
+  })
+}
+
+/**
+ * 子进程消息的**显式白名单**：只有下面四条合法，其余一律不合法。
+ *
+ * 收尾是 `return false` 而不是「没命中就当作某一种」：静默接受未知消息等于静默丢诊断（EH-6）。
+ * `ready` 帧在这里断言协议版本——上下两侧读的是 {@link HOST_SESSION_PROTOCOL_VERSION} 同一个常量，
+ * 所以版本偏斜在消费侧当场失败，而不是让一个版本对不上的子进程继续跑。
+ */
+export function isChildMessage(value: unknown): value is ChildHostMessage {
   if (typeof value !== 'object' || value === null || !('type' in value)) return false
   const message = value as Record<string, unknown>
-  if (message.type === 'ready') return typeof message.url === 'string' && Array.isArray(message.injections)
-  if (message.type === 'fatal') return typeof message.message === 'string'
-  if (message.type === 'update-tasks-complete') return typeof message.id === 'string'
-    && typeof message.active === 'boolean'
-    && (message.message === undefined || typeof message.message === 'string')
-  return message.type === 'shutdown-complete'
+  if (message.type === 'ready') {
+    return message.protocolVersion === HOST_SESSION_PROTOCOL_VERSION
+      && typeof message.url === 'string'
+      && Array.isArray(message.injections)
+  }
+  if (message.type === 'fatal') {
+    return typeof message.message === 'string'
+      && isOptionalString(message.code)
+      && isOptionalString(message.stack)
+      && isOptionalString(message.logPath)
+  }
+  if (message.type === 'update-tasks-complete') {
+    return typeof message.id === 'string'
+      && typeof message.active === 'boolean'
+      && isOptionalString(message.message)
+  }
+  if (message.type === 'shutdown-complete') return true
+  return false
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
+}
+
+/**
+ * 拒绝一条子进程消息时的开发者诊断：说清拒绝的是什么（`type` 是唯一有信息量的字段）。
+ * `ready` 帧单独说——协议版本偏斜要一眼看得出来，它折兜底码（③ 表的「协议版本偏斜或握手失败」）。
+ */
+export function childMessageDiagnosticOf(value: unknown): string {
+  if (typeof value !== 'object' || value === null || !('type' in value)) {
+    return 'DSH 插件宿主返回了无效消息：消息没有 type 字段。'
+  }
+  const observedType = String(value.type)
+  if (observedType !== 'ready') return `DSH 插件宿主返回了无效消息：type=${observedType}。`
+  const version = 'protocolVersion' in value ? String(value.protocolVersion) : '缺失'
+  return `DSH 插件宿主协议版本偏斜：子进程 ${version}，宿主 ${String(HOST_SESSION_PROTOCOL_VERSION)}。`
 }
 
 interface PendingControl {
@@ -147,28 +250,28 @@ export class DshDesktopPluginHost {
       let settled = false
       let failureReported = false
       const timeout = setTimeout(() => {
-        fail(new Error('DSH 插件宿主启动超时。'))
+        fail(new DshPluginHostFailure({ message: 'DSH 插件宿主启动超时。' }))
         child.kill()
       }, 90_000)
-      const reportFailure = (error: Error): void => {
+      const reportFailure = (failure: DshPluginHostFailure): void => {
         if (failureReported || this.stopping) return
         failureReported = true
-        this.options.onFailure?.(error)
+        this.options.onFailure?.(failure)
       }
-      const fail = (error: Error): void => {
-        if (settled) reportFailure(error)
+      const fail = (failure: DshPluginHostFailure): void => {
+        if (settled) reportFailure(failure)
         else {
           settled = true
           clearTimeout(timeout)
-          reject(error)
+          reject(failure)
         }
       }
       child.on('message', (value: unknown) => {
         if (!isChildMessage(value)) {
-          fail(new Error('DSH 插件宿主返回了无效消息。'))
+          fail(new DshPluginHostFailure({ message: childMessageDiagnosticOf(value) }))
           return
         }
-        if (value.type === 'fatal') fail(new Error(value.message))
+        if (value.type === 'fatal') fail(pluginHostFailureOf(value))
         if (value.type === 'update-tasks-complete') {
           const pending = this.controls.get(value.id)
           if (pending !== undefined) {
@@ -184,15 +287,18 @@ export class DshDesktopPluginHost {
           resolve({ url: value.url, injections: value.injections })
         }
       })
-      child.once('error', error => fail(error))
+      child.once('error', error => fail(new DshPluginHostFailure({
+        message: error.message,
+        stack: error.stack
+      })))
       child.once('exit', code => {
-        const error = new Error(`DSH 插件宿主退出：${String(code)}`)
-        this.rejectControls(error)
+        const failure = new DshPluginHostFailure({ message: `DSH 插件宿主退出：${String(code)}` })
+        this.rejectControls(failure)
         if (this.child === child) {
           this.child = undefined
           this.readyTask = undefined
         }
-        if (!this.stopping) fail(error)
+        if (!this.stopping) fail(failure)
       })
     })
     return this.readyTask

@@ -4,7 +4,7 @@ import type {
   RegexRuleScope,
   RegexRuleSurface,
   RegexRuleTarget
-} from '@shared/contracts/regex/schemas'
+} from '../../contracts/regex/schemas.js'
 
 interface ParsedPattern {
   body: string

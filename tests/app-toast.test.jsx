@@ -11,7 +11,7 @@ vi.mock('../apps/web/src/ui/icons/index.jsx', async () => {
 
 describe('app notices', () => {
   it('renders ordinary notices as compact status toasts', () => {
-    const html = renderToStaticMarkup(<AppToast notice={{ id: 1, type: 'success', message: '已保存' }} />);
+    const html = renderToStaticMarkup(<AppToast notices={[{ id: 1, type: 'success', message: '已保存' }]} />);
 
     expect(html).toContain('class="app-toast success"');
     expect(html).toContain('role="status"');
@@ -21,7 +21,7 @@ describe('app notices', () => {
   it('renders errors as persistent copyable dialogs with the complete original message', () => {
     const message = 'RESOURCE_EXHAUSTED\nCaused by: HTTP 429 {"retryDelay":"59s"}';
     const html = renderToStaticMarkup(<AppToast
-      notice={{ id: 2, type: 'error', message }}
+      notices={[{ id: 2, type: 'error', message }]}
       onDismiss={() => {}}
     />);
 

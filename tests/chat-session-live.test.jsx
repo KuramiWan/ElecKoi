@@ -295,12 +295,14 @@ describe('DSH chat live rendering', () => {
       expect(chat.sessionId).toBe(id)
       expect(chat.runtimeSessionId).toBe('session-1')
       const failure = 'Synthetic API error (402): {"message":"request refused"}'
+      // notice 队列同时承载失败实例（EH-8）：第三个实参必须就是抛出来的那一个。
+      const failureError = new Error(failure)
       for (const operation of ['send', 'regenerate']) {
         let finishRefresh
         model.open = vi.fn(() => new Promise(resolve => { finishRefresh = resolve }))
         model[operation].mockImplementationOnce(async () => {
           emitStream('', 'error')
-          throw new Error(failure)
+          throw failureError
         })
         props.notify.mockClear()
         let failed
@@ -315,7 +317,7 @@ describe('DSH chat live rendering', () => {
         })
         // Error presentation must not depend on the refresh completing.
         expect(chat.isSending).toBe(false)
-        expect(props.notify).toHaveBeenCalledExactlyOnceWith('error', failure)
+        expect(props.notify).toHaveBeenCalledExactlyOnceWith('error', failure, failureError)
         expect(model.open).toHaveBeenCalled()
         await act(async () => { finishRefresh(details.details); await failed })
         expect(chat.sessionId).toBe(id)

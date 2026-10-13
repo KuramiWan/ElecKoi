@@ -18,6 +18,10 @@ This directory documents open development problems that require focused research
 
    Keeping every tool result makes the context grow rapidly, while discarding everything can cause repeated retrieval. Balancing long-running story continuity, information freshness, and Token cost remains an open problem.
 
+4. [The Error-Contract Gate Ledger and Its Expiry Conditions](error-contract-exemptions.en.md)
+
+   Existing sites where failure codes and details are dropped at a boundary are registered one by one in the gate's exemption ledger, each with the condition under which it may be deleted. The ledger only shrinks, and the gate asserts that the actual hit set equals the ledger set — a disappearing hit is never silently forgiven; it must leave behind a visible subtraction.
+
 ## Current Stage
 
 ElecKoi is currently focused on completing the foundations of its Agent runtime, character creation, state management, and frontend capabilities. These problems are now recorded publicly and will receive deeper research using real conversation metrics and experimental results once the underlying paths are stable.

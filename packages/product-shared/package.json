@@ -4,8 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./contracts/*": "./src/contracts/*.ts",
-    "./foundation/*": "./src/foundation/*.ts"
+    "./contracts/*": {
+      "types": "./lib/contracts/*.d.ts",
+      "default": "./lib/contracts/*.js"
+    },
+    "./foundation/*": {
+      "types": "./lib/foundation/*.d.ts",
+      "default": "./lib/foundation/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json"
   },
   "dependencies": {
     "zod": "4.1.11"

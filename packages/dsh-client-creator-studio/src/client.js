@@ -1,6 +1,13 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-creator-studio',
-  factory() {
+  factory(require) {
+    // 信封拆解（含「信封不成立」的折叠）只有一份，住 @eleckoi/dsh-product-api/client
+    // （ADR 0002 决定 8；票 EH-4a，票 EH-11 的 E 项把 23 份抄写收进它）。
+    // 这个包已是 desktop profile 的 bundle 成员，且本插件 inject 了它，所以 require 解析得到。
+    const unwrapOrFail = (result, what) => require('@eleckoi/dsh-product-api/client').unwrapOrFail(result, what)
+    // 结构取消息，不用 instanceof：契约自己写明跨 bundle / 跨 realm 的副本没有同一个原型
+    // （同 foldFailure 的理由），失败的 message 不能因为原型不同就变成 "Error: …"。
+    const failureMessage = error => error && typeof error.message === 'string' ? error.message : String(error)
     class CreatorStudioProjects {
       constructor(remote) {
         this.remote = remote
@@ -66,8 +73,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiCreatorStudio.list()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取创作项目失败。')
-          const collection = this.assertCollection(result.value)
+          const collection = this.assertCollection(unwrapOrFail(result, '创作项目列表没有返回可用的失败对象。'))
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', collection, error: '' })
           }
@@ -76,7 +82,7 @@ window.__ModuleLoader__.load({
           if (!this.disposed && generation === this.generation) {
             this.publish({
               status: 'error', collection: this.snapshot.collection,
-              error: error instanceof Error ? error.message : String(error)
+              error: failureMessage(error), failure: error
             })
           }
           throw error
@@ -86,8 +92,7 @@ window.__ModuleLoader__.load({
       async create(input) {
         if (this.disposed) throw new Error('创作项目服务已关闭。')
         const result = await this.remote.eleckoiCreatorStudio.create(input)
-        if (!result?.ok) throw new Error(result?.error?.message || '项目创建失败。')
-        const collection = this.assertCollection(result.value)
+        const collection = this.assertCollection(unwrapOrFail(result, '创作项目创建没有返回可用的失败对象。'))
         this.adopt(collection)
         return collection
       }
@@ -95,8 +100,7 @@ window.__ModuleLoader__.load({
       async delete(projectId) {
         if (this.disposed) throw new Error('创作项目服务已关闭。')
         const result = await this.remote.eleckoiCreatorStudio.delete(projectId)
-        if (!result?.ok) throw new Error(result?.error?.message || '无法删除项目。')
-        const collection = this.assertCollection(result.value)
+        const collection = this.assertCollection(unwrapOrFail(result, '创作项目删除没有返回可用的失败对象。'))
         this.adopt(collection)
         return collection
       }
@@ -110,8 +114,7 @@ window.__ModuleLoader__.load({
           lifetime.throwIfAborted()
           const result = await this.remote.directoryPicker.pick(lifetime)
           lifetime.throwIfAborted()
-          if (!result?.ok) throw new Error(result?.error?.message || '无法选择保存位置。')
-          return result.value
+          return unwrapOrFail(result, '保存位置选择没有返回可用的失败对象。')
         } finally {
           this.directoryRequests.delete(request)
         }

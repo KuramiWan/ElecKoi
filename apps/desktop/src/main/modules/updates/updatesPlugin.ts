@@ -6,6 +6,7 @@ import type { Logger } from 'pino'
 import { UpdateService } from './UpdateService'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
 import { assertTrustedDshClientFrame } from '@main/platform/electron/validateSender'
+import { handleDesktopShellCall } from '@main/platform/electron/desktopShellIpc'
 
 export function attachUpdaterLogger(
   updater: Pick<AppUpdater, 'logger'>,
@@ -76,19 +77,19 @@ export const updatesPlugin = {
       event.senderFrame === event.sender.mainFrame,
       windows.all().map(window => window.webContents)
     )
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesStatus, (event) => {
+    handleDesktopShellCall(DESKTOP_SHELL_IPC.updatesStatus, (event) => {
       assertSender(event)
       return updates.status()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesCheck, (event) => {
+    handleDesktopShellCall(DESKTOP_SHELL_IPC.updatesCheck, (event) => {
       assertSender(event)
       return updates.check()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesDownload, (event) => {
+    handleDesktopShellCall(DESKTOP_SHELL_IPC.updatesDownload, (event) => {
       assertSender(event)
       return updates.download()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesInstall, (event) => {
+    handleDesktopShellCall(DESKTOP_SHELL_IPC.updatesInstall, (event) => {
       assertSender(event)
       return updates.install()
     })

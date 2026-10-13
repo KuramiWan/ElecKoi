@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { CreatorProjectRepository } from '../packages/dsh-product-data/src/domain/creatorStudio/CreatorProjectRepository'
+import { ELECKOI_FAILURE_CODES } from '../packages/product-shared/src/contracts/errors/codes'
+import { DesktopError } from '../packages/product-shared/src/foundation/DesktopError'
 
 let testRoot = ''
 
@@ -72,7 +74,16 @@ describe('CreatorProjectRepository', () => {
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>
     writeFileSync(manifestPath, JSON.stringify({ ...manifest, id: 'different-project' }), 'utf8')
 
-    expect(() => repository.delete(project.id)).toThrow('项目清单校验失败')
+    // 清单与索引不一致 ⇒ 护栏拒绝执行（不是"存储坏了"）：EH-3 把原来那个
+    // 同时吞掉"清单读不了"与"清单和索引打架"的 catch 拆成了两个语义。
+    try {
+      repository.delete(project.id)
+      throw new Error('这次删除本该被拒绝。')
+    } catch (error) {
+      if (!(error instanceof DesktopError)) throw error
+      expect(error.code).toBe(ELECKOI_FAILURE_CODES.safetyRefused)
+      expect(error.details).toStrictEqual({ guard: 'creator-project-manifest-matches-index' })
+    }
     expect(existsSync(project.rootPath)).toBe(true)
   })
 })

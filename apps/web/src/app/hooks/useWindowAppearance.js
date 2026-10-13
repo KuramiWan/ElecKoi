@@ -80,7 +80,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
       if (!appearance) throw new Error("DSH 主题服务尚未就绪。");
       appearance.theme.setTheme(normalizeAppearanceMode(mode));
     } catch (error) {
-      notify("error", error?.message || "外观模式切换失败。");
+      notify("error", "外观模式切换失败。", error);
     }
   }
 
@@ -105,7 +105,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
         if (chatDisplayVersionRef.current !== version) return;
         chatDisplayDirtyRef.current = false;
         setChatDisplay(confirmedChatDisplayRef.current);
-        notify("error", error?.message || "聊天显示设置保存失败。");
+        notify("error", "聊天显示设置保存失败。", error);
       }
     }, 250);
   }
@@ -119,7 +119,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
       await displayPreferences.updateUi({ sidebar_character_artwork: nextMode });
     } catch (error) {
       setSidebarCharacterArtwork(previousMode);
-      notify("error", error?.message || "侧栏角色图设置保存失败。");
+      notify("error", "侧栏角色图设置保存失败。", error);
     }
   }
 

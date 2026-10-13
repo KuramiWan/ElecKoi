@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
+import { remoteFailure } from './helpers/remoteFailure'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
 
 const source = readFileSync(new URL('../packages/dsh-client-web-search/src/client.js', import.meta.url), 'utf8')
@@ -59,7 +60,7 @@ describe('DSH web search Client model', () => {
     const { remote, model, cleanup } = harness()
     try {
       await model.refresh()
-      remote.eleckoiWebSearch.testTavily.mockResolvedValueOnce({ ok: false, error: { message: 'invalid credential' } } as any)
+      remote.eleckoiWebSearch.testTavily.mockResolvedValueOnce({ ok: false, error: remoteFailure('eleckoi/internal', 'invalid credential') } as any)
       await expect(model.saveAndTest('invalid')).rejects.toThrow('invalid credential')
       expect(remote.credentials.set).not.toHaveBeenCalled()
     } finally { cleanup() }

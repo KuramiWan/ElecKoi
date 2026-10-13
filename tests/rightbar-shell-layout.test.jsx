@@ -94,7 +94,9 @@ describe("right sidebar shell layout", () => {
     expect(preloadSource).toContain("function createDesktopBrowserBridge()");
     expect(preloadSource).toContain("browser: createDesktopBrowserBridge()");
     expect(mainWindowPluginSource).toContain("webviewTag: !child");
-    expect(mainWindowPluginSource).toContain("ipcMain.handle(DESKTOP_SHELL_IPC.browserAcquire");
-    expect(mainWindowPluginSource).toContain("ipcMain.handle(DESKTOP_SHELL_IPC.browserRelease");
+    // 主进程注册这两条通道的方式换成了边界⑤ 的薄适配器 `handleDesktopShellCall`
+    // （EH-5：失败要带契约码与详情过 IPC）；通道名与注册点不变。
+    expect(mainWindowPluginSource).toContain("handleDesktopShellCall(DESKTOP_SHELL_IPC.browserAcquire");
+    expect(mainWindowPluginSource).toContain("handleDesktopShellCall(DESKTOP_SHELL_IPC.browserRelease");
   });
 });

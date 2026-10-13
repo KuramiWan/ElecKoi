@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
+import { remoteFailure } from './helpers/remoteFailure'
 import { dshClientPlugin } from './helpers/dshClientPlugin'
 import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
 import { MessageDisplayProjector } from '../packages/dsh-product-data/src/domain/conversations/MessageDisplayProjector'
@@ -13,7 +14,8 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 interface Result {
   ok: boolean
   data?: Array<{ id: string }>
-  error?: { message: string }
+  // 官方 RemoteError 的线上形状：`code`/`details` 是契约要求的，失败对象没有它们就不成形。
+  error?: { isDSHRemoteError: true; code: string; message: string; details: Record<string, unknown> }
 }
 
 type ConversationChange =
@@ -581,7 +583,7 @@ describe('DSH ElecKoi conversation client model', () => {
         details: async () => ({ ok: true, value: details }),
         regenerateMessage: async (_id: string, eventSeq: number) => {
           calls.push(eventSeq)
-          return { ok: false, error: { message: '合成准备失败' } }
+          return { ok: false, error: remoteFailure('eleckoi/internal', '合成准备失败') }
         },
       } },
       sessions: { list: { getSnapshot: () => ({ byId: { 'runtime-1': {} } }) },
@@ -617,7 +619,7 @@ describe('DSH ElecKoi conversation client model', () => {
   it('keeps the last valid baseline when a later read fails', async () => {
     const responses: Result[] = [
       { ok: true, data: [{ id: 'saved' }] },
-      { ok: false, error: { message: 'read failed' } }
+      { ok: false, error: remoteFailure('eleckoi/internal', 'read failed') }
     ]
     const mounted = mountCatalog(async () => responses.shift()!)
     await settle()
@@ -1268,7 +1270,7 @@ describe('DSH ElecKoi conversation client model', () => {
           detailRequests.push(input.conversationId!)
           return exists
             ? { ok: true, data: { conversation: { id: 'only-chat' }, messages: [] } }
-            : { ok: false, error: { message: '找不到对应的聊天存档。' } }
+            : { ok: false, error: remoteFailure('eleckoi/creator-project/not-found', '找不到对应的聊天存档。', { what: 'archive' }) }
         }
         throw new Error(`Unexpected query: ${name}`)
       },

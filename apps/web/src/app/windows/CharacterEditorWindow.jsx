@@ -15,7 +15,9 @@ import { DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/setting
 import { VariableConfigPanel } from "../../modules/variables/index.js";
 import { RegexRulesPanel } from "../../modules/regex/index.js";
 import { UnsavedChangesDialog } from "../../ui/ui/UnsavedChangesDialog.jsx";
+import { FailureAlert } from "../../ui/ui/FailureAlert.jsx";
 import { characterName } from "../../utils/characterDisplay.js";
+import { failureMessage } from "../../utils/failureText.js";
 import { appWindow, showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 
@@ -49,6 +51,8 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   const [character, setCharacter] = useState(null);
   const [persistedCharacter, setPersistedCharacter] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [reloadCount, setReloadCount] = useState(0);
   const [activeSection, setActiveSection] = useState("card");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -107,6 +111,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
 
   useEffect(() => {
     let active = true;
+    setLoadError(null);
 
     characterCatalog.refresh()
       .then((collection) => {
@@ -116,7 +121,11 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         setCharacter(found);
         setPersistedCharacter(found);
       })
-      .catch(() => {})
+      .catch((error) => {
+        // 读取失败必须说出来：这里原来是 `.catch(() => {})`，于是 loaded=true + character=null
+        // 被渲染成「角色不存在」，用户会以为角色被删了（ADR 0002 决定 12 / spec 的 User Story 1）。
+        if (active) setLoadError(error);
+      })
       .finally(() => {
         if (active) setLoaded(true);
       });
@@ -125,7 +134,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     return () => {
       active = false;
     };
-  }, [characterCatalog, characterId]);
+  }, [characterCatalog, characterId, reloadCount]);
 
   function updateBasicInfo(patch) {
     if (saving) return;
@@ -197,6 +206,13 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       if (saved && activeSection === "regex") setRegexDirty(false);
       if (saved && activeSection === "dynamic") setDynamicDirty(false);
       return saved;
+    } catch (error) {
+      // 插件注入的 section 控制器允许 save() 返回 Promise（dsh-client-characters 的 slots 契约：
+      // `save?(): boolean | Promise<boolean>`），它的拒绝以前直接穿出这个函数、从
+      // UnsavedChangesDialog 的 onClick 逃成未处理拒绝（notes/eh-explore-renderer.md §5.3）。
+      // 落点：保存确认对话框的就地失败面（下面的 `error` 属性）。
+      setSaveError(failureMessage(error, "保存失败"));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -405,7 +421,13 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
           className={`character-editor-workspace${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
           aria-label={activeLabel}
         >
-          {loaded && !character
+          {loadError ? (
+            <FailureAlert
+              failure={loadError}
+              fallback="读取角色卡失败"
+              onRetry={() => setReloadCount((count) => count + 1)}
+            />
+          ) : loaded && !character
             ? <p className="character-editor-missing">角色不存在</p>
             : editorContent || <h1 id="character-editor-section-title">{activeLabel}</h1>}
         </section>
@@ -414,6 +436,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         open={Boolean(pendingAction)}
         title="保存修改？"
         description="离开前是否保存当前角色的修改？"
+        error={saveError}
         saving={saving}
         onCancel={() => setPendingAction(null)}
         onDiscard={discardAndContinue}

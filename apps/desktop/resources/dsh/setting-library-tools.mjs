@@ -3,13 +3,19 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
+import { runRuntimePluginApply } from './runtime-plugin-failure.mjs'
 
 export const name = 'eleckoi-setting-library-tools'
 export const inject = ['tools', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
 
 const requiredEntriesReadInstruction = '搜索结果的 required_entries 是本回合必读清单（固定必读及关键词、EJS 条件触发项），不受 pattern、path 或 files/matches 是否命中影响。若非空，回复用户前必须调用 eleckoi_read_setting_files，把本轮尚未读取或已失效的 path 一次传入 paths；已读取且正文未变化的条目无需重复读取，仅搜索不算读取。即使固定必读项标记为 cached_reference、正文已在前置缓存设定区，也必须读取，用工具回执的编号和标题核对前置正文。'
 
+// 边界④ 的出口：`apply()` 抛出（含工具注册失败）时先产出带码的可记录对象并写诊断出口。
 export function apply(ctx) {
+  return runRuntimePluginApply('setting-library-tools', () => applySettingLibraryTools(ctx))
+}
+
+function applySettingLibraryTools(ctx) {
   return [
     ctx.tools.register(globTool()),
     ctx.tools.register(grepTool()),

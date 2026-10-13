@@ -1,3 +1,9 @@
+// 把 ElecKoi 的失败码表并进官方 RemoteErrorDetailsMap（ADR 0002 决定 7：声明合并住这个包）。
+// 这一行是**副作用 import**，不是可选项：合并只有被消费方导入的程序看见才生效，
+// 而 `./types` 是 `./remote` 与 `./client` 共同的上游（那两族都 import 本模块），
+// 所以这里是唯一能让四个公开入口都看见码表的位置。
+import './remoteFailureDetails.js'
+
 export interface ElecKoiHostStatus {
   architecture: 'dsh-remote'
   protocolVersion: 1

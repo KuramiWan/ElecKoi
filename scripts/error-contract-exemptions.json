@@ -1,0 +1,460 @@
+{
+  "$comment": "ADR 0002 决定 11 的豁免账本：闸断言「实际命中集合 == 账本集合」，只减不增。每条 tracking 指到 docs/open-problems/error-contract-exemptions.md 的某一族，那里写着失效条件。播种日期 2026-10-11，按闸自己的正则现算；MAX_EXEMPTIONS 在 scripts/check-error-contract.mjs 里。",
+  "exemptions": [
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/app/hooks/useChatClient.js",
+      "line": 158,
+      "reason": "启动时载入会话列表：失败被丢弃（同一个 effect 里 loadMeta / loadPersona 都接到了 setStatus）",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/app/windows/CharacterEditorWindow.jsx",
+      "line": 133,
+      "reason": "窗口自身的显示调用：失败没有可呈现面（当前窗口就是失败发生的地点）；ADR 0002 决定 12 明令不给四个副窗口补 toast 面",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/app/windows/CharacterManagerWindow.jsx",
+      "line": 42,
+      "reason": "窗口自身的显示调用：失败没有可呈现面（当前窗口就是失败发生的地点）；ADR 0002 决定 12 明令不给四个副窗口补 toast 面",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/app/windows/ChatWindow.jsx",
+      "line": 22,
+      "reason": "窗口自身的显示调用：失败没有可呈现面（当前窗口就是失败发生的地点）；ADR 0002 决定 12 明令不给四个副窗口补 toast 面",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/app/windows/CreatorStudioWindow.jsx",
+      "line": 50,
+      "reason": "窗口自身的显示调用：失败没有可呈现面（当前窗口就是失败发生的地点）；ADR 0002 决定 12 明令不给四个副窗口补 toast 面",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/app/windows/PresetManagerWindow.jsx",
+      "line": 48,
+      "reason": "窗口自身的显示调用：失败没有可呈现面（当前窗口就是失败发生的地点）；ADR 0002 决定 12 明令不给四个副窗口补 toast 面",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/authorFrontend/components/RichMessageFrame.jsx",
+      "line": 171,
+      "reason": "catch 体里只有注释说明（invalid requests keep an empty id），不是豁免声明",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 D"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/authorFrontend/components/RichMessageFrame.jsx",
+      "line": 205,
+      "reason": "catch 体里只有注释说明（the SDK response still returns to the frame），不是豁免声明",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 D"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/authorFrontend/model/authorAudioHost.js",
+      "line": 269,
+      "reason": "catch 体里只有注释说明（the error state was already published），不是豁免声明",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 D"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/authorFrontend/model/authorConversationEvents.js",
+      "line": 146,
+      "reason": "事件队列的链式接续：吞掉拒绝只为让队列继续（emit 是同步 API，没有返回 promise，失败没有出口）",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/authorFrontend/model/authorConversationEvents.js",
+      "line": 154,
+      "reason": "事件队列的链式接续：吞掉拒绝只为让队列继续（emit 是同步 API，没有返回 promise，失败没有出口）",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/authorFrontend/model/buildRichMessageHtml.js",
+      "line": 110,
+      "reason": "catch 体里只有注释说明（cross-origin frames publish readiness through their load event），不是豁免声明",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 D"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/chat/components/ConversationWidthControls.tsx",
+      "line": 195,
+      "reason": "偏好写入：调用方丢弃拒绝——EH-4a（ab09210）只给三个写队列的队列尾巴接了失败出口，调用方这条路还没接",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/chat/hooks/useChatSessions.js",
+      "line": 222,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/chat/hooks/useChatSessions.js",
+      "line": 387,
+      "reason": "取消请求的清理调用：失败被丢弃",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/chat/hooks/useConversationListPreferences.js",
+      "line": 26,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/settingLibraries/components/SettingLibraryPanel.jsx",
+      "line": 406,
+      "reason": "偏好写入：调用方丢弃拒绝——EH-4a（ab09210）只给三个写队列的队列尾巴接了失败出口，调用方这条路还没接",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "apps/web/src/modules/variables/components/VariableConfigPanel.jsx",
+      "line": 231,
+      "reason": "偏好写入：调用方丢弃拒绝——EH-4a（ab09210）只给三个写队列的队列尾巴接了失败出口，调用方这条路还没接",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 C"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/compatibility/tavern-helper/src/index.ts",
+      "line": 382,
+      "reason": "插件装载时的库预读：失败被丢弃",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-character-configuration/src/client.js",
+      "line": 174,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-character-configuration/src/client.js",
+      "line": 177,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-character-configuration/src/client.js",
+      "line": 268,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-character-configuration/src/client.js",
+      "line": 272,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-characters/src/client.js",
+      "line": 41,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-characters/src/client.js",
+      "line": 54,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-characters/src/client.js",
+      "line": 185,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 746,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1011,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1023,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1034,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1039,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1042,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1051,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1056,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1057,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1058,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1059,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1073,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1193,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1368,
+      "reason": "同一个 promise 稍后会被 await（client.js:1372），这里提前挂 catch 只为压住未处理拒绝，失败在 await 处处理",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1379,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1840,
+      "reason": "补偿刷新（refresh + bindOfficialSession + refreshDetails）的失败被丢弃；原始错误在同一处 catch 里继续抛出",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 1901,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-creator-studio/src/client.js",
+      "line": 50,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-creator-studio/src/client.js",
+      "line": 63,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-creator-studio/src/client.js",
+      "line": 140,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-display-preferences/src/client.js",
+      "line": 111,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-display-preferences/src/client.js",
+      "line": 127,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-models/src/client.js",
+      "line": 346,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-models/src/client.js",
+      "line": 370,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-persona/src/client.js",
+      "line": 34,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-persona/src/client.js",
+      "line": 47,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-persona/src/client.js",
+      "line": 116,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-presets/src/client.js",
+      "line": 174,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-presets/src/client.js",
+      "line": 175,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-presets/src/client.js",
+      "line": 256,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-presets/src/client.js",
+      "line": 257,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-roleplay/src/host/model-selection-migration.mjs",
+      "line": 91,
+      "reason": "探测模型可用性的过滤：catch 体是真空块（不可解析的候选被跳过）",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 D"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-web-search/src/client.js",
+      "line": 138,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-client-web-search/src/client.js",
+      "line": 154,
+      "reason": "即发即弃的快照读取与刷新：失败被丢弃，订阅者看到的仍是上一份快照",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 B"
+    },
+    {
+      "rule": "empty-catch",
+      "file": "packages/dsh-product-data/src/domain/characterTransfer/mvuImport.ts",
+      "line": 355,
+      "reason": "catch 体里只有注释说明（invalid enums are ignored），不是豁免声明",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 D"
+    },
+    {
+      "rule": "no-code-drop",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 311,
+      "reason": "不是 RemoteResult：session.getSnapshot() 的状态投影（{op,error}，没有 ok 字段），是 DSH 已折叠过一轮的状态；对着它 throw x.error 会抛出非失败对象（EH-4a.status.md 的逐条判定表，合并方与 implementer 都复核过）",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 A"
+    },
+    {
+      "rule": "no-code-drop",
+      "file": "packages/dsh-client-conversations/src/client.js",
+      "line": 333,
+      "reason": "不是 RemoteResult：turn/end 事件的载荷 reason（{kind:error,error}），同上（EH-4a.status.md 的逐条判定表）",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 A"
+    },
+    {
+      "rule": "no-code-drop",
+      "file": "packages/dsh-client-roleplay/src/host/session-runtime.mjs",
+      "line": 266,
+      "reason": "不是 RemoteResult：DSH 事件载荷 event.data.reason.error；且这是 roleplay 的 host 半边（Node 侧，边界①/③，不属边界⑥）（EH-4a.status.md 的逐条判定表）",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 A"
+    },
+    {
+      "rule": "no-code-drop",
+      "file": "packages/dsh-product-api/src/client/index.ts",
+      "line": 25,
+      "reason": "Remote 就绪握手的协议版本失败只留 message：status 是 scope.remote.eleckoiSystem.status() 的官方 RemoteResult（有 ok 字段），status.error.message 把码丢了；EH-4a 的一般化重扫只覆盖 packages/dsh-client-*，这一处不在其中",
+      "tracking": "docs/open-problems/error-contract-exemptions.md 族 A"
+    }
+  ]
+}

@@ -7,6 +7,7 @@
 - [运行期请求预览与写入放大](adr/0029-ephemeral-request-context-preview.md)：实际请求、内存共享、预览入口与增长回归约束。
 
 - [DSH 官方客户端架构基准](DSH_DESKTOP_ARCHITECTURE.md)：Host、Client、桌面壳及上游版本边界。
+- [错误契约](error-contract.md)：13 条失败码的字面值、参数化详情与 ①–⑥ 每条边界的翻译规则；语言中立，不含 TypeScript 也能照它实现，并写明「还差什么」。
 - [产品数据库](DATABASE.md)：数据所有权、结构与迁移。
 - [插件归属与接入清单](DSH_PLUGIN_MIGRATION.md)：内置能力的归属与公开接入点。
 

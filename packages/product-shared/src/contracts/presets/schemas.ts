@@ -1,12 +1,12 @@
 import { z } from 'zod'
-import { agentToolGroupSchema } from '../agent/tools'
-import { regexRuleSchema } from '../regex/schemas'
+import { agentToolGroupSchema } from '../agent/tools.js'
+import { regexRuleSchema } from '../regex/schemas.js'
 import {
   settingLibraryEntrySchema,
   settingLibraryGroupSchema,
   settingLibraryPromptPositionSchema
-} from '../settingLibrary/schemas'
-import { roleplayPlanSettingsSchema } from './roleplayPlan'
+} from '../settingLibrary/schemas.js'
+import { roleplayPlanSettingsSchema } from './roleplayPlan.js'
 
 export const agentPresetModelFamilySchema = z.enum([
   'general',

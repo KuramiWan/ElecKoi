@@ -1,9 +1,9 @@
-import type { RuntimeModelSettings } from '../entities/model'
-import type { AgentProcessItem, ChatImageMediaType, ChatUserFileAttachment, ChatUserImageAttachment, EncodedChatImageAttachment } from '../entities/chat'
-import type { VariableItemConfig, VariableObjectConfig } from '../variables/schemas'
-import type { SettingLibraryEntry, SettingLibraryGroup, SettingLibraryPromptPosition } from '../settingLibrary/schemas'
-import type { AgentGenerationStats } from './generationStats'
-import type { AgentTrajectorySnapshot } from './trajectory'
+import type { RuntimeModelSettings } from '../entities/model.js'
+import type { AgentProcessItem, ChatImageMediaType, ChatUserFileAttachment, ChatUserImageAttachment, EncodedChatImageAttachment } from '../entities/chat.js'
+import type { VariableItemConfig, VariableObjectConfig } from '../variables/schemas.js'
+import type { SettingLibraryEntry, SettingLibraryGroup, SettingLibraryPromptPosition } from '../settingLibrary/schemas.js'
+import type { AgentGenerationStats } from './generationStats.js'
+import type { AgentTrajectorySnapshot } from './trajectory.js'
 
 export interface AgentVariableRuntimeContext {
   initialStateJson: string

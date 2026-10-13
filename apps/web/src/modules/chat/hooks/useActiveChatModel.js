@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { failureMessage } from "../../../utils/failureText.js";
 import { normalizeModelSelection, resolveModelConfig } from "../model/chatModelSelection.js";
 
 const DEFAULT_SELECTION = {
@@ -6,12 +7,6 @@ const DEFAULT_SELECTION = {
   configId: "",
   model: "",
 };
-
-function errorMessage(error, fallback) {
-  if (typeof error === "string" && error.trim()) return error;
-  if (error?.message?.trim()) return error.message;
-  return fallback;
-}
 
 function fromDshSelection(selection = {}) {
   return normalizeModelSelection({
@@ -46,7 +41,7 @@ export function useActiveChatModel({ conversations, conversationId, modelConfigs
     } catch (error) {
       if (generation === generationRef.current) {
         setModelSelection(previous);
-        setStatus(errorMessage(error, "模型选择保存失败"));
+        setStatus(failureMessage(error, "模型选择保存失败"));
       }
       throw error;
     }
@@ -75,7 +70,7 @@ export function useActiveChatModel({ conversations, conversationId, modelConfigs
       });
       if (generation === generationRef.current) setModelSelection(fromDshSelection(selected));
     }).catch((error) => {
-      if (generation === generationRef.current) setStatus(errorMessage(error, "模型选择读取失败"));
+      if (generation === generationRef.current) setStatus(failureMessage(error, "模型选择读取失败"));
     });
   }, [conversations, setStatus, configKey]);
 

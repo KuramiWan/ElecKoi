@@ -1,9 +1,9 @@
-import type { ChatMessage } from '@shared/contracts/entities/chat'
+import type { ChatMessage } from '../../contracts/entities/chat.js'
 import type {
   VariableFloorSnapshot,
   VariableStateDocument,
   VariableViewerTimeline
-} from '@shared/contracts/variables/viewer'
+} from '../../contracts/variables/viewer.js'
 
 type JsonObject = Record<string, unknown>
 

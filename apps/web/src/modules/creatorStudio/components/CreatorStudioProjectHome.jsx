@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowSquareOut,
   CalendarBlank,
@@ -18,6 +18,7 @@ import {
   DshPlusIcon,
 } from "../../../ui/icons/dshComposerIcons.jsx";
 import { TrashIcon } from "../../../ui/icons/index.jsx";
+import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 import {
   CreatorStudioAssetsIcon,
   CreatorStudioProjectsIcon,
@@ -432,6 +433,16 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
   const [pendingDeletionId, setPendingDeletionId] = useState("");
   const [deletingProjectId, setDeletingProjectId] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [loadError, setLoadError] = useState(null);
+
+  // 列表刷新失败以前被 `.catch(() => {})` 吃掉：projects 保持 `[]`，页面显示「还没有创作项目」，
+  // 用户以为项目没了（ADR 0002 决定 12）。这里把两个目录的刷新合成一次可重试的读取。
+  const loadCatalogs = useCallback(async () => {
+    setLoadError(null);
+    const results = await Promise.allSettled([characterCatalog.refresh(), projectCatalog.refresh()]);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed) setLoadError(failed.reason);
+  }, [characterCatalog, projectCatalog]);
 
   useEffect(() => {
     const updateCharacters = () => {
@@ -446,10 +457,9 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
     const stopProjects = projectCatalog.subscribe(updateProjects);
     updateCharacters();
     updateProjects();
-    void characterCatalog.refresh().catch(() => {});
-    void projectCatalog.refresh().catch(() => {});
+    void loadCatalogs();
     return () => { stopCharacters(); stopProjects(); };
-  }, [characterCatalog, projectCatalog]);
+  }, [characterCatalog, projectCatalog, loadCatalogs]);
 
   useEffect(() => {
     if (!pendingDeletionId) return undefined;
@@ -545,19 +555,28 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
           </div>
         </div>
         {projects.length ? <p className="creator-studio-project-count">{filteredProjects.length} 个项目</p> : null}
-        <section className="creator-studio-project-collection" data-view={viewMode} aria-label="项目列表">
-          <ProjectCollection
-            projects={visibleProjects}
-            viewMode={viewMode}
-            pendingDeletionId={pendingDeletionId}
-            deletingProjectId={deletingProjectId}
-            deleteError={deleteError}
-            onOpenProject={onOpenProject}
-            onRequestDelete={requestDelete}
-            onCancelDelete={cancelDelete}
-            onConfirmDelete={confirmDelete}
+        {loadError ? (
+          <FailureAlert
+            className="creator-studio-load-failure"
+            failure={loadError}
+            fallback="读取创作项目失败"
+            onRetry={() => void loadCatalogs()}
           />
-        </section>
+        ) : (
+          <section className="creator-studio-project-collection" data-view={viewMode} aria-label="项目列表">
+            <ProjectCollection
+              projects={visibleProjects}
+              viewMode={viewMode}
+              pendingDeletionId={pendingDeletionId}
+              deletingProjectId={deletingProjectId}
+              deleteError={deleteError}
+              onOpenProject={onOpenProject}
+              onRequestDelete={requestDelete}
+              onCancelDelete={cancelDelete}
+              onConfirmDelete={confirmDelete}
+            />
+          </section>
+        )}
         {filteredProjects.length > 0 ? <CreatorStudioPagination
           pageSize={pageSize}
           currentPage={projectPage.currentPage}

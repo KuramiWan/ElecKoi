@@ -55,16 +55,76 @@
   background: var(--control-bg);
 }
 
-.app-error-detail {
+/* notice 队列：一条错误一条（EH-8 起对话框一次呈现全部错误）。 */
+.app-error-details {
+  display: grid;
+  gap: 16px;
+  align-content: start;
   min-width: 0;
   min-height: 120px;
   margin: 18px 0 0;
   padding: 16px;
   overflow: auto;
-  color: var(--text);
   background: var(--surface-subtle);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
+}
+
+/* 一条错误：用户可见说法 + 失败码/参数化详情 + 诊断尾部。 */
+.app-error-entry {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-error-entry + .app-error-entry {
+  padding-top: 16px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.app-error-text {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.app-error-facts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.app-error-fact {
+  display: grid;
+  grid-template-columns: minmax(72px, max-content) 1fr;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.app-error-fact dt {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.app-error-fact dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font: 12px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.app-error-diagnostic {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
   font: 12px/1.65 ui-monospace, "Cascadia Code", Consolas, monospace;
   overflow-wrap: anywhere;
   tab-size: 2;
@@ -130,7 +190,7 @@
 }
 
 .app-error-dialog button:focus-visible,
-.app-error-detail:focus-visible {
+.app-error-diagnostic:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--blue) 55%, transparent);
   outline-offset: 2px;
 }

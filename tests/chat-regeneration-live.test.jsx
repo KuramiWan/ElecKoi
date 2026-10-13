@@ -279,7 +279,8 @@ describe('regeneration with the official Session client projection', () => {
         if (mode === 'prepare-failed') {
           await act(async () => { runtime.rejectPreparation(); await regenerating; await refreshing })
           expect(text()).toEqual(['前轮输入', '前轮回复', '本轮输入', '旧回复', '后轮输入', '后轮回复'])
-          expect(notify).toHaveBeenCalledWith('error', '测试回退失败')
+          // notice 队列同时承载失败实例（EH-8）：第三个实参是这次拒绝的 Error。
+          expect(notify).toHaveBeenCalledWith('error', '测试回退失败', expect.any(Error))
           expect(statsRow.textContent).toBe(previousStats)
           break
         }

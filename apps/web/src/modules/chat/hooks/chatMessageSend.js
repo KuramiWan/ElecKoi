@@ -3,6 +3,7 @@ import {
   getChat,
   sendChatMessage,
 } from "../api/chatApi.js";
+import { failureMessage } from "../../../utils/failureText.js";
 import { encodeImageDraft } from "./useChatInputImages.js";
 
 export async function runChatMessageSend(options) {
@@ -114,7 +115,7 @@ export async function runChatMessageSend(options) {
       const message = getErrorMessage(error, "发送失败");
       setIsSending(false);
       setStatus(message);
-      notify?.("error", message);
+      notify?.("error", message, error);
       let reconciled = false;
       if (targetSessionId) {
         try {
@@ -164,14 +165,17 @@ export function stopChatMessageSend({
   void cancelRequest(activeRequest.requestId).catch((error) => {
     const message = getErrorMessage(error, "停止生成失败");
     if (requestRef.current === null) setStatus(message);
-    notify?.("error", message);
+    notify?.("error", message, error);
   });
   return true;
 }
 
+/**
+ * 保留原有出口名（`useChatSessions.js` 等 11+ 处 import 它），实现只有一处：
+ * 渲染层的唯一文案解析点 `apps/web/src/utils/failureText.js`。
+ */
 export function getErrorMessage(error, fallback) {
-  const raw = typeof error === "string" ? error : error?.message;
-  return raw?.trim() || fallback;
+  return failureMessage(error, fallback);
 }
 
 export function isAbortError(error) {

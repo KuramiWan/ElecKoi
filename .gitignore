@@ -30,6 +30,7 @@ dev-dist/
 dist/
 out/
 release/
+packages/product-shared/lib/
 packages/dsh-product-api/lib/
 packages/dsh-product-data/lib/
 packages/dsh-client-*/lib/

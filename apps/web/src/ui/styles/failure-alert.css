@@ -1,0 +1,58 @@
+.failure-alert {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 160px;
+  padding: 24px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+}
+
+.failure-alert-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.failure-alert-facts {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  margin: 0;
+  max-width: 100%;
+}
+
+.failure-alert-fact {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.failure-alert-fact dt {
+  flex: none;
+  color: var(--muted);
+}
+
+.failure-alert-fact dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
+.failure-alert-retry {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.failure-alert-retry:hover {
+  background: var(--control-bg-hover);
+}

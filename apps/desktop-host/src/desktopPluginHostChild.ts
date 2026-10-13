@@ -8,7 +8,8 @@ import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@eleckoi/dsh-product-api'
-import type { ChildHostMessage, ParentHostMessage } from './hostSessionProtocol'
+import { childHostFailureOf, childHostFatalFrame } from './childHostFailure'
+import { readyChildMessage, type ChildHostMessage, type ParentHostMessage } from './hostSessionProtocol'
 
 function send(message: ChildHostMessage): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -88,7 +89,7 @@ async function main(): Promise<void> {
   })
   process.once('disconnect', () => { void stop() })
   const url = ctx.connection.authenticatedUrl(`http://127.0.0.1:${String(ctx.webServer.port)}`)
-  await send({ type: 'ready', url, injections: ctx.webServer.collectIndexInjections() })
+  await send(readyChildMessage(url, ctx.webServer.collectIndexInjections()))
 }
 
 function installUpdateTaskControl(
@@ -138,8 +139,11 @@ function installUpdateTaskControl(
 }
 
 void main().catch(async error => {
-  const message = error instanceof Error ? error.message : String(error)
-  await send({ type: 'fatal', message }).catch(() => undefined)
+  // ④/⑦：失败折成契约的同一个可记录对象，码随 `fatal` 帧走（EH-6 的字段）；
+  // 消费侧 `pluginHostFailureOf` 折成 `DshPluginHostFailure`，②③ 两层读到的是同一个对象。
+  const failure = childHostFailureOf(error)
+  await send(childHostFatalFrame(failure, error instanceof Error ? error.stack : undefined))
+    .catch(() => undefined)
   console.error(error)
   process.exitCode = 1
   if (process.connected) process.disconnect?.()

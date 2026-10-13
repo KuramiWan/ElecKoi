@@ -71,4 +71,35 @@ describe('character editor client extension', () => {
       await act(async () => root.unmount())
     }
   })
+
+  // 判据来源：spec-error-handling-interface.md 的 R1（边界⑥）与 ADR 0002 决定 12。
+  // 读取失败今天被 `.catch(() => {})` 吃掉，窗口随后显示「角色不存在」——用户会以为角色被删了。
+  it('shows the read failure with its code and details instead of claiming the character does not exist', async () => {
+    window.history.replaceState({}, '', '/?view=character-editor&character=character-1')
+    const failure = {
+      isDSHRemoteError: true,
+      code: 'eleckoi/io/failed',
+      message: '读取角色列表失败：ENOENT',
+      details: { operation: 'read', path: '/tmp/eleckoi/characters.json' },
+    }
+    const characterCatalog = { refresh: vi.fn().mockRejectedValue(failure), update: vi.fn() }
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    try {
+      await act(async () => {
+        root.render(<CharacterEditorWindow characterCatalog={characterCatalog}
+          characterConfiguration={{}} />)
+      })
+
+      expect(container.textContent).not.toContain('角色不存在')
+      const alert = container.querySelector('[role="alert"]')
+      expect(alert).not.toBeNull()
+      expect(alert.textContent).toContain('eleckoi/io/failed')
+      expect(alert.textContent).toContain('/tmp/eleckoi/characters.json')
+    } finally {
+      await act(async () => root.unmount())
+    }
+  })
 })

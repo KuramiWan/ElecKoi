@@ -39,6 +39,7 @@
 @import "../../../modules/chat/styles/chat-background.css";
 @import "../../../ui/styles/avatar.css";
 @import "../../../ui/styles/avatar-crop.css";
+@import "../../../ui/styles/failure-alert.css";
 @import "../../../ui/styles/unsaved-changes.css";
 @import "../../../ui/styles/confirmation-dialog.css";
 @import "../../../ui/styles/avatar-slots.css";

@@ -1,18 +1,30 @@
 import logoIcon from "../../../../assets/eleckoi-app-icon.png";
 import { DshPanelLeftIcon } from "../../../../ui/icons/dshComposerIcons.jsx";
+import { reportFailure } from "../../../../utils/failureText.js";
 import { appWindow } from "../../../services/windowControls.js";
 
 function stopDrag(event) {
   event.stopPropagation();
 }
 
+// 窗口控件的 IPC 可以不通过（不可信发送方 / 非 dsh-app 框架拿到的残缺 API 桩）。
+// 以前这些拒绝没人接，直接逃成未处理拒绝（notes/eh-explore-renderer.md §5.2）。
+// 落点：console.error 一条可检索诊断，由 Electron 的 console-message 转发进主进程日志。
+function runWindowControl(action, context) {
+  try {
+    Promise.resolve(action()).catch((error) => reportFailure(error, context));
+  } catch (error) {
+    reportFailure(error, context);
+  }
+}
+
 export function WindowControls({ onClose }) {
   return (
     <div className="window-controls">
-      <button className="window-control-button minimize" type="button" title="最小化" onPointerDown={stopDrag} onClick={() => appWindow.minimize()}>
+      <button className="window-control-button minimize" type="button" title="最小化" onPointerDown={stopDrag} onClick={() => runWindowControl(() => appWindow.minimize(), "窗口最小化")}>
         <span />
       </button>
-      <button className="window-control-button maximize" type="button" title="最大化" onPointerDown={stopDrag} onClick={() => appWindow.maximizeToggle()}>
+      <button className="window-control-button maximize" type="button" title="最大化" onPointerDown={stopDrag} onClick={() => runWindowControl(() => appWindow.maximizeToggle(), "窗口最大化")}>
         <span />
       </button>
       <button
@@ -22,7 +34,7 @@ export function WindowControls({ onClose }) {
         onPointerDown={stopDrag}
         onClick={() => {
           if (onClose) onClose();
-          else appWindow.close();
+          else runWindowControl(() => appWindow.close(), "窗口关闭");
         }}
       >
         <span />

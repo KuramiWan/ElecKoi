@@ -3,7 +3,7 @@ import type {
   RegexRuleImportDocument,
   RegexRuleScope,
   RegexRuleTarget
-} from '@shared/contracts/regex/schemas'
+} from '../contracts/regex/schemas.js'
 
 export interface ScopedRegexRule {
   scope: RegexRuleScope

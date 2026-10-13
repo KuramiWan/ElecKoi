@@ -2,6 +2,13 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-conversations',
   factory(require) {
     const React = require('react')
+    // 信封拆解（含「信封不成立」的折叠）只有一份，住 @eleckoi/dsh-product-api/client
+    // （ADR 0002 决定 8；票 EH-4a，票 EH-11 的 E 项把 23 份抄写收进它）。
+    // 这个包已是 desktop profile 的 bundle 成员，且本插件 inject 了它，所以 require 解析得到。
+    const unwrapOrFail = (result, what) => require('@eleckoi/dsh-product-api/client').unwrapOrFail(result, what)
+    // 结构取消息，不用 instanceof：契约自己写明跨 bundle / 跨 realm 的副本没有同一个原型
+    // （同 foldFailure 的理由），失败的 message 不能因为原型不同就变成 "Error: …"。
+    const failureMessage = error => error && typeof error.message === 'string' ? error.message : String(error)
     const MessagesPage = React.lazy(() => import('dsh-app://app/eleckoi/assets/eleckoi-page-messages.js')
       .then(module => ({ default: module.MessagesPage })))
 
@@ -549,6 +556,11 @@ window.__ModuleLoader__.load({
         this.cancelledStreamConversations = new Set()
         this.preferredSessions = new Map()
         this.selectionWriteQueue = Promise.resolve()
+        // 选择写入是「发出去就不看」的写队列（上面那条 .catch 会吞掉拒绝）。失败必须有出口，
+        // 所以把**失败实例**留在自己的槽里并发给订阅者（ADR 0002 决定 12）：订阅者能从
+        // status:'error' 那条快照里读到 code 与 details，而不是只拿到一句话。
+        this.selectionWriteSnapshot = { status: 'idle', error: '', failure: undefined }
+        this.selectionWriteListeners = new Set()
         this.sessionReference = null
         this.sessionTarget = null
         this.stopSessionTarget = () => {}
@@ -585,6 +597,18 @@ window.__ModuleLoader__.load({
       }
 
       getDetailsSnapshot = () => this.detailsSnapshot
+
+      getSelectionWriteSnapshot = () => this.selectionWriteSnapshot
+
+      subscribeSelectionWrite = listener => {
+        this.selectionWriteListeners.add(listener)
+        return () => this.selectionWriteListeners.delete(listener)
+      }
+
+      publishSelectionWrite(snapshot) {
+        this.selectionWriteSnapshot = snapshot
+        for (const listener of this.selectionWriteListeners) listener()
+      }
 
       getStatsSnapshot = () => this.statsSnapshot
 
@@ -638,13 +662,12 @@ window.__ModuleLoader__.load({
         }
       }
 
-      unwrap(result, fallback) {
-        if (!result?.ok) throw new Error(result?.error?.message || fallback)
-        return result.value
+      unwrap(result) {
+        return unwrapOrFail(result, '会话目录调用没有返回可用的失败对象。')
       }
 
       async readSelection() {
-        const document = this.unwrap(await this.remote.settings.describe(), '读取当前聊天记录失败。')
+        const document = this.unwrap(await this.remote.settings.describe())
         const namespace = document?.namespaces?.find(item => item.ns === 'eleckoi-client-conversations')
         return this.normalizeSelection(namespace?.value?.selection)
       }
@@ -652,22 +675,29 @@ window.__ModuleLoader__.load({
       saveSelection(value) {
         const selection = this.normalizeSelection(value)
         const operation = this.selectionWriteQueue.then(async () => {
-          const document = this.unwrap(await this.remote.settings.describe(), '读取聊天选择状态失败。')
+          const document = this.unwrap(await this.remote.settings.describe())
           const namespace = document?.namespaces?.find(item => item.ns === 'eleckoi-client-conversations')
           this.unwrap(await this.remote.settings.mutate('eleckoi-client-conversations', [{
             op: 'set', path: ['selection'], value: selection
-          }], namespace?.revision), '保存当前聊天记录失败。')
+          }], namespace?.revision))
+          this.publishSelectionWrite({ status: 'ready', error: '', failure: undefined })
           return selection
         })
-        this.selectionWriteQueue = operation.catch(() => {})
+        // 队列自己吞掉拒绝是为了让后面的写继续排队；被吞掉的那次失败不能就此消失，
+        // 它带着实例进发到订阅者（调用方仍然拿到 operation 的拒绝，两条路都保留码与详情）。
+        this.selectionWriteQueue = operation.catch(error => {
+          this.publishSelectionWrite({
+            status: 'error',
+            error: failureMessage(error),
+            failure: error
+          })
+        })
         return operation
       }
 
       async readModelSelection(conversationId) {
         const selected = this.unwrap(
-          await this.remote.eleckoiConversationModels.current(conversationId),
-          '读取全局模型失败。'
-        )
+          await this.remote.eleckoiConversationModels.current(conversationId))
         this.publishModelSelection(selected)
         return selected
       }
@@ -675,33 +705,25 @@ window.__ModuleLoader__.load({
       async readAuthorState(conversationId) {
         if (!conversationId) throw new Error('请先打开一个聊天。')
         return this.unwrap(
-          await this.remote.eleckoiConversations.authorState(conversationId),
-          '读取作者接口上下文失败。'
-        )
+          await this.remote.eleckoiConversations.authorState(conversationId))
       }
 
       async exportArchive(conversationId) {
         if (!conversationId) throw new Error('请选择要导出的聊天记录。')
         return this.unwrap(
-          await this.remote.eleckoiConversations.exportArchive(conversationId),
-          '导出聊天记录失败。'
-        )
+          await this.remote.eleckoiConversations.exportArchive(conversationId))
       }
 
       async importArchive(characterId, json) {
         if (!characterId) throw new Error('请先选择角色，再导入聊天记录。')
         return this.unwrap(
-          await this.remote.eleckoiConversations.importArchive(characterId, json),
-          '导入聊天记录失败。'
-        )
+          await this.remote.eleckoiConversations.importArchive(characterId, json))
       }
 
       async revealFile(conversationId, attachmentId, name) {
         if (!conversationId) throw new Error('当前聊天不可用。')
         this.unwrap(
-          await this.remote.eleckoiConversations.revealFile(conversationId, attachmentId, name),
-          '无法在文件管理器中显示该文件。'
-        )
+          await this.remote.eleckoiConversations.revealFile(conversationId, attachmentId, name))
       }
 
       async readTrajectory(conversationId) {
@@ -720,18 +742,14 @@ window.__ModuleLoader__.load({
         if (!conversationId) throw new Error('请先打开一个聊天。')
         const stateJson = JSON.stringify(state)
         const saved = this.unwrap(
-          await this.remote.eleckoiConversations.replaceVariableState(conversationId, stateJson),
-          '保存作者接口变量失败。'
-        )
+          await this.remote.eleckoiConversations.replaceVariableState(conversationId, stateJson))
         if (this.timelineSnapshot.id === conversationId) void this.refreshTimeline().catch(() => {})
         return JSON.parse(saved || '{}')
       }
 
       async selectModel(conversationId, selection) {
         const selected = this.unwrap(
-          await this.remote.eleckoiConversationModels.select(conversationId, selection),
-          '保存全局模型失败。'
-        )
+          await this.remote.eleckoiConversationModels.select(conversationId, selection))
         this.publishModelSelection(selected)
         return selected
       }
@@ -889,7 +907,7 @@ window.__ModuleLoader__.load({
         this.displayProjectionKey = key
         const generation = ++this.displayProjectionGeneration
         const operation = projectDisplay.call(this.remote.eleckoiConversations, id, input).then((response) => {
-          const results = this.unwrap(response, '生成消息显示内容失败。')
+          const results = this.unwrap(response)
           if (!Array.isArray(results)) throw new Error('消息显示投影返回的数据格式不正确。')
           const current = this.detailsSnapshot
           if (this.disposed || generation !== this.displayProjectionGeneration
@@ -1046,9 +1064,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const items = this.unwrap(
-            await this.remote.eleckoiConversations.list(),
-            '读取会话列表失败。'
-          )
+            await this.remote.eleckoiConversations.list())
           if (!Array.isArray(items) || items.some(item => !item || typeof item.id !== 'string')) {
             throw new Error('会话目录返回的数据格式不正确。')
           }
@@ -1062,7 +1078,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               items: this.snapshot.items,
-              error: error instanceof Error ? error.message : String(error)
+              error: failureMessage(error), failure: error
             })
           }
           throw error
@@ -1072,9 +1088,7 @@ window.__ModuleLoader__.load({
       async create(input) {
         if (this.disposed) throw new Error('DSH 聊天服务正在恢复，请稍后重试。')
         const value = this.unwrap(
-          await this.remote.eleckoiConversations.create(input),
-          '新建聊天失败。'
-        )
+          await this.remote.eleckoiConversations.create(input))
         const conversationId = value?.conversation?.id
         if (typeof conversationId !== 'string' || !conversationId) throw new Error('新建聊天返回的数据格式不正确。')
         const details = this.assertDetails(value, conversationId)
@@ -1086,9 +1100,7 @@ window.__ModuleLoader__.load({
         if (!conversationId) return
         if (this.detailsSnapshot.id === conversationId) this.activate('')
         this.unwrap(
-          await this.remote.eleckoiConversations.delete(conversationId),
-          '删除聊天失败。'
-        )
+          await this.remote.eleckoiConversations.delete(conversationId))
         if (this.timelineSnapshot.id === conversationId) this.closeTimeline(conversationId)
         await Promise.all([this.refresh(), this.sessions.refresh()])
       }
@@ -1096,9 +1108,7 @@ window.__ModuleLoader__.load({
       async selectOpening(conversationId, openingId) {
         if (!conversationId || !openingId) throw new Error('请选择要切换的开场白。')
         const details = this.assertDetails(this.unwrap(
-          await this.remote.eleckoiConversations.selectOpening(conversationId, openingId),
-          '切换开场白失败。'
-        ), conversationId)
+          await this.remote.eleckoiConversations.selectOpening(conversationId, openingId)), conversationId)
         this.acceptMutationDetails(conversationId, details)
         await this.refresh()
         return this.detailsSnapshot.id === conversationId ? this.refreshDetails() : details
@@ -1107,9 +1117,7 @@ window.__ModuleLoader__.load({
       async updateOpening(conversationId, content) {
         if (!conversationId) throw new Error('请先打开一个聊天。')
         const details = this.assertDetails(this.unwrap(
-          await this.remote.eleckoiConversations.updateOpening(conversationId, content),
-          '修改开场白失败。'
-        ), conversationId)
+          await this.remote.eleckoiConversations.updateOpening(conversationId, content)), conversationId)
         this.acceptMutationDetails(conversationId, details)
         await this.refresh()
         return this.detailsSnapshot.id === conversationId ? this.refreshDetails() : details
@@ -1118,9 +1126,7 @@ window.__ModuleLoader__.load({
       async editMessage(conversationId, eventSeq, role, content) {
         if (!this.sessions || !this.uiConversation) throw new Error('DSH 会话客户端尚未就绪。')
         await this.mutateSession(conversationId, async () => this.unwrap(
-          await this.remote.eleckoiConversations.editMessage(conversationId, eventSeq, role, content),
-          '修改消息失败。'
-        ))
+          await this.remote.eleckoiConversations.editMessage(conversationId, eventSeq, role, content)))
         await this.sessions.refresh()
         await this.bindOfficialSession(conversationId)
         await this.refreshDetails()
@@ -1139,9 +1145,7 @@ window.__ModuleLoader__.load({
         }
         try {
           const result = await this.mutateSession(conversationId, async () => this.unwrap(
-            await this.remote.eleckoiConversations.deleteMessagesFrom(conversationId, eventSeq, role),
-            '删除消息失败。'
-          ))
+            await this.remote.eleckoiConversations.deleteMessagesFrom(conversationId, eventSeq, role)))
           // The reloaded DSH event source replaces the transcript. The product
           // result contains metadata, not a second authoritative message list.
           await this.sessions.refresh()
@@ -1657,7 +1661,7 @@ window.__ModuleLoader__.load({
         })
         if (session) {
           const result = await session.cancel()
-          if (!result?.ok) throw new Error(result?.error?.message || '停止生成失败。')
+          unwrapOrFail(result, '停止生成没有返回可用的失败对象。')
         }
         return true
       }
@@ -1682,9 +1686,7 @@ window.__ModuleLoader__.load({
         }
         try {
           await this.unwrap(
-            await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || '', input.signal),
-            '准备 DSH 会话失败。'
-          )
+            await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || '', input.signal))
           if (!this.sessionReference || this.sessionReference.sessionId !== input.sessionId) {
             await this.bindOfficialSession(conversationId)
           }
@@ -1743,9 +1745,7 @@ window.__ModuleLoader__.load({
         const runtimeSessionId = this.runtimeSessionId(conversationId) || this.detailsSnapshot.runtimeSessionId
         if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
         const prepared = await this.unwrap(
-          await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || '', input.signal),
-          '准备 DSH 会话失败。'
-        )
+          await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || '', input.signal))
         if (!this.sessionReference || this.sessionReference.sessionId !== runtimeSessionId) {
           await this.bindOfficialSession(conversationId)
         }
@@ -1766,15 +1766,17 @@ window.__ModuleLoader__.load({
           content.push({ type: 'file', receiptId: file })
         }
         const accepted = await session.prompt(content, input.mode === 'steer' ? 'steer' : 'queue', input.signal, input.requestId)
-        if (!accepted?.ok) throw new Error(accepted?.error?.message || '生成请求失败。')
-        if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
+        // `session.prompt` 与下面 `session.cancel` 是同一族 RemoteResult（同一条 DSH Session
+        // Remote 面），所以这里也保留失败实例；变量名不是 result，别因此漏掉这一处。
+        unwrapOrFail(accepted, '生成请求没有返回可用的失败对象。')
+        if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel())
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
         if (prepared.operationId) {
-          this.unwrap(await this.remote.eleckoiConversations.waitForGeneration(conversationId, prepared.operationId), '等待保存及插件收尾失败。')
+          this.unwrap(await this.remote.eleckoiConversations.waitForGeneration(conversationId, prepared.operationId))
         }
         const details = this.detailsSnapshot.id === conversationId
           ? await this.refreshDetails()
-          : this.unwrap(await this.remote.eleckoiConversations.details(conversationId, undefined, undefined), '读取会话详情失败。')
+          : this.unwrap(await this.remote.eleckoiConversations.details(conversationId, undefined, undefined))
         return {
           details: this.assertDetails(details, conversationId),
           cancelled: completed.cancelled || request.cancelled
@@ -1798,9 +1800,7 @@ window.__ModuleLoader__.load({
             file.name,
             options.signal,
             options.onProgress
-          ),
-          '文件上传失败。'
-        )
+          ))
         if (!uploaded || typeof uploaded.receiptId !== 'string'
           || !uploaded.file || typeof uploaded.file.attachmentId !== 'string') {
           throw new Error('DSH 文件上传服务返回的数据格式不正确。')
@@ -1830,9 +1830,7 @@ window.__ModuleLoader__.load({
               input.eventSeq,
               input.requestId,
               input.replacementMessage == null ? undefined : input.replacementMessage
-            ),
-            '重新生成失败。'
-          ))
+            )))
         } catch (error) {
           request.rewindEventSeq = undefined
           await (async () => {
@@ -1852,16 +1850,14 @@ window.__ModuleLoader__.load({
         request.session = session
         const cancelled = request.cancelled || input.signal?.aborted === true
         const accepted = this.unwrap(
-          await this.remote.eleckoiConversations.startRegeneration(input.conversationId, input.requestId, cancelled),
-          '重新生成请求失败。'
-        )
+          await this.remote.eleckoiConversations.startRegeneration(input.conversationId, input.requestId, cancelled))
         if (cancelled) return { details: await this.refreshDetails(), cancelled: true }
         if (accepted.accepted !== true) throw new Error('重新生成请求未被 DSH Session 接受。')
         if (!Number.isSafeInteger(accepted.turn) || accepted.turn < 1) throw new Error('重新生成请求缺少 DSH 执行轮次。')
-        if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
+        if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel())
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId, accepted.turn)
         if (prepared.operationId) {
-          this.unwrap(await this.remote.eleckoiConversations.waitForGeneration(input.conversationId, prepared.operationId), '等待保存及插件收尾失败。')
+          this.unwrap(await this.remote.eleckoiConversations.waitForGeneration(input.conversationId, prepared.operationId))
         }
         const details = await this.refreshDetails()
         return {
@@ -1887,7 +1883,7 @@ window.__ModuleLoader__.load({
         }
         if (request.session) {
           const result = await request.session.cancel()
-          this.unwrap(result, '停止生成失败。')
+          this.unwrap(result)
         }
         return true
       }
@@ -1936,9 +1932,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.detailGeneration
         try {
           const details = this.assertDetails(this.unwrap(
-            await this.remote.eleckoiConversations.details(id, undefined, undefined),
-            '读取会话详情失败。'
-          ), id)
+            await this.remote.eleckoiConversations.details(id, undefined, undefined)), id)
           const runtimeSessionId = details.runtimeSessionId || this.runtimeSessionId(id)
           if (runtimeSessionId && this.sessions && this.uiConversation) {
             await this.bindOfficialSession(id, runtimeSessionId)
@@ -1972,7 +1966,7 @@ window.__ModuleLoader__.load({
             this.publishDetails({
               ...this.detailsSnapshot,
               status: 'error',
-              error: error instanceof Error ? error.message : String(error)
+              error: failureMessage(error), failure: error
             })
           }
           throw error
@@ -2000,7 +1994,7 @@ window.__ModuleLoader__.load({
           session?.loadOlder(),
           this.remote.eleckoiConversations.details(id, Number.isFinite(metadataSequence) ? metadataSequence : beforeSequence, 50)
         ])
-        const page = this.unwrap(result, '读取更早消息失败。')
+        const page = this.unwrap(result)
         if (!page || !Array.isArray(page.messages)
           || page.messages.some(message => !message || typeof message.id !== 'string')
           || typeof page.hasMore !== 'boolean'
@@ -2062,7 +2056,7 @@ window.__ModuleLoader__.load({
 
       async readRequestPreview(id, requestId, signal) {
         if (this.disposed) throw new Error('DSH 聊天服务已关闭。')
-        return this.unwrap(await this.remote.eleckoiConversations.requestPreview(id, requestId, signal), '请求上下文预览读取失败。')
+        return this.unwrap(await this.remote.eleckoiConversations.requestPreview(id, requestId, signal))
       }
 
       async refreshTimeline() {
@@ -2071,9 +2065,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.timelineGeneration
         try {
           const timeline = this.unwrap(
-            await this.remote.eleckoiConversations.variableTimeline(id),
-            '读取变量时间线失败。'
-          )
+            await this.remote.eleckoiConversations.variableTimeline(id))
           if (!timeline || !Array.isArray(timeline.floors)
             || timeline.floors.some(floor => !floor || typeof floor.id !== 'string')) {
             throw new Error('变量时间线返回的数据格式不正确。')
@@ -2087,7 +2079,7 @@ window.__ModuleLoader__.load({
             this.publishTimeline({
               ...this.timelineSnapshot,
               status: 'error',
-              error: error instanceof Error ? error.message : String(error)
+              error: failureMessage(error), failure: error
             })
           }
           throw error

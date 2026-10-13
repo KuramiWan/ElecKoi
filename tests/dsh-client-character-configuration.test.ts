@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
+import { dshClientPlugin } from './helpers/dshClientPlugin'
+import { remoteFailure } from './helpers/remoteFailure'
 
 const source = readFileSync(new URL('../packages/dsh-client-character-configuration/src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -61,12 +63,16 @@ describe('DSH ElecKoi character configuration models', () => {
       window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
     })
     expect(registration?.id).toBe('@eleckoi/dsh-client-character-configuration')
-    registration!.factory().apply({
+    // 模块表交给助手补齐：这个 bundle 的 factory 收 `require`，它 require
+    // `@eleckoi/dsh-product-api/client`（各包 `package.json` 的 `dsh.client.inject` 里都有这一项，
+    // 由 `ELECKOI_DESKTOP_BUNDLES` 与 runtime-manifest 的 bundles 提供）。助手给的是**构建产物**
+    // 里那一份实现，不是用例里另写的一份。
+    dshClientPlugin(registration!).apply({
       remote: {
         eleckoiConversations: {
           list: async () => {
             calls.push('query.conversations.list')
-            return previewFailure ? { ok: false, error: { message: '消息预览读取失败' } } : {
+            return previewFailure ? { ok: false, error: remoteFailure('eleckoi/internal', '消息预览读取失败') } : {
               ok: true, value: [{ id: 'conversation-1', preview }, { id: 'no-branch-chat', preview: '普通聊天' }]
             }
           }
@@ -207,7 +213,8 @@ describe('DSH ElecKoi character configuration models', () => {
     previewFailure = true
     await expect(libraries.readConversations('character-1')).rejects.toThrow('消息预览读取失败')
     expect(libraries.getConversationSnapshot('character-1')).toMatchObject({
-      status: 'error', error: '消息预览读取失败', value: [{ summary: preview }]
+      status: 'error', error: '消息预览读取失败', value: [{ summary: preview }],
+      failure: expect.objectContaining({ code: 'eleckoi/internal' })
     })
     cleanup()
     expect(stopped).toEqual(['reset'])

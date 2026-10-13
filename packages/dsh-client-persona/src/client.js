@@ -1,6 +1,13 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-persona',
-  factory() {
+  factory(require) {
+    // 信封拆解（含「信封不成立」的折叠）只有一份，住 @eleckoi/dsh-product-api/client
+    // （ADR 0002 决定 8；票 EH-4a，票 EH-11 的 E 项把 23 份抄写收进它）。
+    // 这个包已是 desktop profile 的 bundle 成员，且本插件 inject 了它，所以 require 解析得到。
+    const unwrapOrFail = (result, what) => require('@eleckoi/dsh-product-api/client').unwrapOrFail(result, what)
+    // 结构取消息，不用 instanceof：契约自己写明跨 bundle / 跨 realm 的副本没有同一个原型
+    // （同 foldFailure 的理由），失败的 message 不能因为原型不同就变成 "Error: …"。
+    const failureMessage = error => error && typeof error.message === 'string' ? error.message : String(error)
     class PersonaProfile {
       constructor(remote) {
         this.remote = remote
@@ -66,8 +73,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiPersona.read()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取用户资料失败。')
-          const profile = this.assertProfile(result.value)
+          const profile = this.assertProfile(unwrapOrFail(result, '用户资料读取没有返回可用的失败对象。'))
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', profile, error: '' })
           }
@@ -77,7 +83,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               profile: this.snapshot.profile,
-              error: error instanceof Error ? error.message : String(error)
+              error: failureMessage(error), failure: error
             })
           }
           throw error
@@ -87,8 +93,7 @@ window.__ModuleLoader__.load({
       async save(profile) {
         if (this.disposed) throw new Error('ElecKoi 用户资料已关闭。')
         const result = await this.remote.eleckoiPersona.save(this.assertProfile(profile))
-        if (!result?.ok) throw new Error(result?.error?.message || '保存用户资料失败。')
-        const saved = this.assertProfile(result.value)
+        const saved = this.assertProfile(unwrapOrFail(result, '用户资料保存没有返回可用的失败对象。'))
         this.adopt(saved)
         return saved
       }
