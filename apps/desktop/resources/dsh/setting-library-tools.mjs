@@ -359,10 +359,14 @@ async function runtimeCatalogOf(bridge, bridgeFile) {
     .map((item) => ({ ...item, path: original.entries.find((entry) => entry.raw.id === item.id)?.path }))
   if (bridge.runtimeResolution?.version === 1) return mergeReadCatalog(bridge.library, applyRuntimeResolution(catalog, bridge.runtimeResolution))
   const keywordEntries = catalog.entries.filter((entry) => entry.readStrategy === 'keyword')
-  const keywordMatches = matchingKeywordEntryIds(keywordEntries, bridge.history)
+  const managed = new Set(bridge.worldbookRound?.managedEntryIds ?? [])
+  const activated = new Set(bridge.worldbookRound?.activatedEntryIds ?? [])
+  const keywordMatches = matchingKeywordEntryIds(keywordEntries.filter(entry => !managed.has(entry.raw.id)), bridge.history)
+  for (const id of activated) keywordMatches.add(id)
   const variableState = objectValue(bridge.variableState)
 
   let entries = catalog.entries
+    .filter(entry => !managed.has(entry.raw.id) || activated.has(entry.raw.id))
     .filter((entry) => entry.raw.dynamicMode !== 'ejs_reference')
     .filter((entry) => entry.readStrategy !== 'keyword' || keywordMatches.has(entry.raw.id))
     .map((entry) => keywordMatches.has(entry.raw.id) ? { ...entry, promotedToRequiredThisTurn: true } : entry)
@@ -473,17 +477,21 @@ function matchesKeywordText(entry, text) {
   const conditionKeywords = stringList(entry.conditionKeywords)
   if (!conditionKeywords.length) return true
   const matches = conditionKeywords.map((keyword) => containsKeyword(text, keyword, entry))
-  const condition = entry.keywordCondition === 'all' || entry.keywordCondition === 'not_any'
+  const condition = entry.keywordCondition === 'all' || entry.keywordCondition === 'not_any' || entry.keywordCondition === 'not_all'
     ? entry.keywordCondition
     : 'any'
   if (condition === 'all') return matches.length > 0 && matches.every(Boolean)
   if (condition === 'not_any') return matches.every((matched) => !matched)
+  if (condition === 'not_all') return !matches.every(Boolean)
   return matches.some(Boolean)
 }
 
 function containsKeyword(text, rawKeyword, entry) {
   const keyword = String(rawKeyword || '').trim()
   if (!keyword) return false
+  const encoded = [...(entry.sillyTavern?.strategy?.keys ?? []), ...(entry.sillyTavern?.strategy?.keys_secondary?.keys ?? [])]
+    .map(value => value?.__eleckoiKeywordRegex).find(value => value && `/${value.source}/${value.flags}` === keyword)
+  if (encoded) return new RegExp(encoded.source, encoded.flags).test(text)
   if (entry.keywordUseRegex === true) {
     const expression = compileTavernKeywordRegex(keyword, entry.keywordIgnoreCase !== false)
     if (!expression) return false

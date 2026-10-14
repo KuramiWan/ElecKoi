@@ -2567,12 +2567,21 @@ importers:
       '@eleckoi/dsh-client-character-configuration':
         specifier: workspace:*
         version: link:../dsh-client-character-configuration
+      '@eleckoi/dsh-client-characters':
+        specifier: workspace:*
+        version: link:../dsh-client-characters
       '@eleckoi/dsh-client-conversations':
         specifier: workspace:*
         version: link:../dsh-client-conversations
       '@eleckoi/dsh-client-models':
         specifier: workspace:*
         version: link:../dsh-client-models
+      '@eleckoi/dsh-client-persona':
+        specifier: workspace:*
+        version: link:../dsh-client-persona
+      '@eleckoi/dsh-client-presets':
+        specifier: workspace:*
+        version: link:../dsh-client-presets
       '@eleckoi/dsh-product-api':
         specifier: workspace:*
         version: link:../../../host/product-api
@@ -2960,6 +2969,22 @@ importers:
         version: 5.9.3
 
   packages/compatibility/tavern-native:
+    dependencies:
+      '@agnai/web-tokenizers':
+        specifier: 0.1.6-pre3
+        version: 0.1.6-pre3
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: 3.0.1
+        version: 3.0.1(ajv@8.20.0)
+      js-tiktoken:
+        specifier: 1.0.21
+        version: 1.0.21
+      zod:
+        specifier: 4.1.11
+        version: 4.1.11
     devDependencies:
       '@adobe/css-tools':
         specifier: 4.4.4
@@ -3051,6 +3076,9 @@ importers:
       '@deepseek-ai/dsh-api-session-controller':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(patch_hash=b18c95c9fa353c71c5de14309d24f7943a6106e986b0425bf8d3fb682dbc0855)(ca2f0b7df1a545772be5e033d70282a2)
+      '@deepseek-ai/dsh-app-boot':
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2(@deepseek-ai/cordis-plugin-group@1.0.4(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-home-paths@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-launch-environment@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-system-prompt@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.2.0-rc.2(patch_hash=e95de3d462f9aed623be5cb3c775434b392566ded2af0d89b375224f3935d914)(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))))
       '@deepseek-ai/dsh-config-editor':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-app-boot@0.2.0-rc.2(@deepseek-ai/cordis-plugin-group@1.0.4(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-home-paths@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-launch-environment@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-system-prompt@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.2.0-rc.2(patch_hash=e95de3d462f9aed623be5cb3c775434b392566ded2af0d89b375224f3935d914)(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)))))(@deepseek-ai/dsh-hmr@0.2.0-rc.2(0ff1cc7ecc06de58b69ca43c1290e979))
@@ -3074,7 +3102,7 @@ importers:
         version: 0.2.0-rc.2(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-credentials@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)))(@deepseek-ai/dsh-launch-environment@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm-deepseek@0.2.0-rc.2(patch_hash=659fdc1542d96ec59613473bd22439b9186591821a3377d19c6605fab9fc2479)(3b33db6a5fed71e939d233acd38233f8))(@deepseek-ai/dsh-llm@0.2.0-rc.2(patch_hash=e95de3d462f9aed623be5cb3c775434b392566ded2af0d89b375224f3935d914)(@deepseek-ai/cordis@4.0.4))
       '@deepseek-ai/dsh-llm-pi-ai':
         specifier: 0.2.0-rc.2
-        version: 0.2.0-rc.2(patch_hash=ac6ef7bac35327bf5587eb35057313b133289c16a7c5f1698cb34aa7394c67e8)(f0aa4381332cde9590cc5b357fcd5116)
+        version: 0.2.0-rc.2(patch_hash=ac6ef7bac35327bf5587eb35057313b133289c16a7c5f1698cb34aa7394c67e8)(3fed98bf5b2bd636d508328e33b955b2)
       '@deepseek-ai/dsh-plugin-manager':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(patch_hash=f18c725fcc519724d142e4bc1aaa575051db45d6a27ebd75266224b2a1737927)(08bc9fad70258a7b1cb73cb76d6dd3e6)
@@ -3090,6 +3118,9 @@ importers:
       '@deepseek-ai/dsh-settings':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(9fa7c769e58776e7dfca7fa082beeed8)
+      '@deepseek-ai/dsh-tools':
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2(5739478bb371400d21292f515d7b766e)
       '@deepseek-ai/dsh-typert-protocol':
         specifier: 0.2.0-rc.2
         version: 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)
@@ -3099,6 +3130,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: 3.18.4
         version: 3.18.4
+      '@earendil-works/pi-ai':
+        specifier: 0.87.1
+        version: 0.87.1(patch_hash=962a4078871e4acae341fcfc2992df1d31140ca94d0d4f51cb1d86385cdd28a6)(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)
       '@eleckoi/author-sdk':
         specifier: workspace:*
         version: link:../../sdk/author
@@ -3108,6 +3142,9 @@ importers:
       '@eleckoi/dsh-product-data':
         specifier: workspace:*
         version: link:../product-data
+      '@eleckoi/tavern-native':
+        specifier: workspace:*
+        version: link:../../compatibility/tavern-native
       fflate:
         specifier: 0.8.3
         version: 0.8.3
@@ -3373,6 +3410,9 @@ packages:
     resolution: {integrity: sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg==}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
+
+  '@agnai/web-tokenizers@0.1.6-pre3':
+    resolution: {integrity: sha512-oJ2JqB+YB76ksZxFjtmZyWxrKxuKF50faSFIfrxMppijOH5EZwb7znwg/w4/EDFF0TE3s5jfOSUyqCSqAKQS+Q==}
 
   '@anthropic-ai/sdk@0.124.0':
     resolution: {integrity: sha512-cN5O8i9UVxHeOQAzj/XjshWXG8KiibJDw9OGpH2Z/eR3n/RBxdoLxDJOcfqAJWvjaMDFfHTBADU04hWRJVkDyA==}
@@ -11722,6 +11762,8 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
+  '@agnai/web-tokenizers@0.1.6-pre3': {}
+
   '@anthropic-ai/sdk@0.124.0(zod@4.1.11)':
     dependencies:
       json-schema-to-ts: 3.1.1
@@ -13732,31 +13774,6 @@ snapshots:
       '@deepseek-ai/dsh-util-values': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)
       '@deepseek-ai/schemastery': 3.18.4
       '@earendil-works/pi-ai': 0.87.1(patch_hash=962a4078871e4acae341fcfc2992df1d31140ca94d0d4f51cb1d86385cdd28a6)(@modelcontextprotocol/sdk@1.30.0(zod@4.1.11))(ws@8.21.3)(zod@4.1.11)
-    optionalDependencies:
-      '@deepseek-ai/cordis-plugin-loader': 1.0.5(@deepseek-ai/cordis@4.0.4)(node-addon-require-builtin@0.1.6)
-    transitivePeerDependencies:
-      - '@modelcontextprotocol/sdk'
-      - bufferutil
-      - kerberos
-      - supports-color
-      - utf-8-validate
-      - ws
-      - zod
-
-  '@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2(patch_hash=ac6ef7bac35327bf5587eb35057313b133289c16a7c5f1698cb34aa7394c67e8)(f0aa4381332cde9590cc5b357fcd5116)':
-    dependencies:
-      '@deepseek-ai/cordis': 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
-      '@deepseek-ai/dsh-attachment': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-brand@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))
-      '@deepseek-ai/dsh-authorization': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-credentials@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)))(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.2.0-rc.2(patch_hash=e95de3d462f9aed623be5cb3c775434b392566ded2af0d89b375224f3935d914)(@deepseek-ai/cordis@4.0.4))
-      '@deepseek-ai/dsh-brand': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/dsh-credentials': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))
-      '@deepseek-ai/dsh-fs': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-brand@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.2.0-rc.2(patch_hash=e95de3d462f9aed623be5cb3c775434b392566ded2af0d89b375224f3935d914)(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-sandbox@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-llm@0.2.0-rc.2(patch_hash=e95de3d462f9aed623be5cb3c775434b392566ded2af0d89b375224f3935d914)(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-session@0.2.0-rc.2(patch_hash=050563b93f147ec2cdce6ae1d5c393e85fe5f739ab09639082464168eeb21f07)(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)))))
-      '@deepseek-ai/dsh-launch-environment': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/dsh-llm': 0.2.0-rc.2(patch_hash=e95de3d462f9aed623be5cb3c775434b392566ded2af0d89b375224f3935d914)(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/dsh-timeout': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/dsh-util-values': 0.2.0-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/schemastery': 3.18.4
-      '@earendil-works/pi-ai': 0.87.1(patch_hash=962a4078871e4acae341fcfc2992df1d31140ca94d0d4f51cb1d86385cdd28a6)(@modelcontextprotocol/sdk@1.30.0(zod@4.1.11))(ws@8.21.3)(zod@4.4.3)
     optionalDependencies:
       '@deepseek-ai/cordis-plugin-loader': 1.0.5(@deepseek-ai/cordis@4.0.4)(node-addon-require-builtin@0.1.6)
     transitivePeerDependencies:
@@ -15989,27 +16006,6 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.87.1(patch_hash=962a4078871e4acae341fcfc2992df1d31140ca94d0d4f51cb1d86385cdd28a6)(@modelcontextprotocol/sdk@1.30.0(zod@4.1.11))(ws@8.21.3)(zod@4.4.3)':
-    dependencies:
-      '@anthropic-ai/sdk': 0.124.0(zod@4.4.3)
-      '@aws-sdk/client-bedrock-runtime': 3.1127.0
-      '@earendil-works/pi-telemetry': 0.87.1
-      '@google/genai': 2.21.0(@modelcontextprotocol/sdk@1.30.0(zod@4.1.11))
-      '@smithy/node-http-handler': 4.12.1
-      http-proxy-agent: 9.1.0
-      https-proxy-agent: 9.1.0
-      openai: 6.40.0(ws@8.21.3)(zod@4.4.3)
-      partial-json: 0.1.7
-      typebox: 1.3.27
-    transitivePeerDependencies:
-      - '@modelcontextprotocol/sdk'
-      - bufferutil
-      - kerberos
-      - supports-color
-      - utf-8-validate
-      - ws
-      - zod
-
   '@earendil-works/pi-ai@0.87.1(patch_hash=962a4078871e4acae341fcfc2992df1d31140ca94d0d4f51cb1d86385cdd28a6)(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(ws@8.21.3)(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.124.0(zod@4.4.3)
@@ -17873,7 +17869,6 @@ snapshots:
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
       ajv: 8.20.0
-    optional: true
 
   ajv-keywords@3.5.2(ajv@6.15.0):
     dependencies:

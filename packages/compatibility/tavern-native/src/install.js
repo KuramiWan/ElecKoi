@@ -38,8 +38,21 @@ export function installTavernCompatibility(view, options) {
   view.addEventListener('pagehide', dispose, { once: true });
   runtime.addCleanup(() => view.removeEventListener('pagehide', dispose));
   let api;
-  const ready = Promise.all([runtime.ready, loadRealm(view, options.resourceUrl ?? browserResource)]).then(([, factory]) => {
+  const ready = Promise.all([runtime.ready, loadRealm(view, options.resourceUrl ?? browserResource)]).then(async ([, factory]) => {
     if (closed) throw new Error('The author page closed before native Tavern initialization.');
+    if (!runtime.tokens) {
+      const shared = runtime.shared;
+      if (!shared.tokenizers) {
+        shared.tokenizers = view.__ElecKoiTavernTokenizers ? Promise.resolve(view.__ElecKoiTavernTokenizers)
+          : loadScript(view, '/eleckoi/html/tavern-tokenizers.global.js').then(() => view.__ElecKoiTavernTokenizers);
+      }
+      const tokenizers = await shared.tokenizers;
+      await tokenizers?.ready;
+      if (closed) throw new Error('The author page closed before tokenizer initialization.');
+      if (!tokenizers) throw new Error('Native browser tokenizer did not initialize.');
+      const update = () => { runtime.tokens = tokenizers.forModel(runtime.snapshot.selectedConnection?.model ?? '', runtime.snapshot.tokenizer?.encoding); };
+      update(); runtime.tokenizerRegistry = tokenizers; runtime.on('snapshot.updated', update);
+    }
     api = factory(runtime);
     runtime.addCleanup(() => api.dispose());
   });

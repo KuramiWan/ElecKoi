@@ -192,7 +192,7 @@ function entryFromJson(value, index) {
     keywords: stringList(value.keywords),
     keywordScanDepth: Math.max(0, integer(value.keyword_scan_depth, 1)),
     conditionKeywords: stringList(value.condition_keywords),
-    keywordCondition: ["none", "any", "all", "not_any"].includes(value.keyword_condition) ? value.keyword_condition : "none",
+    keywordCondition: ["none", "any", "all", "not_any", "not_all"].includes(value.keyword_condition) ? value.keyword_condition : "none",
     keywordUseRegex: bool(value.keyword_use_regex),
     keywordIgnoreCase: bool(value.keyword_ignore_case, true),
     keywordWholeWord: bool(value.keyword_whole_word),
@@ -334,7 +334,7 @@ function parseSillyTavernExport(source) {
       keywords: constant ? [] : keys,
       keywordScanDepth: 1,
       conditionKeywords: constant ? [] : secondary,
-      keywordCondition: constant || !secondary.length ? "none" : logic === 2 ? "not_any" : logic === 3 ? "all" : "any",
+      keywordCondition: constant || !secondary.length ? "none" : logic === 1 ? "not_all" : logic === 2 ? "not_any" : logic === 3 ? "all" : "any",
       keywordUseRegex: !constant && bool(item.use_regex),
       keywordIgnoreCase: !bool(item.case_sensitive, bool(item?.extensions?.case_sensitive)),
       keywordWholeWord: bool(item.match_whole_words, bool(item?.extensions?.match_whole_words)),
@@ -609,7 +609,7 @@ function applyWorldbookFields(entry, item, preserveNativePlacement = false) {
   return { ...entry,
     title: text(worldbookValue([item.comment, item.name], entry.title, preserveNativePlacement), entry.title).slice(0, 120), content: text(item.content, entry.content),
     keywords: stringList(worldbookValue([item.key, item.keys], entry.keywords, preserveNativePlacement)), conditionKeywords: secondary,
-    keywordCondition: !secondary.length ? "none" : logic === 2 ? "not_any" : logic === 3 ? "all" : "any",
+    keywordCondition: !secondary.length ? "none" : logic === 1 ? "not_all" : logic === 2 ? "not_any" : logic === 3 ? "all" : "any",
     keywordScanDepth: Math.max(0, integer(worldbookValue([item.scanDepth, item.scan_depth, extensions.scan_depth], entry.keywordScanDepth, preserveNativePlacement), entry.keywordScanDepth)),
     keywordUseRegex: bool(item.use_regex, entry.keywordUseRegex),
     keywordIgnoreCase: !bool(worldbookValue([item.case_sensitive, extensions.case_sensitive], !entry.keywordIgnoreCase, preserveNativePlacement), !entry.keywordIgnoreCase),
@@ -734,12 +734,12 @@ function worldbookEntry(entry, index) {
   const source = record(entry.sillyTavern), extensions = clone(record(source.extensions));
   const sourceSecondary = stringList(source.secondary_keys ?? source.keysecondary);
   const sourceLogic = integer(source.selectiveLogic ?? extensions.selectiveLogic);
-  const sourceCondition = !sourceSecondary.length ? "none" : sourceLogic === 2 ? "not_any" : sourceLogic === 3 ? "all" : "any";
+  const sourceCondition = !sourceSecondary.length ? "none" : sourceLogic === 1 ? "not_all" : sourceLogic === 2 ? "not_any" : sourceLogic === 3 ? "all" : "any";
   if (entry.keywordCondition !== sourceCondition || !Object.hasOwn(extensions, "selectiveLogic")) {
-    extensions.selectiveLogic = entry.keywordCondition === "not_any" ? 2 : entry.keywordCondition === "all" ? 3 : 0;
+    extensions.selectiveLogic = entry.keywordCondition === "not_all" ? 1 : entry.keywordCondition === "not_any" ? 2 : entry.keywordCondition === "all" ? 3 : 0;
   }
   if (Object.hasOwn(source, "selectiveLogic")) extensions.selectiveLogic = entry.keywordCondition === sourceCondition
-    ? sourceLogic : entry.keywordCondition === "not_any" ? 2 : entry.keywordCondition === "all" ? 3 : 0;
+    ? sourceLogic : entry.keywordCondition === "not_all" ? 1 : entry.keywordCondition === "not_any" ? 2 : entry.keywordCondition === "all" ? 3 : 0;
   extensions.eleckoi_entry_id = entry.id;
   const result = { ...clone(source), uid: index, comment: entry.title, content: entry.content,
     key: [...entry.keywords], keysecondary: [...entry.conditionKeywords],

@@ -141,7 +141,7 @@ export function installPresetManagers(context, bridge) {
       this.syncSelect();
       this.select.value=this.findPreset(name);
       this.notifySelection();
-      if (!this.isAdvancedFormatting()) await context.eventSource.emit(context.eventTypes.PRESET_CHANGED,{apiId:this.apiId,name});
+      if (this.apiId !== 'openai' && !this.isAdvancedFormatting()) await context.eventSource.emit(context.eventTypes.PRESET_CHANGED,{apiId:this.apiId,name});
     }
     applySettings(raw,name) {
       const settings=this.currentSettings(),enabled=settings.enabled;

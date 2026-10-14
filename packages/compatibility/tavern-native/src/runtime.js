@@ -1,22 +1,27 @@
 import { SharedEventHub } from './helper-runtime.js';
+import { projectCatalogEvents } from './catalog-events.js';
+import { initializePromptCollection, registerPromptRuntime } from './main-prompts.js';
 
 export const COMPATIBILITY_VERSION = '0.1.0';
 
 /** Application state is owned by the persistent client, rather than any message iframe. */
 export function createCompatibilitySharedState() {
-  return { conversations: new Map(), eventHub: new SharedEventHub(), globals: new Map(),
-    globalInitializations: new Map(), globalWaiters: new Map() };
+  const shared = { conversations: new Map(), eventHub: new SharedEventHub(), globals: new Map(),
+    globalInitializations: new Map(), globalWaiters: new Map(), ttsProviders: new Map(), stages: [], writeTail: Promise.resolve() };
+  initializePromptCollection(shared); return shared;
 }
 
 export function createCompatibilityRuntime(view, options) {
   const shared = options.shared ?? createCompatibilitySharedState();
   shared.conversations ??= new Map();
   shared.eventHub ??= new SharedEventHub();
+  shared.stages ??= [];
+  shared.writeTail ??= Promise.resolve();
   const fixed = { ...options.context };
   const conversationId = fixed.conversationId ?? '';
   let record = shared.conversations.get(conversationId);
   if (!record) {
-    record = { snapshot: undefined, members: new Set(), tail: Promise.resolve(), refreshing: null };
+    record = { snapshot: undefined, members: new Set(), refreshing: null };
     shared.conversations.set(conversationId, record);
   }
   const localEvents = new SharedEventHub();
@@ -27,7 +32,7 @@ export function createCompatibilityRuntime(view, options) {
   const runtime = {
     window: view, shared, snapshot: undefined, native: options.native,
     version: COMPATIBILITY_VERSION, extensionId: '@eleckoi/tavern-native',
-    scriptId: fixed.scriptId, scopeVariables: new Map(), variableSchemas: new Map(), tokens: options.tokens,
+    scriptId: fixed.scriptId, scopeVariables: new Map(), tokens: options.tokens,
     addCleanup: cleanup => { cleanups.add(cleanup); return () => cleanups.delete(cleanup); },
     on(event, listener) {
       const hub = event === 'snapshot.updated' ? localEvents : shared.eventHub;
@@ -37,6 +42,7 @@ export function createCompatibilityRuntime(view, options) {
     },
     off: (event, listener) => (event === 'snapshot.updated' ? localEvents : shared.eventHub).remove(event, listener),
     emit: (event, ...args) => (event === 'snapshot.updated' ? localEvents : shared.eventHub).emit(event, ...args),
+    emitAndWait: (event, ...args) => (event === 'snapshot.updated' ? localEvents : shared.eventHub).emitAndWait(event, ...args),
     moveListener: (event, listener, first) => (event === 'snapshot.updated' ? localEvents : shared.eventHub).move(event, listener, first),
     track(task) {
       const operation = Promise.resolve(task);
@@ -55,19 +61,53 @@ export function createCompatibilityRuntime(view, options) {
       if (closed) return Promise.reject(new Error('The author page has closed.'));
       return options.bridge.invoke(method, params);
     },
+    async *generate(params, signal) {
+      if (closed) throw new Error('The author page has closed.');
+      if (options.bridge.generate) yield* options.bridge.generate(params, signal);
+      else yield { kind: 'finished', ...await options.bridge.invoke('generation.auxiliary', params) };
+    },
     commit(method, params = {}) {
       if (closed) return Promise.reject(new Error('The author page has closed.'));
-      const operation = record.tail.then(async () => {
-        const accepted = await options.bridge.invoke(method, params);
+      const input = structuredClone(params);
+      const operation = shared.writeTail.then(async () => {
+        const accepted = await options.bridge.invoke(method, input);
         // A snapshot started before this write cannot acknowledge the accepted mutation.
         if (record.refreshing) await record.refreshing;
         await refresh();
         return accepted;
       });
-      record.tail = operation.then(() => undefined, () => undefined);
+      shared.writeTail = operation.then(() => undefined, () => undefined);
       return runtime.track(operation);
     },
     refresh,
+    stage(method, params, patch) {
+      if (closed) throw new Error('The author page has closed.');
+      const input = structuredClone(params);
+      const global = method === 'variables.setScope' && input.scope !== 'message'
+        || /^(?:preset\.|persona\.|character\.|worldbook\.|scripts\.)/.test(method);
+      const stage = { patch, conversationId, global };
+      shared.stages.push(stage);
+      publishSnapshots();
+      const remove = () => { shared.stages = shared.stages.filter(item => item !== stage); };
+      const operation = shared.writeTail.then(async () => {
+        try {
+          const accepted = await options.bridge.invoke(method, input);
+          if (record.refreshing) await record.refreshing;
+          await refresh();
+          // Publish a newly accepted base before withdrawing its optimistic patch.
+          if (global) for (const [id, other] of shared.conversations) {
+            if (id === conversationId || !other.snapshot) continue;
+            patch(other.snapshot);
+          }
+          remove(); publishSnapshots();
+          return accepted;
+        } catch (error) { remove(); publishSnapshots(); throw error; }
+      });
+      shared.writeTail = operation.then(() => undefined, () => undefined);
+      return runtime.track(operation);
+    },
+    mediaSrc: reference => options.ui?.mediaSrc ? options.ui.mediaSrc(reference) : reference,
+    generationState: (id, running, shouldSilence) => options.ui?.generationState?.({ id, running, shouldSilence, conversationId }),
     formatMessage: (text, settings) => {
       if (!options.ui?.formatMessage) throw new Error('The native message formatter is not connected.');
       return options.ui.formatMessage(text, settings);
@@ -93,7 +133,7 @@ export function createCompatibilityRuntime(view, options) {
       for (const [owner, variables] of Object.entries(owners)) runtime.scopeVariables.set(`${scope}:${owner}`, structuredClone(variables));
     }
     // These native scopes exist before first use, including an empty global collection.
-    for (const [scope, owner] of [['global', ''], ['character', runtime.snapshot.context.characterId], ['script', fixed.scriptId]]) {
+    for (const [scope, owner] of [['global', ''], ['preset', runtime.snapshot.context.presetId], ['character', runtime.snapshot.context.characterId], ['script', fixed.scriptId]]) {
       if (owner === undefined || scope !== 'global' && !owner) continue;
       if (!runtime.scopeVariables.has(`${scope}:${owner}`)) runtime.scopeVariables.set(`${scope}:${owner}`, {});
     }
@@ -106,9 +146,12 @@ export function createCompatibilityRuntime(view, options) {
   async function refresh() {
     if (closed) throw new Error('The author page has closed.');
     if (!record.refreshing) {
-      const operation = Promise.resolve(options.bridge.snapshot()).then(snapshot => {
+      const operation = Promise.resolve(options.bridge.snapshot()).then(async snapshot => {
         record.snapshot = snapshot;
-        for (const member of record.members) member(snapshot);
+        if (snapshot.audio) shared.audio = structuredClone(snapshot.audio);
+        publishSnapshot();
+        await projectCatalogEvents(shared, snapshot, options.report,
+          name => runtime.request('worldbook.get', { name }));
         return snapshot;
       });
       record.refreshing = operation;
@@ -119,11 +162,28 @@ export function createCompatibilityRuntime(view, options) {
     return runtime.snapshot;
   }
 
+  runtime.addCleanup(registerPromptRuntime(shared, runtime));
   record.members.add(acceptSnapshot);
-  if (record.snapshot) acceptSnapshot(record.snapshot);
+  if (record.snapshot) publishSnapshot();
   const pagehide = () => runtime.dispose();
   view.addEventListener('pagehide', pagehide, { once: true });
   runtime.addCleanup(() => view.removeEventListener('pagehide', pagehide));
   runtime.ready = refresh().then(() => undefined);
   return runtime;
+
+  function publishSnapshot() {
+    if (!record.snapshot) return;
+    const snapshot = structuredClone(record.snapshot);
+    for (const stage of shared.stages) if (stage.global || stage.conversationId === conversationId) stage.patch(snapshot);
+    for (const member of record.members) member(snapshot);
+  }
+
+  function publishSnapshots() {
+    for (const [id, selected] of shared.conversations) {
+      if (!selected.snapshot) continue;
+      const snapshot = structuredClone(selected.snapshot);
+      for (const stage of shared.stages) if (stage.global || stage.conversationId === id) stage.patch(snapshot);
+      for (const member of selected.members) member(snapshot);
+    }
+  }
 }

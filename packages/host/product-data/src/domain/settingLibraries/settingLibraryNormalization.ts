@@ -114,6 +114,7 @@ export function normalizeSettingLibrary(characterId: string, source?: SettingLib
   const active = versions.find((version) => version.id === versionId)!
   return {
     characterId, name: active.name, entries: active.entries, groups: active.groups,
+    ...(source?.worldbookBindings ? { worldbookBindings: source.worldbookBindings } : {}),
     promptPositions: active.promptPositions, activeVersionId: active.id, versions,
     listAllExpanded: active.listAllExpanded, expandedGroupIds: active.expandedGroupIds
   }

@@ -23,7 +23,9 @@ export function summaryCommands(context,api) {
       const summary=result.content.replace(/<think>[\s\S]*?<\/think>/g,'').trim();
       if(!summary)throw new Error('Summarization returned empty content');
       if(chatSummary){
-        const message=history[Math.max(0,history.length-2)],metadata={...message.metadata,extra:{...message.metadata?.extra,memory:summary}};
+        const message=history.findLast(message=>message.metadata?.is_hidden!==true);
+        if(!message)throw new Error('Summary has no visible message to attach to');
+        const metadata={...message.metadata,extra:{...message.metadata?.extra,memory:summary}};
         await api.messages.update([{id:message.id,metadata,expectedContent:message.content}],target);
         if(context.getCurrentChatId()===target.conversationId)await context.reloadCurrentChat();
         if(!isTrueBoolean(args.quiet))globalThis.toastr?.success('Summary saved');

@@ -62,7 +62,7 @@ export function generationCommands(context, api) {
       responseLength:Number(resolveVariable(args.length,args._scope)) || 0,trimNames:!isFalseBoolean(args.trim),
       __eleckoiStop:stops(args)})),
     'closechat': async()=>{await api.chat.close();return '';},
-    'tempchat': async()=>{await api.chat.close();await api.chat.temporary();return '';},
+    'tempchat': async()=>{await api.chat.temporary();return '';},
     'impersonate': (args,prompt) => context.generate('impersonate',{quiet_prompt:prompt || '',quietToLoud:!!prompt,
       await:isTrueBoolean(args.await),abortController:args._abortController}),
     'ask': async (args,prompt) => {

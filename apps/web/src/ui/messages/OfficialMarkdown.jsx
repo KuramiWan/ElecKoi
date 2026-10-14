@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { normalizeMarkdownForRendering } from './normalizeMarkdownForRendering.js';
 import { prepareMarkdownTextTones } from './markdownTextTones.js';
+import { resolveMarkdownMedia } from '../../app/services/assets.js';
 
 const MarkdownComponentContext = createContext(null);
 const markdownLabels = Object.freeze({
@@ -26,14 +27,14 @@ export function OfficialMarkdown({ content, streaming = false }) {
   const MarkdownText = useContext(MarkdownComponentContext);
   if (!MarkdownText) throw new Error("DSH 官方文字渲染组件未接入。");
   return <div className="eleckoi-dsh-markdown">
-    <MarkdownText text={content || ""} streaming={streaming} labels={markdownLabels} />
+    <MarkdownText text={resolveMarkdownMedia(content || "")} streaming={streaming} labels={markdownLabels} />
   </div>;
 }
 
 /** Formatting uses the very same injected Markdown component as chat bubbles. */
 export function useOfficialMarkdownFormatter() {
   const component = useContext(MarkdownComponentContext);
-  return useCallback(async text => {
+  return useCallback(text => {
     if (!component) throw new Error('DSH 官方文字渲染组件未接入。');
     const container = document.createElement('div');
     const root = createRoot(container);

@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 export const ASSETS_BASE_URL = '/eleckoi/html/';
 export const TAVERN_ASSETS_BASE_URL = '/eleckoi/html-assets/';
-const entryAssets = new Set(['tavern-native.global.js', 'html-libraries.global.js', 'zod-module.js', 'lodash-module.js', 'client/runtime.js']);
+const entryAssets = new Set(['tavern-native.global.js', 'tavern-tokenizers.global.js', 'html-libraries.global.js', 'zod-module.js', 'lodash-module.js', 'client/runtime.js']);
 const mime = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.woff': 'font/woff', '.woff2': 'font/woff2',
   '.ttf': 'font/ttf', '.wasm': 'application/wasm' };
@@ -18,7 +18,7 @@ export function createHtmlAssetHandler(assetsDirectory) {
     try { path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname.slice(ASSETS_BASE_URL.length)); }
     catch { response.writeHead(400); response.end(); return; }
     let target;
-    if (path === 'tavern-native.global.js') target = resolve(root, 'assets', path);
+    if (path === 'tavern-native.global.js' || path === 'tavern-tokenizers.global.js') target = resolve(root, 'assets', path);
     else if (entryAssets.has(path)) target = resolve(root, path);
     else if (path.startsWith('libraries/')) {
       const libraryRoot = resolve(root, 'assets');

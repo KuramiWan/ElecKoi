@@ -103,13 +103,22 @@ export function installPublicContext(rt, helper, context, st, services) {
     saveWorldInfo: (name, data) => helper.replaceWorldbook(name, Array.isArray(data.entries) ? data.entries : Object.values(data.entries ?? {})),
     reloadWorldInfoEditor: () => request('worldbook.openEditor'),
     updateWorldInfoList: async () => { await rt.refresh?.(); return helper.getWorldbookNames(); },
-    getWorldInfoPrompt: (chat, maxContext, isDryRun, globalScanData) => request('worldbook.prompt',{chat,maxContext,isDryRun,globalScanData}),
+    getWorldInfoPrompt: async (chat, maxContext, isDryRun, globalScanData) => {
+      const result = await request('worldbook.prompt',{chat,maxContext,isDryRun,globalScanData});
+      const { worldInfoString, worldInfoBefore, worldInfoAfter, worldInfoExamples, worldInfoDepth, anBefore, anAfter, outletEntries } = result;
+      return { worldInfoString, worldInfoBefore, worldInfoAfter, worldInfoExamples, worldInfoDepth, anBefore, anAfter, outletEntries };
+    },
     getWorldInfoNames: () => [...helper.getWorldbookNames()],
     getTextGenServer: type => context.extensionSettings.eleckoi_api_urls?.[type] ?? rt.snapshot.connection?.baseUrl ?? '',
     updateReasoningUI: id => helper.refreshOneMessage(messageIndex(id)),
     getReasoningTemplateByName: name => context.__eleckoiPresetManagers('reasoning')?.getCompletionPresetByName(name),
     unshallowGroupMembers: async () => Promise.all(context.groups.find(item=>item.id===context.groupId)?.members.map(avatar=>context.unshallowCharacter(avatar)) ?? []),
-    getExtensionManifest: name => request('extensions.manifest',{name}),
+    getExtensionManifest: name => {
+      const normalize = value => String(value ?? '').replace(/^third-party\//, '').normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
+      const entries = Array.isArray(rt.snapshot.extensions) ? rt.snapshot.extensions : rt.snapshot.extensions?.items ?? [];
+      const selected = entries.find(entry => normalize(entry.name ?? entry.id) === normalize(name));
+      return selected?.manifest ? structuredClone(selected.manifest) : null;
+    },
     openThirdPartyExtensionMenu: name => request('extensions.openMenu',{name}),
   });
   context.t = (strings,...values) => typeof strings === 'string' ? context.translate(strings) : context.translate(strings.join('${}')).split('${}').map((part,index)=>part+(values[index] ?? '')).join('');

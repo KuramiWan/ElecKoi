@@ -8,6 +8,8 @@ import type { NativeAuthorScriptCatalog, NativeAuthorRuleTask, NativeAuthorScrip
 import type {} from '@eleckoi/dsh-product-api/remote'
 import { createAuthorScriptFrame, type AuthorBrowserWindow } from './frame.js'
 import type { NativeAuthorRuntimeSnapshot, NativeAuthorChatHandlers, NativeAuthorProjectContext, NativeAuthorDocumentRelease } from './client/types.js'
+import { NativeVariableEditor } from './variable-editor.js'
+import type { EditingVariableTarget } from '@eleckoi/tavern-native'
 import { createCompatibilitySharedState } from '@eleckoi/tavern-native'
 import { createNativeMessageBindings } from './messages.js'
 import { createNativeChatBindings } from './chats.js'
@@ -15,6 +17,9 @@ import { createNativeSettingLibraryBindings, createNativePresetBindings } from '
 import { createNativeScriptSettingsBindings } from './script-settings.js'
 import { NativeAudioRuntime, nativeAudioMethods } from './audio.js'
 import { NativeGenerationEvents } from './generation.js'
+import { NativeTavernClient } from './tavern-client.js'
+import { NativeTavernEvents, observeMessageIframe } from './tavern-events.js'
+import { NativeFunctionToolRuntime } from './function-tools.js'
 import { NativeScriptUi, type NativeScriptUiOwner } from './script-ui.js'
 import { mountTavernDocument, type TavernDocumentContext, type TavernDocumentMount, type TavernRemote } from './tavern.js'
 
@@ -24,6 +29,7 @@ export interface NativeAuthorRuntimeOptions {
   conversations: ElecKoiConversations
   libraries: ElecKoiScriptLibraries
   models: ElecKoiModels
+  catalogSources?: ReadonlyArray<{ subscribe(listener: () => void): () => void }>
   report(error: unknown): void
   createFrame?: typeof createAuthorScriptFrame
   createAudio?: () => HTMLAudioElement
@@ -38,13 +44,18 @@ export class NativeAuthorClient {
   private readonly events = new Map<string, Set<(value: unknown) => void>>()
   private readonly projectEvents = new Map<string, Set<(value: unknown) => void>>()
   private readonly tavernShared = createCompatibilitySharedState()
+  private readonly variableEditor: NativeVariableEditor
   private readonly tavernDocuments = new Map<Window, TavernDocumentMount>()
+  private readonly tavernReadyErrors = new Set<unknown>()
+  private readonly auxiliaryGenerations = new Map<string, { conversationId: string; shouldSilence: boolean }>()
   private tavernSelectedChat = ''
-  private tavernUserMessages = new Set<string>()
-  private tavernLastUserEventSeq = -1
+  private readonly tavernEvents: NativeTavernEvents
+  private tavernEventTail = Promise.resolve()
+  private readonly tavernClient: NativeTavernClient
   private readonly audio: NativeAudioRuntime
   private readonly generation: NativeGenerationEvents
   private readonly scriptUi: NativeScriptUi
+  private readonly functionTools: NativeFunctionToolRuntime | undefined
   private current: { catalog: NativeAuthorScriptCatalog; revision: number; session: AuthorScriptSession; abort: AbortController; stream?: ReturnType<Context['remote']['eleckoiAuthorScripts']['connect']> } | undefined
   private queue = Promise.resolve()
   private revision = 0
@@ -54,6 +65,26 @@ export class NativeAuthorClient {
   private readonly lifetime = new AbortController()
 
   constructor(private readonly options: NativeAuthorRuntimeOptions) {
+    this.variableEditor = new NativeVariableEditor({ shared: this.tavernShared, remote: () => options.remote.eleckoiTavernCompatibility,
+      available: id => this.assertChat(id), refresh: () => this.refreshTavernCatalog() })
+    this.tavernClient = new NativeTavernClient({ window: options.window, conversations: options.conversations, remote: options.remote,
+      audio: () => this.audio, speechProviders: this.tavernShared.ttsProviders, report: options.report,
+      invokeHost: async (conversationId, method, params) => {
+        const remote = options.remote.eleckoiTavernCompatibility
+        if (!remote) throw new Error('原生语音服务没有连接。')
+        const result = await remote.invoke(conversationId, method, params)
+        if (!result.ok) throw new Error(result.error?.message || '语音服务请求失败。')
+        return result.value
+      },
+      createId: () => options.window.crypto.randomUUID(), ui: (conversationId, method, params) => {
+        const handler = this.ui.get(conversationId)?.[method]
+        if (!handler) throw new Error(`Native chat UI is not mounted: ${method}`)
+        return handler(params)
+      } })
+    this.tavernEvents = new NativeTavernEvents((event, ...args) => this.emitTavern(event, ...args))
+    const toolRemote = options.remote.eleckoiTavernCompatibility
+    this.functionTools = toolRemote?.connectTools ? new NativeFunctionToolRuntime({ connectTools: toolRemote.connectTools.bind(toolRemote) },
+      this.tavernShared, () => options.window.crypto.randomUUID(), error => this.reportTavernReadyError(error)) : undefined
     this.scriptUi = new NativeScriptUi({ window: options.window, report: options.report, available: owner => {
       this.assertChat(owner.conversationId)
       if (this.current?.catalog.version !== owner.version) throw new Error('原生脚本已被替换')
@@ -62,6 +93,17 @@ export class NativeAuthorClient {
       emit: event => this.emitAuthorEvent(event.name, event.payload), report: options.report })
     this.generation = new NativeGenerationEvents(options.conversations, () => options.window.crypto.randomUUID(),
       (name, payload) => this.emitAuthorEvent(name, payload), options.report)
+    this.stops.push(options.conversations.subscribeGroupGeneration(async change => {
+      if (this.closed || change.conversationId !== this.tavernSelectedChat) return
+      if (change.phase === 'member') {
+        if (!this.tavernShared.eventHub.listeners('group_member_drafted').length) return
+        const characters = this.tavernShared.acceptedCatalog?.characters?.items ?? []
+        const index = characters.findIndex((item: { id: string }) => item.id === change.characterId)
+        if (index < 0) throw new Error(`Group speaker is absent from the native character catalog: ${change.characterId}`)
+        await this.tavernShared.eventHub.emitAndWait('group_member_drafted', index)
+      } else await this.tavernShared.eventHub.emitAndWait(change.phase === 'started' ? 'group_wrapper_started' : 'group_wrapper_finished',
+        { selected_group: change.groupId, type: 'normal' })
+    }))
   }
 
   /** 读取当前聊天的原生脚本运行状态。
@@ -73,11 +115,35 @@ export class NativeAuthorClient {
    * @returns 取消订阅函数。
    */
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener) }
+  getVariableSchemaRevision = () => this.variableEditor.getRevision()
+  subscribeVariableSchemas = (listener: () => void) => this.variableEditor.subscribe(listener)
+  listVariableEditorScopes = (conversationId: string) => this.variableEditor.listScopes(conversationId)
+  readVariableEditorScope = (conversationId: string, target: EditingVariableTarget) => this.variableEditor.read(conversationId, target)
+  describeVariableEditorSchema = (target: EditingVariableTarget, variables: Record<string, unknown>) => this.variableEditor.describe(target, variables)
+  saveVariableEditorScope = (conversationId: string, target: EditingVariableTarget, variables: Record<string, unknown>) => this.variableEditor.save(conversationId, target, variables)
   getUiSnapshot = () => this.scriptUi.getSnapshot()
   subscribeUi = (listener: () => void) => this.scriptUi.subscribe(listener)
   invokeButton = (key: string): Promise<void> => this.snapshot.status !== 'ready'
     ? Promise.reject(new Error('原生脚本尚未就绪')) : this.scriptUi.invokeButton(key)
   dismissPanel = (key: string) => this.scriptUi.dismissPanel(key)
+
+  async stopAuxiliaryGenerations(conversationId: string): Promise<boolean> {
+    const active = [...this.auxiliaryGenerations].filter(([, task]) => task.conversationId === conversationId && !task.shouldSilence)
+    for (const [id] of active) this.tavernShared.helperGenerations?.get(id)?.abort(new Error('Generation stopped.'))
+    const remote = this.options.remote.eleckoiTavernCompatibility
+    if (remote) for (const [id] of active) {
+      const result = await remote.invoke(conversationId, 'generation.cancel', { generationId: id })
+      if (!result.ok) throw new Error(result.error?.message || 'Auxiliary generation cancellation failed.')
+    }
+    return active.length > 0
+  }
+
+  /** Observe owner initialization failures once; callers still receive the rejected ready Promise. */
+  private reportTavernReadyError(error: unknown): void {
+    if (this.closed || this.tavernReadyErrors.has(error)) return
+    this.tavernReadyErrors.add(error)
+    this.options.report(error)
+  }
 
   private mountTavern(page: AuthorBrowserWindow, context: TavernDocumentContext, adapter: AuthorHostAdapter,
     available: () => void = () => this.assertChat(context.conversationId)): TavernDocumentMount {
@@ -88,25 +154,48 @@ export class NativeAuthorClient {
       available()
       const handler = this.ui.get(context.conversationId)?.[method]
       if (!handler) throw new Error('The chat message renderer is not mounted')
-      return Promise.resolve(handler(params))
+      return handler(params)
     }
-    const mounted = mountTavernDocument(page, { remote, shared: this.tavernShared, context, adapter, available,
-      report: this.options.report, ui: {
-        formatMessage: async (text, options = {}) => {
-          const result = await ui('compatibility.formatMessage', { text, options })
+    let active = true
+    const markClosed = () => { active = false }
+    // Register before installation so a closed page is never reported as a startup failure.
+    page.addEventListener('pagehide', markClosed, { once: true })
+    const reportReadyError = (error: unknown) => { if (active) this.reportTavernReadyError(error) }
+    const toolOwner = this.functionTools?.acquire(context.conversationId)
+    const controller = mountTavernDocument(page, { remote, shared: this.tavernShared, context, adapter, available,
+      report: reportReadyError, invokeNative: (method, params, request) => this.tavernClient.invoke(context.conversationId, method, params, request), ui: {
+        mediaSrc: reference => {
+          const result = ui('compatibility.mediaSrc', { reference })
+          if (typeof result !== 'string') throw new Error('The native media resolver returned no URL')
+          return result
+        },
+        formatMessage: (text, options = {}) => {
+          const result = ui('compatibility.formatMessage', { text, options })
           if (typeof result !== 'string') throw new Error('The chat formatter returned no HTML')
           return result
         },
         refreshMessage: async (index, options = {}) => { await ui('compatibility.refreshMessage', { index, options }) },
+        generationState: state => {
+          if (state.running) this.auxiliaryGenerations.set(state.id, { conversationId: state.conversationId, shouldSilence: state.shouldSilence })
+          else this.auxiliaryGenerations.delete(state.id)
+          if (!this.closed) this.publish(this.snapshot)
+        },
       } })
+    const mounted = { ...controller,
+      ready: Promise.all([controller.ready, toolOwner?.ready]).then(() => undefined),
+      dispose: () => {
+        markClosed(); page.removeEventListener('pagehide', markClosed)
+        controller.dispose(); toolOwner?.release()
+      },
+    }
+    // Promise.all(...).then(...) creates its own rejection even when each input is observed.
+    // This observer does not replace ready, so awaiting consumers retain the original failure.
+    void mounted.ready.catch(reportReadyError)
+    page.addEventListener('pagehide', () => toolOwner?.release(), { once: true })
     this.tavernDocuments.set(page, mounted)
     page.addEventListener('pagehide', () => this.tavernDocuments.delete(page), { once: true })
-    if (context.messageId) {
-      const messageIndex = () => this.tavernShared.conversations.get(context.conversationId)?.snapshot?.messages
-        .findIndex((message: { id: string }) => message.id === context.messageId) ?? -1
-      void mounted.ready.then(() => this.emitTavern('message_iframe_render_started', messageIndex())).catch(() => {})
-      page.addEventListener('eleckoi:author-document-ready', () => this.emitTavern('message_iframe_render_ended', messageIndex()), { once: true })
-    }
+    if (context.messageId) observeMessageIframe(page, mounted.ready,
+      (event, ...args) => this.emitTavern(event, ...args), reportReadyError)
     return mounted
   }
 
@@ -273,7 +362,10 @@ export class NativeAuthorClient {
     this.stops.push(() => this.options.window.removeEventListener('eleckoi:message-rendered', rendered))
     this.stops.push(this.options.libraries.subscribeChanges(() => {
       void this.refreshConfiguration().catch(error => this.fail(error))
+      this.refreshTavernCatalog()
     }))
+    for (const source of [this.options.models, ...(this.options.catalogSources ?? [])])
+      this.stops.push(source.subscribe(() => this.refreshTavernCatalog()))
     void this.consumeChanges().catch(error => { if (!this.closed) this.fail(error) })
     // Author errors remain editable without removing the management service.
     await this.refresh().catch(() => {})
@@ -502,6 +594,7 @@ export class NativeAuthorClient {
     const stream = this.options.remote.eleckoiConversations.changes(this.lifetime.signal)
     try {
       for await (const change of stream) {
+        if (change.kind === 'catalog') { this.refreshTavernCatalog(); continue }
         if (change.kind !== 'messages') continue
         const { conversationId, reason, messageIds } = change
         this.emitAuthorEvent('messages.changed', { conversationId, reason, messageIds })
@@ -519,72 +612,49 @@ export class NativeAuthorClient {
   }
   private emitTavern(event: string, ...args: unknown[]): void {
     for (const result of this.tavernShared.eventHub.emit(event, ...args)) {
-      if (result && typeof result.then === 'function') void Promise.resolve(result).catch(error => this.options.report(error))
+      if (result && (typeof result === 'object' || typeof result === 'function') && 'then' in result && typeof result.then === 'function') {
+        void Promise.resolve(result).catch(error => this.options.report(error))
+      }
     }
+  }
+  private queueTavern(task: () => Promise<void>): void {
+    this.tavernEventTail = this.tavernEventTail.then(task).catch(error => { if (!this.closed) this.options.report(error) })
+  }
+  private refreshTavernCatalog(): void {
+    this.queueTavern(async () => {
+      if (this.closed) return
+      const mounted = [...this.tavernDocuments.values()].find(document => document.conversationId === this.tavernSelectedChat)
+      if (mounted) await mounted.refresh()
+    })
   }
   private observeTavernChat(): void {
     const selected = this.options.conversations.getDetailsSnapshot()
     if (!this.isActive(selected)) return
-    const userMessages = selected.details!.messages.filter(message => message.role === 'user')
-    const lastSequence = Math.max(-1, ...userMessages.map(message => message.sessionEventSeq ?? -1))
-    if (selected.id !== this.tavernSelectedChat) {
-      this.tavernSelectedChat = selected.id
-      this.tavernUserMessages = new Set(userMessages.map(message => message.id))
-      this.tavernLastUserEventSeq = lastSequence
-      this.emitTavern('chat_id_changed', selected.id)
-      this.emitTavern('chatLoaded', selected.id)
-      return
-    }
-    for (const message of userMessages) if (!this.tavernUserMessages.has(message.id)
-      && message.sessionEventSeq !== undefined && message.sessionEventSeq > this.tavernLastUserEventSeq) {
-      this.emitTavern('message_sent', selected.details!.messages.indexOf(message))
-    }
-    this.tavernUserMessages = new Set(userMessages.map(message => message.id))
-    this.tavernLastUserEventSeq = lastSequence
-  }
-  private async bridgeTavernEvent<TName extends AuthorEventName>(event: TName, payload: AuthorEventMap[TName]): Promise<void> {
-    if (this.closed || payload.conversationId !== this.tavernSelectedChat) return
-    if (event === 'messages.changed' || event === 'agent.run.finished') {
-      const mounted = [...this.tavernDocuments.values()].find(document => document.conversationId === payload.conversationId)
-      if (mounted) await mounted.refresh()
-      if (this.closed || payload.conversationId !== this.tavernSelectedChat) return
-    }
-    this.emitTavern(event, structuredClone(payload))
-    const record = this.tavernShared.conversations.get(payload.conversationId)?.snapshot
-    const messages = record?.messages ?? this.options.conversations.getDetailsSnapshot().details?.messages ?? []
-    const index = (id: string) => messages.findIndex((message: { id: string; sessionEventSeq?: number }) => message.id === id
-      || /^\d+$/.test(id) && message.sessionEventSeq === Number(id))
-    if (event === 'messages.changed') {
-      const changed = payload as AuthorEventMap['messages.changed']
-      if (changed.reason === 'deleted') this.emitTavern('message_deleted', messages.length)
-      else for (const id of changed.messageIds) {
-        const position = index(id)
-        if (position < 0) continue
-        if (changed.reason === 'sent') {
-          if (messages[position]?.role === 'user') {
-            if (!this.tavernUserMessages.has(id)) { this.tavernUserMessages.add(id); this.emitTavern('message_sent', position) }
-          } else this.emitTavern('message_received', position)
-        } else this.emitTavern(changed.reason === 'regenerated' ? 'message_swiped' : 'message_edited', position)
-        this.emitTavern('message_updated', position)
+    const changed = selected.id !== this.tavernSelectedChat
+    this.tavernSelectedChat = selected.id
+    const id = selected.id, messages = structuredClone(selected.details!.messages)
+    this.queueTavern(async () => {
+      if (this.closed || this.tavernSelectedChat !== id) return
+      if (changed) {
+        const mounted = [...this.tavernDocuments.values()].find(document => document.conversationId === id)
+        if (mounted) await mounted.refresh()
       }
-    } else if (event === 'agent.state.changed') {
-      const changed = payload as AuthorEventMap['agent.state.changed']
-      if (changed.state === 'starting') this.emitTavern('generation_started', 'normal', structuredClone(payload), false)
-    } else if (event === 'agent.output.delta') {
-      const output = payload as AuthorEventMap['agent.output.delta']
-      this.emitTavern('stream_token_received', output.delta)
-      this.emitTavern('stream_token_received_incrementally', output.delta)
-      this.emitTavern('stream_token_received_fully', output.accumulated)
-    } else if (event === 'agent.run.finished') {
-      const finished = payload as AuthorEventMap['agent.run.finished']
-      if (finished.message) this.emitTavern('message_received', index(finished.message.id))
-      this.emitTavern('generation_ended', finished.message ? index(finished.message.id) : -1)
-    } else if (event === 'agent.run.cancelled') {
-      this.emitTavern('generation_stopped')
-      this.emitTavern('generation_ended', index((payload as AuthorEventMap['agent.run.cancelled']).messageId))
-    } else if (event === 'agent.run.failed') {
-      this.emitTavern('generation_ended', index((payload as AuthorEventMap['agent.run.failed']).messageId))
-    }
+      if (!this.closed && this.tavernSelectedChat === id) this.tavernEvents.observe(id, messages)
+    })
+  }
+  private bridgeTavernEvent<TName extends AuthorEventName>(event: TName, payload: AuthorEventMap[TName]): Promise<void> {
+    this.queueTavern(async () => {
+      if (this.closed || payload.conversationId !== this.tavernSelectedChat) return
+      if (event === 'messages.changed' || event === 'agent.run.finished') {
+        const mounted = [...this.tavernDocuments.values()].find(document => document.conversationId === payload.conversationId)
+        if (mounted) await mounted.refresh()
+        if (this.closed || payload.conversationId !== this.tavernSelectedChat) return
+      }
+      const record = this.tavernShared.conversations.get(payload.conversationId)?.snapshot
+      const messages = record?.messages ?? this.options.conversations.getDetailsSnapshot().details?.messages ?? []
+      this.tavernEvents.accept(event, payload, messages)
+    })
+    return this.tavernEventTail
   }
   private assertChat(id: string): void {
     const selected = this.options.conversations.getDetailsSnapshot()
@@ -593,13 +663,16 @@ export class NativeAuthorClient {
   private isActive(selected: ReturnType<ElecKoiConversations['getDetailsSnapshot']>): boolean {
     return !!selected.id && !!selected.details && (selected.status === 'ready' || selected.status === 'loading')
   }
-  private publish(snapshot: NativeAuthorRuntimeSnapshot): void { this.snapshot = snapshot; for (const listener of this.listeners) listener() }
+  private publish(snapshot: NativeAuthorRuntimeSnapshot): void {
+    this.snapshot = { ...snapshot, auxiliaryGenerating: [...this.auxiliaryGenerations.values()].some(task => task.conversationId === snapshot.conversationId && !task.shouldSilence) }
+    for (const listener of this.listeners) listener()
+  }
   private fail(error: unknown): void {
     if (this.closed) return
     this.scriptUi.close()
     this.current?.abort.abort(error)
     void this.current?.session.close().catch(cleanupError => this.options.report(cleanupError))
-    this.publish({ ...this.snapshot, status: 'error', error: error instanceof Error ? error.message : String(error) }); this.options.report(error)
+    this.publish({ ...this.snapshot, status: 'error', error: error instanceof Error ? error.message : String(error) }); this.reportTavernReadyError(error)
   }
   private async stopCurrent(): Promise<void> {
     this.scriptUi.close()
@@ -617,6 +690,9 @@ export class NativeAuthorClient {
     for (const page of this.documents) page.close()
     for (const document of this.tavernDocuments.values()) document.dispose()
     this.tavernDocuments.clear()
+    this.functionTools?.dispose()
+    this.tavernReadyErrors.clear()
+    await this.tavernClient.dispose()
     this.generation.dispose(); this.audio.dispose(); this.ui.clear(); this.events.clear(); this.projectEvents.clear()
     try { await this.stopCurrent() }
     finally { this.scriptUi.dispose(); this.publish({ ...this.snapshot, status: 'closed' }); this.listeners.clear() }

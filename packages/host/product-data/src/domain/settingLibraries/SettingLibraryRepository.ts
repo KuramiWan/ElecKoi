@@ -20,8 +20,8 @@ import { conversationSettingChanges } from '@product-data/storage/sqlite/schema/
 import { readEntry, readGroup, readPromptPositions, writeEntry, writeGroup, writePromptPositions } from './settingLibraryCodec'
 import { OPENING_ENTRY_ID, normalizeSettingLibrary } from './settingLibraryNormalization'
 import { GLOBAL_SETTING_LIBRARY_ID, GLOBAL_SETTING_RUNTIME_PREFIX } from '@shared/contracts/settingLibrary/scope'
-import { globalSettingLibrary } from '@product-data/storage/sqlite/schema/common'
-import { globalSettingRuntimeContext } from './globalSettingLibrary'
+import { globalSettingLibrary, characters } from '@product-data/storage/sqlite/schema/common'
+import { globalSettingRuntimeContext, selectBoundSettingLibrary, boundSettingRuntimeContext, BOUND_SETTING_RUNTIME_PREFIX } from './globalSettingLibrary'
 
 type EntryRevision = { entry: SettingLibraryEntry; revisionId: string }
 type RuntimeBaseline = {
@@ -161,19 +161,37 @@ export class SettingLibraryRepository {
     })
   }
 
+  private runtimeBase(conversationId: string, context: { characterId: string; worldbookKeys?: string[] }, db: ElecKoiDatabase): AgentSettingLibraryRuntimeContext | undefined {
+    if (!context.characterId) return undefined
+    const globalLibrary = this.get(GLOBAL_SETTING_LIBRARY_ID, db), selection = { ...context, conversationId }
+    const base = selectBoundSettingLibrary(this.get(context.characterId, db), globalLibrary, selection)
+    const global = globalSettingRuntimeContext(globalLibrary, selection)
+    const keys = new Set(context.worldbookKeys ?? [])
+    for (const [key, binding] of Object.entries(globalLibrary.worldbookBindings ?? {})) {
+      if (!binding.deleted && (binding.global || binding.characterIds.includes(context.characterId) || binding.conversationIds.includes(conversationId))) keys.add(key)
+    }
+    const additional = [...keys].filter(key => key.startsWith('native:')).map(key => key.slice('native:'.length))
+      .filter(id => id !== context.characterId && id !== GLOBAL_SETTING_LIBRARY_ID)
+      .filter(id => db.select({ id: characters.id }).from(characters).where(eq(characters.id, id)).get())
+      .map(id => boundSettingRuntimeContext(selectBoundSettingLibrary(this.get(id, db), globalLibrary, selection)))
+    return { characterId: context.characterId, name: base.name,
+      entries: [...(global?.entries ?? []), ...additional.flatMap(library => library.entries), ...base.entries],
+      groups: [...(global?.groups ?? []), ...additional.flatMap(library => library.groups), ...base.groups],
+      promptPositions: [...(global?.promptPositions ?? []), ...additional.flatMap(library => library.promptPositions), ...base.promptPositions] }
+  }
+
   /** Resolves the effective story library for one conversation without changing the author library. */
   runtimeContext(
     conversationId: string,
-    context: { characterId: string },
+    context: { characterId: string; worldbookKeys?: string[] },
     db: ElecKoiDatabase = this.store.db
   ): AgentSettingLibraryRuntimeContext | undefined {
-    if (!context.characterId) return undefined
-    const base = this.get(context.characterId, db)
-    const global = globalSettingRuntimeContext(this.get(GLOBAL_SETTING_LIBRARY_ID, db))
+    const base = this.runtimeBase(conversationId, context, db)
+    if (!base) return undefined
     const rows = db.select().from(conversationSettingChanges)
       .where(eq(conversationSettingChanges.sessionId, conversationId)).all()
-    const entries = new Map([...(global?.entries ?? []), ...base.entries].map((entry) => [entry.id, entry]))
-    const groups = new Map([...(global?.groups ?? []), ...base.groups].map((group) => [group.id, group]))
+    const entries = new Map(base.entries.map((entry) => [entry.id, entry]))
+    const groups = new Map(base.groups.map((group) => [group.id, group]))
     for (const row of rows) {
       if (row.operation === 'delete') {
         if (row.targetType === 'entry' && entries.get(row.targetId)?.kind !== 'opening') entries.delete(row.targetId)
@@ -217,7 +235,7 @@ export class SettingLibraryRepository {
       name: base.name,
       entries: effectiveEntries,
       groups: effectiveGroups,
-      promptPositions: [...(global?.promptPositions ?? []), ...base.promptPositions]
+      promptPositions: base.promptPositions
     }
   }
 
@@ -294,13 +312,7 @@ export class SettingLibraryRepository {
     return this.store.withWriteTx((db) => {
       const desired = settingLibrarySchema.parse(input)
       const base = this.get(characterId, db)
-      const global = globalSettingRuntimeContext(this.get(GLOBAL_SETTING_LIBRARY_ID, db))
-      const baseline = {
-        ...base,
-        entries: [...(global?.entries ?? []), ...base.entries],
-        groups: [...(global?.groups ?? []), ...base.groups],
-        promptPositions: [...(global?.promptPositions ?? []), ...base.promptPositions]
-      }
+      const baseline = { ...base, ...this.runtimeBase(conversationId, { characterId }, db) }
       return this.writeConversationLibrary(characterId, conversationId, desired, baseline, db)
     })
   }
@@ -438,8 +450,11 @@ export class SettingLibraryRepository {
 
     const base = this.get(context.characterId, db)
     const global = globalSettingRuntimeContext(this.get(GLOBAL_SETTING_LIBRARY_ID, db))
-    const baseEntries = new Map([...(global?.entries ?? []), ...base.entries].filter((entry) => entry.kind === 'normal').map((entry) => [entry.id, entry]))
-    const baseGroups = new Map([...(global?.groups ?? []), ...base.groups].map((group) => [group.id, group]))
+    const owners = new Set(baseline.source.entries.filter(entry => entry.id.startsWith(BOUND_SETTING_RUNTIME_PREFIX))
+      .map(entry => decodeURIComponent(entry.id.slice(BOUND_SETTING_RUNTIME_PREFIX.length).split(':')[0]!)))
+    const additional = [...owners].map(id => boundSettingRuntimeContext(this.get(id, db)))
+    const baseEntries = new Map([...(global?.entries ?? []), ...additional.flatMap(library => library.entries), ...base.entries].filter((entry) => entry.kind === 'normal').map((entry) => [entry.id, entry]))
+    const baseGroups = new Map([...(global?.groups ?? []), ...additional.flatMap(library => library.groups), ...base.groups].map((group) => [group.id, group]))
     const timestamp = new Date().toISOString()
     const persistedChanges = db.select().from(conversationSettingChanges)
       .where(eq(conversationSettingChanges.sessionId, conversationId)).all()
@@ -792,7 +807,7 @@ function isConversationMutableEntry(entry: SettingLibraryEntry): boolean {
 }
 
 function isGlobalSettingId(id: string): boolean {
-  return id.startsWith(GLOBAL_SETTING_RUNTIME_PREFIX)
+  return id.startsWith(GLOBAL_SETTING_RUNTIME_PREFIX) || id.startsWith(BOUND_SETTING_RUNTIME_PREFIX)
 }
 
 function conversationImmutableEntryFields(entry: SettingLibraryEntry): Record<string, unknown> {

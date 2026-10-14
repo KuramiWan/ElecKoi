@@ -13,6 +13,11 @@ Author: Zed Industries
 Homepage: https://github.com/agentclientprotocol/typescript-sdk#readme
 Bundled notice text: e8e2fe35f5fdc1e2
 
+@agnai/web-tokenizers@0.1.6-pre3
+License: Apache-2.0
+Homepage: https://github.com/mlc-ai/tokenizers-cpp/tree/main/web
+Bundled notice text: not supplied by package
+
 @anthropic-ai/sdk@0.124.0
 License: MIT
 Author: Anthropic

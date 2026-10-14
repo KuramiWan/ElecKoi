@@ -15,6 +15,10 @@ await build({ entryPoints: ['zod-module', 'lodash-module'].map(name => join(root
 await cp(join(root, 'src/runtime.js'), join(output, 'client/runtime.js'));
 await cp(join(root, 'assets'), join(output, 'assets'), { recursive: true });
 await cp(new URL('../../../../compatibility/tavern-native/dist/tavern-native.global.js', import.meta.url), join(output,'assets/tavern-native.global.js'));
+await cp(new URL('../../../../compatibility/tavern-native/dist/tavern-tokenizers.global.js', import.meta.url), join(output,'assets/tavern-tokenizers.global.js'));
+await cp(new URL('../../../../compatibility/tavern-native/dist/tokenizer-models/', import.meta.url), join(output,'assets/tokenizer-models'), {recursive:true});
+await cp(new URL('../../../../compatibility/tavern-native/dist/licenses/', import.meta.url), join(output,'assets/tokenizer-licenses'), {recursive:true});
+await cp(new URL('../../../../compatibility/tavern-native/dist/TOKENIZER_NOTICES.md', import.meta.url), join(output,'assets/TOKENIZER_NOTICES.md'));
 await cp(new URL('../../../../compatibility/tavern-native/dist/SillyTavern.LICENSE.txt', import.meta.url), join(output,'assets/SillyTavern.LICENSE.txt'));
 await cp(new URL('../../../../compatibility/tavern-native/dist/SillyTavern.SOURCE.json', import.meta.url), join(output,'assets/SillyTavern.SOURCE.json'));
 console.log('Built ElecKoi HTML resources and native Tavern frame runtime.');

@@ -138,8 +138,8 @@ export function createMessageApi(rt) {
   const createChatMessages = async (newMessages, rawOptions = {}) => {
     if (!Array.isArray(newMessages)) throw new TypeError('New chat messages must be an array.');
     const settings = options(rawOptions), items = messages();
-    const at = settings.insert_at === undefined || settings.insert_at === 'end' ? items.length
-      : indexOf(settings.insert_at, items.length, true);
+    const insert = settings.insert_before ?? settings.insert_at;
+    const at = insert === undefined || insert === 'end' ? items.length : indexOf(insert, items.length, true);
     const additions = newMessages.map(message => patchOf(message, true));
     if (!additions.length) return;
     await rt.commit('messages.create', {
@@ -179,7 +179,7 @@ export function createMessageApi(rt) {
     return jquery([]);
   };
 
-  const formatAsDisplayedMessage = async (text, rawOptions = {}) => {
+  const formatAsDisplayedMessage = (text, rawOptions = {}) => {
     if (typeof text !== 'string') throw new TypeError('Message text must be a string.');
     object(rawOptions, 'Formatting options');
     const settings = { ...rawOptions };

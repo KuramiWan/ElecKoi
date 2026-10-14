@@ -18,7 +18,7 @@ export const settingLibraryPromptPositionSideSchema = z.enum([
 export const settingLibraryAgentReadStrategySchema = z.enum(['required', 'keyword', 'normal'])
 export const settingLibraryDynamicModeSchema = z.enum(['standard', 'ejs_reference'])
 export const settingLibraryContentModeSchema = z.enum(['plain_text', 'ejs'])
-export const settingLibraryKeywordConditionSchema = z.enum(['none', 'any', 'all', 'not_any'])
+export const settingLibraryKeywordConditionSchema = z.enum(['none', 'any', 'all', 'not_any', 'not_all'])
 export const settingLibraryEntryKindSchema = z.enum([
   'normal',
   'opening',
@@ -128,7 +128,11 @@ export const settingLibrarySchema = z.object({
   activeVersionId: z.string().min(1),
   versions: z.array(settingLibraryVersionSchema),
   listAllExpanded: z.boolean(),
-  expandedGroupIds: z.array(z.string())
+  expandedGroupIds: z.array(z.string()),
+  worldbookBindings: z.record(z.string(), z.object({
+    global: z.boolean(), characterIds: z.array(z.string()), conversationIds: z.array(z.string()),
+    primaryCharacterIds: z.array(z.string()).optional(), deleted: z.boolean().optional()
+  })).optional()
 })
 
 export const settingLibraryConversationSchema = z.object({

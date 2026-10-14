@@ -27,7 +27,8 @@ export function registerNativeCommands(context, api) {
   const document = async (args, reference) => {
     const docs = await api.databank.list({ source: args.source || '' });
     const found = docs.find(value => [value.id, value.name, value.url].includes(reference));
-    if (!found) throw new Error(`Data Bank attachment does not exist: ${reference}`); return found;
+    if (!found) throw new Error(`Data Bank attachment does not exist: ${reference}`);
+    return api.databank.get(found.id, dbOptions(args));
   };
   const dbOptions = args => ({ source: args.source || '', ...(args.threshold === undefined || args.threshold === '' ? {} : { threshold: Number(args.threshold) }), ...(args.count === undefined || args.count === '' ? {} : { count: Number(args.count) }) });
   const group = () => { const value = context.groups.find(value => value.id === context.groupId); if (!value) throw new Error('This command requires a group chat'); return value; };

@@ -1,4 +1,6 @@
-const SCOPES = new Set(['chat', 'global', 'character', 'script', 'message']);
+import { registerEditingVariableSchema } from './variable-schema.js';
+
+const SCOPES = new Set(['chat', 'global', 'preset', 'character', 'script', 'message']);
 
 function failure(code, message) {
   return Object.assign(new Error(message), { code });
@@ -58,9 +60,7 @@ function pathParts(path) {
 /** A synchronous view of native state, with mutations awaiting the host's accepted result. */
 export function createVariableApi(rt) {
   if (!rt.scopeVariables) rt.scopeVariables = new Map();
-  if (!rt.variableSchemas) rt.variableSchemas = new Map();
   const reads = new Map();
-  const writes = new Map();
 
   function scope(options = {}) {
     record(options, 'Variable options');
@@ -71,6 +71,7 @@ export function createVariableApi(rt) {
     let message;
     if (type === 'chat') owner = context.conversationId;
     else if (type === 'character') owner = context.characterId;
+    else if (type === 'preset') owner = context.presetId;
     else if (type === 'script') owner = options.script_id ?? context.scriptId;
     else if (type === 'message') {
       const messages = rt.snapshot?.messages ?? [];
@@ -115,94 +116,74 @@ export function createVariableApi(rt) {
     throw failure('VARIABLES_NOT_READY', `Native ${target.scope} variables are loading; read again after runtime synchronization.`);
   }
 
-  async function readForWrite(target) {
-    if (target.scope === 'chat') return read(target);
-    if (reads.has(target.key)) await reads.get(target.key);
-    return load(target);
-  }
-
-  async function save(target, value) {
+  function save(target, value) {
     const candidate = clone(record(value));
-    if (reads.has(target.key)) await reads.get(target.key);
-    const accepted = record(await (target.scope === 'chat'
-      ? rt.commit('variables.setState', { state: candidate })
-      : rt.request('variables.setScope', { scope: target.scope, owner: target.owner, variables: candidate })), 'Saved native variables');
-    if (target.scope === 'chat') rt.snapshot.variables = clone(accepted);
-    else rt.scopeVariables.set(target.key, clone(accepted));
-    return clone(accepted);
+    const method = target.scope === 'chat' ? 'variables.setState' : 'variables.setScope';
+    const params = target.scope === 'chat' ? { state: candidate } : { scope: target.scope, owner: target.owner, variables: candidate };
+    const patch = snapshot => {
+      snapshot.variableScopes ??= {};
+      snapshot.variableScopes[target.scope] ??= {};
+      snapshot.variableScopes[target.scope][target.owner] = clone(candidate);
+      if (target.scope === 'chat') snapshot.variables = clone(candidate);
+      if (target.scope === 'message') {
+        const message = snapshot.messages.find(item => item.id === target.owner);
+        if (message) message.variableState = clone(candidate);
+      }
+    };
+    rt.stage(method, params, patch);
+    return clone(candidate);
   }
 
-  function serialized(target, action) {
-    const previous = writes.get(target.key);
-    const promise = (previous ? previous.catch(() => {}) : Promise.resolve()).then(action);
-    writes.set(target.key, promise);
-    const release = () => { if (writes.get(target.key) === promise) writes.delete(target.key); };
-    promise.then(release, release);
-    return promise;
+  function replaceVariables(variables, options = {}) {
+    save(scope(options), variables);
   }
 
-  async function replaceVariables(variables, options = {}) {
-    const target = scope(options);
-    const value = clone(record(variables));
-    return serialized(target, () => save(target, value));
-  }
-
-  async function updateVariablesWith(updater, options = {}) {
+  function updateVariablesWith(updater, options = {}) {
     if (typeof updater !== 'function') throw new TypeError('Variable updater must be a function.');
-    const target = scope(options);
-    return serialized(target, async () => {
-      const current = await readForWrite(target);
-      const updated = await updater(current);
-      return save(target, updated === undefined ? current : updated);
-    });
+    const target = scope(options), current = read(target), result = updater(current);
+    return result && typeof result.then === 'function'
+      ? result.then(value => save(target, value === undefined ? current : value))
+      : save(target, result === undefined ? current : result);
   }
 
-  async function insertOrAssignVariables(variables, options = {}) {
+  function insertOrAssignVariables(variables, options = {}) {
     const incoming = clone(record(variables));
     return updateVariablesWith(current => merge(current, incoming, true), options);
   }
 
-  async function insertVariables(variables, options = {}) {
+  function insertVariables(variables, options = {}) {
     const incoming = clone(record(variables));
     return updateVariablesWith(current => merge(current, incoming, false), options);
   }
 
-  async function deleteVariable(path, options = {}) {
-    const parts = pathParts(path);
-    const target = scope(options);
-    return serialized(target, async () => {
-      const current = await readForWrite(target);
-      // An explicit literal key wins, as it may legitimately contain dots or brackets.
-      const keys = typeof path === 'string' && Object.hasOwn(current, path) ? [path] : parts;
-      let parent = current;
-      for (const key of keys.slice(0, -1)) {
-        if (!parent || typeof parent !== 'object' || !Object.hasOwn(parent, key)) {
-          return { variables: current, delete_occurred: false };
-        }
-        parent = parent[key];
-      }
-      const key = keys.at(-1);
-      if (!parent || typeof parent !== 'object' || !Object.hasOwn(parent, key)) {
-        return { variables: current, delete_occurred: false };
-      }
-      if (Array.isArray(parent) && /^(0|[1-9]\d*)$/.test(key)) parent.splice(Number(key), 1);
-      else delete parent[key];
-      return { variables: await save(target, current), delete_occurred: true };
-    });
+  function deleteVariable(path, options = {}) {
+    const parts = pathParts(path), target = scope(options), current = read(target);
+    const keys = typeof path === 'string' && Object.hasOwn(current, path) ? [path] : parts;
+    let parent = current;
+    for (const key of keys.slice(0, -1)) {
+      if (!parent || typeof parent !== 'object' || !Object.hasOwn(parent, key)) return { variables: current, delete_occurred: false };
+      parent = parent[key];
+    }
+    const key = keys.at(-1);
+    if (!parent || typeof parent !== 'object' || !Object.hasOwn(parent, key)) return { variables: current, delete_occurred: false };
+    if (Array.isArray(parent) && /^(0|[1-9]\d*)$/.test(key)) parent.splice(Number(key), 1);
+    else delete parent[key];
+    return { variables: save(target, current), delete_occurred: true };
   }
 
   function registerVariableSchema(schema, options = {}) {
     if (!schema || !['object', 'function'].includes(typeof schema)) throw new TypeError('Variable editing schema is required.');
     const target = scope(options);
-    rt.variableSchemas.set(target.key, schema);
-    // Schemas describe the editor; writes remain governed by the native host.
-    return () => { if (rt.variableSchemas.get(target.key) === schema) rt.variableSchemas.delete(target.key); };
+    const release = registerEditingVariableSchema(rt.shared, target, schema, rt.scriptId);
+    const removeCleanup = rt.addCleanup?.(release);
+    return () => { release(); removeCleanup?.(); };
   }
 
   function getAllVariables(options = {}) {
     record(options, 'Variable options');
     const context = rt.snapshot?.context ?? {};
     const selected = [{ type: 'global' }];
+    if (context.presetId) selected.push({ type: 'preset' });
     if (context.characterId) selected.push({ type: 'character' });
     if (context.conversationId) selected.push({ type: 'chat' });
     if (options.message_id !== undefined || context.messageId || rt.snapshot?.messages?.length) selected.push({ type: 'message', message_id: options.message_id });

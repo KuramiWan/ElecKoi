@@ -15,11 +15,18 @@
     },
     "./runtime": "./src/runtime.js",
     "./browser/*": "./dist/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./tokenizers": {
+      "types": "./src/tokenizer-service.d.ts",
+      "default": "./src/tokenizer-service.js"
+    }
   },
   "files": [
     "src",
-    "dist"
+    "dist",
+    "SCHEMA_VALIDATION_NOTICES.md",
+    "TOKENIZER_NOTICES.md",
+    "licenses"
   ],
   "scripts": {
     "build": "node scripts/build.mjs"
@@ -49,5 +56,12 @@
     "slidetoggle": "4.0.0",
     "yaml": "2.9.0",
     "esbuild": "0.25.10"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "zod": "4.1.11",
+    "@agnai/web-tokenizers": "0.1.6-pre3",
+    "js-tiktoken": "1.0.21"
   }
 }

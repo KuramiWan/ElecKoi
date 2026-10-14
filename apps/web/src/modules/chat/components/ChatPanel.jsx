@@ -27,6 +27,11 @@ import {
 import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.js";
 import { selectRoleplayChatSeat, selectRoleplayPendingInput } from "../model/chatViewSeats.js";
 import { revealChatFile } from "../api/chatApi.js";
+import { assetFetchSrc } from '../../../app/services/assets.js';
+import { createTavernAppearance } from '../../appearance/model/tavernAppearance.js';
+import { useDshAppearance } from '../../appearance/model/AppearanceContext.jsx';
+import { useDshDisplayPreferences } from '../../settings/model/DisplayPreferencesContext.jsx';
+import { useNativeFrontendServices } from '../../authorFrontend/hooks/NativeFrontendContext.jsx';
 import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
 import { CharacterFrontendView } from '../../authorFrontend/index.js';
 
@@ -134,6 +139,9 @@ export function ChatPanel({
   const composerRegionRef = useRef(null);
   const headerMenuRef = useRef(null);
   const pageView = useContext(MainPageContext);
+  const displayPreferences = useDshDisplayPreferences();
+  const dshAppearance = useDshAppearance();
+  const { service: frontendService } = useNativeFrontendServices();
   const authorConnection = pageView?.characterConfiguration?.scriptRuntimeConnection;
   const nativeAuthorRuntime = useSyncExternalStore(authorConnection?.subscribe || noAuthorSubscription,
     authorConnection?.getSnapshot || noAuthorRuntime, noAuthorRuntime);
@@ -141,12 +149,20 @@ export function ChatPanel({
     nativeAuthorRuntime?.getUiSnapshot || noAuthorUi, noAuthorUi);
   const nativeAuthorStatus = useSyncExternalStore(nativeAuthorRuntime?.subscribe || noAuthorSubscription,
     nativeAuthorRuntime?.getSnapshot || noAuthorRuntime, noAuthorRuntime);
+  const auxiliaryGenerating = nativeAuthorStatus?.conversationId === conversationId && nativeAuthorStatus.auxiliaryGenerating === true;
+  const stopAuxiliary = useCallback(() => {
+    void nativeAuthorRuntime?.stopAuxiliaryGenerations(conversationId).catch(error => onNotify?.('error', error.message || String(error)));
+    if (isSending) onStop?.();
+  }, [nativeAuthorRuntime, conversationId, onNotify, isSending, onStop]);
   const inputStateRef = useRef(input);
   const formatOfficialMessage = useOfficialMarkdownFormatter();
   inputStateRef.current = input;
   useEffect(() => {
     if (!nativeAuthorRuntime || !conversationId) return undefined;
+    const appearanceHandler = createTavernAppearance({ displayPreferences, appearance: dshAppearance,
+      characters: pageView?.characters, frontends: frontendService, conversationId, characterId });
     const handlers = {
+      'compatibility.appearance': params => appearanceHandler(params.method, params.args),
       'input.get': () => ({ text: inputStateRef.current || '' }),
       'input.set': params => { const text = String(params.text ?? ''); inputStateRef.current = text; setInput(text); return { text }; },
       'input.append': params => { const text = String(inputStateRef.current || '') + String(params.text ?? ''); inputStateRef.current = text; setInput(text); return { text }; },
@@ -158,6 +174,21 @@ export function ChatPanel({
         return { submitted: await onSend({ preventDefault() {} }, text) !== false };
       },
       'presentation.current': () => ({ conversationId, title: currentTitle, messages, isGenerating: isSending, persona, chatDisplay }),
+      'compatibility.navigate': async params => {
+        if (!pageView?.chat) throw new Error('Native chat navigation is not mounted.');
+        if (params.id) await pageView.chat.loadChat(params.id);
+        else pageView.chat.clearActiveChat();
+        return null;
+      },
+      'compatibility.openWorldbook': () => { setGlobalSettingsOpen(true); return null; },
+      'compatibility.openExtension': params => {
+        if (!pageView?.changeActiveSection) throw new Error('Native plugin navigation is not mounted.');
+        const result = { id: String(params.name ?? ''), kind: 'package', opened: false, error: null };
+        window.dispatchEvent(new CustomEvent('eleckoi:dsh-plugins:select', { detail: result }));
+        if (!result.opened) throw new Error(result.error || `Native extension settings are unavailable: ${result.id}`);
+        pageView.changeActiveSection('plugins'); return null;
+      },
+      'compatibility.mediaSrc': params => assetFetchSrc(String(params.reference ?? '')),
       'compatibility.formatMessage': params => formatOfficialMessage(String(params.text ?? '')),
       'compatibility.refreshMessage': async params => {
         const messageId = params.options?.messageId ?? messages[Number(params.index)]?.id;
@@ -192,7 +223,7 @@ export function ChatPanel({
       }));
     }
     return () => stops.forEach(stop => stop());
-  }, [nativeAuthorRuntime, conversationModel, conversationId, currentTitle, messages, isSending, persona, chatDisplay, setInput, onSend, onOpenChatBackground, onOpenHistory, inputImages.length, inputFiles.length, formatOfficialMessage]);
+  }, [nativeAuthorRuntime, conversationModel, conversationId, currentTitle, messages, isSending, persona, chatDisplay, setInput, onSend, onOpenChatBackground, onOpenHistory, inputImages.length, inputFiles.length, formatOfficialMessage, pageView, displayPreferences, dshAppearance, frontendService, characterId]);
 
   useLayoutEffect(() => {
     const panel = chatPanelRef.current;
@@ -415,6 +446,8 @@ export function ChatPanel({
       leadingAccessory: roleplayMenu,
       modelAccessory: roleplayModel,
       dockAccessory: roleplayDock,
+      auxiliaryGenerating,
+      onStopAuxiliary: stopAuxiliary,
       renderBridgeSlot: renderRoleplaySlot,
     },
   ) ?? null;
@@ -468,6 +501,7 @@ export function ChatPanel({
       ref={chatPanelRef}
       className={`chat-panel layout-${layoutMode} view-${activeView}${profile?.assistant_bubble_enabled ? " assistant-bubble-enabled" : ""}${deleteMode ? " message-delete-mode" : ""}`}
       style={displayStyle}
+      data-message-style={pageView?.appearance?.messageStyle}
     >
       <header className="chat-header">
         <div className="chat-header-title-row">
@@ -572,7 +606,7 @@ export function ChatPanel({
           onClose={() => setProcessMessage(null)}
         />
       ) : null}
-      {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
+      {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} nativeAuthorRuntime={nativeAuthorRuntime} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
       {globalSettingsOpen ? <GlobalSettingLibraryDialog settingLibraries={pageView?.characterConfiguration?.settingLibraries} onClose={() => setGlobalSettingsOpen(false)} /> : null}
       {nativeAuthorUi.panel?.conversationId === conversationId ? <NativeScriptPanel key={nativeAuthorUi.panel.key}
         runtime={nativeAuthorRuntime} panel={nativeAuthorUi.panel} /> : null}

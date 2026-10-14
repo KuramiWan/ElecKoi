@@ -27,6 +27,7 @@ export function initialize(context, api, configuration) {
   attach(context, api, { ...configuration, execute });
   if (initialized) return;
   initialized = true;
+  installPopupDocument(globalThis.document);
   installCropper(globalThis.jQuery,Cropper);
   const showPopup = Popup.prototype.show;
   const ownedPopups = new Set();

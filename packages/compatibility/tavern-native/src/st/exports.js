@@ -56,7 +56,7 @@ export { createQuickReplyApi } from './runtime/tavern-runtime/quick-replies.js';
 export { createConnectionApi } from './runtime/tavern-runtime/connections.js';
 export { renderStoryString } from './runtime/vendor/sillytavern/public/scripts/eleckoi-context-template.js';
 export { resolveTokenizerModel } from './runtime/vendor/sillytavern/public/scripts/eleckoi-tokenizer-model.js';
-export { resolveTokenizerType } from './runtime/vendor/sillytavern/public/scripts/eleckoi-tokenizer-selection.js';
+export { resolveTokenizerType, tokenizers } from './runtime/vendor/sillytavern/public/scripts/eleckoi-tokenizer-selection.js';
 export { processChatSlashCommands } from './runtime/vendor/sillytavern/public/scripts/eleckoi-core-commands.js';
 
 export * from './runtime/vendor/sillytavern/public/scripts/macros/engine/MacroBrowser.js';
