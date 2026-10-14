@@ -19,6 +19,9 @@ import { variableConfigVersions, variableConfigs } from '@product-data/storage/s
 import { conversationSettingChanges } from '@product-data/storage/sqlite/schema/common'
 import { readEntry, readGroup, readPromptPositions, writeEntry, writeGroup, writePromptPositions } from './settingLibraryCodec'
 import { OPENING_ENTRY_ID, normalizeSettingLibrary } from './settingLibraryNormalization'
+import { GLOBAL_SETTING_LIBRARY_ID, GLOBAL_SETTING_RUNTIME_PREFIX } from '@shared/contracts/settingLibrary/scope'
+import { globalSettingLibrary } from '@product-data/storage/sqlite/schema/common'
+import { globalSettingRuntimeContext } from './globalSettingLibrary'
 
 type EntryRevision = { entry: SettingLibraryEntry; revisionId: string }
 type RuntimeBaseline = {
@@ -109,6 +112,10 @@ export class SettingLibraryRepository {
   }
 
   get(characterId: string, db: ElecKoiDatabase = this.store.db): SettingLibrary {
+    if (characterId === GLOBAL_SETTING_LIBRARY_ID) {
+      const row = db.select().from(globalSettingLibrary).where(eq(globalSettingLibrary.id, characterId)).get()
+      return row ? settingLibrarySchema.parse(JSON.parse(row.payloadJson)) : normalizeSettingLibrary(characterId)
+    }
     requireCharacter(db, characterId)
     const metadata = db.select().from(settingLibraries).where(eq(settingLibraries.characterId, characterId)).get()
     if (!metadata) return normalizeSettingLibrary(characterId)
@@ -162,10 +169,11 @@ export class SettingLibraryRepository {
   ): AgentSettingLibraryRuntimeContext | undefined {
     if (!context.characterId) return undefined
     const base = this.get(context.characterId, db)
+    const global = globalSettingRuntimeContext(this.get(GLOBAL_SETTING_LIBRARY_ID, db))
     const rows = db.select().from(conversationSettingChanges)
       .where(eq(conversationSettingChanges.sessionId, conversationId)).all()
-    const entries = new Map(base.entries.map((entry) => [entry.id, entry]))
-    const groups = new Map(base.groups.map((group) => [group.id, group]))
+    const entries = new Map([...(global?.entries ?? []), ...base.entries].map((entry) => [entry.id, entry]))
+    const groups = new Map([...(global?.groups ?? []), ...base.groups].map((group) => [group.id, group]))
     for (const row of rows) {
       if (row.operation === 'delete') {
         if (row.targetType === 'entry' && entries.get(row.targetId)?.kind !== 'opening') entries.delete(row.targetId)
@@ -209,7 +217,7 @@ export class SettingLibraryRepository {
       name: base.name,
       entries: effectiveEntries,
       groups: effectiveGroups,
-      promptPositions: base.promptPositions
+      promptPositions: [...(global?.promptPositions ?? []), ...base.promptPositions]
     }
   }
 
@@ -251,6 +259,10 @@ export class SettingLibraryRepository {
       }
       const normalized = normalizeSettingLibrary(characterId, { ...current, entries: next.entries })
       const changed = next.changed.map(entry => ({ ...normalized.entries.find(item => item.id === entry.id)!, updatedAt: timestamp }))
+      if (characterId === GLOBAL_SETTING_LIBRARY_ID) {
+        this.persist(db, normalized)
+        return changed
+      }
       // Only the edited entries and their active version change; story overrides stay untouched.
       for (const entry of changed) {
         const revisionId = this.ensureRevision(db, characterId, entry)
@@ -282,7 +294,14 @@ export class SettingLibraryRepository {
     return this.store.withWriteTx((db) => {
       const desired = settingLibrarySchema.parse(input)
       const base = this.get(characterId, db)
-      return this.writeConversationLibrary(characterId, conversationId, desired, base, db)
+      const global = globalSettingRuntimeContext(this.get(GLOBAL_SETTING_LIBRARY_ID, db))
+      const baseline = {
+        ...base,
+        entries: [...(global?.entries ?? []), ...base.entries],
+        groups: [...(global?.groups ?? []), ...base.groups],
+        promptPositions: [...(global?.promptPositions ?? []), ...base.promptPositions]
+      }
+      return this.writeConversationLibrary(characterId, conversationId, desired, baseline, db)
     })
   }
 
@@ -343,14 +362,24 @@ export class SettingLibraryRepository {
         throw new Error('版本名称已存在，请换一个名称。')
       }
       const timestamp = new Date().toISOString()
+      // Global settings remain application-owned when a story branch becomes a character version.
+      const globalGroups = new Set(effective.groups.filter(group => isGlobalSettingId(group.id)).map(group => group.id))
+      let expanded = true
+      while (expanded) {
+        expanded = false
+        for (const group of effective.groups) if (globalGroups.has(group.parentId) && !globalGroups.has(group.id)) {
+          globalGroups.add(group.id)
+          expanded = true
+        }
+      }
       const version = {
         id: `library-${randomUUID()}`,
         name: normalizedName,
-        entries: effective.entries,
-        groups: effective.groups,
-        promptPositions: effective.promptPositions,
+        entries: effective.entries.filter(entry => !isGlobalSettingId(entry.id) && !globalGroups.has(entry.groupId)),
+        groups: effective.groups.filter(group => !globalGroups.has(group.id)),
+        promptPositions: effective.promptPositions.filter(position => !isGlobalSettingId(position.id)),
         listAllExpanded: effective.listAllExpanded,
-        expandedGroupIds: effective.expandedGroupIds,
+        expandedGroupIds: effective.expandedGroupIds.filter(id => !globalGroups.has(id)),
         createdAt: timestamp,
         updatedAt: timestamp
       }
@@ -383,6 +412,7 @@ export class SettingLibraryRepository {
       ...base,
       entries: effective.entries,
       groups: effective.groups,
+      promptPositions: effective.promptPositions,
       versions: []
     })
   }
@@ -407,8 +437,9 @@ export class SettingLibraryRepository {
     }
 
     const base = this.get(context.characterId, db)
-    const baseEntries = new Map(base.entries.filter((entry) => entry.kind === 'normal').map((entry) => [entry.id, entry]))
-    const baseGroups = new Map(base.groups.map((group) => [group.id, group]))
+    const global = globalSettingRuntimeContext(this.get(GLOBAL_SETTING_LIBRARY_ID, db))
+    const baseEntries = new Map([...(global?.entries ?? []), ...base.entries].filter((entry) => entry.kind === 'normal').map((entry) => [entry.id, entry]))
+    const baseGroups = new Map([...(global?.groups ?? []), ...base.groups].map((group) => [group.id, group]))
     const timestamp = new Date().toISOString()
     const persistedChanges = db.select().from(conversationSettingChanges)
       .where(eq(conversationSettingChanges.sessionId, conversationId)).all()
@@ -514,6 +545,12 @@ export class SettingLibraryRepository {
       const current = this.get(characterId, db)
       const validGroupIds = new Set(current.groups.map((group) => group.id))
       const normalized = [...new Set(expandedGroupIds)].filter((id) => validGroupIds.has(id))
+      if (characterId === GLOBAL_SETTING_LIBRARY_ID) {
+        this.persist(db, { ...current, listAllExpanded: false, expandedGroupIds: normalized,
+          versions: current.versions.map(version => version.id === current.activeVersionId
+            ? { ...version, listAllExpanded: false, expandedGroupIds: normalized } : version) })
+        return normalized
+      }
       const values = { listAllExpanded: 0, expandedGroupIdsJson: JSON.stringify(normalized) }
       db.update(settingLibraries).set(values).where(eq(settingLibraries.characterId, characterId)).run()
       db.update(settingLibraryVersions).set(values).where(and(
@@ -525,6 +562,12 @@ export class SettingLibraryRepository {
   }
 
   private persist(db: ElecKoiDatabase, library: SettingLibrary): void {
+    if (library.characterId === GLOBAL_SETTING_LIBRARY_ID) {
+      const payloadJson = JSON.stringify(library)
+      db.insert(globalSettingLibrary).values({ id: library.characterId, payloadJson })
+        .onConflictDoUpdate({ target: globalSettingLibrary.id, set: { payloadJson } }).run()
+      return
+    }
     requireCharacter(db, library.characterId)
     const timestamp = new Date().toISOString()
     db.insert(settingLibraries).values({
@@ -694,7 +737,7 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
   }
   const groupNames = new Set<string>()
   for (const group of desired.groups) {
-    const key = `${group.parentId}\u0000${group.name.trim().toLocaleLowerCase()}`
+    const key = `${isGlobalSettingId(group.id) ? 'global' : 'character'}\u0000${group.parentId}\u0000${group.name.trim().toLocaleLowerCase()}`
     if (groupNames.has(key)) throw new Error(`同一位置已存在文件夹“${group.name}”。`)
     groupNames.add(key)
   }
@@ -713,7 +756,7 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
   for (const entry of desired.entries) {
     if (entry.groupId && !groups.has(entry.groupId)) throw new Error(`设定“${entry.title}”所在的文件夹不存在。`)
     if (entry.kind === 'normal') {
-      const key = `${entry.groupId}\u0000${entry.title.trim().toLocaleLowerCase()}`
+      const key = `${isGlobalSettingId(entry.id) ? 'global' : 'character'}\u0000${entry.groupId}\u0000${entry.title.trim().toLocaleLowerCase()}`
       if (entryNames.has(key)) throw new Error(`同一位置已存在设定“${entry.title}”。`)
       entryNames.add(key)
     }
@@ -746,6 +789,10 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
 
 function isConversationMutableEntry(entry: SettingLibraryEntry): boolean {
   return entry.kind === 'normal'
+}
+
+function isGlobalSettingId(id: string): boolean {
+  return id.startsWith(GLOBAL_SETTING_RUNTIME_PREFIX)
 }
 
 function conversationImmutableEntryFields(entry: SettingLibraryEntry): Record<string, unknown> {

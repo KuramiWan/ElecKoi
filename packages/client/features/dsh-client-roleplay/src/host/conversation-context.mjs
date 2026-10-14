@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
+import { settingSendBatches, settingEntryPaths, mergedSettingText } from './setting-send-groups.mjs'
 import { INPUT_CONTINUATIONS_PROJECTION } from './input-continuations-projection.mjs'
 import { illustrationInstructions, prepareIllustration } from './generated-image-result.mjs'
 
@@ -473,6 +474,7 @@ export function settingInjections(context) {
       const title = String(entry.title || '').trim() || '未命名设定'
       return {
         id: String(entry.id || '').slice(0, 128),
+        sourceEntryId: entry.id,
         anchor,
         role: anchor === 'instructions' ? 'system' : entry.insertRole === 'assistant' ? 'assistant' : 'user',
         content: entry.content.slice(0, 40_000),
@@ -489,16 +491,28 @@ export function settingInjections(context) {
     })
   const required = requiredSettingCache(library).map((entry, index) => ({
     id: `required-setting-${entry.reference.slice(1)}`,
+    sourceEntryId: entry.id,
     anchor: 'insert_point_1', role: 'user', content: entry.prompt,
     placementRank: 3, positionOrder: 0, order: index + 1,
     traceTitle: `Agent 必读 · ${entry.title}`, traceSource: '缓存设定区'
   }))
-  return [...automatic, ...required, ...worldbookSettingInjections(context, promptPositions)]
+  const ordered = [...automatic, ...required, ...worldbookSettingInjections(context, promptPositions)]
     .sort((left, right) => anchorOrder(left.anchor) - anchorOrder(right.anchor)
       || left.placementRank - right.placementRank
       || left.positionOrder - right.positionOrder
       || left.order - right.order
       || left.id.localeCompare(right.id))
+  const paths = settingEntryPaths(library)
+  const sourceEntries = new Map((library.entries || []).map(entry => [entry.id, entry]))
+  return settingSendBatches(library, ordered, {
+    entryId: item => item.sourceEntryId,
+    boundary: item => JSON.stringify([item.anchor, item.role, item.placementRank, item.positionOrder,
+      sourceEntries.get(item.sourceEntryId)?.promptPositionId || ''])
+  }).map(batch => batch.merged ? {
+    ...batch.items[0], id: `merged-setting:${batch.items[0].id}`,
+    content: mergedSettingText(batch.items, item => paths.get(item.sourceEntryId) || item.traceTitle, item => item.content),
+    traceTitle: `合并设定 · ${batch.title}（${batch.items.length}）`
+  } : batch.items[0])
 }
 
 export function worldbookSettingInjections(context, promptPositions = new Map()) {

@@ -226,6 +226,11 @@ export const agentSettingSnapshots = sqliteTable('agent_setting_snapshots', {
   stateJson: text('stateJson').notNull(),
 }, (table) => [primaryKey({ columns: [table.ownerType, table.ownerId] })])
 
+export const globalSettingLibrary = sqliteTable('global_setting_library', {
+  id: text('id').notNull().primaryKey(),
+  payloadJson: text('payloadJson').notNull(),
+})
+
 export const settingLibraries = sqliteTable('setting_libraries', {
   characterId: text('characterId').notNull().primaryKey(),
   name: text('name').notNull(),
@@ -383,4 +388,4 @@ export const scriptLibraries = sqliteTable('script_libraries', {
   variablesJson: text('variablesJson').notNull(),
 }, (table) => [primaryKey({ columns: [table.scope, table.ownerId] })])
 
-export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterTextContents, characterMeta, userProfile, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentPendingInputs, agentResponses, agentBranchTurns, agentOpenings, agentSettingSnapshots, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups, scriptLibraries }
+export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterTextContents, characterMeta, userProfile, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentPendingInputs, agentResponses, agentBranchTurns, agentOpenings, agentSettingSnapshots, globalSettingLibrary, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups, scriptLibraries }

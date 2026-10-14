@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS `agent_setting_snapshots` (`conversationId` TEXT NOT 
 
 CREATE INDEX IF NOT EXISTS `index_agent_setting_snapshots_conversationId` ON `agent_setting_snapshots` (`conversationId`);
 
+CREATE TABLE IF NOT EXISTS `global_setting_library` (`id` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, PRIMARY KEY(`id`));
+
 CREATE TABLE IF NOT EXISTS `setting_libraries` (`characterId` TEXT NOT NULL, `name` TEXT NOT NULL, `activeVersionId` TEXT NOT NULL, `listAllExpanded` INTEGER NOT NULL, `expandedGroupIdsJson` TEXT NOT NULL, `promptPositionsJson` TEXT NOT NULL, `updatedAt` TEXT NOT NULL, PRIMARY KEY(`characterId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
 
 CREATE TABLE IF NOT EXISTS `setting_entry_contents` (`characterId` TEXT NOT NULL, `entryId` TEXT NOT NULL, `revisionId` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, PRIMARY KEY(`characterId`, `entryId`, `revisionId`), FOREIGN KEY(`characterId`) REFERENCES `setting_libraries`(`characterId`) ON UPDATE NO ACTION ON DELETE CASCADE );
@@ -172,6 +174,6 @@ CREATE VIEW `setting_library_version_entries` AS SELECT link.characterId, link.v
 
 CREATE TABLE IF NOT EXISTS `script_libraries` (`scope` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `characterId` TEXT, `presetId` TEXT, `enabled` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `treesJson` TEXT NOT NULL, `variablesJson` TEXT NOT NULL, PRIMARY KEY(`scope`, `ownerId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`presetId`) REFERENCES `agent_presets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , CHECK (`enabled` IN (0, 1) AND `revision` >= 0), CHECK ((`scope` = 'global' AND `ownerId` = '' AND `characterId` IS NULL AND `presetId` IS NULL) OR (`scope` = 'character' AND `characterId` IS NOT NULL AND `ownerId` = `characterId` AND `ownerId` <> '' AND `presetId` IS NULL) OR (`scope` = 'preset' AND `presetId` IS NOT NULL AND `ownerId` = `presetId` AND `ownerId` <> '' AND `characterId` IS NULL)));
 
-PRAGMA user_version = 11;
+PRAGMA user_version = 12;
 
 COMMIT;

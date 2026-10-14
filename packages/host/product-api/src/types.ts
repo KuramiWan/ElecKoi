@@ -3,6 +3,23 @@ export interface ElecKoiHostStatus {
   protocolVersion: 1
 }
 
+export type TavernCompatibilityJson = null | boolean | number | string | TavernCompatibilityJson[] | { [key: string]: TavernCompatibilityJson }
+export type TavernCompatibilityRecord = { [key: string]: TavernCompatibilityJson }
+export interface TavernAuxiliaryGenerationResult {
+  generationId: string
+  text: string
+  reasoning: string
+  finishReason: string
+  usage: import('@deepseek-ai/dsh-llm/types').TokenUsage | null
+  provider: string
+  model: string
+}
+export type TavernAuxiliaryGenerationEvent =
+  | { kind: 'started'; generationId: string; provider: string; model: string }
+  | { kind: 'delta'; generationId: string; delta: string; text: string }
+  | { kind: 'reasoning'; generationId: string; delta: string; reasoning: string }
+  | ({ kind: 'finished' } & TavernAuxiliaryGenerationResult)
+
 
 export type ScriptLibraryScope = 'global' | 'character' | 'preset'
 export interface ScriptItem {
@@ -473,6 +490,7 @@ export interface SettingLibraryEntry {
   iconId: string
   kind: 'normal' | 'opening' | 'history_compaction' | 'hidden_tool_timeline'
   groupId: string
+  sendGroupId?: string
   content: string
   openingMessages: SettingLibraryOpeningMessage[]
   defaultOpeningMessageId: string
@@ -499,16 +517,19 @@ export interface SettingLibraryEntry {
   treeViewOrder: number
   createdAt: string
   updatedAt: string
+  sillyTavern?: TavernCompatibilityRecord
 }
 
 export interface SettingLibraryGroup {
   id: string
   name: string
   parentId: string
+  mergeSend?: boolean
   order: number
   treeViewOrder: number
   createdAt: string
   updatedAt: string
+  sillyTavern?: TavernCompatibilityRecord
 }
 
 export type SettingLibraryEntryChanges = Partial<Omit<SettingLibraryEntry,
@@ -897,6 +918,11 @@ export interface ElecKoiProductDataStore {
   readPersona(): PersonaProfile
   savePersona(profile: PersonaProfile): PersonaProfile
   readSettingLibrary(characterId: string): SettingLibrary
+  readGlobalSettingLibrary(): SettingLibrary
+  saveGlobalSettingLibrary(library: SettingLibrary): SettingLibrary
+  replaceGlobalSettingLibraryContent(library: SettingLibraryContent): SettingLibrary
+  updateGlobalSettingLibraryEntries(updates: SettingLibraryEntryUpdate[]): SettingLibraryEntry[]
+  saveGlobalSettingLibraryViewState(expandedGroupIds: string[]): string[]
   replaceSettingLibraryContent(characterId: string, library: SettingLibraryContent): SettingLibrary
   updateSettingLibraryEntries(characterId: string, updates: SettingLibraryEntryUpdate[]): SettingLibraryEntry[]
   saveSettingLibrary(characterId: string, library: SettingLibrary): SettingLibrary

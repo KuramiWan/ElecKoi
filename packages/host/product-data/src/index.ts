@@ -22,6 +22,8 @@ import { CreatorProjectRepository } from '@product-data/domain/creatorStudio/Cre
 export { creatorCapabilities, creatorToolsets, creatorAuthoringInstructions } from '@product-data/domain/creatorStudio/capabilities'
 import { FrontendIndex, FrontendProjectRepository } from '@product-data/domain/frontends'
 import { SettingLibraryRepository } from '@product-data/domain/settingLibraries/SettingLibraryRepository'
+import { GLOBAL_SETTING_LIBRARY_ID } from '@shared/contracts/settingLibrary/scope'
+export { GLOBAL_SETTING_LIBRARY_ID } from '@shared/contracts/settingLibrary/scope'
 import { VariableConfigRepository } from '@product-data/domain/variables/VariableConfigRepository'
 import { VariableStateRepository } from '@product-data/domain/variables/VariableStateRepository'
 import {
@@ -799,6 +801,24 @@ class ProductDataStore {
 
   readSettingLibrary(characterId: string): SettingLibrary {
     return this.databaseRepositories().settingLibraries.get(characterId)
+  }
+
+  readGlobalSettingLibrary(): SettingLibrary { return this.readSettingLibrary(GLOBAL_SETTING_LIBRARY_ID) }
+
+  saveGlobalSettingLibrary(library: SettingLibrary): SettingLibrary {
+    return this.saveSettingLibrary(GLOBAL_SETTING_LIBRARY_ID, library)
+  }
+
+  replaceGlobalSettingLibraryContent(library: Pick<SettingLibrary, 'characterId' | 'name' | 'entries' | 'groups' | 'promptPositions'>): SettingLibrary {
+    return this.replaceSettingLibraryContent(GLOBAL_SETTING_LIBRARY_ID, library)
+  }
+
+  updateGlobalSettingLibraryEntries(updates: SettingLibraryEntryUpdate[]) {
+    return this.updateSettingLibraryEntries(GLOBAL_SETTING_LIBRARY_ID, updates)
+  }
+
+  saveGlobalSettingLibraryViewState(expandedGroupIds: string[]): string[] {
+    return this.saveSettingLibraryViewState(GLOBAL_SETTING_LIBRARY_ID, expandedGroupIds)
   }
 
   replaceSettingLibraryContent(

@@ -9,10 +9,12 @@ import { RequestPreviewDialog } from "./RequestPreviewDialog.jsx";
 import { AgentToolsDialog } from "./AgentToolsDialog.jsx";
 import { NativeScriptPanel } from "../../scripts/index.js";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
+import { useOfficialMarkdownFormatter } from '../../../ui/messages/OfficialMarkdown.jsx';
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
 import { DshAgentPresetIcon, DshNewChatIcon } from "../../../ui/icons/dshComposerIcons.jsx";
-import { SlidersHorizontal } from "../../../ui/icons/interfaceIcons.jsx";
+import { BookOpen, SlidersHorizontal } from "../../../ui/icons/interfaceIcons.jsx";
+import { GlobalSettingLibraryDialog } from "../../settingLibraries/index.js";
 import { lazy, memo, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   chatDisplayCssVariables,
@@ -109,6 +111,7 @@ export function ChatPanel({
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [requestPreviewOpen, setRequestPreviewOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
   const loadImage = useCallback((id, image) => {
     if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
     return conversationModel.readImage(id, image);
@@ -139,6 +142,7 @@ export function ChatPanel({
   const nativeAuthorStatus = useSyncExternalStore(nativeAuthorRuntime?.subscribe || noAuthorSubscription,
     nativeAuthorRuntime?.getSnapshot || noAuthorRuntime, noAuthorRuntime);
   const inputStateRef = useRef(input);
+  const formatOfficialMessage = useOfficialMarkdownFormatter();
   inputStateRef.current = input;
   useEffect(() => {
     if (!nativeAuthorRuntime || !conversationId) return undefined;
@@ -154,6 +158,16 @@ export function ChatPanel({
         return { submitted: await onSend({ preventDefault() {} }, text) !== false };
       },
       'presentation.current': () => ({ conversationId, title: currentTitle, messages, isGenerating: isSending, persona, chatDisplay }),
+      'compatibility.formatMessage': params => formatOfficialMessage(String(params.text ?? '')),
+      'compatibility.refreshMessage': async params => {
+        const messageId = params.options?.messageId ?? messages[Number(params.index)]?.id;
+        if (!messageId) throw new Error('需要刷新的显示消息不存在。');
+        await conversationModel.reloadSessionProjection(conversationId);
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const article = [...chatPanelRef.current.querySelectorAll('[data-message-id]')]
+          .find(node => node.dataset.messageId === messageId);
+        if (article) article.dispatchEvent(new CustomEvent('eleckoi:refresh-message'));
+      },
       'ui.showProcess': params => {
         const message = messages.find(value => value.id === params.id);
         if (!message) throw new Error(`显示消息不存在：${params.id}`);
@@ -178,7 +192,7 @@ export function ChatPanel({
       }));
     }
     return () => stops.forEach(stop => stop());
-  }, [nativeAuthorRuntime, conversationModel, conversationId, currentTitle, messages, isSending, persona, chatDisplay, setInput, onSend, onOpenChatBackground, onOpenHistory, inputImages.length, inputFiles.length]);
+  }, [nativeAuthorRuntime, conversationModel, conversationId, currentTitle, messages, isSending, persona, chatDisplay, setInput, onSend, onOpenChatBackground, onOpenHistory, inputImages.length, inputFiles.length, formatOfficialMessage]);
 
   useLayoutEffect(() => {
     const panel = chatPanelRef.current;
@@ -466,6 +480,9 @@ export function ChatPanel({
             </span> : null}
           </div>
           <div className="chat-header-actions" ref={headerMenuRef}>
+            <button className="chat-header-action chat-header-global-settings" type="button" aria-label="全局设定库" title="全局设定库" aria-haspopup="dialog" onClick={() => { setHeaderMenuOpen(false); setGlobalSettingsOpen(true); }}>
+              <BookOpen size={20} />
+            </button>
             <button className="chat-header-action" type="button" aria-label="对话操作" title="对话操作" aria-haspopup="menu" aria-expanded={headerMenuOpen} onClick={() => setHeaderMenuOpen((value) => !value)}>
               <SlidersHorizontal size={20} weight="bold" />
             </button>
@@ -556,6 +573,7 @@ export function ChatPanel({
         />
       ) : null}
       {variablesOpen ? <VariableViewerDialog conversationId={conversationId} conversationModel={conversationModel} onClose={() => setVariablesOpen(false)} onNotify={onNotify} /> : null}
+      {globalSettingsOpen ? <GlobalSettingLibraryDialog settingLibraries={pageView?.characterConfiguration?.settingLibraries} onClose={() => setGlobalSettingsOpen(false)} /> : null}
       {nativeAuthorUi.panel?.conversationId === conversationId ? <NativeScriptPanel key={nativeAuthorUi.panel.key}
         runtime={nativeAuthorRuntime} panel={nativeAuthorUi.panel} /> : null}
       {requestPreviewOpen ? <RequestPreviewDialog key={conversationId} conversationId={conversationId} conversationModel={conversationModel} onClose={() => setRequestPreviewOpen(false)} /> : null}

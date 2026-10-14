@@ -3,9 +3,9 @@ import type {} from '@deepseek-ai/dsh-client-connection/client'
 import { NativeAuthorClient } from './runtime.js'
 import { NativeFrontendClient } from './frontends.js'
 export type { NativeFrontendClient } from './frontends.js'
-export type { ElecKoiAuthorRuntime, NativeAuthorRuntimeSnapshot, NativeAuthorChatHandlers, NativeAuthorProjectContext } from './client/types.js'
+export type { ElecKoiAuthorRuntime, NativeAuthorRuntimeSnapshot, NativeAuthorChatHandlers, NativeAuthorProjectContext, NativeAuthorDocumentRelease } from './client/types.js'
 
-export const inject = ['remote', 'remote.eleckoiAuthorScripts', 'remote.eleckoiAuthorVariables', 'remote.eleckoiAuthorFrontends', 'remote.eleckoiConversations', 'remote.eleckoiCharacters', 'remote.eleckoiCharacterConfiguration', 'remote.eleckoiAgentPresets', 'eleckoiConversations', 'eleckoiScriptLibraries', 'eleckoiModels']
+export const inject = ['remote', 'remote.eleckoiAuthorScripts', 'remote.eleckoiAuthorVariables', 'remote.eleckoiAuthorFrontends', 'remote.eleckoiConversations', 'remote.eleckoiCharacters', 'remote.eleckoiCharacterConfiguration', 'remote.eleckoiAgentPresets', 'remote.eleckoiTavernCompatibility', 'eleckoiConversations', 'eleckoiScriptLibraries', 'eleckoiModels']
 
 export async function apply(ctx: Context): Promise<void> {
   const frontends = new NativeFrontendClient(ctx.remote.eleckoiAuthorFrontends)

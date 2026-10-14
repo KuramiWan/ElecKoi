@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@eleckoi/author-sdk": "workspace:*",
+    "@eleckoi/tavern-native": "workspace:*",
     "@eleckoi/dsh-product-api": "workspace:*",
     "@eleckoi/dsh-client-conversations": "workspace:*",
     "@eleckoi/dsh-client-models": "workspace:*",

@@ -18,6 +18,7 @@ export interface NativeAuthorUiSnapshot {
 }
 
 export type NativeAuthorChatHandlers = Record<string, (params: Record<string, unknown>) => unknown | Promise<unknown>>
+export type NativeAuthorDocumentRelease = (() => void) & { ready: Promise<void> }
 export type NativeAuthorProjectContext = { projectId: string; entryFile: string; view: string } & (
   | { scope: 'application' }
   | { scope: 'character'; characterId: string; conversationId?: string }
@@ -58,7 +59,7 @@ export interface ElecKoiAuthorRuntime {
    * @param key - 界面快照中的面板编号。
    * @returns 撤回本页面 SDK 的函数。
    */
-  mountScriptPanelDocument(target: Window, key: string): () => void
+  mountScriptPanelDocument(target: Window, key: string): NativeAuthorDocumentRelease
   /** 注册指定聊天的输入框操作。
    * @param conversationId - 聊天编号。
    * @param handlers - 页面实际实现的操作。
@@ -71,13 +72,13 @@ export interface ElecKoiAuthorRuntime {
    * @param messageId - 所属消息编号；聊天页面传空字符串。
    * @returns 关闭该页面 SDK 的函数。
    */
-  mountDocument(target: Window, conversationId: string, messageId: string): () => void
+  mountDocument(target: Window, conversationId: string, messageId: string): NativeAuthorDocumentRelease
   /** 在项目页面安装 SDK；应用项目跟随选择，角色项目只操作明确所属角色的聊天。
    * @param target - 同源项目页面窗口。
    * @param project - 明确项目编号、入口、窗口及所属角色；聊天页面还须提供所属聊天。
    * @returns 关闭该页面 SDK 的函数。
    */
-  mountProjectDocument(target: Window, project: NativeAuthorProjectContext): () => void
+  mountProjectDocument(target: Window, project: NativeAuthorProjectContext): NativeAuthorDocumentRelease
 }
 
 declare module '@deepseek-ai/cordis' {

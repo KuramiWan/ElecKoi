@@ -3,7 +3,12 @@ import { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
 import { parseChatImport } from './chatImport.js'
 import { registerHostApiInspect } from './hostInspect.js'
 import { randomUUID } from 'node:crypto'
+import { GLOBAL_SETTING_LIBRARY_ID } from '@eleckoi/dsh-product-data'
 import { RemoteChangeFeed } from './remote-change-feed.js'
+import z from '@deepseek-ai/schemastery'
+import { ElecKoiTavernCompatibilityApi } from './tavern-compatibility.js'
+export { ElecKoiTavernCompatibilityApi } from './tavern-compatibility.js'
+export type { TavernCompatibilityJson, TavernCompatibilityRecord, TavernAuxiliaryGenerationEvent, TavernAuxiliaryGenerationResult } from './types.js'
 import { ElecKoiAuthorFrontendsApi, eleckoiFrontendAssetsPlugin } from './author-frontends.js'
 export { ElecKoiAuthorFrontendsApi, eleckoiFrontendAssetsPlugin } from './author-frontends.js'
 export type * from './frontend-project-types.js'
@@ -527,6 +532,55 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
       ...this.productData.readConversationDetails(conversationId, beforeSequence, limit),
       runtimeVariableStateByTurn: this.ownerContext.eleckoiRoleplaySessions.variableStatesByTurn(conversationId)
     }
+  }
+
+  /** @internal Read actual Session text and join product annotations for compatibility realms. */
+  async tavernSnapshot(conversationId: string): Promise<Record<string, unknown>> {
+    if (!conversationId) return { messages: [] }
+    const details = this.details(conversationId, undefined, 200)
+    const metadata = [...details.messages]
+    let page = details
+    while (page.hasMore && page.beforeSequence !== null) {
+      page = this.details(conversationId, page.beforeSequence, 200)
+      metadata.unshift(...page.messages)
+    }
+    const sessionId = details.runtimeSessionId
+    const inspection = await this.ownerContext.sessionController.inspect(sessionId as SessionId)
+    const history = this.productData.readRuntimeVariableHistory(conversationId, sessionId)
+    const historicalByTurn = new Map<number, typeof history>()
+    for (const row of history) historicalByTurn.set(row.turn, [...(historicalByTurn.get(row.turn) ?? []), row])
+    const assistants = sessionAssistantMessages(conversationId, sessionId, inspection.events,
+      details.runtimeVariableStateByTurn ?? {}, historicalByTurn)
+    const opening = metadata.filter(row => row.id === 'opening').map(row => ({ ...row,
+      content: row.content ?? '', variableState: JSON.parse(row.variableStateJson),
+      openingOptions: row.openingOptions?.map(option => ({ ...option, initialVariableState: JSON.parse(option.initialVariableStateJson) })) }))
+    const rows: Array<ConversationMessageDisplayInput & Record<string, unknown>> = []
+    const initialVariableStateJson = this.productData.readAuthorConversationState(conversationId).initialVariableStateJson
+    for (const [index, value] of inspection.events.entries()) {
+      const event = jsonRecord(value), input = jsonRecord(event.data)
+      if (event.type !== 'user/message' || event.surfaceOp !== 'append' || jsonRecord(input.source).kind !== 'user') continue
+      const messageId = typeof input.id === 'string' ? input.id : ''
+      const source = metadata.find(row => row.role === 'user' && (row.dshMessageId === messageId || row.id === messageId || row.sessionEventSeq === event.seq))
+      const rawTime = Number(event.time ?? input.time)
+      rows.push({ ...source, id: source?.id ?? (messageId || `dsh-${sessionId}-${String(event.seq)}-user`), role: 'user',
+        conversationId, content: sessionMessageText(event), rawContent: sessionMessageText(event),
+        variableStateJson: source?.variableStateJson ?? assistants.filter(row => row.sessionEventSeq < Number(event.seq)).at(-1)?.variableStateJson ?? initialVariableStateJson,
+        status: source?.status ?? 'complete', createdAt: source?.createdAt ?? new Date(Number.isFinite(rawTime) ? rawTime : 0).toISOString(),
+        runtimeSessionId: sessionId, dshMessageId: messageId, sessionEventSeq: Number(event.seq), dshTurn: sessionMessageTurn(inspection.events, index) })
+    }
+    for (const assistant of assistants) {
+      const source = metadata.find(row => row.role === 'assistant' && row.id === historicalByTurn.get(assistant.dshTurn)?.[0]?.messageId)
+      const event = jsonRecord(inspection.events.find(candidate => Number(jsonRecord(candidate).seq) === assistant.sessionEventSeq))
+      const messageId = jsonRecord(jsonRecord(event.data).message).id
+      rows.push({ ...source, ...assistant, id: source?.id ?? (typeof messageId === 'string' ? messageId : assistant.id),
+        dshMessageId: typeof messageId === 'string' ? messageId : '', rawContent: assistant.content, content: officialFinalReplyText(assistant.content) })
+    }
+    rows.sort((left, right) => Number(left.sessionEventSeq) - Number(right.sessionEventSeq))
+    const displays = new Map(this.productData.projectConversationMessages(conversationId, rows).map(row => [row.id, row]))
+    return { messages: [...opening, ...rows.map(row => ({ ...row, displayContent: displays.get(row.id)?.displayContent ?? row.content,
+      variableState: JSON.parse(displays.get(row.id)?.variableStateJson ?? row.variableStateJson),
+      speakerName: row.speakerName ?? (row.role === 'user' ? details.metadata.characterPersona.user_name : details.metadata.characterName) }))]
+      .map((row, messageIndex) => ({ ...row, messageIndex })) }
   }
 
   /**
@@ -1718,6 +1772,65 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
   }
 
   /**
+   * 读取与角色无关的完整全局设定库。
+   * @returns 全局设定的分组、条目、插入位置及版本。
+   */
+  @Remote
+  readGlobalSettingLibrary(): SettingLibrary { return this.productData.readGlobalSettingLibrary() }
+
+  /**
+   * 保存全局设定库，通知手机及 PC 编辑页面刷新。
+   * @param library - 完整全局库及全部版本。
+   * @returns 实际保存后的全局设定库。
+   */
+  @Remote
+  saveGlobalSettingLibrary(library: SettingLibrary): SettingLibrary {
+    const saved = this.productData.saveGlobalSettingLibrary(library)
+    this.publish('settingLibraries', GLOBAL_SETTING_LIBRARY_ID)
+    return saved
+  }
+
+  /**
+   * 替换全局设定库当前版本的内容，保留其他版本。
+   * @param library - 全局设定的条目、分组及插入位置。
+   * @param signal - 取消保存的信号。
+   * @returns 实际保存后的全局库。
+   */
+  @Remote
+  replaceGlobalSettingLibraryContent(library: SettingLibraryContent, signal: AbortSignal): SettingLibrary {
+    signal.throwIfAborted()
+    const saved = this.productData.replaceGlobalSettingLibraryContent(library)
+    this.publish('settingLibraries', GLOBAL_SETTING_LIBRARY_ID)
+    return saved
+  }
+
+  /**
+   * 原子修改全局库普通条目。
+   * @param updates - 条目编号和需要修改的字段。
+   * @param signal - 取消保存的信号。
+   * @returns 保存后的指定条目。
+   */
+  @Remote
+  updateGlobalSettingLibraryEntries(updates: SettingLibraryEntryUpdate[], signal: AbortSignal): SettingLibraryEntry[] {
+    signal.throwIfAborted()
+    const saved = this.productData.updateGlobalSettingLibraryEntries(updates)
+    if (saved.length) this.publish('settingLibraries', GLOBAL_SETTING_LIBRARY_ID)
+    return saved
+  }
+
+  /**
+   * 保存全局库已展开的分组。
+   * @param expandedGroupIds - 展开的分组编号。
+   * @returns 实际保存的分组编号。
+   */
+  @Remote
+  saveGlobalSettingLibraryViewState(expandedGroupIds: string[]): string[] {
+    const saved = this.productData.saveGlobalSettingLibraryViewState(expandedGroupIds)
+    this.publish('settingLibraries', GLOBAL_SETTING_LIBRARY_ID)
+    return saved
+  }
+
+  /**
    * 保存角色设定库的当前内容，保留其他版本与管理设置。
    * @param characterId - 所属角色编号。
    * @param library - 设定库原文、文件夹和插入位置定义。
@@ -2328,8 +2441,11 @@ export class ElecKoiCreatorStudioSessionsApi extends TypertRemoteService {
 }
 
 
+export const Config = z.object({ state: z.any().default({}).volatile() })
+
 const eleckoiProductApiPlugin = {
   name: 'eleckoi-product-api',
+  Config,
   inject: ['typert', 'eleckoiProductData'],
   provide: ['eleckoiConversationChanges', 'eleckoiVariableProcessing', 'eleckoiCharacterConfigurationChanges', 'eleckoiProductRecordChanges'],
   async apply(ctx: Context) {
@@ -2357,6 +2473,10 @@ const eleckoiProductApiPlugin = {
     await ctx.plugin(eleckoiFrontendAssetsPlugin)
     await ctx.plugin(ElecKoiAuthorScriptsApi)
     await ctx.plugin(eleckoiScriptAssetsPlugin)
+    await ctx.plugin(ElecKoiTavernCompatibilityApi)
+    ctx.inject(['eleckoiTavernCompatibilityApi', 'eleckoiConversationsApi'], scope => {
+      scope.eleckoiTavernCompatibilityApi.setSnapshotReader(conversationId => scope.eleckoiConversationsApi.tavernSnapshot(conversationId))
+    })
     const inspect = registerHostApiInspect(ctx)
     return async () => {
       try { await inspect.dispose() }
