@@ -35,6 +35,7 @@ packages/host/product-data/lib/
 packages/client/features/*/lib/
 packages/client/mobile/*/lib/
 apps/desktop/resources/native/
+apps/desktop/resources/installer/
 coverage/
 build/
 playwright-report/

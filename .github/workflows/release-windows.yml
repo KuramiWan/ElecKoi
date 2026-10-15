@@ -12,6 +12,15 @@ on:
         required: true
         default: true
         type: boolean
+      source_ref:
+        description: Optional verified source commit for rebuilding an existing version
+        required: false
+        type: string
+      replace_windows_assets:
+        description: Replace only Windows assets on an existing Release
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -33,7 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.source_ref || inputs.tag }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -49,11 +58,18 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Verify tag matches package version
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
         run: |
-          $tagVersion = '${{ inputs.tag }}'.TrimStart('v')
+          $tagVersion = $env:RELEASE_TAG.TrimStart('v')
           $packageVersion = node -p "require('./apps/desktop/package.json').version"
           if ($tagVersion -ne $packageVersion) {
-            throw "Tag ${{ inputs.tag }} does not match package.json version $packageVersion"
+            throw "Tag $env:RELEASE_TAG does not match package.json version $packageVersion"
+          }
+          $sourceRef = $env:SOURCE_REF
+          if ($sourceRef -and ($sourceRef -notmatch '^[0-9a-f]{40}$' -or (git rev-parse HEAD) -ne $sourceRef)) {
+            throw 'A rebuild must use an exact verified source commit.'
           }
 
       - name: Install locked dependencies
@@ -86,16 +102,45 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: pnpm exec electron-builder --projectDir apps/desktop --win --x64 --prepackaged ../../release/win-unpacked --publish never
 
+      - name: Verify installed startup in a Low-integrity directory
+        run: |
+          $installer = (Get-ChildItem release -File -Filter '*-setup.exe').FullName
+          node scripts/verify-windows-installer.mjs $installer
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Windows startup verification failed.' }
+
       - name: Publish verified GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag }}
+          REPLACE_WINDOWS_ASSETS: ${{ inputs.replace_windows_assets }}
         run: |
           $assets = @(
             (Get-ChildItem release -File -Filter '*-setup.exe').FullName
             (Get-ChildItem release -File -Filter '*-setup.exe.blockmap').FullName
             (Resolve-Path release/latest.yml).Path
           )
+          if ($env:REPLACE_WINDOWS_ASSETS -eq 'true') {
+            $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or -not $release.id) { throw 'Existing Release was not found.' }
+            $before = @($release.assets | Where-Object { $_.name -notin @($assets | ForEach-Object { Split-Path -Leaf $_ }) })
+            gh release upload $env:RELEASE_TAG @($assets | Where-Object { (Split-Path -Leaf $_) -ne 'latest.yml' }) --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Windows installer replacement failed.' }
+            gh release upload $env:RELEASE_TAG (Resolve-Path release/latest.yml).Path --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Windows update metadata replacement failed.' }
+            $after = gh api "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" | ConvertFrom-Json
+            foreach ($asset in $before) {
+              $retained = $after.assets | Where-Object { $_.id -eq $asset.id -and $_.name -eq $asset.name -and $_.digest -eq $asset.digest }
+              if (-not $retained) { throw "An unrelated Release asset changed: $($asset.name)" }
+            }
+            $source = git rev-parse HEAD
+            $notice = "<!-- windows-rebuild -->`nWindows 安装包已重新打包，修复安装到低完整性标记目录后无法启动的问题。[本次 PC 构建源码](https://github.com/$env:GITHUB_REPOSITORY/commit/$source)。`n<!-- /windows-rebuild -->"
+            $body = [regex]::Replace([string]$release.body, '(?s)<!-- windows-rebuild -->.*?<!-- /windows-rebuild -->\s*', '')
+            $notes = Join-Path $env:RUNNER_TEMP 'rebuilt-release-notes.md'
+            "$notice`n`n$body" | Set-Content -LiteralPath $notes -Encoding utf8
+            gh release edit $env:RELEASE_TAG --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { throw 'Could not record the Windows rebuild source.' }
+            exit 0
+          }
           $releaseOptions = @('--verify-tag', '--title', "ElecKoi $env:RELEASE_TAG")
           $releaseNotes = "docs/releases/$env:RELEASE_TAG.md"
           if (Test-Path -LiteralPath $releaseNotes) { $releaseOptions += @('--notes-file', $releaseNotes) }

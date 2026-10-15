@@ -9,6 +9,7 @@ files:
   - out/**/*
   - resources/**/*
   - '!resources/native/**/*'
+  - '!resources/installer/**/*'
   - '!node_modules/pnpm/**/*'
   - package.json
 
@@ -47,6 +48,7 @@ win:
   artifactName: ${productName}-${version}-${arch}-setup.${ext}
 
 nsis:
+  include: scripts/windows-installation.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
