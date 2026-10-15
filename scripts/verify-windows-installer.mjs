@@ -1,19 +1,19 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { AclWriteGrant, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
 
-if (process.platform !== 'win32' || process.env.GITHUB_ACTIONS !== 'true') {
+if (process.platform !== 'win32' || process.env.GITHUB_ACTIONS !== 'true' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') {
   throw Error('Windows installer verification runs only in the GitHub Release workflow.')
 }
+if (!process.env.RUNNER_TEMP || !isAbsolute(process.env.RUNNER_TEMP)) throw Error('Hosted runner temporary directory is missing.')
 const require = createRequire(import.meta.url)
 const version = JSON.parse(readFileSync('apps/desktop/package.json', 'utf8')).version
 const installer = resolve(process.argv[2] ?? '')
 if (basename(installer) !== `ElecKoi-${version}-x64-setup.exe` || !existsSync(installer)) throw Error('Expected Windows installer is missing.')
-const fixture = mkdtempSync(join(tmpdir(), 'eleckoi-installer-'))
+const fixture = mkdtempSync(join(process.env.RUNNER_TEMP, 'eleckoi-installer-'))
 const directory = join(fixture, 'affected installation')
 const profile = join(fixture, 'profile')
 const marker = join(profile, 'keep-user-data.txt')
@@ -114,7 +114,8 @@ try {
   console.log('Installer Low-integrity recovery, cold restart and retained-data checks passed.')
 } finally {
   grant?.dispose()
-  const child = relative(tmpdir(), fixture)
-  if (!child || child.startsWith('..') || isAbsolute(child)) throw Error('Invalid installer fixture cleanup path')
-  rmSync(fixture, { recursive: true, force: true })
+  // This check requires a GitHub-hosted Windows VM, which is discarded after
+  // the job. Leave the disposable installation to that lifecycle: Windows may
+  // still hold deleted executable files after the uninstaller returns, and a
+  // second recursive deletion must not replace the actual verification result.
 }
