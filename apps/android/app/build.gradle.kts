@@ -30,8 +30,8 @@ android {
         applicationId = "com.eleckoi.app"
         minSdk = 27
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.2.10"
+        versionCode = 6
+        versionName = "0.2.11"
         ndk { abiFilters += "arm64-v8a" }
     }
     flavorDimensions += "browser"

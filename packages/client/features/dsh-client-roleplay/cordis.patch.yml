@@ -1,3 +1,14 @@
+- id: spill-local
+  name: '@eleckoi/dsh-client-roleplay/host/tool-result-store.mjs'
+  config:
+    root: !!js dshHomePath('tool-results')
+
+- id: spill-policy
+  config:
+    maxInlineTokens: 12500
+    exemptTools: [eleckoi_read_uploaded_file]
+    pagedTools: [eleckoi_read_setting_files, eleckoi_read_variables, eleckoi_call_capability]
+
 - insert:
     - id: eleckoi-client-roleplay
       name: '@eleckoi/dsh-client-roleplay'

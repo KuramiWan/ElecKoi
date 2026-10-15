@@ -270,7 +270,7 @@ export function PresetListPanel() {
     </section>;
   }
 
-  return <aside className="character-list-panel preset-list-panel" aria-label="预设列表">
+  return <aside className="character-list-panel preset-list-panel" aria-label="预设列表" aria-busy={shouldShowPresetCatalogLoading(catalog, error) || undefined}>
     <SidebarSectionHeader title="预设" value={keyword} onValueChange={setKeyword} placeholder="搜索预设名称"
       createLabel="新建预设" createExpanded={createOpen}
       onCreatePointerDown={(event) => event.stopPropagation()}
@@ -284,7 +284,6 @@ export function PresetListPanel() {
     <PresetPurposeSwitch value={purpose} onChange={value => { setPurpose(value); setSelectedGroup(ALL_PRESETS); setKeyword(''); }} />
     <div ref={scrollRef} className="character-list-scroll preset-list-scroll">
       {collapseStateReady ? sections.map(renderGroup) : null}
-      {shouldShowPresetCatalogLoading(catalog, error) ? <p className="preset-list-state">正在读取…</p> : null}
       {error || importError ? <p className="preset-list-state is-error">{error || importError}</p> : null}
     </div>
     {context.menu ? <PresetContextMenu menu={context.menu} onClose={context.close} actions={presetListContextActions(
@@ -337,6 +336,8 @@ export function PresetWorkspace({
   const [pendingAction, setPendingAction] = useState(null);
   const presetDirty = Boolean(preset && persisted && JSON.stringify(preset) !== JSON.stringify(persisted));
   const dirty = editorDirty || presetDirty;
+  const selectionMismatch = preset?.id !== selectedPresetId;
+  const editorUnavailable = loading || selectionMismatch;
   presetDirtyRef.current = presetDirty;
   dirtyRef.current = dirty;
   requestedTabRef.current = requestedTab;
@@ -412,13 +413,14 @@ export function PresetWorkspace({
     function saveShortcut(event) {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLocaleLowerCase() !== 's') return;
       event.preventDefault();
+      if (editorUnavailable) return;
       if (document.activeElement?.closest('dialog')) return;
       if (introductionRef.current?.hasDraft) void introductionRef.current.save();
       else if (dirty && !saving) void save();
     }
     window.addEventListener('keydown', saveShortcut);
     return () => window.removeEventListener('keydown', saveShortcut);
-  }, [dirty, saving, preset]);
+  }, [dirty, saving, preset, editorUnavailable]);
 
   useEffect(() => {
     function handleBeforeUnload(event) {
@@ -437,6 +439,7 @@ export function PresetWorkspace({
   }, [dirty]);
 
   async function save(candidate = preset) {
+    if (editorUnavailable) return false;
     const editor = tab === 'scripts' ? scriptsRef.current : tab === 'displayTemplates' ? templatesRef.current : tab === 'regex' ? regexRef.current : null;
     if (editor) {
       if (savingRef.current) return false;
@@ -481,23 +484,25 @@ export function PresetWorkspace({
   }
 
   async function activate() {
-    if (!preset) return;
+    if (!preset || editorUnavailable) return;
     if (dirty && !await save()) return;
     const next = await catalogModel.setActive(preset.id);
     setCatalog(next);
   }
 
   const active = Boolean(preset && catalog?.activePresetIds[preset.purpose] === preset.id);
-  const header = renderHeader?.({ tab, profileEditing, dirty, saving, error, active, onActivate: preset && !loading ? () => navigate(activate) : undefined, onSave: () => save() });
-  if (loading || (!preset && !error && !catalogError)) return <>{header}<section className="preset-workspace"><p className="preset-workspace-state">正在读取…</p></section></>;
+  const editorError = selectionMismatch ? '' : error;
+  const header = renderHeader?.({ tab, profileEditing, dirty: !editorUnavailable && dirty, saving, error, active, onActivate: preset && !editorUnavailable ? () => navigate(activate) : undefined, onSave: () => save() });
+  if (!preset && !error && !catalogError) return <>{header}<section className="preset-workspace" aria-busy="true" /></>;
   if (!preset) return <>{header}<section className="preset-workspace"><p className="preset-workspace-state is-error">{error || catalogError || '没有可编辑的预设'}</p></section></>;
+  const readError = selectionMismatch && error ? <p className="preset-workspace-state is-error" role="alert">{error}</p> : null;
 
   const tabCounts = {
     prompts: preset.entries.length,
     tools: preset.toolGroups.filter((group) => group.included).length,
     regex: preset.regexRules.length,
   };
-  const saveAction = compact ? null : <SaveControl dirty={dirty} error={error} saving={saving} onSave={() => void save()} />;
+  const saveAction = compact ? null : <SaveControl dirty={dirty} error={editorError} saving={saving} onSave={() => void save()} />;
   const leaveDialog = <UnsavedChangesDialog
     open={Boolean(pendingAction)}
     title="保存修改？"
@@ -531,7 +536,7 @@ export function PresetWorkspace({
     active: catalog?.activePresetIds[preset.purpose] === preset.id,
     dirty,
     saving,
-    error,
+    error: editorError,
     onChange: setPreset,
     onSave: save,
     onDiscard: discardChanges,
@@ -539,12 +544,12 @@ export function PresetWorkspace({
   };
 
   if (profileEditing) {
-    const profileEditor = <section className="preset-profile-edit-workspace" aria-label="编辑预设资料">
+    const profileEditor = <section className="preset-profile-edit-workspace" aria-label="编辑预设资料" aria-busy={loading || undefined} inert={editorUnavailable}>
       <PresetProfileEditor
         preset={preset}
         dirty={dirty}
         saving={saving}
-        error={error}
+        error={editorError}
         onChange={setPreset}
         onCancel={() => { discardChanges(); setProfileEditing(false); }}
         onSave={async () => { if (await save()) setProfileEditing(false); }}
@@ -552,6 +557,7 @@ export function PresetWorkspace({
     </section>;
     return <>
       {header}
+      {readError}
       {renderEditorSection?.('profile', {
         ...extensionOwner,
         onClose: () => navigate(() => setProfileEditing(false)),
@@ -562,7 +568,7 @@ export function PresetWorkspace({
 
   let tabEditor = null;
   if (tab === 'introduction') {
-    tabEditor = <PresetIntroductionEditor key={preset.id} preset={preset} editorRef={introductionRef} saving={saving} error={error} onClearError={() => setError('')} onSaveProfile={(patch) => save({ ...preset, profile: { ...preset.profile, ...patch } })} />;
+    tabEditor = <PresetIntroductionEditor key={preset.id} preset={preset} editorRef={introductionRef} saving={saving} error={editorError} onClearError={() => setError('')} onSaveProfile={(patch) => save({ ...preset, profile: { ...preset.profile, ...patch } })} />;
   } else if (tab === 'prompts') {
     tabEditor = <PresetPromptEditor preset={preset} onChange={setPreset} saveAction={saveAction} />;
   } else if (tab === 'tools') {
@@ -589,7 +595,8 @@ export function PresetWorkspace({
 
   return <>
     {header}
-    <section className="preset-workspace" aria-label="预设编辑器">
+    {readError}
+    <section className="preset-workspace" aria-label="预设编辑器" aria-busy={loading || undefined} inert={editorUnavailable}>
       <PresetProfileHeader preset={preset} active={active} showActivate={!compact || !renderHeader} onActivate={() => navigate(activate)} onEdit={() => navigate(() => setProfileEditing(true))} />
       <nav className="preset-workspace-tabs" aria-label="预设编辑区域">
         <div className="preset-workspace-tab-list">{TABS.map((item) => <button type="button" key={item.id} aria-current={tab === item.id ? 'page' : undefined} onClick={() => { if (tab !== item.id) navigate(() => setTab(item.id)); }}><span>{item.label}</span>{tabCounts[item.id] !== undefined ? <em>{tabCounts[item.id]}</em> : null}</button>)}</div>

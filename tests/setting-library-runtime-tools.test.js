@@ -207,17 +207,89 @@ describe("DSH character setting-library tools", () => {
     expect(found).not.toHaveProperty("omitted");
 
     const searched = await runtime.byName.get("eleckoi_grep_setting_files").execute({ pattern: "无限搜索命中" });
-    expect(searched.matches).toHaveLength(100);
-    expect(searched.omitted).toBe(2_001);
-    const widerSearch = await runtime.byName.get("eleckoi_grep_setting_files").execute({ pattern: "无限搜索命中", limit: 2_101 });
-    expect(widerSearch.matches).toHaveLength(1_000);
-    expect(widerSearch.omitted).toBe(1_101);
+    expect(searched.matches.map(item => item.path)).toEqual(bulkEntries.map(item => item.title));
+    expect(searched).not.toHaveProperty("omitted");
+    expect(runtime.byName.get("eleckoi_grep_setting_files").parameters).not.toHaveProperty("limit");
 
     const paths = bulkEntries.slice(0, 17).map((item) => item.title).concat("超长正文");
     const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths });
     expect(read.files).toHaveLength(18);
     expect(read.files.at(-1).content).toBe(longContent);
     expect(read.files.at(-1)).not.toHaveProperty("truncated");
+  });
+
+  it.each([101, 1_001, 10_001])("matches, lists, searches and reads all %i keyword settings including their final keyword and full long bodies", async count => {
+    const probes = new Set([0, Math.floor(count / 2), count - 1]);
+    const entries = Array.from({ length: count }, (_, index) => entry({
+      id: `synthetic-keyword-${index}`, title: `合成关键词条目-${index}`,
+      content: `合成命中正文-${index}\n${probes.has(index) ? '合成𠮷'.repeat(32_769) : '合成正文'}\n合成末尾-${index}`,
+      agentReadStrategy: "keyword",
+      keywords: [...(probes.has(index) ? Array.from({ length: 1_501 }, (_, key) => `未命中-${index}-${key}`) : []), "合成总量触发"],
+      conditionKeywords: ["合成条件甲", "合成条件乙"], keywordCondition: "all",
+    }));
+    const runtime = await tools({ extraEntries: entries, history: [{ role: "user", content: "合成总量触发，合成条件甲，合成条件乙。" }] });
+    const glob = await runtime.byName.get("eleckoi_glob_setting_files").execute({});
+    const expectedPaths = entries.map(item => item.title);
+    expect(glob.files.slice(2).map(item => item.path)).toEqual(expectedPaths);
+    expect(glob.required_entries.slice(1).map(item => item.path)).toEqual(expectedPaths);
+    for (const output_mode of ["files_with_matches", "content", "count"]) {
+      const definition = runtime.byName.get("eleckoi_grep_setting_files");
+      const result = await definition.execute({ pattern: "合成命中正文", output_mode });
+      expect(result.matches).toHaveLength(count);
+      expect(result.matches.map(item => item.path)).toEqual(expectedPaths);
+      expect(result).not.toHaveProperty("omitted");
+      expect(JSON.parse(definition.output.render({}, result)[0].text)).toEqual(result);
+      if (output_mode === "content") expect(result.matches.at(-1).text).toBe(`合成命中正文-${count - 1}`);
+    }
+    const longLines = await runtime.byName.get("eleckoi_grep_setting_files").execute({ pattern: "合成𠮷", output_mode: "content" });
+    expect(longLines.matches.map(item => item.text)).toEqual([...probes].map(index => entries[index].content.split('\n')[1]));
+    const definition = runtime.byName.get("eleckoi_read_setting_files");
+    const result = await definition.execute({ paths: expectedPaths });
+    expect(result.status).toBe("ok");
+    expect(result.files).toHaveLength(count);
+    expect(result.files.map(item => item.content)).toEqual(entries.map(item => item.content));
+    expect(JSON.parse(definition.output.render({}, result)[0].text)).toEqual(result);
+    expect(JSON.parse(readFileSync(runtime.file, "utf8")).runtimeResolution.visibleEntryIds).toHaveLength(count + 2);
+  }, 60_000);
+
+  it("honors scan depths above 1000 and recursive matches above ten rounds inside a large library", async () => {
+    const filler = Array.from({ length: 2_101 }, (_, index) => entry({ id: `synthetic-filler-${index}`, title: `合成背景-${index}`, content: "合成无关正文", agentReadStrategy: "keyword", keywords: ["永不出现"] }));
+    const chain = Array.from({ length: 22 }, (_, index) => entry({ id: `synthetic-chain-${index}`, title: `合成关联-${index}`,
+      content: `合成链-${index + 1}|`, agentReadStrategy: "keyword", keywords: [`合成链-${index}|`], keywordRecursionDepth: index === 0 ? 20 : 0 }));
+    const history = [{ role: "user", content: "合成早期触发" }, ...Array.from({ length: 1_001 }, () => ({ role: "assistant", content: "合成间隔消息" })), { role: "user", content: "合成链-0|" }];
+    const runtime = await tools({ extraEntries: [...filler, ...chain,
+      entry({ id: "synthetic-deep", title: "合成深层扫描", content: "合成深层正文", agentReadStrategy: "keyword", keywords: ["合成早期触发"], keywordScanDepth: history.length }),
+      entry({ id: "synthetic-outside", title: "合成范围之外", content: "合成不应命中", agentReadStrategy: "keyword", keywords: ["合成早期触发"], keywordScanDepth: history.length - 1 }),
+    ], history });
+    const result = await runtime.byName.get("eleckoi_glob_setting_files").execute({});
+    const paths = result.files.map(item => item.path);
+    for (const item of chain.slice(0, 21)) expect(paths).toContain(item.title);
+    expect(paths).not.toContain(chain[21].title);
+    expect(paths).toContain("合成深层扫描");
+    expect(paths).not.toContain("合成范围之外");
+    expect(paths.some(path => path.startsWith("合成背景-"))).toBe(false);
+  });
+
+  it("matches keyword modes and secondary conditions after thousands of entries and at the end of a long user message", async () => {
+    const filler = Array.from({ length: 2_101 }, (_, index) => entry({ id: `synthetic-mode-filler-${index}`, title: `合成模式背景-${index}`, content: "合成无关", agentReadStrategy: "keyword", keywords: ["从未出现"] }));
+    const cases = [
+      { id: 'insensitive', keywords: ['syntheticport'], keywordIgnoreCase: true, hit: true },
+      { id: 'sensitive', keywords: ['syntheticport'], keywordIgnoreCase: false, hit: false },
+      { id: 'whole', keywords: ['SyntheticPort'], keywordWholeWord: true, hit: true },
+      { id: 'part', keywords: ['Port'], keywordWholeWord: true, hit: false },
+      { id: 'substring', keywords: ['Port'], keywordWholeWord: false, hit: true },
+      { id: 'cjk', keywords: ['合成港口'], keywordWholeWord: true, hit: true },
+      { id: 'regex', keywords: ['/合成\\s+桥/g'], keywordUseRegex: true, hit: true },
+      { id: 'all', keywords: ['合成港口'], conditionKeywords: ['条件甲', '条件乙'], keywordCondition: 'all', hit: true },
+      { id: 'all-missing', keywords: ['合成港口'], conditionKeywords: ['条件甲', '不存在的条件'], keywordCondition: 'all', hit: false },
+      { id: 'any', keywords: ['合成港口'], conditionKeywords: ['不存在的条件', '条件乙'], keywordCondition: 'any', hit: true },
+      { id: 'exclude', keywords: ['合成港口'], conditionKeywords: ['条件乙'], keywordCondition: 'not_any', hit: false },
+      { id: 'allow', keywords: ['合成港口'], conditionKeywords: ['不存在的条件'], keywordCondition: 'not_any', hit: true },
+    ];
+    const runtime = await tools({ history: [{ role: 'user', content: `${'合成填充'.repeat(32_769)}|SyntheticPort，合成港口岸，合成 桥，条件甲，条件乙。` }],
+      extraEntries: [...filler, ...cases.map(({ hit, ...item }) => entry({ ...item, title: `合成模式-${item.id}`, content: `合成模式正文-${item.id}`, agentReadStrategy: 'keyword' }))] });
+    const result = await runtime.byName.get('eleckoi_glob_setting_files').execute({});
+    expect(result.required_entries.slice(1).map(item => item.path)).toEqual(cases.filter(item => item.hit).map(item => `合成模式-${item.id}`));
   });
 
   it("supports the structured patch operation set on the conversation snapshot", async () => {

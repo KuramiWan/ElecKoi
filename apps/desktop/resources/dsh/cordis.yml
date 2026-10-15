@@ -7,6 +7,17 @@
     personaPrefix: !!js process.env.DSH_SYSTEM_PROMPT ?? 'You are ElecKoi.'
     personaSuffix: ''
 
+- id: spill-local
+  name: './tool-result-store.mjs'
+  config:
+    root: !!js dshHomePath('tool-results')
+
+- id: spill-policy
+  config:
+    maxInlineTokens: 12500
+    exemptTools: [eleckoi_read_uploaded_file]
+    pagedTools: [eleckoi_read_setting_files, eleckoi_read_variables, eleckoi_call_capability]
+
 - id: attachment-local
   config:
     dshHome: !!js process.env.DSH_HOME

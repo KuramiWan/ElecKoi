@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply as applyAgentPresetBridge } from '../apps/desktop/resources/dsh/agent-preset-bridge.mjs'
 import { materializeAgentPreset } from '../packages/client/features/dsh-client-roleplay/src/host/session-runtime.mjs'
+import { readRuntimePresetDefinition } from '../packages/client/features/dsh-client-roleplay/src/host/preset-definition.mjs'
 
 const directories = []
 const templatePath = resolve('apps/desktop/resources/dsh/agent-preset-template/agent.cordis.yml')
@@ -50,6 +51,8 @@ describe('DSH Agent preset durability', () => {
     })
     expect(pluginById(definition.plugins, 'tool-subagent')?.config).not.toHaveProperty('agentOptions')
     expect(pluginById(definition.plugins, 'tool-subagent-fork')?.config).not.toHaveProperty('agentOptions')
+    expect(pluginById(definition.plugins, 'tool-result-pruner')).toBeUndefined()
+    expect(pluginById(definition.plugins, 'compaction-basic')).toBeDefined()
 
     const updated = materializeAgentPreset(
       presetRoot,
@@ -66,6 +69,21 @@ describe('DSH Agent preset durability', () => {
     expect(updated.id).toBe(preset.id)
     expect(updated.revision).not.toBe(preset.revision)
     expect(readdirSync(presetRoot)).toEqual(['eleckoi-active'])
+  })
+
+  it('retires middle pruning when restoring an existing generated preset while retaining its summary policy', () => {
+    const directory = temporaryDirectory(), path = join(directory, 'preset.json')
+    const original = JSON.stringify({ id: 'existing-studio', plugins: [{ id: 'compaction', name: 'cordis:group', group: true,
+      isolate: { compaction: true, toolResultPruner: true }, config: [
+        { id: 'compaction-basic', name: '@deepseek-ai/dsh-compaction-basic', config: { thresholdRatio: 0.7, retainTokens: 0 } },
+        { id: 'tool-result-pruner', name: '@deepseek-ai/dsh-compaction-tool-result-pruner', config: { thresholdChars: 8192, headChars: 4096, tailChars: 1024 } },
+      ],
+    }] })
+    writeFileSync(path, original)
+    const definition = readRuntimePresetDefinition(path, 'existing-studio', templatePath)
+    expect(pluginById(definition.plugins, 'tool-result-pruner')).toBeUndefined()
+    expect(pluginById(definition.plugins, 'compaction-basic').config).toEqual({ thresholdRatio: 0.7, retainTokens: 0 })
+    expect(readFileSync(path, 'utf8')).toBe(original)
   })
 
   it('resolves current runtime paths in memory without rewriting the durable definition', async () => {

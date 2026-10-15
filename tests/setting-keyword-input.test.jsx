@@ -2,7 +2,7 @@
 import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SettingLibraryEntryEditor } from '../apps/web/src/modules/settingLibraries/components/SettingLibraryEntryEditor.jsx';
+import { SettingLibraryEntryEditor, VisualPositionPicker } from '../apps/web/src/modules/settingLibraries/components/SettingLibraryEntryEditor.jsx';
 import { createEntryDraft } from '../apps/web/src/modules/settingLibraries/model/settingLibraryEditing.js';
 
 globalThis.React = React;
@@ -31,6 +31,28 @@ async function enter(input, isComposing=false) {
 }
 
 describe('Setting keyword input keyboard action', () => {
+  it('keeps a scan depth above 1000 without clamping the authored value', async () => {
+    const input = container.querySelector('input[aria-label="扫描深度"]');
+    await fill(input, '10001');
+    expect(draft.keywordScanDepth).toBe(10001);
+    expect(input.hasAttribute('max')).toBe(false);
+  });
+  it('keeps a recursion depth above ten without clamping the authored value', async () => {
+    await act(async () => container.querySelector('[role="switch"][aria-label="递归匹配"]').click());
+    const input = container.querySelector('input[aria-label="递归次数"]');
+    await fill(input, '20');
+    expect(draft.keywordRecursionDepth).toBe(20);
+    expect(input.hasAttribute('max')).toBe(false);
+  });
+  it('keeps insertion order above 9999 for large libraries', async () => {
+    let changed;
+    const entry = { ...draft, triggerMode: 'always', position: 'insert_point_1', order: 10001 };
+    await act(async () => root.render(<VisualPositionPicker entry={entry} entries={[entry]} promptPositions={[]} onChange={value => { changed = value; }} onEntriesChange={() => {}} />));
+    const input = container.querySelector('input[aria-label="位置内部排序"]');
+    await fill(input, '10002');
+    expect(changed.order).toBe(10002);
+    expect(input.hasAttribute('max')).toBe(false);
+  });
   it.each([{label:'触发关键词',field:'keywords'},{label:'附加关键词',field:'conditionKeywords'}])('$label commits repeated Enter actions without changing focus or creating duplicates on blur', async ({label,field}) => {
     const input=[...container.querySelectorAll('.setting-library-keyword-field')].find(node=>node.firstElementChild.textContent===label).querySelector('input');
     expect(input.getAttribute('enterkeyhint')).toBe('enter');

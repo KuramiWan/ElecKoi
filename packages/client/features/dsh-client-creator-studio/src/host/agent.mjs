@@ -4,6 +4,7 @@ import { scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope'
 import { creatorCapabilities, creatorToolsets, creatorAuthoringInstructions } from '@eleckoi/dsh-product-data'
 import { applyDisabledPolicy, extendNativeRequestInput, projectCompactionRequest, requestProjectionSnapshot, requestSnapshot, sessionInstructions } from '@eleckoi/dsh-client-roleplay'
 import { CREATOR_STUDIO_EVENT, creatorStudioProjection } from './projection.mjs'
+import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
 
 export const name = 'eleckoi-creator-studio-agent'
 export const inject = ['agents', 'tools', 'llm', 'settings', 'sessionProjections', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges', 'eleckoiProductRecordChanges']
@@ -42,12 +43,14 @@ export function apply(ctx, config) {
         if (selected.size && operations.length !== selected.size) throw new Error('所选操作不属于这个能力组。')
         return { toolset, operations: operations.map(({ execute, inputSchema, ...item }) => ({ ...item, ...(args.include_schema ? { inputSchema } : {}) })) }
       } })))
-    disposers.push(ctx.tools.register(defineTool({ name: 'eleckoi_call_capability', description: '执行已发现的创作操作；角色资料绑定当前编辑目标，全局配置和明确 presetId 的预设配置独立于角色选择。可以新建空角色作为编辑目标。参数必须符合已查询的输入结构。',
-      parameters: { capability_id: { type: 'string', required: true }, arguments: { type: 'object', additionalProperties: true, required: true } }, output,
+    disposers.push(ctx.tools.register(defineTool({ name: 'eleckoi_call_capability', description: '执行已发现的创作操作；普通调用必须同时提供 capability_id 与 arguments。角色资料绑定当前编辑目标，全局配置和明确 presetId 的预设配置独立于角色选择。可以新建空角色作为编辑目标。参数必须符合已查询的输入结构。创作工具结果溢出时，只传 result 按提示续读全文或搜索，不重新执行创作操作。',
+      parameters: { capability_id: { type: 'string' }, arguments: { type: 'object', additionalProperties: true }, result: resultReadParameter }, output,
       execute(args, exec) {
         exec.signal.throwIfAborted()
         if (!exec.agent) throw new Error('创作操作缺少调用会话。')
         const state = readState(exec.agent)
+        if (Object.hasOwn(args, 'result')) return readToolResult(ctx, args, exec, 'creator')
+        if (typeof args.capability_id !== 'string' || !args.arguments || typeof args.arguments !== 'object' || Array.isArray(args.arguments)) throw new Error('普通创作调用必须提供 capability_id 和 arguments。')
         const operation = capabilities.find(item => item.id === args.capability_id)
         if (!operation) throw new Error(`未知创作操作：${args.capability_id}`)
         if (operation.target === 'selected-character' && !state.characterId) throw new Error('请先在 AI 创作工作室菜单中选择角色，或通过 character.create 新建空角色。')

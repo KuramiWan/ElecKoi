@@ -37,5 +37,9 @@ patchedDependencies:
   '@deepseek-ai/dsh-session-format-v3-to-v4@0.2.0-rc.2': patches/@deepseek-ai__dsh-session-format-v3-to-v4@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-session-persistence-jsonl@0.2.0-rc.2': patches/@deepseek-ai__dsh-session-persistence-jsonl@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-session@0.2.0-rc.2': patches/@deepseek-ai__dsh-session@0.2.0-rc.2.patch
+  # RETIRE WHEN: the locked upstream supports equivalent explicit tool and result-page exemptions
+  # for native results and PTC logs. Remove this patch and map both product
+  # exemptTools/pagedTools configurations to that verified upstream contract together.
+  '@deepseek-ai/dsh-spill-policy@0.2.0-rc.2': patches/@deepseek-ai__dsh-spill-policy@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-typert-generator@0.2.0-rc.2': patches/@deepseek-ai__dsh-typert-generator@0.2.0-rc.2.patch
   '@earendil-works/pi-ai': patches/@earendil-works__pi-ai.patch

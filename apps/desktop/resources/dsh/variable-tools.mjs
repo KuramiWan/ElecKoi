@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { describeVariableRuleFailure } from '@eleckoi/dsh-product-data/variables'
 import { readSessionSnapshot } from './session-snapshot.mjs'
+import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
 
 const fixedObjectId = 'fixed-variable-initialization-object'
 const defaultCollectionPageSize = 20
@@ -10,7 +11,6 @@ const defaultTextPageSize = 4_000
 const maximumTextPageSize = 8_000
 const maximumInlineValueChars = 4_000
 const maximumPageChars = 12_000
-const maximumGrepLineChars = 2_000
 export const name = 'eleckoi-variable-tools'
 export const inject = ['tools', 'eleckoiVariableProcessing']
 
@@ -18,7 +18,7 @@ export function apply(ctx) {
   return [
     ctx.tools.register(globTool()),
     ctx.tools.register(grepTool()),
-    ctx.tools.register(readTool()),
+    ctx.tools.register(readTool(ctx)),
     ctx.tools.register(patchTool(ctx.eleckoiVariableProcessing)),
   ]
 }
@@ -78,7 +78,6 @@ function grepTool() {
       output_mode: { type: 'string', enum: ['files_with_matches', 'content', 'count'], description: '默认 files_with_matches。' },
       ignore_case: { type: 'boolean' },
       multiline: { type: 'boolean' },
-      limit: { type: 'integer' },
     },
     output: outputDefinition(),
     async execute(args, exec) {
@@ -94,7 +93,6 @@ function grepTool() {
       const scope = normalizeScope(args.path)
       if (scope === null || !validScope(catalog, scope)) return failure('invalid_path', 'path 必须是当前变量配置中真实存在的 JSON Pointer 变量组。')
       const mode = args.output_mode || 'files_with_matches'
-      const limit = Math.max(1, Math.min(1000, Number.isInteger(args.limit) ? args.limit : 100))
       let expression
       let pathMatcher
       try {
@@ -124,19 +122,19 @@ function grepTool() {
         path: scope,
         output_mode: mode,
         required_variables: requiredVariables(catalog),
-        matches: matches.slice(0, limit),
-        omitted: Math.max(0, matches.length - limit),
+        matches,
       }
     },
   })
 }
 
-function readTool() {
+function readTool(ctx) {
   return defineTool({
     name: 'eleckoi_read_variables',
-    description: '按 JSON Pointer 读取当前回合变量，给出当前值、默认值、说明和完整更新规则。对象和数组按子项分页，长文本按字符分页；分页项会返回可继续读取的精确子路径，避免把大型变量整体写入会话日志。每轮先用变量 Glob 获取 required_variables 并读取这些必读变量；上轮读取不能代替本轮状态。修改前应先读并遵守作者规则。',
+    description: '按 JSON Pointer 读取当前回合变量，给出当前值、默认值、说明和完整更新规则。对象和数组按子项分页，长文本按字符分页；分页项会返回可继续读取的精确子路径，避免把大型变量整体写入会话日志。每轮先用变量 Glob 获取 required_variables 并读取这些必读变量；上轮读取不能代替本轮状态。修改前应先读并遵守作者规则。变量工具结果溢出时，只传 result 按提示续读全文或搜索结果文件。',
     parameters: {
-      paths: { type: 'array', items: { type: 'string' }, required: true, description: '一个或多个完整变量 JSON Pointer 路径。可使用分页结果返回的精确子路径继续读取。' },
+      paths: { type: 'array', items: { type: 'string' }, description: '普通读取必填：一个或多个完整变量 JSON Pointer 路径；与 result 二选一。可使用分页结果返回的精确子路径继续读取。' },
+      result: resultReadParameter,
       offset: { type: 'integer', description: '对象或数组的子项起始位置，默认 0。' },
       limit: { type: 'integer', description: '对象或数组每页最多返回的子项数，默认 20，最大 100。' },
       char_offset: { type: 'integer', description: '长文本的字符起始位置，默认 0。' },
@@ -144,8 +142,9 @@ function readTool() {
     },
     output: outputDefinition(),
     async execute(args, exec) {
+      if (Object.hasOwn(args, 'result')) return readToolResult(ctx, args, exec, 'variables')
       const bridgeFile = variableBridgeFor(exec)
-      const paths = [...new Set(args.paths.filter((path) => typeof path === 'string' && path.startsWith('/')))]
+      const paths = [...new Set((args.paths || []).filter((path) => typeof path === 'string' && path.startsWith('/')))]
       if (!paths.length) return failure('invalid_arguments', '至少需要读取一个变量路径。')
       const bridge = readBridge(bridgeFile)
       if (!bridge.enabled) return { status: 'ok', variables: [] }
@@ -591,7 +590,7 @@ function grepContent(content, expression, multiline) {
     let count = 0
     sourceLines.forEach((text, index) => {
       const matches = matchCount(text, expression)
-      if (matches > 0) lines.push({ line: index + 1, ...boundedGrepLine(text), match_count: matches })
+      if (matches > 0) lines.push({ line: index + 1, text, match_count: matches })
       count += matches
     })
     return { count, lines }
@@ -606,13 +605,8 @@ function grepContent(content, expression, multiline) {
   }
   return {
     count: matches.length,
-    lines: [...countByLine].map(([line, count]) => ({ line, ...boundedGrepLine(sourceLines[line - 1] || ''), match_count: count })),
+    lines: [...countByLine].map(([line, count]) => ({ line, text: sourceLines[line - 1] || '', match_count: count })),
   }
-}
-
-function boundedGrepLine(text) {
-  if (text.length <= maximumGrepLineChars) return { text }
-  return { text: text.slice(0, maximumGrepLineChars), text_truncated: true, original_chars: text.length }
 }
 
 function normalizeScope(value) {

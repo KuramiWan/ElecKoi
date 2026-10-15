@@ -19,7 +19,9 @@ import * as studioAgent from '../packages/client/features/dsh-client-creator-stu
 import { creatorStudioProjection, CREATOR_STUDIO_EVENT } from '../packages/client/features/dsh-client-creator-studio/src/host/projection.mjs'
 import { installCreatorStudioRuntime } from '../packages/client/features/dsh-client-creator-studio/src/host/runtime.mjs'
 import { readDshSessionLog, rewindDshSession } from '@eleckoi/dsh-runtime'
+import { captureSerializedRequest } from './helpers/captureModelRequest.js'
 import { officialChatFixture } from './helpers/officialTrajectory.js'
+import { emptyEntry } from '../packages/host/product-data/src/domain/settingLibraries/index'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -91,7 +93,74 @@ async function* text(text) {
   yield { type: 'block-end', index: 0, block: { type: 'text', text } }
   yield { type: 'finish', reason: { kind: 'stop' } }
 }
+
 describe('AI creator studio official Agent integration', { timeout: 30_000 }, () => {
+  it.each([101, 1_001, 10_001])('delivers every one of %i settings and complete large keyword bodies to the next actual Studio model request', async count => {
+    const selectedIndexes = [0, Math.floor(count / 2), count - 1]
+    const entries = Array.from({ length: count }, (_, index) => ({
+      ...emptyEntry(`synthetic-volume-${index}`), title: `合成条目-${index}`,
+      content: selectedIndexes.includes(index) ? `开始-${index}|${'合成正文𠮷'.repeat(26_215)}|末尾-${index}` : `合成正文-${index}`,
+      agentReadStrategy: 'keyword', keywords: Array.from({ length: selectedIndexes.includes(index) ? 1_501 : 1 }, (_, key) => `合成关键词-${index}-${key}`),
+      conditionKeywords: [`合成条件-${index}`], keywordCondition: 'all',
+      order: index + 1, treeViewOrder: index + 1,
+    }))
+    let expectedEntries
+    const resultFor = (options, id) => {
+      const message = options.messages.find(message => message.role === 'tool' && message.toolCallId === id)
+      expect(message, `missing ${id}`).toBeDefined()
+      return JSON.parse(message.content.map(block => block.type === 'text' ? block.text : '').join('')).value
+    }
+    const f = await fixture(async function* (options, step) {
+      if (step === 2) {
+        const listed = resultFor(options, 'synthetic-volume-list')
+        expect(listed.entries).toHaveLength(count + 1)
+        expect(listed.entries.map(entry => entry.id)).toEqual(expectedEntries.map(entry => entry.id))
+        for (const index of selectedIndexes) {
+          expect(listed.entries.find(entry => entry.id === entries[index].id)).toMatchObject({ title: entries[index].title, keywordMatch: true })
+        }
+      }
+      if (step === 3) for (const index of selectedIndexes) {
+        const actual = resultFor(options, `synthetic-volume-read-${index}`)
+        expect(actual).toEqual(expectedEntries.find(entry => entry.id === entries[index].id))
+        expect(actual.content.endsWith(`|末尾-${index}`)).toBe(true)
+        expect(actual.keywords.at(-1)).toBe(`合成关键词-${index}-1500`)
+      }
+      if (step <= 2) {
+        const calls = step === 1 ? [{ id: 'synthetic-volume-list', args: { capability_id: 'settings.list', arguments: {} } }]
+          : selectedIndexes.map(index => ({ id: `synthetic-volume-read-${index}`, args: { capability_id: 'settings.read', arguments: { id: entries[index].id } } }))
+        for (const [index, call] of calls.entries()) {
+          yield { type: 'block-start', index, blockType: 'tool-call' }
+          yield { type: 'block-end', index, block: { type: 'tool-call', id: call.id, name: 'eleckoi_call_capability', arguments: JSON.stringify(call.args) } }
+        }
+        yield { type: 'finish', reason: { kind: 'tool-calls' } }
+      } else yield* text('合成完整读取结束')
+    })
+    const library = f.ctx.eleckoiProductData.readSettingLibrary(f.character.id)
+    expectedEntries = f.ctx.eleckoiProductData.saveSettingLibrary(f.character.id, { ...library, entries: [...library.entries, ...entries] }).entries
+    f.handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: '合成大量条目与关键词读取测试' }], source: { kind: 'user' } }))
+    await f.handle.agent.whenIdle()
+    expect(f.requests).toHaveLength(3)
+    expect(f.handle.agent.session.snapshotEvents().filter(event => event.type === 'tool/result')).toHaveLength(4)
+    expect(f.handle.agent.session.snapshotEvents().filter(event => event.type === 'turn/end').at(-1).data.reason).toEqual({ kind: 'completed' })
+    if (count === 10_001) for (const api of ['deepseek_messages', 'openai-completions', 'openai-responses']) {
+      const wire = await captureSerializedRequest(api, f.requests.at(-1))
+      const outputs = api === 'deepseek_messages'
+        ? wire.messages.flatMap(message => message.content.filter(block => block.type === 'tool_result').map(block => block.content.map(part => part.text || '').join('')))
+        : api === 'openai-completions' ? wire.messages.filter(message => message.role === 'tool').map(message => message.content)
+          : wire.input.filter(item => item.type === 'function_call_output').map(item => item.output)
+      const values = outputs.map(output => JSON.parse(output).value)
+      expect(values, api).toHaveLength(4)
+      expect(values.find(value => value.entries)?.entries.map(entry => entry.id), api).toEqual(expectedEntries.map(entry => entry.id))
+      for (const index of selectedIndexes) expect(values.find(value => value.id === entries[index].id), api).toEqual(expectedEntries.find(entry => entry.id === entries[index].id))
+    }
+    await f.reopen()
+    const restored = f.ctx.eleckoiProductData.readSettingLibrary(f.character.id).entries
+    expect(restored).toEqual(expectedEntries)
+    const persistedResults = f.handle.agent.session.deriveMessages().filter(message => message.role === 'tool')
+    expect(persistedResults).toHaveLength(4)
+    expect(JSON.stringify(persistedResults)).toContain(`合成关键词-${count - 1}-1500`)
+  }, 120_000)
+
   it.each(['manual', 'automatic'])('uses the Studio model reasoning setting for %s compaction and resumes the same summary', async mode => {
     const f = await fixture(async function* (request) {
       if (request.purpose === 'compaction' && request.reasoningEffort !== 'high') throw new Error('Synthetic provider requires its selected reasoning effort')

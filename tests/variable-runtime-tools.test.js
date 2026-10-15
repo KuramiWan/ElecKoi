@@ -77,6 +77,30 @@ async function tools({ extraCount = 0, mapMarkerCount = 0, configured = true } =
 }
 
 describe("DSH character variable tools", () => {
+  it.each([101, 1_001, 10_001])("returns all %i variable search hits without a hidden count cap", async count => {
+    const runtime = await tools({ extraCount: count });
+    const grep = runtime.byName.get("eleckoi_grep_variables");
+    for (const output_mode of ["files_with_matches", "count"]) {
+      const result = await grep.execute({ pattern: "指标", path: "/状态", glob: "指标*", output_mode });
+      expect(result.matches).toHaveLength(count);
+      expect(new Set(result.matches.map(item => item.path))).toEqual(new Set(Array.from({ length: count }, (_, index) => `/状态/指标${index}`)));
+      expect(result).not.toHaveProperty("omitted");
+    }
+    expect(grep.parameters).not.toHaveProperty("limit");
+  }, 30_000);
+
+  it("preserves a search match at the end of a long single-line variable value", async () => {
+    const runtime = await tools();
+    const bridge = JSON.parse(readFileSync(runtime.file, "utf8"));
+    const content = "合成正文𠮷😀".repeat(20_001) + "末尾关键词";
+    bridge.state.状态.称呼 = content;
+    writeFileSync(runtime.file, JSON.stringify(bridge));
+    const result = await runtime.byName.get("eleckoi_grep_variables").execute({ pattern: "末尾关键词", glob: "状态/称呼", output_mode: "content" });
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].text).toContain(content);
+    expect(result.matches[0]).not.toHaveProperty("text_truncated");
+  });
+
   it("keeps every enabled preset tool registered when the character has no variable configuration", async () => {
     const runtime = await tools({ configured: false });
     const calls = [

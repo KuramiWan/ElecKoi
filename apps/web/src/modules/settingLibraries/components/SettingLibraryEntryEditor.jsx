@@ -163,8 +163,8 @@ function SwitchRow({ title, description, checked, onChange }) {
   );
 }
 
-function NumberField({ label, description, value, min, max, onChange }) {
-  const commit = (next) => onChange(Math.min(max, Math.max(min, Number.isFinite(next) ? next : min)));
+function NumberField({ label, description, value, min, onChange }) {
+  const commit = (next) => onChange(Math.max(min, Number.isFinite(next) ? next : min));
   return (
     <label className="setting-library-number-row">
       <span><strong>{label}</strong><small>{description}</small></span>
@@ -173,7 +173,6 @@ function NumberField({ label, description, value, min, max, onChange }) {
         <input
           type="number"
           min={min}
-          max={max}
           value={value}
           aria-label={label}
           onChange={(event) => commit(Number.parseInt(event.target.value, 10))}
@@ -219,9 +218,9 @@ function KeywordRules({ entry, onChange }) {
         <div className="setting-library-advanced-rules-heading"><strong>匹配规则</strong></div>
         <div className="setting-library-rule-stack">
           <h4>扫描范围</h4>
-          <NumberField label="扫描深度" description={entry.keywordScanDepth <= 1 ? "只扫描用户最新消息" : `扫描最近 ${entry.keywordScanDepth} 条消息`} value={entry.keywordScanDepth} min={1} max={1000} onChange={(value) => onChange({ ...entry, keywordScanDepth: value })} />
+          <NumberField label="扫描深度" description={entry.keywordScanDepth <= 1 ? "只扫描用户最新消息" : `扫描最近 ${entry.keywordScanDepth} 条消息`} value={entry.keywordScanDepth} min={1} onChange={(value) => onChange({ ...entry, keywordScanDepth: value })} />
           <SwitchRow title="递归匹配" description={entry.keywordRecursionDepth > 0 ? "正文继续关联其他关键词" : "只根据最近消息匹配"} checked={entry.keywordRecursionDepth > 0} onChange={(checked) => onChange({ ...entry, keywordRecursionDepth: checked ? 1 : 0 })} />
-          {entry.keywordRecursionDepth > 0 ? <NumberField label="递归次数" description={`正文再匹配 ${entry.keywordRecursionDepth} 轮`} value={entry.keywordRecursionDepth} min={1} max={10} onChange={(value) => onChange({ ...entry, keywordRecursionDepth: value })} /> : null}
+          {entry.keywordRecursionDepth > 0 ? <NumberField label="递归次数" description={`正文再匹配 ${entry.keywordRecursionDepth} 轮`} value={entry.keywordRecursionDepth} min={1} onChange={(value) => onChange({ ...entry, keywordRecursionDepth: value })} /> : null}
           <h4>附加条件</h4>
           <KeywordTagInput
             compact
@@ -395,7 +394,7 @@ export function VisualPositionPicker({ entry, entries, promptPositions, allowCus
       )}
 
       <section className="setting-library-order-card">
-        <NumberField label="位置内部排序" description="数字越小越靠前" value={entry.order} min={1} max={9999} onChange={setOrder} />
+        <NumberField label="位置内部排序" description="数字越小越靠前" value={entry.order} min={1} onChange={setOrder} />
         {conflict ? <p className="setting-library-order-warning">当前位置已存在排序数字 {entry.order}，条目已关闭。</p> : null}
         <div className="setting-library-order-preview">
           <strong>当前位置顺序</strong>

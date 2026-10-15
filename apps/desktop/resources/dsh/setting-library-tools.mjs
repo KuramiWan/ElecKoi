@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
+import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
 
 export const name = 'eleckoi-setting-library-tools'
 export const inject = ['tools', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
@@ -13,7 +14,7 @@ export function apply(ctx) {
   return [
     ctx.tools.register(globTool()),
     ctx.tools.register(grepTool()),
-    ctx.tools.register(readTool()),
+    ctx.tools.register(readTool(ctx)),
     ctx.tools.register(patchTool(ctx))
   ]
 }
@@ -56,15 +57,14 @@ function grepTool() {
       path: { type: 'string', description: '可选目录路径。' },
       glob: { type: 'string', description: '可选路径 Glob。' },
       output_mode: { type: 'string', enum: ['files_with_matches', 'content', 'count'] },
-      ignore_case: { type: 'boolean' },
-      limit: { type: 'integer', description: '最多返回 1000 项，默认 100 项；只限制 Grep。' }
+      ignore_case: { type: 'boolean' }
     },
     output: output(),
     async execute(args, exec) {
       const bridgeFile = settingBridgeFor(exec)
       if (!String(args.pattern || '')) return fail('invalid_arguments', 'pattern 不能为空。')
       const bridge = readBridge(bridgeFile, exec)
-      if (!bridge.enabled) return { status: 'no_matches', required_entries: [], matches: [], omitted: 0 }
+      if (!bridge.enabled) return { status: 'no_matches', required_entries: [], matches: [] }
       const catalog = await runtimeCatalogOf(bridge, bridgeFile)
       const scope = normalizePath(args.path || '', true)
       if (scope === null || !directoryExists(catalog, scope)) return fail('invalid_path', 'path 必须是当前虚拟设定库中真实存在的目录。')
@@ -84,24 +84,23 @@ function grepTool() {
         else if (mode === 'count') matches.push({ ...summary(entry, catalog), count: hit.length })
         else matches.push(summary(entry, catalog))
       }
-      const limit = Math.max(1, Math.min(1_000, Number.isInteger(args.limit) ? args.limit : 100))
       return {
         status: matches.length ? 'ok' : 'no_matches',
         required_entries: requiredFiles(catalog),
-        matches: matches.slice(0, limit),
-        omitted: Math.max(0, matches.length - limit)
+        matches
       }
     }
   })
 }
 
-function readTool() {
+function readTool(ctx) {
   return defineTool({
     name: 'eleckoi_read_setting_files',
-    description: '按完整路径读取当前可用的虚拟设定文件；已知准确路径时无需重新搜索。路径没有 .md 后缀；不得猜测未知路径。固定必读正文已在本轮缓存设定区，读取仅返回编号与标题；本轮须读和选读条目返回正文。',
-    parameters: { paths: { type: 'array', items: { type: 'string' }, required: true, description: '一个或多个当前可用的完整虚拟设定文件路径。' } },
+    description: '按完整路径读取当前可用的虚拟设定文件；已知准确路径时无需重新搜索。路径没有 .md 后缀；不得猜测未知路径。固定必读正文已在本轮缓存设定区，读取仅返回编号与标题；本轮须读和选读条目返回正文。设定工具结果溢出时，只传 result 按提示续读全文或搜索结果文件。',
+    parameters: { paths: { type: 'array', items: { type: 'string' }, description: '一个或多个当前可用的完整虚拟设定文件路径。普通读取必填；与 result 二选一。' }, result: resultReadParameter },
     output: output(),
     async execute(args, exec) {
+      if (Object.hasOwn(args, 'result')) return readToolResult(ctx, args, exec, 'settings')
       const bridgeFile = settingBridgeFor(exec)
       const paths = [...new Set((args.paths || []).map((path) => normalizePath(path, false)).filter(Boolean))]
       if (!paths.length) return fail('invalid_arguments', '至少需要读取一个文件。')

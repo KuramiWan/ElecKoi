@@ -24,12 +24,20 @@ const argumentFields = {
 // Summaries cover the exact fields of the registered product tools. Other payloads remain raw.
 export function processArgumentSummary(toolName, rawArguments) {
   const fields = argumentFields[toolName];
-  if (!fields && toolName !== 'eleckoi_apply_variable_patch') return null;
+  if (!fields && toolName !== 'eleckoi_apply_variable_patch' && toolName !== 'eleckoi_call_capability') return null;
   let args = rawArguments;
   if (typeof args === 'string') {
     try { args = JSON.parse(args); } catch { return null; }
   }
   if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
+  if (['eleckoi_read_setting_files', 'eleckoi_read_variables', 'eleckoi_call_capability'].includes(toolName) && Object.hasOwn(args, 'result')) {
+    const page = args.result, fields = { file_path: ['结果文件', 'string'], offset: ['字节起始位置', 'integer'],
+      limit: [page?.query === undefined ? '本页字节数' : '本页命中数', 'integer'], query: ['搜索文字', 'string'] };
+    if (Object.keys(args).length !== 1 || !page || typeof page !== 'object' || Array.isArray(page)
+      || typeof page.file_path !== 'string' || Object.keys(page).some(key => !fields[key] || !validValue(page[key], fields[key][1]))) return null;
+    return Object.entries(fields).filter(([key]) => key in page).map(([key, [label]]) => `${label}：${page[key]}`).join('\n');
+  }
+  if (!fields && toolName !== 'eleckoi_apply_variable_patch') return null;
   if (toolName === 'eleckoi_apply_variable_patch') return variablePatchSummary(args);
   const keys = Object.keys(args);
   if (keys.some((key) => !fields[key] || !validValue(args[key], fields[key][1]))) return null;

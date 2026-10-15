@@ -13,6 +13,8 @@ const PRODUCT_PLUGIN_FILES = new Map([
 ])
 
 const productSpecifier = (id) => `eleckoi:agent-preset/${id}`
+const retiredPruner = '@deepseek-ai/dsh-compaction-tool-result-pruner'
+const retiredPrunerUrl = pathToFileURL(resolveRuntimeModule(retiredPruner)).href
 
 export const durableProductPluginSpecifier = productSpecifier
 
@@ -20,7 +22,7 @@ export function runtimePresetDefinition(definition, templatePath) {
   return {
     ...definition,
     plugins: Array.isArray(definition.plugins)
-      ? definition.plugins.map((plugin) => resolveRuntimePlugin(plugin, templatePath))
+      ? currentPlugins(definition.plugins).map((plugin) => resolveRuntimePlugin(plugin, templatePath))
       : definition.plugins
   }
 }
@@ -58,7 +60,15 @@ function resolveRuntimePlugin(plugin, templatePath) {
     ...plugin,
     name,
     ...(Array.isArray(plugin.config)
-      ? { config: plugin.config.map((item) => resolveRuntimePlugin(item, templatePath)) }
+      ? { config: currentPlugins(plugin.config).map((item) => resolveRuntimePlugin(item, templatePath)) }
       : {})
   }
+}
+
+// RETIRE WHEN: supported installations have regenerated all persisted runtime
+// presets without the retired pruner, and an upgrade regression proves old
+// sessions restore without filtering. Remove this filter, its two identity
+// constants and the currentPlugins calls together; keep summary compaction.
+function currentPlugins(plugins) {
+  return plugins.filter(plugin => plugin?.name !== retiredPruner && plugin?.name !== retiredPrunerUrl)
 }

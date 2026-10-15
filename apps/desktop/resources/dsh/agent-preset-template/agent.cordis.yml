@@ -129,10 +129,3 @@
 
     - id: command-compact
       name: '@deepseek-ai/dsh-command-compact'
-
-    - id: tool-result-pruner
-      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
-      config:
-        thresholdChars: 8192
-        headChars: 4096
-        tailChars: 1024

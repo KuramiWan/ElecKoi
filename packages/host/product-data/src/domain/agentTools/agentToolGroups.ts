@@ -1,5 +1,11 @@
 import type { AgentToolGroup } from '@shared/contracts/agent/tools'
 
+const memberDescriptions: Record<string, string> = {
+  eleckoi_read_setting_files: '读取设定正文，并续读或搜索本组的完整工具结果',
+  eleckoi_read_variables: '读取变量，并续读或搜索本组的完整工具结果',
+  eleckoi_call_capability: '执行创作操作，并续读或搜索创作能力的完整工具结果',
+}
+
 export const AGENT_TOOL_GROUPS: ReadonlyArray<Omit<AgentToolGroup, 'enabled' | 'included'>> = [
   group('builtin:mcp-resources', 'MCP 资源读取', '列出并读取 MCP 服务器提供的资源和资源模板', [
     'list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'
@@ -52,5 +58,5 @@ export function agentToolGroups(enabledIds: ReadonlySet<string> = DEFAULT_AGENT_
 }
 
 function group(id: string, name: string, description: string, members: string[]): Omit<AgentToolGroup, 'enabled' | 'included'> {
-  return { id, name, description, source: 'built_in', members: members.map((member) => ({ name: member, description: '' })) }
+  return { id, name, description, source: 'built_in', members: members.map((member) => ({ name: member, description: memberDescriptions[member] || '' })) }
 }
