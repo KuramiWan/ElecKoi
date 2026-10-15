@@ -9,7 +9,7 @@
   <a href="./README.en.md">English</a>
 </p>
 
-电子爱是一款免费开源的 AI 角色扮演和角色卡创作软件，支持 Windows PC 和 Android。你可以与 AI 角色聊天、体验故事，也可以创建和编辑自己的角色卡，让 AI 帮你完善角色设定。
+电子爱是一款由 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 驱动的免费开源 Agent 角色扮演和角色卡创作软件，支持 Windows PC 和 Android。你可以与 AI 角色聊天、体验故事，也可以创建和编辑自己的角色卡，让 AI 帮你完善角色设定。
 
 [作者 SDK 文档](https://eleckoi.github.io/ElecKoi/)包含原生脚本、角色前端的开发教程、接口参考和可导入示例。
 

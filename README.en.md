@@ -9,7 +9,7 @@
   <strong>English</strong>
 </p>
 
-ElecKoi is a free, open-source app for AI roleplay and character-card creation on Windows PC and Android. You can chat with AI characters, explore stories, and create or edit your own character cards with AI help to develop their personalities and backgrounds.
+ElecKoi is a free, open-source app powered by [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) for Agent roleplay and character-card creation on Windows PC and Android. You can chat with AI characters, explore stories, and create or edit your own character cards with AI help to develop their personalities and backgrounds.
 
 The [Author SDK documentation](https://eleckoi.github.io/ElecKoi/) provides native script and character frontend tutorials, an API reference, and importable examples.
 
