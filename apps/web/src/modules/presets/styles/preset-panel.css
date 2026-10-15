@@ -42,13 +42,35 @@
 .preset-manager-shell > .management-window-content { grid-row: 1; }
 .preset-manager-groups > .preset-purpose-switch { margin: 0 0 6px; overflow: visible; }
 
-.preset-list-search {
-  grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 10px;
+.preset-manager-entry {
+  margin: 0 12px 12px;
 }
 
-.preset-manager-entry {
-  margin-bottom: 10px;
+.preset-list-panel > .preset-purpose-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 0;
+  height: 48px;
+  margin: 0 12px 12px;
+  padding: 5px;
+  border-radius: 8px;
+}
+
+.preset-list-panel > .preset-purpose-switch button {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  height: 38px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.preset-list-panel > .preset-purpose-switch button[aria-pressed="true"] {
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .preset-create-menu {
@@ -210,6 +232,7 @@
   align-items: end;
   gap: 24px;
   padding: 0 30px;
+  border-bottom: 1px solid var(--line);
 }
 
 .preset-workspace-tabs button {
@@ -361,17 +384,15 @@
   border-color: var(--blue);
 }
 
-.preset-prompt-editor .setting-library-browser {
-  grid-template-rows: 51px minmax(0, 1fr);
+.preset-prompt-editor .setting-library-browser.editor-collection-browser {
+  display: flex;
+  flex-direction: column;
 }
 
 .preset-prompt-editor .setting-library-toolbar {
-  grid-template-columns: minmax(260px, 430px) auto;
-  padding: 8px 22px;
-}
-
-.preset-prompt-editor .setting-library-inspector {
-  inset: 51px 0 0 auto;
+  display: flex;
+  min-height: 60px;
+  padding: 12px 22px;
 }
 
 .preset-prompt-tree {
@@ -757,19 +778,6 @@
 .preset-tool-config-members > p { margin: 0; padding: 17px 14px; color: var(--muted); font-size: 12px; }
 .preset-tool-config-source { font-size: 13px; }
 
-.preset-regex-editor {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-.preset-regex-browser {
-  display: grid;
-  grid-template-rows: 51px minmax(0, 1fr);
-  height: 100%;
-}
-
 .preset-subtoolbar {
   display: grid;
   grid-template-columns: minmax(260px, 430px) auto;
@@ -814,61 +822,9 @@
   font-weight: 600;
 }
 
-.preset-regex-list {
-  min-height: 0;
-  padding: 9px 18px 24px;
-  overflow-y: auto;
-}
-
-.preset-regex-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
-  width: min(520px, 100%);
-  height: 38px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 7px 0 10px;
-  color: var(--text);
-  border-radius: 7px;
-  cursor: default;
-}
-
-.preset-regex-row:hover,
-.preset-regex-row.is-selected {
-  background: var(--active);
-}
-
-.preset-regex-open {
-  display: flex;
-  min-width: 0;
-  height: 100%;
-  align-items: center;
-  gap: 11px;
-  color: inherit;
-  text-align: left;
-}
-
-.preset-regex-open > svg {
-  flex: none;
-  color: inherit;
-}
-
-.preset-regex-row.is-disabled {
-  color: var(--soft-text);
-}
-
-.preset-regex-open > span {
-  overflow: hidden;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .preset-context-menu button:focus-visible,
-.preset-regex-open:focus-visible,
 .preset-tool-summary:focus-visible,
-.preset-tool-more:focus-visible,
-.preset-regex-enabled:focus-visible {
+.preset-tool-more:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
@@ -881,10 +837,6 @@
 
 .preset-context-menu button > svg {
   flex: 0 0 16px;
-}
-
-.preset-regex-editor .regex-inspector {
-  top: 51px;
 }
 
 .preset-manager-window {
@@ -1434,37 +1386,6 @@
   .preset-regex-enabled i {
     transition: none;
   }
-}
-
-.preset-list-title-row {
-  display: flex;
-  height: 52px;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 8px 12px 2px;
-}
-
-.preset-list-title-row h2 {
-  margin: 0;
-  color: var(--text);
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.preset-list-search {
-  grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 10px;
-  padding-top: 0;
-}
-
-.preset-create-menu {
-  top: 99px;
-  right: 10px;
-}
-
-.preset-manager-entry {
-  margin-top: 2px;
-  margin-bottom: 8px;
 }
 
 .preset-list-row {

@@ -11,6 +11,7 @@ import { SidePanelResizeHandle } from "./shell/components/SidePanelResizeHandle.
 import { TitleBar, WindowControls } from "./shell/components/TitleBar.jsx";
 import { useRightbarLayout } from "./shell/hooks/useRightbarLayout.js";
 import { useSidePanelLayout } from "./shell/hooks/useSidePanelLayout.js";
+import { useColumnTransition } from "./shell/hooks/useColumnTransition.js";
 import { AppUpdateController, useAppUpdates } from "../../modules/updates/index.js";
 import { openCreatorStudioWindow } from "../../modules/creatorStudio/index.js";
 import { MainPageContext } from "./MainPageContext.jsx";
@@ -39,6 +40,12 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
   });
   const appUpdates = useAppUpdates();
   const isPluginPanel = Boolean(navigation && !navigation.productPanelIds?.includes(chat.activeSection) && chat.activeSection !== "plugins");
+  const columnAnimating = useColumnTransition({
+    shellRef: sidePanelLayout.shellRef,
+    sidebarCollapsed: sidePanelLayout.sidePanelCollapsed || isPluginPanel,
+    rightbarTrack: rightbarLayout.track,
+    viewportWidth: sidePanelLayout.viewportWidth,
+  });
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState("chat");
@@ -195,7 +202,7 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
         ...rightbarLayout.shellStyle,
       }}
       data-side-panel-dragging={sidePanelLayout.sidePanelDragging || undefined}
-      data-rightbar-animating={rightbarLayout.animating || undefined}
+      data-columns-animating={columnAnimating || undefined}
       data-rightbar-dragging={rightbarLayout.dragging || undefined}
       data-rightbar-fullscreen={rightbarLayout.fullscreen || undefined}
       data-rightbar-instant={rightbarLayout.instant || undefined}

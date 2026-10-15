@@ -1,21 +1,9 @@
-import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
+import { EditorManagementModal } from '../../../ui/ui/EditorCollectionControls.jsx';
+import { EditorVersionManager } from '../../../ui/ui/EditorVersionManager.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  ArrowsMerge,
-  CaretRight,
-  Check,
-  Copy,
-  FileText,
-  FolderOpen,
-  Minus,
-  Plus,
-  Trash,
-  UserCircle,
-  X,
-} from "../../../ui/icons/interfaceIcons.jsx";
+import { ArrowsMerge, CaretRight, Check, FileText, FolderOpen, Minus, UserCircle } from "../../../ui/icons/interfaceIcons.jsx";
 import { ExportIcon, ImportIcon } from "../../../ui/icons/index.jsx";
-import { VersionNameDialog } from "../../../ui/ui/VersionNameDialog.jsx";
 import {
   createLibraryVersion,
   deleteActiveLibraryVersion,
@@ -33,37 +21,17 @@ function versionLabel(version) {
   return version.name.trim() || "待命名";
 }
 
-function Modal({ title, children, actions, onClose, labelledBy = "setting-library-modal-title" }) {
-  return (
-    <SystemBarOverlay className="setting-library-dialog-overlay" role="presentation" onMouseDown={onClose}>
-      <section className="setting-library-dialog setting-library-manager-dialog" role="dialog" aria-modal="true" aria-labelledby={labelledBy} onMouseDown={(event) => event.stopPropagation()}>
-        <h2 id={labelledBy}>{title}</h2>
-        <div className="setting-library-manager-dialog-body">{children}</div>
-        <div className="setting-library-manager-dialog-actions">{actions}</div>
-      </section>
-    </SystemBarOverlay>
-  );
+function Modal({ title, children, actions, onClose }) {
+  return <EditorManagementModal title={title} onClose={onClose} footer={actions}>{children}</EditorManagementModal>;
 }
 
 function ImportTypeDialog({ onCancel, onPick }) {
   return (
-    <Modal title="导入设定库" onClose={onCancel} actions={<button type="button" onClick={onCancel}>取消</button>}>
+    <Modal title="导入设定库" onClose={onCancel} actions={<Button variant="outline" onClick={onCancel}>取消</Button>}>
       <div className="setting-library-manager-choice-list">
         <button type="button" onClick={() => onPick("eleckoi")}><ImportIcon size={20} /><span><strong>ElecKoi 设定库</strong><small>导入 ElecKoi 导出的 JSON</small></span><CaretRight size={16} /></button>
         <button type="button" onClick={() => onPick("sillytavern")}><ImportIcon size={20} /><span><strong>酒馆世界书</strong><small>导入 SillyTavern 世界书 JSON</small></span><CaretRight size={16} /></button>
       </div>
-    </Modal>
-  );
-}
-
-function DeleteVersionDialog({ version, onCancel, onDelete }) {
-  return (
-    <Modal
-      title={`删除“${versionLabel(version)}”？`}
-      onClose={onCancel}
-      actions={<><button type="button" onClick={onCancel}>取消</button><button type="button" className="is-destructive" onClick={onDelete}>删除版本</button></>}
-    >
-      <p className="setting-library-manager-confirm-copy">删除会在保存后生效；关闭窗口前仍可放弃更改。</p>
     </Modal>
   );
 }
@@ -73,7 +41,7 @@ function MergeConfirmDialog({ sourceName, version, plan, onCancel, onMerge }) {
     <Modal
       title={`并入 ${plan.entryCount} 条设定？`}
       onClose={onCancel}
-      actions={<><button type="button" onClick={onCancel}>返回检查</button><button type="button" className="is-primary" onClick={onMerge}>并入设定</button></>}
+      actions={<><Button variant="outline" onClick={onCancel}>返回检查</Button><Button variant="primary" onClick={onMerge}>并入设定</Button></>}
     >
       <p className="setting-library-manager-confirm-copy">来源：{sourceName} · {versionLabel(version)}</p>
       <dl className="setting-library-merge-summary">
@@ -90,7 +58,9 @@ function MergeConfirmDialog({ sourceName, version, plan, onCancel, onMerge }) {
 function TriCheckbox({ checked, mixed, label, onChange }) {
   return (
     <button type="button" className={`setting-library-tri-checkbox${checked || mixed ? " is-checked" : ""}`} role="checkbox" aria-checked={mixed ? "mixed" : checked} aria-label={label} onClick={onChange}>
-      {mixed ? <Minus size={12} weight="bold" /> : checked ? <Check size={12} weight="bold" /> : null}
+      <span className="setting-library-tri-checkbox-mark" aria-hidden="true">
+        {mixed ? <Minus size={12} weight="bold" /> : checked ? <Check size={12} weight="bold" /> : null}
+      </span>
     </button>
   );
 }
@@ -177,7 +147,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
   const fileInputRef = useRef(null);
   const fileActionRef = useRef(null);
   const current = useMemo(() => syncActiveVersion(library), [library]);
-  const activeVersion = current.versions.find((version) => version.id === current.activeVersionId) || current.versions[0];
+  const activeVersion = current.versions.find((version) => version.id === current.activeVersionId);
   const pickedVersion = source?.versions.find((version) => version.id === versionId) || source?.versions[0] || null;
   const selectableEntries = pickedVersion?.entries.filter((entry) => !PINNED_ENTRY_IDS.has(entry.id)) || [];
   const rows = useMemo(() => pickedVersion ? pickerRows(pickedVersion) : [], [pickedVersion]);
@@ -206,23 +176,6 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
     }).catch((cause) => alive && onError(cause?.message || "读取导入来源失败")).finally(() => alive && setLoadingSources(false));
     return () => { alive = false; };
   }, [page, characterId, settingLibraries]);
-
-  useEffect(() => {
-    function handleEscape(event) {
-      if (event.key !== "Escape") return;
-      if (mergePreview) return setMergePreview(null);
-      if (dialog) return setDialog("");
-      if (page === "picker") {
-        setPage("sources");
-        setSource(null);
-        return;
-      }
-      if (page === "sources") return setPage("home");
-      onClose();
-    }
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [dialog, mergePreview, onClose, page]);
 
   function openSource(picked) {
     if (!picked.versions.length) return;
@@ -276,7 +229,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
     try {
       onError("");
       const safeName = (current.name.trim() || "setting-library").replace(/[\\/:*?"<>|]/g, "-");
-      await saveJsonFile(serializeSettingLibrary(current), `${safeName}.json`);
+      await saveJsonFile(serializeSettingLibrary({ ...current, versions: [activeVersion] }), `${safeName}.json`);
       setNotice("设定库已导出");
     } catch (cause) {
       if (cause?.name !== "AbortError") onError(cause?.message || "导出设定库失败");
@@ -286,47 +239,20 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
   const title = page === "home" ? "设定库管理" : page === "sources" ? "并入设定库" : source?.name || "选择设定";
 
   return (
-    <SystemBarOverlay className="setting-library-manager-overlay" role="presentation" onMouseDown={onClose}>
-      <aside className="setting-library-manager" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}>
+    <>
         <input ref={fileInputRef} className="setting-library-file-input" type="file" accept=".json,application/json" onChange={handleFile} />
-        <header className="setting-library-manager-header">
-          {page !== "home" ? <button type="button" aria-label="返回" onClick={() => { setPage(page === "picker" ? "sources" : "home"); setSource(null); }}><ArrowLeft size={17} /></button> : null}
-          <strong>{title}</strong>
-          <button type="button" aria-label="关闭设定库管理" onClick={onClose}><X size={17} /></button>
-        </header>
-
-      {page === "home" ? (
-        <div className="setting-library-manager-body">
-          {notice ? <p className="setting-library-manager-notice" role="status">{notice}</p> : null}
-          <section className="setting-library-manager-card setting-library-version-name-card">
-            <label><span>当前版本名称</span><input value={current.name} maxLength={60} onChange={(event) => onChange(renameActiveVersion(current, event.target.value))} /></label>
-          </section>
-
-          <section className="setting-library-manager-card">
-            <h3>版本</h3>
-            <select className="setting-library-manager-version-select" aria-label="设定库版本" value={current.activeVersionId} onChange={(event) => onChange(switchLibraryVersion(current, event.target.value))}>
-              {current.versions.map((version) => <option key={version.id} value={version.id}>{versionLabel(version)}</option>)}
-            </select>
-          </section>
-
-          <section className="setting-library-manager-card">
-            <div className="setting-library-manager-rows">
-              <button type="button" className="setting-library-manager-row" onClick={() => setDialog({ type: "copy", sourceVersionId: current.activeVersionId })}><Copy size={18} /><strong>复制当前版本</strong><CaretRight size={15} /></button>
-              <button type="button" className="setting-library-manager-row is-accent" onClick={() => setDialog({ type: "create", sourceVersionId: "" })}><Plus size={18} /><strong>创建空白版本</strong><CaretRight size={15} /></button>
-              <button type="button" className="setting-library-manager-row" onClick={() => setPage("sources")}><ArrowsMerge size={18} /><strong>并入设定库</strong><CaretRight size={15} /></button>
-              <button type="button" className="setting-library-manager-row" onClick={() => setDialog("import")}><ImportIcon size={18} /><strong>导入设定库</strong><CaretRight size={15} /></button>
-              <button type="button" className="setting-library-manager-row" onClick={exportLibrary}><ExportIcon size={18} /><strong>导出设定库</strong><CaretRight size={15} /></button>
-            </div>
-          </section>
-
-          <section className="setting-library-manager-card">
-            <button type="button" className="setting-library-manager-row is-danger" onClick={() => setDialog("delete")}><Trash size={18} /><strong>删除当前版本</strong></button>
-          </section>
-        </div>
-      ) : page === "sources" ? (
-        <div className="setting-library-manager-body">
+      {page === "home" ? <EditorVersionManager title="设定库版本管理" versions={current.versions} activeVersionId={current.activeVersionId}
+        onClose={onClose} notice={notice} onSelect={id => onChange(switchLibraryVersion(current, id))}
+        onCopy={name => onChange(createLibraryVersion(current, name, current.activeVersionId))}
+        onCreate={name => onChange(createLibraryVersion(current, name, ''))}
+        onRename={name => onChange(renameActiveVersion(current, name))} onDelete={() => onChange(deleteActiveLibraryVersion(current))}
+        onImport={() => setDialog('import')} onExport={exportLibrary}
+        extraActions={[{ label: '并入设定库', Icon: ArrowsMerge, onClick: () => setPage('sources') }]} /> :
+        <EditorManagementModal title={title} onClose={() => { setPage(page === 'picker' ? 'sources' : 'home'); setSource(null); }}>
+        {page === "sources" ? (
+        <div className="setting-library-manager-body setting-library-sources-body">
           <p className="setting-library-manager-hint">只读取来源，不会改动其他角色。</p>
-          <section className="setting-library-manager-card">
+          <section className="setting-library-manager-card setting-library-sources-list">
             <div className="setting-library-manager-rows">
               {sources.map((item) => (
                 <button type="button" className="setting-library-manager-row" key={item.id} disabled={!item.versions.some((version) => version.entries.some((entry) => !PINNED_ENTRY_IDS.has(entry.id)))} onClick={() => openSource(item)}>
@@ -368,19 +294,9 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
           </select></label>
           <button type="button" className="setting-library-merge-button" disabled={!checkedIds.size} onClick={prepareMerge}>检查并入结果</button>
         </div>
-      ) : null}
-
-        {dialog.type === "copy" || dialog.type === "create" ? <VersionNameDialog
-          title={dialog.type === "copy" ? "复制当前版本" : "创建空白版本"} versions={current.versions}
-          confirmLabel={dialog.type === "copy" ? "复制" : "创建"}
-          onCancel={() => setDialog("")} onCreate={(name) => {
-            onChange(createLibraryVersion(current, name, dialog.sourceVersionId));
-            setDialog(""); setNotice(`已创建“${name}”，保存后生效`);
-          }} /> : null}
+      ) : null}</EditorManagementModal>}
         {dialog === "import" ? <ImportTypeDialog onCancel={() => setDialog("")} onPick={(expected) => requestFile({ type: "import", expected })} /> : null}
-        {dialog === "delete" && activeVersion ? <DeleteVersionDialog version={activeVersion} onCancel={() => setDialog("")} onDelete={() => { onChange(deleteActiveLibraryVersion(current)); setDialog(""); setNotice("当前版本已删除，保存后生效"); }} /> : null}
         {mergePreview && pickedVersion ? <MergeConfirmDialog sourceName={source.name} version={pickedVersion} plan={mergePreview.plan} onCancel={() => setMergePreview(null)} onMerge={() => { onChange(mergePreview.library); setMergePreview(null); setCheckedIds(new Set()); setPage("home"); setNotice(`已并入 ${mergePreview.plan.entryCount} 条设定，保存后生效`); }} /> : null}
-      </aside>
-    </SystemBarOverlay>
+    </>
   );
 }

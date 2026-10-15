@@ -115,11 +115,63 @@ function singleOuterMarkdownFenceContent(source: string): string | null {
 export function decorateRichDisplayReplacement(replacement: string): string {
   if (richReplacementStart.test(replacement)) return replacement
   const fenced = singleOuterMarkdownFenceContent(replacement)
+  const detected = detectRichMessageDocument(replacement)
   const richSource = fenced && detectRawRichMessageKind(fenced)
     ? fenced
-    : detectRichMessageDocument(replacement) ? replacement : null
+    : detected && (detected.kind === 'fragment' || detectCompleteStreamingRichMessageDocument(replacement)) ? replacement : null
   if (!richSource) return replacement
   return `\n${richReplacementStartMarker}\n${richSource}\n${richReplacementEndMarker}\n`
+}
+
+/** A frontend fence or document head stays one assembly until its closing boundary arrives. */
+export function hasOpenRichDocumentAssembly(source: string): boolean {
+  if (!/`{3}|~{3}|<(?:html|head|body)(?:\s|>)/i.test(source)) return false
+  let fence = '', length = 0, frontend = false
+  for (const line of source.split('\n')) {
+    const opening = /^[ \t]{0,3}(`{3,}|~{3,})([^\r]*)\r?$/.exec(line)
+    if (!opening) continue
+    if (!fence) {
+      fence = opening[1]![0]!; length = opening[1]!.length
+      frontend = /^(html?|svg)\s*$/i.test(opening[2]!.trim())
+    } else if (opening[1]![0] === fence && opening[1]!.length >= length && !opening[2]!.trim()) {
+      fence = ''; frontend = false
+    }
+  }
+  if (fence) return frontend
+  const candidate = maskMarkdownFencedCode(source)
+  const opening = candidate.search(/<(?:html|head|body)(?:\s|>)/i)
+  return opening >= 0 && !/<\/html\s*>|<\/body\s*>/i.test(candidate.slice(opening))
+}
+
+/** Completed frontend fences are protected as a whole, including ones assembled by several rules. */
+export function completedRichDocumentAssemblyRanges(source: string, includeRawDocument = false): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = []
+  if (includeRawDocument) {
+    const masked = maskMarkdownFencedCode(source)
+    const start = masked.search(/<!doctype\s+html\b|<(?:html|head|body)(?:\s|>)/i)
+    if (start >= 0) {
+      const tail = masked.slice(start)
+      const close = /<\/html\s*>/i.exec(tail) ?? /<\/body\s*>/i.exec(tail)
+      if (close) ranges.push({ start, end: start + close.index + close[0].length })
+    }
+  }
+  if (!/`{3}|~{3}/.test(source)) return ranges
+  const lines = source.split('\n')
+  let offset = 0, start = -1, fence = '', length = 0, frontend = false
+  for (const line of lines) {
+    const marker = /^[ \t]{0,3}(`{3,}|~{3,})([^\r]*)\r?$/.exec(line)
+    if (marker && !fence) {
+      start = offset; fence = marker[1]![0]!; length = marker[1]!.length
+      frontend = /^(html?|svg)\s*$/i.test(marker[2]!.trim())
+    } else if (marker && marker[1]![0] === fence && marker[1]!.length >= length && !marker[2]!.trim()) {
+      if (frontend && detectRichMessageDocument(source.slice(start, offset + line.length).split('\n').slice(1, -1).join('\n'))) {
+        ranges.push({ start, end: offset + line.length })
+      }
+      fence = ''; frontend = false
+    }
+    offset += line.length + 1
+  }
+  return ranges.sort((left, right) => left.start - right.start)
 }
 
 function detectRawRichMessageKind(source: string): RichMessageDocumentKind | null {

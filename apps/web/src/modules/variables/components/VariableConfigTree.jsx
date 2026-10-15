@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import { BracketsCurly, Empty, HashStraight, ListBullets, ListDashes, TextT, ToggleRight, TreeStructure } from "@phosphor-icons/react";
 import { DshTriangleRightIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { HeadlessTree } from "../../../ui/tree/HeadlessTree.jsx";
+import { EditorSelectionCheckbox } from '../../../ui/ui/EditorCollectionControls.jsx';
 import { VARIABLE_INITIALIZATION_OBJECT_ID } from "../../../../../../packages/shared/src/contracts/variables/schemas.ts";
 
 export const VariableTreeActionsContext = createContext(null);
@@ -31,7 +32,7 @@ export function VariableTreeNode({ item, data, itemProps, style, level, isSelect
   return (
     <div
       {...itemProps}
-      className={`variable-tree-row${data.enabled === false ? " is-disabled" : ""}${level > 0 ? " is-nested" : ""}${isSelected ? " is-selected" : ""}${isDropTarget ? " is-drop-target" : ""}${isDragging ? " is-dragging" : ""}`}
+      className={`variable-tree-row${data.enabled === false ? " is-disabled" : ""}${level > 0 ? " is-nested" : ""}${actions?.selection?.active ? actions.selection.selected.has(data.id) ? ' is-selected' : '' : isSelected ? " is-selected" : ""}${isDropTarget ? " is-drop-target" : ""}${isDragging ? " is-dragging" : ""}`}
       style={style}
       onDoubleClick={(event) => {
         event.stopPropagation();
@@ -42,6 +43,7 @@ export function VariableTreeNode({ item, data, itemProps, style, level, isSelect
       }}
       onContextMenu={(event) => actions?.openContextMenu(event, data)}
     >
+      <EditorSelectionCheckbox selection={actions?.selection} id={data.id} label={data.label} disabled={actions?.saving || data.fixed} />
       <span className="variable-tree-chevron">
         {data.nodeKind === "object" && !data.fixed ? (
           <button type="button" className="variable-tree-expander" aria-label={isExpanded ? "折叠变量组" : "展开变量组"} aria-expanded={isExpanded} onDoubleClick={event => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); if (item.isExpanded()) item.collapse(); else item.expand(); }}>
@@ -54,7 +56,7 @@ export function VariableTreeNode({ item, data, itemProps, style, level, isSelect
         : <VariableEntryIcon type={data.valueType} className="variable-tree-icon" />}
       <span className="variable-tree-label">{data.dynamicKey ? `<${data.label}>` : data.label}</span>
       {data.readMode === "required" ? <span className="variable-tree-required" title="必读">必读</span> : null}
-      {!data.fixed ? (
+      {!data.fixed && !actions?.selection?.active ? (
         <button type="button" className="variable-tree-switch" role="switch" aria-checked={data.enabled} aria-label={`${data.ownEnabled ? "停用" : "启用"}${data.label}`} disabled={!data.ancestorEnabled} onDoubleClick={event => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); actions.toggleNode(data); }}><span aria-hidden="true" /></button>
       ) : null}
     </div>

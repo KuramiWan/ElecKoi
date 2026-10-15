@@ -7,8 +7,7 @@ import {
   PluginArtworkTerminal,
 } from "../../../../ui/icons/dshPluginArtwork.jsx";
 import { ChevronRightIcon } from "../../../../ui/icons/index.jsx";
-import { DshSearchField } from "../../../../ui/ui/DshSearchField.jsx";
-import { SidebarCreateButton } from "../../../../ui/ui/SidebarCreateButton.jsx";
+import { SidebarSectionHeader } from "../../../../ui/ui/SidebarSectionHeader.jsx";
 import { useSidebarListScroll } from "../../../../ui/hooks/useSidebarListScroll.js";
 import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from "../../../../modules/settings/index.js";
 import "../styles/plugin-center.css";
@@ -84,13 +83,8 @@ export function PluginListPanel({ onNotify }) {
   }
 
   return <aside className="character-list-panel plugin-list-panel" aria-label="插件列表">
-    <div className="preset-list-title-row">
-      <h2>插件</h2>
-    </div>
-    <div className="search-row character-list-search preset-list-search">
-      <DshSearchField value={keyword} onValueChange={setKeyword} placeholder="搜索插件…" ariaLabel="搜索插件" />
-      <SidebarCreateButton title="添加插件" onClick={add} />
-    </div>
+    <SidebarSectionHeader title="插件" value={keyword} onValueChange={setKeyword} placeholder="搜索插件名称"
+      createLabel="添加插件" onCreate={add} />
     <div ref={scrollRef} className="character-list-scroll preset-list-scroll">
       {collapseStateReady ? GROUPS.map((group) => {
         const items = filtered.filter((entry) => entry.group === group.id);

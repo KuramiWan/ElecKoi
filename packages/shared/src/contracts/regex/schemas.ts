@@ -4,7 +4,6 @@ export const regexRuleScopeSchema = z.enum(['Global', 'AgentPreset', 'Character'
 export const regexRuleTargetSchema = z.enum([
   'UserInput',
   'AiOutput',
-  'SlashCommand',
   'SettingContent',
   'Reasoning'
 ])
@@ -12,8 +11,8 @@ export const regexRuleSurfaceSchema = z.enum(['Stored', 'Display', 'Prompt'])
 
 export const regexRuleSchema = z.object({
   id: z.string().min(1),
-  name: z.string().max(60),
-  pattern: z.string().max(4_000),
+  name: z.string(),
+  pattern: z.string(),
   replacement: z.string(),
   targets: z.array(regexRuleTargetSchema),
   enabled: z.boolean(),
@@ -29,7 +28,7 @@ export const regexRuleSchema = z.object({
 
 export const regexRuleVersionSchema = z.object({
   id: z.string().min(1),
-  name: z.string().max(60),
+  name: z.string(),
   globalEnabledIds: z.array(z.string()),
   agentPresetEnabledIds: z.array(z.string()),
   characterEnabledIds: z.array(z.string())
@@ -40,6 +39,9 @@ export const regexRuleCollectionSchema = z.object({
   agentPresetId: z.string(),
   agentPresetName: z.string(),
   agentPresetRegexRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  globalEnabled: z.boolean().optional(),
+  agentPresetEnabled: z.boolean().optional(),
+  characterEnabled: z.boolean().optional(),
   globalRules: z.array(regexRuleSchema),
   agentPresetRules: z.array(regexRuleSchema),
   characterRules: z.array(regexRuleSchema),
@@ -60,6 +62,19 @@ export const regexRuleImportResultSchema = z.object({
   failedFileNames: z.array(z.string())
 }).strict()
 
+export const regexEditorTargetSchema = z.object({
+  scope: z.enum(['character', 'preset']),
+  ownerId: z.string().min(1)
+}).strict()
+
+/** 编辑器仅携带全局及指定归属；另一归属的规则和版本成员为空。 */
+export const regexRuleEditorCollectionSchema = regexRuleCollectionSchema.omit({
+  characterId: true, agentPresetId: true, agentPresetName: true, agentPresetRegexRevision: true
+}).extend({
+  target: regexEditorTargetSchema,
+  ownerRevision: z.string().regex(/^[a-f0-9]{64}$/)
+}).strict()
+
 export const regexRuleTestResultSchema = z.object({
   output: z.string(),
   validationMessage: z.string().nullable()
@@ -71,4 +86,6 @@ export type RegexRuleSurface = z.infer<typeof regexRuleSurfaceSchema>
 export type RegexRule = z.infer<typeof regexRuleSchema>
 export type RegexRuleVersion = z.infer<typeof regexRuleVersionSchema>
 export type RegexRuleCollection = z.infer<typeof regexRuleCollectionSchema>
+export type RegexEditorTarget = z.infer<typeof regexEditorTargetSchema>
+export type RegexRuleEditorCollection = z.infer<typeof regexRuleEditorCollectionSchema>
 export type RegexRuleImportDocument = z.infer<typeof regexRuleImportDocumentSchema>

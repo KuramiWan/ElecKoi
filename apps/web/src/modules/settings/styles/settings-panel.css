@@ -659,6 +659,13 @@
   gap: 2px;
 }
 
+.chat-rich-message-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .compact-setting-control {
   flex: none;
   width: 176px;

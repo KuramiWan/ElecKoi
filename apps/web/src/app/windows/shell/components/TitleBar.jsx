@@ -1,5 +1,6 @@
 import logoIcon from "../../../../assets/eleckoi-app-icon.png";
 import { DshPanelLeftIcon } from "../../../../ui/icons/dshComposerIcons.jsx";
+import { ElecKoiWordmark } from "../../../../ui/icons/ElecKoiWordmark.jsx";
 import { appWindow } from "../../../services/windowControls.js";
 
 function stopDrag(event) {
@@ -74,7 +75,7 @@ export function TitleBar({
     <header className="client-titlebar">
       <div className="title-brand" data-tauri-drag-region>
         <img src={logoIcon} alt="" className="title-brand-logo" draggable="false" />
-        <strong>{title}</strong>
+        {title === "ElecKoi" ? <ElecKoiWordmark /> : <strong>{title}</strong>}
       </div>
       <div className="title-spacer" data-tauri-drag-region>
         {projectTitle ? (

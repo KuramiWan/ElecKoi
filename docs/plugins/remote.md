@@ -177,7 +177,6 @@ type RemoteResult<T> =
 - `ctx.remote.eleckoiWebSearch`：联网搜索设置；
 - `ctx.remote.eleckoiDisplayPreferences`：显示偏好的读取与保存；Host 在写入 Settings 前处理全局壁纸媒体。
 - `ctx.remote.eleckoiConversationModels`：聊天可用模型目录与当前选择；
-- `ctx.remote.eleckoiModels.testConnection`：使用官方适配器进行一次工具调用测试；不创建 Session 或持久化测试草稿；
 - `ctx.remote.eleckoiModels.discoverModels`：使用草稿地址、请求头和临时凭据装配官方适配器；专用 Messages 读取官方目录，通用协议调用 pi-ai discovery。返回模型 ID、目录已声明的能力，不通过 ID 猜测推理档位，也不保存草稿；
 - `ctx.remote.eleckoiConversations`：聊天目录、归档导入导出、消息操作与附件定位。
 

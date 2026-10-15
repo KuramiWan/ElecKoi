@@ -3,11 +3,13 @@
   if (document.documentElement) markBrowser();
   else document.addEventListener('DOMContentLoaded', markBrowser, { once: true });
   const pending = new Map();
+  const diagnostic = entry => window.postMessage({ type: 'eleckoi:gecko-diagnostic', entry }, location.origin);
+  window.ElecKoiBrowserDiagnostics?.install(diagnostic);
   window.ElecKoiAndroidTransport = {
     invoke(method, argumentsJson) {
       return new Promise((resolve, reject) => {
         const id = crypto.randomUUID();
-        const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`Android operation timed out: ${method}`)); }, 30000);
+        const timeout = setTimeout(() => { pending.delete(id); diagnostic({ kind: 'bridge-timeout', id, command: method, pending: pending.size }); reject(new Error(`Android operation timed out: ${method}`)); }, 30000);
         pending.set(id, { resolve, reject, timeout });
         window.postMessage({ type: 'eleckoi:gecko-request', id, method, arguments: JSON.parse(argumentsJson) }, location.origin);
       });
@@ -22,20 +24,17 @@
       clearTimeout(request.timeout); pending.delete(message.id);
       request.resolve(message.result);
     } else if (message?.type === 'eleckoi:gecko-command') {
+      const started = performance.now(), command = message.command.type;
+      if (command === 'back') diagnostic({ kind: 'browser-command', id: message.id, command, stage: 'page-received', pageMs: started });
       try {
         if (!window.ElecKoiPlatform) throw new Error('Android platform facade is not ready');
         const result = window.ElecKoiPlatform.browserCommand(message.command);
-        window.postMessage({ type: 'eleckoi:gecko-command-result', id: message.id, success: true, result }, location.origin);
+        if (command === 'back') diagnostic({ kind: 'browser-command', id: message.id, command, stage: 'page-completed', elapsedMs: performance.now() - started });
+        window.postMessage({ type: 'eleckoi:gecko-command-result', id: message.id, command, success: true, result }, location.origin);
       } catch (error) {
-        window.postMessage({ type: 'eleckoi:gecko-command-result', id: message.id, success: false, error: String(error) }, location.origin);
+        diagnostic({ kind: 'page-error', stage: 'browser-command', id: message.id, command, name: error.name, message: error.message, stack: error.stack });
+        window.postMessage({ type: 'eleckoi:gecko-command-result', id: message.id, command, success: false, error: String(error) }, location.origin);
       }
     }
   });
-  const report = (level, message, source, line) => window.ElecKoiAndroidTransport.invoke('browserConsole', JSON.stringify([level, message, source, line])).catch(() => {});
-  window.addEventListener('error', event => report('ERROR', event.message || 'Page resource failed', event.filename || location.href, event.lineno || 0));
-  window.addEventListener('unhandledrejection', event => report('ERROR', String(event.reason), location.href, 0));
-  for (const level of ['error', 'warn']) {
-    const original = console[level];
-    console[level] = (...values) => { report(level, values.map(String).join(' '), location.href, 0); original(...values); };
-  }
 })();

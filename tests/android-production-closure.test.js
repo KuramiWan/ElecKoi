@@ -72,4 +72,32 @@ describe('Android production dependency staging', () => {
       rmSync(repo, { recursive: true, force: true })
     }
   })
+
+  it('rejects missing compiled workspace exports without replacing the last complete snapshot', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'eleckoi-closure-entries-'))
+    const source = join(repo, 'apps/android-host')
+    const output = join(repo, 'build/android-runtime/closure')
+    try {
+      mkdirSync(join(source, 'dist'), { recursive: true })
+      writeFileSync(join(source, 'package.json'), JSON.stringify({
+        name: 'synthetic-host', version: '1.0.0', exports: {
+          '.': { types: './dist/index.d.ts', import: './dist/index.mjs' },
+          './media': './dist/media.mjs'
+        }
+      }))
+      writeFileSync(join(source, 'dist/index.mjs'), 'export const host = true')
+      writeFileSync(join(source, 'dist/media.mjs'), 'export const media = true')
+      const inventory = prepareProductionClosure(repo, output)
+      expect(inventory.packages[0].workspace).toBe(true)
+      rmSync(join(source, 'dist/media.mjs'))
+      expect(() => prepareProductionClosure(repo, output)).toThrow(/synthetic-host.*dist\/media\.mjs/)
+      expect(readFileSync(join(output, 'dist/media.mjs'), 'utf8')).toBe('export const media = true')
+      rmSync(join(source, 'dist'), { recursive: true })
+      expect(() => prepareProductionClosure(repo, output)).toThrow(/Missing workspace runtime entry/)
+      expect(readFileSync(join(output, 'dist/index.mjs'), 'utf8')).toBe('export const host = true')
+    } finally {
+      expect(resolve(repo).startsWith(resolve(tmpdir()) + sep)).toBe(true)
+      rmSync(repo, { recursive: true, force: true })
+    }
+  }, 30_000)
 })

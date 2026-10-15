@@ -20,6 +20,14 @@ function assistant(id: string, state: string, content: string, status: ChatMessa
 }
 
 describe('variable viewer timeline', () => {
+  it('shows missing history without inheriting a prior or current value', () => {
+    const timeline = buildVariableViewerTimeline([
+      assistant('assistant-1', '{"score":1}', 'Synthetic prior reply'),
+      { ...assistant('assistant-2', '', 'Synthetic missing reply'), variableSnapshotAvailable: false }
+    ], '{"score":0}', '{"score":99}')
+    expect(timeline.floors[1]!.state).toEqual({ rawJson: '', root: null, errorMessage: '无历史状态', topLevelCount: 0, valueCount: 0 })
+    expect(timeline.current.root).toEqual({ score: 99 })
+  })
   it('keeps every settled assistant floor and carries a missing snapshot forward', () => {
     const initial = '{"hero":{"hp":10}}'
     const changed = '{"hero":{"hp":8},"weather":"rain"}'

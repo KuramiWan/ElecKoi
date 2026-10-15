@@ -265,6 +265,14 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
       updateEntry: (id, changes) => call('settingLibrary.updateEntry', { id, changes }),
       updateEntries: updates => call('settingLibrary.updateEntries', { updates })
     }),
+    displayTemplates: Object.freeze<ElecKoiAuthorApi['displayTemplates']>({
+      read: scope => call('displayTemplates.read', { scope }),
+      save: library => call('displayTemplates.save', { library }),
+    }),
+    editorVersions: Object.freeze<ElecKoiAuthorApi['editorVersions']>({
+      read: (kind, scope) => call('editorVersions.read', { kind, scope }),
+      save: (kind, documents, versions) => call('editorVersions.save', { kind, documents, versions }),
+    }),
     presets: Object.freeze<ElecKoiAuthorApi['presets']>({
       list: () => call('presets.list'), current: () => call('presets.current'),
       get: presetId => call('presets.get', { presetId }),

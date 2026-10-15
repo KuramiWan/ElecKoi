@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withRegexEditor } from './helpers/regexEditorModel.js';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -67,7 +68,7 @@ const cases = [
     closeManager: '.regex-manager [aria-label="关闭"]', closeInspector: '[aria-label="关闭详情"]',
     component() {
       const collection = createRegexRule({ globalRules: [], agentPresetRules: [], characterRules: [] }, 'Character').collection;
-      return <RegexRulesPanel characterId="synthetic-character" regexRules={modelFor(collection)} />;
+      return <RegexRulesPanel characterId="synthetic-character" regexRules={withRegexEditor(modelFor(collection))} />;
     },
     async prepare(container) {
       await act(async () => container.querySelector('.regex-rule-row').click());
@@ -93,8 +94,8 @@ describe('management dialog and editor sidebar', () => {
       vi.useFakeTimers();
 
       for (const closeWithBackdrop of [false, true]) {
-        await act(async () => container.querySelector(`.${scenario.prefix}-manage-button`).click());
-        expect(container.querySelector(`.${scenario.prefix}-manager`)).toBeTruthy();
+        await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === '管理').click());
+        expect(document.querySelector('.editor-management-modal')).toBeTruthy();
         expect(pane.classList.contains('is-closing')).toBe(false);
         await act(async () => vi.advanceTimersByTime(250));
         expect(container.querySelector('.editor-sidebar-pane')).toBe(pane);
@@ -102,10 +103,10 @@ describe('management dialog and editor sidebar', () => {
         checkDraft();
 
         await act(async () => {
-          if (closeWithBackdrop) container.querySelector(`.${scenario.prefix}-manager-overlay`).dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-          else container.querySelector(scenario.closeManager).click();
+          if (closeWithBackdrop) document.querySelector('.editor-management-modal').parentElement.querySelector(':scope > [aria-hidden="true"]').click();
+          else document.querySelector('.editor-management-modal [aria-label="关闭"]').click();
         });
-        expect(container.querySelector(`.${scenario.prefix}-manager`)).toBeNull();
+        expect(document.querySelector('.editor-management-modal')).toBeNull();
         expect(container.querySelector('.editor-sidebar-pane')).toBe(pane);
         expect(container.querySelector(scenario.inspector)).toBe(inspector);
         expect(inspector.scrollTop).toBe(123);
@@ -115,8 +116,8 @@ describe('management dialog and editor sidebar', () => {
       await act(async () => container.querySelector(scenario.closeInspector).click());
       await act(async () => vi.advanceTimersByTime(250));
       expect(container.querySelector(scenario.inspector)).toBeNull();
-      await act(async () => container.querySelector(`.${scenario.prefix}-manage-button`).click());
-      await act(async () => container.querySelector(scenario.closeManager).click());
+      await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === '管理').click());
+      await act(async () => document.querySelector('.editor-management-modal [aria-label="关闭"]').click());
       expect(container.querySelector('.editor-sidebar-pane')).toBeNull();
     } finally {
       await act(async () => root.unmount());

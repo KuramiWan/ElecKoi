@@ -86,7 +86,7 @@ describe('variable sidebar integration', () => {
       await close(view.container);
       await select(view.container, '状态组');
       expect(view.container.querySelector('.is-closing')).toBeNull();
-      expect(view.container.querySelector('.variable-inspector input[maxlength="40"]').value).toBe('状态组');
+      expect([...view.container.querySelectorAll('.variable-inspector label')].find(label => label.textContent.includes('变量组名称')).querySelector('input').value).toBe('状态组');
       expect(view.container.querySelector('[role="separator"]').getAttribute('aria-valuenow')).toBe('784');
     } finally { await view.dispose(); }
   });

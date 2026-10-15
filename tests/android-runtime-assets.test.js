@@ -95,3 +95,31 @@ check(lambda archive: link(archive), 'Canonical shared resources are missing')
 check(lambda archive: (link(archive, '../../wrong'), packager.add_bytes(archive, prefix + '/assets/library.js', b'synthetic')), 'must link')
 `))
 })
+
+describe('Android packaged workspace entrypoints', () => {
+  it('rejects a missing runtime subpath in the final archive even when its manifest and main entry exist', () => python(String.raw`
+def verify(include_media):
+    output = io.BytesIO()
+    prefix = 'node_modules/.eleckoi-packages/synthetic-data@1.0.0'
+    inventory = {'packages': [{'name': 'synthetic-data', 'version': '1.0.0', 'directory': prefix, 'workspace': True}]}
+    with tarfile.open(fileobj=output, mode='w') as archive:
+        packager.add_bytes(archive, prefix + '/package.json', json.dumps({
+            'name': 'synthetic-data', 'version': '1.0.0', 'main': './lib/index.js', 'exports': {
+                '.': {'types': './lib/index.d.ts', 'default': './lib/index.js'}, './media': './lib/media.js',
+                './assets/*': './assets/*'}}).encode())
+        packager.add_bytes(archive, prefix + '/lib/index.js', b'export const data = true')
+        packager.add_bytes(archive, prefix + '/assets/example.json', b'{}')
+        if include_media:
+            packager.add_bytes(archive, prefix + '/lib/media.js', b'export const media = true')
+    output.seek(0)
+    with tarfile.open(fileobj=output) as archive:
+        packager.verify_workspace_entrypoints(archive, inventory)
+verify(True)
+try:
+    verify(False)
+except ValueError as error:
+    assert 'synthetic-data -> ./lib/media.js' in str(error), str(error)
+else:
+    raise AssertionError('Missing runtime module accepted')
+`))
+})

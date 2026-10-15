@@ -26,14 +26,14 @@
 }
 
 .plugin-list-panel {
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   max-height: 100%;
   overflow: hidden;
 }
 
 .plugin-list-panel > .character-list-scroll {
-  grid-row: 3;
+  grid-row: 2;
   align-self: stretch;
   height: 100%;
   max-height: 100%;

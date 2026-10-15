@@ -48,10 +48,10 @@ describe('preset introduction drafts', () => {
     expect(draft.initial.note).toBe('加入基础规则。');
   });
 
-  it('respects the profile timeline limit', () => {
+  it('preserves new timeline records beyond the former count limit', () => {
     const draft = createTimelineDraft();
     draft.value.title = '一条更新';
-    expect(() => introductionDraftPatch({ ...profile, timeline: Array(100).fill(profile.timeline[0]) }, draft)).toThrow('100');
+    expect(introductionDraftPatch({ ...profile, timeline: Array(100).fill(profile.timeline[0]) }, draft).timeline).toHaveLength(101);
   });
 
   it('normalizes real local calendar dates without changing free-form labels', () => {
@@ -77,16 +77,10 @@ describe('preset introduction drafts', () => {
 });
 
 describe('preset introduction presentation', () => {
-  it('gives both record actions equally sized decorative icons before their labels', () => {
+  it('keeps update records free of permanent three-dot menus', () => {
     const html = renderToStaticMarkup(<PresetIntroductionEditor {...props} />);
-    const menu = html.match(/<div class="preset-update-menu-items">([\s\S]*?)<\/div>/)?.[1];
-    const actions = [...menu.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)];
-    expect(actions).toHaveLength(2);
-    actions.forEach(([ , content], index) => {
-      expect(content).toMatch(/<svg[^>]*width="16"[^>]*height="16"/);
-      expect(content).toContain('aria-hidden="true"');
-      expect(content).toContain(`</svg><span>${index === 0 ? '编辑' : '删除'}</span>`);
-    });
+    expect(html).not.toContain('preset-update-menu');
+    expect(html).toContain('aria-label="更新记录：首次发布"');
   });
 
   it('shows saved content as readable text, not a wall of inputs', () => {
@@ -102,8 +96,7 @@ describe('preset introduction presentation', () => {
     expect(html).toContain('preset-update-step is-latest');
     expect(html).toContain('preset-update-node');
     expect(html).toContain('preset-update-record');
-    expect(html).toContain('<details');
-    expect(html).toContain('操作：首次发布');
+    expect(html).not.toContain('<details');
   });
 
   it('has both actions inside the empty editor before any typing', () => {

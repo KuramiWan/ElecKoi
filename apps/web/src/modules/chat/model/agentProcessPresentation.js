@@ -16,6 +16,7 @@ const actions = {
 };
 
 export function processItemPresentation(item) {
+  if (item.toolName === 'model_retry') return { title: item.summary, target: '', icon: 'description' };
   if (item.kind === 'reasoning' || item.toolName === 'reasoning') {
     return {
       title: item.status === 'running' ? '正在思考' : item.status === 'error' ? '思考中断' : '思考过程',
@@ -52,10 +53,56 @@ export function processItemPresentation(item) {
 }
 
 export function liveProcessPresentation(items) {
-  const latest = [...rootProcessItems(items || [])].reverse().find(Boolean);
-  if (!latest) return null;
-  return processItemPresentation(latest.status === 'complete' && latest.kind !== 'compaction'
-    ? { ...latest, status: 'running' } : latest);
+  const roots = rootProcessItems(items || []).filter(Boolean);
+  if (!roots.length) return null;
+  let active;
+  for (const item of roots) {
+    if (item.status !== 'running' || item.kind === 'reasoning' || item.kind === 'narrative') continue;
+    if (!active || (item.startedAtMillis ?? 0) >= (active.startedAtMillis ?? 0)) active = item;
+  }
+  if (active) {
+    const presentation = processItemPresentation(active);
+    const native = liveToolActivities[active.toolName];
+    return { ...presentation, ...(native ? { title: native[0], icon: native[1] } : {}),
+      target: liveToolDetail(active), running: true };
+  }
+  const latest = roots.at(-1);
+  if (latest.kind === 'compaction') return { ...processItemPresentation(latest), running: latest.status === 'running' };
+  const reasoning = roots.findLast(item => item.status === 'running'
+    && (item.kind === 'reasoning' || item.toolName === 'reasoning') && (item.detail || item.summary)?.trim());
+  const paragraph = (reasoning?.detail || reasoning?.summary || '').split(/\r?\n[\t ]*\r?\n/).findLast(text => text.trim());
+  return { title: '正在分析请求', icon: 'thinking', target: liveDetail((paragraph || '').replaceAll('**', '')), running: true };
+}
+
+const liveToolActivities = {
+  read: ['正在读取文件', 'read'], read_image: ['正在读取图片', 'read'],
+  glob: ['正在搜索代码', 'search'], grep: ['正在搜索代码', 'search'],
+  write: ['正在写入文件', 'edit'], edit: ['正在编辑文件', 'edit'], apply_patch: ['正在编辑文件', 'edit'],
+  bash: ['正在运行命令', 'terminal'], pwsh: ['正在运行命令', 'terminal'],
+  exec_command: ['正在运行命令', 'terminal'], write_stdin: ['正在运行命令', 'terminal'],
+  run_code: ['正在运行代码', 'code'], web_search: ['正在搜索网页', 'globe'], web_fetch: ['正在访问网页', 'read'],
+  todo_write: ['正在更新计划', 'list'], create_goal: ['正在更新计划', 'list'],
+  update_goal: ['正在更新计划', 'list'], get_goal: ['正在更新计划', 'list'],
+  ask_user_question: ['等待你的操作', 'question'], request_user_input: ['等待你的操作', 'question'],
+};
+const liveDetailKeys = ['title', 'description', 'objective', 'task', 'task_name', 'name', 'question', 'questions',
+  'prompt', 'message', 'command', 'cmd', 'queries', 'query', 'pattern', 'url', 'uri', 'file_path', 'path', 'target', 'action', 'status'];
+const detailSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+function liveDetail(value) {
+  const text = (typeof value === 'string' ? value
+    : Array.isArray(value) && value.every(item => typeof item === 'string') ? value.join(', ') : '').replace(/\s+/g, ' ').trim();
+  const characters = Array.from(detailSegmenter.segment(text), part => part.segment);
+  return characters.length <= 160 ? text : `${characters.slice(0, 159).join('').trimEnd()}…`;
+}
+function liveToolDetail(item) {
+  if (item.kind === 'compaction') return '';
+  const args = object(item.arguments);
+  for (const key of liveDetailKeys) {
+    const detail = key === 'questions' && Array.isArray(args[key])
+      ? args[key].map(question => liveDetail(question?.question)).find(Boolean) : liveDetail(args[key]);
+    if (detail) return detail;
+  }
+  return liveDetail(item.toolName);
 }
 
 export function shouldShowInlineAgentProcess(message, displayedContent) {

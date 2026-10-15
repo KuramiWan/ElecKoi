@@ -1,9 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRightIcon, TrashIcon } from "../../../ui/icons/index.jsx";
-import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
-import { SidebarCreateButton } from "../../../ui/ui/SidebarCreateButton.jsx";
-import { filterProviderItems, modelProviderSections } from "../model/modelProviderCatalog.js";
+import { SidebarSectionHeader } from "../../../ui/ui/SidebarSectionHeader.jsx";
+import { builtinProviderItems, filterProviderItems, modelProviderSections } from "../model/modelProviderCatalog.js";
 import { ProviderLogo } from "./ProviderLogo.jsx";
 
 export function ModelProviderSidebar({
@@ -16,6 +15,7 @@ export function ModelProviderSidebar({
   onSelect,
   onCreate,
   onRequestDelete,
+  builtinProviders = [],
 }) {
   const [query, setQuery] = useState("");
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
@@ -64,28 +64,26 @@ export function ModelProviderSidebar({
 
   return (
     <aside className="model-config-sidebar">
-      <header className="model-sidebar-header">
-        <h2>模型库</h2>
-      </header>
       <div className="model-sidebar-tools" ref={createMenuRef}>
-        <DshSearchField
-          value={query}
-          onValueChange={setQuery}
-          placeholder="搜索模型配置…"
-          ariaLabel="搜索模型配置"
-        />
-        <SidebarCreateButton
-          title="新建模型配置"
-          expanded={createMenuOpen}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            setCreateMenuOpen((current) => !current);
-          }}
-        />
+        <SidebarSectionHeader title="模型" value={query} onValueChange={setQuery}
+          placeholder="搜索模型配置名称" searchLabel="搜索模型配置" createLabel="新建模型配置"
+          createExpanded={createMenuOpen} onCreatePointerDown={(event) => event.stopPropagation()}
+          onCreate={(event) => { event.stopPropagation(); setCreateMenuOpen((current) => !current); }}
+          onSearchFocus={() => setCreateMenuOpen(false)} />
         {createMenuOpen ? (
           <div className="model-provider-create-menu" role="menu" aria-label="新建模型配置">
-            {createGroups.map((section) => (
+            <button type="button" role="menuitem" onClick={() => { setCreateMenuOpen(false); onCreate('custom'); }}>
+              <ProviderLogo provider={createProviderItems.find(item => item.id === 'custom')} className="model-create-provider-icon" />
+              <b>自定义提供商</b>
+            </button>
+            <div className="model-provider-create-group">
+              <span>内置提供商</span>
+              <select aria-label="从 DSH 目录选择" value="" onChange={event => { if (event.target.value) { onCreate(event.target.value); setCreateMenuOpen(false); } }}>
+                <option value="" disabled>从 DSH 目录选择</option>
+                {builtinProviderItems(builtinProviders).map(route => <option key={route.provider} value={route.provider}>{route.displayName || route.provider}</option>)}
+              </select>
+            </div>
+            {createGroups.filter(section => section.id === 'image').map((section) => (
               <div className="model-provider-create-group" key={section.id}>
                 <span>{section.label}</span>
                 {section.items.map((item) => (
@@ -220,7 +218,7 @@ function ModelProviderContextMenu({ menu, onClose, onDelete }) {
     >
       <button type="button" role="menuitem" onClick={onDelete}>
         <TrashIcon aria-hidden="true" />
-        <span>删除模型入口</span>
+        <span>删除配置</span>
       </button>
     </div>,
     document.body,

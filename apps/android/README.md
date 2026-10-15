@@ -15,6 +15,8 @@ Android 使用 `noBackupFilesDir/unified-runtime` 内的独立数据库、Sessio
 
 平台 facade 为真实 Android 页面补充 `interactive-widget=resizes-content`，保留已有 viewport 的其他选项；原生容器继续处理系统栏和键盘 insets。兼容版文件选择通过 ContentResolver 读取授权的 `content://` 流，保留文件显示名称并暂存到浏览器私有缓存，浏览器关闭后清理；标准版继续将授权 URI 交给 WebView。兼容版由内置扩展显式标记 `data-eleckoi-browser=compat`，移动样式让官方 TextShimmer 文字层固定，只移动遮罩，避免 Gecko 双重变换绘制造成重影；标准版保留官方动画。
 
+两版的 HTML 下拉选择共用 `NativeChoiceDialog` 原生列表、取消按钮及页面明确传入的明暗主题。兼容版通过 `PromptDelegate.onChoicePrompt` 传入 Gecko 正式选项 ID，并遵守其更新与撤销回调；未实现此回调时 GeckoView 会直接取消请求。标准版在受管页面中将选择操作交给原生列表，以每个实际 `option` 元素的稳定 ID 回传选择，保留禁用项、分组和多选；确认后只在实际选中项变化时产生网页 `input/change` 事件，取消与返回不改变选择。选项更新和控件移除按当前 DOM 处理。这是 Android 浏览器界面的接入，不承担 Host 业务调用，也不更换标准版的系统 WebView。
+
 ## 准备与构建
 
 本机需要锁定工作区依赖、Python 3、Java 17 和 Android SDK 37.2；应用 targetSdk 仍为 35。Gradle Wrapper 已固定版本。兼容版依赖锁定在 `geckoview.lock.json`：Mozilla stable ARM64 AAR `158.0.20261007201254`，构建前核对完整 SHA-256，打包后逐项核对原生库摘要。标准包不包含该内核。
@@ -29,6 +31,8 @@ APK 分别位于 `app/build/outputs/apk/standard/debug/` 和 `app/build/outputs/
 
 修改大体积离线资产后先清理 Android 应用构建输出，防止增量 APK 留下失效的 ZIP 数据块；各变体 assemble 自动校验实际 APK，Release 通过后才生成更新描述，Debug 不生成正式更新描述，校验器拒绝有效条目外超过 1 MiB 的包。校验需要 Python 3、Pillow，以及通过 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 或 PATH 提供的 AAPT2。手机首次准备新运行时前检查解压峰值空间，只有新 Host 完成健康和页面握手后才清理旧安装目录；数据库、Session、home、媒体与 workspace 不参与清理。
 
+生产依赖快照在替换前检查工作区包声明的运行入口，缺少编译文件时直接失败并保留上一份快照。资源归档和最终 APK 还会再次检查实际打入的 `main`、`module`、`bin` 与运行时 `exports` 文件，不能用摘要一致代替模块完整性。正式包交付前必须验证手机上的 Host ready、HTTP 页面握手和界面启动；开发包的通过结果不替代正式包。
+
 原生启动遮罩覆盖运行环境准备、Host 启动和 Web Client 实际绘制前的等待。普通启动显示像素鲸鱼娘与加载文字，头像轻微浮动并眨眼；实际 Client 绘制完成后用 440 ms 的小跳和淡出撤掉遮罩，不设置最低等待时长。首次准备新运行时时另显示耗时提示和实际进度，复制显示当前包实际写入的百分比，解压显示包序号与不定进度。已安装资源直接复用。启动失败立即停止动画并显示现有错误与重试入口，应用进入后台时停止循环；系统关闭动画时显示静态头像并直接进入界面。
 
 启动头像位于 `app/src/main/res/drawable-nodpi/whale_girl_pixel_dango.png`。原生 Canvas 只裁去透明画布留白，眨眼覆盖层与浮动由 `StartupMascotView` 绘制，不重新生成角色帧。
@@ -39,7 +43,13 @@ Android 平台辅助程序使用锁定的 NDK 在 Windows 交叉编译，具体�
 
 `build/android-runtime/assets/runtime/manifest.json` 由脚本生成，声明协议版本、Node 路径、Host 入口及每份归档的 SHA-256 与字节数。Gradle 和手机安装器都拒绝缺失或不匹配的资源。归档用 `.archive` 后缀避免 AAPT2 解压改写 gzip 资产；Ubuntu 硬链接转换为内容相同的普通文件，其余内容、权限、属主和符号链接由校验器逐项核对。
 
+手机安装器通过系统 Toybox `tar --no-same-owner` 解压，以应用身份持有实际文件，不恢复归档中的 root 属主。此参数不改变归档内容、文件执行权限、符号链接或失败检查；归档仍保留原有属主元数据供资产校验。该源码修改已通过两种变体的编译与单元回归，尚待更新安装包后的新旧设备启动验收。
+
 工作区依赖版本变化后，旧闭包不能猜测重用。准备脚本会报告需要重新生成的依赖；删除经过确认的 `build/android-runtime/closure` 构建目录后重新准备即可。运行时目录、下载缓存、编译后的 `jniLibs` 和 APK 不属于版本控制内容；源码、来源锁定及许可证记录保留在仓库。
+
+## 插件启动恢复
+
+Host 或客户端插件启动失败时，原生错误页面提供「停用用户插件并重启」。安卓壳先确认旧 Host 已停止，再由新 Host 在加载插件前调用锁定 DSH 的 `sanitizeProfile`：备份当前 profile 的 `cordis.patch.yml`，启用官方 Web 基础组合和 `ELECKOI_ANDROID_BUNDLES` 中的内置组合，并保留已选中的官方 `OPTIONAL_BUNDLES`。用户安装的包与依赖声明、产品数据库和会话文件保留，恢复后可在插件中心卸载或重新启用插件。Profile 覆写配置保存在备份中，恢复启动时不重放。该入口共用于标准版和兼容版，操作失败会保留错误诊断。
 
 ## Release 签名
 
@@ -59,7 +69,7 @@ Windows-only Release 不触发 Android 更新。标准版按唯一 `android-upda
   "platform": "android",
   "variant": "standard",
   "applicationId": "com.eleckoi.app",
-  "versionCode": 3,
+  "versionCode": 5,
   "versionName": "0.2.10",
   "apkAsset": "app-standard-release.apk",
   "sha256": "<实际 APK 的 64 位小写 SHA-256>"
@@ -88,6 +98,8 @@ node scripts/android-runtime/probe-device.mjs --adb "$env:ANDROID_SDK_ROOT/platf
 ```
 
 默认探测 `com.eleckoi.app.dev` 标准开发包，使用系统 WebView 调试协议；GeckoView 需独立核对浏览器接入与真实页面。脚本只启动指定 Android 应用、读取其私有运行状态，并经 adb forward 核对认证、Linux ARM64 进程和当前产品 Remote。`--business-probe` 仅允许在聊天列表为空时运行：它建立独立的合成模型与对话，测试发送、取消、应用进程停止后的重启恢复，随后恢复原模型选择并清理自身测试项。测试期间请勿手动修改模型选择。电脑只通过 adb reverse 提供合成模型响应；Node、SQLite、Session 和业务 Host 必须在手机内运行。它不启动电脑 Host、不删除已有数据，也不清空应用。
+
+开发包的选择框交互回归可用 `node scripts/android-runtime/probe-choice-prompts.mjs --serial <设备序列号> --variant standard`，兼容版改为 `--variant compat`。设备需解锁并保持亮屏；脚本使用开发包的本机预览入口加载独立合成页面，不启动产品 Host、不读取或改写聊天与配置。它检查网页选择请求、原生列表、返回的实际值、取消、禁用项、明暗主题、选项更新及页面撤销；结束后关闭开发包并清理自身端口与临时界面文件。结果保存在忽略的 `build/android-runtime/choice-probe/`。`--expect-missing` 用于确认未接入选择回调时的原始缺陷。
 
 结果写在忽略的 `build/android-runtime/device-probe/`。设备缺失、状态不匹配、测试失败或清理失败都明确报错；尚未运行此脚本不能算作真机通过。WebView 的实际显示、触摸操作与启动图标仍须在手机上检查。
 

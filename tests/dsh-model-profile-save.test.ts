@@ -108,6 +108,50 @@ const draft = () => ({ id: 'config-synthetic', provider: 'custom', name: '', mod
   custom_headers: { 'x-model-config': 'synthetic-header' } })
 
 describe('model configuration persistence through DSH settings', () => {
+  it('saves two independent drawing configurations and deletes only the selected credentials', async () => {
+    const { ctx, catalog } = await fixture()
+    const first = await catalog.save({ ...draft(), id: 'drawing-first', name: 'Drawing One', provider: 'openai_image',
+      model: 'synthetic-image-model', image_settings: { width: 1024, height: 1536, quality: 'auto', background: 'auto' } })
+    const second = await catalog.save({ ...draft(), id: 'drawing-second', name: 'Drawing Two', provider: 'novelai_image',
+      model: 'synthetic-image-model', image_settings: { width: 832, height: 1216, steps: 28 } })
+    expect(catalog.getSnapshot().configs.map((item: any) => item.id)).toEqual(['drawing-first', 'drawing-second'])
+    expect(ctx.llm.listProviders()).toEqual([])
+    await catalog.deleteConfig(first.id)
+    expect(catalog.getSnapshot().configs).toMatchObject([{ id: second.id, provider: 'novelai_image', image_settings: second.image_settings }])
+    expect((await ctx.credentials.describe(first.credentialRef)).configured).toBe(false)
+    expect((await ctx.credentials.describe(second.credentialRef)).configured).toBe(true)
+  }, 30_000)
+
+  it('keeps the builtin catalog and native protocol while saving individual model overrides', async () => {
+    const { ctx, catalog, start } = await fixture()
+    const route = catalog.getSnapshot().providers.find((item: any) => item.provider === 'openai')
+    expect(route).toBeDefined()
+    const models = await catalog.discover({ id: route.provider, provider: 'custom', builtin: true, api_format: 'catalog' })
+    expect(models.length).toBeGreaterThan(1)
+    const selected = models.find((item: any) => item.reasoningEfforts && Object.hasOwn(item.reasoningEfforts, 'high'))
+    expect(selected).toBeDefined()
+    const saved = await catalog.save({ id: route.provider, name: 'Synthetic builtin', provider: 'custom', builtin: true,
+      useBuiltinModels: true, api_format: 'catalog', model: selected.id, base_url: '', api_key: '',
+      model_options: models.map((item: any) => item.id === selected.id ? { ...item, contextWindowTokens: 65536,
+        overrideFields: ['contextWindow'], autoCompactTokenLimit: 40000, topP: 0.95 } : item) })
+    const profile = (ctx.settings.describe().find(row => row.ns === 'llm-pi-ai')!.value as any).providers.openai
+    expect(profile).not.toHaveProperty('api')
+    expect(profile.models || []).toEqual([])
+    expect(profile.apiKeyEnv || undefined).toBeUndefined()
+    expect(Object.keys(profile.modelOverrides)).toEqual([selected.id])
+    expect(profile.modelOverrides[selected.id]).toMatchObject({ contextWindow: 65536 })
+    expect(profile.modelOverrides[selected.id].reasoningEfforts).toBeUndefined()
+    expect((await ctx.llm.listModels('openai')).length).toBe(models.length)
+    expect(saved.model_options.find((item: any) => item.id === selected.id)).toMatchObject({ contextWindowTokens: 65536, autoCompactTokenLimit: 40000, topP: 0.95 })
+    await ctx.fiber.dispose()
+    const reopened = await start()
+    const restored = reopened.catalog.getSnapshot().configs.find((item: any) => item.id === 'openai')
+    expect(restored).toMatchObject({ builtin: true, useBuiltinModels: true, model: selected.id })
+    expect(restored.model_options.find((item: any) => item.id === selected.id).catalogDefaults.contextWindowTokens).toBe(selected.catalogDefaults.contextWindowTokens)
+    await reopened.catalog.deleteConfig('openai')
+    expect(reopened.catalog.getSnapshot().configs.some((item: any) => item.id === 'openai')).toBe(false)
+  }, 30_000)
+
   it.each(['responses', 'chat_completions', 'anthropic_messages', 'google_gemini'])(
     'retains an incomplete %s configuration and clears it without registering a route', async api_format => {
       const { ctx, catalog, start } = await fixture()
@@ -124,10 +168,11 @@ describe('model configuration persistence through DSH settings', () => {
       expect((await reopened.ctx.credentials.describe(saved.credentialRef)).configured).toBe(false)
     }, 30_000)
 
-  it('saves only endpoint and key, restores them, and activates a manually added model without discovery', async () => {
+  it.each(['responses', 'chat_completions', 'anthropic_messages', 'google_gemini'])(
+    'saves and restores an endpoint and key, then activates a manually added %s model without discovery', async api_format => {
     let { ctx, catalog, profile, start } = await fixture()
-    const saved = await catalog.save(draft())
-    expect(saved).toMatchObject({ ...draft(), name: draft().id, api_key: '', credentialConfigured: true, enabled: false })
+    const saved = await catalog.save({ ...draft(), api_format })
+    expect(saved).toMatchObject({ ...draft(), api_format, name: draft().id, api_key: '', credentialConfigured: true, enabled: false })
     expect(ctx.llm.listProviders()).toEqual([])
     expect(readFileSync(profile.patchPath, 'utf8')).not.toContain(draft().api_key)
     await ctx.fiber.dispose()
@@ -151,6 +196,12 @@ describe('model configuration persistence through DSH settings', () => {
     expect((await ctx.llm.listModels(saved.id)).map(model => model.id)).toEqual(['synthetic-model'])
     expect((ctx.settings.describe().find(row => row.ns === 'eleckoi-client-models')!.value as any)
       .entries[saved.id]).not.toHaveProperty('draftProfile')
+
+    await ctx.fiber.dispose()
+    ;({ ctx, catalog } = await start())
+    expect(catalog.getSnapshot().configs.find((item: any) => item.id === saved.id))
+      .toMatchObject({ api_format, enabled: true, credentialConfigured: true, model: 'synthetic-model' })
+    expect((await ctx.llm.listModels(saved.id)).map(model => model.id)).toEqual(['synthetic-model'])
 
     const emptied = await catalog.save({ ...active, model: '', model_options: [] })
     expect(emptied).toMatchObject({ enabled: false, model_options: [], base_url: draft().base_url })

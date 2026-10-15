@@ -2,7 +2,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope'
 import { creatorCapabilities, creatorToolsets, creatorAuthoringInstructions } from '@eleckoi/dsh-product-data'
-import { applyDisabledPolicy, extendNativeRequestInput, requestProjectionSnapshot, requestSnapshot, sessionInstructions } from '@eleckoi/dsh-client-roleplay'
+import { applyDisabledPolicy, extendNativeRequestInput, projectCompactionRequest, requestProjectionSnapshot, requestSnapshot, sessionInstructions } from '@eleckoi/dsh-client-roleplay'
 import { CREATOR_STUDIO_EVENT, creatorStudioProjection } from './projection.mjs'
 
 export const name = 'eleckoi-creator-studio-agent'
@@ -42,7 +42,7 @@ export function apply(ctx, config) {
         if (selected.size && operations.length !== selected.size) throw new Error('所选操作不属于这个能力组。')
         return { toolset, operations: operations.map(({ execute, inputSchema, ...item }) => ({ ...item, ...(args.include_schema ? { inputSchema } : {}) })) }
       } })))
-    disposers.push(ctx.tools.register(defineTool({ name: 'eleckoi_call_capability', description: '执行已发现的创作操作；可以新建空角色作为当前工作室编辑目标，其他资料操作只作用于当前选定角色。参数必须符合已查询的输入结构。',
+    disposers.push(ctx.tools.register(defineTool({ name: 'eleckoi_call_capability', description: '执行已发现的创作操作；角色资料绑定当前编辑目标，全局配置和明确 presetId 的预设配置独立于角色选择。可以新建空角色作为编辑目标。参数必须符合已查询的输入结构。',
       parameters: { capability_id: { type: 'string', required: true }, arguments: { type: 'object', additionalProperties: true, required: true } }, output,
       execute(args, exec) {
         exec.signal.throwIfAborted()
@@ -62,7 +62,7 @@ export function apply(ctx, config) {
         }
         if (operation.effect === 'write') {
           ctx.eleckoiCharacterConfigurationChanges.publish({ kind: 'snapshot' })
-          ctx.eleckoiProductRecordChanges.publish({ kind: 'records', domain: 'characters', ids: [changedCharacterId] })
+          if (changedCharacterId) ctx.eleckoiProductRecordChanges.publish({ kind: 'records', domain: 'characters', ids: [changedCharacterId] })
         }
         return { value }
       } })))
@@ -85,11 +85,22 @@ export function apply(ctx, config) {
       ...(parameters.reasoningEffort === undefined ? {} : { reasoningEffort: parameters.reasoningEffort }) }
   }, { prepend: true }))
   disposers.push(ctx.on('llm/stream', (options, next) => {
-    if (!isAgentLoopRequest(options) || projected.has(options)) return next()
+    if (projected.has(options) || (options.purpose !== 'compaction' && !isAgentLoopRequest(options))) return next()
     const agent = ctx.agents.get(options.sessionId)
     if (!owns(agent)) return next()
     const state = readState(agent)
-    const { settingLibrary } = ctx.eleckoiProductData.creatorPresetRuntime(config.presetId)
+    const { settingLibrary, historyCompactionInstructions } = ctx.eleckoiProductData.creatorPresetRuntime(config.presetId)
+    if (options.purpose === 'compaction') {
+      // DSH compaction bypasses agent/request. Inherit effort only from the same
+      // routed model, while preserving its own output budget and explicit effort.
+      const latest = agent.session.requestHeader()?.config ?? agent.options
+      const sameRoute = latest.provider === options.provider && latest.model === options.model
+      const parameters = requestSnapshot(ctx, { ...options, reasoningEffort: sameRoute ? latest.reasoningEffort : undefined })
+      const request = projectCompactionRequest(options, historyCompactionInstructions, parameters.reasoningEffort)
+      if (!request) return next()
+      projected.add(request)
+      return ctx.llm.stream(request)
+    }
     const context = { settingLibrary }
     const target = state.characterId ? ctx.eleckoiProductData.readCharacters().items.find(item => item.id === state.characterId) : undefined
     if (state.characterId && !target) throw new Error('所选角色已不存在，请重新选择角色。')

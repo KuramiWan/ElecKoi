@@ -39,7 +39,7 @@ export function mergeProcessItems(current = [], incoming = []) {
     const previousTerminal = previous.status !== 'running';
     const keepPreviousStatus = previousTerminal && !incomingTerminal;
     const reasoning = item.kind === 'reasoning' || item.toolName === 'reasoning';
-    byId.set(item.id, {
+    const merged = {
       ...previous,
       ...item,
       ...(keepPreviousStatus ? {
@@ -50,7 +50,10 @@ export function mergeProcessItems(current = [], incoming = []) {
         summary: longerText(previous.summary, item.summary),
         detail: longerText(previous.detail, item.detail),
       } : {}),
-    });
+    };
+    if (reasoning && (merged.status === 'running' || (merged.detail || merged.summary || '') !== (previous.detail || previous.summary || ''))
+      && !Object.hasOwn(item, 'displayDetail')) delete merged.displayDetail;
+    byId.set(item.id, merged);
   }
   return order.map((id) => byId.get(id));
 }

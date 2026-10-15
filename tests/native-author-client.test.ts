@@ -452,8 +452,8 @@ describe('native author chat and model commands', () => {
   })
   it('advertises the connected native commands', async () => {
     const api = harness().mount(), capabilities = (await api.app.getCapabilities()).map(item => item.method)
-    expect(capabilities).toHaveLength(65)
-    for (const method of ['chat.current', 'chat.list', 'chat.create', 'chat.getGenerationState', 'chat.getModels', 'chat.selectModel', 'character.current']) {
+    expect(capabilities).toHaveLength(69)
+    for (const method of ['displayTemplates.read', 'displayTemplates.save', 'chat.current', 'chat.list', 'chat.create', 'chat.getGenerationState', 'chat.getModels', 'chat.selectModel', 'character.current']) {
       expect(capabilities).toContain(method)
     }
     expect(capabilities).toContain('audio.play')
@@ -900,6 +900,26 @@ describe('native author Client ownership and interaction', () => {
     r.tasks[0]!.push({ kind: 'ready', version: r.catalog.version })
     await starting
     expect(r.runtime.getSnapshot().status).toBe('ready')
+  })
+
+  it('unloads running programs and buttons when the saved catalog removes disabled libraries and restarts them on re-enable', async () => {
+    const cleanup = vi.fn()
+    const program: AuthorScriptProgram = ({ api }) => {
+      api.ui.registerButton({ id: 'synthetic-button', label: 'Synthetic button', onClick() {} })
+      return cleanup
+    }
+    const r = harness([program, program], [script()])
+    await r.runtime.start()
+    expect(r.runtime.getUiSnapshot().buttons).toHaveLength(1)
+    const enabled = structuredClone(r.catalog)
+    r.catalog = { ...enabled, version: 'synthetic-disabled', scripts: [] }; r.edited()
+    await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(1))
+    expect(r.runtime.getUiSnapshot().buttons).toEqual([])
+    expect(r.runtime.getSnapshot().scriptStatuses).toEqual({})
+    r.catalog = { ...enabled, version: 'synthetic-restored' }; r.edited()
+    await vi.waitFor(() => expect(r.frames).toHaveLength(2))
+    expect(r.runtime.getUiSnapshot().buttons).toHaveLength(1)
+    expect(cleanup).toHaveBeenCalledTimes(1)
   })
 
   it('keeps empty script libraries available without claiming a Host runtime owner', async () => {

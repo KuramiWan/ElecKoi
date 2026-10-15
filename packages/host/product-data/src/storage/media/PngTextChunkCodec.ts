@@ -34,6 +34,13 @@ export function writePngTextOnly(bytes: Uint8Array, values: ReadonlyMap<string, 
   return writePngChunks(parsePng(bytes).filter((chunk) => chunk.type !== 'tEXt'), values)
 }
 
+/** Remove specified text payloads while preserving the image and unrelated metadata. */
+export function removePngText(bytes: Uint8Array, keywords: ReadonlySet<string>): Uint8Array {
+  return writePngChunks(parsePng(bytes).filter((chunk) => (
+    chunk.type !== 'tEXt' || !keywords.has(textKeyword(chunk.data))
+  )), new Map())
+}
+
 function writePngChunks(chunks: PngChunk[], values: ReadonlyMap<string, string>): Uint8Array {
   const output: Uint8Array[] = [PNG_SIGNATURE]
   for (const chunk of chunks) {

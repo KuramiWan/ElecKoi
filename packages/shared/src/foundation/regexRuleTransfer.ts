@@ -17,7 +17,7 @@ export interface DecodedRegexDocuments {
 }
 
 const scopes = new Set<RegexRuleScope>(['Global', 'AgentPreset', 'Character'])
-const targets = new Set<RegexRuleTarget>(['UserInput', 'AiOutput', 'SlashCommand', 'SettingContent', 'Reasoning'])
+const targets = new Set<RegexRuleTarget>(['UserInput', 'AiOutput', 'SettingContent', 'Reasoning'])
 
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -28,15 +28,18 @@ function booleanValue(value: unknown, fallback = false): boolean {
 }
 
 function importedTargets(value: Record<string, unknown>): RegexRuleTarget[] {
+  if (Array.isArray(value.targets) && value.targets.some(target => !targets.has(target as RegexRuleTarget))) {
+    throw new Error('正则包含不支持的应用目标。')
+  }
   const named = Array.isArray(value.targets)
     ? value.targets.filter((target): target is RegexRuleTarget => typeof target === 'string' && targets.has(target as RegexRuleTarget))
     : []
-  if (named.length > 0) return [...new Set(named)]
+  if (Array.isArray(value.targets)) return [...new Set(named)]
   const placement = new Set(Array.isArray(value.placement) ? value.placement.filter(Number.isInteger) as number[] : [])
   const mapped: RegexRuleTarget[] = []
   if (placement.has(1)) mapped.push('UserInput')
   if (placement.has(2) || placement.size === 0) mapped.push('AiOutput')
-  if (placement.has(3)) mapped.push('SlashCommand')
+  if (placement.has(3)) throw new Error('不支持快捷命令正则。')
   if (placement.has(5)) mapped.push('SettingContent')
   if (placement.has(6)) mapped.push('Reasoning')
   return mapped
@@ -67,8 +70,8 @@ function decodeDocument(source: string, fallbackScope: RegexRuleScope): ScopedRe
       scope: scopes.has(scopeValue) ? scopeValue : fallbackScope,
       rule: {
         id: `regex-${globalThis.crypto.randomUUID()}`,
-        name: (stringValue(value.name) || stringValue(value.scriptName)).trim().slice(0, 60),
-        pattern: pattern.slice(0, 4_000),
+        name: (stringValue(value.name) || stringValue(value.scriptName)).trim(),
+        pattern: pattern,
         replacement: stringValue(value.replacement) || stringValue(value.replaceString),
         targets: importedTargets(value),
         enabled: !booleanValue(value.disabled) && booleanValue(value.enabled, true),

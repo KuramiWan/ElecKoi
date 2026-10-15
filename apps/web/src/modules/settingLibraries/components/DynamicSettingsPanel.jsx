@@ -497,13 +497,11 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     }
   }
 
-  if (loading && !compact) return <div className="setting-library-loading">正在读取分支设定…</div>;
-
   if (!selectedItem || !library) {
     return (
       <section className="dynamic-settings-list-page" aria-label="分支设定">
-        <header className="dynamic-settings-list-toolbar">
-          <label className="setting-library-search">
+        <header className={`dynamic-settings-list-toolbar${compact ? ' editor-collection-toolbar' : ''}`}>
+          <label className={`setting-library-search${compact ? ' editor-collection-search' : ''}`}>
             <MagnifyingGlass size={15} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索对话" aria-label="搜索分支设定对话" />
           </label>
@@ -571,8 +569,8 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
         feedback={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />}
         inspectorTitle={selected.kind === 'group' ? '编辑文件夹' : selected.value?.title || '编辑分支设定'} onCloseInspector={closeEditor}>
         <section className="dynamic-settings-tree-pane">
-          <div className="dynamic-settings-tree-toolbar">
-            <label className="setting-library-search">
+          <div className={`dynamic-settings-tree-toolbar${compact ? ' editor-collection-toolbar' : ''}`}>
+            <label className={`setting-library-search${compact ? ' editor-collection-search' : ''}`}>
               <MagnifyingGlass size={15} aria-hidden="true" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索设定" aria-label="搜索分支设定" />
             </label>
@@ -694,7 +692,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                 {selected.kind === "group" ? (
                   <label className="dynamic-settings-field">
                     <span>文件夹名称</span>
-                    <input value={selected.value.name} maxLength={80} onChange={(event) => changeLibrary((current) => ({
+                    <input value={selected.value.name} onChange={(event) => changeLibrary((current) => ({
                       ...current,
                       groups: current.groups.map((group) => group.id === selected.value.id ? { ...group, name: event.target.value, updatedAt: new Date().toISOString() } : group),
                     }))} />

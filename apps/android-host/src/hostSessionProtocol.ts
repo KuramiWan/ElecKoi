@@ -5,6 +5,7 @@ export type ParentHostMessage =
 export type ChildHostMessage =
   | { type: 'ready'; url: string; healthUrl: string; injections: readonly unknown[] }
   | { type: 'fatal'; message: string }
+  | { type: 'profile-recovered'; backupPath?: string }
   | { type: 'shutdown-complete' }
   | { type: 'update-tasks-complete'; id: string; active: boolean; message?: string }
 

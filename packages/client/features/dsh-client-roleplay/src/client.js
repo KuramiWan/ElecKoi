@@ -128,77 +128,32 @@ window.__ModuleLoader__.load({
       })
     }
 
-    function RoleplayView({ matched, sessions, SessionProvider, renderSlot }) {
+    function RoleplayView({ matched, conversations, sessions, SessionProvider, renderSlot }) {
       const runtimeSessionId = matched.props.runtimeSessionId
-      const [reference, setReference] = React.useState(null)
-      React.useEffect(() => {
-        if (!runtimeSessionId) {
-          setReference(null)
-          return undefined
+      React.useSyncExternalStore(conversations.subscribeDetails, conversations.getDetailsSnapshot)
+      const retained = React.useRef(null)
+      // The catalog publishes loaded messages only after its Session is ready.
+      // Reuse that reference instead of opening a second asynchronous UI binding.
+      const ready = conversations.getSessionReference(runtimeSessionId)
+      React.useLayoutEffect(() => {
+        if (!matched.props.conversationId) {
+          retained.current?.reference.release()
+          retained.current = null
+          return
         }
-        let current = true
-        let retained
-        let retryTimer
-        let opening = false
-        let attempts = 0
-        let cancelReady = () => {}
-        const waitUntilReady = reference => new Promise((resolve, reject) => {
-          let settled = false
-          let timer
-          const settle = error => {
-            if (settled) return
-            settled = true
-            clearTimeout(timer)
-            cancelReady = () => {}
-            if (error) reject(error)
-            else resolve()
-          }
-          timer = setTimeout(() => settle(new Error('DSH Session did not become ready')), 10000)
-          cancelReady = () => settle(new Error('DSH Session binding closed'))
-          Promise.resolve(reference.ready).then(() => settle(), settle)
-        })
-        const scheduleRetry = () => {
-          if (!current || retryTimer !== undefined) return
-          const delay = Math.min(250 * (2 ** Math.min(attempts, 4)), 4000)
-          retryTimer = setTimeout(() => {
-            retryTimer = undefined
-            void open()
-          }, delay)
-        }
-        const open = async () => {
-          if (!current || opening || retained) return
-          opening = true
-          try {
-            if (!sessions.list.getSnapshot().byId[runtimeSessionId]) await sessions.refresh()
-            if (!current) return
-            const reference = sessions.retain(runtimeSessionId, { source: 'mainView' })
-            retained = reference
-            await waitUntilReady(reference)
-            if (!current) return
-            attempts = 0
-            setReference(reference)
-          } catch {
-            retained?.release()
-            retained = undefined
-            if (current) {
-              setReference(null)
-              attempts += 1
-            }
-          } finally {
-            opening = false
-            if (current && !retained) scheduleRetry()
-          }
-        }
-        void open()
-        return () => {
-          current = false
-          if (retryTimer !== undefined) clearTimeout(retryTimer)
-          cancelReady()
-          retained?.release()
-          retained = undefined
-        }
-      }, [runtimeSessionId, sessions])
-      const active = Boolean(runtimeSessionId) && reference?.sessionId === runtimeSessionId
+        if (!ready) return
+        const previous = retained.current
+        if (previous && previous.reference.binding === ready.binding) return
+        retained.current = { conversationId: matched.props.conversationId,
+          reference: sessions.retain(ready.sessionId, { source: 'mainView' }) }
+        previous?.reference.release()
+      }, [ready, sessions, matched.props.conversationId])
+      React.useLayoutEffect(() => () => { retained.current?.reference.release(); retained.current = null }, [])
+      // A same-chat rewind retires the catalog binding before its successor is
+      // ready. Keep the displayed scope until the ready replacement commits.
+      const reference = ready || (retained.current && retained.current.conversationId === matched.props.conversationId
+        ? retained.current.reference : null)
+      const active = Boolean(reference)
       const view = React.createElement(matched.component, {
         ...matched.props,
         renderRoleplaySlot: undefined,
@@ -370,7 +325,7 @@ window.__ModuleLoader__.load({
           children: {
             'eleckoi.roleplay.session': { kind: 'single', scope: 'session' }
           },
-          inject: () => ({ sessions: ctx.sessions }),
+          inject: () => ({ conversations: ctx.eleckoiConversations, sessions: ctx.sessions }),
           select: owner => owner?.component ? owner : null
         }, RoleplayView))
         ctx.slots.inject('eleckoi.roleplay.session', () => ctx.slots.register({

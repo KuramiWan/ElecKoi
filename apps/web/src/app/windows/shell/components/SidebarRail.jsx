@@ -3,6 +3,7 @@ import { PluginNavIcon, SettingsIcon } from "../../../../ui/icons/index.jsx";
 import { Avatar } from "../../../../ui/ui/Avatar.jsx";
 import logoIcon from "../../../../assets/eleckoi-app-icon.png";
 import { DshPanelLeftIcon } from "../../../../ui/icons/dshComposerIcons.jsx";
+import { ElecKoiWordmark } from "../../../../ui/icons/ElecKoiWordmark.jsx";
 
 function RailIconButton({ label, active, onClick, icon, productIcon, expanded }) {
   function handleClick() {
@@ -92,7 +93,7 @@ export function SidebarRail({ activeSection, navigationItems = [], renderSidebar
     <aside className={`qq-rail${expanded ? " expanded" : ""}`} aria-label="侧边功能栏">
       {expanded && <header className="rail-expanded-header">
         {brand}
-        {renderSidebarSlot?.("sidebar.brand.name", { content: <strong>ElecKoi</strong> }) || <strong>ElecKoi</strong>}
+        {renderSidebarSlot?.("sidebar.brand.name", { content: <ElecKoiWordmark /> }) || <ElecKoiWordmark />}
         <button type="button" aria-label="收起侧边栏" onClick={onCollapse}><DshPanelLeftIcon size={20} /></button>
       </header>}
       {!expanded && brand}

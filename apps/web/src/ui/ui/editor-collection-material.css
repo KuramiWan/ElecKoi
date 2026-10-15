@@ -1,0 +1,216 @@
+/* 桌面详情栏为列表预留空间。 */
+.editor-sidebar-layout.is-inspector-open:not(.is-page-layout):not(.is-multiselect) .editor-collection-material .editor-sidebar-directory {
+  margin-inline-end: calc(min(var(--editor-sidebar-width), calc(100% - var(--editor-sidebar-gap))) + 6px);
+}
+
+/* 共用工具栏只改变控件外观，保留工具栏布局与内容分割线。 */
+.editor-sidebar-layout .editor-collection-toolbar,
+.mobile-preset-editor .preset-tools-toolbar.editor-collection-toolbar,
+.mobile-character-editor :is(.dynamic-settings-list-toolbar, .dynamic-settings-tree-toolbar).editor-collection-toolbar {
+  --text: #242a32;
+  --muted: #5e6978;
+  --soft-text: #697586;
+  --active: #e1e6ee;
+  --blue: #4176eb;
+  --editor-collection-toolbar-fill: #f1f3f6;
+  --editor-collection-toolbar-hover: #e6e9ef;
+  --editor-collection-icon: var(--dsw-alias-label-secondary, #81858c);
+  color: var(--text);
+  font: 14px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+
+  & .editor-collection-search {
+    height: 36px;
+    padding: 0 12px;
+    gap: 8px;
+    border: 0;
+    border-radius: 8px;
+    color: #747b86;
+    background: var(--editor-collection-toolbar-fill);
+  }
+  & .editor-collection-search:focus-within { outline: 2px solid var(--blue); outline-offset: 2px; }
+  & .editor-collection-search input { font-size: 14px; }
+  & .editor-collection-action {
+    height: 36px;
+    padding: 0 14px;
+    gap: 6px;
+    border: 0;
+    border-radius: 8px;
+    color: var(--text);
+    background: var(--editor-collection-toolbar-fill);
+    font: inherit;
+  }
+  & .editor-collection-action svg { color: var(--editor-collection-icon); }
+  & .editor-collection-action:hover:not(:disabled) { background: var(--editor-collection-toolbar-hover); }
+  & .editor-collection-action[aria-pressed="true"] { background: var(--active); }
+  & .setting-library-save-button { height: 36px; border-radius: 8px; }
+}
+
+/* 脚本、正则与显示模板使用连续面板，分区标题位于面板外。 */
+.editor-sidebar-layout .editor-collection-continuous {
+  --editor-collection-entry: #ffffff;
+  --editor-collection-outline: #e6e9ee;
+  --editor-collection-shadow: rgba(26, 39, 61, .035);
+  --editor-collection-heading: #333943;
+  --editor-collection-icon: #81858c;
+  --editor-collection-switch-on: #4868b2;
+  --editor-collection-switch-off: #dee2e9;
+  --switch-corner-shape: superellipse(1.5);
+
+  & :is(.editor-collection-directory, .regex-list-scroll) {
+    --text: #30353d;
+    --muted: #81858c;
+    --soft-text: #81858c;
+    --active: #edf0f5;
+    --editor-collection-hover: #f6f7f9;
+    padding: 18px 28px 40px;
+    color: var(--text);
+    font: 14px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  & .editor-collection-surface { width: min(768px, 100%); min-width: 0; }
+  & .regex-rule-groups { width: 100%; }
+  & .editor-library-group { width: 100%; margin: 0; padding: 0; border: 0; background: transparent; }
+  & .editor-library-group + .editor-library-group { margin-top: 28px; }
+  & .editor-library-header { min-height: 32px; margin: 0 0 10px; padding: 0 2px; gap: 12px; }
+  & .editor-library-heading { flex: 0 1 auto; height: 32px; padding: 0; gap: 10px; }
+  & .editor-library-heading:hover { background: transparent; }
+  & .editor-library-heading > strong { font-size: 14px; color: var(--editor-collection-heading); }
+  & :is(.editor-library-count, .editor-library-context) { font-size: 12px; color: var(--muted); }
+  & .editor-library-rows {
+    display: flex;
+    flex-direction: column;
+    padding: 6px;
+    border-radius: 10px;
+    background: var(--editor-collection-entry);
+    box-shadow: 0 0 0 1px var(--editor-collection-outline), 0 3px 10px var(--editor-collection-shadow);
+  }
+  & :is(.editor-library-row, .script-list-row, .regex-rule-row) {
+    height: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    gap: 14px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--text);
+    background: transparent;
+  }
+  & :is(.editor-library-row, .script-list-row, .regex-rule-row):hover { background: var(--editor-collection-hover); }
+  & :is(.editor-library-row, .script-list-row, .regex-rule-row).is-selected { background: var(--active); }
+  & :is(.editor-library-name, .script-list-name, .regex-rule-main) {
+    height: 44px;
+    min-height: 0;
+    padding: 0;
+    gap: 10px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  & :is(.editor-library-name, .script-list-name, .regex-rule-main) > svg { flex: none; width: 18px; height: 18px; color: var(--editor-collection-icon); }
+  & .regex-rule-main > span { color: inherit; }
+  & :is(.editor-library-row, .script-list-row, .regex-rule-row)[data-enabled="false"] :is(.editor-library-name, .script-list-name, .regex-rule-main, .regex-rule-main > span, .regex-rule-main > svg) { color: var(--muted); }
+  & .script-state { max-width: min(140px, 28%); color: var(--muted); font-size: 12px; }
+  & .script-list-row { padding-left: 40px; }
+  & .script-list-row.is-nested { padding-left: 68px; }
+  & .script-folder { margin: 4px 0; }
+  & .script-folder > .script-list-row { padding-left: 10px; gap: 8px; }
+  & .script-folder > .script-list-row .script-list-name { font-weight: 600; }
+  & .script-folder-contents { padding: 3px 0; }
+  & .script-folder-toggle { width: 22px; height: 32px; flex: 0 0 22px; }
+  & .script-folder-toggle svg { width: 12px; height: 12px; color: var(--muted); }
+  & .editor-library-empty {
+    display: flex;
+    align-items: center;
+    height: 54px;
+    margin: 0;
+    padding: 0 16px;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--muted);
+  }
+  & :is(.script-switch, .regex-rule-switch) { width: 38px; height: 32px; flex: none; justify-content: center; }
+  & .editor-library-header :is(.script-switch, .regex-rule-switch) { width: 36px; }
+  & .regex-rule-switch input { inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  & :is(.script-switch, .regex-rule-switch) i {
+    pointer-events: none;
+    width: 32px;
+    height: 18px;
+    border-radius: 12px;
+    corner-shape: var(--switch-corner-shape);
+    background: var(--editor-collection-switch-off);
+  }
+  & .script-switch i::before, & .regex-rule-switch i::after {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    corner-shape: var(--switch-corner-shape);
+    background: #fff;
+    box-shadow: none;
+  }
+  & :is(.script-switch, .regex-rule-switch) input:checked + i { background: var(--editor-collection-switch-on); }
+  & .script-switch input:checked + i::before, & .regex-rule-switch input:checked + i::after { transform: translateX(14px); }
+  & :is(.script-switch, .regex-rule-switch) input:focus-visible + i { outline: 2px solid var(--editor-collection-switch-on); outline-offset: 3px; }
+  & .regex-rule-switch input:disabled + i { opacity: .4; }
+  @media (max-width: 680px) {
+    & :is(.editor-collection-directory, .regex-list-scroll) { padding: 10px 16px 24px; }
+    & :is(.editor-library-row, .script-list-row, .regex-rule-row) { gap: 8px; }
+    & .script-list-row { padding-left: 28px; }
+    & .script-list-row.is-nested { padding-left: 48px; }
+    & .script-state { max-width: 88px; }
+  }
+}
+
+:root[data-theme="dark"] .editor-sidebar-layout .editor-collection-toolbar,
+:root[data-theme="dark"] .mobile-preset-editor .preset-tools-toolbar.editor-collection-toolbar,
+:root[data-theme="dark"] .mobile-character-editor :is(.dynamic-settings-list-toolbar, .dynamic-settings-tree-toolbar).editor-collection-toolbar {
+  --text: #e5e8ef;
+  --muted: #b2bdcd;
+  --soft-text: #a1adbf;
+  --active: #424f63;
+  --editor-collection-toolbar-fill: #252a33;
+  --editor-collection-toolbar-hover: #353e4d;
+}
+:root[data-theme="dark"] .editor-sidebar-layout .editor-collection-continuous {
+  --editor-collection-entry: #252a33;
+  --editor-collection-outline: #39424f;
+  --editor-collection-shadow: rgba(0, 0, 0, .12);
+  --editor-collection-heading: #e5e8ef;
+  --editor-collection-icon: #a1adbf;
+  --editor-collection-switch-on: #6685c7;
+  --editor-collection-switch-off: #525e70;
+}
+:root[data-theme="dark"] .editor-sidebar-layout .editor-collection-continuous :is(.editor-collection-directory, .regex-list-scroll) {
+  --text: #e5e8ef;
+  --muted: #a1adbf;
+  --soft-text: #a1adbf;
+  --active: #424f63;
+  --editor-collection-hover: #303744;
+}
+
+/* 紧凑列表沿用同一材质，控件与条目保留触屏操作空间。 */
+.editor-sidebar-layout.is-page-layout .editor-collection-toolbar,
+.mobile-preset-editor .preset-tools-toolbar.editor-collection-toolbar,
+.mobile-character-editor :is(.dynamic-settings-list-toolbar, .dynamic-settings-tree-toolbar).editor-collection-toolbar {
+  display: flex;
+  align-items: center;
+  height: auto;
+  padding: 12px;
+  gap: 8px;
+  flex-wrap: nowrap;
+  border-bottom: 1px solid var(--line-strong);
+  font-family: inherit;
+  & .editor-collection-search { flex: 1; width: 0; min-width: 0; height: 48px; padding-inline: 8px; gap: 6px; }
+  & .editor-collection-search > svg { flex: none; }
+  & .editor-collection-actions { flex: none; flex-wrap: nowrap; gap: 4px; }
+  & .editor-collection-action { height: 48px; min-height: 48px; min-width: 44px; padding-inline: 6px; gap: 4px; font-size: 12px; white-space: nowrap; }
+}
+.editor-sidebar-layout.is-page-layout .editor-collection-continuous {
+  & :is(.editor-collection-directory, .regex-list-scroll) { padding: 12px 12px 24px; font-family: inherit; }
+  & .editor-library-header { min-height: 48px; gap: 8px; margin-bottom: 8px; }
+  & .editor-library-heading { height: auto; min-height: 48px; min-width: 0; gap: 6px; }
+  & .editor-library-heading > strong { white-space: normal; text-align: left; }
+  & :is(.editor-library-row, .script-list-row, .regex-rule-row) { min-height: 48px; height: auto; padding-inline: 8px; gap: 6px; }
+  & :is(.editor-library-name, .script-list-name, .regex-rule-main) { min-height: 48px; height: auto; font-size: 14px; }
+  & :is(.script-switch, .regex-rule-switch), & .editor-library-header :is(.script-switch, .regex-rule-switch) { width: 48px; height: 48px; }
+  & .script-list-row.is-nested { padding-left: 30px; }
+  & .script-folder > .script-list-row { padding-left: 0; }
+  & .script-folder-toggle { width: 32px; height: 48px; flex-basis: 32px; }
+  & .script-state { max-width: 64px; }
+}

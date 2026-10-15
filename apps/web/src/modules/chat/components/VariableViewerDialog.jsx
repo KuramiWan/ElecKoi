@@ -138,7 +138,7 @@ function TimelinePane({ timeline, loading, error, selectedId, onSelect }) {
           </span>
           {floor.messagePreview ? <small>{floor.messagePreview}</small> : null}
           <span className="variable-floor-meta">
-            {floor.id === "opening" ? "初始状态" : `${floor.changedValueCount} 处变化`}
+            {floor.state?.errorMessage || (floor.id === "opening" ? "初始状态" : `${floor.changedValueCount} 处变化`)}
             {floor.createdAt ? ` · ${formatTimestamp(floor.createdAt)}` : ""}
           </span>
         </span>
@@ -155,7 +155,7 @@ function SnapshotPane({ timeline, floor, latestId, loading, error, mobile = fals
   const positions = useRef(new Map()).current;
   const previousDepth = useRef(0);
   const isOpening = floor?.id === "opening";
-  const document = floor?.id === latestId ? timeline?.current : floor?.state;
+  const document = floor?.state?.errorMessage ? floor.state : floor?.id === latestId ? timeline?.current : floor?.state;
   const changedPaths = useMemo(() => new Set(floor?.changedPaths || []), [floor]);
   if (onBackRef) onBackRef.current = () => { if (!focusStack.length) return false; setFocusStack(stack => stack.slice(0, -1)); return true; };
 

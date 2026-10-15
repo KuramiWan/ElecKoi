@@ -31,5 +31,8 @@ ADR 是 Architecture Decision Record，即架构决策记录，用于说明一�
 | 0033 | [导入格式与原生数据存储](0033-native-format-import-storage.md) | 已采纳 | 外部格式转换到原生领域，不保留第二份业务数据。 |
 | 0034 | [生成图片随记录删除](0034-generated-image-record-cleanup.md) | 已采纳 | 正式图片状态、Session 编辑锁与无有效引用的附件清理。 |
 | 0035 | [Android 更新检查与平台发布识别](0035-android-update-checks.md) | 已采纳 | 应用身份、正式更新描述、后台调度与平台通知。 |
+| 0036 | [独立 EJS 显示模板](0036-ejs-display-templates.md) | 已采纳 | 角色与预设的模板配置、数据归属和消息渲染时机。 |
+| 0037 | [统一编辑器与完整配置版本](0037-editor-collections-and-versions.md) | 已采纳 | 共用列表操作、批量启停及完整版本数据合同。 |
+| 0038 | [聊天运行状态由产品数据库统一保存](0038-conversation-runtime-state.md) | 已实施 | 变量和分支设定历史的正式保存边界、回退与归档。 |
 
 本目录没有收录 0006—0011 和 0014；保留编号间隔，不复制内部历史材料来补齐。后续编号须同时核对两个工作树，避免复用未收录编号。

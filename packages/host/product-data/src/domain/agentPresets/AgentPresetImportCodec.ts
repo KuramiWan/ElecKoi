@@ -6,6 +6,7 @@ import { normalizeAgentPresetPrompts } from '@shared/contracts/presets/builtIns'
 import { agentPresetPurposeSchema } from '@shared/contracts/presets/schemas'
 import { defaultRoleplayPlanSettings, roleplayPlanSettingsSchema } from '@shared/contracts/presets/roleplayPlan'
 import { decodePortableScriptLibrary, type PortableScriptLibrary } from '@product-data/domain/scripts'
+import { decodePortableDisplayTemplates, type PortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import type {
   AgentPreset,
   AgentPresetImportDocument,
@@ -40,6 +41,7 @@ const positions = new Set<NonNullable<SettingLibraryEntry['position']>>([
   'instructions', 'insert_point_1', 'insert_point_2', 'insert_point_3', 'insert_point_4', 'insert_point_5'
 ])
 export interface DecodedAgentPresetImport {
+  displayTemplates?: PortableDisplayTemplates
   scriptLibrary?: PortableScriptLibrary
   preset: AgentPreset
   source: AgentPresetImportSource
@@ -77,6 +79,7 @@ export interface AgentPresetTransferVersion extends AgentPresetTransferContent {
 }
 
 export interface AgentPresetEncodeOptions {
+  displayTemplates?: PortableDisplayTemplates
   scriptLibrary?: PortableScriptLibrary
   authorAvatar?: AgentPresetTransferAvatar
   versions?: AgentPresetTransferVersion[]
@@ -134,6 +137,7 @@ export function encodeElecKoiAgentPreset(preset: AgentPreset, options: AgentPres
         trees: options.scriptLibrary.trees, variables: options.scriptLibrary.variables, enabled: options.scriptLibrary.enabled,
         files: options.scriptLibrary.files ?? []
       } } : {}),
+      ...(options.displayTemplates ? { ejs_display_templates: options.displayTemplates } : {}),
       ...content,
       versions: (options.versions ?? []).map((version) => ({
         id: version.id,
@@ -182,7 +186,7 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array, p
     const id = stringValue(tag.id).trim().toLocaleLowerCase()
     const label = stringValue(tag.label).trim()
     return id && label ? [{ id, label, providerId: stringValue(tag.provider_id).trim() }] : []
-  }).slice(0, 8)
+  })
   const profile = objectValue(value.profile)
   const embeddedAvatar = objectValue(profile?.author_avatar)
   if (embeddedAvatar) {
@@ -195,16 +199,17 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array, p
   const content = contentFromPortable(value, profile, document.displayName, timestamp, purpose)
   const activeVersionId = stringValue(value.active_version_id) || 'import:v1'
   const activeVersionNumber = Math.max(1, integerValue(value.active_version_number, 1))
-  const versions = objectList(value.versions).slice(0, 100).map((version, index) => ({
+  const versions = objectList(value.versions).map((version, index) => ({
     id: stringValue(version.id) || `import:v${index + 1}`,
     number: Math.max(1, integerValue(version.number, index + 1)),
-    name: stringValue(version.name).trim().slice(0, 60) || stringValue(value.name).trim() || suggestedName(document.displayName),
+    name: stringValue(version.name).trim() || stringValue(value.name).trim() || suggestedName(document.displayName),
     createdAtEpochMs: Math.max(0, integerValue(version.created_at_epoch_ms, Date.now())),
     ...contentFromPortable(version, version, document.displayName, timestamp, purpose)
   }))
   return {
     source: 'eleckoi',
     ...(value.script_library === undefined ? {} : { scriptLibrary: decodePortableScriptLibrary(value.script_library) }),
+    ...(value.ejs_display_templates === undefined ? {} : { displayTemplates: decodePortableDisplayTemplates(value.ejs_display_templates) }),
     ...(authorAvatarBase64 ? { authorAvatarBase64 } : {}),
     ...(authorAvatarMediaType ? { authorAvatarMediaType } : {}),
     versions,
@@ -282,10 +287,12 @@ function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject
     skippedDepthRegexCount += 1
     return false
   })
-  const regexRules = decodeRegexDocuments([{
+  const decodedRegex = decodeRegexDocuments([{
     displayName: document.displayName,
     json: JSON.stringify({ regex_scripts: supportedScripts })
-  }], 'AgentPreset').rules.map(({ rule }) => rule)
+  }], 'AgentPreset')
+  if (decodedRegex.failedFileNames.length) throw new Error('预设正则包含不支持的应用目标或无效格式，未导入。')
+  const regexRules = decodedRegex.rules.map(({ rule }) => rule)
   return {
     source: 'sillytavern', skippedUnsupportedEntries, skippedDepthRegexCount, versions: [],
     preset: {
@@ -344,10 +351,12 @@ function contentFromPortable(
   const groups = objectList(value.groups).map((group, index) => groupFromPortable(group, index, timestamp))
   const promptPositions = objectList(value.prompt_positions)
     .map((position, index) => positionFromPortable(position, index, timestamp))
-  const regexRules = decodeRegexDocuments([{
+  const decodedRegex = decodeRegexDocuments([{
     displayName,
     json: JSON.stringify({ rules: Array.isArray(value.regex_rules) ? value.regex_rules : [] })
-  }], 'AgentPreset').rules.map(({ rule }) => rule)
+  }], 'AgentPreset')
+  if (decodedRegex.failedFileNames.length) throw new Error('预设正则包含不支持的应用目标或无效格式，未导入。')
+  const regexRules = decodedRegex.rules.map(({ rule }) => rule)
   const roleplayPlan = roleplayPlanSettingsSchema.safeParse(value.roleplay_plan)
   const toolConfiguration = objectValue(value.tool_configuration)
   const includedGroupIds = new Set(stringList(toolConfiguration?.included_group_ids))
@@ -402,7 +411,7 @@ function entryFromPortable(value: JsonObject, index: number, timestamp: string):
   const position = stringValue(value.position) as NonNullable<SettingLibraryEntry['position']>
   return {
     ...emptyEntry(stringValue(value.id) || `import-entry-${index + 1}`, timestamp),
-    title: stringValue(value.title).slice(0, 120), iconId: stringValue(value.icon_id),
+    title: stringValue(value.title), iconId: stringValue(value.icon_id),
     kind, groupId: stringValue(value.group_id), content: stringValue(value.content),
     openingMessages: objectList(value.opening_messages).map((message, messageIndex) => ({
       id: stringValue(message.id) || `opening-${index + 1}-${messageIndex + 1}`,
@@ -453,7 +462,7 @@ function entryToPortable(entry: SettingLibraryEntry): JsonObject {
 
 function groupFromPortable(value: JsonObject, index: number, timestamp: string): SettingLibraryGroup {
   return {
-    id: stringValue(value.id) || `import-group-${index + 1}`, name: stringValue(value.name).slice(0, 80),
+    id: stringValue(value.id) || `import-group-${index + 1}`, name: stringValue(value.name),
     parentId: stringValue(value.parent_id), order: Math.max(1, integerValue(value.order, index + 1)),
     treeViewOrder: integerValue(value.tree_view_order, index + 1),
     createdAt: stringValue(value.created_at) || timestamp, updatedAt: stringValue(value.updated_at) || timestamp
@@ -463,7 +472,7 @@ function groupFromPortable(value: JsonObject, index: number, timestamp: string):
 function positionFromPortable(value: JsonObject, index: number, timestamp: string): SettingLibraryPromptPosition {
   const anchor = stringValue(value.anchor) as SettingLibraryPromptPosition['anchor']
   return {
-    id: stringValue(value.id) || `import-position-${index + 1}`, name: stringValue(value.name).slice(0, 60),
+    id: stringValue(value.id) || `import-position-${index + 1}`, name: stringValue(value.name),
     anchor: positions.has(anchor) ? anchor : 'insert_point_1',
     side: value.side === 'after_setting_position' ? 'after_setting_position' : 'before_setting_position',
     order: Math.max(1, integerValue(value.order, index + 1)),
@@ -540,12 +549,12 @@ function hasUnsupportedRegexDepth(value: JsonObject): boolean {
 }
 
 function uniqueTitle(requested: string, used: Set<string>): string {
-  const base = requested.trim().slice(0, 120) || '未命名提示词'
+  const base = requested.trim() || '未命名提示词'
   if (!used.has(base.toLocaleLowerCase())) { used.add(base.toLocaleLowerCase()); return base }
   let index = 2
   while (true) {
     const suffix = ` (${index})`
-    const candidate = `${base.slice(0, 120 - suffix.length)}${suffix}`
+    const candidate = `${base}${suffix}`
     const key = candidate.toLocaleLowerCase()
     if (!used.has(key)) { used.add(key); return candidate }
     index += 1
@@ -553,5 +562,5 @@ function uniqueTitle(requested: string, used: Set<string>): string {
 }
 
 function suggestedName(displayName: string): string {
-  return displayName.replace(/\.(json|png)$/i, '').trim().slice(0, 60) || '导入预设'
+  return displayName.replace(/\.(json|png)$/i, '').trim() || '导入预设'
 }

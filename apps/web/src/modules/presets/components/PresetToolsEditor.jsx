@@ -60,13 +60,13 @@ export function PresetToolsEditor({
 
   return (
     <section className="preset-tools-editor" aria-label="工具" onMouseDown={() => setAddOpen(false)}>
-      <div className="preset-subtoolbar preset-tools-toolbar" onMouseDown={(event) => event.stopPropagation()}>
-        <label>
+      <div className={`preset-subtoolbar preset-tools-toolbar${compact ? ' editor-collection-toolbar' : ''}`} onMouseDown={(event) => event.stopPropagation()}>
+        <label className={compact ? 'editor-collection-search' : undefined}>
           <MagnifyingGlass size={15} aria-hidden="true" />
           <input value={query} placeholder="搜索工具" aria-label="搜索工具" onChange={(event) => setQuery(event.target.value)} />
         </label>
         <div className="preset-tools-add-wrap">
-          <button type="button" className="preset-tools-add-button" aria-expanded={addOpen} onClick={() => setAddOpen((value) => !value)}>
+          <button type="button" className={`preset-tools-add-button${compact ? ' editor-collection-action' : ''}`} aria-expanded={addOpen} onClick={() => setAddOpen((value) => !value)}>
             <Plus size={16} aria-hidden="true" />添加
           </button>
           {addOpen ? <div className="preset-tools-add-popover" role="menu" aria-label="添加工具组">

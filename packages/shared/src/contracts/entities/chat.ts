@@ -69,6 +69,8 @@ export interface AgentProcessItem {
   arguments: string
   summary: string
   detail: string
+  /** Display projection only; detail remains the original Session text. */
+  displayDetail?: string
   startedAtMillis: number
   completedAtMillis?: number
   parentId?: string
@@ -106,6 +108,8 @@ export interface ChatMessage {
   content: string
   displayContent?: string
   variableStateJson: string
+  /** False when this message has no saved historical variable value. */
+  variableSnapshotAvailable?: boolean
   status: MessageStatus
   createdAt: string
   turnId?: string

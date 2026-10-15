@@ -25,7 +25,7 @@ export async function generateAuthorDocs(workspace = root, { check = false } = {
   const source = async path => (await readFile(resolve(workspace, path), 'utf8')).replaceAll('\r\n', '\n');
   const parse = async file => ts.createSourceFile(file, await source(file), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const index = await parse(sdk + 'index.ts');
-  const files = await Promise.all(['contracts.ts', 'scripts.ts', 'variables.ts', 'trajectory.ts'].map(file => parse(sdk + file)));
+  const files = await Promise.all(['contracts.ts', 'scripts.ts', 'variables.ts', 'trajectory.ts', 'display-templates.ts', 'editor-versions.ts'].map(file => parse(sdk + file)));
   const declarations = new Map(files.flatMap(file => file.statements
     .filter(node => ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)).map(node => [node.name.text, node])));
   function initializer(name) {
@@ -161,6 +161,8 @@ async function exampleDocuments(source) {
     character: { name: '原生 SDK 示例角色', group: 'SDK 示例', opening: frontend, show_opening: true, frontend_beauty_enabled: true }, assets: [], regex_rules: [],
     setting_library: JSON.stringify({ format: 'eleckoi.setting-library-snapshot', version: 1, active_version_id: 'example-settings', versions: [{ id: 'example-settings', name: '示例设定', entries: [opening], groups: [], prompt_positions: [], list_all_expanded: true, expanded_group_ids: [] }] }),
     variable_config: JSON.stringify(config),
+    ejs_display_templates: { enabled: false, templates: [{ id: 'example-display-panel', name: '历史积分与选项', enabled: true,
+      position: 'after', pattern: '', flags: '', source: await source(exampleRoot + 'display-panel.ejs') }] },
     script_library: { enabled: false, variables: {}, trees: [await script('character.js', 'example-score-rule', '积分规则', { multiplier: 2 })],
       files: await Promise.all(['derive.js', 'settings.html'].map(async path => ({ path, data: Buffer.from(await source(exampleRoot + path)).toString('base64') }))) } };
   const preset = { format: 'eleckoi.agent-preset', version: 1, preset: { name: '原生 SDK 示例预设', model_family: 'general',

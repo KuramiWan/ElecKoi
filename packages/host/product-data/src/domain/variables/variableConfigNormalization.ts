@@ -82,7 +82,7 @@ export function normalizeVariableVersion(
 
   const userObjects = inputObjects.map((item, index) => stableTimestamp({
     ...item,
-    name: item.name.trim().slice(0, 40),
+    name: item.name,
     parentId: normalizedParentId(item, sourceById),
     description: item.description.trim(),
     updateRule: item.updateRule.trim(),
@@ -105,7 +105,7 @@ export function normalizeVariableVersion(
   const objectIds = new Set(userObjects.map((item) => item.id))
   const normalizedVariables: VariableItemConfig[] = version.variables.map((item, index) => stableTimestamp({
     ...item,
-    title: item.title.trim().slice(0, 60),
+    title: item.title,
     objectId: objectIds.has(item.objectId) ? item.objectId : '',
     type: valueTypes.has(item.type) ? item.type : '',
     defaultValue: item.defaultValue,
@@ -122,7 +122,7 @@ export function normalizeVariableVersion(
     : generatedState
   const normalized: VariableConfigVersion = {
     ...version,
-    name: version.name.trim().slice(0, 60),
+    name: version.name.trim(),
     initialStateJson,
     schemaCode: version.schemaCode,
     objects: normalizedObjects,

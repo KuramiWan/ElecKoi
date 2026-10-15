@@ -15,6 +15,9 @@ import { migration0008, schemaV7ChatSessionsSql } from './migrations/0008RemoveH
 import { migration0009, schemaV8AgentConversationsSql } from './migrations/0009OpeningVariableVersion'
 import { migration0010 } from './migrations/0010ScriptLibraries'
 import { migration0011, schemaV10PresetStateSql } from './migrations/0011PresetPurposes'
+import { migration0012 } from './migrations/0012EditorConfiguration'
+import { legacySettingSnapshotsSql } from './migrations/conversationStateStorage'
+import { addRegexLibraryEnablement } from './migrations/regexLibraryEnablement'
 import { commonSchemaSql } from './migrations/commonSchemaSql'
 import { BASELINE_ID, CURRENT_SCHEMA_VERSION } from './schemaVersion'
 
@@ -25,7 +28,7 @@ const PRE_RELEASE_V2_BASELINES = [BASELINE_ID, 'eleckoi-common-v1-2026-09-14-run
 // 出发的步骤，并同步删除 import、登记和 tests/database.test.ts 中对应旧库 fixture。
 // 当前仍支持 v1 连续升级至 v11；已升级的本机数据库不能证明其他旧安装已完成迁移。
 // 剩余受支持版本必须仍有连续原子迁移链，当前 SQL、版本常量和完整性检查始终保留。
-const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007, migration0008, migration0009, migration0010, migration0011] as const
+const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007, migration0008, migration0009, migration0010, migration0011, migration0012] as const
 const unreleasedGenerationTableSql = 'CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )'
 
 function hasTable(database: Database.Database, name: string): boolean {
@@ -36,12 +39,20 @@ function normalized(sql: string): string {
   return sql.replace(/\bIF NOT EXISTS\s+/gi, '').replace(/\s+/g, ' ').replace(/;$/, '').trim()
 }
 
-function validateSchema(database: Database.Database, previousChatSessionsSql?: string, unreleasedGenerationResults = false, previousVariableBinding = false, previousScripts = false, previousPresets = false): void {
+function validateSchema(database: Database.Database, previousChatSessionsSql?: string, unreleasedGenerationResults = false, previousVariableBinding = false, previousScripts = false, previousPresets = false, previousDisplayTemplates = false, previousEditorVersions = false, previousRuntimeStates = false, previousRegexLibraries = false): void {
   const installed = database.prepare("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL").all() as { name: string; sql: string }[]
   const objects = new Map(installed.map((row) => [row.name, normalized(row.sql)]))
   for (const match of commonSchemaSql.matchAll(/(CREATE (?:TABLE|(?:UNIQUE )?INDEX|VIEW)[\s\S]*?);/g)) {
     let sql = match[1]!
     const name = sql.match(/^CREATE (?:TABLE|(?:UNIQUE )?INDEX|VIEW) (?:IF NOT EXISTS )?`?([\w]+)`?/)?.[1]
+    if (name === 'editor_library_versions' && previousEditorVersions) continue
+    if (name === 'regex_libraries' && (previousDisplayTemplates || previousRuntimeStates || previousRegexLibraries)) continue
+    if (previousRuntimeStates && (name === 'conversation_state_snapshots' || name === 'index_conversation_state_snapshots_session_turn')) continue
+    if (previousRuntimeStates && name === 'agent_responses') {
+      sql = sql.replace(', `runtimeThreadId` TEXT NOT NULL', ', `variableStateJson` TEXT NOT NULL, `runtimeThreadId` TEXT NOT NULL')
+        .replace(', PRIMARY KEY(`id`)', ", `storedRegexRulesJson` TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(`id`)")
+    }
+    if (name === 'display_template_libraries' && previousDisplayTemplates === true) continue
     if (name === 'script_libraries' && previousScripts) continue
     if (name === 'chat_sessions' && previousChatSessionsSql) sql = previousChatSessionsSql
     if (name === 'agent_conversations' && previousVariableBinding) sql = schemaV8AgentConversationsSql
@@ -55,6 +66,9 @@ function validateSchema(database: Database.Database, previousChatSessionsSql?: s
     }
     if (!name || objects.get(name) !== normalized(sql)) throw new Error(`公共数据库结构不匹配：${name ?? 'unknown'}。`)
   }
+  if (previousRuntimeStates && objects.get('agent_setting_snapshots') !== normalized(legacySettingSnapshotsSql)) {
+    throw new Error('旧聊天设定快照结构不匹配，拒绝修改数据。')
+  }
   if (unreleasedGenerationResults && objects.get('conversation_generation_results') !== normalized(unreleasedGenerationTableSql)) {
     throw new Error('未发布开发库的生成结果表结构不匹配，拒绝修改数据。')
   }
@@ -65,10 +79,10 @@ function requiredTableNames(): string[] {
     .map((match) => match[1]!)
 }
 
-function validateTableInventory(database: Database.Database, unreleasedGenerationResults = false, previousScripts = false): void {
+function validateTableInventory(database: Database.Database, unreleasedGenerationResults = false, previousScripts = false, previousDisplayTemplates = false, previousEditorVersions = false, previousRuntimeStates = false, previousRegexLibraries = false): void {
   const installed = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
     .all() as { name: string }[]
-  const required = [...requiredTableNames().filter(name => !previousScripts || name !== 'script_libraries'), ...(unreleasedGenerationResults ? ['conversation_generation_results'] : [])]
+  const required = [...requiredTableNames().filter(name => (!previousScripts || name !== 'script_libraries') && (!previousDisplayTemplates || name !== 'display_template_libraries') && (!previousEditorVersions || name !== 'editor_library_versions') && (!previousRuntimeStates || name !== 'conversation_state_snapshots') && (!(previousDisplayTemplates || previousRuntimeStates || previousRegexLibraries) || name !== 'regex_libraries')), ...(unreleasedGenerationResults ? ['conversation_generation_results'] : []), ...(previousRuntimeStates ? ['agent_setting_snapshots'] : [])]
   if (required.some((name) => !installed.some((table) => table.name === name)) || installed.length !== required.length) {
     throw new Error('数据库业务表不完整或包含未知表，拒绝启动。')
   }
@@ -113,8 +127,8 @@ function normalizePreReleaseV2(database: Database.Database, baseline: string, ve
     } else if (oldPresetStorage) {
       normalizeAgentPresetStorage(database)
     } else {
-      validateTableInventory(database, false, true)
-      validateSchema(database, schemaV7ChatSessionsSql, false, true, true, true)
+      validateTableInventory(database, false, true, true, true)
+      validateSchema(database, schemaV7ChatSessionsSql, false, true, true, true, true, true)
     }
     database.prepare('UPDATE desktop_schema SET baseline = ? WHERE id = 1').run(BASELINE_ID)
   }).immediate()
@@ -146,15 +160,44 @@ export function installSchema(database: Database.Database): void {
   const tables = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]
   if (tables.length > 0) {
     let version = database.pragma('user_version', { simple: true }) as number
+    // 未发布 v12 中补齐正则整体启停，先精确校验原结构再原子整理。
+    if (version === 12 && !hasTable(database, 'regex_libraries') && hasTable(database, 'conversation_state_snapshots')) {
+      validateTableInventory(database, false, false, false, false, false, true)
+      validateSchema(database, undefined, false, false, false, false, false, false, false, true)
+      database.transaction(() => {
+        addRegexLibraryEnablement(database)
+        validateTableInventory(database); validateSchema(database)
+        if ((database.pragma('foreign_key_check') as unknown[]).length || database.pragma('integrity_check', { simple: true }) !== 'ok') {
+          throw new Error('正则整体启停整理后的完整性校验失败。')
+        }
+      }).immediate()
+    }
+    // 同一未发布基线只在精确匹配旧结构后原子整理，不重建数据库。
+    // TODO(迁移清理)：停止支持旧开发 v12/v13/v14 结构直接升级后删除此入口；
+    // 正式 v11→v12 迁移及原生旧归档的数据解码不能随之删除。
+    if ([12, 13, 14].includes(version) && hasTable(database, 'agent_setting_snapshots')) {
+      validateTableInventory(database, false, false, false, false, true)
+      validateSchema(database, undefined, false, false, false, false, false, false, true)
+      database.transaction(() => {
+        migration0012.apply(database)
+        validateTableInventory(database); validateSchema(database)
+        if ((database.pragma('foreign_key_check') as unknown[]).length || database.pragma('integrity_check', { simple: true }) !== 'ok') {
+          throw new Error('未发布聊天状态整理后的完整性校验失败。')
+        }
+        database.pragma('user_version = 12')
+      }).immediate()
+      version = 12
+    }
     // 未发布的 v9/v10 开发库只在结构完整匹配时整理，保留变量版本及全部有效数据。
     if ((version === 9 || version === 10) && hasTable(database, 'conversation_generation_results')) {
-      validateTableInventory(database, true, true)
-      validateSchema(database, undefined, true, version === 9, true, true)
+      validateTableInventory(database, true, true, true, true, true)
+      validateSchema(database, undefined, true, version === 9, true, true, true, true, true)
       database.transaction(() => {
         database.exec('DROP TABLE conversation_generation_results')
         if (version === 9) migration0009.apply(database)
         migration0010.apply(database)
         migration0011.apply(database)
+        migration0012.apply(database)
         validateTableInventory(database)
         validateSchema(database)
         if ((database.pragma('foreign_key_check') as unknown[]).length || database.pragma('integrity_check', { simple: true }) !== 'ok') {
@@ -165,10 +208,10 @@ export function installSchema(database: Database.Database): void {
       version = CURRENT_SCHEMA_VERSION
     }
     if (version < CURRENT_SCHEMA_VERSION) {
-      if (version === 6 || version === 7 || version === 8 || version === 9 || version === 10) {
+      if (version >= 6 && version <= 11) {
         normalizePreReleaseV6(database, version)
-        validateTableInventory(database, false, version < 10)
-        validateSchema(database, version < 8 ? schemaV7ChatSessionsSql : undefined, false, version < 9, version < 10, true)
+        validateTableInventory(database, false, version < 10, version < 12, true, true)
+        validateSchema(database, version < 8 ? schemaV7ChatSessionsSql : undefined, false, version < 9, version < 10, version < 11, true, true, true)
         migrate(database, BASELINE_ID, version)
       } else {
         if (!tables.some(({ name }) => name === 'desktop_schema')) throw new Error('此文件不是 ElecKoi 数据库的可迁移版本，拒绝修改数据。')

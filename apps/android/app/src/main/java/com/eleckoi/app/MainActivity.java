@@ -29,7 +29,10 @@ import java.util.concurrent.*;
 
 /** Platform UI only. The real Host owns pages, accounts, products and conversations. */
 public final class MainActivity extends Activity implements HostRuntimeService.Listener {
-    private static final int PICK_FILES = 20, SAVE_FILE = 21, NOTIFICATIONS = 22;
+    private static final int PICK_FILES = 20, SAVE_FILE = 21, NOTIFICATIONS = 22, SAVE_DIAGNOSTICS = 23;
+    private AndroidDiagnostics diagnostics;
+    private File pendingDiagnosticExport;
+    private boolean diagnosticExportBusy;
     private final ExecutorService files = Executors.newSingleThreadExecutor();
     private HostRuntimeService runtime;
     private boolean bound;
@@ -88,6 +91,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        diagnostics=((ElecKoiApplication)getApplication()).diagnostics();
         updates=((ElecKoiApplication)getApplication()).updates();
         updates.observe(updateListener); updates.startup();
         systemSpeech = new SystemSpeech(this, this::platformResult);
@@ -124,6 +128,10 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         actions.addView(button("查看错误", this::showDiagnostics));
         actions.setGravity(Gravity.CENTER_VERTICAL); actions.setPadding(0, dp(2), 0, 0);
         runtimePanel.addView(actions, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        Button recover = button("停用用户插件并重启", this::confirmPluginRecovery);
+        LinearLayout.LayoutParams recoveryLayout = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        recoveryLayout.topMargin = dp(6); recover.setLayoutParams(recoveryLayout);
+        runtimePanel.addView(recover);
         startupProgressPanel = new LinearLayout(this); startupProgressPanel.setOrientation(LinearLayout.VERTICAL);
         startupProgressOverlay = new FrameLayout(this);
         startupProgressOverlay.setClickable(true);
@@ -154,6 +162,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         } catch (IOException error) { throw new IllegalStateException("Packaged platform facade missing", error); }
         web = new PlatformBrowser(this, platformSource, new PlatformBridge(), new BrowserSurface.Listener() {
             public boolean sameHost(String url) { return MainActivity.this.sameHost(url); }
+            public void diagnostic(JSONObject event) { diagnostics.record(event); }
             public void external(String url) { MainActivity.this.openExternal(url); }
             public void failure(String message) { showFailure(message); }
             public void documentReady() { applyImeVisibility(); applyNavigationLayout(); }
@@ -169,7 +178,8 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
             public void download(String url, String disposition, String mime, InputStream body) { browserDownload(url, disposition, mime, body); }
             public BrowserSurface.Resource media(Uri url, String method, java.util.Map<String,String> headers) { return localMedia(url, method, headers); }
         });
-        web.setBackgroundColor(appearanceBackground);
+        web.setAppearance(appearanceDark, appearanceBackground);
+        web.view().setId(R.id.browser_surface);
         page.addView(web.view(), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         FrameLayout.LayoutParams progressLayout = new FrameLayout.LayoutParams(dp(360), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
         startupProgressOverlay.addView(startupProgressPanel, progressLayout);
@@ -191,6 +201,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         });
         page.addView(runtimePanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
         setContentView(page);
+        if(getIntent().getBooleanExtra("eleckoi.diagnostics",false)) ui.post(this::showDiagnostics);
         page.requestApplyInsets();
         // UI development uses the same Android WebView and platform bridge,
         // connected to a local shared Host via adb reverse. It does not claim
@@ -322,6 +333,25 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         if (runtime != null && runtime.snapshot().phase.equals("ready")) loadHostPage(runtime.snapshot().url);
         else startRuntime(HostRuntimeService.RESTART);
     }
+    private void confirmPluginRecovery() {
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("停用用户插件并重启")
+            .setMessage("保留 ElecKoi 内置插件、已安装的插件包及聊天数据，并备份用户插件配置。启动后可进入插件中心卸载不兼容的插件。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("停用并重启", (current, which) -> {
+                web.stopLoading();
+                loadedUrl = ""; clientReadyUrl = ""; pageLoadGeneration++;
+                if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
+                runtimePanel.setVisibility(View.GONE);
+                showStartupProgress(null, getString(R.string.runtime_starting));
+                startRuntime(HostRuntimeService.RECOVER_PLUGINS);
+            }).create();
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            GradientDrawable background = new GradientDrawable(); background.setColor(appearanceSurface); background.setCornerRadius(dp(22));
+            dialog.getWindow().setBackgroundDrawable(background);
+            themeNativeChildren(dialog.getWindow().getDecorView());
+        }
+    }
     @Override public void changed(HostRuntimeService.Snapshot value) {
         if (value.phase.equals("failed") || value.phase.equals("stopped")) {
             showFailure(value.message); return;
@@ -390,6 +420,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         startupExit.start();
     }
     private void loadHostPage(String value) {
+        diagnostics.event("page-lifecycle", "load");
         long generation = ++pageLoadGeneration;
         web.stopLoading();
         loadedUrl = value;
@@ -415,24 +446,80 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         });
     }
     private void showFailure(String error) { runOnUiThread(() -> {
+        diagnostics.record(RuntimeDiagnostics.event("shell-failure", "visible").with("message", error));
+        diagnostics.flushSoon();
         if (pageTimeout != null) ui.removeCallbacks(pageTimeout);
         hideStartupProgress();
         clientStartupFailure = error;
         status.setText(clientStartupDiagnostics.failure(error)); runtimePanel.setVisibility(View.VISIBLE);
     }); }
     private void showDiagnostics() {
-        HostRuntimeService.Snapshot value = runtime == null ? null : runtime.snapshot();
+        if(!diagnostics.enabled()) { showHostDiagnostics(); return; }
+        if(diagnosticsDialog!=null) return;
         ScrollView scrolling = new ScrollView(this); TextView text = new TextView(this); text.setTextIsSelectable(true);
         text.setTextSize(13); text.setLineSpacing(dp(3), 1f); text.setPadding(dp(16), dp(12), dp(16), dp(12));
-        text.setText(value == null ? status.getText() : (clientStartupFailure.isEmpty() ? clientStartupDiagnostics.details() : status.getText())
-            + "\n\n" + value.phase + "\n" + value.message + "\n\n" + value.diagnostic); scrolling.addView(text);
-        TextView title = new TextView(this); title.setText("本地 Host 运行详情"); title.setTextSize(17);
+        text.setText("正在读取运行诊断…"); scrolling.addView(text);
+        diagnostics.report(diagnosticMetadata(), 48_000, text::setText);
+        LinearLayout content=new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
+        int height=Math.min(dp(320),Math.max(dp(100),getResources().getDisplayMetrics().heightPixels-dp(240)));
+        content.addView(scrolling,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,height));
+        LinearLayout actions=new LinearLayout(this); actions.setPadding(dp(16),0,dp(10),0);
+        actions.addView(button("复制",()->diagnostics.report(diagnosticMetadata(),RuntimeDiagnostics.REPORT_BYTES,report->{
+            ((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("ElecKoi 运行诊断",report));
+            Toast.makeText(this,"诊断已复制",Toast.LENGTH_SHORT).show();
+        })));
+        actions.addView(button("导出",()->exportDiagnostics(false))); actions.addView(button("分享",()->exportDiagnostics(true))); content.addView(actions);
+        TextView title = new TextView(this); title.setText("运行诊断"); title.setTextSize(17);
         title.setTypeface(null, android.graphics.Typeface.BOLD); title.setPadding(dp(16), dp(16), dp(16), dp(8));
-        diagnosticsDialog = new AlertDialog.Builder(this).setCustomTitle(title).setView(scrolling)
+        diagnosticsDialog = new AlertDialog.Builder(this).setCustomTitle(title).setView(content)
             .setPositiveButton("关闭", null).setNeutralButton("停止 Host", (dialog, which) -> startRuntime(HostRuntimeService.STOP)).create();
         diagnosticsDialog.setOnShowListener(dialog -> themeDiagnosticsDialog());
         diagnosticsDialog.setOnDismissListener(dialog -> diagnosticsDialog = null);
         diagnosticsDialog.show();
+    }
+    private void showHostDiagnostics() {
+        if(diagnosticsDialog!=null) return;
+        HostRuntimeService.Snapshot value=runtime==null?null:runtime.snapshot();
+        ScrollView scrolling=new ScrollView(this); TextView text=new TextView(this); text.setTextIsSelectable(true);
+        text.setTextSize(13); text.setLineSpacing(dp(3),1f); text.setPadding(dp(16),dp(12),dp(16),dp(12));
+        text.setText(value==null?status.getText():(clientStartupFailure.isEmpty()?clientStartupDiagnostics.details():status.getText())
+            +"\n\n"+value.phase+"\n"+value.message+"\n\n"+value.diagnostic); scrolling.addView(text);
+        TextView title=new TextView(this); title.setText("本地 Host 运行详情"); title.setTextSize(17);
+        title.setTypeface(null,android.graphics.Typeface.BOLD); title.setPadding(dp(16),dp(16),dp(16),dp(8));
+        diagnosticsDialog=new AlertDialog.Builder(this).setCustomTitle(title).setView(scrolling)
+            .setPositiveButton("关闭",null).setNeutralButton("停止 Host",(dialog,which)->startRuntime(HostRuntimeService.STOP)).create();
+        diagnosticsDialog.setOnShowListener(dialog->themeDiagnosticsDialog());
+        diagnosticsDialog.setOnDismissListener(dialog->diagnosticsDialog=null); diagnosticsDialog.show();
+    }
+    private RuntimeDiagnostics.Record diagnosticMetadata() {
+        RuntimeDiagnostics.Record result=diagnostics.environment();
+        if(web!=null) result.with("browser",web.identity());
+        if(runtime!=null) { HostRuntimeService.Snapshot snapshot=runtime.snapshot(); result.with("phase",snapshot.phase).with("hostPid",snapshot.hostPid); }
+        return result;
+    }
+    private void exportDiagnostics(boolean share) {
+        if(diagnosticExportBusy) return;
+        diagnosticExportBusy=true;
+        diagnostics.export(diagnosticMetadata(),report->{
+            if(isFinishing() || isDestroyed()) { diagnosticExportBusy=false; return; }
+            try {
+                if(share) {
+                    Uri uri=androidx.core.content.FileProvider.getUriForFile(this,getPackageName()+".diagnostics",report);
+                    Intent send=new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM,uri)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    send.setClipData(ClipData.newRawUri("诊断报告",uri));
+                    startActivity(Intent.createChooser(send,"分享运行诊断")); diagnosticExportBusy=false;
+                } else {
+                    pendingDiagnosticExport=report;
+                    startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType("text/plain").putExtra(Intent.EXTRA_TITLE,"eleckoi-diagnostics.txt"),SAVE_DIAGNOSTICS);
+                }
+            } catch(Exception failure) { pendingDiagnosticExport=null; diagnosticExportBusy=false; Toast.makeText(this,"诊断导出失败："+failure.getMessage(),Toast.LENGTH_LONG).show(); }
+        },error->{ diagnosticExportBusy=false; Toast.makeText(this,error,Toast.LENGTH_LONG).show(); });
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent);
+        if(intent.getBooleanExtra("eleckoi.diagnostics",false)) showDiagnostics();
     }
     private void notificationSettings() { startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())); }
     private boolean sameHost(String url) {
@@ -490,6 +577,18 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     }
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
+        if(requestCode==SAVE_DIAGNOSTICS) {
+            File report=pendingDiagnosticExport; pendingDiagnosticExport=null;
+            if(resultCode!=RESULT_OK || intent==null || intent.getData()==null || report==null) { diagnosticExportBusy=false; return; }
+            Uri target=intent.getData();
+            files.execute(()->{
+                String result="诊断已导出";
+                try(InputStream input=new FileInputStream(report); OutputStream output=getContentResolver().openOutputStream(target,"wt")) {
+                    if(output==null) throw new IOException("保存目标无法打开"); copy(input,output);
+                } catch(Exception failure) { result="诊断导出失败："+RuntimeDiagnostics.clean(failure.toString(),512); }
+                String message=result; runOnUiThread(()->{ diagnosticExportBusy=false; Toast.makeText(this,message,Toast.LENGTH_LONG).show(); });
+            }); return;
+        }
         if (requestCode == PICK_FILES && fileChoice != null) {
             Uri[] selected = resultCode == RESULT_OK && intent != null && intent.getData() != null ? new Uri[]{intent.getData()} : null;
             if (intent != null && intent.getClipData() != null && resultCode == RESULT_OK) {
@@ -549,6 +648,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
     private final class PlatformBridge implements BrowserSurface.Bridge {
         public Object invoke(String method, JSONArray a) throws Exception {
             switch (method) {
+                case "browserDiagnostics": diagnostics.record(a.getJSONObject(0)); return null;
                 case "clientReady": clientReady(a.getString(0)); return null;
                 case "clientFailed": clientFailed(a.getString(0), a.getString(1)); return null;
                 case "tts": tts(a.getString(0), a.getString(1), a.getString(2)); return null;
@@ -573,6 +673,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         public void clientReady(String url) { runOnUiThread(() -> {
             if (web == null || isFinishing() || !sameHost(url) || !sameHost(web.getUrl()) || !clientReadyUrl.isEmpty()) return;
             clientReadyUrl = loadedUrl;
+            diagnostics.event("page-lifecycle", "client-ready");
             clientStartupDiagnostics.complete();
             clientStartupFailure = "";
             applyImeVisibility();
@@ -655,7 +756,7 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(background));
         getWindow().getDecorView().setBackgroundColor(background);
         if (page != null) page.setBackgroundColor(background);
-        if (web != null) web.setBackgroundColor(background);
+        if (web != null) web.setAppearance(dark, background);
         getWindow().setStatusBarColor(background); getWindow().setNavigationBarColor(background);
         if (Build.VERSION.SDK_INT >= 29) {
             getWindow().setStatusBarContrastEnforced(false);
@@ -680,8 +781,9 @@ public final class MainActivity extends Activity implements HostRuntimeService.L
         startupProgressBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(appearanceBorder));
         themeDiagnosticsDialog();
     }
-    @Override protected void onResume() { super.onResume(); web.onResume(); startupMascot.setActive(true); }
+    @Override protected void onResume() { super.onResume(); diagnostics.visible(true); web.onResume(); startupMascot.setActive(true); }
     @Override protected void onPause() {
+        diagnostics.visible(false); diagnostics.flushSoon();
         startupMascot.setActive(false);
         if (startupExit != null) hideStartupProgress();
         web.onPause(); super.onPause();

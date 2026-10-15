@@ -23,6 +23,22 @@ const props = { message: { id: 'rich-a', conversationId: 'chat-a' }, document: {
 const publish = status => act(() => { state = { ...state, status }; listeners.forEach(listener => listener()); });
 
 describe('rich message document lifecycle', () => {
+  it('keeps an interactive document after a runtime diagnostic, but reports a fatal mount failure', async () => {
+    const onSettled = vi.fn();
+    await act(() => root.render(<RichMessageFrame {...props} onSettled={onSettled} />));
+    const frame = container.querySelector('iframe');
+    const channel = JSON.parse(frame.srcdoc.match(/const channel=("[^"\n]+");/)[1]);
+    await act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow,
+      data: { type: 'eleckoi:frontend-diagnostic', channel, message: 'Synthetic asynchronous exception' } })));
+    expect(container.querySelector('iframe')).toBe(frame);
+    expect(container.querySelector('details').textContent).toContain('Synthetic asynchronous exception');
+    expect(onSettled).not.toHaveBeenCalled();
+    await act(() => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow,
+      data: { type: 'eleckoi:frontend-error', channel, message: 'Synthetic mount failure' } })));
+    expect(container.querySelector('iframe')).toBeNull();
+    expect(container.querySelector('[role="alert"]').textContent).toContain('Synthetic mount failure');
+    expect(onSettled).toHaveBeenCalledWith({ status: 'error', error: 'Synthetic mount failure' });
+  });
   it('keeps the measured height through a width change until the document reports its new height', async () => {
     const callbacks = [];
     vi.stubGlobal('ResizeObserver', class {

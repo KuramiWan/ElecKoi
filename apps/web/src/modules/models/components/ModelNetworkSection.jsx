@@ -1,21 +1,18 @@
-import { Fragment } from "react";
 import { PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
 
 export function ModelNetworkSection({ form, draftHeader, setDraftHeader, onUpdateField, onUpdateHeader, onAddHeader, compact = false }) {
-  const Group = compact ? 'div' : Fragment;
   return (
-    <section className={`model-form-section${compact ? " mobile-model-section mobile-model-network" : ""}`}>
-      <h3>网络</h3>
-      <Group {...(compact ? { className: 'mobile-model-field-group' } : {})}>
+    <section className={`model-form-section${compact ? " mobile-model-section mobile-model-network" : " model-network-section"}`}>
+      <h3>{compact ? '网络' : '网络与请求头'}</h3>
+      <div className={compact ? 'mobile-model-field-group' : 'model-network-fields'}>
       <label>
-        <span>{compact ? '代理' : '网络代理 URL（可选）'}</span>
+        <span>{compact ? '代理' : '网络代理 URL'}</span>
         <input value="" disabled title="当前 DSH 适配器使用系统代理" placeholder="使用系统代理" />
       </label>
       <div className="model-headers-editor">
-        <div className="model-section-heading">
+        {compact && <div className="model-section-heading">
           <h4>自定义请求头</h4>
-          {!compact && <span>随每次请求发送，常用于网关鉴权</span>}
-        </div>
+        </div>}
         {Object.entries(form.custom_headers || {}).map(([name, value]) => (
           <div className="model-header-row" key={name}>
             <input value={name} aria-label="请求头名称" readOnly />
@@ -29,7 +26,7 @@ export function ModelNetworkSection({ form, draftHeader, setDraftHeader, onUpdat
           <button type="button" aria-label="添加请求头" title="添加请求头" onClick={onAddHeader}><PlusIcon /></button>
         </div>
       </div>
-      </Group>
+      </div>
     </section>
   );
 }

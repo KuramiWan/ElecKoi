@@ -1,12 +1,14 @@
 import { gzipSync, gunzipSync } from 'node:zlib'
 import { randomUUID } from 'node:crypto'
 import type { RegexRule } from '@shared/contracts/regex/schemas'
+import { regexRuleTargetSchema } from '@shared/contracts/regex/schemas'
 import type { SettingLibrary, SettingLibraryEntry, SettingLibraryGroup } from '@shared/contracts/settingLibrary/schemas'
 import { validateRegexRule } from '@shared/foundation/regex/RegexRuleProcessor'
 import { decodeRegexDocuments } from '@shared/foundation/regexRuleTransfer'
 import { emptyEntry, normalizeSettingLibrary } from '@product-data/domain/settingLibraries'
 import { convertMvuVariables, type MvuVariableConversion } from './mvuImport'
 import { decodePortableScriptLibrary } from '@product-data/domain/scripts'
+import { decodePortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import { isPng, readPngText } from '@product-data/storage/media/PngTextChunkCodec'
 import type { DecodedCharacterCard, PortableCharacterPackage } from './characterTransferTypes'
 
@@ -220,6 +222,7 @@ function convertedRegexRules(extensions: JsonObject | undefined): RegexRule[] {
     displayName: '酒馆角色卡',
     json: JSON.stringify({ regex_scripts: scripts })
   }], 'Character')
+  if (decoded.failedFileNames.length) throw new Error('角色卡正则包含不支持的应用目标或无效格式，未导入。')
   return decoded.rules.map(({ rule }) => rule)
     .filter((rule) => validateRegexRule(rule) === null)
     .map((rule, order) => ({ ...rule, order }))
@@ -257,7 +260,8 @@ function decodePortableRoot(root: JsonObject): PortableCharacterPackage {
     settingLibraryJson: string(root.setting_library),
     variableConfigJson: string(root.variable_config),
     regexRules: decodePortableRegexRules(root.regex_rules),
-    ...(root.script_library === undefined ? {} : { scriptLibrary: decodePortableScriptLibrary(root.script_library) })
+    ...(root.script_library === undefined ? {} : { scriptLibrary: decodePortableScriptLibrary(root.script_library) }),
+    ...(root.ejs_display_templates === undefined ? {} : { displayTemplates: decodePortableDisplayTemplates(root.ejs_display_templates) })
   }
 }
 
@@ -267,7 +271,6 @@ function portableRoot(value: PortableCharacterPackage): JsonObject {
     version: 1,
     character: {
       name: value.character.name,
-      group: value.character.group,
       frontend_beauty_enabled: value.character.frontendBeautyEnabled,
       profile_age: value.character.profileAge,
       profile_sex: value.character.profileSex,
@@ -285,6 +288,7 @@ function portableRoot(value: PortableCharacterPackage): JsonObject {
     })),
     setting_library: value.settingLibraryJson,
     variable_config: value.variableConfigJson,
+    ...(value.displayTemplates ? { ejs_display_templates: value.displayTemplates } : {}),
     ...(value.scriptLibrary ? { script_library: {
       trees: value.scriptLibrary.trees, variables: value.scriptLibrary.variables, enabled: value.scriptLibrary.enabled,
       files: value.scriptLibrary.files ?? []
@@ -312,12 +316,10 @@ function decodePortableRegexRules(value: unknown): RegexRule[] {
   return objectList(value).map((source, index) => {
     const rule: RegexRule = {
       id: string(source.id).trim() || `regex-${randomUUID()}`,
-      name: string(source.name).slice(0, 60),
-      pattern: string(source.pattern).slice(0, 4_000),
+      name: string(source.name),
+      pattern: string(source.pattern),
       replacement: string(source.replacement),
-      targets: stringList(source.targets).filter((target): target is RegexRule['targets'][number] => (
-        ['UserInput', 'AiOutput', 'SlashCommand', 'SettingContent', 'Reasoning'].includes(target)
-      )),
+      targets: regexRuleTargetSchema.array().parse(stringList(source.targets)),
       enabled: boolean(source.enabled, true),
       displayOnly: boolean(source.display_only),
       promptOnly: boolean(source.prompt_only),
@@ -336,8 +338,7 @@ function decodePortableRegexRules(value: unknown): RegexRule[] {
 
 function portableCharacter(value: JsonObject): PortableCharacterPackage['character'] {
   return {
-    name: (string(value.name) || '导入角色').slice(0, 120),
-    group: string(value.group).slice(0, 40),
+    name: string(value.name) || '导入角色',
     frontendBeautyEnabled: boolean(value.frontend_beauty_enabled),
     profileAge: string(value.profile_age), profileSex: string(value.profile_sex),
     profileHeight: string(value.profile_height), profileBirthday: string(value.profile_birthday),
@@ -383,11 +384,11 @@ function worldBookEntries(worldBook: JsonObject | undefined): JsonObject[] {
 }
 
 function uniqueTitle(requested: string, used: Set<string>): string {
-  const base = requested.trim().slice(0, 120) || '未命名设定'
+  const base = requested.trim() || '未命名设定'
   if (!used.has(base.toLocaleLowerCase())) { used.add(base.toLocaleLowerCase()); return base }
   let suffix = 2
-  while (used.has(`${base} (${suffix})`.slice(0, 120).toLocaleLowerCase())) suffix += 1
-  const candidate = `${base} (${suffix})`.slice(0, 120)
+  while (used.has(`${base} (${suffix})`.toLocaleLowerCase())) suffix += 1
+  const candidate = `${base} (${suffix})`
   used.add(candidate.toLocaleLowerCase())
   return candidate
 }

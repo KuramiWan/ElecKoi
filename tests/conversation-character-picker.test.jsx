@@ -39,12 +39,12 @@ describe('conversation character picker', () => {
       ))
 
       const sidebar = container.querySelector('.conversation-list')
-      const searchRow = container.querySelector('.search-row')
+      const searchRow = container.querySelector('.sidebar-section-header')
       vi.spyOn(sidebar, 'getBoundingClientRect').mockReturnValue({
         left: 76, top: 40, right: 566, bottom: 760, width: 490, height: 720, x: 76, y: 40, toJSON: () => {},
       })
       vi.spyOn(searchRow, 'getBoundingClientRect').mockReturnValue({
-        left: 76, top: 40, right: 566, bottom: 94, width: 490, height: 54, x: 76, y: 40, toJSON: () => {},
+        left: 88, top: 52, right: 554, bottom: 82, width: 466, height: 30, x: 88, y: 52, toJSON: () => {},
       })
 
       await act(async () => container.querySelector('[aria-label="新建对话"]').click())
@@ -54,7 +54,7 @@ describe('conversation character picker', () => {
       expect(sidebar.contains(picker)).toBe(false)
       expect(picker.parentElement).toBe(document.body)
       expect(picker.style.left).toBe('86px')
-      expect(picker.style.top).toBe('92px')
+      expect(picker.style.top).toBe('80px')
       expect(picker.style.width).toBe('470px')
       expect(picker.textContent).toContain('测试角色')
     } finally {

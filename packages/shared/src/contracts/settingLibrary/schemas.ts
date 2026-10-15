@@ -36,7 +36,7 @@ export const settingLibraryOpeningMessageSchema = z.object({
 
 export const settingLibraryEntrySchema = z.object({
   id: z.string().min(1),
-  title: z.string().max(120),
+  title: z.string(),
   iconId: z.string(),
   kind: settingLibraryEntryKindSchema,
   groupId: z.string(),
@@ -85,7 +85,7 @@ export const settingLibraryEntryUpdateSchema = z.object({
 
 export const settingLibraryGroupSchema = z.object({
   id: z.string().min(1),
-  name: z.string().max(80),
+  name: z.string(),
   parentId: z.string(),
   order: z.number().int().min(1),
   treeViewOrder: z.number().int(),
@@ -95,7 +95,7 @@ export const settingLibraryGroupSchema = z.object({
 
 export const settingLibraryPromptPositionSchema = z.object({
   id: z.string().min(1),
-  name: z.string().max(60),
+  name: z.string(),
   anchor: settingLibraryPositionSchema,
   side: settingLibraryPromptPositionSideSchema,
   order: z.number().int().min(1),

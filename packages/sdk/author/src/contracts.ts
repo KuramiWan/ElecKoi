@@ -1,4 +1,6 @@
 import type { AuthorVariablePatch } from './variables'
+import type { AuthorDisplayTemplateLibrary } from './display-templates'
+import type { AuthorEditorLibraryVersions, AuthorEditorLibrarySaveResult } from './editor-versions'
 import type { AuthorVariableRule } from './scripts'
 import type { AuthorAgentTrajectory } from './trajectory'
 export * from './trajectory'
@@ -454,6 +456,16 @@ export interface ElecKoiAuthorApi {
     updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSettingLibraryEntry>
     /** Atomically edits the character's ordinary entries and active version, leaving story overrides unchanged. */
     updateEntries(updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>
+  }
+  readonly displayTemplates: {
+    read(scope: 'global' | 'character' | 'preset'): Promise<AuthorDisplayTemplateLibrary>
+    save(library: AuthorDisplayTemplateLibrary): Promise<AuthorDisplayTemplateLibrary>
+  }
+  readonly editorVersions: {
+    /** 角色作用域固定为本页角色；预设作用域固定为当前扮演预设。 */
+    read(kind: AuthorEditorLibraryVersions['kind'], scope: AuthorEditorLibraryVersions['scope']): Promise<AuthorEditorLibraryVersions>
+    /** 配置正文和命名版本原子保存；documents 为相同类型的正式配置 JSON。 */
+    save(kind: AuthorEditorLibraryVersions['kind'], documents: string[], versions: AuthorEditorLibraryVersions[]): Promise<AuthorEditorLibrarySaveResult>
   }
   readonly presets: {
     list(): Promise<AuthorPresetCatalog>

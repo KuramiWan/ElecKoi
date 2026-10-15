@@ -10,15 +10,10 @@
   background: var(--list);
 }
 
-.character-list-search {
-  grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 10px;
-}
-
 .character-create-menu {
   position: absolute;
   z-index: 92;
-  top: 47px;
+  top: 40px;
   right: 10px;
   display: grid;
   width: 166px;
@@ -62,12 +57,12 @@
   gap: 8px;
   width: calc(100% - 24px);
   height: 38px;
-  margin: 0 12px 14px;
+  margin: 0 12px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 11px;
   background: var(--sidebar-primary-action-bg);
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .character-manager-entry:hover {
@@ -79,7 +74,7 @@
   grid-template-columns: 1fr 1fr;
   align-items: center;
   height: 48px;
-  margin: 0 12px 10px;
+  margin: 0 12px 12px;
   padding: 5px;
   border-radius: 8px;
   background: var(--surface-subtle);
@@ -91,7 +86,7 @@
   height: 38px;
   border-radius: 6px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 14px;
   transition: background 0.14s ease, color 0.14s ease;
 }
 

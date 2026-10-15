@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { SessionEventLike } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionEventLike, SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ConversationSummary, ConversationCreateInput, ConversationDetailsMetadata, ConversationMessageMetadata, ConversationModelSelection, AuthorConversationState, VariableJsonValue, VariableViewerTimeline } from '@eleckoi/dsh-product-api/types'
 import type { TrajectorySnapshot } from '@deepseek-ai/dsh-client-ui-trajectory/client'
 import type { FileUploadProgress } from '@deepseek-ai/dsh-client-file-upload/client'
@@ -9,7 +9,7 @@ import type { ConversationRequestPreview, ConversationRequestPreviewSummary } fr
 import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats/client'
 import type { TokenUsageProjection, ContextPressureProjection, ContextBreakdownProjection } from '@deepseek-ai/dsh-token-meter/client'
 
-export interface ConversationProcessItem { id: string; kind: 'tool' | 'command' | 'file_change' | 'compaction' | 'subagent' | 'action' | 'narrative' | 'reasoning'; status: 'running' | 'complete' | 'error' | 'cancelled'; toolName: string; arguments: string; summary: string; detail: string; startedAtMillis: number; completedAtMillis?: number; parentId?: string; delegatedModel?: string }
+export interface ConversationProcessItem { id: string; kind: 'tool' | 'command' | 'file_change' | 'compaction' | 'subagent' | 'action' | 'narrative' | 'reasoning'; status: 'running' | 'complete' | 'error' | 'cancelled'; toolName: string; arguments: string; summary: string; detail: string; displayDetail?: string; startedAtMillis: number; completedAtMillis?: number; parentId?: string; delegatedModel?: string }
 /** 尚未进入正式 Session 的图片预览。 */
 export interface ConversationPendingImage { attachmentId: string; name: string; dataUrl: string; width?: number; height?: number }
 /** 生图结果和原始 AI 回复的明确关联；提示词从回复解析。 */
@@ -29,9 +29,13 @@ export interface ConversationClientMessage extends Omit<ConversationMessageMetad
   requestId?: string
   /** 正式原生历史；缺失时不能以显示变量或当前变量代替。 */
   nativeVariableStateJson?: string
+  /** 是否存在正式消息快照；显示用空对象不代表历史快照存在。 */
+  variableSnapshotAvailable?: boolean
   /** 重新生成后由正式输入延续记录关联的用户事件。 */
   inputEventSeq?: number
   process?: ConversationProcessItem[]
+  /** 官方轮次起止时间；分页缺失边界时不推算耗时。 */
+  processTiming?: { startedAtMillis?: number; completedAtMillis?: number }
   dshMessageId?: string
   runtimeSessionId?: string
   renderKey?: string
@@ -109,6 +113,12 @@ export interface ElecKoiConversations {
    * @returns 当前页面保存的状态对象。
    */
   getDetailsSnapshot(): ConversationDetailsSnapshot
+  /**
+   * 读取当前聊天已经就绪的正式 Session 引用，生命周期由聊天服务持有，调用者不得释放。
+   * @param runtimeSessionId - 必须与当前聊天一致的正式 Session 编号。
+   * @returns 已就绪的借用引用；尚未就绪或身份不一致时返回 null。
+   */
+  getSessionReference(runtimeSessionId: string): SessionReference | null
   /**
    * 订阅当前聊天的消息变化。
    * @param listener - 状态变化回调。

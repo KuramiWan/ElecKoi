@@ -1,4 +1,6 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
+import type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from './types.js'
+import type { EditorLibraryAddress, EditorLibraryVersions, EditorLibrarySaveRequest, EditorLibrarySaveResult } from './types.js'
 import { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
 import { parseChatImport } from './chatImport.js'
 import { registerHostApiInspect } from './hostInspect.js'
@@ -70,6 +72,9 @@ import type {
   ProductRecordChange,
   RegexRule,
   RegexRuleCollection,
+  RegexEditorTarget,
+  RegexRuleEditorCollection,
+  RegexRuleEditorImportResult,
   RegexRuleImportDocument,
   RegexRuleImportResult,
   RegexRuleScope,
@@ -100,9 +105,9 @@ export type { VariableRuleProvider, VariableRuleRun, VariableRuleContext } from 
 export type { ScriptLibrary, ScriptLibraryScope, ScriptTree } from './types.js'
 import type { ElecKoiSessionEditor } from './sessionEditor.js'
 export type { ElecKoiSessionEditor } from './sessionEditor.js'
-import { testModelConnection, discoverDraftModels, readModelApiKey } from './modelConnection.js'
-export { testModelConnection, discoverDraftModels, readModelApiKey } from './modelConnection.js'
-import type { ModelConnectionInput, ModelDiscoveryInput, ModelDiscoveryResult } from './types.js'
+import { discoverDraftModels, readModelApiKey } from './modelDiscovery.js'
+export { discoverDraftModels, readModelApiKey } from './modelDiscovery.js'
+import type { ModelDiscoveryInput, ModelDiscoveryResult } from './types.js'
 
 export type {
   AgentPreset,
@@ -215,7 +220,7 @@ declare module '@deepseek-ai/cordis' {
       variableStatesByTurn(conversationId: string): Record<string, string>
       prepareRestoreBeforeTurn(conversationId: string, sessionId: string, fromTurn: number, beforeMessageId?: string): {
         state: import('./types.js').ConversationRuntimeStateSnapshot
-        apply(): void
+        apply(retainedInputIds: readonly string[]): void
         rollback(): void
       }
       removeArtifacts(conversationId: string, sessionId: string): Promise<void>
@@ -552,6 +557,17 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
         throw new Error('待显示的消息格式无效。')
       }
       totalLength += message.content.length + message.variableStateJson.length
+      if (message.reasoning !== undefined) {
+        if (message.role !== 'assistant' || !Array.isArray(message.reasoning)) throw new Error('待显示的推理格式无效。')
+        const ids = new Set<string>()
+        for (const item of message.reasoning) {
+          if (!item || typeof item.id !== 'string' || !item.id || typeof item.text !== 'string' || ids.has(item.id)) {
+            throw new Error('待显示的推理格式无效。')
+          }
+          ids.add(item.id)
+          totalLength += item.text.length
+        }
+      }
     }
     if (totalLength > 4 * 1024 * 1024) throw new Error('待显示的消息内容过大。')
     return this.productData.projectConversationMessages(conversationId, messages)
@@ -641,7 +657,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }
     return JSON.stringify({
       format: 'eleckoi.desktop-chat-history',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       snapshot,
       sessionLogs
@@ -679,7 +695,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     try { value = JSON.parse(json) } catch { throw new Error('聊天记录不是有效的 JSON 文件。') }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('聊天记录文件格式不正确。')
     const archive = value as Record<string, unknown>
-    if (archive.format !== 'eleckoi.desktop-chat-history' || archive.version !== 1
+    if (archive.format !== 'eleckoi.desktop-chat-history' || (archive.version !== 1 && archive.version !== 2)
       || !Array.isArray(archive.sessionLogs)) throw new Error('不支持此聊天记录文件。')
     const snapshot = this.productData.parseConversationArchive(archive.snapshot)
     if (snapshot.characterId !== characterId) throw new Error('聊天记录与当前角色不匹配。')
@@ -818,6 +834,10 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     const targetIndex = inspection.events.findIndex(event => Number(event.seq) === atSeq)
     if (targetIndex < 0) throw new Error(`Branch event does not exist: ${atSeq}`)
     const sourceTurn = sessionMessageTurn(inspection.events, targetIndex), target = inspection.events[targetIndex]!
+    if (!visibleSessionMessages(inspection.events).some(message => message.seq === atSeq)
+      || (target.type === 'assistant/message' && !settledSessionReplyText(jsonRecord(target)).trim())) {
+      throw new Error('只能从正式显示的聊天消息创建分支，不能把中间工具步骤当成完整回复状态。')
+    }
     const fork = await this.ownerContext.sessionController.fork({ sessionId: source as SessionId, atSeq })
     let id: string | undefined
     try {
@@ -827,6 +847,18 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
       snapshot.tables.agent_responses = (snapshot.tables.agent_responses ?? []).filter(row => retained.has(String(row.turnId))
         && (row.runtimeThreadId !== source || row.dshTurn === null || Number(row.dshTurn) <= sourceTurn))
       snapshot.tables.agent_branch_turns = (snapshot.tables.agent_branch_turns ?? []).filter(row => retained.has(String(row.turnId)))
+      const inputs = new Set(inspection.events.slice(0, targetIndex + 1).filter(event => event.type === 'user/message')
+        .map(event => String(jsonRecord(event.data).id ?? '')))
+      const stateHistory = snapshot.tables.conversation_state_snapshots
+      const retainedReplies = snapshot.tables.agent_responses
+      if (!stateHistory || !retainedReplies) throw new Error('聊天归档缺少正式状态历史或消息关系。')
+      snapshot.tables.conversation_state_snapshots = stateHistory.filter(row => {
+        if (row.runtimeSessionId !== source) return row.boundaryType === 'reply'
+          ? retainedReplies.some(reply => reply.id === row.boundaryId) : inputs.has(String(row.boundaryId))
+        if (row.turn === null) return row.boundaryType === 'opening' || inputs.has(String(row.boundaryId))
+        return Number(row.turn) < sourceTurn || (Number(row.turn) === sourceTurn
+          && (row.phase === 'before' || target.type === 'assistant/message'))
+      })
       const mappings = new Map(this.productData.conversationArchiveRuntimeSessionIds(snapshot).map(sessionId => [sessionId, sessionId === source ? fork.sessionId as string : sessionId]))
       id = this.productData.importConversationArchive(snapshot, snapshot.characterId, mappings, randomUUID())
       this.productData.renameConversation(id, title)
@@ -935,7 +967,8 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
             runtimeSessionId, fromTurn, retainedSeq === undefined ? eventSeq : Number(retainedSeq), retainedSeq !== undefined
           )
           if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
-          restoreRuntime.apply()
+          const retained = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
+          restoreRuntime.apply(retainedInputMessageIds(retained.events))
         })
       } catch (error) { restoreRuntime.rollback(); throw error }
       this.changeFeed.publish({
@@ -993,7 +1026,8 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
           }
           const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq, true)
           if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
-          restoreRuntime.apply()
+          const retained = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
+          restoreRuntime.apply(retainedInputMessageIds(retained.events))
           await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
         })
       } catch (error) {
@@ -1245,6 +1279,13 @@ function visibleSessionMessages(events: readonly unknown[]): Array<{ seq: number
   return messages
 }
 
+function retainedInputMessageIds(events: readonly unknown[]): string[] {
+  return events.flatMap(candidate => {
+    const event = jsonRecord(candidate), id = jsonRecord(event.data).id
+    return event.type === 'user/message' && typeof id === 'string' && id ? [id] : []
+  })
+}
+
 function sessionAssistantMessages(
   conversationId: string,
   runtimeSessionId: string,
@@ -1257,6 +1298,7 @@ function sessionAssistantMessages(
   role: 'assistant'
   content: string
   variableStateJson: string
+  variableSnapshotAvailable: boolean
   status: 'complete'
   createdAt: string
   runtimeSessionId: string
@@ -1277,8 +1319,8 @@ function sessionAssistantMessages(
     const event = jsonRecord(candidate)
     if (event.type !== 'assistant/message' || event.surfaceOp !== 'append'
       || !Number.isSafeInteger(event.seq)) continue
-    const content = sessionMessageText(event)
-    if (!officialFinalReplyText(content).trim()) continue
+    const content = settledSessionReplyText(event)
+    if (!content.trim()) continue
     const turn = sessionMessageTurn(events, index)
     finalByTurn.set(turn, { event, index, content, turn })
   }
@@ -1286,12 +1328,9 @@ function sessionAssistantMessages(
     let state = variableStateByTurn[String(turn)]
     if (typeof state !== 'string') {
       const rows = historicalByTurn.get(turn) ?? []
-      if (rows.length > 1) throw new Error(`第 ${turn} 轮对应多个历史变量记录，不能任意选择；现有数据未修改。`)
-      state = rows[0]?.variableStateJson
+      state = rows.length === 1 ? rows[0]?.variableStateJson : undefined
     }
-    if (typeof state !== 'string' || !state.trim()) {
-      throw new Error(`缺少第 ${turn} 轮完成后的历史变量记录；现有数据已保留，不能用空对象或当前变量代替。`)
-    }
+    const available = typeof state === 'string' && !!state.trim()
     const rawTime = event.time ?? jsonRecord(event.data).time
     const time = Number(rawTime)
     const createdAt = Number.isFinite(time) && time > 0
@@ -1302,7 +1341,8 @@ function sessionAssistantMessages(
       conversationId,
       role: 'assistant' as const,
       content,
-      variableStateJson: state,
+      variableStateJson: available ? state! : '',
+      variableSnapshotAvailable: available,
       status: 'complete' as const,
       createdAt,
       runtimeSessionId,
@@ -1322,6 +1362,15 @@ function officialFinalReplyText(value: string): string {
   const content = value.slice(markerIndex + FinalOpenTag.length).replace(/^(?:\r\n|\r|\n)/, '')
   return content.replaceAll(FinalCloseTag, '')
     .replace(/(?:\r\n|\r|\n)$/, '')
+}
+
+function settledSessionReplyText(event: Record<string, unknown>): string {
+  const message = jsonRecord(jsonRecord(event.data).message)
+  const source = jsonRecord(message.source)
+  // Transcript import declares complete source replies; their original text has
+  // no generated-final delimiter and must remain unchanged in the Session log.
+  return source.provider === 'eleckoi-import' && source.model === 'transcript'
+    ? sessionMessageText(event) : officialFinalReplyText(sessionMessageText(event))
 }
 
 export function sessionMessageText(event: Record<string, unknown>): string {
@@ -1347,9 +1396,9 @@ function jsonObject(value: unknown): Record<string, DisplayPreferenceValue> {
     : {}
 }
 
-/** 管理模型目录、连接测试和用户主动查看的密钥，通过官方 Typert Remote 公开跨端调用。 */
+/** 管理模型目录和用户主动查看的密钥，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiModelsApi extends TypertRemoteService {
-  static inject = ['typert', 'settings', 'credentials']
+  static inject = ['typert', 'settings', 'credentials', 'llm']
   private readonly ownerContext: Context
   constructor(ctx: Context) {
     super(ctx, 'eleckoiModelsApi', { namespace: 'eleckoiModels' })
@@ -1363,15 +1412,6 @@ export class ElecKoiModelsApi extends TypertRemoteService {
   @Remote
   revealApiKey(configId: string): Promise<string> {
     return readModelApiKey(this.ownerContext, configId)
-  }
-  /**
-   * 通过官方适配器测试工具调用，不创建聊天。
-   * @param input - 本次操作的输入，字段见参数类型。
-   * @returns 工具调用成功时返回 supported: true；失败抛出错误。
-   */
-  @Remote
-  testConnection(input: ModelConnectionInput): Promise<{ supported: true }> {
-    return testModelConnection(this.ownerContext, input)
   }
   /**
    * 读取模型目录，能力来自官方目录或明确配置。
@@ -1698,6 +1738,73 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
   }
 
   /**
+   * 读取共享全局或明确所属角色、预设的显示模板，结果不进入 Agent 设定目录。
+   * @param scope - 全局、角色或预设归属。
+   * @param ownerId - 全局使用空字符串，其他归属使用明确编号。
+   * @returns 完整显示模板库及保存版本。
+   */
+  @Remote
+  readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary {
+    return this.productData.readDisplayTemplates(scope, ownerId)
+  }
+
+  /**
+   * 读取明确归属的命名配置版本，脚本归档只在需要编辑版本时读取。
+   * @param address - 类型、作用域与所属编号；全局使用空所属编号。
+   * @returns 当前版本、命名版本正文和并发修改标识。
+   */
+  @Remote
+  readEditorLibraryVersions(address: EditorLibraryAddress): EditorLibraryVersions {
+    return this.productData.readEditorLibraryVersions(address)
+  }
+
+  /**
+   * 原子保存配置草稿及其命名版本，源码资源在同一操作中保持完整。
+   * @param request - 明确类型的配置文档、版本草稿与读取时的修改标识。
+   * @returns 保存后的配置文档和版本；冲突时保留原数据。
+   */
+  @Remote
+  saveEditorLibraries(request: EditorLibrarySaveRequest): EditorLibrarySaveResult {
+    const result = this.productData.saveEditorLibraries(request)
+    this.publish(request.kind === 'regex' ? 'regexRules' : request.kind)
+    return result
+  }
+
+  /**
+   * 按读取版本保存显示模板并通知已有聊天重新显示。
+   * @param library - 保留读取 revision 的完整库。
+   * @returns 已接受的库及递增版本。
+   */
+  @Remote
+  saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary {
+    const saved = this.productData.saveDisplayTemplates(library)
+    this.publish('displayTemplates', saved.scope === 'character' ? saved.ownerId : undefined)
+    return saved
+  }
+
+  /**
+   * 在同一事务中保存编辑器修改的全局和所属显示模板。
+   * @param libraries - 修改后的库及各自 revision；归属不得重复。
+   * @returns 与输入顺序相同的保存结果；任一冲突时全部回滚。
+   */
+  @Remote
+  saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[] {
+    const saved = this.productData.saveDisplayTemplateLibraries(libraries)
+    this.publish('displayTemplates')
+    return saved
+  }
+
+  /**
+   * 返回全局、当前扮演预设及指定角色的显示模板，各库保持独立归属。
+   * @param characterId - 聊天绑定角色编号。
+   * @returns 全局、预设、角色顺序排列的库。
+   */
+  @Remote
+  displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection {
+    return this.productData.displayTemplatesForCharacter(characterId)
+  }
+
+  /**
    * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
    * @param signal - 取消调用或结束订阅流的信号。
    * @returns 按发生顺序返回变更通知的异步流。
@@ -1929,6 +2036,55 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
   @Remote
   readRegexRules(characterId: string): RegexRuleCollection {
     return this.productData.readRegexRules(characterId)
+  }
+
+  /**
+   * 读取全局及明确归属的正则，不依赖当前启用预设或角色。
+   * @param target - 编辑归属，必须提供明确的角色或预设编号。
+   * @returns 仅含允许范围的规则及版本成员。
+   */
+  @Remote
+  readRegexEditor(target: RegexEditorTarget): RegexRuleEditorCollection {
+    return this.productData.readRegexEditor(target)
+  }
+
+  /**
+   * 原子保存全局及编辑归属的正则，保留其他归属的规则与版本成员。
+   * @param collection - 携带全局及归属版本校验的编辑草稿。
+   * @returns 保存后的编辑配置；过期草稿拒绝保存。
+   */
+  @Remote
+  saveRegexEditor(collection: RegexRuleEditorCollection): RegexRuleEditorCollection {
+    const saved = this.productData.saveRegexEditor(collection)
+    this.publish('regexRules')
+    if (collection.target.scope === 'preset') this.publish('agentPresets')
+    return saved
+  }
+
+  /**
+   * 导入全局及指定归属的规则，拒绝跨归属文件。
+   * @param collection - 导入前的编辑配置与版本。
+   * @param fallbackScope - 文件没有归属字段时使用的允许范围。
+   * @param documents - 正则 JSON 文件。
+   * @returns 导入结果；归属冲突时不写入。
+   */
+  @Remote
+  importRegexEditor(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]): RegexRuleEditorImportResult {
+    const result = this.productData.importRegexEditor(collection, fallbackScope, documents)
+    this.publish('regexRules')
+    if (collection.target.scope === 'preset') this.publish('agentPresets')
+    return result
+  }
+
+  /**
+   * 导出当前编辑归属内选中的规则。
+   * @param target - 明确的编辑归属。
+   * @param ruleIds - 仅限当前编辑器中的规则编号。
+   * @returns 可下载的 JSON 文件名与内容。
+   */
+  @Remote
+  exportRegexEditor(target: RegexEditorTarget, ruleIds: string[]): { fileName: string; json: string } {
+    return this.productData.exportRegexEditor(target, ruleIds)
   }
 
   /**

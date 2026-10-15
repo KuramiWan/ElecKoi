@@ -334,7 +334,7 @@ export class SettingLibraryRepository {
 
   saveConversationAsVersion(characterId: string, conversationId: string, name: string): SettingLibrary {
     return this.store.withWriteTx((db) => {
-      const normalizedName = name.trim().slice(0, 60)
+      const normalizedName = name.trim()
       if (!normalizedName) throw new Error('请输入版本名称。')
       const effective = this.conversationLibrary(characterId, conversationId, db)
       if (!effective) throw new Error('找不到这段对话的分支设定。')

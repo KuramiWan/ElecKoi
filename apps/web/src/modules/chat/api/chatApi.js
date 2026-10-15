@@ -22,6 +22,7 @@ function mapMessage(message) {
     status: message.status,
     pending: message.status === "streaming",
     process: message.process || [],
+    processTiming: message.processTiming,
     turnUsage: message.turnUsage,
     inputImageAttachments: message.inputImageAttachments || [],
     generatedImageAttachments: message.generatedImageAttachments || [],

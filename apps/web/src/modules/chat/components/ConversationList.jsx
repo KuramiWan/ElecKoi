@@ -4,8 +4,7 @@ import { ChevronRightIcon, PinIcon, TrashIcon, WindowIcon } from "../../../ui/ic
 import { ALL_CHARACTERS, characterAvatar, characterCover, characterGroup, characterName } from "../../../utils/characterDisplay.js";
 import { SidebarCharacterArtwork } from "../../../ui/ui/SidebarCharacterArtwork.jsx";
 import { formatDate } from "../../../utils/format.js";
-import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
-import { SidebarCreateButton } from "../../../ui/ui/SidebarCreateButton.jsx";
+import { SidebarSectionHeader } from "../../../ui/ui/SidebarSectionHeader.jsx";
 
 export function ConversationList({
   keyword,
@@ -115,15 +114,10 @@ export function ConversationList({
 
   return (
     <aside className="conversation-list" ref={listRef}>
-      <div className="search-row" ref={searchRowRef}>
-        <DshSearchField value={keyword} onValueChange={setKeyword} placeholder="搜索会话…" ariaLabel="搜索会话" />
-        <SidebarCreateButton
-          title="新建对话"
-          expanded={addCharacterOpen}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => setAddCharacterOpen((open) => !open)}
-        />
-      </div>
+      <SidebarSectionHeader ref={searchRowRef} title="消息" value={keyword} onValueChange={setKeyword}
+        placeholder="搜索会话名称" searchLabel="搜索会话" createLabel="新建对话"
+        createExpanded={addCharacterOpen} onCreatePointerDown={(event) => event.stopPropagation()}
+        onCreate={() => setAddCharacterOpen((open) => !open)} onSearchFocus={() => setAddCharacterOpen(false)} />
 
       {addCharacterOpen && characterPickerStyle && typeof document !== "undefined" ? createPortal(
         <div

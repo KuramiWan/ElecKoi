@@ -121,8 +121,9 @@ try {
   const document = await response.text()
   if (!document.includes('<html')) throw new Error('DSH client boot document was not served')
   const schema = productSchema()
-  if (schema.version !== 11 || schema.objects.filter(row => row.type === 'table').length !== 44) {
-    throw new Error('Product schema baseline changed during SDK integration')
+  const tableCount = schema.objects.filter(row => row.type === 'table').length
+  if (schema.version !== 12 || tableCount !== 47) {
+    throw new Error(`Product schema contract mismatch: ${tableCount} tables, user_version ${schema.version}; expected 47 tables and user_version 12`)
   }
   await remoteCall(ready, cookie, 'eleckoiCompatibility/capabilities', {}, 404)
   await remoteCall(ready, cookie, 'eleckoiAuthorPlugins/capabilities', {}, 404)
@@ -180,8 +181,8 @@ try {
     ].map(row => JSON.stringify(row)).join('\n') })
   const importedState = await remoteCall(ready, cookie, 'eleckoiConversations/authorState', { conversationId: importedChatId })
   if (JSON.parse(importedState.currentVariableStateJson).score !== 9) throw new Error('Imported chat variables were not stored natively')
-  const importedDetails = await remoteCall(ready, cookie, 'eleckoiConversations/details', { conversationId: importedChatId })
-  if (!importedDetails.messages.some(message => message.role === 'assistant' && JSON.parse(message.variableStateJson).score === 7)) {
+  const importedTimeline = await remoteCall(ready, cookie, 'eleckoiConversations/variableTimeline', { conversationId: importedChatId })
+  if (!importedTimeline.floors.some(floor => floor.label !== '开场' && floor.state.root?.score === 7)) {
     throw new Error('Imported message variable history was not stored natively')
   }
   if (existsSync(join(root, 'author-plugins'))) throw new Error('Native import or chat details recreated the retired registry')
@@ -215,6 +216,11 @@ try {
     throw new Error('Imported and merged worldbook settings changed after Host restart')
   }
   const nativeArchive = JSON.parse(restoredImport)
+  if (nativeArchive.snapshot.tables.agent_responses.length !== 0
+    || !nativeArchive.snapshot.tables.conversation_state_snapshots.some(row => row.phase === 'after'
+      && row.variableStateJson !== null && JSON.parse(row.variableStateJson).score === 7)) {
+    throw new Error('Imported state history did not survive natively without reply ledger rows')
+  }
   if (!nativeArchive.sessionLogs.some(log => log.events.some(event => event.type === 'assistant/message'
     && event.data.message.content.some(block => block.type === 'text' && block.text === 'Imported reply')))) {
     throw new Error('Imported chat transcript did not survive Host restart')

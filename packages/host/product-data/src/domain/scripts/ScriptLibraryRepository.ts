@@ -192,6 +192,22 @@ export class ScriptLibraryRepository {
     this.files.mark(scope, ownerId, row ?? null, null)
   }
 
+  replaceResourcesInTransaction(scope: ScriptLibraryScope, ownerId: string, input: unknown): void {
+    const files = decodeScriptFiles(input), directory = this.directory(scope, ownerId)
+    const library = this.get(scope, ownerId)
+    const entries = new Set(library.trees.flatMap(tree => tree.type === 'folder' ? tree.scripts : [tree])
+      .map(item => `scripts/${sourceHash(item.id)}.js`))
+    const next = new Set(files.map(file => process.platform === 'win32' ? file.path.toLowerCase() : file.path))
+    for (const file of files) if (entries.has(process.platform === 'win32' ? file.path.toLowerCase() : file.path)) {
+      throw new Error(`脚本版本资源不能覆盖登记入口：${file.path}`)
+    }
+    for (const name of this.files.names(directory)) {
+      const normalized = process.platform === 'win32' ? name.toLowerCase() : name
+      if (!entries.has(normalized) && !next.has(normalized)) this.files.stage(`${directory}/${name}`, null)
+    }
+    for (const file of files) this.files.stage(`${directory}/${file.path}`, Buffer.from(file.data, 'base64'))
+  }
+
   private sources(index: SourceIndex): string[] {
     return index.items.flatMap(item => item.type === 'folder' ? item.scripts.map(script => script.sourceFile) : [item.sourceFile])
   }

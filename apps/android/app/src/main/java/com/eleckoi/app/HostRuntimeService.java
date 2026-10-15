@@ -19,6 +19,7 @@ import java.util.concurrent.*;
 /** Owns one actual ARM64 Node Host independently of Activity rotation and WebView lifetime. */
 public final class HostRuntimeService extends Service {
     static final String START = "com.eleckoi.app.START", STOP = "com.eleckoi.app.STOP", RESTART = "com.eleckoi.app.RESTART";
+    static final String RECOVER_PLUGINS = "com.eleckoi.app.RECOVER_PLUGINS";
     private static final String CHANNEL = "unified-host", PREFIX = "ELECKOI_HOST\t";
     private static final int NOTIFICATION = 41;
     public interface Listener { void changed(Snapshot snapshot); }
@@ -77,9 +78,11 @@ public final class HostRuntimeService extends Service {
         String action = intent == null ? START : intent.getAction();
         startForeground(NOTIFICATION, notification(snapshot.message)); foregroundActive = true;
         if (STOP.equals(action)) {
-            stopping = true; control.execute(() -> { stopHost(); foregroundActive = false; stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); });
-        } else if (RESTART.equals(action)) {
-            stopping = true; control.execute(() -> { stopHost(); stopping = false; startHost(); });
+            stopping = true; control.execute(() -> { if (stopHost()) { foregroundActive = false; stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); } });
+        } else if (RESTART.equals(action) || RECOVER_PLUGINS.equals(action)) {
+            stopping = true; control.execute(() -> {
+                if (stopHost()) { stopping = false; startHost(RECOVER_PLUGINS.equals(action)); }
+            });
         } else if (process == null && !starting) {
             profileStartup = intent != null && intent.getBooleanExtra("eleckoi.profileStartup", false)
                 && (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
@@ -91,6 +94,9 @@ public final class HostRuntimeService extends Service {
     public void observe(Listener listener) { listeners.add(listener); main.post(() -> listener.changed(snapshot)); }
     public void removeObserver(Listener listener) { listeners.remove(listener); }
     private void startHost() {
+        startHost(false);
+    }
+    private void startHost(boolean disableUserPlugins) {
         starting = true;
         startupStartedAt = SystemClock.elapsedRealtime();
         try {
@@ -111,7 +117,7 @@ public final class HostRuntimeService extends Service {
             state("starting", "启动 Node 与共同 DSH Host", "",
                 snapshot.installationProgress == null ? null : RuntimeInstallProgress.starting(), true);
             processStartedAt = SystemClock.elapsedRealtime(); firstOutputSeen = false;
-            Process child = RuntimeCommand.create(this, paths, installation, profileStartup).start(); process = child;
+            Process child = RuntimeCommand.create(this, paths, installation, profileStartup, disableUserPlugins).start(); process = child;
             log("Startup child created after " + (SystemClock.elapsedRealtime() - startupStartedAt) + " ms");
             streams.execute(() -> readLines(child, child.getErrorStream(), false));
             streams.execute(() -> readLines(child, child.getInputStream(), true));
@@ -135,6 +141,7 @@ public final class HostRuntimeService extends Service {
                 } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
             });
         } catch (Exception error) {
+            ((ElecKoiApplication)getApplication()).diagnostics().record(RuntimeDiagnostics.failure("host-error",error));
             releaseWakeLock();
             if (!stopping) { log(error.toString()); state("failed", error.getMessage() == null ? error.toString() : error.getMessage(), ""); }
         } finally { starting = false; }
@@ -155,6 +162,7 @@ public final class HostRuntimeService extends Service {
         } catch (Exception error) {
             synchronized (this) {
                 if (process == child && !stopping) {
+                    ((ElecKoiApplication)getApplication()).diagnostics().record(RuntimeDiagnostics.failure("host-error",error));
                     log(error.toString());
                     // Closing the failed process also closes its other output
                     // stream. Preserve the original startup/protocol failure.
@@ -207,13 +215,16 @@ public final class HostRuntimeService extends Service {
                 }
                 break;
             case "fatal": throw new IOException(event.optString("message", "Host fatal error"));
+            case "profile-recovered":
+                log("用户插件已停用，ElecKoi 内置组合已保留。配置备份：" + event.optString("backupPath", "无用户配置文件"));
+                break;
             case "shutdown-complete": log("Host shutdown complete"); break;
             case "update-tasks-complete": log("Host update tasks: " + event.optString("active")); break;
             case "control-error": throw new IOException(event.getString("message"));
             default: throw new IOException("Unknown Host protocol event: " + event.getString("type"));
         }
     }
-    private void stopHost() {
+    private boolean stopHost() {
         Process child = process;
         if (child != null) {
             try {
@@ -222,9 +233,18 @@ public final class HostRuntimeService extends Service {
                 }
                 if (!child.waitFor(15, TimeUnit.SECONDS)) { child.destroy(); if (!child.waitFor(3, TimeUnit.SECONDS)) child.destroyForcibly(); }
             } catch (Exception error) { log("Host shutdown: " + error); child.destroyForcibly(); }
+            try {
+                if (!child.waitFor(5, TimeUnit.SECONDS)) {
+                    state("failed", "Host 未能停止，插件配置未修改，请关闭应用后重试", ""); return false;
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                state("failed", "Host 停止被中断，插件配置未修改", ""); return false;
+            }
             if (process == child) process = null;
         }
         releaseWakeLock(); healthUrl = ""; hostPid = 0; state("stopped", "Host 已停止", "");
+        return true;
     }
     private void refreshDns() {
         if (paths == null) return;
@@ -255,6 +275,7 @@ public final class HostRuntimeService extends Service {
     }
     private synchronized void state(String phase, String message, String url, RuntimeInstallProgress progress, boolean durable) {
         snapshot = new Snapshot(phase, message, url, diagnostics(), healthUrl, runtimeVersion, hostPid, progress);
+        if(durable) ((ElecKoiApplication)getApplication()).diagnostics().record(RuntimeDiagnostics.event("host-lifecycle",phase).with("hostPid",hostPid));
         Snapshot current = snapshot;
         // Copy progress stays in memory; phase transitions retain diagnostics and update the notification.
         if (durable) persistState(current);
@@ -281,8 +302,12 @@ public final class HostRuntimeService extends Service {
     private Notification notification(String text) {
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, HostRuntimeService.class).setAction(STOP), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        return new Notification.Builder(this, CHANNEL).setSmallIcon(android.R.drawable.ic_menu_info_details).setContentTitle("ElecKoi 本地 Host")
-            .setContentText(text).setContentIntent(open).setOngoing(true).addAction(new Notification.Action.Builder(null, "停止", stop).build()).build();
+        PendingIntent diagnostics = PendingIntent.getActivity(this, 2, new Intent(this,MainActivity.class).setAction("eleckoi.diagnostics")
+            .putExtra("eleckoi.diagnostics",true).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification.Builder notification=new Notification.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.ic_menu_info_details).setContentTitle("ElecKoi 本地 Host")
+            .setContentText(text).setContentIntent(open).setOngoing(true);
+        if("compat".equals(BuildConfig.BROWSER_VARIANT)) notification.addAction(new Notification.Action.Builder(null,"运行诊断",diagnostics).build());
+        return notification.addAction(new Notification.Action.Builder(null,"停止",stop).build()).build();
     }
     private synchronized void releaseWakeLock() { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); wakeLock = null; }
     @Override public void onDestroy() {

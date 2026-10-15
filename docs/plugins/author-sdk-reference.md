@@ -563,6 +563,52 @@ updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSetti
 updateEntries(updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>;
 ```
 
+## displayTemplates
+
+### displayTemplates.read
+
+读取共享全局、所属角色或当前扮演预设的 EJS显示模板
+
+作用域：当前页面绑定的原生服务。权限标识：`display_templates.read`。
+
+```ts
+read(scope: 'global' | 'character' | 'preset'): Promise<AuthorDisplayTemplateLibrary>;
+```
+
+### displayTemplates.save
+
+按读取版本保存 EJS显示模板并刷新已有消息
+
+作用域：当前页面绑定的原生服务。权限标识：`display_templates.write`。
+
+```ts
+save(library: AuthorDisplayTemplateLibrary): Promise<AuthorDisplayTemplateLibrary>;
+```
+
+## editorVersions
+
+### editorVersions.read
+
+读取共享全局、所属角色或当前扮演预设的完整配置版本
+
+作用域：当前页面绑定的原生服务。权限标识：`editor_versions.read`。
+
+```ts
+/** 角色作用域固定为本页角色；预设作用域固定为当前扮演预设。 */
+read(kind: AuthorEditorLibraryVersions['kind'], scope: AuthorEditorLibraryVersions['scope']): Promise<AuthorEditorLibraryVersions>;
+```
+
+### editorVersions.save
+
+原子保存正则、脚本或 EJS显示模板的配置及命名版本
+
+作用域：当前页面绑定的原生服务。权限标识：`editor_versions.write`。
+
+```ts
+/** 配置正文和命名版本原子保存；documents 为相同类型的正式配置 JSON。 */
+save(kind: AuthorEditorLibraryVersions['kind'], documents: string[], versions: AuthorEditorLibraryVersions[]): Promise<AuthorEditorLibrarySaveResult>;
+```
+
 ## presets
 
 ### presets.list
@@ -1248,6 +1294,65 @@ export interface AuthorContext {
     projectId?: string;
     entryFile?: string;
     view?: string;
+}
+```
+
+### AuthorDisplayTemplate
+
+```ts
+/** 显示模板是持久作者配置，计算结果只属于消息显示。 */
+export interface AuthorDisplayTemplate {
+    id: string;
+    name: string;
+    enabled: boolean;
+    /** before / after 在 AI 消息开头 / 末尾添加结果；replace 替换匹配片段。 */
+    position: 'before' | 'after' | 'replace';
+    /** replace 使用表达式正文，不包含 /.../g 外壳。 */
+    pattern: string;
+    /** replace 的独立正则标志，例如 g。 */
+    flags: string;
+    /** 标准 <% ... %> EJS 源码，保留空白；新建时可为空。 */
+    source: string;
+}
+```
+
+### AuthorDisplayTemplateLibrary
+
+```ts
+export interface AuthorDisplayTemplateLibrary {
+    scope: 'global' | 'character' | 'preset';
+    ownerId: string;
+    enabled: boolean;
+    revision: number;
+    templates: AuthorDisplayTemplate[];
+}
+```
+
+### AuthorEditorLibrarySaveResult
+
+```ts
+export interface AuthorEditorLibrarySaveResult {
+    documents: string[];
+    versions: AuthorEditorLibraryVersions[];
+}
+```
+
+### AuthorEditorLibraryVersions
+
+```ts
+/** 完整命名版本；content 是对应配置类型的 JSON，脚本版本包含源码及资源，正则版本包含整体 enabled 与 rules。 */
+export interface AuthorEditorLibraryVersions {
+    kind: 'scripts' | 'displayTemplates' | 'regex';
+    scope: 'global' | 'character' | 'preset';
+    ownerId: string;
+    revision: number;
+    resourceRevision: string;
+    activeVersionId: string;
+    versions: Array<{
+        id: string;
+        name: string;
+        content: string;
+    }>;
 }
 ```
 
@@ -1966,6 +2071,16 @@ export interface ElecKoiAuthorApi {
         updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSettingLibraryEntry>;
         /** Atomically edits the character's ordinary entries and active version, leaving story overrides unchanged. */
         updateEntries(updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>;
+    };
+    readonly displayTemplates: {
+        read(scope: 'global' | 'character' | 'preset'): Promise<AuthorDisplayTemplateLibrary>;
+        save(library: AuthorDisplayTemplateLibrary): Promise<AuthorDisplayTemplateLibrary>;
+    };
+    readonly editorVersions: {
+        /** 角色作用域固定为本页角色；预设作用域固定为当前扮演预设。 */
+        read(kind: AuthorEditorLibraryVersions['kind'], scope: AuthorEditorLibraryVersions['scope']): Promise<AuthorEditorLibraryVersions>;
+        /** 配置正文和命名版本原子保存；documents 为相同类型的正式配置 JSON。 */
+        save(kind: AuthorEditorLibraryVersions['kind'], documents: string[], versions: AuthorEditorLibraryVersions[]): Promise<AuthorEditorLibrarySaveResult>;
     };
     readonly presets: {
         list(): Promise<AuthorPresetCatalog>;

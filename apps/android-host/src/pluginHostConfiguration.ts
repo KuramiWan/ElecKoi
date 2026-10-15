@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
-import { initProfile, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-app-boot'
-import { ELECKOI_ANDROID_BUNDLES, ELECKOI_INSTALL_ANCHOR, registerAndroidMobileBundle, registerAndroidFrontendBundles } from './androidPluginBundles'
+import { initProfile } from '@deepseek-ai/dsh-app-boot'
+import { ELECKOI_INSTALL_ANCHOR, registerAndroidMobileBundle, registerAndroidFrontendBundles } from './androidPluginBundles'
+import { ELECKOI_ANDROID_RECOVERY_BUNDLES } from './androidPluginRecovery'
 
 const require = createRequire(ELECKOI_INSTALL_ANCHOR)
 
@@ -80,9 +81,7 @@ export function preparePluginHost(paths: NodeHostConfiguration): PreparedPluginH
   const sessionRoot = join(paths.runtimeDataRoot, 'sessions')
   for (const directory of [paths.homeRoot, paths.runtimeDataRoot, paths.workspaceRoot,
     paths.productMediaRoot, dirname(paths.productDatabasePath), sessionRoot]) mkdirSync(directory, { recursive: true })
-  const webProfile = PROFILE_TEMPLATES.web
-  if (!webProfile) throw new Error('DSH web profile template is unavailable')
-  initProfile(profileDirectory, [...webProfile.bundles, ...ELECKOI_ANDROID_BUNDLES])
+  initProfile(profileDirectory, ELECKOI_ANDROID_RECOVERY_BUNDLES)
   registerAndroidMobileBundle(profileDirectory)
   registerAndroidFrontendBundles(profileDirectory)
   const overlayPath = join(profileDirectory, 'eleckoi-android-host.patch.yml')

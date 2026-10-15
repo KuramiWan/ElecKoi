@@ -3,7 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { PresetPromptEditor, shouldConfirmHiddenTimelineDisable } from '../apps/web/src/modules/presets/components/PresetPromptEditor.jsx';
-import { PresetRegexEditor } from '../apps/web/src/modules/presets/components/PresetRegexEditor.jsx';
+import { RegexRuleList } from '../apps/web/src/modules/regex/components/RegexRuleList.jsx';
+import { REGEX_SCOPES } from '../apps/web/src/modules/regex/model/regexRulesEditing.js';
+const presetRegexList = rules => <RegexRuleList collection={{ globalRules: [], agentPresetRules: rules, characterRules: [] }} scopes={REGEX_SCOPES.filter(scope => scope.id !== 'Character')} query="" selectedId="" collapsed={new Set()} draggedId="" />;
 import { PresetToolsEditor } from '../apps/web/src/modules/presets/components/PresetToolsEditor.jsx';
 import { PresetProfileHeader } from '../apps/web/src/modules/presets/components/PresetProfileHeader.jsx';
 import { buildPresetListSections, PresetListRow, presetListContextActions, shouldShowPresetCatalogLoading } from '../apps/web/src/modules/presets/components/PresetPanel.jsx';
@@ -30,6 +32,7 @@ vi.mock('../apps/web/src/modules/settingLibraries/index.js', async () => {
 vi.mock('../apps/web/src/modules/regex/index.js', () => ({ RegexRuleInspector: () => null, newRegexId: () => crypto.randomUUID() }));
 
 vi.stubGlobal('React', React);
+vi.stubGlobal('window', { innerWidth: 1280 });
 afterAll(() => vi.unstubAllGlobals());
 const preset = { id: 'test', name: '测试', groups: [], entries: [], regexRules: [], expandedGroupIds: [], promptPositions: [], activeVersionId: '' };
 const props = { preset, onChange: () => {}, saveAction: null };
@@ -57,8 +60,8 @@ describe('preset list consistency', () => {
     expect(presetSource).not.toContain('新建缓存设定');
 
     const librarySource = readFileSync(new URL('../apps/web/src/modules/settingLibraries/components/SettingLibraryPanel.jsx', import.meta.url), 'utf8');
-    const entryOffsets = [...librarySource.matchAll(/requestAddNode\("entry"/g)].map((match) => match.index);
-    const referenceOffsets = [...librarySource.matchAll(/requestAddNode\("reference"/g)].map((match) => match.index);
+    const entryOffsets = [...librarySource.matchAll(/requestAddNode\(["']entry["']/g)].map((match) => match.index);
+    const referenceOffsets = [...librarySource.matchAll(/requestAddNode\(["']reference["']/g)].map((match) => match.index);
     expect(librarySource).not.toContain('requestAddNode("cache"');
     expect(entryOffsets).toHaveLength(2);
     expect(referenceOffsets).toHaveLength(2);
@@ -139,7 +142,6 @@ describe('preset list consistency', () => {
       'PresetPanel.jsx',
       'PresetIntroductionEditor.jsx',
       'PresetPromptEditor.jsx',
-      'PresetRegexEditor.jsx',
     ];
     for (const file of presetComponents) {
       const source = readFileSync(new URL(`../apps/web/src/modules/presets/components/${file}`, import.meta.url), 'utf8');
@@ -158,7 +160,6 @@ describe('preset list consistency', () => {
 
   it.each([
     [PresetPromptEditor, '还没有预设提示词', '预设提示词列表'],
-    [PresetRegexEditor, '还没有预设正则', '预设正则列表'],
   ])('uses the shared muted, centered empty state and a keyboard-focusable list', (Editor, empty, label) => {
     const html = renderToStaticMarkup(<Editor {...props} />);
     expect(html).toContain(`<p class="setting-library-empty">${empty}</p>`);
@@ -215,19 +216,20 @@ describe('preset list consistency', () => {
 
   it('keeps regex rows to an accessible open action and a switch without overflow actions', () => {
     const rule = { id: 'rule', name: '隐藏状态栏', enabled: true, pattern: '', replacement: '' };
-    const html = renderToStaticMarkup(<PresetRegexEditor {...props} preset={{ ...preset, regexRules: [rule] }} />);
-    const row = html.slice(html.indexOf('class="preset-regex-row'));
-    expect(row.match(/<button\b/g)).toHaveLength(2);
-    expect(row).toContain('preset-regex-open');
-    expect(row).toContain('role="switch" aria-checked="true"');
+    const html = renderToStaticMarkup(presetRegexList([rule]));
+    const row = html.slice(html.indexOf('class="regex-rule-row'));
+    expect(row).toContain('tabindex="0"');
+    expect(row).toContain('regex-rule-main');
+    expect(row).toMatch(/<input(?=[^>]*type="checkbox")(?=[^>]*checked="")/);
     expect(row).not.toContain('删除');
     expect(row).not.toContain('复制');
   });
 
   it('visually marks disabled regex rules without disabling their controls', () => {
-    const html = renderToStaticMarkup(<PresetRegexEditor {...props} preset={{ ...preset, regexRules: [{ id: 'off', name: '停用', pattern: '', replacement: '', enabled: false }] }} />);
-    expect(html).toContain('preset-regex-row is-disabled');
-    expect(html).toContain('aria-checked="false"');
+    const html = renderToStaticMarkup(presetRegexList([{ id: 'off', name: '停用', pattern: '', replacement: '', enabled: false }]));
+    expect(html).toContain('regex-rule-row');
+    expect(html).toContain('type="checkbox"');
+    expect(html).not.toContain('checked=""');
     expect(html).not.toContain('disabled=""');
   });
 

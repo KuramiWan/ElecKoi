@@ -1,11 +1,13 @@
-import { CaretDown, FileCode } from "../../../ui/icons/interfaceIcons.jsx";
+import { FileCode } from "../../../ui/icons/interfaceIcons.jsx";
+import { EditorLibraryGroup } from '../../../ui/ui/EditorLibraryGroup.jsx';
 import { REGEX_SCOPES, rulesForScope } from "../model/regexRulesEditing.js";
 import { useTouchReorder } from '../../../ui/tree/useTouchReorder.js';
+import { EditorSelectionCheckbox } from '../../../ui/ui/EditorCollectionControls.jsx';
 
-function RuleSwitch({ checked, onChange, label }) {
+function RuleSwitch({ checked, onChange, label, disabled }) {
   return (
     <label className="regex-rule-switch" aria-label={label} onDoubleClick={event => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" aria-label={label} checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
       <i aria-hidden="true" />
     </label>
   );
@@ -13,18 +15,21 @@ function RuleSwitch({ checked, onChange, label }) {
 
 export function RegexRuleList({
   collection,
+  scopes = REGEX_SCOPES,
   query,
   selectedId,
-  collapsed,
   draggedId,
-  onToggleSection,
   onSelect,
   onOpen,
   onToggleRule,
+  onToggleScope,
   onMove,
   onDragState,
   touchReorder = false,
   dragEnabled = true,
+  selection,
+  onContextMenu,
+  busy,
 }) {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const touch = useTouchReorder({ enabled: touchReorder && dragEnabled && !normalizedQuery, onSelect,
@@ -37,27 +42,24 @@ export function RegexRuleList({
 
   return (
     <div className="regex-rule-groups" {...touch.handlers}>
-      {REGEX_SCOPES.map((scope) => {
+      {scopes.map((scope) => {
         const allRules = rulesForScope(collection, scope.id);
         const visibleRules = allRules.filter(matches);
         const enabledCount = allRules.filter((rule) => rule.enabled).length;
-        const isCollapsed = collapsed.has(scope.id) && !normalizedQuery;
+        const scopeEnabled = collection[scope.enabledKey] !== false;
         return (
-          <section className="regex-rule-group" key={scope.id}>
-            <button type="button" className="regex-group-heading" aria-expanded={!isCollapsed} onClick={() => onToggleSection(scope.id)}>
-              <CaretDown size={15} className={isCollapsed ? "is-collapsed" : ""} />
-              <strong>{scope.label}</strong>
-              <span>{enabledCount} / {allRules.length}</span>
-            </button>
-            {!isCollapsed ? (
-              <div className="regex-group-rows">
+          <EditorLibraryGroup className="regex-rule-group" key={scope.id} title={scope.label}
+            onContextMenu={event => onContextMenu?.(event, { scopeId: scope.id })}
+            count={`${scopeEnabled ? enabledCount : 0} / ${allRules.length}`}
+            actions={!selection?.active && onToggleScope && <RuleSwitch checked={scopeEnabled} label={`启用${scope.label}`} disabled={busy} onChange={enabled => onToggleScope(scope.id, enabled)} />}>
                 {visibleRules.map((rule) => (
                   <div
                     key={rule.id}
-                    className={`regex-rule-row${selectedId === rule.id ? " is-selected" : ""}${(draggedId === rule.id || touch.preview?.dragId === rule.id) ? " is-dragging" : ""}`}
-                    data-reorder-id={rule.id} data-reorder-parent={scope.id}
+                    className={`regex-rule-row${selection?.active ? selection.selected.has(rule.id) ? ' is-selected' : '' : selectedId === rule.id ? " is-selected" : ""}${(draggedId === rule.id || touch.preview?.dragId === rule.id) ? " is-dragging" : ""}`}
+                    data-reorder-id={rule.id} data-reorder-parent={scope.id} data-enabled={scopeEnabled && rule.enabled}
                     data-reorder-target={touch.preview?.targetId === rule.id ? (touch.preview.after ? 'after' : 'before') : undefined}
                     onClick={() => onSelect(rule.id)}
+                    onContextMenu={event => onContextMenu?.(event, { scopeId: scope.id, ruleId: rule.id })}
                     onDoubleClick={() => onOpen?.(rule.id)}
                     onDragOver={(event) => {
                       if (!dragEnabled || query || !draggedId || draggedId === rule.id) return;
@@ -66,6 +68,7 @@ export function RegexRuleList({
                       onMove(scope.id, draggedId, targetIndex);
                     }}
                   >
+                    <EditorSelectionCheckbox selection={selection} id={rule.id} label={rule.name || '未命名规则'} disabled={busy} />
                     <div
                       className="regex-rule-main"
                       draggable={dragEnabled && !query}
@@ -89,13 +92,11 @@ export function RegexRuleList({
                       <FileCode size={18} aria-hidden="true" />
                       <span>{rule.name.trim() || "未命名规则"}</span>
                     </div>
-                    <RuleSwitch checked={rule.enabled} label={`${rule.name || "未命名规则"}启用状态`} onChange={(enabled) => onToggleRule(scope.id, rule.id, enabled)} />
+                    {!selection?.active && <RuleSwitch checked={rule.enabled} disabled={busy} label={`${rule.name || "未命名规则"}启用状态`} onChange={(enabled) => onToggleRule(scope.id, rule.id, enabled)} />}
                   </div>
                 ))}
-                {visibleRules.length === 0 ? <p className="regex-group-empty">{normalizedQuery ? "没有匹配的规则" : "暂无规则"}</p> : null}
-              </div>
-            ) : null}
-          </section>
+                {visibleRules.length === 0 ? <p className="editor-library-empty">{normalizedQuery ? "没有匹配的规则" : "暂无规则"}</p> : null}
+          </EditorLibraryGroup>
         );
       })}
     </div>

@@ -148,15 +148,18 @@ describe('DSH request configuration', () => {
     }
   });
 
-  it('replaces only the final compaction instruction with the active preset template', () => {
+  it('replaces only the final compaction instruction and preserves the native request envelope', () => {
     const first = { id: 'earlier', role: 'user', content: [{ type: 'text', text: '较早对话' }] };
     const upstream = { id: 'upstream', role: 'user', content: [{ type: 'text', text: 'DSH 默认英文压缩模板' }] };
+    const tools = [{ name: 'read', description: 'read', parameters: {} }];
+    const toolHistory = { tools, updates: [] };
+    const signal = new AbortController().signal;
     const projected = projectCompactionRequest({
       provider: 'deepseek-official',
       model: 'deepseek-flash',
       purpose: 'compaction',
       reasoningEffort: 'high',
-      tools: [{ name: 'read', description: 'read', parameters: {} }],
+      tools, toolHistory, signal,
       messages: [first, upstream],
     }, '请用中文保留角色状态和未完成剧情。', 'low');
 
@@ -164,7 +167,9 @@ describe('DSH request configuration', () => {
     expect(projected.messages[1]).toMatchObject({ id: 'upstream', role: 'user' });
     expect(projected.messages[1].content[0].text).toContain('请用中文保留角色状态和未完成剧情。');
     expect(projected.messages[1].content[0].text).not.toContain('DSH 默认英文压缩模板');
-    expect(projected).not.toHaveProperty('tools');
+    expect(projected.tools).toBe(tools);
+    expect(projected.toolHistory).toBe(toolHistory);
+    expect(projected.signal).toBe(signal);
     expect(projected.reasoningEffort).toBe('high');
   });
 
@@ -251,7 +256,7 @@ describe('DSH request configuration', () => {
       expect(options.messages).toBe(frozenMessages);
       expect(projected).not.toBe(options);
       expect(projected.messages[0].content[0].text).toContain('只保留角色状态与剧情伏笔。');
-      expect(projected).not.toHaveProperty('tools');
+      expect(projected.tools).toBe(options.tools);
       expect(projected.reasoningEffort).toBe('low');
 
       dispose();

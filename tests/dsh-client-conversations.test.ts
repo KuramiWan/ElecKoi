@@ -126,6 +126,7 @@ function mountCatalog(
     conversation?: { input: { for: (ctx: unknown) => unknown } }
     requestAnimationFrame?: (callback: () => void) => number
     cancelAnimationFrame?: (id: number) => void
+    json?: Pick<JSON, 'parse' | 'stringify'>
   } = {}
 ) {
   let registration: { id: string; factory: () => { apply: (ctx: unknown) => void } } | undefined
@@ -146,6 +147,7 @@ function mountCatalog(
   runInNewContext(source, {
     AbortController,
     setTimeout, clearTimeout,
+    JSON: runtime.json ?? JSON,
     requestAnimationFrame: runtime.requestAnimationFrame,
     cancelAnimationFrame: runtime.cancelAnimationFrame,
     window: {
@@ -173,6 +175,210 @@ function mountCatalog(
 }
 
 describe('DSH ElecKoi conversation client model', () => {
+  it('exposes only the ready current Session without transferring its release ownership', async () => {
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = mounted.catalog as any
+    const reference = { sessionId: 'synthetic-session', release: vi.fn() }
+    try {
+      await settle()
+      catalog.sessionReference = reference
+      expect(catalog.getSessionReference(reference.sessionId)).toBeNull()
+      catalog.sessionTarget = { getSnapshot: () => null }
+      expect(catalog.getSessionReference('other-session')).toBeNull()
+      expect(catalog.getSessionReference(reference.sessionId)).toBe(reference)
+      expect(reference.release).not.toHaveBeenCalled()
+      catalog.releaseOfficialSession()
+      expect(reference.release).toHaveBeenCalledOnce()
+      expect(catalog.getSessionReference(reference.sessionId)).toBeNull()
+    } finally { mounted.dispose() }
+  })
+
+  it('moves official retry attempts into their AI processing history and retains cancellation and failure facts', async () => {
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = mounted.catalog as any, fixture = officialChatFixture()
+    const event = (type: string, seq: number, data: unknown) => ({ type, seq, time: seq * 100, data })
+    const retry = { retryId: 'synthetic-retry', turn: 1, step: 1, provider: 'synthetic-provider', mode: 'normal',
+      policyKey: 'synthetic-policy', retry: 1, maxRetries: 5, delayMs: 1000,
+      failure: { code: 'RATE_LIMIT', status: 429, message: 'Synthetic overload' } }
+    try {
+      await settle()
+      let snapshot = fixture.replace([event('turn/start', 1, { turn: 1 }), event('step/start', 2, { turn: 1, step: 1 }),
+        event('llm/retry', 3, retry)])
+      const retryNode = [...snapshot.nodes.values()].find((node: any) => node.kind === 'model-retry') as any
+      expect(selectRoleplayChatSeat([], 'synthetic-session', retryNode)).toBeNull()
+      let items = catalog.officialProcess(snapshot).get(1)
+      expect(items).toHaveLength(1)
+      expect(items[0]).toMatchObject({ kind: 'action', toolName: 'model_retry', status: 'running', summary: '等待重试模型请求（1/5）' })
+      const identity = items[0].id
+      snapshot = fixture.append(event('llm/retry-started', 4, { retryId: retry.retryId, turn: 1, step: 1, retry: 1 }))
+      items = catalog.officialProcess(snapshot).get(1)
+      expect(items[0]).toMatchObject({ id: identity, status: 'complete', summary: '已重试模型请求（1/5）' })
+      expect(JSON.parse(items[0].detail).failure).toEqual(retry.failure)
+      snapshot = fixture.append(event('llm/retry', 5, { ...retry, retry: 2 }))
+      snapshot = fixture.append(event('turn/end', 6, { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }))
+      items = catalog.officialProcess(snapshot).get(1)
+      expect(items).toHaveLength(2)
+      expect(items[0].id).toBe(identity)
+      expect(items[1]).toMatchObject({ status: 'cancelled', summary: '模型重试已取消（2/5）' })
+      expect(selectRoleplayChatSeat([], 'synthetic-session', { kind: 'turn-error' })).toBeUndefined()
+    } finally { mounted.dispose() }
+  })
+
+  it('compares live state and regex inputs without serializing growing text, while detecting equal-length changes', async () => {
+    const stringify = vi.fn((value: unknown) => JSON.stringify(value))
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }), { json: { parse: JSON.parse, stringify } })
+    const catalog = mounted.catalog as any
+    const payload = 'synthetic-result '.repeat(128_000)
+    const item = { id: 'synthetic-call', kind: 'tool', status: 'running', toolName: 'synthetic_tool',
+      arguments: payload, summary: 'Synthetic tool', detail: payload, startedAtMillis: 10 }
+    const stream = { id: 'synthetic-chat', status: 'running', runId: 'synthetic-session',
+      requestId: '', messageId: 'synthetic-message', nodeKey: 'synthetic-node', sequence: 1,
+      renderKey: 'synthetic-render', dshTurn: 1, content: payload, process: [item], error: '' }
+    const display = vi.fn(async () => ({ ok: true, value: [] }))
+    catalog.remote.eleckoiConversations.projectDisplay = display
+    const messages = [{ id: 'synthetic-message', role: 'assistant', status: 'streaming',
+      content: payload, variableStateJson: '{}', createdAt: '2026-01-01T00:00:00.000Z' }]
+    try {
+      await settle()
+      catalog.publishStream(stream)
+      const before = catalog.getStreamSnapshot()
+      for (let index = 0; index < 20; index += 1) {
+        catalog.publishStream({ ...stream, sequence: index + 2, process: [{ ...item }] })
+        await catalog.scheduleDisplayProjection('synthetic-chat', { messages: [{ ...messages[0], content: `${payload}${index}` }] })
+      }
+      expect(catalog.getStreamSnapshot()).toBe(before)
+      expect(display).toHaveBeenCalledTimes(1)
+      catalog.publishStream({ ...stream, process: [{ ...item, detail: `${payload.slice(0, -1)}!` }] })
+      expect(catalog.getStreamSnapshot()).not.toBe(before)
+      expect(catalog.getStreamSnapshot().process[0].detail).toBe(`${payload.slice(0, -1)}!`)
+      await catalog.scheduleDisplayProjection('synthetic-chat', { messages: [{ ...messages[0], status: 'complete' }] })
+      await catalog.scheduleDisplayProjection('synthetic-chat', { messages: [{ ...messages[0], status: 'complete', content: `${payload.slice(0, -1)}!` }] })
+      expect(display).toHaveBeenCalledTimes(3)
+      expect(stringify).not.toHaveBeenCalled()
+    } finally { mounted.dispose() }
+  })
+
+  it('reuses unchanged large historical tool results and invalidates them on replacement and Session release', async () => {
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = mounted.catalog as any
+    const readPayload = vi.fn(() => 'Synthetic tool result '.repeat(8192))
+    const root = { kind: 'tool-result', callId: 'synthetic-tool-1', callTime: 10, time: 20,
+      call: { name: 'synthetic_tool', argsRaw: '{"value":1}' },
+      content: [{ type: 'text', get text() { return readPayload() } }], subCalls: [] }
+    const historical = { key: 'synthetic-tool', kind: 'tool-call', anchorSeq: 3,
+      location: { kind: 'step', turn: { turn: 1 } }, data: { root } }
+    const nodes = new Map<string, any>([[historical.key, historical]])
+    const snapshot = () => ({ order: [...nodes.keys()], nodes })
+    try {
+      await settle()
+      const original = catalog.officialProcess(snapshot()).get(1)[0]
+      expect(readPayload).toHaveBeenCalledTimes(1)
+      for (let index = 0; index < 30; index += 1) {
+        nodes.set('synthetic-live', { key: 'synthetic-live', kind: 'assistant-step', anchorSeq: 10,
+          location: { kind: 'step', turn: { turn: 2 } }, data: { turn: 2, step: 1, status: 'running', time: 30,
+            blocks: [{ kind: 'reasoning', text: `Synthetic thought ${index}` }] } })
+        expect(catalog.officialProcess(snapshot()).get(1)[0]).toBe(original)
+      }
+      expect(readPayload).toHaveBeenCalledTimes(1)
+      nodes.set(historical.key, { ...historical, data: { root: { ...root, isError: true } } })
+      expect(catalog.officialProcess(snapshot()).get(1)[0]).toMatchObject({ status: 'error', detail: original.detail })
+      expect(readPayload).toHaveBeenCalledTimes(2)
+      catalog.releaseOfficialSession()
+      catalog.officialProcess(snapshot())
+      expect(readPayload).toHaveBeenCalledTimes(3)
+    } finally { mounted.dispose() }
+  })
+
+  it('keeps historical message objects stable through real official stream publications, prepend and replacement', async () => {
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = mounted.catalog as any
+    const fixture = officialChatFixture()
+    const event = (type: string, seq: number, data: any, surfaceOp?: unknown) => ({ type, seq, time: seq * 10, data,
+      ...(surfaceOp === undefined ? {} : { surfaceOp }) })
+    const turn = (number: number, offset: number) => [
+      event('turn/start', offset + 1, { turn: number }), event('step/start', offset + 2, { turn: number, step: 1 }),
+      event('user/message', offset + 3, { id: `synthetic-input-${number}`, role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: `Synthetic input ${number}` }] }, 'append'),
+      event('assistant/message', offset + 4, { turn: number, step: 1, stream: [], message: {
+        id: `synthetic-reply-${number}`, role: 'assistant', source: { provider: 'synthetic', model: 'synthetic' },
+        content: [{ type: 'text', text: `<FINAL>Synthetic reply ${number}</FINAL>` }] } }, 'append'),
+      event('step/end', offset + 5, { turn: number, step: 1 }), event('turn/end', offset + 6, { turn: number, reason: { kind: 'completed' } }),
+    ]
+    const history = Array.from({ length: 120 }, (_, index) => turn(index + 2, (index + 1) * 6)).flat()
+    let chat = fixture.replace(history)
+    let running = false
+    const state = { getSnapshot: () => ({ running }) }
+    const target = { getSnapshot: () => chat }
+    const messages = () => catalog.getDetailsSnapshot().details.messages
+    try {
+      await settle()
+      catalog.detailsSnapshot = { id: 'synthetic-chat', status: 'ready', runtimeSessionId: 'synthetic-session', error: '',
+        details: { conversation: { id: 'synthetic-chat' }, metadata: {}, messages: [], hasMore: false } }
+      catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+      const first = messages().find((message: any) => message.id === 'synthetic-reply-2')
+      expect(first).toMatchObject({ messageIndex: 1, displayContent: 'Synthetic reply 2', status: 'complete' })
+      running = true
+      chat = fixture.append(event('turn/start', 727, { turn: 122 }))
+      chat = fixture.append(event('step/start', 728, { turn: 122, step: 1 }))
+      chat = fixture.append(event('assistant/live-chunk', 728.01, { turn: 122, step: 1,
+        attemptId: 'synthetic-live-attempt', chunk: { type: 'block-start', index: 0, blockType: 'text' } }))
+      catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+      const stable = messages().find((message: any) => message.id === first.id)
+      const processProjection = vi.spyOn(catalog, 'officialProcess')
+      for (let index = 0; index < 12; index += 1) {
+        chat = fixture.append(event('assistant/live-chunk', 728.1 + index / 100, { turn: 122, step: 1,
+          attemptId: 'synthetic-live-attempt', chunk: { type: 'text-delta', index: 0, text: index === 0 ? '<FINAL>' : 'Synthetic ' } }))
+        catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+        catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+        expect(messages().find((message: any) => message.id === first.id)).toBe(stable)
+      }
+      expect(processProjection).toHaveBeenCalledTimes(12)
+      expect(catalog.getStreamSnapshot().content).toBe('Synthetic '.repeat(11))
+      chat = fixture.prepend(turn(1, 0))
+      catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+      expect(messages().find((message: any) => message.id === first.id)).toMatchObject({ messageIndex: 3, content: first.content })
+      const replacement = history.slice(0, 6)
+      replacement[3] = event('assistant/message', 10, { turn: 2, step: 1, stream: [], message: {
+        id: first.id, role: 'assistant', source: { provider: 'synthetic', model: 'synthetic' },
+        content: [{ type: 'text', text: '<FINAL>Synthetic edited reply</FINAL>' }] } }, 'append')
+      chat = fixture.replace(replacement); running = false
+      catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+      expect(messages()).toHaveLength(2)
+      expect(messages()[1]).toMatchObject({ id: first.id, displayContent: 'Synthetic edited reply', status: 'complete', messageIndex: 1 })
+    } finally { mounted.dispose() }
+  })
+
+  it('reuses settled nested dispatch results when only their parent call or sibling changes', async () => {
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = mounted.catalog as any
+    const readResult = vi.fn(() => 'Synthetic nested result '.repeat(8192))
+    const settledChild = { kind: 'tool-result', callId: 'synthetic-child', callTime: 10, time: 20,
+      call: { name: 'synthetic_child', argsRaw: '{}' }, subCalls: [],
+      content: [{ type: 'text', get text() { return readResult() } }] }
+    const parent = { phase: 'start', callId: 'synthetic-parent', name: 'synthetic_parent', argsRaw: '{}',
+      turn: 1, step: 1, time: 5, subCalls: [settledChild] }
+    const node = { key: 'synthetic-root', kind: 'tool-call', anchorSeq: 1,
+      location: { kind: 'step', turn: { turn: 1 } }, data: { root: parent } }
+    let current = node
+    const snapshot = () => ({ order: [node.key], nodes: new Map([[node.key, current]]) })
+    try {
+      await settle()
+      const original = catalog.officialProcess(snapshot()).get(1)[1]
+      for (let index = 0; index < 20; index += 1) {
+        current = { ...node, data: { root: { ...parent, subCalls: [settledChild,
+          { phase: 'start', callId: 'synthetic-sibling', name: 'synthetic_child', argsRaw: String(index),
+            turn: 1, step: 1, time: 30, subCalls: [] }] } } } as any
+        const process = catalog.officialProcess(snapshot()).get(1)
+        expect(process[1]).toBe(original)
+        expect(process[2]).toMatchObject({ arguments: String(index), parentId: parent.callId })
+      }
+      expect(readResult).toHaveBeenCalledTimes(1)
+      current = { ...node, data: { root: { ...parent, subCalls: [{ ...settledChild, isError: true }] } } } as any
+      expect(catalog.officialProcess(snapshot()).get(1)[1]).toMatchObject({ status: 'error', parentId: parent.callId })
+      expect(readResult).toHaveBeenCalledTimes(2)
+    } finally { mounted.dispose() }
+  })
+
   it('admits a formally identified Studio Session without preparing a roleplay chat', async () => {
     const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
     const catalog = mounted.catalog as any
@@ -465,6 +671,7 @@ describe('DSH ElecKoi conversation client model', () => {
       expect(liveReply).toMatchObject({ status: 'streaming', content: '',
         renderKey: `dsh-reply-${record.runtimeSessionId}-2`, process: [{ id: processId, status: 'running' }] })
       expect(liveReply.sessionEventSeq).toBeUndefined()
+      expect(liveReply.processTiming).toEqual({ startedAtMillis: 700 })
       if (outcome === 'complete') {
         append('compaction/summary', 10, { compactionId: 'synthetic-auto', turn: 2,
           summary: [{ type: 'text', text: 'Synthetic compacted summary' }], shadowedSeqs: [3, 4], shadowedTokenCount: 8000,
@@ -491,11 +698,14 @@ describe('DSH ElecKoi conversation client model', () => {
       if (outcome !== 'interrupted') {
         const reply = catalog.getDetailsSnapshot().details.messages.find((item: any) => item.dshTurn === 2 && item.role === 'assistant')
         expect(reply.process).toMatchObject([{ id: processId, status: outcome === 'complete' ? 'complete' : 'error' }])
+        expect(reply.processTiming).toEqual({ startedAtMillis: 700, completedAtMillis: 1600 })
         catalog.releaseOfficialSession()
         chat = chatFixture.replace(values); trajectory = trajectoryFixture.replace(values)
         await catalog.bindOfficialSession(record.id)
         expect(catalog.getDetailsSnapshot().details.messages.find((item: any) => item.id === reply.id).process)
           .toMatchObject([{ id: processId, status: outcome === 'complete' ? 'complete' : 'error' }])
+        expect(catalog.getDetailsSnapshot().details.messages.find((item: any) => item.id === reply.id).processTiming)
+          .toEqual({ startedAtMillis: 700, completedAtMillis: 1600 })
       }
       catalog.releaseOfficialSession()
       expect(chatListeners.size).toBe(0)
@@ -1488,6 +1698,7 @@ describe('DSH ElecKoi conversation client model', () => {
     expect(opened.messages.map((message: any) => message.messageIndex)).toEqual([0, 1])
     expect(opened.messages[1].variableStateJson).toBe('{"score":7}')
     expect(opened.messages[1].nativeVariableStateJson).toBe('{"score":7}')
+    expect(opened.messages[1].variableSnapshotAvailable).toBe(true)
     expect(catalog.getDetailsSnapshot().details.messages).toMatchObject([
       { id: 'product-user', content: 'official user', runtimeSessionId: 'runtime-1' },
       { id: 'product-assistant', content: '<FINAL>official reply</FINAL>', dshMessageId: 'assistant-dsh' }
@@ -1507,6 +1718,7 @@ describe('DSH ElecKoi conversation client model', () => {
       id: 'dsh-pending-request-new', requestId: 'request-new', content: '你好', status: 'streaming'
     })
     expect(optimistic.at(-1).nativeVariableStateJson).toBeUndefined()
+    expect(optimistic.at(-1).variableSnapshotAvailable).toBe(false)
     const admittedUser = { kind: 'user', anchorSeq: 7, data: {
       kind: 'user', seq: 7, time: 31, content: [{ type: 'text', text: '你好' }],
       source: { kind: 'user', rpcId: 'request-new' }

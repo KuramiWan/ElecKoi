@@ -73,7 +73,9 @@ with zipfile.ZipFile(args.apk) as apk:
     packager = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(packager)
     with apk.open("assets/runtime/app.archive") as source, tarfile.open(fileobj=source, mode="r:gz") as app:
-        packager.verify_shared_asset_layout(app, json.load(app.extractfile("production-closure.json")))
+        inventory = json.load(app.extractfile("production-closure.json"))
+        packager.verify_workspace_entrypoints(app, inventory)
+        packager.verify_shared_asset_layout(app, inventory)
     if json.loads(apk.read("assets/licenses/glibc/execution-provenance.json")) != execution:
         raise ValueError("APK glibc execution provenance differs from the current runtime")
     native_entries = set()
@@ -93,6 +95,14 @@ with zipfile.ZipFile(args.apk) as apk:
         native_entries.add(entry)
     packaged_native = {name for name in apk.namelist() if name.startswith("lib/") and not name.endswith("/")}
     gecko = json.loads((repo / "apps/android/geckoview.lock.json").read_text(encoding="utf-8"))
+    if apk.read("assets/platform-facade.js") != (repo / "apps/android/app/src/main/assets/platform-facade.js").read_bytes():
+        raise ValueError("APK platform facade differs from the current source")
+    choice_script = "assets/standard-choice-prompts.js"
+    if args.variant == "standard":
+        if apk.read(choice_script) != (repo / "apps/android/app/src/standard/assets/standard-choice-prompts.js").read_bytes():
+            raise ValueError("APK standard choice UI differs from the current source")
+    elif choice_script in apk.namelist():
+        raise ValueError("Compat APK unexpectedly contains the standard choice request adapter")
     if args.variant == "compat":
         for library in gecko["native"]:
             value = apk.read(library["path"])

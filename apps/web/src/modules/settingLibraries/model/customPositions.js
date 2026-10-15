@@ -49,7 +49,6 @@ export function createPositionDraft(positions, position = null, anchor = 'insert
 export function savePositionDraft(positions, entries, draft, selectedEntryId = '') {
   const name = draft.name.trim();
   if (!name) throw new Error('填写位置名称');
-  if (name.length > 60) throw new Error('位置名称最多 60 个字符');
   if (!SETTING_LIBRARY_POSITION_OPTIONS.some((option) => option.value === draft.anchor)) throw new Error('选择有效的插入位置');
   const position = { ...draft, name, updatedAt: new Date().toISOString() };
   const exists = positions.some((item) => item.id === draft.id);

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MainPageContext } from '../apps/web/src/app/windows/MainPageContext.jsx';
 import { MobileModelsPage } from '../apps/web/src/mobile/MobileModelsPage.jsx';
 import { blankConfigForProvider } from '../apps/web/src/modules/models/model/modelProviderCatalog.js';
+import { initialConfigForProvider } from '../apps/web/src/modules/models/model/modelConfigDraft.js';
 import projectLogo from '../apps/web/src/assets/eleckoi-app-icon.png';
 
 vi.stubGlobal('React', React);
@@ -26,8 +27,8 @@ async function change(node, value) {
     node.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
-async function mount(configs = [], route = { kind: 'root' }, save = async value => value) {
-  snapshot = { configs, status: 'ready', error: '' };
+async function mount(configs = [], route = { kind: 'root' }, save = async value => value, options = {}) {
+  snapshot = { configs, providers: options.providers || [], status: 'ready', error: '' };
   subscribers = new Set();
   container = document.createElement('div');
   document.body.append(container);
@@ -38,6 +39,7 @@ async function mount(configs = [], route = { kind: 'root' }, save = async value 
     models: {
       subscribe: listener => { subscribers.add(listener); return () => subscribers.delete(listener); },
       getSnapshot: () => snapshot, save: vi.fn(save),
+      discover: vi.fn(options.discover || (async () => [])),
     },
     chat: { modelOptionsByKey: {}, notify: vi.fn() }, route, guardRef,
     scrollPositions: new Map(), pushRoute: vi.fn(), openDrawer: vi.fn(),
@@ -54,13 +56,15 @@ afterEach(async () => {
 });
 
 describe('Android model library and configuration actions', () => {
-  it('omits an unconfigured image section, uses the project logo, and folds the general provider list', async () => {
-    await mount([config('deepseek')]);
+  it('lists only saved configurations with their names and IDs, and folds the general section', async () => {
+    const custom = config('custom', { id: 'example-custom', name: 'Example gateway' });
+    await mount([custom, config('deepseek', { name: 'DeepSeek' })]);
     expect(container.querySelector('section[aria-label="绘画模型"]')).toBeNull();
-    const custom = [...container.querySelectorAll('.mobile-provider-row')].find(node => node.textContent.includes('自定义模型提供商'));
-    expect(custom.querySelector('img').getAttribute('src')).toBe(projectLogo);
+    const customRow = [...container.querySelectorAll('.mobile-provider-row')].find(node => node.textContent.includes(custom.name));
+    expect(customRow.querySelector('img').getAttribute('src')).toBe(projectLogo);
+    expect(customRow.querySelector('small').textContent).toBe(custom.id);
     const dedicated = [...container.querySelectorAll('.mobile-provider-row')].find(node => node.textContent.includes('DeepSeek'));
-    expect(dedicated.querySelector('small').textContent).toBe('官方 API');
+    expect(dedicated.querySelector('small').textContent).toBe('example-deepseek');
     const group = button('通用大模型');
     expect(group.getAttribute('aria-expanded')).toBe('true');
     expect(group.querySelector('svg')).not.toBeNull();
@@ -79,23 +83,83 @@ describe('Android model library and configuration actions', () => {
       subscribers.forEach(listener => listener());
     });
     expect(container.querySelector('section[aria-label="绘画模型"]')).toBeNull();
-    await act(async () => container.querySelector('[aria-label="添加模型提供商"]').click());
+    await act(async () => container.querySelector('[aria-label="新建模型配置"]').click());
     const choices = [...container.querySelectorAll('.mobile-picker-list button')];
-    expect(choices.find(node => node.textContent.includes('自定义模型提供商')).querySelector('img').getAttribute('src')).toBe(projectLogo);
+    expect(choices.find(node => node.textContent.includes('自定义提供商')).querySelector('img').getAttribute('src')).toBe(projectLogo);
     await act(async () => choices.find(node => node.textContent.includes('OpenAI Images')).click());
     expect(view.pushRoute.mock.calls[0][0]).toMatchObject({ kind: 'model-editor', draft: { provider: 'openai_image' } });
   });
 
-  it('requires an explicit configuration selection when a provider has multiple versions', async () => {
+  it('opens each configuration directly and appends new configurations as separate rows', async () => {
     const first = config('custom', { id: 'example-a', name: 'Example A', model: 'example-model-a' });
     const second = config('custom', { id: 'example-b', name: 'Example B', model: 'example-model-b' });
     await mount([first, second]);
-    const provider = container.querySelector('.mobile-provider-row');
-    expect(provider.querySelector('small').textContent).toBe('2 个配置');
-    await act(async () => provider.click());
-    expect(view.pushRoute).not.toHaveBeenCalled();
-    await act(async () => button('Example B').click());
+    const rows = container.querySelectorAll('.mobile-provider-row');
+    expect([...rows].map(row => row.querySelector('strong').textContent)).toEqual(['Example A', 'Example B']);
+    expect(container.querySelector('.mobile-provider-configs')).toBeNull();
+    await act(async () => rows[1].click());
     expect(view.pushRoute).toHaveBeenCalledExactlyOnceWith({ kind: 'model-editor', configId: second.id });
+    await act(async () => {
+      snapshot = { ...snapshot, configs: [...snapshot.configs, config('custom', { id: 'example-c', name: 'Example C' })] };
+      subscribers.forEach(listener => listener());
+    });
+    expect([...container.querySelectorAll('.mobile-provider-row strong')].map(row => row.textContent)).toEqual(['Example A', 'Example B', 'Example C']);
+  });
+
+  it('separates custom, builtin directory and drawing choices, and creates the exact selected builtin route', async () => {
+    const providers = [{ provider: 'example-builtin', displayName: 'Example builtin', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'example-builtin'] },
+      { provider: 'moonshotai', displayName: 'Excluded route' }];
+    await mount([], { kind: 'root' }, undefined, { providers });
+    expect(container.querySelectorAll('.mobile-provider-row')).toHaveLength(0);
+    await act(async () => container.querySelector('[aria-label="新建模型配置"]').click());
+    expect([...container.querySelectorAll('.mobile-model-create-group > label, .mobile-model-create-group > span')].map(node => node.textContent)).toEqual(['内置提供商', '绘画模型']);
+    const select = container.querySelector('[aria-label="从 DSH 目录选择"]');
+    expect([...select.options].map(option => option.value)).toEqual(['', 'example-builtin']);
+    await act(async () => { select.value = 'example-builtin'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(view.pushRoute).toHaveBeenCalledExactlyOnceWith({ kind: 'model-editor', draft: expect.objectContaining({
+      id: 'example-builtin', draftKey: 'example-builtin', name: 'Example builtin', provider: 'custom', builtin: true,
+      useBuiltinModels: true, settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'example-builtin'], api_format: 'catalog',
+    }) });
+    expect(container.querySelector('[aria-label="新建模型配置"][role="dialog"]')).toBeNull();
+  });
+
+  it('opens an already configured builtin by exact ID instead of creating another draft', async () => {
+    const providers = [{ provider: 'example-builtin', displayName: 'Example builtin' }];
+    const saved = config('custom', { id: 'example-builtin', builtin: true });
+    await mount([saved], { kind: 'root' }, undefined, { providers });
+    await act(async () => container.querySelector('[aria-label="新建模型配置"]').click());
+    const select = container.querySelector('[aria-label="从 DSH 目录选择"]');
+    await act(async () => { select.value = saved.id; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(view.pushRoute).toHaveBeenCalledExactlyOnceWith({ kind: 'model-editor', configId: saved.id });
+  });
+
+  it('loads a builtin draft through the shared discovery flow and preserves directory capability defaults on Save', async () => {
+    const providers = [{ provider: 'example-builtin', displayName: 'Example builtin' }];
+    const draft = { ...initialConfigForProvider('example-builtin', providers), draftKey: 'example-builtin' };
+    const model = { id: 'example-model', name: 'Example model', inputModalities: ['text', 'image'], supportsImageInput: true, reasoningEfforts: { low: 'low', high: 'high' } };
+    await mount([], { kind: 'model-editor', draft }, undefined, { providers, discover: async () => [model] });
+    expect(view.models.discover).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: draft.id, builtin: true, api_format: 'catalog' }));
+    expect(container.querySelector('.mobile-model-provider-card strong').textContent).toBe('Example builtin');
+    expect(field('Provider ID').readOnly).toBe(true);
+    expect(container.querySelector('.model-directory-toggle input').checked).toBe(true);
+    expect([...container.querySelectorAll('.model-input-capabilities input')].map(input => input.checked)).toEqual([true, true]);
+    expect(container.querySelector('.model-input-capabilities').disabled).toBe(true);
+    expect(button('保存').disabled).toBe(false);
+    await act(async () => button('保存').click());
+    expect(view.models.save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: draft.id, builtin: true, useBuiltinModels: true,
+      model: model.id, model_options: [expect.objectContaining({ ...model, catalogDefaults: model })] }));
+  });
+
+  it('retains a new builtin draft and reports a failed directory read without creating a saved configuration', async () => {
+    const providers = [{ provider: 'example-builtin', displayName: 'Example builtin' }];
+    const draft = { ...initialConfigForProvider('example-builtin', providers), draftKey: 'example-builtin' };
+    await mount([], { kind: 'model-editor', draft }, undefined, { providers, discover: async () => { throw new Error('Synthetic directory failure'); } });
+    expect(field('Provider ID').value).toBe(draft.id);
+    expect(view.chat.notify).toHaveBeenCalledWith('error', 'Synthetic directory failure');
+    expect(view.models.save).not.toHaveBeenCalled();
+    await act(async () => container.querySelector('[aria-label="返回"]').click());
+    expect(view.leave).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
   });
 
   it('puts one Save action beside the configuration title and saves the current draft through the existing form', async () => {
@@ -104,7 +168,7 @@ describe('Android model library and configuration actions', () => {
     const saving = new Promise(resolve => { finish = resolve; });
     await mount([saved], { kind: 'model-editor', configId: saved.id }, () => saving);
     expect(container.querySelector('.mobile-header h1').textContent).toBe('模型配置');
-    expect(container.querySelector('.mobile-model-provider-card strong').textContent).toBe('自定义模型提供商');
+    expect(container.querySelector('.mobile-model-provider-card strong').textContent).toBe('自定义提供商');
     expect(container.querySelector('.model-detail-header')).toBeNull();
     expect(button('取消')).toBeUndefined();
     const save = button('保存');
@@ -147,7 +211,10 @@ describe('Android model library and configuration actions', () => {
   it('adds and removes manual models in dialogs using the same unsaved draft', async () => {
     const saved = config();
     await mount([saved], { kind: 'model-editor', configId: saved.id });
+    expect([...container.querySelectorAll('.mobile-model-connection-actions button')].map(node => node.textContent)).toEqual(['添加模型', '读取模型']);
     await act(async () => container.querySelector('.model-picker-value').click());
+    expect(container.querySelector('[aria-label="模型列表"]').textContent).not.toContain('添加模型');
+    await act(async () => container.querySelector('[aria-label="模型列表"] [aria-label="关闭"]').click());
     await act(async () => button('添加模型').click());
     expect(container.querySelector('[aria-label="模型列表"]')).toBeNull();
     const manual = container.querySelector('[role="dialog"][aria-label="添加模型"]');
@@ -169,9 +236,10 @@ describe('Android model library and configuration actions', () => {
     await mount([saved], { kind: 'model-editor', configId: saved.id });
     const parameters = container.querySelector('.mobile-model-parameters');
     expect(parameters.querySelector('h3').textContent).toBe('参数');
-    expect(parameters.querySelector('.model-capability-toggle').textContent).toBe('支持图片输入 ');
-    expect(parameters.querySelector('.model-reasoning-profile legend').textContent).toContain('接口支持档位');
-    await act(async () => parameters.querySelector('.model-capability-toggle input').click());
+    expect(parameters.querySelector('.model-input-capabilities').textContent).toContain('文本');
+    expect(parameters.querySelector('.model-input-capabilities').textContent).toContain('图片');
+    expect(parameters.querySelector('.model-reasoning-profile legend').textContent).toContain('支持推理档位');
+    await act(async () => parameters.querySelectorAll('.model-input-capabilities input')[1].click());
     await act(async () => parameters.querySelector('[aria-label="声明支持低档位"]').click());
     await act(async () => button('保存').click());
     expect(view.models.save.mock.calls[0][0].model_options[0]).toMatchObject({ supportsImageInput: true, reasoningEfforts: { low: 'low' } });

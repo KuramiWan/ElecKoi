@@ -139,17 +139,17 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   await waitFor(`document.querySelector('.script-inspector')`, 'Script context edit command did not open the inspector')
   await waitFor(`document.querySelector('.editor-sidebar-pane').getBoundingClientRect().right<=innerWidth`, 'Script inspector did not finish entering the viewport')
   const editorBounds = async () => window.webContents.executeJavaScript(`(() => {
-    const toolbar=document.querySelector('.script-toolbar').getBoundingClientRect(),pane=document.querySelector('.editor-sidebar-pane').getBoundingClientRect();
+    const toolbar=document.querySelector('.script-libraries-panel .editor-collection-toolbar').getBoundingClientRect(),pane=document.querySelector('.editor-sidebar-pane').getBoundingClientRect();
     return {belowToolbar:pane.top>=toolbar.bottom-1,toolbarFullWidth:Math.abs(toolbar.right-document.querySelector('.script-libraries-panel').getBoundingClientRect().right)<1,
       withinViewport:pane.right<=innerWidth&&pane.bottom<=innerHeight,
-      folderControl:Boolean(document.querySelector('[aria-label*="新建"][aria-label*="文件夹"],[aria-label*="新建"][aria-label*="分组"],.script-inspector select'))};
+      folderControl:Boolean(document.querySelector('.script-inspector .script-identity select'))};
   })()`)
-  assert.deepEqual(await editorBounds(), { belowToolbar: true, toolbarFullWidth: true, withinViewport: true, folderControl: false })
+  assert.deepEqual(await editorBounds(), { belowToolbar: true, toolbarFullWidth: true, withinViewport: true, folderControl: true })
   const scriptEditorShot = join(tmpdir(), 'eleckoi-script-editor-desktop.png')
   await captureEditor(scriptEditorShot)
   window.setContentSize(1024, 800)
   await waitFor(`innerWidth<=1030&&document.querySelector('.script-inspector').getBoundingClientRect().right<=innerWidth`, 'Script editor did not fit a narrower desktop')
-  assert.deepEqual(await editorBounds(), { belowToolbar: true, toolbarFullWidth: true, withinViewport: true, folderControl: false })
+  assert.deepEqual(await editorBounds(), { belowToolbar: true, toolbarFullWidth: true, withinViewport: true, folderControl: true })
   window.setContentSize(1440, 1000)
   await waitFor(`innerWidth>=1400`, 'Desktop editor viewport did not return')
   process.stdout.write(`Native editor screenshots: ${frontendShot}, ${scriptEditorShot}\n`)
@@ -330,6 +330,22 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   const presetScripts = await call('eleckoiCharacterConfiguration/readScriptWorkspace', { scope: 'preset', ownerId: preset.id })
   await call('eleckoiAuthorFrontends/select', { owner, projectId })
   await waitFor(`${page}?.contentDocument.querySelector('#result')?.textContent==='ready'`, 'Native role page did not return before deletion')
+  window.setContentSize(420, 900)
+  await waitFor(`innerWidth<=430`, 'Mobile chat viewport did not resize')
+  await waitFor(`${page}?.contentDocument.querySelector('#result')?.textContent==='ready'`, 'Native role page did not render in the mobile chat')
+  await window.webContents.executeJavaScript(`void(window.__nativeDeleteChatApi=${page}.contentWindow.ElecKoi)`)
+  await call('eleckoiConversations/delete', { conversationId })
+  await waitFor(`!(${page})`, 'Deleted conversation frontend remained mounted')
+  assert.equal(await window.webContents.executeJavaScript(`window.__nativeDeleteChatApi.context.current().then(()=> 'unexpected',error=>error.code)`), 'FRAME_CLOSED')
+  assert(!(await call('eleckoiConversations/list', {})).some(item => item.id === conversationId))
+  assert((await call('eleckoiCharacters/list', {})).items.some(item => item.id === characterId))
+  assert.equal((await call('eleckoiAuthorFrontends/workspace', { owner })).selectedProjectId, projectId)
+  assert(existsSync(join(productDataRoot, 'author-frontends', 'projects', projectId)))
+  process.stdout.write('Native author Client: mobile conversation deletion closes its frontend and preserves the role project.\n')
+  const nextChat = await call('eleckoiConversations/create', { input: { title: 'Synthetic deletion chat', metadata: { characterId } } })
+  window.setContentSize(1440, 1000)
+  await window.loadURL(`dsh-app://app/?chat=${encodeURIComponent(nextChat.conversation.id)}`)
+  await waitFor(`${page}?.contentDocument.querySelector('#result')?.textContent==='ready'`, 'Native role page did not reopen for role deletion')
   await window.webContents.executeJavaScript(`(() => {
     window.__nativeDeleteApi=${page}.contentWindow.ElecKoi;
     window.__nativeDeletionFailures=[];
@@ -388,7 +404,12 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   }
   const updateScore = async (value, total) => {
     await window.webContents.executeJavaScript(`(() => {const doc=${examplePage}.contentDocument;doc.querySelector('#score').value=${JSON.stringify(String(value))};doc.querySelector('#update').click()})()`)
-    await waitFor(`${examplePage}?.contentDocument.querySelector('#update')?.disabled===false&&JSON.parse(${examplePage}.contentDocument.querySelector('#state').textContent).total===${total}`, 'Published example rule did not accept the expected derived state')
+    try {
+      await waitFor(`${examplePage}?.contentDocument.querySelector('#update')?.disabled===false&&JSON.parse(${examplePage}.contentDocument.querySelector('#state').textContent).total===${total}`, 'Published example rule did not accept the expected derived state')
+    } catch (error) {
+      throw new Error(`${error.message}\n${JSON.stringify({ state: await call('eleckoiAuthorVariables/getState', { conversationId: exampleChat.conversation.id }),
+        page: await window.webContents.executeJavaScript(`(() => {const frame=${examplePage};return frame&&{state:frame.contentDocument.querySelector('#state').textContent,status:frame.contentDocument.querySelector('#status').textContent,disabled:frame.contentDocument.querySelector('#update').disabled}})()`) })}`)
+    }
   }
   await updateScore(5, 10)
   process.stdout.write('Native author Client: alternate opening and example derivation passed.\n')

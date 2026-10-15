@@ -5,6 +5,65 @@ import { describe, expect, it, vi } from 'vitest'
 import { useChatSessions } from '../apps/web/src/modules/chat/hooks/useChatSessions.js'
 
 describe('conversation display ownership', () => {
+  it.each([false, true])('clears a deactivated conversation and rejects an outstanding open (%s)', async pendingOpen => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    const conversation = { id: 'synthetic-deleted-chat', title: 'Synthetic chat',
+      runtimeSessionId: 'synthetic-deleted-session', metadata: { characterId: 'synthetic-character' } }
+    const details = { conversation, metadata: conversation.metadata, runtimeSessionId: conversation.runtimeSessionId,
+      messages: [{ id: 'synthetic-message', role: 'assistant', content: 'Synthetic reply', sequence: 1 }],
+      hasMore: false, beforeSequence: null }
+    const catalog = { status: 'ready', items: [conversation], error: '' }
+    let snapshot = { details: { id: conversation.id, status: 'ready', details },
+      stream: { id: conversation.id, status: 'idle', content: '', process: [] } }
+    const listeners = new Set()
+    const publish = next => { snapshot = next; for (const listener of listeners) listener() }
+    let finishOpen
+    const model = {
+      getSnapshot: () => catalog, subscribe: () => () => {},
+      getDetailsSnapshot: () => snapshot.details, getChatSnapshot: () => snapshot,
+      subscribeChat: listener => { listeners.add(listener); return () => listeners.delete(listener) },
+      readModelSelection: async () => ({ provider: '', model: '' }),
+      activate: vi.fn(), open: () => new Promise(resolve => { finishOpen = resolve }),
+    }
+    const props = { conversations: model, characters: [], modelConfigs: [],
+      setStatus: vi.fn(), setActiveSectionState: vi.fn(), notify: vi.fn() }
+    const container = document.createElement('div'); document.body.append(container)
+    const root = createRoot(container)
+    let chat
+    function Probe() {
+      chat = useChatSessions(props)
+      return chat.sessionId ? <iframe title="Synthetic role frontend" /> : null
+    }
+    try {
+      await act(() => root.render(<Probe />))
+      await act(() => chat.setInput('Synthetic unsent draft'))
+      let opening
+      if (pendingOpen) await act(() => { opening = chat.loadChat(conversation.id) })
+      for (const status of ['loading', 'error']) {
+        await act(() => publish({ ...snapshot, details: { id: conversation.id, status, details: null } }))
+        expect(chat.sessionId).toBe(conversation.id)
+        expect(container.querySelector('iframe')).not.toBeNull()
+      }
+      // A completed deletion deactivates the catalog before its list refresh.
+      await act(() => publish({ details: { id: '', status: 'idle', details: null },
+        stream: { id: '', status: 'idle', content: '', process: [] } }))
+      expect(chat.sessionId).toBe('')
+      expect(chat.runtimeSessionId).toBe('')
+      expect(chat.chatCharacter.character_id).toBe('')
+      expect(chat.messages).toEqual([])
+      expect(chat.input).toBe('')
+      expect(container.querySelector('iframe')).toBeNull()
+      expect(model.activate).toHaveBeenCalledWith('')
+      if (pendingOpen) {
+        await act(async () => { finishOpen(details); await opening })
+        expect(chat.sessionId).toBe('')
+        expect(container.querySelector('iframe')).toBeNull()
+      }
+    } finally {
+      await act(() => root.unmount()); container.remove(); vi.unstubAllGlobals()
+    }
+  })
+
   it('keeps the selected conversation and its opening together during repeated switches and delayed display projection', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
     const conversations = ['a', 'b'].map(key => ({

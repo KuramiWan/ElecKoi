@@ -68,13 +68,13 @@ describe('desktop updater', () => {
     expect(updater.logger).toBeNull()
   })
 
-  it('turns release HTML into bounded plain text', () => {
+  it('turns release HTML into complete plain text', () => {
     const notes = normalizeReleaseNotes(`<h2>更新</h2><p>修复 &amp; 优化</p>${'很长'.repeat(3_000)}`)
 
     expect(notes).toBeTruthy()
     expect(notes).not.toContain('<h2>')
     expect(notes).toContain('修复 & 优化')
-    expect(notes?.length).toBe(4_000)
+    expect(notes).toContain('很长'.repeat(3_000))
   })
 
   it('publishes available, download and ready states and blocks restart during generation', async () => {

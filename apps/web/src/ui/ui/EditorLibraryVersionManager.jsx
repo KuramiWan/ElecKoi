@@ -1,0 +1,26 @@
+import { useRef, useState } from 'react';
+import { EditorVersionManager } from './EditorVersionManager.jsx';
+
+export function EditorLibraryVersionManager({ title, versions, ownerScope, ownerLabel, onClose, busy, extraActions = [] }) {
+  const [scope, setScope] = useState(ownerScope), [error, setError] = useState('');
+  const input = useRef(null);
+  const current = versions.current(scope);
+  const run = operation => { try { setError(''); operation(); } catch (cause) { setError(cause.message); } };
+  if (!current) return null;
+  return <EditorVersionManager title={title} versions={current.versions} activeVersionId={current.activeVersionId}
+    scopes={[{ id: 'global', label: '全局' }, { id: ownerScope, label: ownerLabel }]} scope={scope} onScopeChange={setScope}
+    onSelect={id => run(() => versions.select(scope, id))} onCopy={name => run(() => versions.create(scope, name, true))}
+    onCreate={name => run(() => versions.create(scope, name))} onRename={name => run(() => versions.rename(scope, name))}
+    onDelete={() => run(() => versions.remove(scope))} onClose={onClose} busy={busy}
+    extraActions={extraActions.map(action => ({ ...action, onClick: () => action.onClick(scope) }))} error={error}
+    onImport={() => input.current?.click()} onExport={() => run(() => {
+      const { fileName, json } = versions.exportVersion(scope), url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = fileName; anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    })}>
+    <input ref={input} type="file" accept="application/json,.json" hidden onChange={async event => {
+      const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
+      try { const json = await file.text(); run(() => versions.importVersion(scope, json)); } catch (cause) { setError(cause.message); }
+    }} />
+  </EditorVersionManager>;
+}

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
+import { legacyConversationStates } from './legacyConversationStates'
+import { validateRuntimeState } from './ConversationStateRepository'
 
 type Cell = string | number | null
 type Row = Record<string, Cell>
@@ -7,15 +9,16 @@ type Row = Record<string, Cell>
 const TABLES = [
   'chat_sessions', 'chat_session_character_snapshots', 'chat_session_variable_states',
   'agent_conversations', 'agent_branches', 'conversation_speakers', 'agent_turns',
-  'agent_responses', 'agent_branch_turns', 'agent_openings', 'agent_setting_snapshots'
+  'agent_responses', 'agent_branch_turns', 'agent_openings', 'conversation_state_snapshots'
 ] as const
 type Table = typeof TABLES[number]
 
 export interface ConversationArchiveSnapshot {
   format: 'eleckoi.desktop-conversation'
-  version: 1
+  version: 2
   characterId: string
   conversationId: string
+  settingLibraryStateJson: string | null
   tables: Record<Table, Row[]>
 }
 
@@ -31,7 +34,10 @@ function rows(value: unknown): Row[] {
 }
 
 export class ConversationArchiveRepository {
-  constructor(private readonly store: ElecKoiSqliteStore) {}
+  constructor(private readonly store: ElecKoiSqliteStore, private readonly settings: {
+    read(conversationId: string): string
+    restore(conversationId: string, stateJson: string): void
+  }) {}
 
   export(conversationId: string): ConversationArchiveSnapshot {
     const session = this.store.native.prepare('SELECT * FROM chat_sessions WHERE id=?').get(conversationId) as Row | undefined
@@ -48,21 +54,30 @@ export class ConversationArchiveRepository {
         ? this.store.native.prepare(`SELECT p.* FROM agent_branch_turns p JOIN agent_branches b ON b.id=p.branchId WHERE b.conversationId=? ORDER BY p.branchId,p.sequence`).all(conversationId) as Row[]
         : this.store.native.prepare(`SELECT * FROM ${table} WHERE ${key}=?`).all(conversationId) as Row[]
     }
-    return { format: 'eleckoi.desktop-conversation', version: 1,
-      characterId: session.characterId, conversationId, tables }
+    return { format: 'eleckoi.desktop-conversation', version: 2,
+      characterId: session.characterId, conversationId, settingLibraryStateJson: this.settings.read(conversationId), tables }
   }
 
   parse(value: unknown): ConversationArchiveSnapshot {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('聊天记录文件格式不正确。')
-    const archive = value as Partial<ConversationArchiveSnapshot>
-    if (archive.format !== 'eleckoi.desktop-conversation' || archive.version !== 1
+    const archive = value as Partial<Omit<ConversationArchiveSnapshot, 'version'>> & { version?: number }
+    if (archive.format !== 'eleckoi.desktop-conversation' || ![1, 2].includes(archive.version!)
       || typeof archive.characterId !== 'string' || !archive.characterId
       || typeof archive.conversationId !== 'string' || !archive.conversationId
       || !archive.tables || typeof archive.tables !== 'object') {
       throw new Error('不支持此聊天记录文件。')
     }
     const tables = {} as Record<Table, Row[]>
-    for (const table of TABLES) tables[table] = rows(archive.tables[table])
+    if (archive.version === 1) {
+      const previous = Object.fromEntries([...TABLES.filter(table => table !== 'conversation_state_snapshots'), 'agent_setting_snapshots']
+        .map(table => [table, rows((archive.tables as Record<string, unknown>)[table])]))
+      const history = legacyConversationStates(previous)
+      for (const table of TABLES) {
+        tables[table] = table === 'conversation_state_snapshots' ? history
+          : table === 'agent_responses' ? previous[table]!.map(({ variableStateJson: _variables, storedRegexRulesJson: _regex, ...row }) => row)
+            : previous[table]!
+      }
+    } else for (const table of TABLES) tables[table] = rows(archive.tables[table])
     if (tables.chat_sessions.length !== 1 || tables.chat_sessions[0]?.id !== archive.conversationId
       || tables.chat_sessions[0]?.characterId !== archive.characterId
       || tables.agent_conversations.length !== 1
@@ -83,20 +98,28 @@ export class ConversationArchiveRepository {
         throw new Error('聊天记录包含其他会话的数据。')
       }
     }
-    return { ...archive, tables } as ConversationArchiveSnapshot
+    if (tables.conversation_state_snapshots.some(row => !branches.has(row.branchId))) throw new Error('聊天状态的分支归属不匹配。')
+    for (const state of tables.conversation_state_snapshots) {
+      if ((state.variableStateJson !== null && typeof state.variableStateJson !== 'string')
+        || (state.settingLibraryStateJson !== null && typeof state.settingLibraryStateJson !== 'string')) throw new Error('历史状态格式不正确。')
+      validateRuntimeState(state as { variableStateJson: string | null; settingLibraryStateJson: string | null })
+    }
+    const settingLibraryStateJson = archive.version === 1 ? null : archive.settingLibraryStateJson
+    if (archive.version === 2 && typeof settingLibraryStateJson !== 'string') throw new Error('聊天归档缺少当前分支设定状态。')
+    if (settingLibraryStateJson !== null) validateRuntimeState({ variableStateJson: null, settingLibraryStateJson: settingLibraryStateJson! })
+    return { ...archive, version: 2, settingLibraryStateJson, tables } as ConversationArchiveSnapshot
   }
 
   runtimeThreadIds(snapshot: ConversationArchiveSnapshot): string[] {
     return [...new Set([
       snapshot.tables.agent_conversations[0]?.runtimeThreadId,
-      ...snapshot.tables.agent_responses.map((row) => row.runtimeThreadId)
+      ...snapshot.tables.agent_responses.map((row) => row.runtimeThreadId),
+      ...snapshot.tables.conversation_state_snapshots.map(row => row.runtimeSessionId)
     ].filter((id): id is string => typeof id === 'string' && id.length > 0))]
   }
 
   requiredRuntimeThreadIds(snapshot: ConversationArchiveSnapshot): string[] {
-    return [...new Set(snapshot.tables.agent_responses
-      .filter((response) => response.dshTurn !== null && typeof response.runtimeThreadId === 'string')
-      .map((response) => response.runtimeThreadId as string))]
+    return this.runtimeThreadIds(snapshot)
   }
 
   import(snapshot: ConversationArchiveSnapshot, characterId: string, runtimeIds: ReadonlyMap<string, string>, conversationId: string = randomUUID(), options: { preserveIds?: boolean } = {}): string {
@@ -112,9 +135,9 @@ export class ConversationArchiveRepository {
       }
     }
     const remap = (key: string, value: Cell): Cell => typeof value === 'string'
-      ? key === 'runtimeThreadId' ? runtimeIds.get(value) ?? value : ids.get(value) ?? value
+      ? key === 'runtimeThreadId' || key === 'runtimeSessionId' ? runtimeIds.get(value) ?? value : ids.get(value) ?? value
       : value
-    const COLUMN_REFS = new Set(['id', 'sessionId', 'conversationId', 'branchId', 'activeBranchId', 'turnId', 'speakerId', 'ownerId', 'runtimeThreadId'])
+    const COLUMN_REFS = new Set(['id', 'sessionId', 'conversationId', 'branchId', 'activeBranchId', 'turnId', 'speakerId', 'ownerId', 'runtimeThreadId', 'runtimeSessionId'])
     this.store.withWriteTx(() => {
       for (const table of TABLES) {
         const columns = (this.store.native.pragma(`table_info(${table})`) as Array<{ name: string }>).map((column) => column.name)
@@ -123,6 +146,9 @@ export class ConversationArchiveRepository {
           if (Object.keys(original).some((key) => !allowed.has(key))) throw new Error('聊天记录与当前数据库版本不兼容。')
           const row = { ...original }
           for (const key of COLUMN_REFS) if (key in row) row[key] = remap(key, row[key]!)
+          if (table === 'conversation_state_snapshots' && (row.boundaryType === 'reply' || row.boundaryType === 'opening')) {
+            row.boundaryId = remap('boundaryId', row.boundaryId!)
+          }
           if (table === 'chat_sessions') {
             row.characterName = character.name
             row.characterAvatar = character.avatar
@@ -146,6 +172,7 @@ export class ConversationArchiveRepository {
             .run(...keys.map((key) => row[key]))
         }
       }
+      if (snapshot.settingLibraryStateJson !== null) this.settings.restore(conversationId, snapshot.settingLibraryStateJson)
     })
     return conversationId
   }

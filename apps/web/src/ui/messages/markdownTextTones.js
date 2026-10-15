@@ -220,13 +220,19 @@ function refreshHighlights(root) {
 export function registerMarkdownTextToneHighlights(root, underlineTexts) {
   if (!root) return () => {};
   ensureHighlightStyles(root.ownerDocument);
-  const ranges = {
-    quote: quoteRanges(root),
-    underline: underlineRanges(root, underlineTexts),
+  const update = () => {
+    highlightOwners.set(root, {
+      quote: quoteRanges(root),
+      underline: underlineRanges(root, underlineTexts),
+    });
+    refreshHighlights(root);
   };
-  highlightOwners.set(root, ranges);
-  refreshHighlights(root);
+  update();
+  const observer = new root.ownerDocument.defaultView.MutationObserver(update);
+  observer.observe(root, { childList: true, characterData: true, subtree: true,
+    attributes: true, attributeFilter: ['aria-hidden', 'inert'] });
   return () => {
+    observer.disconnect();
     highlightOwners.delete(root);
     refreshHighlights(root);
   };

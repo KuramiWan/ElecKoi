@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withRegexEditor } from './helpers/regexEditorModel.js';
 import React, { act, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -35,7 +36,7 @@ const scenarios = [
     }, Component: SettingLibraryPanel, modelProp: 'settingLibraries', order: value => value.entries.filter(entry => entry.kind !== 'opening').sort((a, b) => a.treeViewOrder - b.treeViewOrder).map(value => value.id),
     changed: value => value.entries.find(entry => entry.id === 'entry-0').title,
   },
-  { name: '变量', selector: '.variable-tree-row', search: '搜索变量', field: 'input[maxlength="60"]',
+  { name: '变量', selector: '.variable-tree-row', search: '搜索变量', field: '.variable-inspector input:not([readonly])',
     setup() {
       const variables = [0, 1].map(index => ({ ...createVariableDraft({ variables: [], objects: [] }), id: `entry-${index}`, title: `合成条目${index}`, treeViewOrder: index + 1 }));
       const version = { id: 'version-a', name: '合成版本', variables, objects: [], initialStateJson: '{}', schemaCode: '', expandedObjectIds: [] };
@@ -43,31 +44,31 @@ const scenarios = [
     }, Component: VariableConfigPanel, modelProp: 'variables', order: value => value.variables.slice().sort((a, b) => a.treeViewOrder - b.treeViewOrder).map(value => value.id),
     changed: value => value.variables.find(entry => entry.id === 'entry-0').title,
   },
-  { name: '正则', selector: '.regex-rule-row', search: '搜索正则', field: '.regex-inspector input[maxlength="60"]',
+  { name: '正则', selector: '.regex-rule-row', search: '搜索正则', field: '.regex-inspector input',
     setup() {
       let collection = { globalRules: [], agentPresetRules: [], characterRules: [] };
       for (let index = 0; index < 2; index++) collection = createRegexRule(collection, 'Character').collection;
       collection.characterRules = collection.characterRules.map((rule, index) => ({ ...rule, id: `entry-${index}`, name: `合成条目${index}` }));
-      return modelFor(collection);
+      return withRegexEditor(modelFor(collection));
     }, Component: RegexRulesPanel, modelProp: 'regexRules', order: value => value.characterRules.map(value => value.id),
     changed: value => value.characterRules.find(entry => entry.id === 'entry-0').name,
   },
 ];
 async function click(label) {
-  const button = [...container.querySelectorAll('button')].find(node => node.textContent.trim() === label || node.getAttribute('aria-label') === label);
+  const button = [...document.body.querySelectorAll('button')].find(node => node.textContent.trim() === label || node.getAttribute('aria-label') === label);
   expect(button, label).toBeTruthy(); await act(async () => button.click());
 }
 async function fill(input, value) {
   expect(input).toBeTruthy();
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })); });
 }
-async function mount(scenario) {
+async function mount(scenario, compact = true) {
   const model = scenario.setup();
   const registerBackHandler = callback => { backHandlers.push(callback); return () => { backHandlers = backHandlers.filter(value => value !== callback); }; };
   function Harness() {
     const [subpage, setSubpage] = useState(null);
     const ref = useRef(null); controller = ref;
-    const presentation = useMemo(() => ({ compact: true, registerBackHandler, registerSubpage: page => {
+    const presentation = useMemo(() => ({ compact, registerBackHandler, registerSubpage: page => {
       setSubpage(page); return () => setSubpage(current => current === page ? null : current);
     } }), []);
     return <EditorPresentationContext.Provider value={presentation}>
@@ -101,15 +102,15 @@ describe('Android character editor selection and bottom actions', () => {
     await act(async () => toggle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     expect(container.querySelector('.editor-page-detail')).toBeNull();
   });
-  it.each(scenarios)('$name selects without opening, keeps only search and manage above, and edits from the bottom bar', async scenario => {
+  it.each(scenarios)('$name selects without opening, shares the main toolbar and edits from the bottom bar', async scenario => {
     await mount(scenario);
     const row = rowFor(scenario);
     await act(async () => row.click());
     expect(container.querySelector('.editor-page-detail')).toBeNull();
     expect(container.querySelector('.editor-sort-button')).toBeNull();
-    const toolbar = container.querySelector('.setting-library-toolbar, .variable-toolbar, .regex-toolbar');
+    const toolbar = container.querySelector('.editor-collection-toolbar');
     expect([...toolbar.querySelectorAll('button')].map(button => button.textContent)).not.toContain('新建');
-    expect(container.querySelector('.mobile-editor-actions [role=toolbar]')).toBeTruthy();
+    expect([...container.querySelectorAll('.mobile-editor-actions [role=toolbar] button')].map(button => button.textContent)).toEqual(['新建', '编辑', '移动', '删除', '更多']);
     await click('编辑');
     expect(container.querySelector('.editor-page-detail')).toBeTruthy();
     expect(container.querySelector('[role=separator]')).toBeNull();
@@ -211,13 +212,13 @@ describe('Android character editor selection and bottom actions', () => {
 
 
 describe('Android branch setting bottom actions', () => {
-  it('keeps its search toolbar mounted through a delayed read and a failed retry', async () => {
+  it.each([true, false])('keeps its search toolbar mounted through a delayed read and a failed retry (compact=%s)', async compact => {
     let resolveRead, rejectRead;
     const model = { subscribe: () => () => {}, readConversations: () => new Promise((resolve, reject) => {
       resolveRead = resolve; rejectRead = reject;
     }) };
     const scenario = { setup: () => model, Component: DynamicSettingsPanel, modelProp: 'settingLibraries' };
-    await mount(scenario);
+    await mount(scenario, compact);
     const search = container.querySelector('input[aria-label="搜索分支设定对话"]');
     expect(search).toBeTruthy();
     await fill(search, '合成');
@@ -230,7 +231,7 @@ describe('Android branch setting bottom actions', () => {
     expect(container.querySelector('.dynamic-settings-conversation-row')).toBeTruthy();
 
     await act(async () => root.unmount()); root = createRoot(container);
-    await mount(scenario);
+    await mount(scenario, compact);
     const retrySearch = container.querySelector('input[aria-label="搜索分支设定对话"]');
     await fill(retrySearch, '保留查询');
     await act(async () => rejectRead(new Error('合成分支读取失败')));
@@ -266,22 +267,28 @@ describe('Android branch setting bottom actions', () => {
   });
 });
 
-describe('Android editor loading toolbar', () => {
-  it.each(scenarios)('$name keeps the same search input and query while its data loads', async scenario => {
+describe('Editor loading toolbar', () => {
+  it.each(scenarios.flatMap(scenario => [true, false].flatMap(compact => ['ready', 'error'].map(outcome => ({ ...scenario, compact, outcome })))) )('$name keeps the same search input and query while its data loads (compact=$compact, $outcome)', async scenario => {
     const model = scenario.setup(); const value = model.getSnapshot().value;
-    let complete, listener;
+    let complete, rejectRead, listener;
     let snapshot = { status: 'loading', value: null };
     model.getSnapshot = () => snapshot;
     model.subscribe = callback => { listener = callback; return () => {}; };
-    model.read = () => new Promise(resolve => { complete = loaded => { snapshot = { status: 'ready', value: loaded }; listener('configuration', 'synthetic-character', snapshot); resolve(loaded); }; });
-    await mount({ ...scenario, setup: () => model });
+    const pendingRead = new Promise((resolve, reject) => { rejectRead = reject; complete = loaded => { snapshot = { status: 'ready', value: loaded }; listener('configuration', 'synthetic-character', snapshot); resolve(loaded); }; });
+    model.read = () => pendingRead;
+    await mount({ ...scenario, setup: () => model }, scenario.compact);
     const input = container.querySelector(`input[aria-label="${scenario.search}"]`);
     expect(input).toBeTruthy();
-    expect(container.querySelector('button[aria-expanded]')?.disabled).toBe(true);
+    expect(container.querySelector('button[aria-label="管理"]')?.disabled).toBe(true);
     await fill(input, '合成');
-    await act(async () => complete(value));
+    if (scenario.outcome === 'error') await act(async () => rejectRead(new Error('合成读取失败')));
+    else await act(async () => complete(value));
     expect(container.querySelector(`input[aria-label="${scenario.search}"]`)).toBe(input);
     expect(input.value).toBe('合成');
     expect(container.querySelector('[role=status]')).toBeNull();
+    if (scenario.outcome === 'error') {
+      expect(container.querySelector('[class$="-loading"][role=alert]').textContent).toContain('合成读取失败');
+      expect(container.querySelector('button[aria-label="管理"]')?.disabled).toBe(true);
+    }
   });
 });

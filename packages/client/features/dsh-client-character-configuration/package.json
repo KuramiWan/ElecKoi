@@ -76,13 +76,22 @@
         "mode": "call-and-listen",
         "scope": "client",
         "relation": "provides",
-          "members": ["getSnapshot", "read", "save", "saveAll", "subscribe", "subscribeChanges", "activePreset", "openDirectory"]
+        "members": [
+          "getSnapshot",
+          "read",
+          "save",
+          "saveAll",
+          "subscribe",
+          "subscribeChanges",
+          "activePreset",
+          "openDirectory"
+        ]
       },
       {
         "id": "eleckoiRegexRules",
         "kind": "service",
         "title": "角色正则服务",
-        "description": "读取、保存、导入、导出并测试角色正则。",
+        "description": "读取聊天运行组合，并通过明确归属的编辑服务只修改全局和当前角色或预设。",
         "mode": "call",
         "scope": "client",
         "relation": "provides",
@@ -94,7 +103,26 @@
           "save",
           "import",
           "export",
-          "test"
+          "test",
+          "editor"
+        ]
+      },
+      {
+        "id": "eleckoiDisplayTemplates",
+        "kind": "service",
+        "title": "EJS显示模板服务",
+        "description": "按全局、角色或预设归属读写显示模板，原子保存已修改的库并刷新已有消息。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "read",
+          "save",
+          "getSnapshot",
+          "readSelection",
+          "getSelectionSnapshot",
+          "subscribe",
+          "saveAll"
         ]
       }
     ]

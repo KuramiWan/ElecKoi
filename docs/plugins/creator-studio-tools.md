@@ -1,10 +1,12 @@
 # AI 创作工作室工具
 
-创作预设默认只启用「创作能力」。工作室会话选定一个角色后，工具编辑该角色的原稿；角色不是工作室要扮演的身份。角色扮演的分支设定和聊天变量不通过这些原稿工具修改。
+创作预设默认只启用「创作能力」。工具可以新建空角色并设为编辑目标；已有角色的资料与原稿工具绑定工作室选定的角色。共享全局配置和明确 presetId 的预设配置不要求先选择角色。角色不是工作室要扮演的身份。角色扮演的分支设定和聊天变量不通过这些原稿工具修改。
 
 工作室的请求配置和工具执行只作用于所属 DSH 预设作用域中的 Agent。共享模型事件先按正式作用域链核对请求归属，其他角色会话和工作室预设直接继续原请求。会话属于当前作用域时，再校验其正式创作预设绑定；绑定异常明确报错，不套用其他会话的预设或目标。
 
 工作室保留 DSH 原生 Session 上下文，包括历史用户消息、回复、推理块、工具调用、结果和 Provider replay state；退出重进恢复同一会话。不套用角色扮演的历史裁剪。请求只追加当前创作预设与编辑目标，上下文压缩仍遵循 DSH 和所选模型的正式合同。重新生成替换选定输入所在回合及之后的事件，保留同一 Session 与输入身份，旧过程不会作为额外完成回合残留。
+
+创作预设内置「自动压缩摘要模板」，保留创作目标、编辑对象编号、已保存修改与未完成事项；现有预设和命名版本缺少该条目时自动补齐，已有自定义内容与启停状态保留。自动压缩与添加面板中的「压缩」指令共用该模板和所用模型的思考档位，模板不进入普通创作请求。停用模板后使用 DSH 默认摘要要求；压缩的输出预算独立于普通回复。摘要通过正式 Session 压缩事件保存，退出重进继续使用；失败保留原上下文并记录原因。
 
 ## 查询与修改
 
@@ -12,17 +14,46 @@
 
 | 领域 | 操作 |
 | --- | --- |
-| `character` | `read`、`update` |
-| `settings` | `list`、`read`、`create`、`update`、`remove`、`create_group` |
-| `variables` | `list`、`read`、`create`、`update`、`remove`、`create_object`、`update_schema`、`validate_schema` |
+| `character` | `create`、`read`、`update`（含所属分组 `group`） |
+| `settings` | `list`、`read`、`create`、`update`、`update_many`、`remove`、`create_group`、`update_group`、`remove_group` |
+| `variables` | `list`、`read`、`create`、`update`、`remove`、`create_object`、`update_object`、`remove_object`、`update_schema`、`validate_schema` |
 | `scripts` | `list`、`read`、`create`、`update`、`remove`、`create_folder`、`update_folder`、`remove_folder`、`move`、`configure` |
 | `regex` | `list`、`read`、`create`、`update`、`remove`、`test` |
+| `displayTemplates` | `read`、`create`、`update`、`remove`、`configure`；明确指定 global、character 或 preset |
+| `presetScripts` | `read`、`save`；明确提供 presetId |
+| `editorVersions` | `read`、`save`；原子保存正则、脚本、显示模板与完整命名版本 |
 
 操作完整编号由领域和操作组成，例如 `scripts.create`。编号精确匹配；更新只发送要改的字段。脚本与正则写入携带最近 `list/read` 返回的 `expectedRevision`，冲突后重新读取并合并。脚本和正则操作只编辑当前角色库，不改共享全局库或预设库。
 
+角色的 `group` 是所属分组名称，空字符串表示未分组；`settings.update_group` 修改设定库文件夹名称、上级或排序；`variables.update_object` 修改变量组。三者按各自的准确归属和编号操作。文件夹与变量组的 remove 操作删除整棵子树及其中条目，不用于重命名；变量运行配置保留，父级不存在或形成循环时不保存。
+
+模板和配置版本的 `scope="global"`、`scope="preset"` 可以在未选择角色时操作，preset 必须给出准确 presetId；`scope="character"` 仍绑定当前编辑角色。版本保存中的角色文档与版本 ownerId 必须属于该角色，不能通过提交其他编号改变编辑目标。
+
+## EJS 显示模板
+
+显示模板只处理完整 AI 消息的界面，不参与设定注入或角色扮演请求。先 `displayTemplates.read`，写入时携带读取的 `expectedRevision`。`create` 的 template 包含 `name`、`position`、`pattern`、`flags`、`source`，工具生成编号并默认停用；新建源码可留空。`update` 只提交要改的字段，条目开关用 `enabled`。
+
+| `position` | 界面名称 | 匹配参数 |
+| --- | --- | --- |
+| `before` | AI 消息开头 | pattern、flags 留空 |
+| `after` | AI 消息末尾 | pattern、flags 留空 |
+| `replace` | 替换 AI 消息片段 | pattern 写表达式正文，flags 单独填写，例如 g |
+
+使用标准 `<% ... %>` 语法，保留源码空白，不提供语法符号、自动空白裁剪或共用模板参数。模板读取 `rawContent`、处理后的 `content`、消息身份及历史变量快照；替换模式还提供 `match`、`captures`、`groups`、`index`。显示模板没有设定库的 `getwi`，计算阶段也没有作者 SDK；生成 HTML 中的交互脚本才使用 SDK。详见 [EJS 显示模板](ejs-display-templates.md)。
+
+`configure({target, expectedRevision, enabled})` 与界面分组标题开关一致，批量启停库及全部模板。只提供 `orderedIds` 则仅排序，必须包含库内全部准确编号且不重复；单独启停条目使用 update。SDK 的 `displayTemplates.save` 保存作者提交的完整状态，不隐式批量改写。界面的源码区提供沉浸编辑和单模板测试；创作工具当前没有显示模板运行测试操作。
+
 ## 设定读取与 EJS
 
-读取策略只有必读和选读：`agentReadStrategy="required"` 是必读，`"normal"` 是选读。已有内部值 `"keyword"` 表示选读下的关键词命中开关，不是第三个读取档位。`enabled` 控制条目启停。
+读取策略只有必读和选读：`agentReadStrategy="required"` 是必读，`"normal"` 是选读并关闭关键词匹配，`"keyword"` 是选读并开启关键词匹配，与界面中的关键词命中开关相同，不是第三个读取档位。只填写 `keywords` 不会开启匹配。`enabled` 控制条目启停。
+
+多条修改使用 `settings.update_many`，一次提交准确编号与要改的字段。例如：
+
+```json
+{"updates":[{"id":"entry-a","changes":{"agentReadStrategy":"keyword"}},{"id":"entry-b","changes":{"agentReadStrategy":"keyword"}}]}
+```
+
+关闭关键词匹配时将该字段设回 `normal`，关键词内容和其他条件保留。批量修改同步当前设定版本，任一编号、格式或保存失败整批回滚。
 
 | 用途 | `dynamicMode` | `contentMode` | 限制 |
 | --- | --- | --- | --- |
@@ -78,7 +109,7 @@ Schema 必须同步解析为可保存的 JSON 对象。异步逻辑、非有限�
 
 原生标准见 [ElecKoi 作者 SDK](author-sdk.md)及其[完整网页参考](author-sdk.html)。新脚本声明 `runtime={kind:"eleckoi-module",apiVersion:1}`；源码为普通 JavaScript ES 模块，默认导出启动函数。保存不执行，新脚本默认停用。未声明原生合同的已有脚本不会自动转换。
 
-脚本页面的文件夹按钮用于打开源码目录，当前界面没有新建脚本分组入口。数据中的 `type="folder"` 表示列表分组；`create_folder/update_folder/remove_folder/move` 操作管理分组，不创建或移动磁盘目录。没有用户的分组要求时不创建分组，保留已有分组及其脚本。
+脚本主界面的新建菜单创建脚本或列表文件夹，管理入口可打开源码目录。数据中的 `type="folder"` 表示列表分组；`create_folder/update_folder/remove_folder/move` 操作管理分组，不创建或移动磁盘目录。没有用户的分组要求时不创建分组，保留已有分组及其脚本。
 
 ```js
 export default context => {

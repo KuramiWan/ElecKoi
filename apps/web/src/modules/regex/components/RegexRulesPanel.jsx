@@ -1,9 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Copy, MagnifyingGlass, PencilSimple, Plus, SlidersHorizontal } from "../../../ui/icons/interfaceIcons.jsx";
+import { Copy, NotePencil, Plus, Power, Trash } from "../../../ui/icons/interfaceIcons.jsx";
+import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
+import { EditorCollectionSurface, EditorCollectionToolbar, EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
+import { useEditorLibraryVersions } from '../../../ui/hooks/useEditorLibraryVersions.js';
 import {
   REGEX_SCOPES,
   createRegexRule,
@@ -13,28 +16,27 @@ import {
   moveRegexRule,
   moveRegexRuleToScope,
   updateRegexRule,
+  replaceRegexScopeVersion,
+  rulesForScope,
+  setRegexScopeEnabled,
 } from "../model/regexRulesEditing.js";
 import { RegexRuleInspector } from "./RegexRuleInspector.jsx";
 import { RegexRuleList } from "./RegexRuleList.jsx";
 import { RegexRulesManager } from "./RegexRulesManager.jsx";
+import '../styles/regex-rules.css';
+import '../styles/regex-manager.css';
 
-function downloadJson(fileName, json) {
-  const url = URL.createObjectURL(new Blob([json], { type: "application/json;charset=utf-8" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId, regexRules, onDirtyChange }, ref) {
+export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId, presetId, regexRules, onDirtyChange, manageSaveShortcut = true }, ref) {
   const { compact } = useEditorPresentation();
+  const context = useEditorContextMenu();
+  const ownerScope = presetId === undefined ? 'character' : 'preset', ownerId = presetId ?? characterId;
+  const editor = useMemo(() => regexRules.editor(ownerScope, ownerId), [regexRules, ownerScope, ownerId]);
+  const scopes = useMemo(() => REGEX_SCOPES.filter(scope => scope.id === 'Global' || scope.id === (ownerScope === 'preset' ? 'AgentPreset' : 'Character')), [ownerScope]);
   const [collection, setCollection] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [selectedId, setSelectedId] = useState("");
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
-  const [collapsed, setCollapsed] = useState(new Set());
   const [addOpen, setAddOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [draggedId, setDraggedId] = useState("");
@@ -48,11 +50,21 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
   const savePromiseRef = useRef(null);
-  const importInputRef = useRef(null);
-  const importScopeRef = useRef("Global");
+  const receivedRef = useRef(null), acceptRef = useRef(null);
+  const libraryVersions = useEditorLibraryVersions({ kind: 'regex', scope: ownerScope, ownerId, service: editor.versions,
+    editorDirty: () => dirtyRef.current,
+    capture: scope => ({ enabled: collectionRef.current?.[scope === 'global' ? 'globalEnabled' : scope === 'preset' ? 'agentPresetEnabled' : 'characterEnabled'] !== false,
+      rules: rulesForScope(collectionRef.current, scope === 'global' ? 'Global' : scope === 'preset' ? 'AgentPreset' : 'Character') }),
+    apply: (scope, content) => { changeCollection(current => ({ ...replaceRegexScopeVersion(current, scope === 'global' ? 'Global' : scope === 'preset' ? 'AgentPreset' : 'Character', content.rules),
+      [scope === 'global' ? 'globalEnabled' : scope === 'preset' ? 'agentPresetEnabled' : 'characterEnabled']: content.enabled })); setSelectedId(''); },
+  });
 
-  const dirty = useMemo(() => JSON.stringify(collection) !== JSON.stringify(persisted), [collection, persisted]);
+  const dirty = JSON.stringify(collection) !== JSON.stringify(persisted) || libraryVersions.dirty;
+  const ruleItems = scopes.flatMap(scope => rulesForScope(collection, scope.id));
+  const multi = useEditorMultiSelect(ruleItems.map(rule => rule.id), JSON.stringify([ownerScope, ownerId]));
+  const visibleIds = ruleItems.filter(rule => !query.trim() || [rule.name, rule.pattern, rule.replacement].some(text => text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))).map(rule => rule.id);
   const selected = useMemo(() => collection ? findRegexRule(collection, selectedId) : null, [collection, selectedId]);
+  useEffect(() => { context.close(); }, [ownerScope, ownerId, saving, multi.active]);
   dirtyRef.current = dirty;
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
@@ -75,41 +87,43 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       setNotice("");
     }
     function acceptLatest(loaded, resetView = false) {
-      if (savingRef.current) return;
+      if (loaded.revision < (persistedRef.current?.revision ?? 0)) return;
+      if (savingRef.current) { receivedRef.current = loaded; return; }
       if (dirtyRef.current) {
         const baseline = persistedRef.current;
         const changed = !baseline
           || baseline.revision !== loaded.revision
-          || baseline.agentPresetId !== loaded.agentPresetId
-          || baseline.agentPresetRegexRevision !== loaded.agentPresetRegexRevision;
+          || baseline.ownerRevision !== loaded.ownerRevision;
         if (changed) {
           pendingLatestRef.current = loaded;
-          setError("正则配置或当前 Agent 预设已更新；请放弃本页未保存修改后载入最新内容。");
+          setError("正则配置已更新；请放弃本页未保存修改后载入最新内容。");
         }
         return;
       }
       applyLoaded(loaded, resetView);
     }
+    acceptRef.current = acceptLatest;
     setError("");
     dirtyRef.current = false;
     savingRef.current = false;
+    receivedRef.current = null;
     collectionRef.current = null;
     persistedRef.current = null;
     setCollection(null);
     setPersisted(null);
-    const stopListening = regexRules.subscribe((kind, id, snapshot) => {
-      if (!active || kind !== "configuration" || id !== characterId) return;
+    const stopListening = editor.subscribe((snapshot) => {
+      if (!active) return;
       if (snapshot.status === "ready") acceptLatest(snapshot.value, !collectionRef.current);
       if (snapshot.status === "error") setError(snapshot.error || "同步正则配置失败");
     });
-    const cached = regexRules.getSnapshot(characterId);
+    const cached = editor.getSnapshot();
     if (cached.status === "ready") acceptLatest(cached.value, true);
-    void regexRules.read(characterId).catch((cause) => active && setError(cause?.message || "读取正则配置失败"));
+    void editor.read().catch((cause) => active && setError(cause?.message || "读取正则配置失败"));
     return () => {
       active = false;
       stopListening();
     };
-  }, [characterId, regexRules]);
+  }, [editor]);
 
   function changeCollection(nextOrUpdater) {
     setError("");
@@ -129,12 +143,16 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       setSaving(true);
       setError("");
       try {
-        const saved = await regexRules.save(characterId, collectionRef.current);
+        if (pendingLatestRef.current) throw new Error('正则配置已更新，请放弃本页修改后载入最新内容。');
+        const result = await editor.versions.save([collectionRef.current], libraryVersions.prepare());
+        const saved = result.documents[0];
         collectionRef.current = saved;
         persistedRef.current = saved;
         pendingLatestRef.current = null;
         setCollection(saved);
         setPersisted(saved);
+        dirtyRef.current = false;
+        libraryVersions.acceptSaved(result.versions);
         setNotice("saved");
         return true;
       } catch (cause) {
@@ -143,6 +161,8 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       } finally {
         savingRef.current = false;
         setSaving(false);
+        const received = receivedRef.current; receivedRef.current = null;
+        if (received) acceptRef.current?.(received);
       }
     })();
     savePromiseRef.current = task;
@@ -160,11 +180,13 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
     setManagerOpen(false);
     setError("");
     setNotice("");
+    libraryVersions.discard(); multi.clear();
   }
 
-  useImperativeHandle(ref, () => ({ save, discard }), [characterId, collection, persisted]);
+  useImperativeHandle(ref, () => ({ save, discard }), [editor, collection, persisted, libraryVersions]);
 
   useEffect(() => {
+    if (!manageSaveShortcut) return undefined;
     function handleKeyDown(event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "s") {
         event.preventDefault();
@@ -173,7 +195,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dirty, saving]);
+  }, [dirty, saving, editor, manageSaveShortcut]);
 
   function selectRule(id) { setSelectedId(id); setEditing(false); }
   function closeEditor() { if (compact) setEditing(false); else setSelectedId(''); }
@@ -202,50 +224,37 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
   }
 
   function confirmDeleteSelected() {
-    changeCollection((current) => deleteRegexRules(current, [deleteTarget.id]));
+    changeCollection((current) => deleteRegexRules(current, deleteTarget.ids || [deleteTarget.id]));
     setSelectedId("");
     setDeleteTarget(null);
+    multi.clear();
   }
 
-  async function handleImportFiles(event) {
-    const files = [...event.target.files];
-    event.target.value = "";
-    if (!files.length || !collectionRef.current) return;
-    setError("");
-    try {
-      const documents = await Promise.all(files.map(async (file) => ({ displayName: file.name, json: await file.text() })));
-      const result = await regexRules.import(characterId, collectionRef.current, importScopeRef.current, documents);
-      collectionRef.current = result.collection;
-      persistedRef.current = result.collection;
-      setCollection(result.collection);
-      setPersisted(result.collection);
-      setManagerOpen(false);
-      const extras = [
-        result.failedFileNames.length ? `${result.failedFileNames.length} 个文件失败` : "",
-      ].filter(Boolean).join("，");
-      setNotice(extras ? `已导入 ${result.importedRuleCount} 条，${extras}` : "saved");
-    } catch (cause) {
-      setError(cause?.message || "导入正则失败");
-    }
+  function ruleActions(rule, scopeId) {
+    return [
+      { label: '重命名', Icon: NotePencil, run: () => { setSelectedId(rule.id); setEditing(true); } },
+      { label: '复制', Icon: Copy, run: () => changeCollection(current => duplicateRegexRules(current, [rule.id])) },
+      { label: rule.enabled ? '停用' : '启用', Icon: Power, run: () => changeCollection(current => updateRegexRule(current, scopeId, rule.id, { enabled: !rule.enabled })) },
+      { label: '删除', Icon: Trash, danger: true, run: () => setDeleteTarget({ id: rule.id, title: `删除“${rule.name}”？`, message: '规则会在保存后删除。' }) },
+    ];
+  }
+  const contextRule = context.menu?.target.ruleId && rulesForScope(collection, context.menu.target.scopeId).find(rule => rule.id === context.menu.target.ruleId);
+  const menuActions = context.menu?.target.ruleId ? contextRule ? ruleActions(contextRule, context.menu.target.scopeId) : []
+    : scopes.filter(scope => !context.menu?.target.scopeId || scope.id === context.menu.target.scopeId)
+      .map(scope => ({ label: `新建${scope.label}`, Icon: Plus, run: () => addRule(scope.id) }));
+  function openContext(event, target) {
+    event.preventDefault(); event.stopPropagation();
+    if (!multi.active) context.open(event, target);
   }
 
-  async function handleExport(ruleIds) {
-    try {
-      const result = await regexRules.export(characterId, ruleIds);
-      downloadJson(result.fileName, result.json);
-    } catch (cause) {
-      setError(cause?.message || "导出正则失败");
-    }
-  }
-
-  if (!collection && !compact) return <div className="regex-loading">{error || "正在读取…"}</div>;
-
+  const createItems = scopes.map(scope => ({ label: scope.label, disabled: saving || !libraryVersions.ready, run: () => addRule(scope.id) }));
   return (
-    <EditorSidebarLayout className="regex-layout" aria-label="正则配置" onMouseDown={() => setAddOpen(false)}
+    <EditorSidebarLayout className={`regex-layout${multi.active ? ' is-multiselect' : ''}`} aria-label="正则配置" onMouseDown={() => setAddOpen(false)}
       inspectorTitle={selected?.rule.name || '编辑正则'} onCloseInspector={closeEditor}
-      feedback={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />}
-      inspector={selected && (!compact || editing) ? (
+      feedback={<SaveControl dirty={dirty} error={error || libraryVersions.error} notice={notice} saving={saving} onSave={save} />}
+      inspector={!multi.active && selected && (!compact || editing) ? (
         <RegexRuleInspector
+          scopes={scopes}
           scope={selected.scope}
           rule={selected.rule}
           onTest={(text, rule, target) => regexRules.test(text, rule, target)}
@@ -256,53 +265,54 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
           onDelete={askDeleteSelected}
         />
       ) : null}>
-      <div className="regex-browser">
-        <div className="regex-toolbar" onMouseDown={(event) => event.stopPropagation()}>
-          <label className="regex-search"><MagnifyingGlass size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索正则" aria-label="搜索正则" /></label>
-          {!compact && <div className="regex-add-wrap">
-            <button type="button" className="regex-create-button" aria-expanded={addOpen} onClick={() => setAddOpen((open) => !open)}><Plus size={16} />新建</button>
-            {addOpen ? <div className="regex-popover" role="menu">{REGEX_SCOPES.map((scope) => <button type="button" role="menuitem" key={scope.id} onClick={() => addRule(scope.id)}>{scope.label}</button>)}</div> : null}
-          </div>}
-          <button type="button" className="regex-manage-button" disabled={!collection} aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
-          <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
-        </div>
-        <div className="regex-list-scroll editor-sidebar-directory" onMouseDown={(event) => { if (!event.target.closest(".regex-rule-row")) setSelectedId(""); }}>
+      <div className="regex-browser editor-collection-browser editor-collection-material editor-collection-continuous">
+        <EditorCollectionToolbar query={query} onQueryChange={setQuery} placeholder="搜索正则" disabled={saving || !collection || !libraryVersions.ready}
+          selection={{ ...multi, toggle: () => { multi.toggle(); setSelectedId(''); setEditing(false); } }} createItems={createItems}
+          onManage={() => setManagerOpen(true)} save={<SaveControl dirty={dirty} error={error || libraryVersions.error} notice={notice} saving={saving} onSave={save} />} />
+        <EditorSelectionBar selection={multi} visibleIds={visibleIds} disabled={saving} onCopy={() => { changeCollection(current => duplicateRegexRules(current, [...multi.selected])); multi.clear(); }}
+          onDelete={() => setDeleteTarget({ ids: [...multi.selected], title: `删除选中的 ${multi.selected.size} 条正则？`, message: '规则会在保存后删除。' })} />
+        <div className="regex-list-scroll editor-sidebar-directory" onContextMenu={event => openContext(event, {})} onMouseDown={(event) => { if (!event.target.closest(".regex-rule-row")) setSelectedId(""); }}>
+          <EditorCollectionSurface grouped>
           {!collection && <p className="regex-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p>}
           {collection && <RegexRuleList
+            scopes={scopes}
             collection={collection}
-            touchReorder={compact}
+            selection={multi}
+            busy={saving}
+            onContextMenu={openContext}
+            dragEnabled={!multi.active}
+            touchReorder={compact && !multi.active}
             query={query}
             selectedId={selectedId}
-            collapsed={collapsed}
             draggedId={draggedId}
-            onToggleSection={(scope) => setCollapsed((current) => { const next = new Set(current); if (next.has(scope)) next.delete(scope); else next.add(scope); return next; })}
-            onSelect={selectRule}
+            onSelect={id => multi.active ? multi.check(id, !multi.selected.has(id)) : selectRule(id)}
             onOpen={id => { setSelectedId(id); setEditing(true); }}
             onToggleRule={(scope, id, enabled) => changeCollection((current) => updateRegexRule(current, scope, id, { enabled }))}
+            onToggleScope={(scope, enabled) => changeCollection(current => setRegexScopeEnabled(current, scope, enabled))}
             onMove={(scope, id, index) => changeCollection((current) => moveRegexRule(current, scope, id, index))}
             onDragState={setDraggedId}
           />}
+          </EditorCollectionSurface>
         </div>
-        {compact && collection && <MobileEditorActions label="正则操作" selectionId={selectedId} canEdit={Boolean(selected)} canModify={Boolean(selected)}
+        {compact && collection && !multi.active && <MobileEditorActions label="正则操作" selectionId={selectedId} busy={saving} createItems={createItems} canEdit={Boolean(selected)} canModify={Boolean(selected)}
           onEdit={() => setEditing(true)} onDelete={askDeleteSelected}
-          createItems={REGEX_SCOPES.map(scope => ({ label: scope.label, run: () => addRule(scope.id) }))}
-          moveItems={REGEX_SCOPES.map(scope => ({ label: scope.label, disabled: scope.id === selected?.scope, run: () => moveSelectedScope(scope.id) }))}
+          moveItems={scopes.map(scope => ({ label: scope.label, disabled: scope.id === selected?.scope, run: () => moveSelectedScope(scope.id) }))}
           moreItems={[
             { label: '复制', Icon: Copy, run: () => changeCollection(current => duplicateRegexRules(current, [selected.rule.id])) },
-            { label: '重命名', Icon: PencilSimple, run: () => setEditing(true) },
+            { label: '重命名', Icon: NotePencil, run: () => setEditing(true) },
           ]} />}
       </div>
 
       {managerOpen ? (
         <RegexRulesManager
-          collection={collection}
-          onChange={changeCollection}
+          libraryVersions={libraryVersions}
+          ownerScope={ownerScope}
+          busy={saving}
           onClose={() => setManagerOpen(false)}
-          onImport={(scope) => { importScopeRef.current = scope; importInputRef.current?.click(); }}
-          onExport={handleExport}
         />
       ) : null}
-      <input ref={importInputRef} className="regex-file-input" type="file" accept="application/json,.json" multiple onChange={handleImportFiles} />
+      {context.menu && menuActions.length > 0 && <EditorContextMenu menu={context.menu} label="正则操作" onClose={context.close}
+        actions={menuActions.map(({ Icon, ...action }) => ({ ...action, icon: Icon, disabled: saving || !collection || !libraryVersions.ready }))} />}
       <ConfirmationDialog target={deleteTarget} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteTarget(null)} onConfirm={confirmDeleteSelected} />
     </EditorSidebarLayout>
   );

@@ -109,7 +109,7 @@ function settingEntry(value: JsonObject, index: number): SettingLibraryEntry {
   const triggerMode = enumValue(value.trigger_mode, ['always', 'agent_tool'], null)
   return {
     id: string(value.id) || `setting-${randomUUID()}`,
-    title: string(value.title).slice(0, 120),
+    title: string(value.title),
     iconId: string(value.icon_id),
     kind,
     groupId: string(value.group_id),
@@ -151,7 +151,7 @@ function settingEntry(value: JsonObject, index: number): SettingLibraryEntry {
 function settingGroup(value: JsonObject, index: number): SettingLibraryGroup {
   return {
     id: string(value.id) || `group-${randomUUID()}`,
-    name: string(value.name).slice(0, 80),
+    name: string(value.name),
     parentId: string(value.parent_id),
     order: Math.max(1, integer(value.order, index + 1)),
     treeViewOrder: integer(value.tree_view_order, index + 1),
@@ -163,7 +163,7 @@ function settingGroup(value: JsonObject, index: number): SettingLibraryGroup {
 function promptPosition(value: JsonObject, index: number): SettingLibraryPromptPosition {
   return {
     id: string(value.id) || `prompt-position-${randomUUID()}`,
-    name: string(value.name).slice(0, 60),
+    name: string(value.name),
     anchor: enumValue(value.anchor, settingPositions, 'insert_point_1'),
     side: enumValue(value.side, promptPositionSides, 'before_setting_position'),
     order: Math.max(1, integer(value.order, index + 1)),
@@ -190,7 +190,7 @@ function variableVersion(value: JsonObject, index: number): VariableConfigVersio
 function variableObject(value: JsonObject, index: number): VariableObjectConfig {
   return {
     id: string(value.id) || `variable-object-${randomUUID()}`,
-    name: string(value.name).slice(0, 40),
+    name: string(value.name),
     parentId: string(value.parent_id),
     enabled: boolean(value.enabled, true),
     description: string(value.description),
@@ -210,7 +210,7 @@ function variableItem(value: JsonObject, index: number): VariableItemConfig {
   const readMode: VariableReadMode = rawMode === 'required' ? 'required' : 'on_demand'
   return {
     id: string(value.id) || `variable-${randomUUID()}`,
-    title: string(value.title).slice(0, 60),
+    title: string(value.title),
     objectId: string(value.object_id),
     enabled: boolean(value.enabled, true),
     type,

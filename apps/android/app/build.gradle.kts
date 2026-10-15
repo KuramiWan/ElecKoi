@@ -3,11 +3,13 @@ import java.security.MessageDigest
 
 abstract class PrepareCompatBridgeTask : DefaultTask() {
     @get:InputFile abstract val facade: RegularFileProperty
+    @get:InputFile abstract val diagnostics: RegularFileProperty
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
     @TaskAction fun prepare() {
         val output = outputDirectory.file("eleckoi-browser/platform-facade.js").get().asFile
         output.parentFile.mkdirs()
         facade.get().asFile.copyTo(output, overwrite = true)
+        diagnostics.get().asFile.copyTo(output.parentFile.resolve("browser-diagnostics.js"), overwrite = true)
     }
 }
 
@@ -28,7 +30,7 @@ android {
         applicationId = "com.eleckoi.app"
         minSdk = 27
         targetSdk = 35
-        versionCode = 3
+        versionCode = 5
         versionName = "0.2.10"
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -92,6 +94,7 @@ tasks.matching { it.name in listOf("packageStandardRelease", "bundleStandardRele
 
 val prepareCompatBridge = tasks.register<PrepareCompatBridgeTask>("prepareCompatBridge") {
     facade.set(layout.projectDirectory.file("src/main/assets/platform-facade.js"))
+    diagnostics.set(layout.projectDirectory.file("src/main/assets/browser-diagnostics.js"))
     outputDirectory.set(layout.buildDirectory.dir("generated/compatBrowserAssets"))
 }
 androidComponents.onVariants(androidComponents.selector().withFlavor("browser" to "compat")) { variant ->

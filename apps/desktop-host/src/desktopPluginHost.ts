@@ -3,13 +3,18 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
-import { initProfile, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
+import { initProfile, OPTIONAL_BUNDLES, PROFILE_TEMPLATES, readProfileManifest, sanitizeProfile, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { ELECKOI_DESKTOP_BUNDLES, registerDesktopBundles } from './desktopPluginBundles'
 import type { ChildHostMessage, ParentHostMessage } from './hostSessionProtocol'
 
 const require = createRequire(import.meta.url)
 const runtimeRequire = createRequire(require.resolve('@eleckoi/desktop-host'))
 const TAVILY_BUNDLE = '@eleckoi/dsh-web-search-tavily'
+const webProfile = PROFILE_TEMPLATES.web
+if (webProfile === undefined) throw new Error('DSH web profile template is unavailable')
+export const ELECKOI_DESKTOP_RECOVERY_BUNDLES = Object.freeze([
+  ...webProfile.bundles, ...ELECKOI_DESKTOP_BUNDLES, TAVILY_BUNDLE
+])
 
 /**
  * TODO(迁移清理)：受支持的升级及 profile 恢复入口都已完成 tavily-bundle-v1 登记后，
@@ -70,6 +75,7 @@ export class DshDesktopPluginHost {
   private child: ChildProcess | undefined
   private readyTask: Promise<DshDesktopPluginHostReady> | undefined
   private stopping = false
+  private closeTask: Promise<void> | undefined
   private readonly controls = new Map<string, PendingControl>()
 
   constructor(private readonly options: DshDesktopPluginHostOptions) {
@@ -86,7 +92,7 @@ export class DshDesktopPluginHost {
     if (this.stopping) return Promise.reject(new Error('DSH 插件宿主正在停止。'))
     const home = join(this.options.runtimeDataRoot, 'home')
     const profile = join(home, 'profiles', 'desktop')
-    initProfile(profile, [...PROFILE_TEMPLATES.web.bundles, ...ELECKOI_DESKTOP_BUNDLES, TAVILY_BUNDLE])
+    initProfile(profile, ELECKOI_DESKTOP_RECOVERY_BUNDLES)
     registerDesktopBundles(profile)
     selectTavilyBundleOnce(profile)
     const overlayPath = join(profile, 'eleckoi-plugin-host.patch.yml')
@@ -219,24 +225,52 @@ export class DshDesktopPluginHost {
     })
   }
 
-  async close(): Promise<void> {
-    if (this.stopping) return
+  /** Recovery owns shutdown before changing the official profile's enabled bundles. */
+  async disableUserPlugins(): Promise<string | undefined> {
+    await this.close()
+    const profile = join(this.options.runtimeDataRoot, 'home', 'profiles', 'desktop')
+    const selected = existsSync(join(profile, 'package.json')) ? readProfileManifest('eleckoi', profile).dsh?.profile?.bundles ?? [] : []
+    return sanitizeProfile('eleckoi', profile, [
+      ...ELECKOI_DESKTOP_RECOVERY_BUNDLES, ...selected.filter(name => OPTIONAL_BUNDLES.includes(name))
+    ])
+  }
+
+  close(): Promise<void> {
+    return this.closeTask ??= this.stopChild().catch(error => {
+      this.closeTask = undefined
+      throw error
+    })
+  }
+
+  private async stopChild(): Promise<void> {
     this.stopping = true
     const child = this.child
-    this.child = undefined
     this.readyTask = undefined
     this.rejectControls(new Error('DSH 插件宿主正在停止。'))
-    if (child === undefined || child.exitCode !== null) return
+    if (child === undefined || child.exitCode !== null || child.signalCode !== null) return
     const exited = new Promise<void>(resolve => child.once('exit', () => resolve()))
-    if (child.connected) child.send({ type: 'shutdown' } satisfies ParentHostMessage)
+    if (child.connected) {
+      try {
+        child.send({ type: 'shutdown' } satisfies ParentHostMessage, error => {
+          if (error !== null) this.options.onDiagnostic?.(`Host shutdown request failed: ${error.message}`)
+        })
+      } catch (error) {
+        this.options.onDiagnostic?.(`Host shutdown request failed: ${String(error)}`)
+      }
+    }
     const graceful = await Promise.race([
       exited.then(() => true),
       new Promise<false>(resolve => setTimeout(() => resolve(false), 5_000))
     ])
     if (!graceful) {
-      child.kill()
-      await exited
+      child.kill('SIGKILL')
+      const terminated = await Promise.race([
+        exited.then(() => true),
+        new Promise<false>(resolve => setTimeout(() => resolve(false), 5_000))
+      ])
+      if (!terminated) throw new Error('DSH 插件宿主未能停止，插件配置未修改。')
     }
+    if (this.child === child) this.child = undefined
   }
 
   private rejectControls(error: Error): void {

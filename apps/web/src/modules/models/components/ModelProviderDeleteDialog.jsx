@@ -49,9 +49,9 @@ export function ModelProviderDeleteDialog({ target, deleting = false, error = ""
 
   if (!target) return null;
 
-  const consequence = target.configCount > 0
-    ? `该入口下的 ${target.configCount} 个模型配置将从本地永久删除。`
-    : "这个尚未保存的模型入口将被移除。";
+  const consequence = target.id === 'deepseek-official'
+    ? '清空此内置配置的密钥和自定义参数，恢复提供商默认设置。'
+    : '这份配置将被删除。';
 
   return createPortal(
     <SystemBarOverlay className="model-provider-delete-overlay" role="presentation" onMouseDown={() => !deleting && onCancel()}>
@@ -65,7 +65,7 @@ export function ModelProviderDeleteDialog({ target, deleting = false, error = ""
         aria-busy={deleting || undefined}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 id={titleId}>删除“{target.label}”入口？</h2>
+        <h2 id={titleId}>{target.id === 'deepseek-official' ? '清空' : '删除'}“{target.label}”？</h2>
         <p id={descriptionId}>
           {consequence}{target.hasUnsavedChanges ? " 未保存的修改也会丢失。" : ""}
         </p>
@@ -73,7 +73,7 @@ export function ModelProviderDeleteDialog({ target, deleting = false, error = ""
         <div>
           <button ref={cancelRef} type="button" disabled={deleting} onClick={onCancel}>取消</button>
           <button type="button" className="danger" disabled={deleting} onClick={onConfirm}>
-            {deleting ? "删除中…" : "删除入口"}
+            {deleting ? "删除中…" : target.id === 'deepseek-official' ? '清空配置' : "删除配置"}
           </button>
         </div>
       </section>

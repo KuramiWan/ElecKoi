@@ -6,12 +6,13 @@ import { EditorPresentationContext, useEditorPresentation, useEditorSubpage } fr
 /** 各编辑页共用宽度、拖动、键盘操作与开关生命周期，表单和数据仍由所属页面维护。 */
 export function EditorSidebarLayout({
   as: Element = 'section', className = '', paneClassName = '', overlay = true,
-  inspector, inspectorTitle, onCloseInspector, feedback, children, preferredWidth, onWidthChange, ...props
+  inspector, inspectorTitle, inspectorActions, onCloseInspector, feedback, children, preferredWidth, onWidthChange, ...props
 }) {
   const layoutRef = useRef(null);
   const pageRef = useRef(null);
   const [localWidth, setLocalWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
   const [containerWidth, setContainerWidth] = useState(() => window.innerWidth || 1024);
+  const [toolbarHeight, setToolbarHeight] = useState(null);
   const [drag, setDrag] = useState(null);
   const presence = useInspectorPresence(inspector);
   const presentation = useEditorPresentation();
@@ -21,7 +22,7 @@ export function EditorSidebarLayout({
     setNestedPage(page);
     return () => setNestedPage(current => current === page ? null : current);
   }, []);
-  useEditorSubpage(Boolean(inspector), nestedPage?.title || inspectorTitle, nestedPage?.back || onCloseInspector, nestedPage?.actions);
+  useEditorSubpage(Boolean(inspector), nestedPage?.title || inspectorTitle, nestedPage?.back || onCloseInspector, nestedPage ? nestedPage.actions : inspectorActions);
   useLayoutEffect(() => {
     if (!compact || !inspector) return undefined;
     const previous = document.activeElement;
@@ -36,15 +37,18 @@ export function EditorSidebarLayout({
     if (!inspector) setDrag(null);
   }, [Boolean(inspector)]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const layout = layoutRef.current;
+    const toolbar = layout.querySelector('.editor-collection-toolbar');
     const measure = () => {
       const measured = layout.getBoundingClientRect().width;
       if (measured > 0) setContainerWidth(measured);
+      if (toolbar && toolbar.getBoundingClientRect().height > 0) setToolbarHeight(toolbar.getBoundingClientRect().bottom - layout.getBoundingClientRect().top);
     };
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(layout);
+    if (toolbar) observer?.observe(toolbar);
     window.addEventListener('resize', measure);
     return () => {
       observer?.disconnect();
@@ -87,7 +91,7 @@ export function EditorSidebarLayout({
   return (
     <Element {...props} ref={layoutRef}
       className={`editor-sidebar-layout ${className}${presence.content ? ' is-inspector-open' : ''}${drag ? ' is-resizing' : ''}`}
-      style={{ '--editor-sidebar-width': `${width}px` }}>
+      style={{ ...props.style, '--editor-sidebar-width': `${width}px`, ...(toolbarHeight ? { '--editor-sidebar-top': `${toolbarHeight}px` } : {}) }}>
       {children}
       {presence.content ? (
         <div className={`editor-sidebar-pane ${paneClassName}${overlay ? ' is-overlay' : ''}${presence.closing ? ' is-closing' : ''}`}

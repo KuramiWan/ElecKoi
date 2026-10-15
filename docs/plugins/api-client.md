@@ -229,6 +229,13 @@ subscribe(listener: () => void): () => void
 getDetailsSnapshot(): ConversationDetailsSnapshot
 
 /**
+ * 读取当前聊天已经就绪的正式 Session 引用，生命周期由聊天服务持有，调用者不得释放。
+ * @param runtimeSessionId - 必须与当前聊天一致的正式 Session 编号。
+ * @returns 已就绪的借用引用；尚未就绪或身份不一致时返回 null。
+ */
+getSessionReference(runtimeSessionId: string): SessionReference | null
+
+/**
  * 订阅当前聊天的消息变化。
  * @param listener - 状态变化回调。
  * @returns 取消本次订阅的函数。
@@ -682,6 +689,69 @@ Types: [ClientDisplayPreferencesSnapshot](types-client.md#clientdisplaypreferenc
 
 Source: [`packages/client/features/dsh-client-display-preferences/src/client/types.ts`](../../packages/client/features/dsh-client-display-preferences/src/client/types.ts)
 
+<a id="ctxeleckoidisplaytemplates--eleckoidisplaytemplates"></a>
+
+### `ctx.eleckoiDisplayTemplates` — `ElecKoiDisplayTemplates`
+
+按角色或预设管理独立显示模板，通过配置事件刷新聊天与编辑页。
+
+```ts cordis-catalog
+/**
+ * 读取明确归属的库。
+ * @param scope - 全局、角色或预设。
+ * @param ownerId - 所属编号；全局为空字符串。
+ * @returns 库及保存版本。
+ */
+read(scope: DisplayTemplateScope, ownerId: string): Promise<DisplayTemplateLibrary>
+
+/**
+ * 比较读取版本并保存库。
+ * @param library - 完整库及读取版本。
+ * @returns 已保存库。
+ */
+save(library: DisplayTemplateLibrary): Promise<DisplayTemplateLibrary>
+
+/**
+ * 原子保存各个已修改的显示模板库。
+ * @param libraries - 不重复的归属及各自读取版本。
+ * @returns 按输入顺序返回的保存结果，任一冲突全部回滚。
+ */
+saveAll(libraries: DisplayTemplateLibrary[]): Promise<DisplayTemplateLibrary[]>
+
+/**
+ * 取得页面当前缓存状态。
+ * @param scope - 全局、角色或预设。
+ * @param ownerId - 所属编号；全局为空字符串。
+ * @returns 不可变状态快照。
+ */
+getSnapshot(scope: DisplayTemplateScope, ownerId: string): ConfigurationSnapshot<DisplayTemplateLibrary>
+
+/**
+ * 读取聊天需要的全局、预设和角色库。
+ * @param characterId - 角色编号。
+ * @returns 按计算顺序排列的组合。
+ */
+readSelection(characterId: string): Promise<DisplayTemplateSelection>
+
+/**
+ * 取得组合当前状态。
+ * @param characterId - 角色编号。
+ * @returns 组合状态。
+ */
+getSelectionSnapshot(characterId: string): ConfigurationSnapshot<DisplayTemplateSelection>
+
+/**
+ * 监听库及组合状态。
+ * @param listener - 收到准确归属和新状态的函数。
+ * @returns 撤回函数。
+ */
+subscribe(listener: (scope: DisplayTemplateScope | 'selection', ownerId: string, snapshot: ConfigurationSnapshot<DisplayTemplateLibrary | DisplayTemplateSelection>) => void): () => void
+```
+
+Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
+
+Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
+
 <a id="ctxeleckoifrontendprojects--nativefrontendclient"></a>
 
 ### `ctx.eleckoiFrontendProjects` — `NativeFrontendClient`
@@ -764,26 +834,11 @@ save(config: ClientModelConfig): Promise<ClientModelConfig | undefined>
 deleteConfig(id: string): Promise<ClientModelConfig | undefined>
 
 /**
- * 删除指定提供商的配置，返回剩余的首选配置。
- * @param provider - 提供商编号。
- * @param preferredId - 删除后优先选择的剩余配置编号。
- * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
- */
-deleteProvider(provider: string, preferredId?: string): Promise<ClientModelConfig | undefined>
-
-/**
  * 读取模型列表并合并当前配置明确声明的参数。
  * @param config - 模型配置和明确声明的模型能力。
  * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
  */
 discover(config: ClientModelConfig): Promise<ClientModelOption[]>
-
-/**
- * 使用官方适配器发起一次工具调用测试。
- * @param config - 模型配置和明确声明的模型能力。
- * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
- */
-testConnection(config: ClientModelConfig): Promise<{ supported: true }>
 
 /**
  * 按配置编号读取密钥，供用户主动查看。
@@ -975,6 +1030,14 @@ Source: [`packages/client/features/dsh-client-presets/src/client/types.ts`](../.
 
 ```ts cordis-catalog
 /**
+ * 获取仅编辑全局和明确归属的独立编辑器；运行时完整配置不受编辑入口影响。
+ * @param scope - 角色或预设归属。
+ * @param ownerId - 明确的所属编号，不使用当前启用预设代替。
+ * @returns 同归属可订阅的正则编辑服务。
+ */
+editor(scope: 'character' | 'preset', ownerId: string): ElecKoiRegexEditor
+
+/**
  * 读取指定角色在页面中的配置状态。
  * @param characterId - 角色编号。
  * @returns 当前页面保存的状态对象。
@@ -1038,7 +1101,7 @@ export(characterId: string, ruleIds: string[]): Promise<{ fileName: string; json
 test(text: string, rule: RegexRule, target: RegexRuleTarget): Promise<RegexRuleTestResult>
 ```
 
-Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
+Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot) · [ElecKoiRegexEditor](types-client.md#eleckoiregexeditor)
 
 Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
 

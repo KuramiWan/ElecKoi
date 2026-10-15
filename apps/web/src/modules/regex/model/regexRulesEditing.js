@@ -1,13 +1,12 @@
 export const REGEX_SCOPES = [
-  { id: "Global", label: "全局正则", key: "globalRules" },
-  { id: "AgentPreset", label: "预设正则", key: "agentPresetRules" },
-  { id: "Character", label: "角色正则", key: "characterRules" },
+  { id: "Global", label: "全局正则", key: "globalRules", enabledKey: 'globalEnabled' },
+  { id: "AgentPreset", label: "预设正则", key: "agentPresetRules", enabledKey: 'agentPresetEnabled' },
+  { id: "Character", label: "角色正则", key: "characterRules", enabledKey: 'characterEnabled' },
 ];
 
 export const REGEX_TARGETS = [
   { id: "UserInput", label: "用户发送" },
   { id: "AiOutput", label: "AI 回复" },
-  { id: "SlashCommand", label: "快捷命令" },
   { id: "SettingContent", label: "设定内容" },
   { id: "Reasoning", label: "推理内容" },
 ];
@@ -15,7 +14,6 @@ export const REGEX_TARGETS = [
 export function newRegexId(prefix = "regex") {
   return `${prefix}-${crypto.randomUUID()}`;
 }
-
 export function rulesForScope(collection, scope) {
   const key = REGEX_SCOPES.find((item) => item.id === scope)?.key;
   return key ? collection?.[key] || [] : [];
@@ -27,12 +25,31 @@ export function withScopeRules(collection, scope, rules) {
   return { ...collection, [key]: rules.map((rule, order) => ({ ...rule, order })) };
 }
 
+export function replaceRegexScopeVersion(collection, scope, rules) {
+  const metadata = REGEX_SCOPES.find(item => item.id === scope);
+  if (!metadata) throw new Error('正则版本作用域无效。');
+  const next = withScopeRules(collection, scope, rules);
+  const allIds = REGEX_SCOPES.flatMap(item => rulesForScope(next, item.id).map(rule => rule.id));
+  if (new Set(allIds).size !== allIds.length) throw new Error('正则版本包含与其他作用域重复的规则编号。');
+  const allowed = new Set(rules.map(rule => rule.id)), enabled = rules.filter(rule => rule.enabled).map(rule => rule.id);
+  const memberKey = scope === 'Global' ? 'globalEnabledIds' : scope === 'AgentPreset' ? 'agentPresetEnabledIds' : 'characterEnabledIds';
+  return { ...next, versions: next.versions.map(version => ({ ...version,
+    [memberKey]: version.id === next.activeVersionId ? enabled : version[memberKey].filter(id => allowed.has(id)) })) };
+}
+
 export function findRegexRule(collection, ruleId) {
   for (const scope of REGEX_SCOPES) {
     const rule = rulesForScope(collection, scope.id).find((candidate) => candidate.id === ruleId);
     if (rule) return { scope: scope.id, rule };
   }
   return null;
+}
+
+export function setRegexScopeEnabled(collection, scope, enabled) {
+  const metadata = REGEX_SCOPES.find(item => item.id === scope);
+  if (!metadata) throw new Error('正则作用域无效。');
+  const rules = rulesForScope(collection, scope).map(rule => ({ ...rule, enabled }));
+  return { ...replaceRegexScopeVersion(collection, scope, rules), [metadata.enabledKey]: enabled };
 }
 
 export function createRegexRule(collection, scope) {
@@ -129,43 +146,12 @@ export function moveRegexRuleToScope(collection, fromScope, nextScope, ruleId) {
   const rule = rulesForScope(collection, fromScope).find((item) => item.id === ruleId);
   if (!rule) return collection;
   let next = withScopeRules(collection, fromScope, rulesForScope(collection, fromScope).filter((item) => item.id !== ruleId));
-  next = withVersionMembership(next, "Global", ruleId, false);
-  next = withVersionMembership(next, "Character", ruleId, false);
   next = withScopeRules(next, nextScope, [rule, ...rulesForScope(next, nextScope)]);
-  return rule.enabled ? withVersionMembership(next, nextScope, ruleId, true) : next;
-}
-
-export function captureRegexVersion(collection, name) {
-  const version = {
-    id: newRegexId("regex-version"),
-    name: name.trim() || "未命名预设",
-    globalEnabledIds: collection.globalRules.filter((rule) => rule.enabled).map((rule) => rule.id),
-    agentPresetEnabledIds: collection.agentPresetRules.filter((rule) => rule.enabled).map((rule) => rule.id),
-    characterEnabledIds: collection.characterRules.filter((rule) => rule.enabled).map((rule) => rule.id),
-  };
-  return { ...collection, versions: [...collection.versions, version], activeVersionId: version.id };
-}
-
-export function applyRegexVersion(collection, versionId) {
-  if (!versionId) return { ...collection, activeVersionId: "" };
-  const version = collection.versions.find((item) => item.id === versionId);
-  if (!version) return collection;
-  const globalEnabled = new Set(version.globalEnabledIds);
-  const agentPresetEnabled = new Set(version.agentPresetEnabledIds);
-  const characterEnabled = new Set(version.characterEnabledIds);
-  return {
-    ...collection,
-    activeVersionId: version.id,
-    globalRules: collection.globalRules.map((rule) => ({ ...rule, enabled: globalEnabled.has(rule.id) })),
-    agentPresetRules: collection.agentPresetRules.map((rule) => ({ ...rule, enabled: agentPresetEnabled.has(rule.id) })),
-    characterRules: collection.characterRules.map((rule) => ({ ...rule, enabled: characterEnabled.has(rule.id) })),
-  };
-}
-
-export function deleteRegexVersion(collection, versionId) {
-  return {
-    ...collection,
-    versions: collection.versions.filter((version) => version.id !== versionId),
-    activeVersionId: collection.activeVersionId === versionId ? "" : collection.activeVersionId,
-  };
+  const keys = { Global: 'globalEnabledIds', AgentPreset: 'agentPresetEnabledIds', Character: 'characterEnabledIds' };
+  return { ...next, versions: next.versions.map(version => {
+    const enabled = version.id === next.activeVersionId ? rule.enabled : version[keys[fromScope]].includes(ruleId);
+    const destination = version[keys[nextScope]].filter(id => id !== ruleId);
+    return { ...version, [keys[fromScope]]: version[keys[fromScope]].filter(id => id !== ruleId),
+      [keys[nextScope]]: enabled ? [...destination, ruleId] : destination };
+  }) };
 }

@@ -49,7 +49,7 @@ export function useSidePanelLayout() {
   const startSidePanelResize = useCallback(() => {
     const shell = shellRef.current;
     const renderedWidth = shell
-      ? parseFloat(getComputedStyle(shell).getPropertyValue("--side-panel-width"))
+      ? shell.querySelector(".side-panel-shell")?.getBoundingClientRect().width
       : effectiveSidePanelWidth;
     const frameWidth = shell?.getBoundingClientRect().width || viewportWidth;
     sidePanelDragBaseRef.current = Number.isFinite(renderedWidth) ? renderedWidth : effectiveSidePanelWidth;
@@ -57,6 +57,7 @@ export function useSidePanelLayout() {
       SIDE_PANEL_MIN,
       Math.min(SIDE_PANEL_MAX, frameWidth - RAIL_WIDTH_FOR_LAYOUT - MAIN_PANEL_MIN),
     );
+    setSidePanelWidth(clamp(sidePanelDragBaseRef.current, SIDE_PANEL_MIN, sidePanelDragMaxRef.current));
     setSidePanelDragging(true);
   }, [effectiveSidePanelWidth, viewportWidth]);
 
@@ -76,6 +77,7 @@ export function useSidePanelLayout() {
     },
     sidePanelCollapsed,
     sidePanelDragging,
+    viewportWidth,
     collapseSidePanel: () => setSidePanelCollapsed(true),
     expandSidePanel: () => setSidePanelCollapsed(false),
     startSidePanelResize,

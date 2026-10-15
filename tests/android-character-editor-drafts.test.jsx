@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React, { act, useRef, useState } from 'react';
+import { editorVersionsFixture } from './helpers/editorLibraryVersions.js';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -37,6 +38,8 @@ function clientModels(records) {
       readSettingLibrary: records.settingLibraries.read, saveSettingLibrary: records.settingLibraries.save,
       readVariableConfig: records.variables.read, saveVariableConfig: records.variables.save,
       readRegexRules: records.regexRules.read, saveRegexRules: records.regexRules.save,
+      readRegexEditor: async target => { const result = await records.regexRules.read(); return { ...result, value: { ...result.value, target, ownerRevision: '0'.repeat(64) } }; },
+      saveRegexEditor: draft => records.regexRules.save(draft.target.ownerId, draft),
       saveSettingLibraryViewState: async () => ({ ok: true, value: [] }),
       saveVariableConfigViewState: async () => ({ ok: true, value: [] }),
     } },
@@ -44,6 +47,12 @@ function clientModels(records) {
   });
   return Object.fromEntries(Object.entries(records).map(([key, record]) => {
     const model = services[{settingLibraries:'eleckoiSettingLibraries',variables:'eleckoiVariables',regexRules:'eleckoiRegexRules'}[key]];
+    if (key === 'regexRules') {
+      const editorFactory = model.editor.bind(model);
+      model.save = async (ownerId, draft) => editorFactory('character', ownerId).save(draft);
+      model.editor = (scope, ownerId) => { const editor = editorFactory(scope, ownerId);
+        return { ...editor, save: draft => model.save(ownerId, draft), versions: editorVersionsFixture('regex', () => editor.getSnapshot().value, async values => [await model.save(ownerId, values[0])], editor.subscribe) }; };
+    }
     vi.spyOn(model, 'save'); model.stored = record.stored; return [key, model];
   }));
 }
@@ -93,7 +102,7 @@ async function mount() {
 }
 async function create(scenario, returnToList = true) {
   await click(scenario.section); await click('新建');
-  await click(scenario.choice, document.querySelector('.mobile-editor-action-menu'));
+  await click(scenario.choice, document.querySelector('[role=menu]'));
   expect(container.querySelector('.editor-page-detail')).toBeTruthy();
   expect(container.querySelector('.mobile-header-actions button')).toBeNull();
   if (!returnToList) return;

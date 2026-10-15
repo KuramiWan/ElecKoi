@@ -89,7 +89,7 @@ final class RuntimeInstaller {
             if (compressed.length() != bytes) throw new IOException("Archive saved size mismatch: " + asset);
             progress.accept(RuntimeInstallProgress.extracting(number, count));
             File destination = new File(directory, target); Files.createDirectories(destination.toPath());
-            Process extraction = new ProcessBuilder("/system/bin/toybox", "tar", "-xzf", compressed.getAbsolutePath(), "-C", destination.getAbsolutePath())
+            Process extraction = new ProcessBuilder("/system/bin/toybox", "tar", "--no-same-owner", "-xzf", compressed.getAbsolutePath(), "-C", destination.getAbsolutePath())
                 .redirectErrorStream(true).start();
             String log; try (InputStream stream = extraction.getInputStream()) { log = readText(stream); }
             int code = extraction.waitFor();

@@ -26,12 +26,12 @@ export function PresetProfileEditor({ preset, dirty, saving, error, onChange, on
 
   function updateModelTags(value) {
     setModelTagText(value);
-    const labels = [...new Set(value.split(/[，,、]/).map((item) => item.trim()).filter(Boolean))].slice(0, 8);
+    const labels = [...new Set(value.split(/[，,、]/).map((item) => item.trim()).filter(Boolean))];
     const existing = new Map(preset.modelTags.map((tag) => [tag.label, tag]));
     onChange({
       ...preset,
       modelTags: labels.map((label, index) => {
-        const slug = label.toLocaleLowerCase().replace(/[^a-z0-9\p{L}]+/gu, '-').replace(/^-|-$/g, '').slice(0, 28) || 'tag';
+        const slug = label.toLocaleLowerCase().replace(/[^a-z0-9\p{L}]+/gu, '-').replace(/^-|-$/g, '') || 'tag';
         return existing.get(label) || { id: `custom-${index}-${slug}`, label, providerId: '' };
       }),
     });
@@ -63,9 +63,9 @@ export function PresetProfileEditor({ preset, dirty, saving, error, onChange, on
     </header>
     <div className="preset-profile-editor-layout">
       <form onSubmit={(event) => { event.preventDefault(); if (dirty && !saving) void onSave(); }}>
-        <label><span>名称</span><input value={preset.name} maxLength={60} onChange={(event) => onChange({ ...preset, name: event.target.value })} /></label>
-        <label><span>作者</span><input value={profile.authorName} maxLength={40} placeholder="未填写作者" onChange={(event) => updateProfile({ authorName: event.target.value })} /></label>
-        <label><span>模型标签</span><input value={modelTagText} maxLength={160} placeholder="用逗号分隔" onChange={(event) => updateModelTags(event.target.value)} /></label>
+        <label><span>名称</span><input value={preset.name} onChange={(event) => onChange({ ...preset, name: event.target.value })} /></label>
+        <label><span>作者</span><input value={profile.authorName} placeholder="未填写作者" onChange={(event) => updateProfile({ authorName: event.target.value })} /></label>
+        <label><span>模型标签</span><input value={modelTagText} placeholder="用逗号分隔" onChange={(event) => updateModelTags(event.target.value)} /></label>
         {error || imageError ? <p className="preset-profile-editor-error">{error || imageError}</p> : null}
         <div className="preset-profile-editor-actions">
           <button type="submit" className="is-primary" disabled={!dirty || saving}>{saving ? '保存中…' : '保存'}</button>

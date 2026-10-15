@@ -53,7 +53,7 @@
 .mobile-chat-model-list > button { display: flex; width: 100%; align-items: center; min-height: 60px; gap: 14px; padding: 12px 16px; color: var(--text); text-align: left; background: transparent; }
 .mobile-chat-model-list > button > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .mobile-chat-model-list > button[aria-pressed="true"] { background: var(--active); }
-.mobile-conversation-overlay .mobile-chat-models .model-detail-form .model-section-heading { display: none; }
+.mobile-conversation-overlay .mobile-chat-models.mobile-model-editor .model-detail-form .model-section-heading { display: none; }
 .mobile-chat-models .mobile-overlay-scroll:has(.model-detail-form) { background: var(--rail); }
 .mobile-conversation-overlay .mobile-history .history-search { flex: none; height: 48px; margin: 8px 18px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--field-bg); color: var(--text); }
 .mobile-history .history-search input { font: inherit; font-size: 14px; color: var(--text); }

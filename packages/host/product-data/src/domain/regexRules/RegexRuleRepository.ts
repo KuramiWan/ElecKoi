@@ -1,4 +1,5 @@
-import { asc, eq } from 'drizzle-orm'
+import { createHash } from 'node:crypto'
+import { and, asc, eq } from 'drizzle-orm'
 import type {
   RegexRule,
   RegexRuleCollection,
@@ -7,10 +8,13 @@ import type {
   RegexRuleTarget,
   RegexRuleVersion
 } from '@shared/contracts/regex/schemas'
+import type { RegexEditorTarget, RegexRuleEditorCollection } from '@shared/contracts/regex/schemas'
 import {
   regexRuleCollectionSchema,
   regexRuleSchema,
-  regexRuleTargetSchema
+  regexRuleTargetSchema,
+  regexEditorTargetSchema,
+  regexRuleEditorCollectionSchema
 } from '@shared/contracts/regex/schemas'
 import { DesktopError, DESKTOP_ERROR_CODES } from '@shared/foundation/DesktopError'
 import {
@@ -24,7 +28,8 @@ import {
   characterRegexRules,
   globalRegexRules,
   regexEnablementVersions,
-  regexState
+  regexState,
+  regexLibraries
 } from '@product-data/storage/sqlite/schema/common'
 import { decodeRegexDocuments, encodeRegexExport, type ScopedRegexRule } from '@shared/foundation/regexRuleTransfer'
 
@@ -36,6 +41,9 @@ export interface AgentPresetRegexPort {
     revision: string
   }
   replaceActiveRegexRules(rules: RegexRule[], db: ElecKoiDatabase): void
+  readRegexRules(presetId: string, db: ElecKoiDatabase): { rules: RegexRule[]; revision: string }
+  replaceRegexRules(presetId: string, rules: RegexRule[], db: ElecKoiDatabase): void
+  enabledRegexRuleIds(db: ElecKoiDatabase): string[]
 }
 
 function parseStringList(raw: string, description: string): string[] {
@@ -74,9 +82,9 @@ function rowToRule(row: {
 function normalizedRule(rule: RegexRule, order: number): RegexRule {
   return regexRuleSchema.parse({
     ...rule,
-    name: rule.name.trim().slice(0, 60),
-    pattern: rule.pattern.slice(0, 4_000),
-    targets: rule.targets.length > 0 ? [...new Set(rule.targets)] : ['AiOutput'],
+    name: rule.name.trim(),
+    pattern: rule.pattern,
+    targets: [...new Set(rule.targets)],
     order
   })
 }
@@ -86,7 +94,7 @@ function normalizedCollection(characterId: string, input: RegexRuleCollection): 
   const normalize = (rules: RegexRule[]) => rules.map(normalizedRule)
   const versions: RegexRuleVersion[] = input.versions.map((version) => ({
     ...version,
-    name: version.name.trim().slice(0, 60) || '未命名预设',
+    name: version.name.trim() || '未命名预设',
     globalEnabledIds: [...new Set(version.globalEnabledIds)],
     agentPresetEnabledIds: [...new Set(version.agentPresetEnabledIds)],
     characterEnabledIds: [...new Set(version.characterEnabledIds)]
@@ -129,6 +137,144 @@ export class RegexRuleRepository {
     private readonly agentPresetRegexes: AgentPresetRegexPort
   ) {}
 
+  scopeEnabled(scope: 'global' | 'character' | 'preset', ownerId: string, db: ElecKoiDatabase = this.store.db): boolean {
+    return db.select({ enabled: regexLibraries.enabled }).from(regexLibraries)
+      .where(and(eq(regexLibraries.scope, scope), eq(regexLibraries.ownerId, ownerId))).get()?.enabled !== 0
+  }
+
+  private saveScopeEnabled(db: ElecKoiDatabase, scope: 'global' | 'character' | 'preset', ownerId: string, enabled: boolean): void {
+    db.insert(regexLibraries).values({ scope, ownerId, enabled: Number(enabled),
+      characterId: scope === 'character' ? ownerId : null, presetId: scope === 'preset' ? ownerId : null })
+      .onConflictDoUpdate({ target: [regexLibraries.scope, regexLibraries.ownerId], set: { enabled: Number(enabled) } }).run()
+  }
+
+  private readVersions(db: ElecKoiDatabase): RegexRuleVersion[] {
+    return db.select().from(regexEnablementVersions).orderBy(asc(regexEnablementVersions.sortIndex)).all()
+      .map(row => ({ id: row.id, name: row.name,
+        globalEnabledIds: parseStringList(row.globalEnabledIdsJson, '正则预设'),
+        agentPresetEnabledIds: parseStringList(row.agentPresetEnabledIdsJson, '正则预设'),
+        characterEnabledIds: parseStringList(row.characterEnabledIdsJson, '正则预设') }))
+  }
+
+  readScope(scope: 'global' | 'character' | 'preset', ownerId: string): RegexRule[] {
+    if (scope === 'global') {
+      if (ownerId) throw new Error('全局正则使用空归属编号。')
+      return this.store.db.select().from(globalRegexRules).orderBy(asc(globalRegexRules.sortIndex)).all().map(rowToRule)
+    }
+    const collection = this.readEditor({ scope, ownerId })
+    return scope === 'preset' ? collection.agentPresetRules : collection.characterRules
+  }
+
+  readEditor(targetInput: RegexEditorTarget, db: ElecKoiDatabase = this.store.db): RegexRuleEditorCollection {
+    const target = regexEditorTargetSchema.parse(targetInput)
+    if (target.scope === 'character') requireCharacter(db, target.ownerId)
+    const ownerRules = target.scope === 'preset' ? this.agentPresetRegexes.readRegexRules(target.ownerId, db).rules
+      : db.select().from(characterRegexRules).where(eq(characterRegexRules.characterId, target.ownerId))
+        .orderBy(asc(characterRegexRules.sortIndex)).all().map(rowToRule)
+    const ownerIds = new Set(ownerRules.map(rule => rule.id))
+    const state = db.select().from(regexState).where(eq(regexState.singletonId, 1)).get()
+    return regexRuleEditorCollectionSchema.parse({
+      target, ownerRevision: createHash('sha256').update(JSON.stringify(ownerRules)).digest('hex'),
+      globalEnabled: this.scopeEnabled('global', '', db),
+      ...(target.scope === 'preset' ? { agentPresetEnabled: this.scopeEnabled('preset', target.ownerId, db) }
+        : { characterEnabled: this.scopeEnabled('character', target.ownerId, db) }),
+      globalRules: db.select().from(globalRegexRules).orderBy(asc(globalRegexRules.sortIndex)).all().map(rowToRule),
+      agentPresetRules: target.scope === 'preset' ? ownerRules : [],
+      characterRules: target.scope === 'character' ? ownerRules : [],
+      versions: this.readVersions(db).map(version => ({ ...version,
+        agentPresetEnabledIds: target.scope === 'preset' ? version.agentPresetEnabledIds.filter(id => ownerIds.has(id)) : [],
+        characterEnabledIds: target.scope === 'character' ? version.characterEnabledIds.filter(id => ownerIds.has(id)) : [] })),
+      activeVersionId: state?.activeVersionId ?? '', revision: state?.revision ?? 0
+    })
+  }
+
+  saveEditor(input: RegexRuleEditorCollection): RegexRuleEditorCollection {
+    const parsed = regexRuleEditorCollectionSchema.parse(input)
+    const { target } = parsed
+    const hiddenKey = target.scope === 'character' ? 'agentPresetRules' : 'characterRules'
+    const hiddenVersionKey = target.scope === 'character' ? 'agentPresetEnabledIds' : 'characterEnabledIds'
+    if (parsed[hiddenKey].length || parsed.versions.some(version => version[hiddenVersionKey].length)) {
+      throw new Error('正则编辑器不能修改其他归属的配置。')
+    }
+    const hiddenEnablement = target.scope === 'character' ? 'agentPresetEnabled' : 'characterEnabled'
+    if (parsed[hiddenEnablement] !== undefined) throw new Error('正则编辑器不能修改其他归属的整体启停。')
+    const normalized = { ...parsed, globalRules: parsed.globalRules.map(normalizedRule),
+      agentPresetRules: parsed.agentPresetRules.map(normalizedRule), characterRules: parsed.characterRules.map(normalizedRule) }
+    const ids = normalized.globalRules.concat(normalized.agentPresetRules, normalized.characterRules).map(rule => rule.id)
+    if (new Set(ids).size !== ids.length) throw new Error('正则规则编号不能重复。')
+    if (new Set(normalized.versions.map(version => version.id)).size !== normalized.versions.length) throw new Error('正则预设编号不能重复。')
+    if (normalized.activeVersionId && !normalized.versions.some(version => version.id === normalized.activeVersionId)) throw new Error('指定的正则启用版本不存在。')
+    for (const version of normalized.versions) {
+      for (const [ruleKey, memberKey] of [['globalRules', 'globalEnabledIds'], ['agentPresetRules', 'agentPresetEnabledIds'], ['characterRules', 'characterEnabledIds']] as const) {
+        const allowed = new Set(normalized[ruleKey].map(rule => rule.id))
+        if (version[memberKey].some(id => !allowed.has(id))) throw new Error('正则预设包含不属于本编辑器的规则。')
+      }
+    }
+    this.store.withWriteTx(db => {
+      const current = this.readEditor(target, db)
+      if (current.revision !== parsed.revision || current.ownerRevision !== parsed.ownerRevision) {
+        throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已在其他窗口更新，请放弃本页修改后载入最新内容。')
+      }
+      const ownerKey = target.scope === 'preset' ? 'agentPresetRules' : 'characterRules'
+      const memberKey = target.scope === 'preset' ? 'agentPresetEnabledIds' : 'characterEnabledIds'
+      const ownerIds = new Set(current[ownerKey].map(rule => rule.id))
+      const storedVersions = this.readVersions(db)
+      const storedById = new Map(storedVersions.map(version => [version.id, version]))
+      const active = storedById.get(current.activeVersionId)
+      const baselineMembership = active ?? { agentPresetEnabledIds: this.agentPresetRegexes.enabledRegexRuleIds(db),
+        characterEnabledIds: db.select().from(characterRegexRules).where(eq(characterRegexRules.enabled, 1)).all().map(rule => rule.id) }
+      const versions = normalized.versions.map(version => {
+        const previous = storedById.get(version.id) ?? baselineMembership
+        return { ...version,
+          [hiddenVersionKey]: [...previous[hiddenVersionKey]],
+          [memberKey]: [...new Set([...previous[memberKey].filter(id => !ownerIds.has(id)), ...version[memberKey]])] }
+      })
+      this.persistShared(db, { ...normalized, versions })
+      this.saveScopeEnabled(db, 'global', '', normalized.globalEnabled ?? current.globalEnabled ?? true)
+      this.saveScopeEnabled(db, target.scope, target.ownerId,
+        target.scope === 'preset' ? normalized.agentPresetEnabled ?? current.agentPresetEnabled ?? true
+          : normalized.characterEnabled ?? current.characterEnabled ?? true)
+      if (target.scope === 'preset') this.agentPresetRegexes.replaceRegexRules(target.ownerId, normalized.agentPresetRules, db)
+      else {
+        db.delete(characterRegexRules).where(eq(characterRegexRules.characterId, target.ownerId)).run()
+        if (normalized.characterRules.length) db.insert(characterRegexRules).values(normalized.characterRules.map((rule, sortIndex) => ({
+          characterId: target.ownerId, ...ruleRow(rule, sortIndex) }))).run()
+      }
+      const activeVersionId = normalized.activeVersionId
+      db.insert(regexState).values({ singletonId: 1, activeVersionId: activeVersionId || null, revision: current.revision + 1 })
+        .onConflictDoUpdate({ target: regexState.singletonId, set: { activeVersionId: activeVersionId || null, revision: current.revision + 1 } }).run()
+    })
+    return this.readEditor(target)
+  }
+
+  importEditor(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]) {
+    const current = this.readEditor(collection.target)
+    if (current.revision !== collection.revision || current.ownerRevision !== collection.ownerRevision) {
+      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已更新，请载入最新内容后再导入。')
+    }
+    const ownerScope = collection.target.scope === 'preset' ? 'AgentPreset' : 'Character'
+    if (fallbackScope !== 'Global' && fallbackScope !== ownerScope) throw new Error('导入归属不属于本编辑器。')
+    const decoded = decodeRegexDocuments(documents, fallbackScope)
+    if (decoded.rules.some(item => item.scope !== 'Global' && item.scope !== ownerScope)) throw new Error('文件包含其他归属的正则，请在对应编辑器中导入。')
+    if (!decoded.rules.length) throw new Error('所选文件中没有可导入的正则规则。')
+    const merged = includeImportedRulesInActiveVersion({ ...current,
+      globalRules: current.globalRules.concat(decoded.rules.filter(item => item.scope === 'Global').map(item => item.rule)),
+      agentPresetRules: current.agentPresetRules.concat(decoded.rules.filter(item => item.scope === 'AgentPreset').map(item => item.rule)),
+      characterRules: current.characterRules.concat(decoded.rules.filter(item => item.scope === 'Character').map(item => item.rule)) }, decoded.rules)
+    return { collection: this.saveEditor(merged), importedFileCount: decoded.importedFileCount,
+      importedRuleCount: decoded.rules.length, failedFileNames: decoded.failedFileNames }
+  }
+
+  exportEditor(target: RegexEditorTarget, ruleIds: string[]): { fileName: string; json: string } {
+    const collection = this.readEditor(target), ids = new Set(ruleIds)
+    const selected: ScopedRegexRule[] = [
+      ...collection.globalRules.filter(rule => ids.has(rule.id)).map(rule => ({ scope: 'Global' as const, rule })),
+      ...collection.agentPresetRules.filter(rule => ids.has(rule.id)).map(rule => ({ scope: 'AgentPreset' as const, rule })),
+      ...collection.characterRules.filter(rule => ids.has(rule.id)).map(rule => ({ scope: 'Character' as const, rule })) ]
+    if (!selected.length || selected.length !== ids.size) throw new Error('请选择本编辑器中可导出的规则。')
+    return { fileName: 'eleckoi-regex-rules.json', json: encodeRegexExport(selected) }
+  }
+
   get(characterId: string, db: ElecKoiDatabase = this.store.db): RegexRuleCollection {
     requireCharacter(db, characterId)
     const state = db.select().from(regexState).where(eq(regexState.singletonId, 1)).get()
@@ -146,6 +292,9 @@ export class RegexRuleRepository {
       agentPresetId: preset.presetId,
       agentPresetName: preset.presetName,
       agentPresetRegexRevision: preset.revision,
+      globalEnabled: this.scopeEnabled('global', '', db),
+      agentPresetEnabled: this.scopeEnabled('preset', preset.presetId, db),
+      characterEnabled: this.scopeEnabled('character', characterId, db),
       globalRules: db.select().from(globalRegexRules).orderBy(asc(globalRegexRules.sortIndex)).all().map(rowToRule),
       agentPresetRules: preset.rules,
       characterRules: db.select().from(characterRegexRules).where(eq(characterRegexRules.characterId, characterId))
@@ -185,6 +334,10 @@ export class RegexRuleRepository {
       )
     }
     this.persistShared(db, normalized)
+    this.saveScopeEnabled(db, 'global', '', normalized.globalEnabled ?? this.scopeEnabled('global', '', db))
+    this.saveScopeEnabled(db, 'character', characterId, normalized.characterEnabled ?? this.scopeEnabled('character', characterId, db))
+    if (normalized.agentPresetId) this.saveScopeEnabled(db, 'preset', normalized.agentPresetId,
+      normalized.agentPresetEnabled ?? this.scopeEnabled('preset', normalized.agentPresetId, db))
     this.agentPresetRegexes.replaceActiveRegexRules(normalized.agentPresetRules, db)
     db.delete(characterRegexRules).where(eq(characterRegexRules.characterId, characterId)).run()
     if (normalized.characterRules.length > 0) {
@@ -255,7 +408,7 @@ export class RegexRuleRepository {
     return transformCollectionSurface(text, this.get(characterId), target, surface)
   }
 
-  private persistShared(db: ElecKoiDatabase, collection: RegexRuleCollection): void {
+  private persistShared(db: ElecKoiDatabase, collection: Pick<RegexRuleCollection, 'globalRules' | 'versions'>): void {
     db.delete(globalRegexRules).run()
     if (collection.globalRules.length > 0) {
       db.insert(globalRegexRules).values(collection.globalRules.map(ruleRow)).run()

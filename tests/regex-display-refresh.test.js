@@ -49,8 +49,9 @@ function plugin(path) {
   return dshClientPlugin(registration)
 }
 
-async function mount(scope, message = sourceMessage) {
+async function mount(scope, message = sourceMessage, rulePatch = {}) {
   let collection = makeCollection(scope)
+  collection[scope][0] = { ...collection[scope][0], ...rulePatch }
   let regexRules
   let catalog
   let rendered = []
@@ -63,7 +64,9 @@ async function mount(scope, message = sourceMessage) {
     value: input.map((message, index) => {
       const projected = projector.project({ ...message, conversationId }, collection, undefined, input.length - index - 1)
       return { id: message.id, sourceContent: message.content,
-        displayContent: projected.displayContent ?? projected.content, variableStateJson: projected.variableStateJson }
+        displayContent: projected.displayContent ?? projected.content, variableStateJson: projected.variableStateJson,
+        ...(message.reasoning ? { reasoning: projector.projectReasoning({ ...message, conversationId }, message.reasoning, collection,
+          undefined, input.length - index - 1) } : {}) }
     }) }))
   const readRules = vi.fn(async () => ({ ok: true, value: structuredClone(collection) }))
   const saveRules = vi.fn(async (_characterId, value) => {
@@ -109,6 +112,61 @@ async function mount(scope, message = sourceMessage) {
 }
 
 describe('regex display refresh', () => {
+  it.each(scopes)('removes an existing display result when the saved %s scope is disabled and restores it on re-enable', async scope => {
+    const app = await mount(scope), enabledKey = { globalRules: 'globalEnabled', agentPresetRules: 'agentPresetEnabled', characterRules: 'characterEnabled' }[scope]
+    try {
+      expect(app.rendered()[0].displayContent).toContain('Old card')
+      await app.regexRules.save('character-1', { ...app.collection(), [enabledKey]: false })
+      await settle()
+      expect(app.rendered()[0].displayContent).toBe('[CARD]')
+      expect(app.collection()[scope][0].enabled).toBe(true)
+      await app.regexRules.save('character-1', { ...app.collection(), [enabledKey]: true })
+      await settle()
+      expect(app.rendered()[0].displayContent).toContain('Old card')
+      expect(app.rendered()[0].content).toBe('[CARD]')
+    } finally { app.close() }
+  })
+
+  it('releases body and reasoning projections when their messages leave the loaded page', () => {
+    const projector = new MessageDisplayProjector(mvuMessageDisplayCompatibility)
+    const collection = makeCollection('globalRules')
+    for (let index = 0; index < 30; index++) {
+      const message = { ...sourceMessage, id: `synthetic-loaded-${index}` }
+      projector.project(message, collection)
+      projector.projectReasoning(message, [{ id: 'synthetic-thought', text: '[CARD]' }], collection)
+    }
+    projector.retainMessages(new Set(['synthetic-loaded-29']))
+    expect(projector.cache.size).toBe(1)
+    expect(projector.reasoningCache.size).toBe(1)
+    projector.retainMessages(new Set())
+    expect(projector.cache.size).toBe(0)
+    expect(projector.reasoningCache.size).toBe(0)
+  })
+  it('projects completed reasoning through Host display rules, refreshes edited rules, and sends no tool details or running fragments', async () => {
+    const message = { ...sourceMessage, status: 'streaming', process: [
+      { id: 'synthetic-reasoning-done', kind: 'reasoning', status: 'complete', detail: '[CARD]', summary: '' },
+      { id: 'synthetic-reasoning-live', kind: 'reasoning', status: 'running', detail: '[CARD]', summary: '' },
+      { id: 'synthetic-tool', kind: 'tool', status: 'complete', detail: 'Synthetic tool result', arguments: '{"value":"Synthetic tool argument"}' },
+    ] }
+    const app = await mount('globalRules', message, { targets: ['Reasoning'], replacement: 'Changed reasoning' })
+    try {
+      const current = () => app.catalog.getDetailsSnapshot().details.messages[0]
+      expect(current().process[0]).toMatchObject({ detail: '[CARD]', displayDetail: 'Changed reasoning' })
+      expect(current().process[1].displayDetail).toBeUndefined()
+      const sent = app.projectDisplay.mock.calls.at(-1)[1][0]
+      expect(sent.reasoning).toEqual([{ id: 'synthetic-reasoning-done', text: '[CARD]' }])
+      expect(sent.process).toBeUndefined()
+      const calls = app.projectDisplay.mock.calls.length
+      const details = app.catalog.getDetailsSnapshot().details
+      app.catalog.publishDetails({ ...app.catalog.getDetailsSnapshot(), details: { ...details, messages: [{ ...current(),
+        process: current().process.map(item => item.status === 'running' ? { ...item, detail: '[CARD] more streamed text' } : item) }] } })
+      await settle()
+      expect(app.projectDisplay.mock.calls).toHaveLength(calls)
+      await app.regexRules.save('character-1', { ...app.collection(), globalRules: app.collection().globalRules.map(rule => ({ ...rule, replacement: '' })) })
+      await settle()
+      expect(current().process[0]).toMatchObject({ detail: '[CARD]', displayDetail: '' })
+    } finally { app.close() }
+  })
   it('uses the native variable checkpoint instead of feeding display variables back into projection', async () => {
     const message = { ...sourceMessage, nativeVariableStateJson: '{"label":"source"}', variableStateJson: '{"label":"display"}' }
     const app = await mount('agentPresetRules', message)

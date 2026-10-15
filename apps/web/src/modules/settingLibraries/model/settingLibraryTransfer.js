@@ -60,7 +60,7 @@ export function syncActiveVersion(library) {
 }
 
 export function renameActiveVersion(library, name) {
-  const next = { ...library, name: name.slice(0, 60) };
+  const next = { ...library, name: name };
   return syncActiveVersion(next);
 }
 
@@ -109,7 +109,7 @@ function ensureFixedEntries(library, entries) {
 
 function availableVersionName(library, requested) {
   const names = new Set(library.versions.map((version) => version.name.trim()));
-  return uniqueName(requested.trim() || "新版本", names).slice(0, 60);
+  return uniqueName(requested.trim() || "新版本", names);
 }
 
 export function createLibraryVersion(library, requestedName, sourceVersionId = "") {
@@ -177,7 +177,7 @@ function entryFromJson(value, index) {
   const triggerMode = text(value.trigger_mode);
   return {
     id: text(value.id) || createId("setting"),
-    title: text(value.title).slice(0, 120),
+    title: text(value.title),
     iconId: text(value.icon_id),
     kind: ["normal", "opening", "history_compaction", "hidden_tool_timeline"].includes(value.kind) ? value.kind : "normal",
     groupId: text(value.group_id),
@@ -213,7 +213,7 @@ function entryFromJson(value, index) {
 function groupFromJson(value, index) {
   return {
     id: text(value.id) || createId("group"),
-    name: text(value.name).slice(0, 80),
+    name: text(value.name),
     parentId: text(value.parent_id),
     order: Math.max(1, integer(value.order, index + 1)),
     treeViewOrder: integer(value.tree_view_order, index + 1),
@@ -227,7 +227,7 @@ function promptPositionFromJson(value, index) {
   const placement = promptPlacement(anchor, text(value.side));
   return {
     id: text(value.id) || createId("prompt-position"),
-    name: text(value.name).slice(0, 60),
+    name: text(value.name),
     ...placement,
     order: Math.max(1, integer(value.order, index + 1)),
     createdAt: text(value.created_at),
@@ -253,14 +253,14 @@ function parseElecKoiExport(source) {
 }
 
 function uniqueImportedTitle(requested, used) {
-  const base = requested.trim().slice(0, 120) || "世界书条目";
+  const base = requested.trim() || "世界书条目";
   if (!used.has(base.toLocaleLowerCase())) {
     used.add(base.toLocaleLowerCase());
     return base;
   }
   let index = 2;
   while (used.has(`${base} (${index})`.toLocaleLowerCase())) index += 1;
-  const result = `${base} (${index})`.slice(0, 120);
+  const result = `${base} (${index})`;
   used.add(result.toLocaleLowerCase());
   return result;
 }
@@ -484,7 +484,7 @@ function nextTreeViewOrder(parentId, groups, entries) {
 function availableTitle(groupId, requested, entries) {
   const base = requested.trim() || "未命名设定";
   const names = new Set(entries.filter((entry) => entry.groupId === groupId).map((entry) => entry.title.trim()));
-  return uniqueName(base, names).slice(0, 120);
+  return uniqueName(base, names);
 }
 
 function availableOrder(entry, entries) {

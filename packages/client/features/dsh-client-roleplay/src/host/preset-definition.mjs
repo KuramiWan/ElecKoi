@@ -25,11 +25,19 @@ export function runtimePresetDefinition(definition, templatePath) {
   }
 }
 
-export function readRuntimePresetDefinition(path, id, templatePath) {
+export function readRuntimePresetDefinition(path, id, templatePath, requiredProductPlugins = []) {
   const source = readFileSync(path, 'utf8')
   const parsed = JSON.parse(source)
   if (parsed?.id !== id || !Array.isArray(parsed.plugins)) {
     throw new Error(`ElecKoi Agent preset ${id} has an invalid composition`)
+  }
+  // Generated declarations retain their selected capabilities; required Host
+  // file access is restored before mounting without changing Session history.
+  for (const pluginId of requiredProductPlugins) {
+    if (!PRODUCT_PLUGIN_FILES.has(pluginId)) throw new Error(`未知的预设必需插件：${pluginId}`)
+    if (!parsed.plugins.some(plugin => plugin?.id === pluginId)) {
+      parsed.plugins.push({ id: pluginId, name: productSpecifier(pluginId) })
+    }
   }
   return runtimePresetDefinition(parsed, templatePath)
 }

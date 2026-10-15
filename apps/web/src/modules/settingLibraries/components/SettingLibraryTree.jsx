@@ -3,6 +3,7 @@ import { ChatCircleDots, Code, LinkSimple } from "../../../ui/icons/interfaceIco
 import { DshFolderClosedIcon, DshFolderOpenIcon, DshTriangleRightIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { HeadlessTree } from "../../../ui/tree/HeadlessTree.jsx";
 import { SettingEntryGlyph } from "./SettingLibraryEntryEditor.jsx";
+import { EditorSelectionCheckbox } from '../../../ui/ui/EditorCollectionControls.jsx';
 
 export const SettingTreeActionsContext = createContext(null);
 
@@ -20,7 +21,7 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
   return (
     <div
       {...itemProps}
-      className={`setting-library-tree-row${data.nodeKind === "entry" ? " has-toggle" : ""}${data.enabled === false ? " is-disabled" : ""}${level > 0 ? " is-nested" : ""}${isSelected ? " is-selected" : ""}${isDropTarget ? " is-drop-target" : ""}${isDragging ? " is-dragging" : ""}`}
+      className={`setting-library-tree-row${data.nodeKind === "entry" ? " has-toggle" : ""}${data.enabled === false ? " is-disabled" : ""}${level > 0 ? " is-nested" : ""}${actions?.selection?.active ? actions.selection.selected.has(data.id) ? ' is-selected' : '' : isSelected ? " is-selected" : ""}${isDropTarget ? " is-drop-target" : ""}${isDragging ? " is-dragging" : ""}`}
       style={style}
       onDoubleClick={(event) => {
         event.stopPropagation();
@@ -32,6 +33,7 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
       onContextMenu={(event) => actions?.openContextMenu(event, data)}
     >
       <div className="setting-library-tree-row-content">
+        <EditorSelectionCheckbox selection={actions?.selection} id={data.id} label={data.label} disabled={actions?.saving || data.fixed} />
         {data.nodeKind === "group" ? (
           <button
             type="button"
@@ -54,7 +56,7 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
           {Icon ? <Icon weight="regular" /> : <SettingEntryGlyph iconId={data.iconId} weight="regular" />}
         </span>}
         <span className="setting-library-tree-label">{data.label}</span>
-        {data.nodeKind === "group" ? <span className="setting-library-tree-count">{data.childCount}</span> : (
+        {!actions?.selection?.active && (data.nodeKind === "group" ? <span className="setting-library-tree-count">{data.childCount}</span> : (
           <button
             type="button"
             className="setting-library-tree-switch"
@@ -68,7 +70,7 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
               actions.updateEntryById(data.recordId, { enabled: !data.enabled });
             }}
           ><span aria-hidden="true" /></button>
-        )}
+        ))}
       </div>
     </div>
   );

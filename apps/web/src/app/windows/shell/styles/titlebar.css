@@ -1,56 +1,50 @@
-@property --side-panel-width {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 328px;
-}
-
-@property --rightbar-track-width {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
 .qq-shell {
-  --side-panel-motion-duration: 300ms;
   position: relative;
   display: grid;
-  grid-template-rows: 40px minmax(0, 1fr);
+  grid-template-rows: var(--window-caption-height, 40px) minmax(0, 1fr);
   width: 100%;
   height: 100%;
   background: var(--shell-backdrop);
   isolation: isolate;
   contain: layout paint size;
-  transition: --side-panel-width var(--side-panel-motion-duration) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .qq-shell.main-window-shell {
+  /* Match the rail's inner width so the mark has equal top and side insets. */
+  --window-caption-height: calc(var(--rail-column-width) - 1px);
   grid-template-columns: var(--rail-column-width) var(--side-panel-width) minmax(0, 1fr) minmax(0, var(--rightbar-track-width));
   grid-template-rows: minmax(0, 1fr);
   background: var(--list);
 }
 
-.qq-shell.main-window-shell[data-rightbar-animating] {
-  transition:
-    --side-panel-width var(--ds-transition-duration-slow) var(--ds-ease-in-out),
-    --rightbar-track-width var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+.qq-shell.main-window-shell[data-columns-animating] {
+  transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 }
 
+.main-window-shell[data-columns-animating] .side-panel-resizer,
+.main-window-shell[data-columns-animating] .rightbar-resizer {
+  transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+}
+
+.qq-shell.main-window-shell[data-side-panel-dragging],
 .qq-shell.main-window-shell[data-rightbar-dragging],
 .qq-shell.main-window-shell[data-rightbar-fullscreen],
-.qq-shell.main-window-shell[data-rightbar-instant] {
-  transition: none;
-}
-
-.qq-shell[data-side-panel-dragging] {
+.qq-shell.main-window-shell[data-rightbar-instant],
+.main-window-shell[data-side-panel-dragging] .side-panel-resizer,
+.main-window-shell[data-side-panel-dragging] .rightbar-resizer,
+.main-window-shell[data-rightbar-dragging] .side-panel-resizer,
+.main-window-shell[data-rightbar-dragging] .rightbar-resizer,
+.main-window-shell[data-rightbar-fullscreen] .side-panel-resizer,
+.main-window-shell[data-rightbar-fullscreen] .rightbar-resizer,
+.main-window-shell[data-rightbar-instant] .side-panel-resizer,
+.main-window-shell[data-rightbar-instant] .rightbar-resizer {
   transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .qq-shell {
-    transition: none;
-  }
-
-  .qq-shell.main-window-shell[data-rightbar-animating] {
+  .qq-shell.main-window-shell[data-columns-animating],
+  .main-window-shell[data-columns-animating] .side-panel-resizer,
+  .main-window-shell[data-columns-animating] .rightbar-resizer {
     transition: none;
   }
 }
@@ -58,9 +52,9 @@
 .client-titlebar {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(150px, 172px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(150px, max-content) minmax(0, 1fr) auto;
   align-items: center;
-  height: 40px;
+  height: var(--window-caption-height, 40px);
   background: var(--chat);
   -webkit-app-region: drag;
 }
@@ -88,6 +82,7 @@
   gap: 7px;
   height: 100%;
   padding-left: calc(var(--rail-column-width) + 10px);
+  padding-right: 12px;
   color: var(--title-fg);
 }
 
@@ -109,7 +104,7 @@
 
 .side-panel-expand-button {
   position: absolute;
-  top: 8px;
+  top: calc((var(--window-caption-height, 40px) - 24px) / 2);
   left: 14px;
   z-index: 5;
   display: grid;
@@ -188,12 +183,12 @@
   top: 0;
   right: 0;
   z-index: 50;
-  height: 40px;
+  height: var(--window-caption-height, 40px);
   -webkit-app-region: no-drag;
 }
 
 .main-window-controls .window-controls {
-  height: 40px;
+  height: var(--window-caption-height, 40px);
 }
 
 .window-controls button {

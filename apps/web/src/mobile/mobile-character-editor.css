@@ -38,7 +38,7 @@
 :is(.mobile-character-editor, .mobile-preset-editor) .editor-page-feedback:has(.setting-library-save-feedback) { padding: 8px 16px; }
 .mobile-character-editor .setting-library-save-feedback { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 :is(.mobile-character-editor, .mobile-preset-editor) .editor-page-detail > aside { position: static; inset: auto; flex: 1; width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
-:is(.mobile-character-editor, .mobile-preset-editor) .editor-page-detail :is(.setting-library-inspector-header, .variable-inspector-header, .regex-inspector-header, .dynamic-settings-inspector > header) { display: none; }
+:is(.mobile-character-editor, .mobile-preset-editor) .editor-page-detail :is(.setting-library-inspector-header, .variable-inspector-header, .regex-inspector-header, .dynamic-settings-inspector > header, .script-inspector > header) { display: none; }
 :is(.mobile-character-editor, .mobile-preset-editor) .editor-page-detail > :is(.setting-library-inspector, .variable-inspector, .regex-inspector, .dynamic-settings-inspector) { display: flex; flex-direction: column; }
 :is(.mobile-character-editor, .mobile-preset-editor) :is(.setting-library-inspector-body, .variable-inspector-body, .regex-inspector-scroll, .dynamic-settings-inspector-body) { flex: 1; min-height: 0; padding: 16px 16px 40px; }
 :is(.mobile-character-editor, .mobile-preset-editor) .setting-library-inspector-body { display: block; }
@@ -91,7 +91,7 @@
 .mobile-character-editor .setting-library-save-control:not(:has(.setting-library-save-feedback)) { display: none; }
 .mobile-character-editor :is(.setting-library-tree, .variable-tree, .regex-list-scroll) { width: 100%; margin: 0; padding: 8px; }
 :is(.mobile-character-editor, .mobile-preset-editor) :is(.setting-library-tree-row, .variable-tree-row, .regex-rule-row) { width: 100%; max-width: 100%; min-height: 48px; }
-.mobile-character-editor .regex-group-rows { width: 100%; padding-left: 0; }
+.mobile-character-editor .editor-library-rows { width: 100%; padding-left: 0; }
 :is(.mobile-character-editor, .mobile-preset-editor) .setting-library-tree-row-content { width: 100%; max-width: 100%; }
 :is(.mobile-character-editor, .mobile-preset-editor) .setting-library-tree-row-content { min-height: 48px; }
 :is(.mobile-character-editor, .mobile-preset-editor) :is(.setting-library-tree-label, .variable-tree-label, .regex-rule-main > span) { min-width: 0; font-size: 13px; }
@@ -108,7 +108,7 @@
 .mobile-character-editor .variable-type-options { width: 100%; }
 .mobile-character-editor :is(.setting-library-popover, .variable-popover, .regex-popover) { right: 0; left: auto; max-width: calc(100vw - 96px); }
 .mobile-character-editor .dynamic-settings-conversation-list { padding: 12px; }
-.mobile-character-editor .dynamic-settings-list-page { grid-template-rows: 60px minmax(0, 1fr); }
+.mobile-character-editor .dynamic-settings-list-page { grid-template-rows: auto minmax(0, 1fr); }
 .mobile-character-editor .dynamic-settings-conversation-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px; }
 .mobile-character-editor :is(.dynamic-settings-list-toolbar, .dynamic-settings-detail-toolbar, .dynamic-settings-tree-toolbar) { min-width: 0; padding: 8px; gap: 6px; }
 .mobile-character-editor .dynamic-settings-detail-toolbar { flex-wrap: wrap; }

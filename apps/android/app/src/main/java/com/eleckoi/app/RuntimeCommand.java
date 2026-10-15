@@ -8,6 +8,9 @@ import java.util.*;
 
 final class RuntimeCommand {
     static ProcessBuilder create(android.content.Context context, RuntimePaths paths, RuntimeInstaller.Installation installation, boolean profileStartup) throws Exception {
+        return create(context, paths, installation, profileStartup, false);
+    }
+    static ProcessBuilder create(android.content.Context context, RuntimePaths paths, RuntimeInstaller.Installation installation, boolean profileStartup, boolean disableUserPlugins) throws Exception {
         JSONObject config = new JSONObject()
             .put("schemaVersion", 1)
             .put("runtimeDataRoot", paths.data.getAbsolutePath())
@@ -36,6 +39,7 @@ final class RuntimeCommand {
             entrypoint = startupEntry.getAbsolutePath();
         }
         args.addAll(Arrays.asList(entrypoint, "--config", paths.config.getAbsolutePath()));
+        if (disableUserPlugins) args.add("--disable-user-plugins");
         ProcessBuilder builder = new ProcessBuilder(args).directory(paths.workspace);
         Map<String,String> env = builder.environment(); env.clear();
         env.put("ELECKOI_GLIBC_ROOT", installation.rootfs.getAbsolutePath());

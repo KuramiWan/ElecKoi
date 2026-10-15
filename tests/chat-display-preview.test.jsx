@@ -8,6 +8,17 @@ import { WithOfficialMarkdown } from "./helpers/officialMarkdown.jsx";
 globalThis.React = React;
 
 describe("chat display preview", () => {
+  it("shows the same rich message count and bounds as mobile only when limits are enabled", () => {
+    const render = enabled => renderToStaticMarkup(React.createElement(WithOfficialMarkdown, null,
+      React.createElement(SettingsPanel, { activePage: "chat", chatDisplay: { ...DEFAULT_CHAT_DISPLAY_PREFERENCES,
+        rich_message_limit_enabled: enabled, rich_message_floor_limit: 7 }, onChatDisplayChange: () => {},
+        renderLayout: ({ mainPanel }) => mainPanel })));
+    expect(render(false)).toContain('限制富消息运行楼层');
+    expect(render(false)).not.toContain('自动运行楼层数数值');
+    const html = render(true);
+    expect(html).toContain('aria-label="自动运行楼层数数值"');
+    expect(html).toContain('min="1" max="100" step="1" value="7"');
+  });
   it("uses the active persona without a fixed conversation title", () => {
     const html = renderToStaticMarkup(React.createElement(WithOfficialMarkdown, null,
       React.createElement(SettingsPanel, {

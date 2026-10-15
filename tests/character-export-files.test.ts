@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { gzipSync, gunzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CharacterTransferService } from '../packages/host/product-data/src/domain/characterTransfer/CharacterTransferService'
 import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
@@ -10,6 +11,8 @@ import { SettingLibraryRepository } from '../packages/host/product-data/src/doma
 import { VariableConfigRepository } from '../packages/host/product-data/src/domain/variables/VariableConfigRepository'
 import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
+import { readPngText, writePngText } from '../packages/host/product-data/src/storage/media/PngTextChunkCodec'
+import { decodeCharacterCard } from '../packages/host/product-data/src/domain/characterTransfer/characterCardFormats'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []
@@ -39,7 +42,7 @@ function harness() {
     root,
     target: join(root, 'exported'),
     transfers: new CharacterTransferService(database, characters, settingLibraries, variables, regexRules, media),
-    characters
+    characters, settingLibraries
   }
 }
 
@@ -121,4 +124,71 @@ describe('character card batch export', () => {
     expect(result.failures).toEqual([{ characterId: 'missing-card', message: '找不到对应的角色卡。' }])
     expect(existsSync(join(target, '角色甲.png'))).toBe(true)
   })
+})
+
+const privateGroup = 'synthetic-private-user-group'
+const plainPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+function cardRoot(bytes: Uint8Array, format: 'json' | 'png') {
+  return JSON.parse(format === 'json' ? Buffer.from(bytes).toString('utf8')
+    : gunzipSync(Buffer.from(readPngText(bytes).get('eleckoi-card')!, 'base64')).toString('utf8'))
+}
+
+describe('character cards exclude user grouping', () => {
+  it.each(['json', 'png'] as const)('does not export a user group in single or batch %s cards', async format => {
+    const { target, transfers, characters } = harness()
+    characters.create({ id: 'synthetic-grouped-card', name: '合成分享角色', group: privateGroup, persona: { assistant_name: '合成分享角色' } })
+    const before = characters.get()
+    const exported = transfers.export('synthetic-grouped-card', format)
+    const root = cardRoot(Buffer.from(exported.base64, 'base64'), format)
+    expect(root.character).not.toHaveProperty('group')
+    expect(JSON.stringify(root)).not.toContain(privateGroup)
+    const result = await transfers.exportMany(['synthetic-grouped-card'], format, target)
+    expect(result.failures).toEqual([])
+    expect(cardRoot(readFileSync(join(target, result.written[0]!.fileName)), format).character).not.toHaveProperty('group')
+    expect(characters.get()).toEqual(before)
+  }, 30_000)
+
+  it.each(['json', 'png'] as const)('ignores an old %s card user group during decode and import', format => {
+    const { transfers, characters } = harness()
+    characters.create({ id: 'synthetic-local-card', name: '合成本地角色', group: 'synthetic-local-group', persona: { assistant_name: '合成本地角色' } })
+    const source = JSON.stringify({ format: 'eleckoi.character-card', version: 1,
+      character: { name: '合成旧版卡片', group: privateGroup }, assets: [], regex_rules: [] })
+    const bytes = format === 'json' ? Buffer.from(source) : writePngText(plainPng,
+      new Map([['eleckoi-card', gzipSync(Buffer.from(source)).toString('base64')]]))
+    expect(decodeCharacterCard(bytes, 'eleckoi').packageData.character).not.toHaveProperty('group')
+    const preview = transfers.prepare([{ displayName: `synthetic-old-card.${format}`,
+      mimeType: format === 'json' ? 'application/json' : 'image/png', base64: Buffer.from(bytes).toString('base64') }], 'eleckoi')
+    expect(preview.items[0]!.errorMessage).toBe('')
+    const imported = transfers.commit(preview.token)
+    expect(imported.importedCharacterIds).toHaveLength(1)
+    const collection = characters.get()
+    expect(collection.items.find(item => item.id === imported.importedCharacterIds[0])!.group).toBe('')
+    expect(collection.groups).toEqual(['synthetic-local-group'])
+    expect(collection.items.find(item => item.id === 'synthetic-local-card')!.group).toBe('synthetic-local-group')
+    const root = cardRoot(Buffer.from(transfers.export(imported.importedCharacterIds[0]!, format).base64, 'base64'), format)
+    expect(JSON.stringify(root)).not.toContain(privateGroup)
+  }, 30_000)
+
+  it.each(['json', 'png'] as const)('removes old card data carried inside avatar PNGs from %s exports', format => {
+    const { transfers, characters } = harness()
+    const oldPayload = gzipSync(Buffer.from(JSON.stringify({ format: 'eleckoi.character-card', version: 1,
+      character: { name: '合成旧卡', group: privateGroup }, assets: [], regex_rules: [] }))).toString('base64')
+    const portrait = writePngText(plainPng, new Map([['eleckoi-card', oldPayload], ['chara', 'synthetic-old-card-data'], ['ccv3', 'synthetic-old-card-data'], ['Software', 'Synthetic image tool']]))
+    const image = `data:image/png;base64,${Buffer.from(portrait).toString('base64')}`
+    characters.create({ id: 'synthetic-image-card', name: '合成图片卡', group: privateGroup,
+      persona: { assistant_name: '合成图片卡', assistant_avatar: image, assistant_square: image, assistant_cover: image } })
+    const exportedBytes = Buffer.from(transfers.export('synthetic-image-card', format).base64, 'base64')
+    const root = cardRoot(exportedBytes, format)
+    expect(root.character).not.toHaveProperty('group')
+    for (const asset of root.assets) {
+      const metadata = readPngText(Buffer.from(asset.data, 'base64'))
+      for (const keyword of ['eleckoi-card', 'chara', 'ccv3']) expect(metadata.has(keyword)).toBe(false)
+      expect(metadata.get('Software')).toBe('Synthetic image tool')
+    }
+    if (format === 'png') {
+      const metadata = readPngText(exportedBytes)
+      expect(metadata.has('chara')).toBe(false)
+      expect(metadata.has('ccv3')).toBe(false)
+    }
+  }, 30_000)
 })

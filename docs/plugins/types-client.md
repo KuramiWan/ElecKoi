@@ -64,12 +64,15 @@ export interface ClientModelConfig {
     clearCredential?: boolean;
     settingsNs?: string;
     settingsPath?: string[];
+    builtin?: boolean;
+    useBuiltinModels?: boolean;
+    draftKey?: string;
     clearConfiguration?: boolean;
     image_settings?: Record<string, import('@eleckoi/dsh-product-api/types').VariableJsonValue>;
 }
 ```
 
-源码：[packages/client/features/dsh-client-models/src/client/types.ts:9](../../packages/client/features/dsh-client-models/src/client/types.ts#L9)
+源码：[packages/client/features/dsh-client-models/src/client/types.ts:10](../../packages/client/features/dsh-client-models/src/client/types.ts#L10)
 
 ## ClientModelOption
 
@@ -82,6 +85,9 @@ export interface ClientModelOption {
     contextWindowTokens?: number;
     maxOutputTokens?: number;
     supportsImageInput?: boolean;
+    overrideFields?: string[];
+    capabilitiesOverride?: boolean;
+    catalogDefaults?: ClientModelOption;
     reasoningEfforts?: false | Record<string, string | null>;
     reasoningEffort?: string;
     temperature?: number;
@@ -93,6 +99,20 @@ export interface ClientModelOption {
 
 源码：[packages/client/features/dsh-client-models/src/client/types.ts:3](../../packages/client/features/dsh-client-models/src/client/types.ts#L3)
 
+## ClientModelProvider
+
+```ts
+export interface ClientModelProvider {
+    provider: string;
+    displayName?: string;
+    settingsNs: string;
+    settingsPath: string[];
+    declared?: boolean;
+}
+```
+
+源码：[packages/client/features/dsh-client-models/src/client/types.ts:18](../../packages/client/features/dsh-client-models/src/client/types.ts#L18)
+
 ## ConfigurationSnapshot
 
 ```ts
@@ -103,7 +123,7 @@ export interface ConfigurationSnapshot<T> {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:4](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L4)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:6](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L6)
 
 ## ConversationCatalogSnapshot
 
@@ -115,7 +135,7 @@ export interface ConversationCatalogSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:45](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L45)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:49](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L49)
 
 ## ConversationChatSnapshot
 
@@ -126,7 +146,7 @@ export interface ConversationChatSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:60](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L60)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:64](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L64)
 
 ## ConversationClientDetails
 
@@ -137,7 +157,7 @@ export interface ConversationClientDetails extends Omit<ConversationDetailsMetad
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:44](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L44)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:48](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L48)
 
 ## ConversationClientMessage
 
@@ -152,8 +172,10 @@ export interface ConversationClientMessage extends Omit<ConversationMessageMetad
     dshTurn?: number | null;
     requestId?: string;
     nativeVariableStateJson?: string;
+    variableSnapshotAvailable?: boolean;
     inputEventSeq?: number;
     process?: ConversationProcessItem[];
+    processTiming?: { startedAtMillis?: number; completedAtMillis?: number; };
     dshMessageId?: string;
     runtimeSessionId?: string;
     renderKey?: string;
@@ -179,7 +201,7 @@ export interface ConversationDetailsSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:46](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L46)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:50](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L50)
 
 ## ConversationGeneratedImage
 
@@ -210,7 +232,7 @@ export interface ConversationGenerationChange {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:50](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L50)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:54](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L54)
 
 ## ConversationGenerationEvent
 
@@ -218,7 +240,7 @@ export interface ConversationGenerationChange {
 export type ConversationGenerationEvent = Extract<SessionEventLike, { type: 'turn/start' | 'turn/end' | 'assistant/message'; }>;
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:48](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L48)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:52](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L52)
 
 ## ConversationGenerationReply
 
@@ -226,7 +248,7 @@ export type ConversationGenerationEvent = Extract<SessionEventLike, { type: 'tur
 export type ConversationGenerationReply = { status: 'pending'; } | { status: 'ready'; message: ConversationClientMessage | null; } | { status: 'unavailable'; reason: string; };
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:57](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L57)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:61](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L61)
 
 ## ConversationPendingFile
 
@@ -265,6 +287,7 @@ export interface ConversationProcessItem {
     arguments: string;
     summary: string;
     detail: string;
+    displayDetail?: string;
     startedAtMillis: number;
     completedAtMillis?: number;
     parentId?: string;
@@ -286,7 +309,7 @@ export interface ConversationRegenerateInput {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:75](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L75)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:79](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L79)
 
 ## ConversationRunResult
 
@@ -297,7 +320,7 @@ export interface ConversationRunResult {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:76](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L76)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:80](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L80)
 
 ## ConversationSelection
 
@@ -308,7 +331,7 @@ export interface ConversationSelection {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:72](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L72)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:76](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L76)
 
 ## ConversationSendInput
 
@@ -324,7 +347,7 @@ export interface ConversationSendInput {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:74](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L74)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:78](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L78)
 
 ## ConversationStatsSnapshot
 
@@ -335,7 +358,7 @@ export interface ConversationStatsSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:62](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L62)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:66](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L66)
 
 ## ConversationStreamSnapshot
 
@@ -356,7 +379,7 @@ export interface ConversationStreamSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:47](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L47)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:51](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L51)
 
 ## ConversationTimelineSnapshot
 
@@ -369,7 +392,7 @@ export interface ConversationTimelineSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:71](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L71)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:75](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L75)
 
 ## ConversationUploadedFile
 
@@ -383,7 +406,7 @@ export interface ConversationUploadedFile {
 }
 ```
 
-源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:73](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L73)
+源码：[packages/client/features/dsh-client-conversations/src/client/types.ts:77](../../packages/client/features/dsh-client-conversations/src/client/types.ts#L77)
 
 ## CreatorStudioConversationSnapshot
 
@@ -438,17 +461,46 @@ export interface CreatorStudioSnapshot {
 
 源码：[packages/client/features/dsh-client-creator-studio/src/client/types.ts:42](../../packages/client/features/dsh-client-creator-studio/src/client/types.ts#L42)
 
+## EditorLibraryVersionModel
+
+```ts
+export interface EditorLibraryVersionModel<T> {
+    subscribe(listener: () => void): () => void;
+    read(scope: 'global' | 'character' | 'preset', ownerId: string): Promise<EditorLibraryVersions>;
+    save(documents: T[], versions: EditorLibraryVersions[]): Promise<{ documents: T[]; versions: EditorLibraryVersions[]; }>;
+}
+```
+
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:8](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L8)
+
+## ElecKoiRegexEditor
+
+```ts
+export interface ElecKoiRegexEditor {
+    versions: EditorLibraryVersionModel<RegexRuleEditorCollection>;
+    getSnapshot(): ConfigurationSnapshot<RegexRuleEditorCollection>;
+    read(): Promise<RegexRuleEditorCollection>;
+    subscribe(listener: (snapshot: ConfigurationSnapshot<RegexRuleEditorCollection>) => void): () => void;
+    save(collection: RegexRuleEditorCollection): Promise<RegexRuleEditorCollection>;
+    import(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]): Promise<RegexRuleEditorImportResult>;
+    export(ruleIds: string[]): Promise<{ fileName: string; json: string; }>;
+}
+```
+
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:217](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L217)
+
 ## ModelCatalogSnapshot
 
 ```ts
 export interface ModelCatalogSnapshot {
     status: 'loading' | 'ready' | 'error';
     configs: ClientModelConfig[];
+    providers: ClientModelProvider[];
     error: string;
 }
 ```
 
-源码：[packages/client/features/dsh-client-models/src/client/types.ts:16](../../packages/client/features/dsh-client-models/src/client/types.ts#L16)
+源码：[packages/client/features/dsh-client-models/src/client/types.ts:19](../../packages/client/features/dsh-client-models/src/client/types.ts#L19)
 
 ## NativeAuthorChatHandlers
 

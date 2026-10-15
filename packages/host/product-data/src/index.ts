@@ -14,9 +14,16 @@ import { ScriptLibraryRepository } from '@product-data/domain/scripts'
 import { agentPresetExists } from '@product-data/domain/agentPresets'
 import { characterExists } from '@product-data/domain/personas'
 import type { ScriptLibrary, ScriptLibraryScope } from '@shared/contracts/scripts/schemas'
+import type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from '@shared/contracts/displayTemplates/schemas'
+import { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
+import { EditorLibraryVersionRepository, EditorLibraryVersionsService } from '@product-data/domain/editorVersions'
+import type { EditorLibraryAddress, EditorLibraryVersions, EditorLibrarySaveRequest, EditorLibrarySaveResult } from '@shared/contracts/editorVersions/schemas'
+export type { EditorLibraryAddress, EditorLibraryVersions, EditorLibrarySaveRequest, EditorLibrarySaveResult } from '@shared/contracts/editorVersions/schemas'
+export type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from '@shared/contracts/displayTemplates/schemas'
 export type { ScriptLibrary, ScriptLibraryScope, ScriptTree } from '@shared/contracts/scripts/schemas'
 export { decodeScriptLibrary } from '@product-data/domain/scripts'
-import { ConversationArchiveRepository, ConversationRepository, MessageDisplayProjector, MessageRepository } from '@product-data/domain/conversations'
+import { ConversationArchiveRepository, ConversationRepository, ConversationStateRepository, MessageDisplayProjector, MessageRepository } from '@product-data/domain/conversations'
+import type { ConversationRuntimeState, ConversationStateSnapshot } from '@product-data/domain/conversations'
 import { resolveConversationSeed } from '@product-data/domain/conversations/conversationSeed'
 import { CreatorProjectRepository } from '@product-data/domain/creatorStudio/CreatorProjectRepository'
 export { creatorCapabilities, creatorToolsets, creatorAuthoringInstructions } from '@product-data/domain/creatorStudio/capabilities'
@@ -30,6 +37,7 @@ import {
 } from '@product-data/domain/agent/CharacterCardMacroResolver'
 import { mergeAgentPresetAndCharacterLibraries } from '@product-data/domain/agentPresets'
 import { projectAgentPresetRuntimeContext, projectAgentPresetRuntimeSelection, disabledAgentPresetToolGroupIds } from '@product-data/domain/agentPresets/AgentPresetRuntime'
+import { presetHistoryCompactionInstructions } from '@shared/contracts/presets/builtIns'
 import {
   characterCardMacroValues,
   resolveCharacterCardMacros,
@@ -39,6 +47,7 @@ import {
 import { buildVariableViewerTimeline } from '@shared/foundation/variables/viewerTimeline'
 import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
 import {
+  rulesForSurface,
   transformCollectionSurface,
   transformWithRegexRules,
   validateRegexRule
@@ -69,6 +78,8 @@ import type {
 import type {
   RegexRule,
   RegexRuleCollection,
+  RegexEditorTarget,
+  RegexRuleEditorCollection,
   RegexRuleImportDocument,
   RegexRuleScope,
   RegexRuleTarget
@@ -175,11 +186,14 @@ class ProductDataStore {
   private frontends: FrontendProjectRepository | undefined
   private presets: AgentPresetRepository | undefined
   private scripts: ScriptLibraryRepository | undefined
+  private displayTemplates: DisplayTemplateRepository | undefined
+  private editorVersions: EditorLibraryVersionsService | undefined
   private regexRules: RegexRuleRepository | undefined
   private store: HostSqliteStore | undefined
   private conversations: ConversationRepository | undefined
   private archives: ConversationArchiveRepository | undefined
   private messages: MessageRepository | undefined
+  private conversationStates: ConversationStateRepository | undefined
   private mediaAssets: LocalMediaStore | undefined
   private readonly messageDisplayProjector = new MessageDisplayProjector(mvuMessageDisplayCompatibility)
   private displayUi: Record<string, unknown> = {}
@@ -206,6 +220,7 @@ class ProductDataStore {
       this.connection = connection
       this.store = store
       this.messages = new MessageRepository(store)
+      this.conversationStates = new ConversationStateRepository(store)
       this.mediaAssets = media
       this.personas = new PersonaRepository(store, conversationSync, media)
       this.settingLibraries = new SettingLibraryRepository(store)
@@ -220,7 +235,10 @@ class ProductDataStore {
           this.variables!
         )
       )
-      this.archives = new ConversationArchiveRepository(store)
+      this.archives = new ConversationArchiveRepository(store, {
+        read: id => this.settingLibraries!.snapshotConversationRuntimeState(id),
+        restore: (id, raw) => this.settingLibraries!.restoreConversationRuntimeState(id, raw)
+      })
       this.characters = new CharacterRepository(
         store,
         conversationSync,
@@ -234,7 +252,13 @@ class ProductDataStore {
       const presets = new AgentPresetRepository(store, media, this.scripts)
       presets.ensureInitialized()
       this.presets = presets
+      this.displayTemplates = new DisplayTemplateRepository(store, { character: characterExists, preset: agentPresetExists })
       this.regexRules = new RegexRuleRepository(store, presets)
+      const versionRepository = new EditorLibraryVersionRepository(store, join(dirname(this.scripts.files.root), 'author-script-versions'), address => {
+        if (address.scope === 'character' && !characterExists(store.db, address.ownerId)) throw new Error('配置版本所属角色不存在。')
+        if (address.scope === 'preset' && !agentPresetExists(store.db, address.ownerId)) throw new Error('配置版本所属预设不存在。')
+      })
+      this.editorVersions = new EditorLibraryVersionsService(versionRepository, this.scripts, this.displayTemplates, this.regexRules)
       this.transfers = new CharacterTransferService(
         store,
         this.characters,
@@ -359,8 +383,57 @@ class ProductDataStore {
 
   readRuntimeVariableHistory(conversationId: string, runtimeSessionId: string) {
     this.databaseRepositories()
-    this.conversations!.get(conversationId)
-    return this.messages!.runtimeVariableSnapshots(conversationId, runtimeSessionId)
+    return this.conversationStates!.variableHistory(conversationId, runtimeSessionId)
+  }
+
+  runtimeVariablesByTurn(conversationId: string): Record<string, string> {
+    this.databaseRepositories()
+    return this.conversationStates!.variablesByTurn(conversationId, this.runtimeSessionId(conversationId))
+  }
+
+  recordRuntimeBeforeTurn(conversationId: string, runtimeSessionId: string, turn: number): void {
+    this.databaseRepositories()
+    if (this.runtimeSessionId(conversationId) !== runtimeSessionId) throw new Error('生成前状态的 Session 与聊天归属不匹配。')
+    this.store!.withWriteTx(() => this.conversationStates!.recordTurn(conversationId, runtimeSessionId, turn,
+      'before', this.snapshotConversationRuntime(conversationId)))
+  }
+
+  captureRuntimeHistory(conversationId: string): ConversationStateSnapshot[] {
+    this.databaseRepositories()
+    return this.conversationStates!.list(conversationId)
+  }
+
+  restoreRuntimeHistory(conversationId: string, state: ConversationRuntimeState, history: ConversationStateSnapshot[]): void {
+    this.databaseRepositories()
+    this.store!.withWriteTx(() => {
+      this.restoreConversationRuntime(conversationId, state)
+      this.conversationStates!.replace(conversationId, history)
+    })
+  }
+
+  runtimeStateAt(conversationId: string, runtimeSessionId: string, turn: number,
+    phase: 'before' | 'after', inputId?: string): ConversationRuntimeState {
+    this.databaseRepositories()
+    return this.conversationStates!.read(conversationId, runtimeSessionId, turn, phase, inputId)
+  }
+
+  applyRuntimeRewind(conversationId: string, runtimeSessionId: string, turn: number, state: ConversationRuntimeState, retainedInputIds: readonly string[]): void {
+    this.databaseRepositories()
+    this.store!.withWriteTx(() => {
+      this.restoreConversationRuntime(conversationId, state)
+      this.conversationStates!.trim(conversationId, runtimeSessionId, turn, retainedInputIds)
+      this.conversationStates!.recordTurn(conversationId, runtimeSessionId, turn, 'before', state)
+    })
+  }
+
+  completeConversationRuntime(conversationId: string, runtimeSessionId: string, turn: number,
+    variableStateJson: string | undefined, expectedVariableStateJson: string | undefined): void {
+    this.databaseRepositories()
+    if (this.runtimeSessionId(conversationId) !== runtimeSessionId) throw new Error('完成状态的 Session 与聊天归属不匹配。')
+    this.store!.withWriteTx(() => {
+      this.commitConversationRuntime(conversationId, variableStateJson, undefined, undefined, expectedVariableStateJson)
+      this.conversationStates!.recordTurn(conversationId, runtimeSessionId, turn, 'after', this.snapshotConversationRuntime(conversationId))
+    })
   }
 
   validateConversationRuntimeSnapshot(snapshot: {
@@ -429,15 +502,24 @@ class ProductDataStore {
     this.store!.withWriteTx(() => {
       this.conversations!.restoreImportedOpening(conversationId, opening)
       if (opening?.variableStateJson !== undefined) this.variableStates!.replaceCurrent(conversationId, opening.variableStateJson)
-      let userTurn: string | undefined
+      let inputState: string | null = opening?.variableStateJson ?? null
       for (const item of messages) {
+        const before = inputState
         if (item.variableStateJson !== undefined) this.variableStates!.replaceCurrent(conversationId, item.variableStateJson)
-        if (item.role === 'assistant' && !userTurn) throw new Error('导入的回复没有对应用户轮次。')
-        const message = this.messages!.create(conversationId, item.role, item.content, 'complete', undefined, sessionId)
-        if (item.role === 'user') userTurn = message.turnId
-        else {
-          this.messages!.bindHistoricalDshTurn(conversationId, message.id, sessionId, item.turn!)
-          this.store!.native.prepare('DELETE FROM agent_pending_inputs WHERE turnId=?').run(message.turnId!)
+        if (item.role === 'user') {
+          inputState = item.variableStateJson ?? null
+          this.conversationStates!.recordInput(conversationId, sessionId, item.id, {
+            variableStateJson: inputState, settingLibraryStateJson: '[]'
+          })
+        } else {
+          if (!Number.isSafeInteger(item.turn) || item.turn! < 1) throw new Error('导入的回复缺少正式 DSH 轮次。')
+          this.conversationStates!.recordTurn(conversationId, sessionId, item.turn!, 'before', {
+            variableStateJson: before, settingLibraryStateJson: '[]'
+          })
+          this.conversationStates!.recordTurn(conversationId, sessionId, item.turn!, 'after', {
+            variableStateJson: item.variableStateJson ?? null, settingLibraryStateJson: '[]'
+          })
+          inputState = item.variableStateJson ?? null
         }
       }
       if (currentVariableStateJson !== undefined) this.variableStates!.replaceCurrent(conversationId, currentVariableStateJson)
@@ -472,7 +554,9 @@ class ProductDataStore {
 
   projectConversationMessages(
     conversationId: string,
-    messages: Array<Pick<ChatMessage, 'id' | 'role' | 'content' | 'variableStateJson' | 'status' | 'createdAt'>>
+    messages: Array<Pick<ChatMessage, 'id' | 'role' | 'content' | 'variableStateJson' | 'status' | 'createdAt'> & {
+      reasoning?: { id: string; text: string }[]
+    }>
   ) {
     this.databaseRepositories()
     this.conversations!.get(conversationId)
@@ -492,6 +576,7 @@ class ProductDataStore {
           activeVersionId: '',
           revision: 0
         }
+    this.messageDisplayProjector.retainMessages(new Set(messages.map(message => message.id)))
     return messages.map((input, index) => {
       const projected = this.messageDisplayProjector.project({
         ...input,
@@ -501,7 +586,10 @@ class ProductDataStore {
         id: input.id,
         sourceContent: input.content,
         displayContent: projected.displayContent ?? projected.content,
-        variableStateJson: projected.variableStateJson
+        variableStateJson: projected.variableStateJson,
+        ...(input.reasoning ? { reasoning: this.messageDisplayProjector.projectReasoning(
+          { ...input, conversationId }, input.reasoning, collection, macroValues, messages.length - index - 1
+        ) } : {})
       }
     })
   }
@@ -644,7 +732,10 @@ class ProductDataStore {
     const regexRules = metadata.characterId
       ? this.requireRegexRules().get(metadata.characterId)
       : undefined
-    if (regexRules && options.preset) regexRules.agentPresetRules = options.preset.regexRules
+    if (regexRules && options.preset) {
+      regexRules.agentPresetRules = options.preset.regexRules
+      regexRules.agentPresetEnabled = this.requireRegexRules().scopeEnabled('preset', options.preset.id)
+    }
     const preset = this.requirePresets()
     const disabledToolGroupIds = options.preset ? disabledAgentPresetToolGroupIds(options.preset) : preset.disabledToolGroupIds()
     const rawSettingLibrary = mergeAgentPresetAndCharacterLibraries(
@@ -681,6 +772,8 @@ class ProductDataStore {
         history,
         historyMode: 'prefix' as const,
         currentPromptText,
+        reasoningPromptRules: regexRules ? rulesForSurface(regexRules, 'Reasoning', 'Prompt') : [],
+        reasoningPromptMacros: macroValues,
         ...(settingLibrary ? { settingLibrary } : {})
       },
       disabledToolGroupIds,
@@ -881,9 +974,73 @@ class ProductDataStore {
     return this.requireRegexRules().get(characterId)
   }
 
+  readRegexEditor(target: RegexEditorTarget): RegexRuleEditorCollection {
+    this.databaseRepositories()
+    return this.requireRegexRules().readEditor(target)
+  }
+
+  saveRegexEditor(collection: RegexRuleEditorCollection): RegexRuleEditorCollection {
+    this.databaseRepositories()
+    return this.editorVersions!.transaction(() => {
+      const saved = this.requireRegexRules().saveEditor(collection)
+      this.editorVersions!.sync({ kind: 'regex', scope: 'global', ownerId: '' })
+      this.editorVersions!.sync({ kind: 'regex', ...saved.target })
+      return saved
+    })
+  }
+
+  readEditorLibraryVersions(address: EditorLibraryAddress): EditorLibraryVersions {
+    this.databaseRepositories()
+    return this.editorVersions!.read(address)
+  }
+
+  saveEditorLibraries(request: EditorLibrarySaveRequest): EditorLibrarySaveResult {
+    this.databaseRepositories()
+    return this.editorVersions!.save(request)
+  }
+
+  importRegexEditor(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]) {
+    this.databaseRepositories()
+    return this.requireRegexRules().importEditor(collection, fallbackScope, documents)
+  }
+
+  exportRegexEditor(target: RegexEditorTarget, ruleIds: string[]): { fileName: string; json: string } {
+    this.databaseRepositories()
+    return this.requireRegexRules().exportEditor(target, ruleIds)
+  }
+
   readScriptLibrary(scope: ScriptLibraryScope, ownerId: string): ScriptLibrary {
     this.databaseRepositories()
     return this.scripts!.get(scope, ownerId)
+  }
+
+  readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary {
+    this.databaseRepositories()
+    return this.displayTemplates!.get(scope, ownerId)
+  }
+
+  saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary {
+    this.databaseRepositories()
+    return this.editorVersions!.transaction(() => {
+      const saved = this.displayTemplates!.save(library)
+      this.editorVersions!.sync({ kind: 'displayTemplates', scope: saved.scope, ownerId: saved.ownerId })
+      return saved
+    })
+  }
+
+  saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[] {
+    this.databaseRepositories()
+    return this.editorVersions!.transaction(() => {
+      const saved = this.displayTemplates!.saveAll(libraries)
+      for (const library of saved) this.editorVersions!.sync({ kind: 'displayTemplates', scope: library.scope, ownerId: library.ownerId })
+      return saved
+    })
+  }
+
+  displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection {
+    this.databaseRepositories()
+    const presetId = this.requirePresets().catalog().activePresetIds.roleplay
+    return { characterId, libraries: [this.displayTemplates!.get('global', ''), this.displayTemplates!.get('preset', presetId), this.displayTemplates!.get('character', characterId)] }
   }
 
   readScriptWorkspace(scope: ScriptLibraryScope, ownerId: string) {
@@ -903,7 +1060,11 @@ class ProductDataStore {
 
   saveScriptLibrary(library: ScriptLibrary): ScriptLibrary {
     this.databaseRepositories()
-    return this.scripts!.save(library)
+    return this.editorVersions!.transaction(() => {
+      const saved = this.scripts!.save(library)
+      this.editorVersions!.sync({ kind: 'scripts', scope: saved.scope, ownerId: saved.ownerId })
+      return saved
+    })
   }
 
   updateScriptSettings(scope: ScriptLibraryScope, ownerId: string, scriptId: string,
@@ -914,7 +1075,11 @@ class ProductDataStore {
 
   saveScriptLibraries(libraries: ScriptLibrary[]): ScriptLibrary[] {
     this.databaseRepositories()
-    return this.scripts!.saveAll(libraries)
+    return this.editorVersions!.transaction(() => {
+      const saved = this.scripts!.saveAll(libraries)
+      for (const library of saved) this.editorVersions!.sync({ kind: 'scripts', scope: library.scope, ownerId: library.ownerId })
+      return saved
+    })
   }
 
   saveRegexRules(characterId: string, collection: RegexRuleCollection, expectedRevision: number): RegexRuleCollection {
@@ -960,7 +1125,7 @@ class ProductDataStore {
   creatorPresetRuntime(presetId: string) {
     const preset = this.readAgentPreset(presetId)
     if (preset.purpose !== 'creator') throw new Error('AI 创作工作室只能使用创作预设。')
-    return { preset, settingLibrary: projectAgentPresetRuntimeContext(preset) }
+    return { preset, settingLibrary: projectAgentPresetRuntimeContext(preset), historyCompactionInstructions: presetHistoryCompactionInstructions(preset.entries) }
   }
 
   updateAgentPresetEntries(presetId: string, updates: SettingLibraryEntryUpdate[]) {
@@ -1071,10 +1236,13 @@ class ProductDataStore {
     this.frontends = undefined
     this.presets = undefined
     this.scripts = undefined
+    this.displayTemplates = undefined
+    this.editorVersions = undefined
     this.regexRules = undefined
     this.store = undefined
     this.conversations = undefined
     this.messages = undefined
+    this.conversationStates = undefined
     this.mediaAssets = undefined
   }
 
@@ -1183,3 +1351,14 @@ const productDataPlugin = {
 
 export default productDataPlugin
 export { extractMvuSchema, MVU_SCHEMA_REGISTRATION_MODULES } from './domain/characterTransfer/mvuSchema'
+
+/** Transform only provider-neutral reasoning text for a request copy. */
+export function transformReasoningPrompt(text: string, rules: RegexRule[], macros?: CharacterCardMacroValues): string {
+  return transformWithRegexRules(text, rules, 'Reasoning', {
+    depth: 0,
+    expandMacros: (value, escape) => macros ? resolveCharacterCardMacros(value, {
+      userName: escape?.(macros.userName) ?? macros.userName,
+      characterName: escape?.(macros.characterName) ?? macros.characterName,
+    }) : value,
+  })
+}

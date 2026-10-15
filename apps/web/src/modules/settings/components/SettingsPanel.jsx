@@ -18,7 +18,7 @@ import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { TunerSliderRow } from "../../../ui/ui/TunerSliderRow.jsx";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
 import { AboutSettings } from "./AboutSettings.jsx";
-import { chatDisplaySettings, chatDisplayTuners, chatLayouts, avatarShapes, reasoningDisplayModes, textColorOptions } from "../model/chatDisplaySettings.js";
+import { chatDisplaySettings, chatDisplayTuners, chatLayouts, avatarShapes, reasoningDisplayModes, textColorOptions, richMessageFloorTuner, richMessageLimitDescription } from "../model/chatDisplaySettings.js";
 import {
   chatDisplayCssVariables,
   chatTextColorCssVariables,
@@ -92,7 +92,7 @@ function ChatDisplaySettings({
   chatDisplay,
   onChatDisplayChange,
 }) {
-  const { preferences, layout, profile, defaults, selectLayout, updateProfile, resetProfile, updateTextColor } = chatDisplaySettings(chatDisplay, onChatDisplayChange);
+  const { preferences, layout, profile, defaults, selectLayout, updateProfile, updatePreferences, resetProfile, updateTextColor } = chatDisplaySettings(chatDisplay, onChatDisplayChange);
 
   const slider = (label, key) => (
     <TunerSliderRow
@@ -195,6 +195,20 @@ function ChatDisplaySettings({
             ><span>显示消息楼层</span><i /></button>
           </div>
         </section> : null}
+
+        <section className="chat-settings-group chat-display-section">
+          <div className="setting-row-copy setting-row-title"><ChatCircleDots /><strong>富消息</strong></div>
+          <button type="button" role="switch" aria-checked={preferences.rich_message_limit_enabled}
+            className={`chat-setting-toggle${preferences.rich_message_limit_enabled ? " active" : ""}`}
+            onClick={() => updatePreferences({ rich_message_limit_enabled: !preferences.rich_message_limit_enabled })}>
+            <span>限制富消息运行楼层</span><i aria-hidden="true" />
+          </button>
+          {preferences.rich_message_limit_enabled && <div className="chat-display-tuners">
+            <TunerSliderRow {...richMessageFloorTuner} value={preferences.rich_message_floor_limit}
+              onChange={value => updatePreferences({ rich_message_floor_limit: Math.round(value) })} />
+          </div>}
+          <p className="chat-rich-message-note">{richMessageLimitDescription}</p>
+        </section>
 
         <section className="chat-settings-group chat-display-section chat-text-colors-section">
           <div className="setting-row-copy setting-row-title">

@@ -46,7 +46,7 @@ function EntryEditor({
       {isReference ? (
         <label className="setting-library-title-field">
           <span>EJS引用名称</span>
-          <input ref={nameInputRef} value={entry.title} maxLength={60} placeholder="供 getwi 按名称读取" onChange={(event) => onChange({ ...entry, title: event.target.value })} />
+          <input ref={nameInputRef} value={entry.title} placeholder="供 getwi 按名称读取" onChange={(event) => onChange({ ...entry, title: event.target.value })} />
         </label>
       ) : null}
       <MarkdownTextareaField
@@ -99,7 +99,7 @@ export function SettingLibraryInspector({
       <div className="setting-library-inspector-body">
         {selected.kind === "group" ? (
           <div className="setting-library-group-editor">
-            <label><span>文件夹名称</span><input ref={nameInputRef} value={selected.value.name} maxLength={80} onChange={(event) => onUpdateGroup({ name: event.target.value })} /></label>
+            <label><span>文件夹名称</span><input ref={nameInputRef} value={selected.value.name} onChange={(event) => onUpdateGroup({ name: event.target.value })} /></label>
             <button type="button" className="setting-library-delete-link" onClick={onDeleteGroup}><Trash size={15} />删除文件夹</button>
           </div>
         ) : (

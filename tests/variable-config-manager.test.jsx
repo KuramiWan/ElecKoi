@@ -54,7 +54,7 @@ async function renderManager(kind, initial) {
       : <SettingLibraryManager characterId="synthetic-character" library={config} settingLibraries={{}} {...props} />;
   }
   await act(async () => root.render(<Harness />));
-  return { container, changed, closed, async dispose() { await act(async () => root.unmount()); container.remove(); } };
+  return { container: document.body, changed, closed, async dispose() { await act(async () => root.unmount()); container.remove(); } };
 }
 
 describe.each(['variables', 'settings'])('%s version management', kind => {
@@ -88,7 +88,7 @@ describe.each(['variables', 'settings'])('%s version management', kind => {
       expect(select.value).toBe(result.activeVersionId);
       await act(async () => button(view.container, '复制当前版本').click());
       expect(view.container.querySelector('.version-name-dialog input').value).toBe('');
-      await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+      await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
       expect(view.container.querySelector('.version-name-dialog')).toBeNull();
       expect(view.closed).not.toHaveBeenCalled();
     } finally { await view.dispose(); }

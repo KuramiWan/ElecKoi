@@ -3,6 +3,36 @@ export interface ElecKoiHostStatus {
   protocolVersion: 1
 }
 
+export type EditorLibraryKind = 'scripts' | 'displayTemplates' | 'regex'
+export interface EditorLibraryAddress { kind: EditorLibraryKind; scope: 'global' | 'character' | 'preset'; ownerId: string }
+export interface EditorLibraryVersions extends EditorLibraryAddress {
+  revision: number
+  resourceRevision: string
+  activeVersionId: string
+  versions: Array<{ id: string; name: string; content: string }>
+}
+export interface EditorLibrarySaveRequest { kind: EditorLibraryKind; documents: string[]; versions: EditorLibraryVersions[] }
+export interface EditorLibrarySaveResult { documents: string[]; versions: EditorLibraryVersions[] }
+
+export type DisplayTemplateScope = 'global' | 'character' | 'preset'
+export interface DisplayTemplate {
+  id: string
+  name: string
+  enabled: boolean
+  position: 'before' | 'after' | 'replace'
+  pattern: string
+  flags: string
+  source: string
+}
+export interface DisplayTemplateLibrary {
+  scope: DisplayTemplateScope
+  ownerId: string
+  enabled: boolean
+  revision: number
+  templates: DisplayTemplate[]
+}
+export interface DisplayTemplateSelection { characterId: string; libraries: DisplayTemplateLibrary[] }
+
 
 export type ScriptLibraryScope = 'global' | 'character' | 'preset'
 export interface ScriptItem {
@@ -76,16 +106,8 @@ export type NativeAuthorRuleTask =
 export type NativeAuthorRuleReply =
   | { id: string; ok: true; stateJson: string }
   | { id: string; ok: false; message: string }
-export interface ModelConnectionInput {
-  configId: string
-  model: string
-  baseURL: string
-  api: string
-  apiKey?: string
-  headers?: Record<string, string>
-}
-
 export interface ModelDiscoveryInput {
+  builtinProvider?: string
   configId: string
   baseURL: string
   api: string
@@ -184,7 +206,7 @@ export type CharacterConfigurationChange =
   | { kind: 'snapshot' }
   | {
       kind: 'configuration'
-      domain: 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts'
+      domain: 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts' | 'displayTemplates'
       characterId?: string
     }
 
@@ -261,7 +283,12 @@ export interface ConversationMessageDisplayInput {
   variableStateJson: string
   status: 'complete' | 'streaming' | 'error' | 'cancelled'
   createdAt: string
+  /** Completed reasoning blocks only; tool arguments and results are excluded. */
+  reasoning?: ConversationReasoningDisplayInput[]
 }
+
+export interface ConversationReasoningDisplayInput { id: string; text: string }
+export interface ConversationReasoningDisplayResult { id: string; sourceText: string; displayText: string }
 
 /** Display-only result. The source text is echoed so the Client can reject stale projections. */
 export interface ConversationMessageDisplayResult {
@@ -269,6 +296,7 @@ export interface ConversationMessageDisplayResult {
   sourceContent: string
   displayContent: string
   variableStateJson: string
+  reasoning?: ConversationReasoningDisplayResult[]
 }
 
 export interface ConversationVariableTimelineMessage {
@@ -616,7 +644,7 @@ export interface VariableConfig {
 }
 
 export type RegexRuleScope = 'Global' | 'AgentPreset' | 'Character'
-export type RegexRuleTarget = 'UserInput' | 'AiOutput' | 'SlashCommand' | 'SettingContent' | 'Reasoning'
+export type RegexRuleTarget = 'UserInput' | 'AiOutput' | 'SettingContent' | 'Reasoning'
 
 export interface RegexRule {
   id: string
@@ -648,6 +676,9 @@ export interface RegexRuleCollection {
   agentPresetId: string
   agentPresetName: string
   agentPresetRegexRevision: string
+  globalEnabled?: boolean
+  agentPresetEnabled?: boolean
+  characterEnabled?: boolean
   globalRules: RegexRule[]
   agentPresetRules: RegexRule[]
   characterRules: RegexRule[]
@@ -663,6 +694,32 @@ export interface RegexRuleImportDocument {
 
 export interface RegexRuleImportResult {
   collection: RegexRuleCollection
+  importedFileCount: number
+  importedRuleCount: number
+  failedFileNames: string[]
+}
+
+export interface RegexEditorTarget {
+  scope: 'character' | 'preset'
+  ownerId: string
+}
+
+export interface RegexRuleEditorCollection {
+  target: RegexEditorTarget
+  ownerRevision: string
+  globalEnabled?: boolean
+  agentPresetEnabled?: boolean
+  characterEnabled?: boolean
+  globalRules: RegexRule[]
+  agentPresetRules: RegexRule[]
+  characterRules: RegexRule[]
+  versions: RegexRuleVersion[]
+  activeVersionId: string
+  revision: number
+}
+
+export interface RegexRuleEditorImportResult {
+  collection: RegexRuleEditorCollection
   importedFileCount: number
   importedRuleCount: number
   failedFileNames: string[]
@@ -909,7 +966,17 @@ export interface ElecKoiProductDataStore {
   saveVariableConfig(characterId: string, config: VariableConfig): VariableConfig
   saveVariableConfigViewState(characterId: string, expandedObjectIds: string[]): string[]
   readRegexRules(characterId: string): RegexRuleCollection
+  readRegexEditor(target: RegexEditorTarget): RegexRuleEditorCollection
+  saveRegexEditor(collection: RegexRuleEditorCollection): RegexRuleEditorCollection
+  importRegexEditor(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]): RegexRuleEditorImportResult
+  exportRegexEditor(target: RegexEditorTarget, ruleIds: string[]): { fileName: string; json: string }
   readScriptLibrary(scope: ScriptLibraryScope, ownerId: string): ScriptLibrary
+  readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary
+  saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary
+  saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[]
+  readEditorLibraryVersions(address: EditorLibraryAddress): EditorLibraryVersions
+  saveEditorLibraries(request: EditorLibrarySaveRequest): EditorLibrarySaveResult
+  displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection
   saveScriptLibrary(library: ScriptLibrary): ScriptLibrary
   updateScriptSettings(scope: ScriptLibraryScope, ownerId: string, scriptId: string, target: 'script' | 'library', values: Record<string, unknown>, expectedRevision: number): ScriptLibrary
   saveScriptLibraries(libraries: ScriptLibrary[]): ScriptLibrary[]

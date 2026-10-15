@@ -239,13 +239,14 @@ describe('DSH chat live rendering', () => {
       await act(async () => emitStream('', 'running', [reasoning]))
       expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(1)
       expect(chat.messages.find(message => message.pending)).toMatchObject({ runtimeSessionId: 'session-1' })
-      expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在思考')
+      expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在分析请求 · 检查资料')
       expect(container.querySelector('[data-role="assistant"] .bubble')).toBeNull()
       const liveArticle = container.querySelector('[data-role="assistant"] article')
       const settledUserDuringStream = chat.messages[0]
       await act(async () => emitStream('', 'running', [{ ...reasoning, status: 'complete' }, search]))
       expect(chat.messages[0]).toMatchObject({ id: settledUserDuringStream.id, content: settledUserDuringStream.content })
-      expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在运行 web_search')
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 160)) })
+      expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在搜索网页 · web_search')
       expect(container.querySelector('[data-role="assistant"] article')).toBe(liveArticle)
       await act(async () => container.querySelector('.agent-process-inline').click())
       expect(openProcess).toHaveBeenCalledWith(expect.objectContaining({ pending: true, process: [
@@ -281,7 +282,7 @@ describe('DSH chat live rendering', () => {
         emitDetails([makeMessage('user-1', 'user', '读取文件', 1)])
         emitStream('', 'running', [reasoning])
       })
-      expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在思考')
+      expect(container.querySelector('.agent-process-inline-label').textContent).toBe('正在分析请求 · 检查资料')
       await act(async () => emitStream('重新读取中', 'running', [reasoning]))
       expect([...container.querySelectorAll('p')].map(node => node.textContent)).toEqual(['读取文件', '重新读取中'])
       await act(async () => {

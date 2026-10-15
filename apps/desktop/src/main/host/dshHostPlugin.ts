@@ -34,6 +34,7 @@ export const dshHostPlugin = {
       onFailure(error) {
         ctx.appLog.error({ error }, 'DSH plugin Host exited unexpectedly')
         for (const listener of failureListeners) listener(error)
+        ctx.emit('eleckoi/desktop-fatal', error)
       }
     })
     ctx.provide('pluginHost', {
@@ -47,6 +48,8 @@ export const dshHostPlugin = {
       },
       frontendDirectory: resolveDshWebFrontendDirectory,
       updateTasks: (action) => host.updateTasks(action),
+      close: () => host.close(),
+      disableUserPlugins: () => host.disableUserPlugins(),
       onFailure(listener) {
         failureListeners.add(listener)
         return () => { failureListeners.delete(listener) }

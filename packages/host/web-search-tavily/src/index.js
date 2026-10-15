@@ -39,7 +39,7 @@ export function apply(ctx, config) {
             'User-Agent': 'ElecKoi-Desktop/0.1'
           },
           body: JSON.stringify({
-            query: String(request.query ?? '').trim().slice(0, 1_000),
+            query: String(request.query ?? ''),
             topic: 'general',
             search_depth: 'basic',
             max_results: Math.min(
@@ -81,8 +81,8 @@ function normalizeResult(result) {
   if (!result || typeof result !== 'object') return undefined
   const url = safeUrl(result.url)
   if (!url) return undefined
-  const title = typeof result.title === 'string' ? result.title.trim().slice(0, 500) : ''
-  const snippet = typeof result.content === 'string' ? result.content.trim().slice(0, 6_000) : ''
+  const title = typeof result.title === 'string' ? result.title : ''
+  const snippet = typeof result.content === 'string' ? result.content : ''
   return { url, ...(title ? { title } : {}), ...(snippet ? { snippet } : {}) }
 }
 
@@ -90,7 +90,7 @@ function safeUrl(value) {
   try {
     const url = new URL(String(value ?? '').trim())
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return ''
-    return url.toString().slice(0, 4_096)
+    return url.toString()
   } catch {
     return ''
   }

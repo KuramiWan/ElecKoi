@@ -9,6 +9,7 @@ import { processArgumentSummary } from '../model/agentProcessArguments.js';
 import { delegatedProcessItems } from '../model/agentProcessHierarchy.js';
 import { AgentProcessIcon } from './AgentProcessIcon.jsx';
 import { useBottomSheetDismiss } from '../../../ui/hooks/useBottomSheetDismiss.js';
+import { isProcessTimingRunning, processDurationText } from '../model/agentProcessTiming.js';
 
 export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed', onClose }) {
   const { overlayRef, sheetRef: dialogRef, closing, dismiss } = useBottomSheetDismiss(onClose);
@@ -27,10 +28,19 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
     () => delegatedProcessItems(items, selectedItemId),
     [items, selectedItemId],
   );
-  const duration = durationText(items);
+  const [now, setNow] = useState(Date.now);
+  const timingRunning = isProcessTimingRunning(message);
+  const duration = processDurationText(message, now);
   const hasFinal = message?.status === 'complete' && Boolean(message?.content?.trim());
   const imagePrompts = items.filter(item => item.kind === 'action' && item.toolName === 'generate_image' && item.arguments);
   const showingDetails = Boolean(selectedGroup || selectedItem);
+
+  useEffect(() => {
+    if (!timingRunning) return undefined;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [timingRunning, message?.processTiming?.startedAtMillis]);
 
   useLayoutEffect(() => {
     if (document.documentElement.dataset.eleckoiMobile !== 'true') return undefined;
@@ -140,7 +150,7 @@ function ProcessGroupDetail({ group, reasoningDisplayMode, scrollPositions, onSe
   >
     {group.items.map((item) => {
       if (item.kind === 'reasoning' || item.toolName === 'reasoning') {
-        const text = typeof item.detail === 'string' && item.detail.trim() ? item.detail : item.summary || '';
+        const text = reasoningDisplayText(item);
         return <ProcessTimelineNode key={item.id} bodyRail><ReasoningOverview block={{ item, text }} displayMode={reasoningDisplayMode} /></ProcessTimelineNode>;
       }
       const details = detailPresentation(item);
@@ -188,6 +198,11 @@ function OperationRow({ item, details, onClick }) {
   return onClick
     ? <button type="button" className="agent-process-item" onClick={onClick}>{content}</button>
     : <div className="agent-process-item">{content}</div>;
+}
+
+function reasoningDisplayText(item) {
+  if (item.status !== 'running' && typeof item.displayDetail === 'string') return item.displayDetail;
+  return typeof item.detail === 'string' && item.detail.trim() ? item.detail : item.summary || '';
 }
 
 function ReasoningOverview({ block, displayMode }) {
@@ -301,7 +316,7 @@ function DelegatedTimeline({ parentId, items, reasoningDisplayMode, onSelectItem
     <div className="agent-process-detail-timeline">{blocks.flatMap((block) => {
       if (block.type === 'narrative') return [<p className="agent-process-phase" key={block.id}>{block.text}</p>];
       return block.items.map((item) => item.kind === 'reasoning' || item.toolName === 'reasoning'
-        ? <ProcessTimelineNode key={item.id} bodyRail><ReasoningOverview block={{ item, text: item.detail || item.summary || '' }} displayMode={reasoningDisplayMode} /></ProcessTimelineNode>
+        ? <ProcessTimelineNode key={item.id} bodyRail><ReasoningOverview block={{ item, text: reasoningDisplayText(item) }} displayMode={reasoningDisplayMode} /></ProcessTimelineNode>
         : <ProcessTimelineNode key={item.id}><OperationRow item={item} details={detailPresentation(item)} onClick={() => onSelectItem(item.id)} /></ProcessTimelineNode>);
     })}
       {reply?.summary || reply?.detail ? <ChildAgentReply item={reply} /> : null}
@@ -454,10 +469,3 @@ function operationLabel(value) { return ({ replace: '替换', add: '新增', rem
 function statusLabel(value) { return ({ pending: '待处理', in_progress: '进行中', complete: '已完成', completed: '已完成', failed: '失败' })[value] || value; }
 function isMobilePresentation() { return document.documentElement.dataset.eleckoiMobile === 'true'; }
 function detailPresentation(item) { return processItemDetails(item, { mobile: isMobilePresentation() }); }
-function durationText(items) {
-  if (!items.length) return '';
-  const start = Math.min(...items.map((item) => item.startedAtMillis || Infinity));
-  const end = Math.max(...items.map((item) => item.completedAtMillis || Date.now()));
-  const seconds = Math.max(0, end - start) / 1000;
-  return seconds < 1 ? '<1秒' : seconds < 60 ? `${Math.round(seconds)}秒` : `${Math.floor(seconds / 60)}分${Math.round(seconds % 60)}秒`;
-}

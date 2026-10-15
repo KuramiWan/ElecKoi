@@ -23,15 +23,12 @@ export function ModelPage() {
     navigationGuardRef={modelNavigationGuardRef}
     config={config}
     configs={snapshot.configs}
-    providers={[]}
+    providers={snapshot.providers || []}
     modelOptionsByKey={chat.modelOptionsByKey}
     onSave={draft => models.save(draft)}
     onRevealApiKey={id => models.revealApiKey(id)}
     onDeleteConfig={id => models.deleteConfig(id)}
-    onDeleteProvider={(provider, preferredId) => models.deleteProvider(provider, preferredId)}
     onFetchModels={draft => models.discover(draft)}
-    onProbeModels={draft => models.discover(draft)}
-    onTestConnection={draft => models.testConnection(draft)}
     onNotify={chat.notify}
     renderLayout={renderLayout}
   />;

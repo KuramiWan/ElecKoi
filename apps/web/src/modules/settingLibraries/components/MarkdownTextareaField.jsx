@@ -3,11 +3,12 @@ import { createPortal } from "react-dom";
 import { OfficialMarkdown } from "../../../ui/messages/OfficialMarkdown.jsx";
 import { CornersIn, CornersOut, Eye, PencilSimple } from "../../../ui/icons/interfaceIcons.jsx";
 
-export function MarkdownTextareaField({ label, value, placeholder, onChange, preview = true, labelAction = null }) {
+export function MarkdownTextareaField({ label, value, placeholder, onChange, preview = true, labelAction = null, disabled = false, code = false, textareaClassName = '' }) {
   const inputId = useId();
   const editorRef = useRef(null);
   const [immersive, setImmersive] = useState(false);
   const [mode, setMode] = useState("edit");
+  const editorClassName = [code ? 'is-code' : '', textareaClassName].filter(Boolean).join(' ') || undefined;
 
   useEffect(() => {
     if (!immersive) return undefined;
@@ -57,8 +58,11 @@ export function MarkdownTextareaField({ label, value, placeholder, onChange, pre
         ) : (
           <textarea
             ref={editorRef}
+            className={editorClassName}
+            aria-label={label}
             value={value}
             placeholder={placeholder}
+            disabled={disabled}
             spellCheck={false}
             onChange={(event) => onChange(event.target.value)}
           />
@@ -74,11 +78,11 @@ export function MarkdownTextareaField({ label, value, placeholder, onChange, pre
         <div className="setting-library-content-heading">
           <label htmlFor={inputId}>{label}</label>
           <div className="setting-library-content-actions">
-            <button type="button" onClick={() => setImmersive(true)}><CornersOut size={14} />沉浸编辑</button>
+            <button type="button" disabled={disabled} onClick={() => setImmersive(true)}><CornersOut size={14} />沉浸编辑</button>
             {labelAction}
           </div>
         </div>
-        <textarea id={inputId} value={value} placeholder={placeholder} spellCheck={false} onChange={(event) => onChange(event.target.value)} />
+        <textarea id={inputId} className={editorClassName} aria-label={label} value={value} placeholder={placeholder} disabled={disabled} spellCheck={false} onChange={(event) => onChange(event.target.value)} />
       </div>
       {overlay}
     </>

@@ -24,15 +24,23 @@ final class PlatformBrowser extends BrowserSurface {
     private final Listener listener;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService operations=Executors.newSingleThreadExecutor();
-    private final Map<String,Consumer<String>> commands=new HashMap<>();
+    private final Map<String,PendingCommand> commands=new HashMap<>();
+    private static final class PendingCommand {
+        final Consumer<String> completion; final String type; final long started=android.os.SystemClock.elapsedRealtime();
+        Runnable timeout;
+        PendingCommand(String type,Consumer<String> completion) { this.type=type; this.completion=completion; }
+    }
     private final Bridge bridge;
     private final BrowserUploads uploads;
+    private final GeckoChoicePrompts choicePrompts;
+    private boolean appearanceDark;
     private WebExtension.Port pagePort;
     private String url="";
     private boolean back;
     private volatile boolean closed;
     PlatformBrowser(Activity activity,String source,Bridge bridge,Listener listener) {
         this.bridge=bridge; this.listener=listener; environment=GeckoEnvironment.get(activity); view=new GeckoView(activity);
+        choicePrompts=new GeckoChoicePrompts(activity,()->appearanceDark);
         try { uploads=new BrowserUploads(activity.getCacheDir().toPath()); }
         catch(java.io.IOException error) { throw new IllegalStateException("Upload cache could not be created",error); }
         session.setNavigationDelegate(new GeckoSession.NavigationDelegate() {
@@ -53,13 +61,16 @@ final class PlatformBrowser extends BrowserSurface {
             }
         });
         session.setContentDelegate(new GeckoSession.ContentDelegate() {
-            @Override public void onCrash(GeckoSession current) { listener.failure("内置 Gecko 渲染进程崩溃，请重新打开应用"); }
-            @Override public void onKill(GeckoSession current) { listener.failure("内置 Gecko 渲染进程被系统终止，请重新打开应用"); }
+            @Override public void onCrash(GeckoSession current) { trace("gecko-process","crash"); listener.failure("内置 Gecko 渲染进程崩溃，请重新打开应用"); }
+            @Override public void onKill(GeckoSession current) { trace("gecko-process","killed"); listener.failure("内置 Gecko 渲染进程被系统终止，请重新打开应用"); }
             @Override public void onExternalResponse(GeckoSession current,WebResponse response) {
                 listener.download(response.uri,response.headers.get("Content-Disposition"),response.headers.get("Content-Type"),response.body);
             }
         });
         session.setPromptDelegate(new GeckoSession.PromptDelegate() {
+            @Override public GeckoResult<PromptResponse> onChoicePrompt(GeckoSession current,ChoicePrompt prompt) {
+                return choicePrompts.show(prompt);
+            }
             @Override public GeckoResult<PromptResponse> onFilePrompt(GeckoSession current,FilePrompt prompt) {
                 if(prompt.type==FilePrompt.Type.FOLDER) {
                     listener.failure("内置浏览器暂不支持文件夹上传，请选择文件"); return GeckoResult.fromValue(prompt.dismiss());
@@ -107,7 +118,7 @@ final class PlatformBrowser extends BrowserSurface {
                             if("browserConsole".equals(method)) { listener.console(arguments.getString(0),arguments.getString(1),arguments.getString(2),arguments.getInt(3)); result=JSONObject.NULL; }
                             else result=bridge.invoke(method,arguments);
                             response=new JSONObject().put("success",true).put("result",result==null?JSONObject.NULL:result).toString();
-                        } catch(Exception failure) { response=errorJson(failure); }
+                        } catch(Exception failure) { listener.diagnostic(RuntimeDiagnostics.failure("bridge-error",failure)); response=errorJson(failure); }
                         String value=response; main.post(()->reply.complete(value));
                     }); return reply;
                 }
@@ -115,16 +126,35 @@ final class PlatformBrowser extends BrowserSurface {
             session.getWebExtensionController().setMessageDelegate(extension,new WebExtension.MessageDelegate() {
                 @Override public void onConnect(WebExtension.Port port) {
                     if(!trusted(port.sender)) { port.disconnect(); return; }
+                    trace("browser-port","connected");
                     if(pagePort!=null) pagePort.disconnect();
                     pagePort=port;
                     port.setDelegate(new WebExtension.PortDelegate() {
                         @Override public void onPortMessage(Object value,WebExtension.Port sender) {
                             if(sender!=pagePort || !trusted(sender.sender) || !(value instanceof JSONObject)) return;
-                            JSONObject response=(JSONObject)value; Consumer<String> completion=commands.remove(response.optString("id"));
-                            if(response.optBoolean("success")) { if(completion!=null) completion.accept(String.valueOf(response.opt("result"))); }
+                            JSONObject response=(JSONObject)value;
+                            if(response.opt("diagnostic") instanceof JSONObject) {
+                                JSONObject entry=RuntimeDiagnostics.filter(response.optJSONObject("diagnostic")); listener.diagnostic(entry);
+                                if("page-error".equals(entry.optString("kind"))) listener.console(entry.optString("level","ERROR"),entry.optString("message")+"\n"+entry.optString("stack"),entry.optString("source"),entry.optInt("line"));
+                                return;
+                            }
+                            String id=response.optString("id"); PendingCommand pending=commands.remove(id);
+                            if(pending!=null) {
+                                main.removeCallbacks(pending.timeout);
+                                listener.diagnostic(RuntimeDiagnostics.event("browser-command","native-result").with("id",id).with("command",pending.type)
+                                    .with("success",response.optBoolean("success")).with("elapsedMs",android.os.SystemClock.elapsedRealtime()-pending.started));
+                            }
+                            if(response.optBoolean("success")) { if(pending!=null) pending.completion.accept(String.valueOf(response.opt("result"))); }
                             else listener.failure("浏览器平台操作失败："+response.optString("error"));
                         }
-                        @Override public void onDisconnect(WebExtension.Port port) { if(pagePort==port) { pagePort=null; commands.clear(); } }
+                        @Override public void onDisconnect(WebExtension.Port port) { if(pagePort==port) {
+                            trace("browser-port","disconnected");
+                            for(Map.Entry<String,PendingCommand> entry:commands.entrySet()) {
+                                main.removeCallbacks(entry.getValue().timeout);
+                                listener.diagnostic(RuntimeDiagnostics.event("browser-command","disconnected").with("id",entry.getKey()).with("command",entry.getValue().type));
+                            }
+                            pagePort=null; commands.clear();
+                        } }
                     });
                 }
             },"eleckoi_page");
@@ -134,11 +164,13 @@ final class PlatformBrowser extends BrowserSurface {
         return !closed && sender.session==session && sender.isTopLevel() && GeckoEnvironment.EXTENSION.equals(sender.webExtension.id)
             && listener.sameHost(sender.url);
     }
+    private void trace(String kind,String stage) { listener.diagnostic(RuntimeDiagnostics.event(kind,stage).with("pending",commands.size()).with("connected",pagePort!=null)); }
     private static String errorJson(Exception error) {
         try { return new JSONObject().put("success",false).put("error",error.toString()).toString(); }
         catch(Exception impossible) { throw new IllegalStateException(impossible); }
     }
     @Override android.view.View view() { return view; }
+    @Override void setAppearance(boolean dark,int color) { appearanceDark=dark; setBackgroundColor(color); }
     @Override String getUrl() { return url; }
     @Override String identity() { return "GeckoView "+BuildConfig.GECKOVIEW_VERSION; }
     @Override String userAgent() { return "Bundled GeckoView "+BuildConfig.GECKOVIEW_VERSION; }
@@ -163,14 +195,24 @@ final class PlatformBrowser extends BrowserSurface {
         }));
     }
     @Override void command(String type,JSONObject payload,Consumer<String> completion) {
-        if(closed || pagePort==null || !trusted(pagePort.sender)) return;
+        if(closed || pagePort==null || !trusted(pagePort.sender)) { trace("browser-command","unavailable"); return; }
         String id=UUID.randomUUID().toString();
         try {
-            if(completion!=null) { commands.put(id,completion); main.postDelayed(()->{
-                if(commands.remove(id)!=null) listener.failure("内置浏览器平台响应超时："+type);
-            },30_000); }
+            if(completion!=null) {
+                PendingCommand pending=new PendingCommand(type,completion);
+                pending.timeout=()->{ if(commands.remove(id)!=null) {
+                    listener.diagnostic(RuntimeDiagnostics.event("browser-command","timeout").with("id",id).with("command",type)
+                        .with("elapsedMs",android.os.SystemClock.elapsedRealtime()-pending.started).with("pending",commands.size()).with("connected",pagePort!=null));
+                    listener.failure("内置浏览器平台响应超时："+type);
+                } };
+                commands.put(id,pending); main.postDelayed(pending.timeout,30_000);
+                listener.diagnostic(RuntimeDiagnostics.event("browser-command","native-send").with("id",id).with("command",type).with("pending",commands.size()).with("connected",true));
+            }
             pagePort.postMessage(new JSONObject().put("id",id).put("command",new JSONObject().put("type",type).put("payload",payload)));
-        } catch(Exception error) { commands.remove(id); listener.failure(error.toString()); }
+        } catch(Exception error) {
+            PendingCommand pending=commands.remove(id); if(pending!=null) main.removeCallbacks(pending.timeout);
+            listener.diagnostic(RuntimeDiagnostics.failure("browser-send-error",error)); listener.failure(error.toString());
+        }
     }
     @Override String cookies(String value) throws Exception {
         if(Looper.myLooper()==Looper.getMainLooper()) throw new IllegalStateException("Cookie reads must not block the UI thread");
@@ -182,7 +224,10 @@ final class PlatformBrowser extends BrowserSurface {
     @Override void onResume() { session.setActive(true); }
     @Override void onPause() { session.setActive(false); }
     @Override void destroy() {
-        closed=true; if(pagePort!=null) pagePort.disconnect(); commands.clear(); view.releaseSession(); session.close();
+        choicePrompts.dismiss();
+        closed=true; if(pagePort!=null) pagePort.disconnect();
+        for(PendingCommand pending:commands.values()) main.removeCallbacks(pending.timeout);
+        commands.clear(); view.releaseSession(); session.close();
         operations.execute(()->{ try { uploads.close(); } catch(java.io.IOException error) { android.util.Log.e("ElecKoiUploads","Upload cache cleanup failed",error); } });
         operations.shutdown();
     }

@@ -4,6 +4,8 @@ import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
+import { EditorCollectionToolbar, EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
+import { selectableTreeIds, selectedTreeRootIds, visibleTreeSelectionIds } from '../../../ui/ui/editorCollectionSelection.js';
 import {
   canTransferVariableNode,
   convertVariableToObject,
@@ -61,6 +63,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
   const dirty = useMemo(() => JSON.stringify(config) !== JSON.stringify(persisted), [config, persisted]);
   const selected = useMemo(() => config ? selectedVariableNode(config, selectedKey) : { kind: "", value: null }, [config, selectedKey]);
   const nodes = useMemo(() => config ? variableTreeNodes(config) : [], [config]);
+  const multi = useEditorMultiSelect(selectableTreeIds(nodes), characterId);
   const searchHasResults = useMemo(() => config ? hasVariableSearchResults(config, query) : false, [config, query]);
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
@@ -260,6 +263,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
 
   function openBackgroundMenu(event) {
     event.preventDefault();
+    if (!configRef.current) return;
     setAddOpen(false);
     setContextMenu({ x: Math.min(event.clientX, window.innerWidth - 180), y: Math.min(event.clientY, window.innerHeight - 170), kind: "background", id: "", parentId: "" });
   }
@@ -274,6 +278,11 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
 
   function confirmDelete() {
     if (!deleteTarget) return;
+    if (deleteTarget.kind === 'batch') {
+      const targets = deleteTarget.ids.map(parseNodeKey);
+      changeConfig(current => targets.reduce((next, target) => deleteVariableNode(next, target), current), false);
+      selectNode(''); setDeleteTarget(null); multi.clear(); return;
+    }
     changeConfig((current) => deleteVariableNode(current, deleteTarget), false);
     selectNode('');
     setDeleteTarget(null);
@@ -320,6 +329,15 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     selectNode('');
   }
 
+  function copySelected() {
+    const targets = selectedTreeRootIds(nodes, multi.selected).map(parseNodeKey);
+    changeConfig(current => targets.reduce((next, target) => {
+      const item = target.kind === 'object' ? next.objects.find(entry => entry.id === target.id) : next.variables.find(entry => entry.id === target.id);
+      return copyVariableNode(next, target, target.kind === 'object' ? item.parentId : item.objectId).config;
+    }, current), false);
+    multi.clear();
+  }
+
   useEffect(() => {
     function handleKeyDown(event) {
       const key = event.key.toLocaleLowerCase();
@@ -340,15 +358,15 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [dirty, saving, selectedKey, config]);
 
-  if (!config && !compact) return <div className="variable-loading">{error || "正在读取…"}</div>;
-
+  const createItems = [{ label: '变量组', Icon: VariableGroupIcon, run: () => addNode('object') },
+    { label: '变量', Icon: VariableEntryIcon, run: () => addNode('variable') }];
   return (
-    <EditorSidebarLayout className="variable-layout" aria-label="变量配置"
+    <EditorSidebarLayout className={`variable-layout${multi.active ? ' is-multiselect' : ''}`} aria-label="变量配置"
       inspectorTitle={selected.value?.id === VARIABLE_INITIALIZATION_OBJECT_ID ? '变量运行配置' : selected.kind === 'object' ? '编辑变量组' : '编辑变量'}
       onCloseInspector={closeInspector}
       feedback={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />}
       onMouseDown={() => { setAddOpen(false); setContextMenu(null); }}
-      inspector={selected.value && (!compact || editing) ? (
+      inspector={!multi.active && selected.value && (!compact || editing) ? (
         <VariableConfigInspector
           config={config}
           selected={selected}
@@ -359,42 +377,35 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
           onConvert={convertToObject}
         />
       ) : null}>
-      <div className="variable-browser">
-        <div className="variable-toolbar" onMouseDown={(event) => event.stopPropagation()}>
-          <label className="variable-search"><MagnifyingGlass size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索变量" aria-label="搜索变量" /></label>
-          {!compact && <div className="variable-add-wrap">
-            <button type="button" className="variable-create-button" aria-expanded={addOpen} onClick={() => setAddOpen((open) => !open)}><Plus size={16} />新建</button>
-            {addOpen ? <div className="variable-popover" role="menu"><button type="button" role="menuitem" onClick={() => addNode("object")}><VariableGroupIcon size={16} />变量组</button><button type="button" role="menuitem" onClick={() => addNode("variable")}><VariableEntryIcon type="string" size={16} />变量</button></div> : null}
-          </div>}
-          <button type="button" className="variable-manage-button" disabled={!config} aria-expanded={managerOpen} onClick={() => { setAddOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
-          <SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />
-        </div>
+      <div className="variable-browser editor-collection-browser">
+        <EditorCollectionToolbar query={query} onQueryChange={setQuery} placeholder="搜索变量" disabled={saving || !config}
+          selection={{ ...multi, toggle: () => { multi.toggle(); selectNode(''); setEditing(false); setContextMenu(null); } }}
+          createItems={createItems}
+          onManage={() => setManagerOpen(true)} save={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />} />
+        <EditorSelectionBar selection={multi} visibleIds={visibleTreeSelectionIds(nodes, query)} disabled={saving} onCopy={copySelected}
+          onDelete={() => setDeleteTarget({ kind: 'batch', ids: selectedTreeRootIds(nodes, multi.selected), title: `删除选中的 ${multi.selected.size} 项？`, message: '所选变量组及其内容会在保存后删除。' })} />
         <div className="variable-tree editor-sidebar-directory" onContextMenu={openBackgroundMenu} onMouseDown={(event) => { if (event.button === 0 && !event.target.closest('[role="treeitem"]')) selectNode(''); }}>
-          <VariableTreeActionsContext.Provider value={{ openContextMenu, toggleNode, openEditor: compact ? openEditor : undefined }}>
+          <VariableTreeActionsContext.Provider value={{ openContextMenu, toggleNode, selection: multi, saving, openEditor: compact && !multi.active ? openEditor : undefined }}>
             <VariableConfigTree
               key={characterId}
               nodes={nodes}
-              touchReorder={compact && !clipboard}
-              dragEnabled={!clipboard}
+              touchReorder={compact && !clipboard && !multi.active}
+              dragEnabled={!clipboard && !multi.active}
               query={query}
-              selectedId={selectedKey}
+              selectedId={multi.active ? '' : selectedKey}
               expandedIds={expandedIds.map((id) => nodeKey("object", id))}
-              onSelectedIdChange={selectNode}
+              onSelectedIdChange={key => { if (multi.active) { if (selectableTreeIds(nodes).includes(key)) multi.check(key, !multi.selected.has(key)); } else selectNode(key); }}
               onExpandedIdsChange={handleExpandedKeysChange}
               onMove={handleMove}
             />
           </VariableTreeActionsContext.Provider>
           {!config ? <p className="variable-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p> : !searchHasResults ? <p className="variable-empty">没有匹配的变量</p> : null}
         </div>
-        {compact && config && <MobileEditorActions label="变量操作" selectionId={selectedKey}
+        {compact && config && !multi.active && <MobileEditorActions label="变量操作" selectionId={selectedKey} busy={saving} createItems={createItems}
           canEdit={Boolean(selected.value)} canModify={Boolean(selected.value) && selected.value.id !== VARIABLE_INITIALIZATION_OBJECT_ID}
           clipboard={clipboard} canPaste={Boolean(clipboard && canTransferVariableNode(config, clipboard.target, parentForNewNode()))}
           onEdit={openEditor} onMove={() => copyOrCut('cut', parseNodeKey(selectedKey))}
           onPaste={() => paste(parentForNewNode())} onCancel={clearClipboard} onDelete={() => askDelete(parseNodeKey(selectedKey))}
-          createItems={[
-            { label: '变量组', Icon: VariableGroupIcon, run: () => addNode('object') },
-            { label: '变量', Icon: VariableEntryIcon, run: () => addNode('variable') },
-          ]}
           moreItems={selected.value && selected.value.id !== VARIABLE_INITIALIZATION_OBJECT_ID ? [
             { label: '复制', Icon: Copy, run: () => copyOrCut('copy', parseNodeKey(selectedKey)) },
             { label: '重命名', Icon: PencilSimple, run: () => { openEditor(); requestAnimationFrame(() => nameInputRef.current?.select()); } },

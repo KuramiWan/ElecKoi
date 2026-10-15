@@ -35,7 +35,7 @@
         "id": "eleckoiModels",
         "kind": "service",
         "title": "模型目录服务",
-        "description": "读取模型目录、管理官方 profile 和独立密钥、发现模型并测试工具调用。",
+        "description": "读取模型目录、管理独立提供商配置和密钥，以及读取模型。",
         "mode": "call",
         "scope": "client",
         "relation": "provides",
@@ -45,9 +45,7 @@
           "refresh",
           "save",
           "deleteConfig",
-          "deleteProvider",
           "discover",
-          "testConnection",
           "revealApiKey"
         ]
       }

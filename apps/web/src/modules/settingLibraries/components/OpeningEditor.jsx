@@ -52,7 +52,7 @@ export function OpeningEditor({ entry, variableVersions = [], variableVersionsEr
           <div className="setting-library-opening-fields">
             <label>
               <span>标题</span>
-              <input value={message.title} maxLength={40} placeholder="未命名开场白" onChange={(event) => onChange(updateOpening(entry, message.id, { title: event.target.value }))} />
+              <input value={message.title} placeholder="未命名开场白" onChange={(event) => onChange(updateOpening(entry, message.id, { title: event.target.value }))} />
             </label>
             <label>
               <span>绑定变量版本</span>

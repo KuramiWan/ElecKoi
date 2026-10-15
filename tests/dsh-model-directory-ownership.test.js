@@ -39,10 +39,10 @@ describe('ElecKoi model settings migration', () => {
     ], 11)
   })
 
-  it('does not maintain a provider whitelist', async () => {
+  it.each([2, 3])('skips settled settings without maintaining a provider whitelist (schema %s)', async schemaVersion => {
     const settings = {
       describe: () => [
-        { ns: 'eleckoi-client-models', value: { schemaVersion: 2, entries: {
+        { ns: 'eleckoi-client-models', value: { schemaVersion, entries: {
           'config-owned': { name: '测试' },
           'deepseek-official': { name: 'DeepSeek' },
         } }, revision: 1 },
@@ -63,7 +63,7 @@ describe('ElecKoi model settings migration', () => {
   it('turns off child model selection when every authorized route is a known obsolete provider', async () => {
     const settings = {
       describe: () => [
-        { ns: 'eleckoi-client-models', value: { schemaVersion: 2, entries: {} }, revision: 1 },
+        { ns: 'eleckoi-client-models', value: { schemaVersion: 3, entries: {} }, revision: 1 },
         { ns: 'llm-pi-ai', value: { providers: {} }, revision: 2 },
         { ns: 'llm-deepseek', value: { models: [] }, revision: 3 },
         { ns: 'subagent-model-selection-settings', value: { enabled: true, allowedModels: [

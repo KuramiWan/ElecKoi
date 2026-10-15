@@ -103,7 +103,7 @@ final class AppUpdates {
     }
     private JSONObject available(AppUpdateRelease release) throws Exception {
         return empty("available",null).put("variant",BuildConfig.BROWSER_VARIANT).put("versionCode",release.versionCode).put("availableVersion",release.versionName)
-            .put("releaseName",release.title).put("releaseNotes",release.notes.substring(0,Math.min(4000,release.notes.length())))
+            .put("releaseName",release.title).put("releaseNotes",release.notes)
             .put("releaseDate",release.publishedAt).put("releaseUrl",release.releaseUrl).put("downloadUrl",release.downloadUrl).put("downloadSizeBytes",release.bytes);
     }
     private JSONObject empty(String phase, String message) {

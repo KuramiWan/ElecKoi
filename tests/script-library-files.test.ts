@@ -42,6 +42,15 @@ function source(f: ReturnType<typeof setup>, scope = 'global', ownerId = ''): st
 }
 
 describe('script source files', () => {
+  it('persists an empty disabled script without filling in a starter module', () => {
+    const f = setup()
+    for (const [scope, ownerId] of [['global', ''], ['character', 'synthetic-character'], ['preset', f.presetId]] as const) {
+      f.scripts.save({ ...f.scripts.get(scope, ownerId), trees: [{ ...script, enabled: false, content: '' }] })
+      expect(readFileSync(source(f, scope, ownerId), 'utf8')).toBe('')
+      expect(f.scripts.get(scope, ownerId).trees[0]).toMatchObject({ enabled: false, content: '' })
+    }
+  }, 30000)
+
   it('saves settings against the latest library revision without changing source files or other script data', () => {
     const f = setup()
     for (const [scope, ownerId] of [['global', ''], ['character', 'synthetic-character'], ['preset', f.presetId]] as const) {

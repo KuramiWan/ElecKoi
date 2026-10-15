@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 
@@ -33,7 +33,9 @@ export function stageProductionClosure(repo, output, { links = true } = {}) {
     const manifest = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8'))
     const id = `${manifest.name.replace(/[^a-zA-Z0-9.-]/g, '_')}@${manifest.version}-${createHash('sha256').update(relative(repo, source)).digest('hex').slice(0, 10)}`
     const target = root ? output : join(output, 'node_modules', '.eleckoi-packages', id)
-    const record = { source, target, name: manifest.name, version: manifest.version, dependencies: [] }
+    const sourcePath = relative(repo, source).split(sep).join('/')
+    const workspace = root || sourcePath.startsWith('apps/') || sourcePath.startsWith('packages/')
+    const record = { source, target, name: manifest.name, version: manifest.version, workspace, dependencies: [] }
     packages.set(source, record)
     const require = createRequire(join(source, 'package.json'))
     const edges = new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.peerDependencies ?? {}),
@@ -64,17 +66,52 @@ export function stageProductionClosure(repo, output, { links = true } = {}) {
     mkdirSync(record.target, { recursive: true })
     cpSync(record.source, record.target, { recursive: true, dereference: false,
       filter: path => path !== join(record.source, 'node_modules') && !['.git', '.turbo'].includes(basename(path)) })
+    if (record.workspace) verifyWorkspaceEntrypoints(record.target)
   }
   // DSH installation anchors resolve shipped bundles before the runtime
   // interceptor starts. Expose the installed closure at the installation root;
   // importer-local links above still retain different transitive versions.
   const inventory = { schemaVersion: 1, packages: [...packages.values()].map(record => ({ name: record.name,
-    version: record.version, directory: relative(output, record.target).split('\\').join('/'),
+    version: record.version, workspace: record.workspace, directory: relative(output, record.target).split('\\').join('/'),
     dependencies: record.dependencies.map(dependency => ({ name: dependency.name,
       directory: relative(output, dependency.package.target).split('\\').join('/') })) })), missingOptional }
   writeFileSync(join(output, 'production-closure.json'), `${JSON.stringify(inventory, null, 2)}\n`)
   if (links) exposeInstallationPackages(output, inventory)
   return inventory
+}
+
+/** Validate copied build outputs before replacing the last complete dependency snapshot. */
+export function verifyWorkspaceEntrypoints(directory) {
+  const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'))
+  const targets = new Set()
+  const collect = value => {
+    if (typeof value === 'string') targets.add(value)
+    else if (Array.isArray(value)) value.forEach(collect)
+    else if (value && typeof value === 'object') {
+      for (const [condition, target] of Object.entries(value)) if (condition !== 'types') collect(target)
+    }
+  }
+  collect(manifest.exports)
+  for (const value of [manifest.main, manifest.module]) if (typeof value === 'string') targets.add(value)
+  collect(manifest.bin)
+  let files
+  const list = (root, prefix = '') => readdirSync(root, { withFileTypes: true }).flatMap(item => {
+    if (item.name === 'node_modules' || item.isSymbolicLink()) return []
+    const name = prefix + item.name
+    return item.isDirectory() ? list(join(root, item.name), name + '/') : item.isFile() ? [name] : []
+  })
+  for (const target of targets) {
+    const normalized = target.replace(/^\.\//, '')
+    const resolved = resolve(directory, normalized)
+    if (!resolved.startsWith(resolve(directory) + sep)) throw new Error(`Workspace entry escapes package: ${manifest.name} -> ${target}`)
+    let present
+    if (normalized.includes('*')) {
+      files ??= list(directory)
+      const pattern = new RegExp('^' + normalized.split('*').map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')
+      present = files.some(file => pattern.test(file))
+    } else present = existsSync(resolved) && statSync(resolved).isFile()
+    if (!present) throw new Error(`Missing workspace runtime entry: ${manifest.name} -> ${target}; rebuild the package before staging Android assets`)
+  }
 }
 
 function matchesPlatform(constraints, value) {

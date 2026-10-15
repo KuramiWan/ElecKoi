@@ -1,7 +1,14 @@
 import { blankConfigForProvider, normalizeProviderId } from "./modelProviderCatalog.js";
 import { novelAiImageSettingsError } from '@shared/contracts/agent/novelAiImageSettings';
 
-export function initialConfigForProvider(providerId) {
+export function initialConfigForProvider(providerId, providers = []) {
+  const route = providers.find(item => item.provider === providerId);
+  if (route) {
+    return { ...initialConfigForProvider(route.provider === 'deepseek-official' ? 'deepseek' : 'custom'),
+      id: route.provider, name: route.displayName || route.provider, builtin: true,
+      useBuiltinModels: route.provider !== 'deepseek-official', settingsNs: route.settingsNs,
+      settingsPath: route.settingsPath, api_format: route.provider === 'deepseek-official' ? 'deepseek_messages' : 'catalog' };
+  }
   const provider = normalizeProviderId(providerId);
   if (provider === "deepseek") {
     return { ...blankConfigForProvider(provider), id: "deepseek-official" };
@@ -13,15 +20,6 @@ export function initialConfigForProvider(providerId) {
 
 export function normalizedConfigs(configs) {
   return (configs || []).map((item) => ({ ...item, provider: normalizeProviderId(item.provider) }));
-}
-
-export function providerVersions(form, configs, activeProviderId) {
-  const matching = configs.filter((item) => normalizeProviderId(item.provider) === activeProviderId);
-  if (matching.length) {
-    if (form.id && !matching.some((item) => item.id === form.id)) return [...matching, form];
-    return matching;
-  }
-  return [form.id ? form : { ...form, id: "__draft" }];
 }
 
 export function mergeModelOptions(form, scopedOptions) {
@@ -58,7 +56,8 @@ export function modelParameterState(form, activeProviderId) {
   const activeModelOption = (form.model_options || []).find((item) => item.id === form.model) || null;
   const automaticContextWindow = activeModelOption?.contextWindowTokens || 262_144;
   const effectiveContextWindow = activeModelOption?.contextWindowTokens || automaticContextWindow;
-  const reasoningProfileError = activeModelOption?.reasoningEfforts
+  const declaresReasoning = activeProviderId === 'custom' && (!form.builtin || activeModelOption?.capabilitiesOverride === true);
+  const reasoningProfileError = declaresReasoning && activeModelOption?.reasoningEfforts
     && typeof activeModelOption.reasoningEfforts === "object"
     && (
       Object.values(activeModelOption.reasoningEfforts).some((value) => value !== null && !String(value).trim())
@@ -71,6 +70,7 @@ export function modelParameterState(form, activeProviderId) {
     || (activeModelOption.temperature != null && (activeModelOption.temperature < 0 || activeModelOption.temperature > 2))
     || (activeModelOption.topP != null && (activeModelOption.topP < 0 || activeModelOption.topP > 1))
     || reasoningProfileError
+    || (Array.isArray(activeModelOption.inputModalities) && activeModelOption.inputModalities.length === 0)
   );
   return { activeModelOption, automaticContextWindow, effectiveContextWindow, parameterError };
 }

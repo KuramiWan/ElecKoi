@@ -7,16 +7,18 @@
   gap: 16px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
   padding: clamp(76px, 10vh, 128px) clamp(28px, 5vw, 72px) clamp(30px, 5vh, 58px);
   background: var(--chat);
   color: var(--text);
 }
 
-.character-profile-empty {
+.character-profile-panel.character-profile-empty {
   grid-template-rows: 1fr;
   align-content: center;
   place-items: center;
+  padding: 24px;
 }
 
 .character-profile-create,

@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 const draft = () => ({ id: 'config-example', provider: 'custom', name: 'Example', model: '', model_options: [],
   api_format: 'chat_completions', api_key: '', base_url: 'https://models.example/v1', custom_headers: {} });
-const layout = ({ mainPanel, overlays }) => <>{mainPanel}{overlays}</>;
+const layout = ({ sidePanel, mainPanel, overlays }) => <>{sidePanel}{mainPanel}{overlays}</>;
 const button = text => [...container.querySelectorAll('button')].find(element => element.textContent.trim() === text);
 const field = text => [...container.querySelectorAll('label')].find(element => element.textContent.trim().startsWith(text))?.querySelector('input,select');
 async function change(element, value) {
@@ -37,6 +37,61 @@ async function mount(props) {
 }
 
 describe('model configuration form', () => {
+  it('preserves the official non-thinking declaration while editing ordinary parameters', async () => {
+    const config = { ...initialConfigForProvider('deepseek'), model: 'synthetic-model',
+      model_options: [{ id: 'synthetic-model', reasoningEfforts: { off: null } }] };
+    const save = vi.fn(async item => item);
+    await mount({ config, configs: [config], onSave: save });
+    await change(field('温度'), '0.5');
+    expect(button('保存配置').disabled).toBe(false);
+    await act(async () => button('保存配置').click());
+    expect(save.mock.calls[0][0].model_options[0]).toMatchObject({ reasoningEfforts: { off: null }, temperature: 0.5 });
+  });
+
+  it('creates separate custom and drawing configurations from the menu', async () => {
+    const config = draft();
+    await mount({ config, configs: [config] });
+    await act(async () => container.querySelector('[aria-label="新建模型配置"]').click());
+    const menu = container.querySelector('.model-provider-create-menu');
+    expect([...menu.querySelectorAll('[role="menuitem"]')].map(item => item.textContent.trim())).toEqual(['自定义提供商', 'OpenAI Images', 'NovelAI']);
+    await act(async () => menu.querySelector('[role="menuitem"]').click());
+    expect(container.querySelectorAll('.model-config-provider')).toHaveLength(2);
+    expect(field('Provider ID').readOnly).toBe(false);
+    expect(container.textContent).not.toContain('测试连接');
+  });
+
+  it('opens deletion as a modal and removes only the selected configuration', async () => {
+    const first = { ...draft(), id: 'config-first' };
+    const second = { ...draft(), id: 'config-second', name: 'Other' };
+    const remove = vi.fn(async () => second);
+    await mount({ config: first, configs: [first, second], onDeleteConfig: remove });
+    const form = container.querySelector('.model-detail-form');
+    const children = form.childElementCount;
+    await act(async () => container.querySelector('[aria-label="删除配置"]').click());
+    expect(form.childElementCount).toBe(children);
+    const dialog = document.body.querySelector('[role="alertdialog"]');
+    expect(dialog.closest('.model-provider-delete-overlay')).not.toBeNull();
+    expect(form.contains(dialog)).toBe(false);
+    await act(async () => dialog.querySelector('.danger').click());
+    expect(remove).toHaveBeenCalledExactlyOnceWith('config-first');
+    expect(field('配置名称').value).toBe('Other');
+  });
+
+  it('defaults manual models to text and deletes the active added model with its parameters', async () => {
+    const save = vi.fn(async item => item);
+    await mount({ onSave: save });
+    await act(async () => button('添加模型').click());
+    await change(container.querySelector('[aria-label="模型名"]'), 'synthetic-model');
+    await act(async () => button('添加').click());
+    const inputs = container.querySelectorAll('.model-input-capabilities input');
+    expect([...inputs].map(item => item.checked)).toEqual([true, false]);
+    await change(field('温度'), '0.5');
+    await act(async () => container.querySelector('[title="展开模型列表"]').click());
+    await act(async () => container.querySelector('[aria-label="删除模型 synthetic-model"]').click());
+    expect(field('温度').disabled).toBe(true);
+    await act(async () => button('保存配置').click());
+    expect(save.mock.calls[0][0]).toMatchObject({ model: '', model_options: [] });
+  });
   it('creates the DeepSeek card as the dedicated DSH provider', () => {
     expect(initialConfigForProvider('deepseek')).toMatchObject({
       id: 'deepseek-official', provider: 'deepseek', api_format: 'deepseek_messages',
@@ -44,13 +99,37 @@ describe('model configuration form', () => {
     });
   });
 
-  it('shows a migrated generic profile as a custom-provider configuration version', async () => {
-    const migrated = { ...draft(), id: 'config-legacy', name: '旧版配置', provider: 'custom', model: 'legacy-model' };
-    await mount({ config: migrated, configs: [migrated] });
-    expect(container.querySelector('.model-split-select-value').textContent.trim()).toBe('旧版配置');
-    await act(async () => container.querySelector('[title="展开配置版本"]').click());
-    expect([...container.querySelectorAll('.model-version-menu button')].map(item => item.textContent.trim()))
-      .toEqual(['旧版配置']);
+  it('adds models in the form and keeps network settings visible without disclosure controls', async () => {
+    await mount();
+    const picker = container.querySelector('.model-picker-field');
+    await act(async () => button('添加模型').click());
+    const addition = picker.querySelector('.model-manual-add');
+    expect(addition.parentElement).toBe(picker);
+    expect(addition.querySelector('label').textContent).toBe('模型 ID');
+    expect(addition.querySelector('input').placeholder).toBe('填写提供商实际模型 ID');
+    expect([...addition.querySelectorAll('button')].map(item => item.textContent.trim())).toEqual(['添加', '取消']);
+    await change(addition.querySelector('input'), 'synthetic-draft-model');
+    await act(async () => addition.querySelector('input').dispatchEvent(new Event('pointerdown', { bubbles: true })));
+    expect(picker.querySelector('.model-manual-add')).toBe(addition);
+    await act(async () => [...addition.querySelectorAll('button')].find(item => item.textContent === '取消').click());
+    expect(picker.querySelector('.model-manual-add')).toBeNull();
+    expect(container.querySelector('.model-picker-value').textContent).not.toContain('synthetic-draft-model');
+    expect(container.querySelector('.model-network-section').tagName).toBe('SECTION');
+    expect(container.querySelector('.model-network-section summary')).toBeNull();
+    expect(container.querySelector('[aria-label="新请求头名称"]')).not.toBeNull();
+    const capabilities = container.querySelector('.model-input-capabilities');
+    expect(capabilities.textContent).not.toContain('输入能力');
+    expect([...capabilities.querySelectorAll('label')].map(item => item.textContent)).toEqual(['文本', '图片']);
+  });
+
+  it('shows independent configuration rows without a version selector', async () => {
+    const first = { ...draft(), id: 'config-first', name: '网关一' };
+    const second = { ...draft(), id: 'config-second', name: '网关二' };
+    await mount({ config: first, configs: [first, second] });
+    expect(container.querySelector('.model-version-picker')).toBeNull();
+    expect([...container.querySelectorAll('.model-config-provider b')].map(item => item.textContent)).toEqual(['网关一', '网关二']);
+    await act(async () => [...container.querySelectorAll('.model-config-provider')][1].click());
+    expect(field('配置名称').value).toBe('网关二');
   });
 
   it('refreshes saved credential state when the catalog finishes loading after the page', async () => {
@@ -78,7 +157,7 @@ describe('model configuration form', () => {
 
     expect(container.querySelector('.model-api-key-control input').placeholder).toBe('已保存，留空保留');
     expect(field('配置名称').value).toBe('DeepSeek');
-    expect(container.querySelector('.model-split-select-value').textContent.trim()).toBe('DeepSeek');
+    expect(field('Provider ID').value).toBe('deepseek-official');
   });
 
   it('reveals a saved credential on demand without dirtying or saving its plaintext', async () => {
@@ -144,7 +223,7 @@ describe('model configuration form', () => {
     expect(field('Top P').disabled).toBe(true);
     await act(async () => button('读取模型').click());
     expect(field('Top P').disabled).toBe(false);
-    for (const name of ['上下文窗口', '自动压缩阈值', '单次最大输出', '温度', '图片输入']) expect(field(name).disabled).toBe(false);
+    for (const name of ['上下文窗口', '自动压缩阈值', '单次最大输出', '温度']) expect(field(name).disabled).toBe(false);
     expect([...field('推理强度').options].map(option => option.value)).toEqual(['', 'off', 'high']);
     await change(field('Top P'), '0.96');
     await change(field('温度'), '0.4');

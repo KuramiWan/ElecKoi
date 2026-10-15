@@ -91,9 +91,8 @@ export function projectCompactionRequest(options, customInstructions, defaultRea
       messages
     }
   }
-  const { tools: _tools, ...rest } = options
   return {
-    ...rest,
+    ...options,
     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     messages: [
       ...messages.slice(0, -1),

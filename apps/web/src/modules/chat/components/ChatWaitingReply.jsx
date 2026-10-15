@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { RunningWhaleTail } from "./RunningWhaleTail.jsx";
+import { formatLiveRunDuration } from '../model/agentProcessTiming.js';
+export { formatLiveRunDuration } from '../model/agentProcessTiming.js';
 
 export function ChatWaitingReply({ startTime }) {
   const [startedAt, setStartedAt] = useState(() => startTime ?? Date.now());
@@ -37,13 +39,4 @@ function RunningTextShimmer({ children }) {
       </span>
     </span>
   </span>;
-}
-
-export function formatLiveRunDuration(ms) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor(totalSeconds / 60) % 60;
-  const seconds = String(totalSeconds % 60);
-  if (hours > 0) return `${hours}小时${String(minutes).padStart(2, "0")}分${seconds}秒`;
-  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
 }

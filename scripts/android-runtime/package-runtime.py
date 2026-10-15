@@ -8,6 +8,7 @@ import io
 import json
 import os
 import posixpath
+import re
 import struct
 import subprocess
 import tarfile
@@ -260,17 +261,6 @@ def patch_attachment_storage(value):
             b'import { androidAttachmentBoundary, publishAndroidAlias } from "./android-attachment-storage.mjs";\n' + value)
 
 
-def patch_workspace_navigation(value):
-    """Keep Android startup free of unrequested default Workspace creation."""
-    spec = read_json(REPO / "native/android-runtime/workspace-navigation-lock.json")
-    if hashlib.sha256(value).hexdigest() != spec["sourceSha256"]:
-        raise ValueError("Android Workspace navigation source differs from the locked package")
-    before = spec["before"].encode()
-    if value.count(before) != 1:
-        raise ValueError("Android Workspace navigation requires one exact startup block")
-    return value.replace(before, b"")
-
-
 def validate_shared_asset_copies(source):
     """Verify both declared resource paths before storing one physical copy."""
     manifest = read_json(source / "package.json")
@@ -317,20 +307,54 @@ def verify_shared_asset_layout(packed, inventory):
         raise ValueError("Canonical shared resources are missing from the Android archive")
 
 
+def verify_workspace_entrypoints(packed, inventory):
+    """Check declared workspace runtime files in the final archive, not the source tree."""
+    members = {safe_name(item.name): item for item in packed.getmembers()}
+    for record in inventory["packages"]:
+        if not isinstance(record.get("workspace"), bool):
+            raise ValueError(f"Packaged dependency lacks workspace classification: {record['name']}")
+        if not record["workspace"]:
+            continue
+        owner = safe_name(record["directory"])
+        manifest_path = posixpath.join(owner, "package.json")
+        manifest = json.load(packed.extractfile(manifest_path))
+        if (manifest["name"], manifest["version"]) != (record["name"], record["version"]):
+            raise ValueError(f"Packaged workspace identity differs: {record['name']}")
+        targets = set()
+
+        def collect(value):
+            if isinstance(value, str):
+                targets.add(value)
+            elif isinstance(value, list):
+                for entry in value:
+                    collect(entry)
+            elif isinstance(value, dict):
+                for condition, entry in value.items():
+                    if condition != "types":
+                        collect(entry)
+
+        collect(manifest.get("exports"))
+        collect(manifest.get("bin"))
+        for field in ("main", "module"):
+            if isinstance(manifest.get(field), str):
+                targets.add(manifest[field])
+        for target in sorted(targets):
+            path = posixpath.join(owner, safe_name(target))
+            if "*" in path:
+                pattern = re.compile("^" + ".*".join(re.escape(part) for part in path.split("*")) + "$")
+                present = any(item.isfile() and pattern.fullmatch(name) for name, item in members.items())
+            else:
+                present = path in members and members[path].isfile()
+            if not present:
+                raise ValueError(f"Missing packaged workspace runtime entry: {record['name']} -> {target}")
+
+
 def add_directory(output, source, prefix, record_name=None):
     publication = read_json(REPO / "native/android-runtime/session-publication-lock.json")
     attachment = read_json(REPO / "native/android-runtime/attachment-storage-lock.json")
-    workspace = read_json(REPO / "native/android-runtime/workspace-navigation-lock.json")
     android_session = record_name == publication["package"]
     android_attachment = record_name == attachment["package"]
-    android_workspace = record_name == workspace["package"]
     shared_assets = record_name == SHARED_ASSET_PACKAGE
-    if android_workspace:
-        manifest = read_json(source / "package.json")
-        if (manifest["name"], manifest["version"]) != (workspace["package"], workspace["version"]):
-            raise ValueError("Android Workspace navigation package identity mismatch")
-        if not (source / workspace["file"]).is_file():
-            raise ValueError("Android Workspace navigation source is missing")
     if shared_assets:
         validate_shared_asset_copies(source)
     if android_session:
@@ -375,9 +399,6 @@ def add_directory(output, source, prefix, record_name=None):
             if file.suffix.lower() in (".exe", ".dll", ".pdb", ".lib", ".obj", ".cmd", ".bat"):
                 continue
             relative = file.relative_to(source).as_posix()
-            if android_workspace and relative == workspace["file"]:
-                add_bytes(output, posixpath.join(prefix, relative), patch_workspace_navigation(file.read_bytes()))
-                continue
             if android_session and relative == publication["file"]:
                 add_bytes(output, posixpath.join(prefix, relative), patch_session_publication(file.read_bytes()))
                 continue
@@ -464,7 +485,7 @@ def package_app(closure, downloads, output, lock):
         if (manifest["name"], manifest["version"]) != (component["name"], component["version"]):
             raise ValueError("Native package identity mismatch")
         directory = f'node_modules/.eleckoi-packages/linux-arm64/node_modules/{component["name"]}'
-        record = {"name": component["name"], "version": component["version"], "directory": directory, "dependencies": []}
+        record = {"name": component["name"], "version": component["version"], "directory": directory, "workspace": False, "dependencies": []}
         if directory in by_directory:
             raise ValueError("Duplicate native overlay directory")
         records.append(record)
@@ -609,6 +630,7 @@ def verify_archives(output):
             if path.name == "app.tar.gz":
                 spec = read_json(REPO / "native/android-runtime/session-publication-lock.json")
                 inventory = json.load(packed.extractfile("production-closure.json"))
+                verify_workspace_entrypoints(packed, inventory)
                 verify_shared_asset_layout(packed, inventory)
                 owners = [record for record in inventory["packages"] if record["name"] == spec["package"]]
                 if len(owners) != 1 or owners[0]["version"] != spec["version"]:

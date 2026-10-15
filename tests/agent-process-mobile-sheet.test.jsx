@@ -17,6 +17,7 @@ afterEach(async () => {
   root = undefined;
   container?.remove();
   delete document.documentElement.dataset.eleckoiMobile;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -37,6 +38,55 @@ async function renderDialog(mobile = true, processMessage = message) {
 }
 
 describe('mobile process bottom sheet', () => {
+  it.each([false, true])('shows model retry failure details inside the process dialog (mobile: %s)', async mobile => {
+    await renderDialog(mobile, { status: 'complete', content: '', process: [{
+      id: 'synthetic-retry', kind: 'action', toolName: 'model_retry', status: 'complete',
+      arguments: '', summary: '已重试模型请求（1/5）',
+      detail: JSON.stringify({ delayMs: 1000, failure: { code: 'RATE_LIMIT', status: 429, message: 'Synthetic overload' } }),
+      startedAtMillis: 1000,
+    }] });
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog.textContent).toContain('已重试模型请求（1/5）');
+    await act(() => dialog.querySelector('.agent-process-group').click());
+    await act(() => dialog.querySelector('.agent-process-list button.agent-process-item').click());
+    expect(dialog.textContent).toContain('Synthetic overload');
+    expect(dialog.textContent).toContain('429');
+    expect(dialog.querySelector('.agent-process-status').textContent).toBe('已重试');
+    expect(container.textContent).not.toContain('Synthetic overload');
+  });
+  it('shows a reasoning display projection including intentional empty text while retaining the original detail', async () => {
+    const original = { id: 'synthetic-thought', kind: 'reasoning', toolName: 'reasoning', status: 'complete', detail: 'Synthetic original thought', displayDetail: 'Synthetic display thought' }
+    await renderDialog(false, { status: 'complete', process: [original] })
+    await act(async () => document.querySelector('.agent-process-group').click())
+    expect(document.querySelector('.agent-process-reasoning-body').textContent).toContain('Synthetic display thought')
+    expect(document.querySelector('.agent-process-reasoning-body').textContent).not.toContain('Synthetic original thought')
+    await act(async () => root.render(<AgentProcessDialog message={{ status: 'complete', process: [{ ...original, displayDetail: '' }] }} onClose={() => {}} />))
+    expect(document.querySelector('.agent-process-reasoning-body')).toBeNull()
+    expect(original.detail).toBe('Synthetic original thought')
+  })
+  it('updates an open turn clock and stops at the official end while the dialog stays open', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    const live = { ...message, pending: true, processTiming: { startedAtMillis: 1000 } };
+    const { dialog } = await renderDialog(false, live);
+    expect(dialog.querySelector('h2').textContent).toBe('处理过程 · 1秒');
+    await act(async () => vi.advanceTimersByTime(43000));
+    expect(dialog.querySelector('h2').textContent).toBe('处理过程 · 43秒');
+    await act(async () => root.render(<AgentProcessDialog message={{ ...live, pending: false, status: 'complete',
+      processTiming: { startedAtMillis: 1000, completedAtMillis: 44000 } }} onClose={() => {}} />));
+    await act(async () => vi.advanceTimersByTime(3600000));
+    expect(dialog.querySelector('h2').textContent).toBe('处理过程 · 43秒');
+  });
+  it('does not grow a historical duration when completed reasoning lacks an item end time', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(3600000);
+    const historical = { status: 'complete', processTiming: { startedAtMillis: 1000, completedAtMillis: 44000 },
+      process: [{ id: 'synthetic-thought', kind: 'reasoning', toolName: 'reasoning', status: 'complete', startedAtMillis: 3000, detail: '合成分析' }] };
+    const { dialog } = await renderDialog(false, historical);
+    expect(dialog.querySelector('h2').textContent).toBe('处理过程 · 43秒');
+    await act(async () => vi.advanceTimersByTime(3600000));
+    expect(dialog.querySelector('h2').textContent).toBe('处理过程 · 43秒');
+  });
   it('shows the captured image prompt in processing before and after the final boundary', async () => {
     const action = { id: 'synthetic-image-action', kind: 'action', toolName: 'generate_image', status: 'running',
       arguments: '{"frames":[{"id":1,"prompt":"synthetic scene","negative_prompt":"synthetic avoid"}]}' };

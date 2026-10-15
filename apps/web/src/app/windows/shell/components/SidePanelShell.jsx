@@ -1,5 +1,6 @@
 import React from "react";
 import { DshPanelLeftIcon } from "../../../../ui/icons/dshComposerIcons.jsx";
+import { ElecKoiWordmark } from "../../../../ui/icons/ElecKoiWordmark.jsx";
 
 function stopDrag(event) {
   event.stopPropagation();
@@ -15,7 +16,7 @@ export function SidePanelShell({ collapsed = false, onCollapse, footerActions, r
     >
       <header className="side-panel-header" data-tauri-drag-region>
         <div className="side-panel-brand">
-          {renderSidebarSlot?.("sidebar.brand.name", { content: <strong>ElecKoi</strong> }) || <strong>ElecKoi</strong>}
+          {renderSidebarSlot?.("sidebar.brand.name", { content: <ElecKoiWordmark /> }) || <ElecKoiWordmark />}
         </div>
         <button
           className="side-panel-collapse-button"

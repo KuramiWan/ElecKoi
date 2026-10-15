@@ -10,6 +10,7 @@ import {
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import type { LocalMediaStore } from '@product-data/storage/media/LocalMediaStore'
 import { ScriptLibraryRepository } from '@product-data/domain/scripts'
+import { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
 import { characterExists } from '@product-data/domain/personas'
 import { agentPresetExists } from './agentPresetLookup'
 import {
@@ -116,7 +117,8 @@ export class AgentPresetRepository {
   constructor(
     private readonly store: ElecKoiSqliteStore,
     private readonly mediaAssets?: LocalMediaStore,
-    private readonly scripts = new ScriptLibraryRepository(store, { character: characterExists, preset: agentPresetExists })
+    private readonly scripts = new ScriptLibraryRepository(store, { character: characterExists, preset: agentPresetExists }),
+    private readonly displayTemplates = new DisplayTemplateRepository(store, { character: characterExists, preset: agentPresetExists })
   ) {}
 
   ensureInitialized(): void {
@@ -477,6 +479,7 @@ export class AgentPresetRepository {
         }
       })
       if (decoded.scriptLibrary) this.scripts.importInTransaction('preset', created.id, decoded.scriptLibrary, db)
+      if (decoded.displayTemplates) this.displayTemplates.import('preset', created.id, decoded.displayTemplates)
       return agentPresetImportResultSchema.parse({
         preset: imported,
         source: decoded.source,
@@ -498,6 +501,7 @@ export class AgentPresetRepository {
     const avatar = portableAvatar(preset.profile.authorAvatarPath, this.mediaAssets)
     const json = encodeElecKoiAgentPreset(preset, {
       scriptLibrary: this.scripts.portable('preset', presetId),
+      displayTemplates: this.displayTemplates.portable('preset', presetId),
       ...(avatar ? { authorAvatar: avatar.transfer } : {}),
       versions: this.transferVersions(presetId)
     })
@@ -588,10 +592,14 @@ export class AgentPresetRepository {
   } {
     if (db === this.store.db) this.ensureInitialized()
     const state = db.select().from(agentPresetState).where(eq(agentPresetState.purpose, 'roleplay')).get()
-    const preset = state
-      ? db.select().from(agentPresets).where(eq(agentPresets.id, state.activePresetId)).get()
-      : undefined
-    if (!preset) throw new Error('当前没有可读取正则的 Agent 预设。')
+    if (!state) throw new Error('当前没有可读取正则的 Agent 预设。')
+    return this.readRegexRules(state.activePresetId, db)
+  }
+
+  readRegexRules(presetId: string, db: ElecKoiDatabase = this.store.db) {
+    if (db === this.store.db) this.ensureInitialized()
+    const preset = db.select().from(agentPresets).where(eq(agentPresets.id, presetId)).get()
+    if (!preset) throw new Error('指定预设不存在。')
     const content = db.select().from(agentPresetContents).where(and(
       eq(agentPresetContents.presetId, preset.id),
       eq(agentPresetContents.kind, CONTENT_REGEX_RULES)
@@ -607,10 +615,18 @@ export class AgentPresetRepository {
 
   replaceActiveRegexRules(rules: AgentPreset['regexRules'], db: ElecKoiDatabase): void {
     const state = db.select().from(agentPresetState).where(eq(agentPresetState.purpose, 'roleplay')).get()
-    const preset = state
-      ? db.select().from(agentPresets).where(eq(agentPresets.id, state.activePresetId)).get()
-      : undefined
-    if (!preset) throw new Error('当前没有可保存正则的 Agent 预设。')
+    if (!state) throw new Error('当前没有可保存正则的 Agent 预设。')
+    this.replaceRegexRules(state.activePresetId, rules, db)
+  }
+
+  enabledRegexRuleIds(db: ElecKoiDatabase): string[] {
+    return db.select().from(agentPresetContents).where(eq(agentPresetContents.kind, CONTENT_REGEX_RULES)).all()
+      .flatMap(row => parseList(row.content, regexRuleSchema, '预设正则').filter(rule => rule.enabled).map(rule => rule.id))
+  }
+
+  replaceRegexRules(presetId: string, rules: AgentPreset['regexRules'], db: ElecKoiDatabase): void {
+    const preset = db.select().from(agentPresets).where(eq(agentPresets.id, presetId)).get()
+    if (!preset) throw new Error('指定预设不存在。')
     const content = JSON.stringify(rules.map((rule, order) => regexRuleSchema.parse({ ...rule, order })))
     db.insert(agentPresetContents).values({ presetId: preset.id, kind: CONTENT_REGEX_RULES, content })
       .onConflictDoUpdate({
@@ -919,23 +935,23 @@ function normalizePreset(input: AgentPreset): AgentPreset {
   const prompts = normalizeAgentPresetPrompts(input.entries, input.promptPositions, input.purpose)
   return agentPresetSchema.parse({
     ...input,
-    name: input.name.trim().slice(0, 60) || '未命名预设',
+    name: input.name.trim() || '未命名预设',
     modelTags: input.modelTags.map((tag) => ({
       id: tag.id.trim().toLocaleLowerCase(),
       label: tag.label.trim(),
       providerId: tag.providerId.trim()
-    })).filter((tag) => tag.id && tag.label).slice(0, 8),
+    })).filter((tag) => tag.id && tag.label),
     profile: {
-      authorName: input.profile.authorName.trim().slice(0, 40),
+      authorName: input.profile.authorName.trim(),
       authorAvatarPath: input.profile.authorAvatarPath,
-      usageInstructions: input.profile.usageInstructions.trim().slice(0, 8_000),
+      usageInstructions: input.profile.usageInstructions,
       timeline: input.profile.timeline.map((item) => ({
         ...item,
         id: item.id || `timeline-${randomUUID()}`,
-        title: item.title.trim().slice(0, 80),
-        dateLabel: item.dateLabel.trim().slice(0, 24),
-        note: item.note.trim().slice(0, 800)
-      })).filter((item) => item.title).slice(0, 100)
+        title: item.title.trim(),
+        dateLabel: item.dateLabel.trim(),
+        note: item.note
+      })).filter((item) => item.title || item.note)
     },
     entries: prompts.entries.map((entry, index) => settingLibraryEntrySchema.parse({
       ...entry,

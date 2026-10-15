@@ -1,23 +1,27 @@
 import { useContext, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
 import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
+import { FrontendDiagnostics } from './FrontendDiagnostics.jsx';
 
 const noSubscription = () => () => {};
 const noRuntime = () => null;
 
 /** The injected native service owns SDK calls; React owns the document's DOM lifetime. */
-export function NativeMessageFrame({ message, document, rootIndex = 0, onSettled }) {
+export function NativeMessageFrame({ message, document, rootIndex = 0, onSettled, onHeight, initialHeight }) {
   const view = useContext(MainPageContext);
   const connection = view?.characterConfiguration?.scriptRuntimeConnection;
   const runtime = useSyncExternalStore(connection?.subscribe || noSubscription, connection?.getSnapshot || noRuntime, noRuntime);
   const frame = useRef(null), release = useRef(null);
-  const [height, setHeight] = useState(1), [error, setError] = useState('');
+  const [height, setHeight] = useState(null), [error, setError] = useState('');
+  const [diagnostics, setDiagnostics] = useState([]);
   const settled = useRef(onSettled);
+  const reportHeight = useRef(onHeight);
   settled.current = onSettled;
+  reportHeight.current = onHeight;
   const channel = useMemo(() => crypto.randomUUID(), [message.conversationId, message.id, document.source, rootIndex, runtime]);
   const source = useMemo(() => buildAuthorDocumentSource(document.source, channel, true), [document.source, channel]);
   useLayoutEffect(() => {
-    setError(''); setHeight(1);
+    setError(''); setHeight(null); setDiagnostics([]);
     let ready = false, measured = false, reported = false;
     const reportReady = () => {
       if (!ready || !measured || reported) return;
@@ -26,10 +30,16 @@ export function NativeMessageFrame({ message, document, rootIndex = 0, onSettled
     const receive = event => {
       if (event.source !== frame.current?.contentWindow || event.data?.channel !== channel) return;
       if (event.data.type === 'eleckoi:rich-height' && Number.isFinite(event.data.height)) {
-        setHeight(Math.max(1, Math.ceil(event.data.height)));
+        const nextHeight = Math.max(1, Math.ceil(event.data.height));
+        setHeight(nextHeight);
+        reportHeight.current?.(nextHeight);
         measured = true; reportReady();
       }
       if (event.data.type === 'eleckoi:frontend-ready') { ready = true; reportReady(); }
+      if (event.data.type === 'eleckoi:frontend-diagnostic') {
+        const diagnostic = String(event.data.message);
+        setDiagnostics(current => current.includes(diagnostic) ? current : [...current, diagnostic]);
+      }
       if (event.data.type === 'eleckoi:frontend-error') {
         release.current?.(); release.current = null;
         const failure = String(event.data.message);
@@ -61,7 +71,8 @@ export function NativeMessageFrame({ message, document, rootIndex = 0, onSettled
   };
   if (!runtime) return <div className="rich-message-error" role="alert">原生作者插件未启用</div>;
   if (error) return <div className="rich-message-error" role="alert">互动消息加载失败：{error}</div>;
-  return <iframe key={channel} ref={frame} name={channel} className="rich-message-frame" title="互动消息内容"
+  return <><iframe key={channel} ref={frame} name={channel} className="rich-message-frame" title="互动消息内容"
     allow="fullscreen; autoplay; clipboard-read; clipboard-write" loading="eager" srcDoc={source}
-    onLoad={loaded} style={{ height: `${height}px` }} />;
+    onLoad={loaded} style={{ height: height === null ? initialHeight ?? (globalThis.CSS?.supports?.('height', '100dvh') ? '100dvh' : '100vh') : `${height}px` }} />
+    <FrontendDiagnostics messages={diagnostics} /></>;
 }

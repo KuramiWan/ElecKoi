@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Plus, Trash } from '@phosphor-icons/react';
+import { Check, Trash } from '@phosphor-icons/react';
 import { DshSearchIcon } from '../ui/icons/dshComposerIcons.jsx';
 import { MobileDialog } from './MobileChrome.jsx';
 
@@ -10,7 +10,6 @@ export function MobileModelPicker({ editor }) {
   return <MobileDialog title="模型列表" className="mobile-model-sheet" onClose={() => editor.setModelMenuOpen(false)}>
     <div className="mobile-model-picker-tools">
       <div className="mobile-model-search"><DshSearchIcon size={19} /><input type="search" aria-label="搜索模型" placeholder="搜索模型" value={query} onChange={event => setQuery(event.target.value)} /></div>
-      <button type="button" className="mobile-model-add" onClick={() => { editor.setModelMenuOpen(false); editor.setManualModelOpen(true); }}><Plus size={17} />添加模型</button>
     </div>
     <div className="mobile-model-picker-list">
       {items.map(item => <div key={item.id} className="mobile-model-picker-row">
@@ -20,7 +19,7 @@ export function MobileModelPicker({ editor }) {
         </button>
         {editor.removableModelIds.has(item.id) && <button type="button" className="mobile-model-remove" aria-label={`删除模型 ${item.id}`} onClick={() => editor.deleteModel(item.id)}><Trash size={19} /></button>}
       </div>)}
-      {!items.length && <p className="mobile-model-picker-empty">{keyword ? '没有匹配的模型' : '还没有模型，点击「添加模型」填写。'}</p>}
+      {!items.length && <p className="mobile-model-picker-empty">{keyword ? '没有匹配的模型' : '暂无模型'}</p>}
     </div>
   </MobileDialog>;
 }

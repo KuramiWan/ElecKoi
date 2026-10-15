@@ -58,6 +58,7 @@ describe('Android composition with the shared PC sidebar and locked DSH slots', 
         owner.slots.register({ name: 'conversation.view', id: 'chat', children: {
           'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         } }, () => null);
+        owner.slots.register({ name: 'conversation.view', id: 'trajectory' }, () => null);
         owner.slots.register({ name: 'conversation.chat.node', key: 'synthetic-node', children: {
           'tool.call.toolview': { kind: 'single', scope: 'session' },
         } }, () => null);
@@ -68,6 +69,7 @@ describe('Android composition with the shared PC sidebar and locked DSH slots', 
       expect(ctx.slots.entriesOfSlot('eleckoi.creator-studio.conversation')).toHaveLength(1);
       expect(ctx.slots.spec('eleckoi.creator-studio.tool.call.toolview').scope).toBe('session');
       expect(ctx.slots.spec('eleckoi.creator-studio.composer.bar').scope).toBe('session-maybe');
+      expect(ctx.slots.entriesOfSlot('eleckoi.creator-studio.view').map(entry => entry.options.id)).toEqual(['chat', 'trajectory']);
     } finally { await ctx.fiber.dispose(); }
   });
   it('keeps real sidebar contributions and removes them when their Cordis fiber unloads', async () => {

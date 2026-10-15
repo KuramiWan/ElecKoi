@@ -9,7 +9,7 @@ export const variableReadModeSchema = z.enum(['required', 'on_demand'])
 
 export const variableObjectConfigSchema = z.object({
   id: z.string().min(1),
-  name: z.string().max(40),
+  name: z.string(),
   parentId: z.string(),
   enabled: z.boolean(),
   description: z.string(),
@@ -23,7 +23,7 @@ export const variableObjectConfigSchema = z.object({
 
 export const variableItemConfigSchema = z.object({
   id: z.string().min(1),
-  title: z.string().max(60),
+  title: z.string(),
   objectId: z.string(),
   enabled: z.boolean(),
   type: variableValueTypeSchema,
@@ -39,7 +39,7 @@ export const variableItemConfigSchema = z.object({
 
 export const variableConfigVersionSchema = z.object({
   id: z.string().min(1),
-  name: z.string().max(60),
+  name: z.string(),
   initialStateJson: z.string(),
   schemaCode: z.string(),
   objects: z.array(variableObjectConfigSchema),
@@ -51,7 +51,7 @@ export const variableConfigVersionSchema = z.object({
 
 export const variableConfigSchema = z.object({
   characterId: z.string().min(1),
-  name: z.string().max(60),
+  name: z.string(),
   initialStateJson: z.string(),
   schemaCode: z.string(),
   objects: z.array(variableObjectConfigSchema),

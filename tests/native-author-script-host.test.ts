@@ -131,6 +131,24 @@ async function connectPrograms(r: Awaited<ReturnType<typeof runtime>>, programs:
 }
 
 describe('native author script Host', () => {
+  it('removes every program in a disabled scope without changing individual or folder switches and restores them on enable', async () => {
+    const r = await runtime()
+    for (const scope of ['global', 'preset', 'character'] as const) {
+      r.library(scope).trees = [script({ id: `script-${scope}` }), { type: 'folder', id: `folder-${scope}`,
+        name: 'Synthetic folder', enabled: true, icon: '', color: '', scripts: [script({ id: `nested-${scope}` })] }]
+    }
+    expect(r.ctx.eleckoiAuthorScriptsApi.read('synthetic-chat').scripts).toHaveLength(6)
+    for (const scope of ['global', 'preset', 'character'] as const) {
+      const before = structuredClone(r.library(scope).trees)
+      r.library(scope).enabled = false
+      const disabled = r.ctx.eleckoiAuthorScriptsApi.read('synthetic-chat')
+      expect(disabled.scripts).toHaveLength(4)
+      expect(disabled.scripts.some(item => item.scope === scope)).toBe(false)
+      expect(r.library(scope).trees).toEqual(before)
+      r.library(scope).enabled = true
+      expect(r.ctx.eleckoiAuthorScriptsApi.read('synthetic-chat').scripts).toHaveLength(6)
+    }
+  })
   it('runs the real native Client through generated Remote, retries rule failures and unloads cleanly without compatibility', async () => {
     const r = await runtime(), client = new Context(), page = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' })
     const frames: any[] = [], libraryListeners = new Set<() => void>(), report = vi.fn()

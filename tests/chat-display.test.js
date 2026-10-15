@@ -13,6 +13,18 @@ import {
 } from "../apps/web/src/modules/appearance/preferences/chatDisplay.js";
 
 describe("chat display preferences", () => {
+  it("defaults rich message limits to ten AI floors and validates a bounded whole count", () => {
+    const defaults = DEFAULT_CHAT_DISPLAY_PREFERENCES;
+    expect(defaults.rich_message_limit_enabled).toBe(true);
+    expect(defaults.rich_message_floor_limit).toBe(10);
+    const { rich_message_limit_enabled, rich_message_floor_limit, ...saved } = defaults;
+    expect(chatDisplayPreferencesSchema.parse(saved)).toMatchObject({ rich_message_limit_enabled: true, rich_message_floor_limit: 10 });
+    expect(chatDisplayPreferencesSchema.parse({ ...defaults, rich_message_limit_enabled: false, rich_message_floor_limit: 6 }))
+      .toMatchObject({ rich_message_limit_enabled: false, rich_message_floor_limit: 6 });
+    for (const limit of [0, 101, 1.5, Infinity]) {
+      expect(chatDisplayPreferencesSchema.safeParse({ ...defaults, rich_message_floor_limit: limit }).success).toBe(false);
+    }
+  });
   it("keeps the three Android layout profiles independent and defaults to roleplay", () => {
     expect(chatDisplayPreferencesSchema.parse(DEFAULT_CHAT_DISPLAY_PREFERENCES)).toEqual(DEFAULT_CHAT_DISPLAY_PREFERENCES);
     expect(DEFAULT_CHAT_DISPLAY_PREFERENCES.layout).toBe("roleplay");

@@ -201,6 +201,7 @@ window.__ModuleLoader__.load({
           ['@deepseek-ai/dsh-client-ui-trajectory', 'DSH 轨迹请求身份适配'],
           ['@deepseek-ai/dsh-client-ui-plugin-manager', 'DSH 插件页面适配'],
           ['@deepseek-ai/dsh-client-ui-conversation', 'DSH 会话输入框适配'],
+          ['@deepseek-ai/dsh-client-ui-workspace', 'DSH 启动导航适配'],
           ['@deepseek-ai/dsh-plugin-manager', 'DSH 插件管理适配'],
           ['@deepseek-ai/dsh-llm', 'DSH 模型运行适配'],
           ['@deepseek-ai/dsh-llm-pi-ai', 'DSH 通用模型适配'],
@@ -565,6 +566,7 @@ window.__ModuleLoader__.load({
             'eleckoi.character.editor.variables': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.regex': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.scripts': { kind: 'chain', scope: 'root' },
+            'eleckoi.character.editor.displayTemplates': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.frontend': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.dynamic': { kind: 'chain', scope: 'root' },
             'eleckoi.character.manager': { kind: 'chain', scope: 'root' },
@@ -574,6 +576,8 @@ window.__ModuleLoader__.load({
             'eleckoi.preset.editor.prompts': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.editor.tools': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.editor.regex': { kind: 'chain', scope: 'root' },
+            'eleckoi.preset.editor.scripts': { kind: 'chain', scope: 'root' },
+            'eleckoi.preset.editor.displayTemplates': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.manager': { kind: 'chain', scope: 'root' },
             'eleckoi.roleplay': { kind: 'chain', scope: 'root' },
             'eleckoi.creator-studio.conversation': { kind: 'single', scope: 'root' }
@@ -583,7 +587,7 @@ window.__ModuleLoader__.load({
             conversations: ctx.get('eleckoiConversations'), characters: ctx.eleckoiCharacters,
             characterConfiguration: { settingLibraries: ctx.eleckoiSettingLibraries,
               variables: ctx.eleckoiVariables, regexRules: ctx.eleckoiRegexRules,
-              scripts: ctx.eleckoiScriptLibraries, scriptRuntimeConnection },
+              scripts: ctx.eleckoiScriptLibraries, displayTemplates: ctx.eleckoiDisplayTemplates, scriptRuntimeConnection },
             creatorStudio: ctx.eleckoiCreatorStudio,
             sidebarRight: ctx.get('sidebarRight'),
             models: ctx.eleckoiModels,
@@ -671,7 +675,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale', 'theme', 'eleckoiCharacters', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiScriptLibraries', 'eleckoiCreatorStudio', 'eleckoiDisplayPreferences', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets', 'eleckoiWebSearch'],
+      inject: ['slots', 'locale', 'theme', 'eleckoiCharacters', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiScriptLibraries', 'eleckoiDisplayTemplates', 'eleckoiCreatorStudio', 'eleckoiDisplayPreferences', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets', 'eleckoiWebSearch'],
       apply
     }
   }

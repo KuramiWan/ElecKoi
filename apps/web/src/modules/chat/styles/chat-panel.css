@@ -335,6 +335,14 @@
   min-height: auto;
 }
 
+/* The shared scrollport fills spare space above the composer. Keep the
+   floating control's frame and content root at that same height after rows
+   are removed; otherwise its sticky position ends at the shortened content. */
+.message-area .chat-transcript-region [data-chat-view],
+.message-area .chat-transcript-region [data-chat-view] > :has(> [data-chat-scroll]) {
+  flex: 1 0 auto;
+}
+
 .chat-panel.view-trajectory .message-area {
   overflow: hidden;
   scrollbar-gutter: auto;
@@ -365,6 +373,7 @@
 
 .message-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -1333,31 +1342,33 @@
 .opening-jump-dialog button:disabled { opacity: .42; }
 
 .agent-process-inline {
-  display: grid; grid-template-columns: 33px minmax(0, 1fr) 16px; align-items: center; gap: 4px; width: 100%; max-width: 100%; height: 25px;
+  display: flex; align-items: center; gap: 6px; width: 100%; max-width: 100%; min-height: 24px;
+  min-width: 0;
   padding: 0; border: 0; background: transparent; color: var(--muted);
-  font-size: 13px; font-weight: 500; text-align: left;
+  font: inherit; font-size: var(--dsh-content-font-size, 14px); font-weight: 400; text-align: left; cursor: pointer;
 }
-.agent-process-inline > :first-child { justify-self: center; }
+.agent-process-inline:hover { color: var(--text); }
+.agent-process-inline:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.agent-process-inline-leading { position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 16px; height: 16px; }
+.agent-process-inline-leading > svg { position: absolute; width: 14px; height: 14px; transition: opacity 100ms ease; }
+.agent-process-inline-chevron { opacity: 0; }
+.agent-process-inline:is(:hover, :focus-visible) .agent-process-inline-icon { opacity: 0; }
+.agent-process-inline:is(:hover, :focus-visible) .agent-process-inline-chevron { opacity: 1; }
 .agent-process-inline-label {
-  justify-self: start;
-  width: fit-content;
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background-color: color-mix(in srgb, var(--muted) 48%, transparent);
-  background-image: linear-gradient(90deg, transparent 0%, var(--muted) 50%, transparent 100%);
-  background-repeat: no-repeat;
-  background-position: -45% 0;
-  background-size: 56% 100%;
-  background-clip: text;
-  color: transparent;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: agent-process-text-shimmer 1.4s linear infinite;
 }
-@keyframes agent-process-text-shimmer { from { background-position: -45% 0; } to { background-position: 145% 0; } }
+.agent-process-inline-label .agent-process-inline-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) { .agent-process-inline-leading > svg { transition: none; } }
 
 .agent-process-backdrop {
   position: fixed; inset: 0; z-index: 180; display: grid; place-items: center;
@@ -1796,6 +1807,11 @@
   margin-top: 0;
 }
 
+.message-content > .markdown-message {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .markdown-message em,
 .markdown-message i {
   color: var(--chat-italics-color, currentColor);
@@ -2200,6 +2216,45 @@
   display: grid;
   min-width: 0;
   gap: var(--chat-paragraph-gap, 8px);
+}
+
+.rich-message-container {
+  min-width: 0;
+}
+
+.rich-message-container.is-managed {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
+
+.rich-message-placeholder {
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  min-height: 48px;
+}
+
+.rich-message-load,
+.rich-message-stop {
+  max-width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rich-message-stop {
+  margin-top: 8px;
+}
+
+.rich-message-load:hover,
+.rich-message-stop:hover {
+  color: var(--text);
 }
 
 .rich-message-frame {

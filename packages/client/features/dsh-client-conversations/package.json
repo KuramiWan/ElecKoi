@@ -66,6 +66,7 @@
           "getSnapshot",
           "subscribe",
           "getDetailsSnapshot",
+          "getSessionReference",
           "subscribeDetails",
           "getStatsSnapshot",
           "subscribeStats",

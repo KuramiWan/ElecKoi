@@ -8,6 +8,9 @@ import { selectRoleplayChatSeat, selectRoleplayPendingInput } from '../apps/web/
 import { AgentProcessDialog } from '../apps/web/src/modules/chat/components/AgentProcessDialog.jsx'
 import { officialChatFixture } from './helpers/officialTrajectory.js'
 import { interruptedTurnClosers } from '@deepseek-ai/dsh-session'
+import * as libraries from '@eleckoi/dsh-client-html-resources/browser-libraries'
+import { RichMessageRenderProvider } from '../apps/web/src/modules/authorFrontend/hooks/RichMessageRenderContext.jsx'
+import { decorateRichDisplayReplacement } from '../packages/shared/src/foundation/richMessage'
 
 let observers
 beforeEach(() => {
@@ -39,6 +42,7 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
   scroller.getBoundingClientRect = () => ({ top: 0, bottom: 200, left: 0, right: 800, width: 800, height: 200 })
   const root = createRoot(scroller)
   let messages = []
+  const richMessagePolicy = { enabled: false, floorLimit: 1 }
   const rowProps = {
     conversationId: 'chat-test', layoutMode: 'roleplay', profile: { reply_spacing: 10, turn_spacing: 10 },
     avatarShape: 'portrait', userName: '用户', assistantName: '合成角色',
@@ -57,10 +61,12 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
       seat={selectRoleplayPendingInput(messages, sessionId, owner.input)} />
     return options?.fallback ?? null
   }
-  return { fixture, scroller, root, rowProps,
+  return { fixture, scroller, root, rowProps, richMessagePolicy,
     async render(nextMessages = messages, next = {}, viewProps = {}) {
       messages = nextMessages
-      await act(async () => { fixture.update(next); root.render(<ChatView {...fixture.props} renderSlot={renderSlot} {...viewProps} />) })
+      await act(async () => { fixture.update(next); root.render(<RichMessageRenderProvider messages={messages} {...richMessagePolicy}>
+        <ChatView {...fixture.props} renderSlot={renderSlot} {...viewProps} />
+      </RichMessageRenderProvider>) })
     },
     async grow() { await act(async () => { height += 40; for (const callback of observers) callback([]) }) },
     async move(top, end = false) { await act(async () => {
@@ -74,6 +80,48 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
 }
 
 describe('official ChatView with roleplay presentation', () => {
+  it('restores the official reading position with deferred rich messages and keeps the same Chat owner', async () => {
+    const ready = { status: 'ready', error: '' }
+    window.__ElecKoiHtmlResources = { assetsBaseUrl: '/eleckoi/html/', sdk: libraries,
+      getSnapshot: () => ready, subscribe: () => () => {} }
+    const first = mountChat()
+    first.richMessagePolicy.enabled = true
+    const messages = [1, 2].map(turn => ({ id: `synthetic-rich-${turn}`, conversationId: 'chat-test', role: 'assistant',
+      runtimeSessionId: 'session-render', renderKey: `dsh-reply-session-render-${turn}`, content: 'Narrative',
+      displayContent: 'Narrative\n' + decorateRichDisplayReplacement('<section>Card</section>'), status: 'complete' }))
+    const nodes = [userNode('rich-input', 1, 'synthetic-request'), turnNode('rich-turn-1', 1, 'closed'), turnNode('rich-turn-2', 2, 'closed')]
+    const geometry = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const top = 200 - (this.closest('[data-conversation-scroll]')?.scrollTop ?? 0)
+      return { top, bottom: top + 80, left: 0, right: 800, width: 800, height: 80 }
+    })
+    try {
+      await first.render(messages, { order: nodes.map(node => node.key), nodes: new Map(nodes.map(node => [node.key, node])) })
+      expect(first.scroller.querySelectorAll('iframe')).toHaveLength(1)
+      expect(first.scroller.querySelector('.rich-message-load')).not.toBeNull()
+      await first.move(320, true)
+      const saved = first.fixture.saved
+      expect(saved.scrollTop).toBe(320)
+      const chatOwner = first.scroller.querySelector('[data-chat-column]')
+      first.richMessagePolicy.enabled = false
+      await first.render(messages)
+      expect(first.scroller.querySelector('[data-chat-column]')).toBe(chatOwner)
+      expect(first.fixture.saved).toEqual(saved)
+      expect(first.scroller.scrollTop).toBe(320)
+      await first.close()
+      const restored = mountChat('session-render', first.fixture)
+      restored.richMessagePolicy.enabled = true
+      try {
+        await restored.render(messages)
+        expect(restored.scroller.scrollTop).toBe(320)
+        expect(restored.scroller.querySelectorAll('iframe')).toHaveLength(1)
+        expect(restored.scroller.querySelector('[data-chat-following-tail]')).toBeNull()
+      } finally { await restored.close() }
+    } finally {
+      if (first.scroller.querySelector('[data-chat-column]')) await first.close()
+      geometry.mockRestore()
+      delete window.__ElecKoiHtmlResources
+    }
+  })
   it.each(['roleplay', 'agent'])('keeps the retired native control from rendering a second AI row during regenerated compaction (%s)', async layoutMode => {
     const view = mountChat()
     view.rowProps.layoutMode = layoutMode

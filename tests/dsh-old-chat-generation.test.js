@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -20,7 +20,10 @@ import { RequestPreviewStore } from '../packages/client/features/dsh-client-role
 import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
 import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
 import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
+import { emptyEntry } from '../packages/host/product-data/src/domain/settingLibraries/settingLibraryNormalization'
 import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
+import { restoreLegacyConversationStorage, insertLegacyReply } from './helpers/conversationStorageV11'
+import { installSchema } from '../packages/host/product-data/src/storage/sqlite/installSchema'
 import { readDshSessionLog } from '../packages/host/runtime/src/trajectory'
 import * as sessionEditPlugin from '../packages/host/runtime/src/sessionEditPlugin'
 import { installRoleplaySessionRuntime } from '../packages/client/features/dsh-client-roleplay/src/host/session-runtime.mjs'
@@ -30,7 +33,7 @@ const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
 
 async function fixture(withOpening = true, { failPreparation = false,
-  historicalVariableState = '{}', bindHistory = true, additionalHistoryTurn, finalReply = false } = {}) {
+  historicalVariableState = '{}', bindHistory = true, additionalHistoryTurn, finalReply = false, native = false, multipleSteps = false, emptySession = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'eleckoi-old-generation-'))
   cleanups.push(() => {
     const child = relative(tmpdir(), root)
@@ -69,22 +72,22 @@ async function fixture(withOpening = true, { failPreparation = false,
     conversationId = conversations.create({ metadata: {
       characterId: 'synthetic-character', characterPersona: { assistant_name: '合成角色' }
     } }).conversation.id
-    const messages = new MessageRepository(database)
-    userId = messages.create(conversationId, 'user', '合成旧输入', 'complete').id
-    const reply = messages.create(conversationId, 'assistant', '合成旧回复', 'complete', undefined, conversationId)
-    if (bindHistory) messages.bindHistoricalDshTurn(conversationId, reply.id, conversationId, 1)
-    if (additionalHistoryTurn !== undefined) {
-      const duplicate = messages.create(conversationId, 'assistant', 'Synthetic candidate', 'complete', undefined, conversationId)
-      messages.bindHistoricalDshTurn(conversationId, duplicate.id, conversationId, additionalHistoryTurn)
+    userId = 'synthetic-user-input'
+    const reply = { id: 'synthetic-old-reply' }
+    if (!native) {
+      restoreLegacyConversationStorage(database.native)
+      insertLegacyReply(database.native, conversationId, { userId, replyId: reply.id, before: historicalVariableState,
+        after: historicalVariableState, turn: bindHistory ? 1 : null })
+      if (additionalHistoryTurn !== undefined) {
+        insertLegacyReply(database.native, conversationId, { userId, replyId: 'synthetic-additional-reply', before: historicalVariableState,
+          after: historicalVariableState, turn: additionalHistoryTurn, responseIndex: 1 })
+      }
+      installSchema(database.native)
+      expect(new MessageRepository(database).listMetadata(conversationId).filter(message => message.id !== 'opening')
+        .every(message => message.content === '')).toBe(true)
+      expect(new MessageRepository(database).listMetadata(conversationId).map((message) => message.id))
+        .toEqual(expect.arrayContaining([userId, reply.id]))
     }
-    database.native.prepare(`INSERT INTO agent_setting_snapshots(conversationId,ownerType,ownerId,stateJson)
-      VALUES (?,'turn',?,'[]')`).run(conversationId, userId)
-    // A newly opened ledger cannot supply DSH-owned response bodies.
-    if (bindHistory) expect(() => new MessageRepository(database).list(conversationId)).toThrow('会话日志无法读取')
-    // Variable inspection uses the product ledger snapshots and remains
-    // available even when a historical DSH transcript is unavailable.
-    expect(new MessageRepository(database).listMetadata(conversationId).map((message) => message.id))
-      .toEqual(expect.arrayContaining([userId, reply.id]))
   } finally { database.close() }
 
   const ctx = new Context()
@@ -92,17 +95,27 @@ async function fixture(withOpening = true, { failPreparation = false,
   const sessionRoot = join(root, 'sessions')
   await ctx.plugin(JsonlSessionPersistence, { root: sessionRoot, compression: 'none' })
   const session = Session.create(SessionId(conversationId))
-  session.append('model/selection', { provider: 'removed-provider', model: 'old-model' })
+  if (!emptySession) session.append('model/selection', { provider: 'removed-provider', model: 'old-model' })
+  let userEvent
+  if (!emptySession) {
   session.append('turn/start', { turn: 1 })
   session.append('step/start', { turn: 1, step: 1 })
   session.append('system/message', { turn: 1, step: 1, message: createSystemMessage('合成系统配置') }, { surfaceOp: 'append' })
   const input = createUserMessage({ content: [{ type: 'text', text: '合成旧输入' }], source: { kind: 'user' } })
-  const userEvent = session.append('user/message', { ...input, id: userId }, { surfaceOp: 'append' })
+  userEvent = session.append('user/message', { ...input, id: userId }, { surfaceOp: 'append' })
   session.append('assistant/message', { turn: 1, step: 1, stream: [], message: createAssistantMessage({
     content: [{ type: 'text', text: finalReply ? '<FINAL>Synthetic reply</FINAL>' : '合成旧回复' }], source: { provider: 'test', model: 'test' }
   }) }, { surfaceOp: 'append' })
   session.append('step/end', { turn: 1, step: 1 })
+  if (multipleSteps) {
+    session.append('step/start', { turn: 1, step: 2 })
+    session.append('assistant/message', { turn: 1, step: 2, stream: [], message: createAssistantMessage({
+      content: [{ type: 'text', text: '<FINAL>Synthetic settled reply</FINAL>' }], source: { provider: 'test', model: 'test' }
+    }) }, { surfaceOp: 'append' })
+    session.append('step/end', { turn: 1, step: 2 })
+  }
   session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  }
   const handle = await ctx.sessionPersistence.create(session.header)
   await handle.append(session.snapshotEvents())
   await handle.flush()
@@ -177,6 +190,7 @@ async function fixture(withOpening = true, { failPreparation = false,
   await ctx.plugin(sessionEditPlugin)
   let preparationCount = 0
   cleanups.push(installRoleplaySessionRuntime(ctx, {
+    registerForSession: async () => undefined,
     prepareForSession: async () => undefined,
     selectForSession: async () => {
       if (failPreparation && ++preparationCount === 1) throw new Error('Synthetic preparation failure')
@@ -201,11 +215,121 @@ function contextBridge(f) {
 }
 
 describe('old chat request preparation', { timeout: 30_000 }, () => {
+  it('stores one native completed boundary across multiple assistant messages without using reply rows or retired files', async () => {
+    const f = await fixture(false, { native: true, multipleSteps: true })
+    const data = f.ctx.eleckoiProductData
+    const retiredFile = join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId, 'eleckoi-runtime-checkpoints.json')
+    mkdirSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId), { recursive: true })
+    writeFileSync(retiredFile, 'Synthetic invalid retired file')
+    data.replaceConversationVariableState(f.conversationId, '{"score":10}')
+    data.recordRuntimeBeforeTurn(f.conversationId, f.conversationId, 1)
+    data.replaceConversationVariableState(f.conversationId, '{"score":20}')
+    writeSessionSnapshot(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, f.conversationId, {
+      conversationId: f.conversationId, operationId: 'native-completion', variablesEnabled: false,
+      generationVariableStateJson: '{"score":20}'
+    })
+    f.ctx.sessions.flush = async () => { await f.flush(); return true }
+    f.ctx.eleckoiConversationLifecycle.begin({ operationId: 'native-completion', conversationId: f.conversationId,
+      runtimeSessionId: f.conversationId, turn: 1 })
+    const session = f.getAgent().session
+    expect(session.snapshotEvents().filter(event => event.type === 'assistant/message')).toHaveLength(2)
+    f.ctx.emit('session/event', session, session.snapshotEvents().find(event => event.type === 'turn/end'))
+    await f.ctx.eleckoiConversationLifecycle.wait(f.conversationId, 'native-completion')
+    expect(JSON.parse(data.runtimeStateAt(f.conversationId, f.conversationId, 1, 'before').variableStateJson)).toEqual({ score: 10 })
+    expect(data.captureRuntimeHistory(f.conversationId).filter(row => row.phase === 'after')).toHaveLength(1)
+    expect(data.exportConversationArchive(f.conversationId).tables.agent_responses).toEqual([])
+    const timeline = await f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)
+    expect(timeline.floors.find(floor => floor.label === '第 1 楼').state.root).toEqual({ score: 20 })
+    const exported = JSON.parse(await f.ctx.eleckoiConversationsApi.exportArchive(f.conversationId))
+    expect(exported.sessionLogs).toHaveLength(1)
+    expect(exported.snapshot.tables.conversation_state_snapshots).toHaveLength(2)
+    expect(readFileSync(retiredFile, 'utf8')).toBe('Synthetic invalid retired file')
+  })
+
+  it('uses official transcript bindings and the same database history for imported messages without writing reply rows', async () => {
+    const f = await fixture(false, { native: true, emptySession: true })
+    const bindings = await f.ctx.eleckoiSessionEditor.importTranscript(f.conversationId, [
+      { role: 'user', content: 'Synthetic imported input', variableStateJson: '{"score":1}' },
+      { role: 'assistant', content: 'Synthetic imported reply', variableStateJson: '{"score":2}' }
+    ])
+    const data = f.ctx.eleckoiProductData
+    const turn = bindings[1].turn
+    data.saveImportedTranscript(f.conversationId, bindings, undefined, '{"score":9}')
+    expect(data.captureRuntimeHistory(f.conversationId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: 'after', turn, variableStateJson: '{"score":2}', settingLibraryStateJson: '[]' })
+    ]))
+    expect(data.exportConversationArchive(f.conversationId).tables.agent_responses).toEqual([])
+    expect(JSON.parse(data.runtimeStateAt(f.conversationId, f.conversationId, turn, 'before', bindings[0].id).variableStateJson)).toEqual({ score: 1 })
+    expect(data.runtimeStateAt(f.conversationId, f.conversationId, turn, 'after').variableStateJson).toBe('{"score":2}')
+    expect(JSON.parse(data.snapshotConversationRuntime(f.conversationId).variableStateJson)).toEqual({ score: 9 })
+    const timeline = await f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)
+    expect(timeline.floors[0].state.root).toEqual({ score: 2 })
+  })
+
+  it('adopts a fork at its completed state and starts the next boundary without overwriting cloned history', async () => {
+    const f = await fixture(false, { native: true, finalReply: true })
+    const data = f.ctx.eleckoiProductData
+    data.replaceConversationVariableState(f.conversationId, '{"score":1}')
+    data.recordRuntimeBeforeTurn(f.conversationId, f.conversationId, 1)
+    const task = { ...emptyEntry('synthetic-accepted-task', '2026-10-01T00:00:00.000Z'), title: 'Accepted task', content: 'Synthetic accepted task' }
+    const taskState = JSON.stringify([{ targetType: 'entry', targetId: task.id, operation: 'upsert',
+      payloadJson: JSON.stringify(task), updatedAt: '2026-10-01T00:00:00.000Z' }])
+    data.restoreConversationRuntime(f.conversationId, { ...data.snapshotConversationRuntime(f.conversationId), settingLibraryStateJson: taskState })
+    data.completeConversationRuntime(f.conversationId, f.conversationId, 1, '{"score":2}', data.snapshotConversationRuntime(f.conversationId).variableStateJson)
+    data.replaceConversationVariableState(f.conversationId, '{"score":99}')
+    const snapshot = data.exportConversationArchive(f.conversationId)
+    const forkId = 'synthetic-state-fork', forkSession = 'synthetic-fork-session'
+    data.importConversationArchive(snapshot, 'synthetic-character', new Map([[f.conversationId, forkSession]]), forkId)
+    const sourceInspection = await f.ctx.sessionController.inspect(f.conversationId)
+    const originalInspect = f.ctx.sessionController.inspect.bind(f.ctx.sessionController)
+    f.ctx.sessionController.inspect = async id => id === forkSession
+      ? { ...sourceInspection, meta: { ...sourceInspection.meta, id: forkSession } } : originalInspect(id)
+    await f.ctx.eleckoiRoleplaySessions.adoptFork(forkId, f.conversationId, 1, true)
+    expect(JSON.parse(data.snapshotConversationRuntime(forkId).variableStateJson)).toEqual({ score: 2 })
+    expect(JSON.parse(data.runtimeStateAt(forkId, forkSession, 1, 'before').variableStateJson)).toEqual({ score: 1 })
+    expect(JSON.parse(data.runtimeStateAt(forkId, forkSession, 1, 'after').variableStateJson)).toEqual({ score: 2 })
+    expect(JSON.parse(data.runtimeStateAt(forkId, forkSession, 2, 'before').variableStateJson)).toEqual({ score: 2 })
+    expect(JSON.parse(data.snapshotConversationRuntime(forkId).settingLibraryStateJson)).toEqual(JSON.parse(taskState))
+    const savedHistory = data.captureRuntimeHistory(f.conversationId)
+    const rewind = f.ctx.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(f.conversationId, f.conversationId, 1)
+    rewind.apply(['synthetic-user-input'])
+    expect(data.snapshotConversationRuntime(f.conversationId).settingLibraryStateJson).toBe('[]')
+    expect(JSON.parse(data.snapshotConversationRuntime(forkId).settingLibraryStateJson)).toEqual(JSON.parse(taskState))
+    rewind.rollback()
+    expect(data.captureRuntimeHistory(f.conversationId)).toEqual(savedHistory)
+    expect(JSON.parse(data.snapshotConversationRuntime(f.conversationId).settingLibraryStateJson)).toEqual(JSON.parse(taskState))
+  })
+
+  it('does not create a fork from an intermediate assistant step without a settled reply boundary', async () => {
+    const f = await fixture(false, { native: true, multipleSteps: true })
+    const intermediate = f.getAgent().session.snapshotEvents().find(event => event.type === 'assistant/message')
+    let forks = 0
+    f.ctx.sessionController.fork = async () => { forks += 1; throw new Error('Unexpected fork') }
+    await expect(f.ctx.eleckoiConversationsApi.fork(f.conversationId, intermediate.seq, [], 'Synthetic branch')).rejects.toThrow('中间工具步骤')
+    expect(forks).toBe(0)
+  })
+
+  it('rolls back the current-variable commit when saving a completed boundary fails', async () => {
+    const f = await fixture(false, { native: true })
+    const data = f.ctx.eleckoiProductData
+    data.replaceConversationVariableState(f.conversationId, '{"score":1}')
+    data.recordRuntimeBeforeTurn(f.conversationId, f.conversationId, 1)
+    const db = new SqliteDatabase(f.env.ELECKOI_DATABASE_PATH)
+    db.open()
+    try { db.native.exec(`CREATE TRIGGER synthetic_failed_history BEFORE INSERT ON conversation_state_snapshots
+      WHEN NEW.phase='after' BEGIN SELECT RAISE(ABORT,'Synthetic state failure'); END`) }
+    finally { db.close() }
+    expect(() => data.completeConversationRuntime(f.conversationId, f.conversationId, 1, '{"score":2}', data.snapshotConversationRuntime(f.conversationId).variableStateJson))
+      .toThrow('Synthetic state failure')
+    expect(JSON.parse(data.snapshotConversationRuntime(f.conversationId).variableStateJson)).toEqual({ score: 1 })
+    expect(data.captureRuntimeHistory(f.conversationId).every(row => row.phase === 'before')).toBe(true)
+  })
+
   it('reads a formally bound main-database history value without using a later pre-input checkpoint or current value', async () => {
     const f = await fixture(true, { historicalVariableState: '{"score":7}', finalReply: true })
     f.ctx.eleckoiProductData.replaceConversationVariableState(f.conversationId, '{"score":20}')
     await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, 'Synthetic next input')
-    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn(f.conversationId)).toEqual({})
+    expect(f.ctx.eleckoiRoleplaySessions.variableStatesByTurn(f.conversationId)).toEqual({ '1': '{"score":7}' })
     const timeline = await f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)
     expect(timeline.current.root).toEqual({ score: 20 })
     expect(timeline.floors.find(floor => floor.label === '第 1 楼').state.root).toEqual({ score: 7 })
@@ -214,7 +338,8 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
   it('reports missing historical variables without changing state or blocking the next prompt', async () => {
     const f = await fixture(true, { historicalVariableState: '{"score":7}', bindHistory: false, finalReply: true })
     const before = f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId)
-    await expect(f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)).rejects.toThrow('缺少第 1 轮完成后')
+    const timeline = await f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)
+    expect(timeline.floors.find(floor => floor.label === '第 1 楼').state).toMatchObject({ root: null, errorMessage: '无历史状态' })
     expect(f.ctx.eleckoiProductData.snapshotConversationRuntime(f.conversationId)).toEqual(before)
     expect(() => f.ctx.eleckoiConversationsApi.details(f.conversationId)).not.toThrow()
     await expect(f.ctx.eleckoiConversationsApi.preparePrompt(f.conversationId, 'Synthetic next input'))
@@ -223,7 +348,8 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
 
   it('reports ambiguous historical variables without blocking the next prompt', async () => {
     const f = await fixture(true, { additionalHistoryTurn: 1, finalReply: true })
-    await expect(f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)).rejects.toThrow('多个历史变量记录')
+    const timeline = await f.ctx.eleckoiConversationsApi.variableTimeline(f.conversationId)
+    expect(timeline.floors.find(floor => floor.label === '第 1 楼').state).toMatchObject({ root: null, errorMessage: '无历史状态' })
     expect(() => f.ctx.eleckoiConversationsApi.details(f.conversationId)).not.toThrow()
     await expect(f.ctx.eleckoiConversationsApi.preparePrompt(f.conversationId, 'Synthetic next input'))
       .resolves.toMatchObject({ runtimeSessionId: f.conversationId })

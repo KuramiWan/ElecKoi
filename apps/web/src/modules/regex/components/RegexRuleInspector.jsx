@@ -12,7 +12,7 @@ function Switch({ checked, onChange, label }) {
   );
 }
 
-export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange, onMoveScope, onClose, onDuplicate, onDelete, onTest }) {
+export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLocked = false, onChange, onMoveScope, onClose, onDuplicate, onDelete, onTest }) {
   const [testInput, setTestInput] = useState("");
   const [testOutput, setTestOutput] = useState("");
   const [testError, setTestError] = useState("");
@@ -61,12 +61,12 @@ export function RegexRuleInspector({ scope, rule, scopeLocked = false, onChange,
       <div className="regex-inspector-scroll">
         <label className="regex-field">
           <span>名称</span>
-          <input value={rule.name} maxLength={60} onChange={(event) => onChange({ name: event.target.value })} />
+          <input value={rule.name} onChange={(event) => onChange({ name: event.target.value })} />
         </label>
         {!scopeLocked ? <label className="regex-field">
           <span>分类</span>
           <select value={scope} onChange={(event) => onMoveScope(event.target.value)}>
-            {REGEX_SCOPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            {scopes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label> : null}
         <label className="regex-field">

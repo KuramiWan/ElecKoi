@@ -215,7 +215,7 @@ export function createBackupOpening(entry) {
 
 export function updateOpening(entry, messageId, patch) {
   const messages = primaryFirstOpeningMessages(entry).map((message) => message.id === messageId
-    ? { ...message, ...patch, title: Object.hasOwn(patch, "title") ? patch.title.slice(0, 40) : message.title }
+    ? { ...message, ...patch, title: Object.hasOwn(patch, "title") ? patch.title : message.title }
     : message);
   return withOpeningMessages(entry, messages, messages[0].id);
 }
@@ -228,7 +228,7 @@ export function duplicateOpening(entry, messageId) {
   const copy = {
     ...source,
     id: createId("opening"),
-    title: source.title.trim() ? `${source.title} 副本`.slice(0, 40) : "",
+    title: source.title.trim() ? `${source.title} 副本` : "",
   };
   const next = [...messages];
   next.splice(sourceIndex + 1, 0, copy);

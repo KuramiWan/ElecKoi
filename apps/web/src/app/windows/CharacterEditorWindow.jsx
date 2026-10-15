@@ -4,13 +4,13 @@ import {
   CaretLeft,
   CaretRight,
   BracketsCurly,
-  FolderSimple,
   IdentificationCard,
   TreeStructure,
-  FileCode,
   Browsers,
 } from "@phosphor-icons/react";
 import logoIcon from "../../assets/eleckoi-app-icon.png";
+import { ElecKoiWordmark } from "../../ui/icons/ElecKoiWordmark.jsx";
+import { Browse, FileCode, FolderSimple } from '../../ui/icons/interfaceIcons.jsx';
 import {
   CharacterBasicInfoPanel,
 } from "../../modules/persona/index.js";
@@ -18,6 +18,7 @@ import { applyAppearanceTheme } from "../../modules/appearance/index.js";
 import { DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/settingLibraries/index.js";
 import { VariableConfigPanel } from "../../modules/variables/index.js";
 import { RegexRulesPanel } from "../../modules/regex/index.js";
+import { DisplayTemplatesPanel } from '../../modules/displayTemplates/index.js';
 import { ScriptLibrariesPanel } from '../../modules/scripts/index.js';
 import { CharacterFrontendPanel } from '../../modules/authorFrontend/index.js';
 import { useCharacterEditorSidebarState } from "../../modules/settings/index.js";
@@ -34,6 +35,7 @@ const EDITOR_SECTIONS = [
   { id: "lore", label: "设定库", Icon: BookOpenText },
   { id: "variables", label: "变量", Icon: TreeStructure },
   { id: "regex", label: "正则", Icon: BracketsCurly },
+  { id: 'displayTemplates', label: 'EJS显示模板', Icon: Browse },
   { id: 'scripts', label: '脚本', Icon: FileCode },
   { id: 'frontend', label: '前端', Icon: Browsers },
   { id: "dynamic", label: "分支设定", Icon: FolderSimple },
@@ -69,6 +71,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   const [loreDirty, setLoreDirty] = useState(false);
   const [variablesDirty, setVariablesDirty] = useState(false);
   const [regexDirty, setRegexDirty] = useState(false);
+  const [templatesDirty, setTemplatesDirty] = useState(false);
   const [scriptsDirty, setScriptsDirty] = useState(false);
   const [frontendDirty, setFrontendDirty] = useState(false);
   const [dynamicDirty, setDynamicDirty] = useState(false);
@@ -93,6 +96,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   const variableConfigRef = useRef(null);
   const regexRulesRef = useRef(null);
   const scriptsRef = useRef(null);
+  const templatesRef = useRef(null);
   const frontendRef = useRef(null);
   const dynamicSettingsRef = useRef(null);
   const allowCloseRef = useRef(false);
@@ -127,6 +131,8 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       ? variablesDirty
       : activeSection === "regex"
         ? regexDirty
+        : activeSection === 'displayTemplates'
+          ? templatesDirty
         : activeSection === 'scripts'
           ? scriptsDirty
         : activeSection === 'frontend'
@@ -214,7 +220,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   }
 
   async function saveCurrentDraft() {
-    if (!["lore", "variables", "regex", 'scripts', 'frontend', "dynamic"].includes(activeSection)) return saveBasicInfo();
+    if (!["lore", "variables", "regex", 'displayTemplates', 'scripts', 'frontend', "dynamic"].includes(activeSection)) return saveBasicInfo();
     if (saving) return false;
     setSaving(true);
     try {
@@ -224,6 +230,8 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
           ? variableConfigRef.current
           : activeSection === "regex"
             ? regexRulesRef.current
+            : activeSection === 'displayTemplates'
+              ? templatesRef.current
             : activeSection === 'scripts'
               ? scriptsRef.current
             : activeSection === 'frontend'
@@ -233,6 +241,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       if (saved && activeSection === "lore") setLoreDirty(false);
       if (saved && activeSection === "variables") setVariablesDirty(false);
       if (saved && activeSection === "regex") setRegexDirty(false);
+      if (saved && activeSection === 'displayTemplates') setTemplatesDirty(false);
       if (saved && activeSection === 'scripts') setScriptsDirty(false);
       if (saved && activeSection === 'frontend') setFrontendDirty(false);
       if (saved && activeSection === "dynamic") setDynamicDirty(false);
@@ -290,6 +299,8 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     } else if (activeSection === "regex") {
       regexRulesRef.current?.discard?.();
       setRegexDirty(false);
+    } else if (activeSection === 'displayTemplates') {
+      templatesRef.current?.discard?.(); setTemplatesDirty(false);
     } else if (activeSection === 'scripts') {
       scriptsRef.current?.discard?.();
       setScriptsDirty(false);
@@ -394,6 +405,13 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         onDirtyChange: setRegexDirty,
         setController: (controller) => { regexRulesRef.current = controller; },
       }, fallback) ?? fallback;
+    } else if (activeSection === 'displayTemplates') {
+      const fallback = <DisplayTemplatesPanel ref={templatesRef} scope="character" ownerId={character.id}
+        displayTemplates={characterConfiguration.displayTemplates} onDirtyChange={setTemplatesDirty} />;
+      editorContent = renderCharacterEditorSection?.('displayTemplates', {
+        characterId: character.id, dirty: templatesDirty, saving, configuration: characterConfiguration.displayTemplates,
+        onDirtyChange: setTemplatesDirty, setController: controller => { templatesRef.current = controller; },
+      }, fallback) ?? fallback;
     } else if (activeSection === 'scripts') {
       const fallback = <ScriptLibrariesPanel ref={scriptsRef} characterId={character.id}
         scriptLibraries={characterConfiguration.scripts} scriptRuntimeConnection={characterConfiguration.scriptRuntimeConnection}
@@ -432,7 +450,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         <header className="side-panel-header" data-tauri-drag-region>
           <div className="side-panel-brand">
             <img src={logoIcon} alt="" draggable="false" />
-            <strong>ElecKoi</strong>
+            {compact ? <strong>ElecKoi</strong> : <ElecKoiWordmark />}
           </div>
         </header>
         <nav id="character-editor-navigation" className="character-editor-navigation" aria-label="角色编辑器功能">
@@ -481,7 +499,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       <section className="character-editor-main-panel">
         {renderHeader ? renderHeader({ character, dirty, saving, save: saveCurrentDraft, subpage, feedback: activeSection === 'card' ? { error: saveError, notice: basicSaveNotice } : feedback }) : <TitleBar splitSurface onClose={requestClose} />}
         <section
-          className={`character-editor-workspace${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === 'scripts' ? ' is-scripts' : ''}${activeSection === 'frontend' ? ' is-frontend' : ''}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
+          className={`character-editor-workspace${['lore', 'variables', 'regex', 'displayTemplates', 'scripts'].includes(activeSection) ? ' is-collection-editor' : ''}${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === 'scripts' ? ' is-scripts' : ''}${activeSection === 'frontend' ? ' is-frontend' : ''}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
           aria-label={activeLabel}
           ref={workspaceRef}
         >

@@ -102,7 +102,7 @@ export function processItemDetails(item, { mobile = false } = {}) {
   const toolName = item?.toolName || '';
   const specialized = specializedResult(toolName, result, argumentsValue);
   const target = targetFor(item, argumentsValue, result, specialized, mobile);
-  const statusLabel = item?.status === 'running' ? '进行中' : item?.status === 'error' ? '失败' : item?.status === 'cancelled' ? '已取消' : '已完成';
+  const statusLabel = item?.status === 'running' ? '进行中' : item?.status === 'error' ? '失败' : item?.status === 'cancelled' ? '已取消' : item?.toolName === 'model_retry' ? '已重试' : '已完成';
   return {
     ...presentation,
     target,

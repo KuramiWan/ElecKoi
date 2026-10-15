@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
 import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
 import { ConversationArchiveRepository } from '../packages/host/product-data/src/domain/conversations/ConversationArchiveRepository'
+import { SettingLibraryRepository } from '../packages/host/product-data/src/domain/settingLibraries/SettingLibraryRepository'
 
 const directories: string[] = []
 const connections: SqliteDatabase[] = []
@@ -32,9 +33,12 @@ it('imports a conversation with its message structure under new IDs', () => {
   db.native.prepare("INSERT INTO agent_turns(id,conversationId,speakerId,kind,createdAt,variableStateJson) VALUES ('turn-a',?,'speaker-a','user','2026-01-01T00:00:00.000Z','{}')").run(source)
   db.native.prepare("INSERT INTO agent_branch_turns(branchId,sequence,turnId) VALUES (?,0,'turn-a')").run(branch.id)
   db.native.prepare("INSERT INTO conversation_speakers(id,conversationId,sourceSpeakerId,kind,displayName,avatarAssetId) VALUES ('speaker-b',?,'assistant','assistant','测试助手','')").run(source)
-  db.native.prepare("INSERT INTO agent_responses(id,conversationId,turnId,responseIndex,speakerId,status,createdAt,variableStateJson,runtimeThreadId,dshTurn) VALUES ('response-a',?,'turn-a',0,'speaker-b','completed','2026-01-01T00:00:01.000Z','{}',?,1)").run(source, source)
+  db.native.prepare("INSERT INTO agent_responses(id,conversationId,turnId,responseIndex,speakerId,status,createdAt,runtimeThreadId,dshTurn) VALUES ('response-a',?,'turn-a',0,'speaker-b','completed','2026-01-01T00:00:01.000Z',?,1)").run(source, source)
 
-  const archive = new ConversationArchiveRepository(db)
+  const settings = new SettingLibraryRepository(db)
+  const archive = new ConversationArchiveRepository(db, {
+    read: id => settings.snapshotConversationRuntimeState(id), restore: (id, raw) => settings.restoreConversationRuntimeState(id, raw)
+  })
   const snapshot = archive.parse(archive.export(source))
   const imported = archive.import(snapshot, 'character-test', new Map([[source, 'new-runtime']]))
   const newBranch = db.native.prepare('SELECT activeBranchId AS id,runtimeThreadId FROM agent_conversations WHERE id=?').get(imported) as { id: string; runtimeThreadId: string }

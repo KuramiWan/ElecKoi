@@ -16,10 +16,10 @@ describe('sidebar list scrolling', () => {
     expect(shellStyles).toMatch(/\.side-panel-content\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/);
   });
 
-  it('puts plugin items in the bounded third grid row', () => {
-    expect(pluginStyles).toMatch(/\.plugin-list-panel\s*\{[^}]*grid-template-rows:\s*auto auto minmax\(0, 1fr\);/);
+  it('puts plugin items in the bounded row below the header', () => {
+    expect(pluginStyles).toMatch(/\.plugin-list-panel\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);/);
     expect(pluginStyles).toMatch(/\.plugin-list-panel\s*\{[^}]*height:\s*100%;[^}]*max-height:\s*100%;[^}]*overflow:\s*hidden;/);
-    expect(pluginStyles).toMatch(/\.plugin-list-panel\s*>\s*\.character-list-scroll\s*\{[^}]*grid-row:\s*3;[^}]*overflow-y:\s*auto;/);
+    expect(pluginStyles).toMatch(/\.plugin-list-panel\s*>\s*\.character-list-scroll\s*\{[^}]*grid-row:\s*2;[^}]*overflow-y:\s*auto;/);
   });
 
   it('shows a dedicated scrollbar in every sidebar list', () => {

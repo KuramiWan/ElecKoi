@@ -111,25 +111,25 @@
         "relation": "provides"
       },
       {
-          "id": "eleckoi.character.editor.scripts",
-          "kind": "ui-slot",
-          "title": "脚本库编辑",
-          "description": "扩展角色配置中的全局、角色和当前预设脚本编辑。",
-          "mode": "replace",
-          "scope": "root",
-          "relation": "provides"
-        },
-        {
-          "id": "eleckoi.character.editor.frontend",
-          "kind": "ui-slot",
-          "title": "角色前端编辑",
-          "description": "扩展角色配置中的前端文件项目导入、编辑、预览和启用。",
-          "mode": "replace",
-          "scope": "root",
-          "relation": "provides"
-        },
-        {
-          "id": "eleckoi.character.editor.dynamic",
+        "id": "eleckoi.character.editor.scripts",
+        "kind": "ui-slot",
+        "title": "脚本库编辑",
+        "description": "扩展角色配置中的全局、角色和当前预设脚本编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.frontend",
+        "kind": "ui-slot",
+        "title": "角色前端编辑",
+        "description": "扩展角色配置中的前端文件项目导入、编辑、预览和启用。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.dynamic",
         "kind": "ui-slot",
         "title": "分支设定编辑",
         "description": "扩展分支设定编辑。",
@@ -142,6 +142,15 @@
         "kind": "ui-slot",
         "title": "角色卡管理器",
         "description": "包装或替换角色卡导入、导出和批量管理界面。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.character.editor.displayTemplates",
+        "kind": "ui-slot",
+        "title": "EJS显示模板编辑区",
+        "description": "替换或扩展独立配置入口。",
         "mode": "replace",
         "scope": "root",
         "relation": "provides"

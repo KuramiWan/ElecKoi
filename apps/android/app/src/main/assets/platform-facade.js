@@ -87,6 +87,7 @@
   });
   window.ElecKoiPlatform = {
     version: 1,
+    choiceRequest: operation => request(operation),
     browserCommand: ({ type, payload }) => {
       if (type === 'back') return !window.dispatchEvent(new CustomEvent('eleckoi:platform-back', { cancelable: true }));
       if (type === 'attribute' && ['data-eleckoi-ime-visible', 'data-eleckoi-button-navigation'].includes(payload.name)) {

@@ -1,11 +1,18 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowDown, ArrowUp, ArrowClockwise, CaretDown, Copy, FileCode, FolderSimple, PencilSimple, Plus, Power, Trash, X } from '../../../ui/icons/interfaceIcons.jsx';
-import { SaveControl } from '../../settingLibraries/index.js';
+import { ArrowDown, ArrowUp, Copy, FileCode, FolderSimple, NotePencil, Plus, Power, Trash, X } from '../../../ui/icons/interfaceIcons.jsx';
+import { DshTriangleRightIcon } from '../../../ui/icons/dshTreeIcons.jsx';
+import { MarkdownTextareaField, SaveControl } from '../../settingLibraries/index.js';
 import { ConfirmationDialog } from '../../../ui/ui/ConfirmationDialog.jsx';
 import { EditorSidebarLayout } from '../../../ui/ui/EditorSidebarLayout.jsx';
+import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
+import { EditorLibraryGroup } from '../../../ui/ui/EditorLibraryGroup.jsx';
 import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
+import { EditorCollectionSurface, EditorCollectionToolbar, EditorSelectionBar, EditorSelectionCheckbox, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
+import { EditorLibraryVersionManager } from '../../../ui/ui/EditorLibraryVersionManager.jsx';
+import { useEditorLibraryVersions } from '../../../ui/hooks/useEditorLibraryVersions.js';
 import { isNativeAuthorScript } from '@eleckoi/author-sdk';
-import { createScriptItem, findScriptItem, itemBufferKey, libraryKey, materializeScriptBuffers, moveScriptItem, removeScriptItem, updateScriptItem } from '../model/scriptEditing.js';
+import { createScriptItem, findScriptItem, itemBufferKey, libraryKey, materializeScriptBuffers, moveScriptItem, removeScriptItem, reorderScriptItem, setScriptLibraryEnabled, updateScriptItem } from '../model/scriptEditing.js';
 
 const noopSubscribe = () => () => {};
 const emptyRuntime = { scriptStatuses: {}, error: '' };
@@ -25,7 +32,7 @@ function Tool({ label, Icon, onClick, disabled }) {
   return <button type="button" className="script-tool" title={label} aria-label={label} onClick={onClick} disabled={disabled}><Icon size={18} aria-hidden="true" /></button>;
 }
 
-function ScriptInspector({ library, item, groupLabel, busy, buffers, onBuffer, onChange, onMove, onDuplicate, onDelete, onClose, execution }) {
+function ScriptInspector({ library, item, groupLabel, busy, buffers, onBuffer, onChange, onMove, onDuplicate, onDelete, onClose, execution, nameInputRef }) {
   const [tab, setTab] = useState('source');
   useEffect(() => setTab('source'), [library.scope, library.ownerId, item?.id]);
   const key = libraryKey(library.scope, library.ownerId);
@@ -34,21 +41,21 @@ function ScriptInspector({ library, item, groupLabel, busy, buffers, onBuffer, o
       onChange={event => onBuffer(itemBufferKey(key, id, field), event.target.value)} /></label>;
   return <aside className="script-inspector">
     <header><strong>{item?.name || groupLabel}</strong><div>
-      {item && <><Tool label="上移" Icon={ArrowUp} disabled={busy} onClick={() => onMove(undefined, -1)} />
-        <Tool label="下移" Icon={ArrowDown} disabled={busy} onClick={() => onMove(undefined, 1)} />
-        <Tool label="复制" Icon={Copy} disabled={busy} onClick={onDuplicate} />
-        <Tool label="删除" Icon={Trash} disabled={busy} onClick={onDelete} /></>}
       <Tool label="关闭编辑器" Icon={X} onClick={onClose} />
     </div></header>
-    {!item ? <div className="script-inspector-fields">{textField('', 'variables', library.variables, '脚本库变量')}</div> : <>
       <div className="script-inspector-fields script-identity">
-        <label className="script-field"><span>名称</span><input value={item.name} disabled={busy} onChange={event => onChange({ name: event.target.value })} /></label>
+        <label className="script-field"><span>名称</span><input ref={nameInputRef} value={item.name} disabled={busy} onChange={event => onChange({ name: event.target.value })} /></label>
+        {item.type === 'script' && <label className="script-field"><span>文件夹</span><select disabled={busy}
+          value={library.trees.find(tree => tree.type === 'folder' && tree.scripts.some(script => script.id === item.id))?.id || ''}
+          onChange={event => onMove(event.target.value)}><option value="">根目录</option>
+          {library.trees.filter(tree => tree.type === 'folder').map(folder => <option key={folder.id} value={folder.id}>{folder.name || '未命名文件夹'}</option>)}
+        </select></label>}
       </div>
       {item.type === 'script' && <>
         <div className="script-inspector-tabs" role="tablist" aria-label="脚本编辑内容">{[['source', '源码'], ['settings', '设置'], ['buttons', '按钮'], ['info', '信息']].map(([id, label]) =>
           <button key={id} type="button" role="tab" aria-selected={tab === id} aria-controls={`script-editor-${id}`} id={`script-tab-${id}`} onClick={() => setTab(id)}>{label}</button>)}</div>
         <div className={`script-inspector-fields script-tab-body is-${tab}`} role="tabpanel" id={`script-editor-${tab}`} aria-labelledby={`script-tab-${tab}`}>
-          {tab === 'source' && <textarea className="script-source is-code" aria-label="脚本源码" spellCheck={false} disabled={busy} value={item.content} onChange={event => onChange({ content: event.target.value })} />}
+          {tab === 'source' && <MarkdownTextareaField label="脚本源码" value={item.content} disabled={busy} preview={false} code textareaClassName="script-source" onChange={content => onChange({ content })} />}
           {tab === 'settings' && <>{textField(item.id, 'data', item.data, '脚本设置')}
             <label className="script-option"><input type="checkbox" checked={item.export_with.data} disabled={busy} onChange={event => onChange({ export_with: { ...item.export_with, data: event.target.checked } })} />导出时包含脚本设置</label>
             <label className="script-option"><input type="checkbox" checked={item.export_with.button} disabled={busy} onChange={event => onChange({ export_with: { ...item.export_with, button: event.target.checked } })} />导出时包含按钮设置</label></>}
@@ -65,22 +72,99 @@ function ScriptInspector({ library, item, groupLabel, busy, buffers, onBuffer, o
         </div>
       </>}
       {execution?.error && <pre className="script-execution-error" role="alert">{execution.error}</pre>}
-    </>}
   </aside>;
 }
 
-export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ characterId, scriptLibraries, scriptRuntimeConnection, onDirtyChange }, ref) {
+export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ characterId, presetId, presetName = '', manageSaveShortcut = true, scriptLibraries, scriptRuntimeConnection, onDirtyChange }, ref) {
+  const { compact } = useEditorPresentation();
+  const presetEditor = presetId !== undefined;
+  const ownerScope = presetEditor ? 'preset' : 'character', ownerId = presetEditor ? presetId : characterId;
   const [drafts, setDrafts] = useState({}), [baselines, setBaselines] = useState({}), [buffers, setBuffers] = useState({});
-  const [preset, setPreset] = useState(null), [selection, setSelection] = useState(null), [collapsed, setCollapsed] = useState(new Set());
+  const [selection, setSelection] = useState(null), [collapsed, setCollapsed] = useState(new Set());
+  const [editing, setEditing] = useState(false);
+  const [dragged, setDragged] = useState(null), [dropTarget, setDropTarget] = useState(null);
   const [saving, setSaving] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [deleteTarget, setDeleteTarget] = useState(null);
   const [openingDirectory, setOpeningDirectory] = useState('');
+  const [query, setQuery] = useState(''), [managerOpen, setManagerOpen] = useState(false);
   const context = useEditorContextMenu();
   const [inspectorWidth, setInspectorWidth] = useState(560);
-  const draftsRef = useRef({}), baselinesRef = useRef({}), buffersRef = useRef({}), pendingRef = useRef({}), pendingPresetRef = useRef(null);
+  const draftsRef = useRef({}), baselinesRef = useRef({}), buffersRef = useRef({}), pendingRef = useRef({});
   const savingRef = useRef(false), dirtyRef = useRef(false), saveTaskRef = useRef(null), loadContextRef = useRef(null);
+  const receivedRef = useRef({}), acceptRef = useRef(null), nameInputRef = useRef(null);
+  const versions = useEditorLibraryVersions({ kind: 'scripts', scope: ownerScope, ownerId, service: scriptLibraries.versions,
+    editorDirty: () => dirtyRef.current,
+    capture: (scope, original) => {
+      const library = draftsRef.current[libraryKey(scope, scope === 'global' ? '' : ownerId)];
+      if (!library) throw new Error('脚本库尚未载入。');
+      const current = materializeScriptBuffers(library, buffersRef.current);
+      return { enabled: current.enabled, trees: current.trees, variables: current.variables, files: original.files };
+    },
+    apply: (scope, content) => {
+      const key = libraryKey(scope, scope === 'global' ? '' : ownerId);
+      buffersRef.current = Object.fromEntries(Object.entries(buffersRef.current).filter(([address]) => JSON.parse(address)[0] !== key));
+      setBuffers(buffersRef.current); change(key, { enabled: content.enabled, trees: content.trees, variables: content.variables }); setSelection(null);
+    },
+  });
   const runtime = useSyncExternalStore(scriptRuntimeConnection?.subscribe || noopSubscribe, scriptRuntimeConnection?.getSnapshot || noRuntime);
   const runtimeState = useSyncExternalStore(runtime?.subscribe || noopSubscribe, runtime?.getSnapshot || emptySnapshot);
-  const dirty = !same(drafts, baselines) || Object.keys(buffers).length > 0;
+  const dirty = !same(drafts, baselines) || Object.keys(buffers).length > 0 || versions.dirty;
+  const scriptTargets = Object.entries(drafts).flatMap(([key, library]) => library.trees.flatMap(tree =>
+    tree.type === 'folder' ? [{ key, item: tree }, ...tree.scripts.map(item => ({ key, item, parentId: tree.id }))] : [{ key, item: tree }])
+    .map(target => ({ ...target, selectionId: JSON.stringify([key, target.item.id]) })));
+  const multi = useEditorMultiSelect(scriptTargets.map(target => target.selectionId), JSON.stringify([ownerScope, ownerId]));
+  const visibleTargets = scriptTargets.filter(target => !query.trim() || target.item.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const dragEnabled = !saving && !multi.active && !query.trim();
+  useEffect(() => { if (!dragEnabled) { setDragged(null); setDropTarget(null); } }, [dragEnabled]);
+
+  function dragStart(event, key, id) {
+    if (!dragEnabled) { event.preventDefault(); return; }
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-eleckoi-script-item', JSON.stringify({ key, id }));
+    setDragged({ key, id }); setDropTarget(null);
+  }
+  function dragOver(event, key, target = null, parentId = '') {
+    if (!dragEnabled || !dragged || dragged.key !== key || dragged.id === target?.id) { setDropTarget(null); return; }
+    const library = draftsRef.current[key], item = findScriptItem(library, dragged.id);
+    if (!item) return;
+    event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move';
+    let position = 'after';
+    if (target) {
+      const bounds = event.currentTarget.getBoundingClientRect(), progress = (event.clientY - bounds.top) / bounds.height;
+      position = target.type === 'folder' && item.type === 'script' && progress >= .25 && progress <= .75 ? 'inside' : progress < .5 ? 'before' : 'after';
+      if (position === 'inside') parentId = target.id;
+    }
+    const remaining = parentId ? library.trees.find(tree => tree.id === parentId && tree.type === 'folder')?.scripts : library.trees;
+    if (!remaining || (item.type === 'folder' && parentId)) { setDropTarget(null); return; }
+    const siblings = remaining.filter(candidate => candidate.id !== dragged.id);
+    const index = !target || position === 'inside' ? siblings.length : siblings.findIndex(candidate => candidate.id === target.id) + (position === 'after' ? 1 : 0);
+    setDropTarget({ key, parentId, index, targetId: target?.id || '', position });
+  }
+  function drop(event, key) {
+    event.preventDefault(); event.stopPropagation();
+    if (dragEnabled && dragged?.key === key && dropTarget?.key === key) {
+      try {
+        change(key, library => reorderScriptItem(library, dragged.id, dropTarget.parentId, dropTarget.index));
+        if (dropTarget.parentId) setCollapsed(current => { const next = new Set(current); next.delete(JSON.stringify([key, dropTarget.parentId])); return next; });
+      } catch (cause) { setError(cause.message); }
+    }
+    setDragged(null); setDropTarget(null);
+  }
+  function dragProps(key, item, parentId = '') {
+    return {
+      'data-script-id': item.id,
+      'data-script-drop': dropTarget?.key === key && dropTarget.targetId === item.id ? dropTarget.position : undefined,
+      onDragOver: event => dragOver(event, key, item, parentId), onDrop: event => drop(event, key),
+      onDragLeave: event => { if (!event.currentTarget.contains(event.relatedTarget)) setDropTarget(null); },
+    };
+  }
+  function nameDragProps(key, item) {
+    return { draggable: dragEnabled, onDragStart: event => dragStart(event, key, item.id),
+      onDragEnd: () => { setDragged(null); setDropTarget(null); },
+      onKeyDown: event => {
+        if (!dragEnabled || !event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        event.preventDefault(); change(key, library => moveScriptItem(library, item.id, undefined, event.key === 'ArrowUp' ? -1 : 1));
+      } };
+  }
   dirtyRef.current = dirty;
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   useEffect(() => {
@@ -90,14 +174,17 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
   }, [notice]);
 
   useEffect(() => {
-    let active = true, generation = 0, selectedPreset = null;
-    draftsRef.current = {}; baselinesRef.current = {}; buffersRef.current = {}; pendingRef.current = {}; pendingPresetRef.current = null;
+    let active = true, generation = 0;
+    const ownerScope = presetEditor ? 'preset' : 'character', ownerId = presetEditor ? presetId : characterId;
+    draftsRef.current = {}; baselinesRef.current = {}; buffersRef.current = {}; pendingRef.current = {}; receivedRef.current = {};
     dirtyRef.current = false;
-    setDrafts({}); setBaselines({}); setBuffers({}); setPreset(null); setSelection(null); setError(''); setNotice(''); context.close(); setDeleteTarget(null);
+    setDrafts({}); setBaselines({}); setBuffers({}); setSelection(null); setError(''); setNotice(''); context.close(); setDeleteTarget(null);
     function accept(library) {
-      if (!active || savingRef.current) return;
+      if (!active) return;
       const key = libraryKey(library.scope, library.ownerId);
-      if (library.scope === 'preset' && selectedPreset?.id !== library.ownerId) return;
+      if (library.scope !== 'global' && (library.scope !== ownerScope || library.ownerId !== ownerId)) return;
+      if (library.revision < (baselinesRef.current[key]?.revision ?? 0)) return;
+      if (savingRef.current) { receivedRef.current[key] = library; return; }
       if (dirtyRef.current) {
         if (baselinesRef.current[key]?.revision !== library.revision) {
           pendingRef.current[key] = library;
@@ -109,38 +196,26 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
       baselinesRef.current = { ...baselinesRef.current, [key]: library };
       setDrafts(draftsRef.current); setBaselines(baselinesRef.current);
     }
+    acceptRef.current = accept;
     async function loadContext() {
       const currentGeneration = ++generation;
       try {
-        const nextPreset = await scriptLibraries.activePreset();
-        if (!active || currentGeneration !== generation) return;
-        if (selectedPreset && selectedPreset.id !== nextPreset.id && dirtyRef.current) {
-          pendingPresetRef.current = nextPreset;
-          setError('当前预设已切换，请先放弃本页修改，再载入当前预设脚本。');
-          return;
-        }
-        if (selectedPreset?.id !== nextPreset.id) {
-          const next = Object.fromEntries(Object.entries(draftsRef.current).filter(([, value]) => value.scope !== 'preset'));
-          draftsRef.current = next; baselinesRef.current = next;
-          setDrafts(next); setBaselines(next);
-          setSelection(current => current?.key === libraryKey('preset', selectedPreset?.id) ? null : current);
-        }
-        selectedPreset = nextPreset; setPreset(nextPreset);
-        const values = await Promise.all([scriptLibraries.read('global', ''), scriptLibraries.read('character', characterId), scriptLibraries.read('preset', nextPreset.id)]);
+        if (!ownerId) throw new Error('脚本编辑需要明确的归属编号。');
+        const values = await Promise.all([scriptLibraries.read('global', ''), scriptLibraries.read(ownerScope, ownerId)]);
         if (!active || currentGeneration !== generation) return;
         values.forEach(accept);
       } catch (cause) { if (active && currentGeneration === generation) setError(cause?.message || '读取脚本库失败。'); }
     }
     loadContextRef.current = loadContext;
     const stop = scriptLibraries.subscribe((scope, ownerId, snapshot) => {
-      if (scope === 'character' && ownerId !== characterId || scope === 'preset' && ownerId !== selectedPreset?.id) return;
+      if (scope !== 'global' && (scope !== ownerScope || ownerId !== (presetEditor ? presetId : characterId))) return;
       if (snapshot.status === 'ready') accept(snapshot.value);
       else if (active && snapshot.status === 'error') setError(snapshot.error);
     });
     const stopContext = scriptLibraries.subscribeChanges(() => { void loadContext(); });
     void loadContext();
     return () => { active = false; generation++; stop(); stopContext(); loadContextRef.current = null; };
-  }, [characterId, scriptLibraries]);
+  }, [characterId, presetId, presetEditor, scriptLibraries]);
 
   function change(key, update) {
     if (savingRef.current) return;
@@ -150,7 +225,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     draftsRef.current = { ...draftsRef.current, [key]: next };
     dirtyRef.current = true;
     setDrafts(draftsRef.current); setNotice('');
-    if (!Object.keys(pendingRef.current).length && !pendingPresetRef.current) setError('');
+    if (!Object.keys(pendingRef.current).length) setError('');
   }
   function changeBuffer(address, text) {
     if (savingRef.current) return;
@@ -163,40 +238,51 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     const task = (async () => {
       savingRef.current = true; setSaving(true); setNotice('');
       try {
-        if (Object.keys(pendingRef.current).length || pendingPresetRef.current) throw new Error('脚本配置或当前预设已更新，请放弃本页修改后载入最新内容。');
-        const values = Object.values(draftsRef.current).map(library => materializeScriptBuffers(library, buffersRef.current));
-        if (values.length !== 3) throw new Error('脚本库尚未完整载入。');
-        const modified = values.filter(library => !same(library, baselinesRef.current[libraryKey(library.scope, library.ownerId)]));
-        const saved = await scriptLibraries.saveAll(modified);
+        if (Object.keys(pendingRef.current).length) throw new Error('脚本配置已更新，请放弃本页修改后载入最新内容。');
+        if (Object.keys(draftsRef.current).length !== 2) throw new Error('脚本库尚未完整载入。');
+        const versionDrafts = versions.prepare();
+        const values = Object.values(draftsRef.current).map(library => materializeScriptBuffers(library, buffersRef.current))
+          .filter(library => versionDrafts.some(version => version.scope === library.scope));
+        if (!values.length) return true;
+        const result = await scriptLibraries.versions.save(values, versionDrafts);
+        const saved = result.documents;
         const next = { ...draftsRef.current };
         for (const library of saved) next[libraryKey(library.scope, library.ownerId)] = library;
         draftsRef.current = next; baselinesRef.current = next; buffersRef.current = {}; dirtyRef.current = false;
         setDrafts(next); setBaselines(next); setBuffers({}); setError(''); setNotice('saved');
+        versions.acceptSaved(result.versions);
         return true;
       } catch (cause) { setError(cause?.message || '保存脚本库失败。'); return false; }
-      finally { savingRef.current = false; setSaving(false); }
+      finally {
+        savingRef.current = false; setSaving(false);
+        const received = Object.values(receivedRef.current); receivedRef.current = {};
+        received.forEach(library => acceptRef.current?.(library));
+      }
     })();
     saveTaskRef.current = task;
     try { return await task; } finally { if (saveTaskRef.current === task) saveTaskRef.current = null; }
-  }, [scriptLibraries]);
+  }, [scriptLibraries, versions]);
   const discard = useCallback(() => {
     if (savingRef.current) return;
     const next = { ...baselinesRef.current, ...pendingRef.current };
-    draftsRef.current = next; baselinesRef.current = next; buffersRef.current = {}; pendingRef.current = {}; pendingPresetRef.current = null; dirtyRef.current = false;
+    draftsRef.current = next; baselinesRef.current = next; buffersRef.current = {}; pendingRef.current = {}; dirtyRef.current = false;
     setDrafts(next); setBaselines(next); setBuffers({}); setError(''); setNotice('');
+    versions.discard(); multi.clear();
     void loadContextRef.current?.();
-  }, []);
+  }, [versions, multi]);
   useImperativeHandle(ref, () => ({ save, discard }), [save, discard]);
   useEffect(() => {
+    if (!manageSaveShortcut) return undefined;
     const keydown = event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (dirtyRef.current && !savingRef.current) void save(); }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, [save]);
+  }, [save, manageSaveShortcut]);
 
-  const groups = useMemo(() => [{ scope: 'global', ownerId: '', label: '全局脚本' }, { scope: 'character', ownerId: characterId, label: '角色脚本' },
-    { scope: 'preset', ownerId: preset?.id || '', label: '预设脚本', name: preset?.name || '' }], [characterId, preset]);
+  const groups = useMemo(() => [{ scope: 'global', ownerId: '', label: '全局脚本' }, presetEditor
+    ? { scope: 'preset', ownerId: presetId, label: '预设脚本', name: presetName }
+    : { scope: 'character', ownerId: characterId, label: '角色脚本' }], [characterId, presetId, presetName, presetEditor]);
   async function openDirectory(group) {
     if (openingDirectory) return;
     setOpeningDirectory(group.scope);
@@ -208,10 +294,17 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
   const selectedItem = selectedLibrary && selection.id ? findScriptItem(selectedLibrary, selection.id) : null;
   const selectedLabel = groups.find(group => libraryKey(group.scope, group.ownerId) === selection?.key)?.label || '';
   const selectedExecution = selectedItem ? runtimeState.scriptStatuses?.[JSON.stringify([selectedLibrary.scope, selectedLibrary.ownerId, selectedItem.id])] : null;
-  function create(key, type) {
+  function selectItem(target, open = false) { setSelection(target); if (compact) setEditing(open); }
+  function closeEditor() { if (compact) setEditing(false); else setSelection(null); }
+  function create(key, type, parentId = '') {
     const item = createScriptItem(type, crypto.randomUUID());
-    change(key, library => ({ ...library, trees: [...library.trees, item] }));
+    change(key, library => {
+      const next = { ...library, trees: [...library.trees, item] };
+      return parentId ? moveScriptItem(next, item.id, parentId) : next;
+    });
+    if (parentId) setCollapsed(current => { const next = new Set(current); next.delete(JSON.stringify([key, parentId])); return next; });
     setSelection({ key, id: item.id });
+    setEditing(true);
   }
   function duplicate(target = selection) {
     try {
@@ -222,16 +315,23 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
       setSelection({ key: target.key, id: item.id });
     } catch (cause) { setError(cause.message); }
   }
+  function batchTargets() {
+    return scriptTargets.filter(target => multi.selected.has(target.selectionId)
+      && (!target.parentId || !multi.selected.has(JSON.stringify([target.key, target.parentId]))));
+  }
   function deleteItem() {
-    const item = findScriptItem(draftsRef.current[deleteTarget.key], deleteTarget.id);
-    const ids = new Set([deleteTarget.id, ...(item?.type === 'folder' ? item.scripts.map(item => item.id) : [])]);
-    change(deleteTarget.key, library => removeScriptItem(library, deleteTarget.id));
-    buffersRef.current = Object.fromEntries(Object.entries(buffersRef.current).filter(([key]) => {
-      const [owner, id] = JSON.parse(key); return owner !== deleteTarget.key || !ids.has(id);
-    }));
+    const targets = deleteTarget.targets || [deleteTarget];
+    for (const target of targets) {
+      const item = findScriptItem(draftsRef.current[target.key], target.id);
+      const ids = new Set([target.id, ...(item?.type === 'folder' ? item.scripts.map(item => item.id) : [])]);
+      change(target.key, library => removeScriptItem(library, target.id));
+      buffersRef.current = Object.fromEntries(Object.entries(buffersRef.current).filter(([key]) => {
+        const [owner, id] = JSON.parse(key); return owner !== target.key || !ids.has(id);
+      }));
+      setSelection(current => current?.key === target.key && ids.has(current.id) ? null : current);
+    }
     setBuffers(buffersRef.current);
-    setSelection(current => current?.key === deleteTarget.key && ids.has(current.id) ? null : current);
-    setDeleteTarget(null);
+    setDeleteTarget(null); multi.clear();
   }
   function status(library, script, parentEnabled = true) {
     const key = libraryKey(library.scope, library.ownerId), persisted = baselines[key], original = persisted && findScriptItem(persisted, script.id);
@@ -245,55 +345,113 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     }
     return runtime ? '未启动' : '运行环境未就绪';
   }
-  const inspector = selectedLibrary && (selectedItem || !selection.id) ? <ScriptInspector library={selectedLibrary} item={selectedItem} groupLabel={selectedLabel}
-    busy={saving} buffers={buffers} onBuffer={changeBuffer} onClose={() => setSelection(null)} execution={selectedExecution?.scope === selectedLibrary.scope && selectedExecution.ownerId === selectedLibrary.ownerId && selectedExecution.source === selectedItem?.content ? selectedExecution : null}
+  const inspector = !multi.active && selectedLibrary && selectedItem && (!compact || editing) ? <ScriptInspector library={selectedLibrary} item={selectedItem} groupLabel={selectedLabel} nameInputRef={nameInputRef}
+    busy={saving} buffers={buffers} onBuffer={changeBuffer} onClose={closeEditor} execution={selectedExecution?.scope === selectedLibrary.scope && selectedExecution.ownerId === selectedLibrary.ownerId && selectedExecution.source === selectedItem?.content ? selectedExecution : null}
     onChange={patch => change(selection.key, library => updateScriptItem(library, selection.id, patch))}
     onMove={(folderId, direction) => change(selection.key, library => moveScriptItem(library, selection.id, folderId, direction))}
     onDuplicate={() => duplicate()} onDelete={() => setDeleteTarget({ key: selection.key, id: selectedItem.id, name: selectedItem.name, folder: selectedItem.type === 'folder' })} /> : null;
   const menuItem = context.menu && drafts[context.menu.target.key] && findScriptItem(drafts[context.menu.target.key], context.menu.target.id);
-  const menuActions = menuItem ? [
-    { label: '编辑', icon: PencilSimple, run: () => setSelection(context.menu.target) },
+  const itemActions = menuItem ? [
+    ...(menuItem.type === 'folder' ? [{ label: '新建脚本', icon: FileCode, run: () => create(context.menu.target.key, 'script', menuItem.id) }] : []),
+    { label: '重命名', icon: NotePencil, run: () => { setSelection(context.menu.target); setEditing(true); requestAnimationFrame(() => nameInputRef.current?.select()); } },
     { label: '复制', icon: Copy, run: () => duplicate(context.menu.target) },
     { label: '上移', icon: ArrowUp, run: () => change(context.menu.target.key, library => moveScriptItem(library, menuItem.id, undefined, -1)) },
     { label: '下移', icon: ArrowDown, run: () => change(context.menu.target.key, library => moveScriptItem(library, menuItem.id, undefined, 1)) },
     { label: menuItem.enabled ? '停用' : '启用', icon: Power, run: () => change(context.menu.target.key, library => updateScriptItem(library, menuItem.id, { enabled: !menuItem.enabled })) },
     { label: '删除', icon: Trash, danger: true, run: () => setDeleteTarget({ ...context.menu.target, name: menuItem.name, folder: menuItem.type === 'folder' }) },
-  ].map(action => ({ ...action, disabled: saving })) : [];
-  return <EditorSidebarLayout className="script-libraries-panel" inspector={inspector} inspectorTitle={selectedItem?.name || selectedLabel}
-    onCloseInspector={() => setSelection(null)} preferredWidth={inspectorWidth} onWidthChange={setInspectorWidth}
-    feedback={<SaveControl dirty={dirty} saving={saving} error={error} notice={notice} onSave={save} />}>
-    <div className="script-directory editor-sidebar-directory">
-      <header className="script-toolbar"><div>
-        <Tool label="重新载入" Icon={ArrowClockwise} disabled={dirty || saving} onClick={() => { setError(''); void loadContextRef.current?.(); }} />
-        <button type="button" disabled={!dirty || saving} onClick={discard}>放弃修改</button>
-      </div><SaveControl dirty={dirty} saving={saving} error={error} notice={notice} onSave={save} /></header>
+  ] : [];
+  const menuActions = context.menu?.target.id ? itemActions : groups
+    .filter(group => !context.menu?.target.key || libraryKey(group.scope, group.ownerId) === context.menu.target.key)
+    .flatMap(group => {
+      const key = libraryKey(group.scope, group.ownerId), scoped = Boolean(context.menu?.target.key);
+      const ownerLabel = group.scope === 'global' ? '全局' : group.scope === 'preset' ? '预设' : '角色';
+      return [
+        { label: scoped ? '新建脚本' : `新建${group.label}`, icon: FileCode, disabled: !drafts[key], run: () => create(key, 'script') },
+        { label: scoped ? '新建文件夹' : `新建${ownerLabel}文件夹`, icon: FolderSimple, disabled: !drafts[key], run: () => create(key, 'folder') },
+      ];
+    });
+  function openContext(event, target) {
+    event.preventDefault(); event.stopPropagation();
+    if (!multi.active) context.open(event, target);
+  }
+  useEffect(() => { context.close(); }, [saving, multi.active]);
+  const mobileCreateItems = groups.flatMap(group => {
+    const key = libraryKey(group.scope, group.ownerId), label = group.scope === 'global' ? '全局' : group.scope === 'preset' ? '预设' : '角色';
+    return [{ id: `${group.scope}-script`, label: `${label}脚本`, Icon: FileCode, disabled: !drafts[key] || !versions.ready, run: () => create(key, 'script') },
+      { id: `${group.scope}-folder`, label: `${label}文件夹`, Icon: FolderSimple, disabled: !drafts[key] || !versions.ready, run: () => create(key, 'folder') }];
+  });
+  const moveItems = selectedItem?.type === 'script' ? [
+    { id: 'root', label: '根目录', run: () => change(selection.key, library => moveScriptItem(library, selectedItem.id, '')) },
+    ...selectedLibrary.trees.filter(tree => tree.type === 'folder').map(folder => ({ id: folder.id, label: folder.name || '未命名文件夹', Icon: FolderSimple,
+      run: () => change(selection.key, library => moveScriptItem(library, selectedItem.id, folder.id)) })),
+  ] : [
+    { id: 'up', label: '上移', Icon: ArrowUp, run: () => change(selection.key, library => moveScriptItem(library, selectedItem.id, undefined, -1)) },
+    { id: 'down', label: '下移', Icon: ArrowDown, run: () => change(selection.key, library => moveScriptItem(library, selectedItem.id, undefined, 1)) },
+  ];
+  return <EditorSidebarLayout className={`script-libraries-panel${multi.active ? ' is-multiselect' : ''}`} inspector={inspector} inspectorTitle={selectedItem?.name || selectedLabel}
+    onCloseInspector={closeEditor} preferredWidth={inspectorWidth} onWidthChange={setInspectorWidth}
+    feedback={<SaveControl dirty={dirty} saving={saving} error={error || versions.error} notice={notice} onSave={save} />}>
+    <div className="script-directory editor-collection-browser editor-collection-material editor-collection-continuous">
+      <EditorCollectionToolbar query={query} onQueryChange={setQuery} placeholder="搜索脚本" selection={{ ...multi, toggle: () => { multi.toggle(); setEditing(false); } }} disabled={saving || !versions.ready}
+        createItems={groups.flatMap(group => [
+          { id: `${group.scope}-label`, type: 'label', text: group.label },
+          { label: '脚本', Icon: FileCode, run: () => create(libraryKey(group.scope, group.ownerId), 'script') },
+          { label: '文件夹', Icon: FolderSimple, run: () => create(libraryKey(group.scope, group.ownerId), 'folder') },
+        ])} onManage={() => setManagerOpen(true)} save={<SaveControl dirty={dirty} saving={saving} error={error || versions.error} notice={notice} onSave={save} />} />
+      <EditorSelectionBar selection={multi} visibleIds={visibleTargets.map(target => target.selectionId)} disabled={saving}
+        onCopy={() => { batchTargets().forEach(target => duplicate({ key: target.key, id: target.item.id })); multi.clear(); }}
+        onDelete={() => setDeleteTarget({ targets: batchTargets().map(target => ({ key: target.key, id: target.item.id })), name: `选中的 ${multi.selected.size} 个项目`, folder: batchTargets().some(target => target.item.type === 'folder') })} />
       {error && <p className="script-panel-error" role="alert">{error}</p>}
       {runtimeState.error && <p className="script-panel-error" role="alert">{runtimeState.error}</p>}
-      <div className="script-groups">{groups.map(group => {
+      <div className="script-groups editor-collection-directory editor-sidebar-directory" onContextMenu={event => openContext(event, {})}
+        onMouseDown={event => { if (!multi.active && !event.target.closest('.script-list-row')) setSelection(null); }}><EditorCollectionSurface grouped>{groups.map(group => {
         const key = libraryKey(group.scope, group.ownerId), library = drafts[key];
-        const scriptRow = (item, enabled = true, nested = false) => <div className={`script-list-row${nested ? ' is-nested' : ''}${selection?.key === key && selection.id === item.id ? ' is-selected' : ''}`} key={item.id}
-          onContextMenu={event => context.open(event, { key, id: item.id })}>
-          <button type="button" className="script-list-name" onClick={() => setSelection({ key, id: item.id })}><FileCode size={18} aria-hidden="true" /><span>{item.name || '未命名脚本'}</span></button>
-          <span className="script-state" title={status(library, item, enabled)}>{status(library, item, enabled)}</span>
-          <Switch label={`启用 ${item.name || '脚本'}`} checked={item.enabled} disabled={saving} onChange={enabled => change(key, value => updateScriptItem(value, item.id, { enabled }))} />
-        </div>;
-        return <section className="script-group" key={group.scope} aria-label={group.label}>
-          <header><button className="script-group-title" type="button" disabled={!library} onClick={() => setSelection({ key, id: '' })}><strong>{group.label}</strong>{group.name && <span title={group.name}>{group.name}</span>}</button>
-            <Tool label={`打开${group.label}目录`} Icon={FolderSimple} disabled={Boolean(openingDirectory) || saving || group.scope === 'preset' && !group.ownerId} onClick={() => void openDirectory(group)} />
-            <Tool label={`新增${group.label}`} Icon={Plus} disabled={!library || saving} onClick={() => create(key, 'script')} />
-            <Switch label={`启用${group.label}`} checked={library?.enabled || false} disabled={!library || saving} onChange={enabled => change(key, { enabled })} />
-          </header>
-          {!library ? <p role="status">{error ? '读取失败' : '加载中'}</p> : !library.trees.length ? <p>暂无脚本</p> : library.trees.map(tree => tree.type === 'script' ? scriptRow(tree) : <div key={tree.id} className="script-folder">
-            <div className={`script-list-row${selection?.key === key && selection.id === tree.id ? ' is-selected' : ''}`} onContextMenu={event => context.open(event, { key, id: tree.id })}>
-              <button type="button" className={`script-tool script-folder-toggle${collapsed.has(tree.id) ? ' is-collapsed' : ''}`} aria-label={`${collapsed.has(tree.id) ? '展开' : '收起'} ${tree.name || '分组'}`} aria-expanded={!collapsed.has(tree.id)} onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(tree.id)) next.delete(tree.id); else next.add(tree.id); return next; })}><CaretDown size={16} aria-hidden="true" /></button>
-              <button type="button" className="script-list-name" onClick={() => setSelection({ key, id: tree.id })}><FolderSimple size={18} aria-hidden="true" /><span>{tree.name || '未命名分组'}</span></button>
-              <Switch label={`启用分组 ${tree.name}`} checked={tree.enabled} disabled={saving} onChange={enabled => change(key, value => updateScriptItem(value, tree.id, { enabled }))} />
-            </div>{!collapsed.has(tree.id) && tree.scripts.map(item => scriptRow(item, tree.enabled, true))}
+        const scriptRow = (item, enabled = true, parentId = '') => {
+          if (query.trim() && !item.name.toLowerCase().includes(query.trim().toLowerCase())) return null;
+          const id = JSON.stringify([key, item.id]);
+          return <div className={`script-list-row${parentId ? ' is-nested' : ''}${dragged?.key === key && dragged.id === item.id ? ' is-dragging' : ''}${multi.active ? multi.selected.has(id) ? ' is-selected' : '' : selection?.key === key && selection.id === item.id ? ' is-selected' : ''}`} key={item.id}
+            {...dragProps(key, item, parentId)}
+            data-enabled={library.enabled && enabled && item.enabled}
+            onContextMenu={event => openContext(event, { key, id: item.id })}>
+            <EditorSelectionCheckbox selection={multi} id={id} label={item.name || '未命名脚本'} disabled={saving} />
+            <button type="button" className="script-list-name" {...nameDragProps(key, item)}
+              onDoubleClick={compact && !multi.active && !saving ? () => selectItem({ key, id: item.id }, true) : undefined}
+              onClick={() => multi.active ? multi.check(id, !multi.selected.has(id)) : selectItem({ key, id: item.id })}><FileCode size={18} aria-hidden="true" /><span>{item.name || '未命名脚本'}</span></button>
+            {!multi.active && <><span className="script-state" title={status(library, item, enabled)}>{status(library, item, enabled)}</span>
+              <Switch label={`启用 ${item.name || '脚本'}`} checked={item.enabled} disabled={saving} onChange={enabled => change(key, value => updateScriptItem(value, item.id, { enabled }))} />
+              </>}
+          </div>;
+        };
+        return <EditorLibraryGroup className="script-group" key={group.scope} title={group.label} subtitle={group.name}
+          onContextMenu={event => openContext(event, { key, id: '' })}
+          onDragOver={event => { if (!event.target.closest('[data-script-id]')) dragOver(event, key); }} onDrop={event => drop(event, key)}
+          actions={!multi.active && <Switch label={`启用${group.label}`} checked={library?.enabled || false} disabled={!library || saving} onChange={enabled => change(key, value => setScriptLibraryEnabled(value, enabled))} />}>
+          {!library ? <p className="editor-library-empty" role="status">{error ? '读取失败' : '正在读取…'}</p> : !library.trees.length ? <p className="editor-library-empty">暂无脚本</p> : library.trees.map(tree => tree.type === 'script' ? scriptRow(tree) : <div key={tree.id} className="script-folder">
+            <div className={`script-list-row${dragged?.key === key && dragged.id === tree.id ? ' is-dragging' : ''}${multi.active ? multi.selected.has(JSON.stringify([key, tree.id])) ? ' is-selected' : '' : selection?.key === key && selection.id === tree.id ? ' is-selected' : ''}`} data-enabled={library.enabled && tree.enabled} {...dragProps(key, tree)} onContextMenu={event => openContext(event, { key, id: tree.id })}>
+              <EditorSelectionCheckbox selection={multi} id={JSON.stringify([key, tree.id])} label={tree.name || '文件夹'} disabled={saving} />
+              <button type="button" className={`script-tool script-folder-toggle${collapsed.has(JSON.stringify([key, tree.id])) ? ' is-collapsed' : ''}`} aria-label={`${collapsed.has(JSON.stringify([key, tree.id])) ? '展开' : '收起'} ${tree.name || '分组'}`} aria-expanded={!collapsed.has(JSON.stringify([key, tree.id]))} onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(JSON.stringify([key, tree.id]))) next.delete(JSON.stringify([key, tree.id])); else next.add(JSON.stringify([key, tree.id])); return next; })}><DshTriangleRightIcon size={12} /></button>
+              <button type="button" className="script-list-name" {...nameDragProps(key, tree)}
+                onDoubleClick={compact && !multi.active && !saving ? () => selectItem({ key, id: tree.id }, true) : undefined}
+                onClick={() => multi.active ? multi.check(JSON.stringify([key, tree.id]), !multi.selected.has(JSON.stringify([key, tree.id]))) : selectItem({ key, id: tree.id })}><FolderSimple size={18} aria-hidden="true" /><span>{tree.name || '未命名分组'}</span></button>
+              {!multi.active && <Switch label={`启用分组 ${tree.name}`} checked={tree.enabled} disabled={saving} onChange={enabled => change(key, value => updateScriptItem(value, tree.id, { enabled }))} />}
+            </div>{(!collapsed.has(JSON.stringify([key, tree.id])) || multi.active || query.trim()) && <div className="script-folder-contents">{tree.scripts.map(item => scriptRow(item, tree.enabled, tree.id))}</div>}
           </div>)}
-        </section>;
-      })}</div>
+        </EditorLibraryGroup>;
+      })}</EditorCollectionSurface></div>
+      {compact && !multi.active && <MobileEditorActions label="脚本操作" selectionId={selection ? JSON.stringify([selection.key, selection.id]) : ''}
+        busy={saving} createItems={mobileCreateItems} canEdit={Boolean(selectedItem)} canModify={Boolean(selectedItem)}
+        onEdit={() => setEditing(true)} moveItems={moveItems}
+        onDelete={() => setDeleteTarget({ key: selection.key, id: selectedItem.id, name: selectedItem.name, folder: selectedItem.type === 'folder' })}
+        moreItems={selectedItem ? [
+          { label: '复制', Icon: Copy, run: () => duplicate() },
+          { label: '重命名', Icon: NotePencil, run: () => { setEditing(true); requestAnimationFrame(() => nameInputRef.current?.select()); } },
+          { label: selectedItem.enabled ? '停用' : '启用', Icon: Power, run: () => change(selection.key, library => updateScriptItem(library, selectedItem.id, { enabled: !selectedItem.enabled })) },
+        ] : []} />}
     </div>
-    {menuItem && <EditorContextMenu menu={context.menu} actions={menuActions} label="脚本操作" onClose={context.close} />}
+    {managerOpen && versions.ready && <EditorLibraryVersionManager title="脚本版本管理" versions={versions} ownerScope={ownerScope} ownerLabel={presetEditor ? '预设' : '角色卡'} onClose={() => setManagerOpen(false)} busy={saving}
+      extraActions={[{ label: '打开源码目录', Icon: FolderSimple, disabled: Boolean(openingDirectory), onClick: scope => void openDirectory({ scope, ownerId: scope === 'global' ? '' : ownerId }) }]} />}
+    {context.menu && menuActions.length > 0 && <EditorContextMenu menu={context.menu}
+      actions={menuActions.map(action => ({ ...action, disabled: action.disabled || saving || !versions.ready }))} label="脚本操作" onClose={context.close} />}
     <ConfirmationDialog open={Boolean(deleteTarget)} title={`删除“${deleteTarget?.name || '脚本'}”？`}
       description={deleteTarget?.folder ? '分组及其中的脚本会在保存后删除。' : '脚本会在保存后删除。'} confirmLabel="删除" destructive busy={saving} onCancel={() => setDeleteTarget(null)} onConfirm={deleteItem} />
   </EditorSidebarLayout>;

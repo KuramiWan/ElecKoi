@@ -74,14 +74,14 @@ function validateTree(groups: SettingLibraryGroup[], entries: SettingLibraryEntr
 
 function normalizedVersion(source: SettingLibraryVersion, active: boolean, timestamp: string): SettingLibraryVersion {
   const groups = source.groups.map((group, index) => ({
-    ...group, name: group.name.trim().slice(0, 80), order: Math.max(1, group.order || index + 1),
+    ...group, name: group.name.trim(), order: Math.max(1, group.order || index + 1),
     treeViewOrder: group.treeViewOrder || index + 1, createdAt: group.createdAt || timestamp,
     updatedAt: active ? timestamp : group.updatedAt || timestamp
   }))
   const opening = openingEntry(source.entries.find((entry) => entry.id === OPENING_ENTRY_ID || entry.kind === 'opening'), timestamp)
   const entries = [opening, ...source.entries.filter((entry) => entry.id !== OPENING_ENTRY_ID && entry.kind !== 'opening').map((entry, index) => ({
-    ...entry, title: entry.title.trim().slice(0, 120), groupId: entry.groupId.trim(),
-    agentSelectionHint: entry.agentSelectionHint.replace(/\s+/g, ' ').trim().slice(0, 500),
+    ...entry, title: entry.title.trim(), groupId: entry.groupId.trim(),
+    agentSelectionHint: entry.agentSelectionHint,
     keywords: [...new Set(entry.keywords.map((item) => item.trim()).filter(Boolean))],
     conditionKeywords: [...new Set(entry.conditionKeywords.map((item) => item.trim()).filter(Boolean))],
     order: Math.max(1, entry.order), treeViewOrder: entry.treeViewOrder || index + 1,

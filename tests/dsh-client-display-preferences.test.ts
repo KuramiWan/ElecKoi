@@ -49,6 +49,17 @@ function clientHarness() {
 }
 
 describe('DSH display preferences', () => {
+  it('saves and reloads rich message limits through the existing preference Remote', async () => {
+    const { model, remote, cleanup } = clientHarness()
+    try {
+      await model.refresh()
+      await model.setChatDisplay({ layout: 'roleplay', rich_message_limit_enabled: true, rich_message_floor_limit: 3 })
+      await model.refresh()
+      expect(remote.eleckoiDisplayPreferences.setChatDisplay).toHaveBeenCalledWith(
+        { layout: 'roleplay', rich_message_limit_enabled: true, rich_message_floor_limit: 3 }, 2)
+      expect(model.getSnapshot().chatDisplay).toMatchObject({ rich_message_limit_enabled: true, rich_message_floor_limit: 3 })
+    } finally { cleanup() }
+  })
   it('reads and serializes Client writes through the DSH display preferences Remote', async () => {
     const { remote, model, cleanup } = clientHarness()
     try {

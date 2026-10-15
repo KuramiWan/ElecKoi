@@ -9,6 +9,7 @@ import { RequestPreviewDialog } from "./RequestPreviewDialog.jsx";
 import { AgentToolsDialog } from "./AgentToolsDialog.jsx";
 import { NativeScriptPanel } from "../../scripts/index.js";
 import { MessageBubble } from "../../../ui/messages/MessageBubble.jsx";
+import { useDisplayTemplates } from '../../displayTemplates/index.js';
 import { ConfirmationDialog } from "../../../ui/ui/ConfirmationDialog.jsx";
 import logoIcon from "../../../assets/eleckoi-app-icon.png";
 import { DshAgentPresetIcon, DshNewChatIcon } from "../../../ui/icons/dshComposerIcons.jsx";
@@ -26,7 +27,8 @@ import { findLatestRegenerateTargetMessageId } from "../model/chatRegeneration.j
 import { selectRoleplayChatSeat, selectRoleplayPendingInput } from "../model/chatViewSeats.js";
 import { revealChatFile } from "../api/chatApi.js";
 import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
-import { CharacterFrontendView } from '../../authorFrontend/index.js';
+import { CharacterFrontendView, RichMessageRenderProvider } from '../../authorFrontend/index.js';
+import { DEFAULT_CHAT_DISPLAY_PREFERENCES, RICH_MESSAGE_FLOOR_RANGE } from '@shared/contracts/settings/schemas';
 
 const noAuthorSubscription = () => () => {};
 const noAuthorRuntime = () => null;
@@ -131,6 +133,7 @@ export function ChatPanel({
   const composerRegionRef = useRef(null);
   const headerMenuRef = useRef(null);
   const pageView = useContext(MainPageContext);
+  const displayTemplateSelection = useDisplayTemplates(characterId, pageView?.characterConfiguration?.displayTemplates);
   const authorConnection = pageView?.characterConfiguration?.scriptRuntimeConnection;
   const nativeAuthorRuntime = useSyncExternalStore(authorConnection?.subscribe || noAuthorSubscription,
     authorConnection?.getSnapshot || noAuthorRuntime, noAuthorRuntime);
@@ -414,6 +417,7 @@ export function ChatPanel({
 
   const rowProps = {
     conversationId, messages: displayedMessages, layoutMode, profile, avatarShape,
+    displayTemplates: displayTemplateSelection.value?.libraries,
     userAvatar, assistantAvatar,
     userPinImage: persona.user_portrait || persona.user_square || userAvatar,
     assistantPinImage: persona.assistant_cover || persona.assistant_square || assistantAvatar,
@@ -455,6 +459,7 @@ export function ChatPanel({
       className={`chat-panel layout-${layoutMode} view-${activeView}${profile?.assistant_bubble_enabled ? " assistant-bubble-enabled" : ""}${deleteMode ? " message-delete-mode" : ""}`}
       style={displayStyle}
     >
+      {displayTemplateSelection.status === 'error' ? <div className="script-execution-error" role="alert">{displayTemplateSelection.error}</div> : null}
       <header className="chat-header">
         <div className="chat-header-title-row">
           {headerLeading}
@@ -503,7 +508,11 @@ export function ChatPanel({
           aria-busy={isSwitchingChat || isLoadingOlderMessages || undefined}
         >
           <div className="chat-transcript-region">
-            {activeView === "chat" ? chatContent : activeView === "trajectory" ? <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
+            {activeView === "chat" ? <RichMessageRenderProvider key={conversationId} messages={displayedMessages}
+              enabled={chatDisplay?.rich_message_limit_enabled ?? DEFAULT_CHAT_DISPLAY_PREFERENCES.rich_message_limit_enabled}
+              floorLimit={chatDisplay?.rich_message_floor_limit ?? RICH_MESSAGE_FLOOR_RANGE.defaultValue}>
+              {chatContent}
+            </RichMessageRenderProvider> : activeView === "trajectory" ? <Suspense fallback={<div className="trajectory-state">正在加载轨迹...</div>}>
               <TrajectoryView
                 key={`${conversationId}:${trajectoryRevision}`}
                 conversationId={conversationId}
@@ -515,7 +524,7 @@ export function ChatPanel({
             </Suspense> : activeView === undefined ? null : dshConversation?.renderView(activeView)}
           </div>
 
-          <div className="chat-composer-region" ref={composerRegionRef} data-composer-seat="">
+          <div className="chat-composer-region" ref={composerRegionRef} data-composer-seat="" inert={isSwitchingChat || undefined}>
             {deleteMode ? (
               <div className="chat-message-delete-bar" aria-label="删除消息">
                 <button
@@ -580,6 +589,7 @@ export function ChatPanel({
 }
 
 export function MessageList({
+  displayTemplates,
   conversationId,
   entering,
   messages,
@@ -679,6 +689,7 @@ export function MessageList({
           runtimeSessionId={runtimeSessionId}
           renderRoleplaySlot={renderRoleplaySlot}
           renderRoleplayMessage={renderRoleplayMessage}
+          displayTemplates={displayTemplates}
           loadImage={loadImage}
           onRegenerateImage={onRegenerateImage}
           onOpenFile={onOpenFile}
@@ -689,6 +700,7 @@ export function MessageList({
 }
 
 const MessageRow = memo(function MessageRow({
+  displayTemplates,
   item,
   anchorKey,
   index,
@@ -737,6 +749,7 @@ const MessageRow = memo(function MessageRow({
   // legitimately have no projected turn until a closing tail is rebound.
   const canMutate = item.id === "opening" ? item.canChangeOpening === true : Number.isSafeInteger(item.sessionEventSeq);
   const bubble = <MessageBubble
+    displayTemplates={displayTemplates}
     message={item}
     avatar={item.role === "user" ? userAvatar : assistantAvatar}
     pinSrc={item.role === "user" ? userPinImage : assistantPinImage}

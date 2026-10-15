@@ -109,6 +109,39 @@ async function harness() {
 }
 
 describe('native author setting library', () => {
+  it('rolls back both EJS libraries on an owner conflict while preserving shared globals', async () => {
+    const r = await harness(), global = r.data.readDisplayTemplates('global', ''), character = r.data.readDisplayTemplates('character', 'synthetic-character')
+    const accepted = r.data.saveDisplayTemplates({ ...character, enabled: true })
+    await expect(r.invoke('saveDisplayTemplateLibraries', { libraries: [{ ...global, enabled: true }, character] })).rejects.toThrow('重新读取')
+    expect(r.data.readDisplayTemplates('global', '')).toEqual(global)
+    expect(r.data.readDisplayTemplates('character', character.ownerId)).toEqual(accepted)
+    const saved = await r.invoke('saveDisplayTemplateLibraries', { libraries: [{ ...global, enabled: true }, { ...accepted, enabled: false }] })
+    expect(saved).toEqual([expect.objectContaining({ scope: 'global', ownerId: '', revision: 1, enabled: true }),
+      expect.objectContaining({ scope: 'character', ownerId: character.ownerId, revision: 2, enabled: false })])
+  }, 30_000)
+  it('reads and saves display templates through the real Typert SDK with current owners and visible conflicts', async () => {
+    const r = await harness(), character = await r.api.displayTemplates.read('character'), preset = await r.api.displayTemplates.read('preset')
+    const global = await r.api.displayTemplates.read('global')
+    expect(global.ownerId).toBe('')
+    const savedGlobal = await r.api.displayTemplates.save({ ...global, enabled: true })
+    expect(r.data.readDisplayTemplates('global', '')).toEqual(savedGlobal)
+    await expect(r.api.displayTemplates.save({ ...savedGlobal, ownerId: 'synthetic-invalid-owner' })).rejects.toMatchObject({ code: 'CONTEXT_MISMATCH' })
+    expect(character.ownerId).toBe('synthetic-character')
+    expect(preset.ownerId).toBe(r.preset.id)
+    const capabilities = await r.api.app.getCapabilities()
+    expect(capabilities.map(item => item.method)).toEqual(expect.arrayContaining(['displayTemplates.read', 'displayTemplates.save']))
+    const saved = await r.api.displayTemplates.save({ ...preset, enabled: true, templates: [{ id: 'synthetic-template', name: 'Synthetic template', enabled: true,
+      position: 'after', pattern: '', flags: '', source: '<p><%= rawContent %></p>' }] })
+    expect(saved.revision).toBe(preset.revision + 1)
+    expect(r.data.readDisplayTemplates('preset', r.preset.id)).toEqual(saved)
+    expect(r.publish).toHaveBeenLastCalledWith({ kind: 'configuration', domain: 'displayTemplates' })
+    await expect(r.api.displayTemplates.save(preset)).rejects.toThrow('重新读取')
+    await expect(r.api.displayTemplates.save({ ...character, ownerId: 'synthetic-other-character' })).rejects.toMatchObject({ code: 'CONTEXT_MISMATCH' })
+    r.data.setActiveAgentPreset(r.otherPreset.id)
+    await expect(r.api.displayTemplates.save(saved)).rejects.toMatchObject({ code: 'CONTEXT_MISMATCH' })
+    expect((await r.api.displayTemplates.read('preset')).ownerId).toBe(r.otherPreset.id)
+    expect(r.data.readDisplayTemplates('character', 'synthetic-other-character').revision).toBe(0)
+  }, 30000)
   it('exposes exactly the formal mutable entry fields', () => {
     expect([...AUTHOR_SETTING_ENTRY_MUTABLE_FIELDS].sort()).toEqual(Object.keys(settingLibraryEntryChangesSchema.shape).sort())
   })

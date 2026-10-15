@@ -19,7 +19,7 @@
 .editor-sidebar-pane.is-overlay {
   position: absolute;
   z-index: 50;
-  inset: 58px 0 0 auto;
+  inset: var(--editor-sidebar-top, 58px) 0 0 auto;
   width: min(var(--editor-sidebar-width), calc(100% - var(--editor-sidebar-gap)));
 }
 

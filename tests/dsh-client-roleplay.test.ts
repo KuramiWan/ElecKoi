@@ -135,6 +135,8 @@ describe('ElecKoi roleplay client contribution', () => {
       createElement: (type: unknown, props: unknown) => ({ type, props }),
       useState: () => [null, () => {}],
       useEffect: () => {},
+      useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
+      useRef: (value: unknown) => ({ current: value }), useLayoutEffect() {},
       useCallback: (callback: unknown) => callback
     }
     const plugin = registration.factory(clientRequire(React))
@@ -161,7 +163,7 @@ describe('ElecKoi roleplay client contribution', () => {
     })
     expect(entry.select(owner)).toBe(owner)
     expect(entry.select({ component: null })).toBeNull()
-    expect(component({ matched: owner })).toEqual({ type: ChatView, props: {
+    expect(component({ matched: owner, conversations: { subscribeDetails() {}, getDetailsSnapshot: () => ({}), getSessionReference: () => null } })).toEqual({ type: ChatView, props: {
       ...owner.props,
       renderRoleplaySlot: undefined,
       renderRoleplaySlotChain: undefined,
@@ -198,6 +200,8 @@ describe('ElecKoi roleplay client contribution', () => {
       createElement: (type: unknown, props: unknown, child: unknown) => ({ type, props, child }),
       useState: () => [reference, () => {}],
       useEffect: () => {},
+      useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
+      useRef: (value: unknown) => ({ current: value }), useLayoutEffect() {},
       useCallback: (callback: unknown) => callback
     }
     const plugin = registration.factory(clientRequire(React))
@@ -216,7 +220,7 @@ describe('ElecKoi roleplay client contribution', () => {
       props: { conversationId: 'product-chat-1', runtimeSessionId: reference.sessionId }
     }
     const result = roleplayComponent({
-      matched, sessions: {}, SessionProvider, renderSlot
+      matched, conversations: { subscribeDetails() {}, getDetailsSnapshot: () => ({}), getSessionReference: () => reference }, SessionProvider, renderSlot
     })
     expect(result.type).toBe(SessionProvider)
     expect(result.props.session).toBe(reference)
@@ -255,102 +259,35 @@ describe('ElecKoi roleplay client contribution', () => {
     expect(rendered.options.fallback).toBe(content)
   })
 
-  it('refreshes an unknown Session and releases its reference when the chat closes', async () => {
-    let registration: any
-    let component: any
-    let cleanup: (() => void) | undefined
-    let released = 0
-    let refreshed = 0
-    let selected: unknown
-    const reference = { sessionId: 'dsh-session-2', ready: Promise.resolve(), release: () => { released += 1 } }
-    runInNewContext(source, {
-      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
-      setTimeout,
-      clearTimeout
-    })
+  it('uses the loaded chat Session on the first render and switches scopes without an empty composer frame', () => {
+    let registration: any, component: any
+    runInNewContext(source, { window: { __ModuleLoader__: { load: (value: any) => { registration = value } } } })
     const React = {
-      createElement: (type: unknown, props: unknown) => ({ type, props }),
-      useState: () => [null, (value: unknown) => { selected = value }],
-      useEffect: (effect: () => () => void) => { cleanup = effect() },
-      useCallback: (callback: unknown) => callback
+      createElement: (type: unknown, props: unknown, child: unknown) => ({ type, props, child }),
+      useSyncExternalStore: (_subscribe: unknown, get: () => unknown) => get(),
+      useRef: (value: unknown) => ({ current: value }), useLayoutEffect() {},
     }
-    const plugin = registration.factory(clientRequire(React))
-    const sessions = {
-      list: { getSnapshot: () => ({ byId: {} }) },
-      refresh: async () => { refreshed += 1 },
-      retain: () => reference
-    }
-    plugin.apply({ sessions, slots: {
-      inject: (name: string, register: () => void) => {
-        if (name === 'eleckoi.roleplay') register()
-      },
-      register: (_options: unknown, view: unknown) => { component = view }
+    registration.factory(clientRequire(React)).apply({ slots: {
+      inject: (name: string, register: () => void) => { if (name === 'eleckoi.roleplay') register() },
+      register: (_options: unknown, value: unknown) => { component = value },
     } })
-    component({
-      matched: { component: () => null, props: { runtimeSessionId: reference.sessionId } },
-      sessions
-    })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(refreshed).toBe(1)
-    expect(selected).toBe(reference)
-    cleanup?.()
-    expect(released).toBe(1)
-  })
-
-  it('retries a failed initial Session binding without leaving the chat page', async () => {
-    let registration: any
-    let component: any
-    let cleanup: (() => void) | undefined
-    let selected: any
-    let retained = 0
-    let released = 0
-    const timers = new Map<number, () => void>()
-    let nextTimerId = 0
-    runInNewContext(source, {
-      window: { __ModuleLoader__: { load: (value: any) => { registration = value } } },
-      setTimeout: (callback: () => void) => { const id = ++nextTimerId; timers.set(id, callback); return id },
-      clearTimeout: (id: number) => { timers.delete(id) }
-    })
-    const React = {
-      createElement: (type: unknown, props: unknown) => ({ type, props }),
-      useState: () => [null, (value: unknown) => { selected = value }],
-      useEffect: (effect: () => () => void) => { cleanup = effect() },
-      useCallback: (callback: unknown) => callback
-    }
-    const plugin = registration.factory(clientRequire(React))
-    const readyReference = { sessionId: 'session-retry', ready: Promise.resolve(), release: () => { released += 1 } }
-    const sessions = {
-      list: { getSnapshot: () => ({ byId: { 'session-retry': {} } }) },
-      retain: () => {
-        retained += 1
-        return retained === 1
-          ? { sessionId: 'session-retry', ready: Promise.reject(new Error('not ready')), release: () => { released += 1 } }
-          : readyReference
-      }
-    }
-    plugin.apply({ sessions, slots: {
-      inject: (name: string, register: () => void) => {
-        if (name === 'eleckoi.roleplay') register()
-      },
-      register: (_options: unknown, view: unknown) => { component = view }
-    } })
-    component({
-      matched: { component: () => null, props: { runtimeSessionId: 'session-retry' } },
-      sessions
-    })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(retained).toBe(1)
-    expect(selected).toBeNull()
-    expect(timers.size).toBe(1)
-    const retryEntry = [...timers.entries()][0]
-    if (!retryEntry) throw new Error('Expected a Session retry timer')
-    timers.delete(retryEntry[0])
-    retryEntry[1]()
-    await new Promise(resolve => setTimeout(resolve, 0))
-    expect(retained).toBe(2)
-    expect(selected).toBe(readyReference)
-    cleanup?.()
-    expect(released).toBe(2)
+    let current = { sessionId: 'synthetic-first' }
+    const conversations = { subscribeDetails() {}, getDetailsSnapshot: () => ({}),
+      getSessionReference: (id: string) => current.sessionId === id ? current : null }
+    const SessionProvider = () => null
+    const renderSlot = (name: string) => ({ name })
+    const render = (id: string) => component({ conversations, SessionProvider, renderSlot,
+      matched: { component: () => null, props: { runtimeSessionId: id } } })
+    const first = render(current.sessionId)
+    expect(first.type).toBe(SessionProvider)
+    expect(first.props.session).toBe(current)
+    expect(first.child.name).toBe('eleckoi.roleplay.session')
+    current = { sessionId: 'synthetic-second' }
+    const second = render(current.sessionId)
+    expect(second.type).toBe(SessionProvider)
+    expect(second.props.session).toBe(current)
+    expect(second.child.name).toBe('eleckoi.roleplay.session')
+    expect(render('unavailable').type).not.toBe(SessionProvider)
   })
 
   it('projects live DSH composer contributions into the retained roleplay seats', async () => {

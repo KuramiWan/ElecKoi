@@ -10,14 +10,16 @@ window.__ModuleLoader__.load({
       if (!result?.ok) throw new Error(result?.error?.message || fallback)
       return result.value
     }
-    const keyRef = id => `${id.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}_API_KEY`
+    const keyRef = id => `${id.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`
     const imageProvider = provider => ['openai_image', 'novelai_image'].includes(provider)
     const ModelPage = React.lazy(() => import(new URL('eleckoi-page-model.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.ModelPage })))
     class ModelCatalog {
       constructor(remote) {
         this.remote = remote
-        this.snapshot = { status: 'loading', configs: [], error: '' }
+        this.providers = []
+        this.builtinModels = new Map()
+        this.snapshot = { status: 'loading', configs: [], providers: [], error: '' }
         this.listeners = new Set()
         this.generation = 0
         this.disposed = false
@@ -81,7 +83,7 @@ window.__ModuleLoader__.load({
       adopt(configs) {
         if (this.disposed) return
         this.generation += 1
-        this.publish({ status: 'ready', configs, error: '' })
+        this.publish({ status: 'ready', configs, providers: this.providers, error: '' })
       }
 
       enqueue(run) {
@@ -108,6 +110,7 @@ window.__ModuleLoader__.load({
         const entries = namespaces.get(SETTINGS_NAMESPACE)?.value?.entries || {}
         const routes = valueOf(await this.remote.llm.listConfigurableProviders(), '读取模型提供商失败。')
           .filter(route => route.settingsNs === 'llm-pi-ai' || route.provider === 'deepseek-official')
+        this.providers = routes.filter(route => !route.declared || route.provider === 'deepseek-official')
         const directory = new Map(routes.map(route => [route.provider, route]))
         // The model picker includes account-authenticated routes that are not
         // editable provider profiles. Only the configurable directory owns
@@ -145,7 +148,7 @@ window.__ModuleLoader__.load({
             if (!byId.has(id)) byId.set(id, { id, model_options: [] })
           }
         }
-        const configs = [...byId.values()].map(config => {
+        const configs = await Promise.all([...byId.values()].map(async config => {
           const route = directory.get(config.id)
           const ns = route?.settingsNs || 'llm-pi-ai'
           const path = route?.settingsPath || ['providers', config.id]
@@ -153,30 +156,42 @@ window.__ModuleLoader__.load({
           const { draftProfile, ...extra } = entries[config.id] || {}
           const profile = storedProfile || draftProfile || {}
           const pending = !storedProfile && Boolean(draftProfile)
-          const models = new Map((profile.models || []).map(model => [model.id, model]))
+          const builtin = extra.builtin === true || this.providers.some(item => item.provider === config.id)
+          const useBuiltinModels = builtin && !(profile.models || []).length
+          let catalogDefaults = new Map()
+          if (builtin && ns === 'llm-pi-ai') {
+            if (!this.builtinModels.has(config.id)) {
+              this.builtinModels.set(config.id, this.remote.eleckoiModels.discoverModels({ configId: config.id, builtinProvider: config.id, api: 'catalog', baseURL: '' })
+                .then(result => valueOf(result, '读取内置模型能力失败。')).catch(error => { this.builtinModels.delete(config.id); throw error }))
+            }
+            catalogDefaults = new Map((await this.builtinModels.get(config.id)).map(model => [model.id, { id: model.id, name: model.name || model.id, contextWindowTokens: model.contextWindow, maxOutputTokens: model.maxTokens, inputModalities: model.inputModalities, supportsImageInput: model.inputModalities?.includes('image') === true, reasoningEfforts: model.reasoningEfforts || false }]))
+          }
+          const models = new Map((useBuiltinModels ? Object.entries(profile.modelOverrides || {}).map(([id, value]) => ({ ...value, id })) : profile.models || []).map(model => [model.id, model]))
           const options = new Map((config.model_options || []).map(model => [model.id, model]))
           for (const model of models.values()) if (!options.has(model.id)) options.set(model.id, { id: model.id, name: model.name || model.id })
           const provider = ns === 'llm-deepseek'
             ? 'deepseek'
             : extra.provider === 'deepseek' ? 'custom' : extra.provider || 'custom'
           const credentialRef = extra.credentialRef || profile.apiKeyEnv || (ns === 'llm-deepseek' ? 'DEEPSEEK_API_KEY' : keyRef(config.id))
-          return { ...config, ...extra, provider, credentialRef, api_key: '',
+          return { ...config, ...extra, provider, builtin, useBuiltinModels, credentialRef, api_key: '',
             name: extra.name || profile.displayName || config.name || '',
             model: extra.model || config.model || options.keys().next().value || '',
             base_url: imageProvider(provider) ? extra.base_url || '' : profile.baseURL || (ns === 'llm-deepseek' ? 'https://api.deepseek.com/anthropic' : ''),
-            api_format: ns === 'llm-deepseek' ? 'deepseek_messages' : formats[profile.api] || extra.api_format || 'responses',
+            api_format: ns === 'llm-deepseek' ? 'deepseek_messages' : formats[profile.api] || (builtin ? 'catalog' : extra.api_format || 'responses'),
             custom_headers: profile.headers || extra.custom_headers || {},
             settingsNs: ns, settingsPath: path,
             model_options: [...options.values()].map(model => {
               const declared = models.get(model.id) || {}
               const parameters = extra.parameters?.[model.id] || {}
-              return { ...model, ...parameters,
+              return { ...(catalogDefaults.get(model.id) || {}), ...model, ...parameters,
+                ...(catalogDefaults.has(model.id) ? { catalogDefaults: catalogDefaults.get(model.id) } : {}),
                 ...(declared.contextWindow ? { contextWindowTokens: declared.contextWindow } : {}),
                 ...(declared.maxTokens ? { maxOutputTokens: declared.maxTokens } : {}),
                 ...(declared.reasoningEfforts !== undefined ? { reasoningEfforts: declared.reasoningEfforts } : {}),
-                ...(declared.input || declared.inputModalities ? { supportsImageInput: (declared.input || declared.inputModalities).includes('image') } : {}) }
+                ...(declared.input?.length || declared.inputModalities?.length ? { inputModalities: [...(declared.input || declared.inputModalities)], supportsImageInput: (declared.input || declared.inputModalities).includes('image') } : {}),
+                ...(useBuiltinModels ? { overrideFields: Object.keys(declared).filter(key => key !== 'id'), capabilitiesOverride: Boolean(declared.input?.length) || declared.reasoningEfforts !== undefined } : {}) }
             }), enabled: !imageProvider(provider) && !pending }
-        })
+        }))
         const credentials = valueOf(await this.remote.credentials.describe(configs.map(config => config.credentialRef)), '读取密钥状态失败。')
         return configs.map(config => ({ ...config, credentialConfigured: credentials[config.credentialRef]?.configured === true }))
       }
@@ -187,7 +202,11 @@ window.__ModuleLoader__.load({
 
       save(config) {
         return this.enqueue(async () => {
-          if (!config.id || !/^[a-z][a-z0-9-]*$/.test(config.id)) throw new Error('模型配置编号不正确。')
+          if (config.builtin && !this.providers.some(route => route.provider === config.id)) throw new Error('请选择当前 DSH 内置目录中的提供商。')
+          if (!config.id || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('模型配置编号不正确。')
+          for (const model of config.model_options || []) {
+            if (model.inputModalities && (!model.inputModalities.length || model.inputModalities.some(input => !['text', 'image'].includes(input)))) throw new Error('请选择有效的模型输入能力。')
+          }
           if (config.proxy_url?.trim()) throw new Error('当前 DSH 适配器不支持每个模型单独设置代理，请使用系统代理。')
           if (config.provider === 'deepseek'
             && (config.id !== 'deepseek-official' || config.api_format !== 'deepseek_messages')) {
@@ -222,7 +241,7 @@ window.__ModuleLoader__.load({
             ...(model.reasoningEffort == null ? {} : { reasoningEffort: model.reasoningEffort }),
             ...(model.isUserAdded ? { isUserAdded: true } : {})
           }]))
-          const extra = { name: config.name || '', provider: config.provider, model: config.model || '', credentialRef: ref, parameters }
+          const extra = { name: config.name || '', provider: config.provider, builtin: config.builtin === true, model: config.model || '', credentialRef: ref, parameters }
           let removeProvider = false
           if (imageProvider(config.provider)) {
             Object.assign(extra, { base_url: config.base_url, api_format: config.api_format, image_settings: config.image_settings || {}, model_options: config.model_options || [], custom_headers: config.custom_headers || {} })
@@ -230,20 +249,46 @@ window.__ModuleLoader__.load({
             const models = (config.model_options || []).map(model => ({ id: model.id, name: model.name || model.id,
               ...(model.contextWindowTokens == null ? {} : { contextWindow: model.contextWindowTokens }),
               ...(model.maxOutputTokens == null ? {} : { maxTokens: model.maxOutputTokens }),
-              [ns === 'llm-deepseek' ? 'inputModalities' : 'input']: model.supportsImageInput ? ['text', 'image'] : ['text'],
+              [ns === 'llm-deepseek' ? 'inputModalities' : 'input']: model.inputModalities || (model.supportsImageInput ? ['text', 'image'] : ['text']),
               ...(ns === 'llm-pi-ai' && model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}) }))
             const path = ns === 'llm-deepseek' ? [] : ['providers', config.id]
             if (ns === 'llm-deepseek') {
               const ops = [{ op: 'set', path: ['baseURL'], value: config.base_url }, { op: 'set', path: ['models'], value: models }]
               await this.mutate(ns, ops)
             } else {
-              if (!protocols[config.api_format]) throw new Error('不支持的模型接口格式。')
+              if (!config.builtin && !protocols[config.api_format]) throw new Error('不支持的模型接口格式。')
               const storedProfile = this.namespaces.get(ns)?.value?.providers?.[config.id]
               const previousProfile = storedProfile
                 || this.namespaces.get(SETTINGS_NAMESPACE)?.value?.entries?.[config.id]?.draftProfile || {}
-              const profile = { ...previousProfile, apiKeyEnv: ref, displayName: config.name || config.id,
-                api: protocols[config.api_format], baseURL: config.base_url, models, headers: config.custom_headers || {} }
-              if (models.length) {
+              const profile = { ...previousProfile, displayName: config.name || config.id, baseURL: config.base_url, headers: config.custom_headers || {} }
+              if (!config.builtin || previousProfile.apiKeyEnv || config.api_key?.trim() || config.credentialConfigured) profile.apiKeyEnv = ref
+              if (config.builtin) {
+                if (!config.base_url?.trim()) delete profile.baseURL
+                delete profile.api
+                if (config.useBuiltinModels !== false) {
+                  delete profile.models
+                  profile.modelOverrides = Object.fromEntries((config.model_options || []).map(model => {
+                    const override = { ...(previousProfile.modelOverrides?.[model.id] || {}) };
+                    delete override.contextWindow; delete override.maxTokens; delete override.input; delete override.reasoningEfforts
+                    for (const [key, field] of [['contextWindow', 'contextWindowTokens'], ['maxTokens', 'maxOutputTokens']]) {
+                      if (model.overrideFields?.includes(key) && model[field] != null) override[key] = model[field]
+                    }
+                    if (model.capabilitiesOverride) {
+                      override.input = model.inputModalities || ['text']
+                      override.reasoningEfforts = model.reasoningEfforts || false
+                    }
+                    return [model.id, override]
+                  }).filter(([, override]) => Object.keys(override).length))
+                } else {
+                  delete profile.modelOverrides
+                  profile.models = models
+                }
+              } else {
+                profile.api = protocols[config.api_format]
+                profile.models = models
+                delete profile.modelOverrides
+              }
+              if (config.builtin || models.length) {
                 await this.mutate(ns, [{ op: 'set', path, value: profile }])
               } else {
                 // Keep incomplete provider setup editable without registering an unusable route.
@@ -286,39 +331,28 @@ window.__ModuleLoader__.load({
         })
       }
 
-      async deleteProvider(provider, preferredId) {
-        const ids = this.snapshot.configs.filter(config => config.provider === provider).map(config => config.id)
-        for (const id of ids) await this.deleteConfig(id)
-        return this.snapshot.configs.find(config => config.id === preferredId) || this.snapshot.configs[0]
-      }
-
       async discover(config) {
         const saved = this.snapshot.configs.find(item => item.id === config.id)
         const unchangedEndpoint = saved && saved.base_url === config.base_url && saved.api_format === config.api_format
-        if (config.api_format !== 'deepseek_messages' && !protocols[config.api_format]) throw new Error('该协议没有可读取的模型目录。')
+        if (!config.builtin && config.api_format !== 'deepseek_messages' && !protocols[config.api_format]) throw new Error('该协议没有可读取的模型目录。')
         const models = valueOf(await this.remote.eleckoiModels.discoverModels({
-          configId: config.id, baseURL: config.base_url,
-          api: config.api_format === 'deepseek_messages' ? 'deepseek_messages' : protocols[config.api_format],
+          configId: config.id, baseURL: config.base_url || '',
+          ...(config.builtin ? { builtinProvider: config.id } : {}),
+          api: config.api_format === 'deepseek_messages' ? 'deepseek_messages' : protocols[config.api_format] || 'catalog',
           ...(config.api_key?.trim() ? { apiKey: config.api_key.trim() } : {}),
           headers: config.custom_headers || {}
         }), '读取模型列表失败。')
-        return models.map(model => ({ ...(unchangedEndpoint ? saved.model_options?.find(item => item.id === model.id) : {}),
+        return models.map(model => {
+          const defaults = { id: model.id, name: model.name || model.id, contextWindowTokens: model.contextWindow, maxOutputTokens: model.maxTokens, inputModalities: model.inputModalities || ['text'], supportsImageInput: model.inputModalities?.includes('image') === true, reasoningEfforts: model.reasoningEfforts || false };
+          return ({ ...(unchangedEndpoint ? saved.model_options?.find(item => item.id === model.id) : {}),
           id: model.id, name: model.name || model.id,
           ...(model.contextWindow ? { contextWindowTokens: model.contextWindow } : {}),
           ...(model.maxTokens ? { maxOutputTokens: model.maxTokens } : {}),
-          ...(model.inputModalities ? { supportsImageInput: model.inputModalities.includes('image') } : {}),
+          ...(model.inputModalities ? { inputModalities: [...model.inputModalities], supportsImageInput: model.inputModalities.includes('image') } : {}),
           ...(model.reasoningEfforts === undefined ? {} : { reasoningEfforts: model.reasoningEfforts }),
           ...(model.reasoningEffort === undefined ? {} : { reasoningEffort: model.reasoningEffort }),
-          ...(config.model_options?.find(item => item.id === model.id) || {}) }))
-      }
-
-      async testConnection(config) {
-        return valueOf(await this.remote.eleckoiModels.testConnection({
-          configId: config.id, model: config.model, baseURL: config.base_url,
-          api: config.api_format === 'deepseek_messages' ? 'deepseek_messages' : protocols[config.api_format],
-          apiKey: config.api_key || undefined,
-          headers: config.custom_headers || {},
-        }), '工具调用测试失败。')
+          ...(config.model_options?.find(item => item.id === model.id) || {}),
+          ...(config.builtin ? { catalogDefaults: defaults } : {}) }) })
       }
 
       async refresh() {
@@ -329,12 +363,12 @@ window.__ModuleLoader__.load({
           if (!result?.ok) throw new Error(result?.error?.message || '读取 DSH 模型目录失败。')
           const configs = this.remote.settings ? await this.configuredCatalog(result.value) : this.configsFromCatalog(result.value)
           if (!this.disposed && generation === this.generation) {
-            this.publish({ status: 'ready', configs, error: '' })
+            this.publish({ status: 'ready', configs, providers: this.providers, error: '' })
           }
           return configs
         } catch (error) {
           if (!this.disposed && generation === this.generation) {
-            this.publish({ status: 'error', configs: this.snapshot.configs,
+            this.publish({ status: 'error', configs: this.snapshot.configs, providers: this.providers,
               error: error instanceof Error ? error.message : String(error) })
           }
           throw error
@@ -366,7 +400,7 @@ window.__ModuleLoader__.load({
       }, () => React.createElement(NavigationIcon)))
       ctx.effect(() => {
         catalog.start()
-        const stopReset = ctx.on('connection/reset', () => { void catalog.refresh().catch(() => {}) })
+        const stopReset = ctx.on('connection/reset', () => { catalog.builtinModels.clear(); void catalog.refresh().catch(() => {}) })
         return () => {
           stopReset()
           catalog.dispose()

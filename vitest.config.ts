@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import { authorVendorPlugin } from './scripts/vite-author-vendor-plugin'
 
 export default defineConfig({
@@ -18,6 +18,7 @@ export default defineConfig({
   },
   plugins: [authorVendorPlugin(resolve('.'))],
   test: {
+    exclude: [...configDefaults.exclude, 'build/**'],
     environment: 'node',
     server: {
       deps: { inline: ['@deepseek-ai/dsh-client-ui-primitives'] }

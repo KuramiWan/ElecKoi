@@ -19,7 +19,6 @@
 @import "../../../modules/persona/styles/character-profile.css";
 @import "../../../modules/persona/styles/character-editor.css";
 @import "../../../ui/styles/editor-sidebar.css";
-@import "../../../ui/styles/version-name-dialog.css";
 @import "../../../modules/settingLibraries/styles/setting-library.css";
 @import "../../../modules/settingLibraries/styles/dynamic-settings.css";
 @import "../../../modules/variables/styles/variable-config.css";
@@ -46,7 +45,6 @@
 @import "../../../ui/styles/app-toast.css";
 @import "../../../ui/styles/app-error-dialog.css";
 @import "../../../ui/styles/dsh-search-field.css";
-@import "../../../ui/styles/sidebar-create-button.css";
 @import "../../../ui/styles/group-assignment-menu.css";
 @import "../../../ui/styles/tuner-slider.css";
 @import "./responsive.css";

@@ -133,7 +133,7 @@ function PositionNameDialog({ draft, existing, onChange, onCancel, onSave }) {
       try { onSave(); } catch (cause) { setError(cause.message); inputRef.current?.focus(); }
     }}>
       <h3 id="position-dialog-title">{existing ? '重命名位置' : '新建位置'}</h3>
-      <label><span>名称</span><input ref={inputRef} value={draft.name} maxLength={60} placeholder="例如：世界状态" aria-invalid={error ? true : undefined} onChange={(event) => { onChange({ ...draft, name: event.target.value }); setError(''); }} /></label>
+      <label><span>名称</span><input ref={inputRef} value={draft.name} placeholder="例如：世界状态" aria-invalid={error ? true : undefined} onChange={(event) => { onChange({ ...draft, name: event.target.value }); setError(''); }} /></label>
       {error ? <p role="alert">{error}</p> : null}
       <footer><button type="button" className="setting-position-button" onClick={onCancel}>取消</button><button type="submit" className="setting-position-button is-primary">保存</button></footer>
     </form>

@@ -37,7 +37,7 @@ async function fixture() {
   const messages = new MessageRepository(database)
   const { conversation, metadata } = conversations.create({ metadata: { characterId: 'synthetic-character' } })
   const details = () => ({ conversation: conversations.get(conversation.id), metadata,
-    runtimeSessionId: conversation.id, messages: messages.list(conversation.id), hasMore: false, beforeSequence: null })
+    runtimeSessionId: conversation.id, messages: messages.listMetadata(conversation.id), hasMore: false, beforeSequence: null })
   const select = vi.fn((_id, entry) => { conversations.selectOpening(conversation.id, entry); return details() })
   const update = vi.fn((_id, content) => { conversations.updateOpening(conversation.id, content); return details() })
 

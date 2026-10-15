@@ -11,6 +11,8 @@ import { AgentPresetRepository } from '../packages/host/product-data/src/domain/
 import { MessageDisplayProjector } from '../packages/host/product-data/src/domain/conversations/MessageDisplayProjector'
 import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
 import { regexRuleCollectionSchema, type RegexRule } from '../packages/shared/src/contracts/regex/schemas'
+// @ts-expect-error Renderer editing helpers do not publish TypeScript declarations.
+import { moveRegexRuleToScope } from '../apps/web/src/modules/regex/model/regexRulesEditing.js'
 import {
   includeImportedRulesInActiveVersion,
   rulesForSurface,
@@ -18,6 +20,7 @@ import {
   transformWithRegexRules,
   validateRegexRule
 } from '../packages/shared/src/foundation/regex/RegexRuleProcessor'
+import { decorateRichDisplayReplacement, detectRichMessagePresentation } from '../packages/shared/src/foundation/richMessage'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []
@@ -69,6 +72,34 @@ function harness() {
 const EMPTY_PRESET_REGEX_REVISION = '0'.repeat(64)
 
 describe('regex processor', () => {
+  it('continues protecting standalone interactive fragments from later rules', () => {
+    const result = transformWithRegexRules('SOURCE', [
+      rule({ id: 'input', pattern: 'SOURCE', replacement: '<input id="synthetic-input" onclick="check(true || false)" />', order: 0 }),
+      rule({ id: 'later', pattern: '\\|[^|]*\\|', replacement: 'Synthetic corrupted code', order: 1 }),
+    ], 'AiOutput', { replacementDecorator: decorateRichDisplayReplacement, protectDecoratedReplacements: true })
+    expect(result).toContain('true || false')
+    expect(result).not.toContain('Synthetic corrupted code')
+  })
+  it.each(['fenced', 'raw'])('assembles a complete %s frontend before protecting its code from later display rules', kind => {
+    const rules = [
+      rule({ id: 'head', pattern: '<panel>', replacement: (kind === 'fenced' ? '```html\n' : '') + '<!doctype html><html><head></head><body>', order: 0 }),
+      rule({ id: 'body', pattern: 'INFO', replacement: '<section>Synthetic info<script>const flag=true || false;</script></section>', order: 1 }),
+      rule({ id: 'tail', pattern: '</panel>', replacement: '</body></html>' + (kind === 'fenced' ? '\n```' : ''), order: 2 }),
+      rule({ id: 'later', pattern: '\\|[^|]*\\|', replacement: 'Synthetic corrupted code', order: 3 }),
+    ]
+    const text = transformWithRegexRules('<panel>INFO</panel>', rules, 'AiOutput', {
+      replacementDecorator: decorateRichDisplayReplacement, protectDecoratedReplacements: true,
+    })
+    const presentation = detectRichMessagePresentation(text, false)!
+    expect(presentation.parts).toHaveLength(1)
+    const part = presentation.parts[0]!
+    expect(part.kind).toBe('rich')
+    if (part.kind !== 'rich') throw new Error('Expected one complete document')
+    expect(part.document.source).toContain('<!doctype html>')
+    expect(part.document.source).toContain('Synthetic info')
+    expect(part.document.source).toContain('true || false')
+    expect(part.document.source).not.toContain('Synthetic corrupted code')
+  })
   it('maps a text position through global replacements and restored rich documents', () => {
     const position = { offset: 'prefix [CARD] <FINAL>'.length }
     const content = 'prefix [CARD] <FINAL>Body</FINAL> tail'
@@ -79,6 +110,18 @@ describe('regex processor', () => {
       replacementDecorator: value => `<rich>${value}</rich>` })
     expect(transformed.slice(0, position.offset)).toBe('prefix <rich><section>Front panel</section></rich> ')
     expect(transformed.slice(position.offset)).toBe('<rich><article>Body</article></rich> tail')
+  })
+
+  it('keeps persisted scope switches when a rule-only save omits enablement fields', () => {
+    const { repository } = harness()
+    let current = repository.get('card-a')
+    current = repository.save('card-a', { ...current, globalEnabled: false, characterEnabled: false, agentPresetEnabled: false }, current.revision)
+    const { globalEnabled: _global, characterEnabled: _character, agentPresetEnabled: _preset, ...rulesOnly } = current
+    current = repository.save('card-a', { ...rulesOnly, characterRules: [rule()] }, current.revision)
+    expect([current.globalEnabled, current.characterEnabled, current.agentPresetEnabled]).toEqual([false, false, false])
+    const editor = repository.readEditor({ scope: 'character', ownerId: 'card-a' })
+    const { globalEnabled: _editorGlobal, characterEnabled: _editorCharacter, ...editorRulesOnly } = editor
+    expect(repository.saveEditor(editorRulesOnly)).toMatchObject({ globalEnabled: false, characterEnabled: false })
   })
 
   it('accepts extra configuration fields without persisting them', () => {
@@ -336,4 +379,93 @@ describe('regex repository', () => {
     const reopened = new RegexRuleRepository(database, agentPresets).get('card-a')
     expect(reopened.globalRules[1]).toEqual(imported.collection.globalRules[1])
   }, 20_000)
+})
+
+
+describe('regex editor ownership', () => {
+  it('persists scope switches independently, preserves individual states and skips disabled scopes on all surfaces after reopen', () => {
+    const { repository, agentPresets, database } = harness()
+    const preset = agentPresets.active()
+    const initial = repository.get('card-a')
+    repository.save('card-a', { ...initial, globalRules: [rule({ id: 'global', pattern: '/a/g', replacement: 'g', targets: ['AiOutput', 'Reasoning'] })],
+      agentPresetRules: [rule({ id: 'preset', pattern: '/g/g', replacement: 'p' })],
+      characterRules: [rule({ id: 'character', pattern: '/p/g', replacement: 'c' })] }, initial.revision)
+    expect(transformCollectionSurface('a', repository.get('card-a'), 'AiOutput', 'Display')).toBe('c')
+    const target = { scope: 'preset' as const, ownerId: preset.id }
+    repository.saveEditor({ ...repository.readEditor(target), globalEnabled: false, agentPresetEnabled: false })
+    expect(repository.readEditor({ scope: 'character', ownerId: 'card-a' }).globalEnabled).toBe(false)
+    const shared = repository.get('card-a')
+    expect(shared.characterEnabled).toBe(true)
+    expect(shared.globalRules[0]!.enabled).toBe(true)
+    expect(shared.agentPresetRules[0]!.enabled).toBe(true)
+    for (const surface of ['Display', 'Prompt', 'Stored'] as const) expect(transformCollectionSurface('a', shared, 'AiOutput', surface)).toBe('a')
+    expect(rulesForSurface(shared, 'Reasoning', 'Display')).toEqual([])
+    database.close(); database.open()
+    expect(repository.get('card-a').agentPresetEnabled).toBe(false)
+    repository.saveEditor({ ...repository.readEditor(target), globalEnabled: true, agentPresetEnabled: true })
+    expect(transformCollectionSurface('a', repository.get('card-a'), 'AiOutput', 'Display')).toBe('c')
+    const character = repository.readEditor({ scope: 'character', ownerId: 'card-a' })
+    repository.saveEditor({ ...character, characterEnabled: false })
+    expect(transformCollectionSurface('a', repository.get('card-a'), 'AiOutput', 'Display')).toBe('p')
+  }, 30_000)
+  it('moves scope membership in every enablement version and saves without losing inactive selections', () => {
+    const { repository, agentPresets } = harness(), target = { scope: 'preset' as const, ownerId: agentPresets.active().id }
+    const initial = repository.readEditor(target)
+    const saved = repository.saveEditor({ ...initial, globalRules: [rule({ id: 'synthetic-movable' })],
+      versions: ['synthetic-active', 'synthetic-inactive'].map(id => ({ id, name: id, globalEnabledIds: ['synthetic-movable'], agentPresetEnabledIds: [], characterEnabledIds: [] })), activeVersionId: 'synthetic-active' })
+    const moved = repository.saveEditor(moveRegexRuleToScope(saved, 'Global', 'AgentPreset', 'synthetic-movable'))
+    expect(moved.globalRules).toEqual([])
+    expect(moved.agentPresetRules[0]!.id).toBe('synthetic-movable')
+    expect(moved.versions.map(version => version.agentPresetEnabledIds)).toEqual([['synthetic-movable'], ['synthetic-movable']])
+    expect(moved.versions.map(version => version.globalEnabledIds)).toEqual([[], []])
+  })
+  it('reads and saves a selected inactive preset without changing the character or active preset', () => {
+    const { repository, agentPresets } = harness()
+    const active = agentPresets.active(), inactive = agentPresets.create('Synthetic inactive preset', '', 'roleplay')
+    repository.save('card-a', { ...repository.get('card-a'), characterRules: [rule({ id: 'synthetic-character-rule' })] }, 0)
+    const characterBefore = repository.get('card-a').characterRules
+    const target = { scope: 'preset' as const, ownerId: inactive.id }
+    const editor = repository.readEditor(target)
+    expect(editor.characterRules).toEqual([])
+    repository.saveEditor({ ...editor, globalRules: [rule({ id: 'synthetic-global-rule' })], agentPresetRules: [rule({ id: 'synthetic-inactive-rule' })] })
+    expect(agentPresets.get(inactive.id).regexRules.map(item => item.id)).toEqual(['synthetic-inactive-rule'])
+    expect(agentPresets.active().id).toBe(active.id)
+    expect(agentPresets.get(active.id).regexRules).toEqual(active.regexRules)
+    expect(repository.get('card-a').characterRules).toEqual(characterBefore)
+    expect(repository.readEditor({ scope: 'character', ownerId: 'card-a' }).globalRules.map(item => item.id)).toEqual(['synthetic-global-rule'])
+    expect(repository.readEditor({ scope: 'character', ownerId: 'card-a' }).agentPresetRules).toEqual([])
+  })
+
+  it('saves character edits after a preset switch and retains hidden version memberships', () => {
+    const { repository, agentPresets } = harness()
+    const initial = repository.get('card-a'), active = agentPresets.active()
+    repository.save('card-a', { ...initial, agentPresetRules: [rule({ id: 'synthetic-preset-rule' })], characterRules: [rule({ id: 'synthetic-character-rule' })],
+      versions: [{ id: 'synthetic-version', name: 'Synthetic version', globalEnabledIds: [], agentPresetEnabledIds: ['synthetic-preset-rule'], characterEnabledIds: ['synthetic-character-rule'] }], activeVersionId: 'synthetic-version' }, initial.revision)
+    const target = { scope: 'character' as const, ownerId: 'card-a' }, editor = repository.readEditor(target)
+    expect(editor.versions[0]!.agentPresetEnabledIds).toEqual([])
+    const other = agentPresets.create('Synthetic other preset', '', 'roleplay')
+    agentPresets.setActive(other.id)
+    repository.saveEditor({ ...editor, characterRules: editor.characterRules.map(item => ({ ...item, replacement: 'Synthetic changed' })) })
+    expect(agentPresets.get(active.id).regexRules[0]!.id).toBe('synthetic-preset-rule')
+    expect(repository.get('card-a').versions[0]!.agentPresetEnabledIds).toEqual(['synthetic-preset-rule'])
+    expect(repository.get('card-a').characterRules[0]!.replacement).toBe('Synthetic changed')
+  })
+
+  it('rejects stale shared or owner drafts atomically and blocks hidden writes, imports and exports', () => {
+    const { repository, agentPresets } = harness()
+    const characterTarget = { scope: 'character' as const, ownerId: 'card-a' }, presetTarget = { scope: 'preset' as const, ownerId: agentPresets.active().id }
+    const staleCharacter = repository.readEditor(characterTarget), presetDraft = repository.readEditor(presetTarget)
+    repository.saveEditor({ ...presetDraft, globalRules: [rule({ id: 'synthetic-global' })] })
+    expect(() => repository.saveEditor({ ...staleCharacter, characterRules: [rule({ id: 'synthetic-lost' })] })).toThrow('其他窗口更新')
+    expect(repository.readEditor(characterTarget).characterRules).toEqual([])
+    const stalePreset = repository.readEditor(presetTarget), preset = agentPresets.get(presetTarget.ownerId)
+    agentPresets.save({ ...preset, regexRules: [rule({ id: 'synthetic-direct-preset' })] }, preset.regexRules)
+    expect(() => repository.saveEditor(stalePreset)).toThrow('其他窗口更新')
+    const character = repository.readEditor(characterTarget)
+    expect(() => repository.saveEditor({ ...character, agentPresetRules: [rule()] })).toThrow('其他归属')
+    expect(() => repository.saveEditor({ ...character, activeVersionId: 'synthetic-missing-version' })).toThrow('启用版本不存在')
+    expect(() => repository.importEditor(character, 'Character', [{ displayName: 'synthetic.json', json: JSON.stringify([{ ...rule(), scope: 'AgentPreset' }]) }])).toThrow('其他归属')
+    expect(() => repository.exportEditor(characterTarget, ['synthetic-direct-preset'])).toThrow('本编辑器')
+    expect(repository.readEditor(characterTarget)).toEqual(character)
+  })
 })

@@ -22,6 +22,7 @@ import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteData
 import type { CharacterRepository } from '@product-data/domain/personas'
 import type { LocalMediaStore } from '@product-data/storage/media/LocalMediaStore'
 import { ScriptLibraryRepository } from '@product-data/domain/scripts'
+import { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
 import { agentPresetExists } from '@product-data/domain/agentPresets'
 import { characterExists } from '@product-data/domain/personas'
 import {
@@ -36,7 +37,9 @@ import {
   encodeSettingLibrarySnapshot,
   encodeVariableConfigSnapshot
 } from './portableSnapshots'
-import { isPng, writePngText } from '@product-data/storage/media/PngTextChunkCodec'
+import { isPng, removePngText, writePngText } from '@product-data/storage/media/PngTextChunkCodec'
+
+const CARD_PAYLOAD_KEYWORDS = new Set(['eleckoi-card', 'chara', 'ccv3'])
 
 interface PreparedItem {
   id: string
@@ -56,7 +59,8 @@ export class CharacterTransferService {
     private readonly variables: VariableConfigRepository,
     private readonly regexRules: RegexRuleRepository,
     private readonly mediaAssets?: LocalMediaStore,
-    private readonly scripts = new ScriptLibraryRepository(store, { character: characterExists, preset: agentPresetExists })
+    private readonly scripts = new ScriptLibraryRepository(store, { character: characterExists, preset: agentPresetExists }),
+    private readonly displayTemplates = new DisplayTemplateRepository(store, { character: characterExists, preset: agentPresetExists })
   ) {}
 
   export(characterId: string, format: CharacterExportFormat): CharacterExportResult {
@@ -74,7 +78,6 @@ export class CharacterTransferService {
     const packageData = {
       character: {
         name: string(character.name, string(persona.assistant_name, '未命名角色')),
-        group: string(character.group, string(character.groupName)),
         frontendBeautyEnabled: boolean(character.frontendBeautyEnabled),
         profileAge: string(character.profileAge),
         profileSex: string(character.profileSex),
@@ -87,6 +90,7 @@ export class CharacterTransferService {
       },
       assets,
       scriptLibrary: this.scripts.portable('character', characterId),
+      displayTemplates: this.displayTemplates.portable('character', characterId),
       settingLibraryJson: encodeSettingLibrarySnapshot(this.settingLibraries.get(characterId)),
       variableConfigJson: encodeVariableConfigSnapshot(this.variables.get(characterId)),
       regexRules: this.regexRules.get(characterId).characterRules
@@ -207,6 +211,7 @@ export class CharacterTransferService {
       this.scripts.transaction((db) => {
         this.characters.createInTransaction(this.characterRecord(characterId, decoded), db)
         if (scripts) this.scripts.importInTransaction('character', characterId, scripts, db)
+        if (decoded.packageData.displayTemplates) this.displayTemplates.import('character', characterId, decoded.packageData.displayTemplates)
         const library = this.importedLibrary(characterId, decoded)
         const variables = this.importedVariables(characterId, decoded)
         if (variables) this.variables.restoreInTransaction(characterId, variables, db)
@@ -241,7 +246,7 @@ export class CharacterTransferService {
       id: characterId,
       name: source.name,
       avatar: circle,
-      group: source.group.trim(),
+      group: '',
       folder: '',
       frontendBeautyEnabled: source.frontendBeautyEnabled,
       profileAge: source.profileAge,
@@ -280,12 +285,16 @@ export class CharacterTransferService {
   private portableAsset(key: string, reference: string): PortableAsset | undefined {
     if (!reference) return undefined
     const data = decodeImageDataUrl(reference)
-    if (data) return { key, mediaType: data.mediaType, bytes: data.bytes }
+    if (data) return { key, mediaType: data.mediaType, bytes: portableImageBytes(data.mediaType, data.bytes) }
     const path = this.mediaAssets?.pathForReference(reference)
     if (!path) return undefined
     const mediaType = mediaTypeFromExtension(extname(path))
-    return mediaType ? { key, mediaType, bytes: readFileSync(path) } : undefined
+    return mediaType ? { key, mediaType, bytes: portableImageBytes(mediaType, readFileSync(path)) } : undefined
   }
+}
+
+function portableImageBytes(mediaType: string, bytes: Uint8Array): Uint8Array {
+  return mediaType === 'image/png' ? removePngText(bytes, CARD_PAYLOAD_KEYWORDS) : bytes
 }
 
 function retargetLibrary(library: SettingLibrary, characterId: string): SettingLibrary {

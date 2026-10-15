@@ -137,6 +137,7 @@
 }
 
 .character-editor-workspace.is-basic-info,
+.character-editor-workspace.is-collection-editor,
 .character-editor-workspace.is-setting-library,
 .character-editor-workspace.is-variable-config,
 .character-editor-workspace.is-regex-rules,
@@ -512,7 +513,7 @@
     clip-path: inset(50%);
   }
 
-  .character-editor-workspace:not(.is-basic-info):not(.is-frontend) {
+  .character-editor-workspace:not(.is-basic-info):not(.is-frontend):not(.is-collection-editor) {
     padding: 24px;
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Code, Copy, FileText, LinkSimple, MagnifyingGlass, PencilSimple, Plus } from '../../../ui/icons/interfaceIcons.jsx';
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Code, Copy, FileText, LinkSimple, ListChecks, MagnifyingGlass, PencilSimple, Plus } from '../../../ui/icons/interfaceIcons.jsx';
 import { isHiddenToolTimelineEntry } from '@shared/contracts/presets/builtIns';
 import { TrashIcon } from '../../../ui/icons/index.jsx';
 import { DshFolderClosedIcon } from '../../../ui/icons/dshTreeIcons.jsx';
@@ -7,6 +8,8 @@ import { SETTING_LIBRARY_CREATE_ICONS } from '../../../ui/icons/settingLibraryCr
 import { EditorSidebarLayout } from '../../../ui/ui/EditorSidebarLayout.jsx';
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
+import { EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
+import { selectableTreeIds, selectedTreeRootIds, visibleTreeSelectionIds } from '../../../ui/ui/editorCollectionSelection.js';
 import {
   ConfirmationDialog,
   PINNED_ENTRY_IDS,
@@ -14,6 +17,7 @@ import {
   SettingLibraryTree,
   SettingTreeActionsContext,
   canTransferSettingNode,
+  copySettingNode,
   createEntryDraft,
   createGroupDraft,
   hasSearchResults,
@@ -45,6 +49,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState(null);
   const [pendingHiddenTimelineDisableId, setPendingHiddenTimelineDisableId] = useState('');
+  const [deleteBatch, setDeleteBatch] = useState(null);
   const nameInputRef = useRef(null);
   const context = usePresetContextMenu();
   const library = useMemo(() => ({
@@ -59,6 +64,8 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
     expandedGroupIds: preset.expandedGroupIds,
   }), [preset]);
   const nodes = useMemo(() => treeNodes(library), [library]);
+  const selectableIds = selectableTreeIds(nodes);
+  const multi = useEditorMultiSelect(selectableIds, preset.id);
   const searchHasResults = useMemo(() => hasSearchResults(library, query), [library, query]);
   const selectedValue = selected?.kind === 'group'
     ? preset.groups.find((group) => group.id === selected.id)
@@ -71,6 +78,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
     setEditing(false);
     setMoving(null);
     setQuery('');
+    setDeleteBatch(null);
     context.close();
   }, [preset.id]);
 
@@ -180,6 +188,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
   }
 
   function openTreeNodeContextMenu(event, data) {
+    if (multi.active) { event.preventDefault(); event.stopPropagation(); return; }
     if (compact) {
       event.preventDefault();
       event.stopPropagation();
@@ -200,6 +209,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
 
   function openTreeContextMenu(event) {
     setAddOpen(false);
+    if (multi.active) { event.preventDefault(); return; }
     if (compact) { event.preventDefault(); return; }
     context.open(event);
   }
@@ -216,6 +226,41 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
     else setSelected(null);
   }
 
+  function toggleMultiSelect() {
+    multi.toggle();
+    setSelected(null);
+    setEditing(false);
+    setMoving(null);
+    setAddOpen(false);
+    context.close();
+  }
+
+  function copySelected() {
+    const targets = selectedTreeRootIds(nodes, multi.selected).map(parseNodeKey);
+    const next = targets.reduce((current, target) => {
+      const value = target.kind === 'group' ? current.groups.find(item => item.id === target.id) : current.entries.find(item => item.id === target.id);
+      return copySettingNode(current, target, target.kind === 'group' ? value.parentId : value.groupId).library;
+    }, preset);
+    onChange(next);
+    multi.clear();
+  }
+
+  function confirmDeleteBatch() {
+    const removedGroups = new Set(), removedEntries = new Set();
+    for (const key of deleteBatch.ids) {
+      const target = parseNodeKey(key);
+      if (target.kind === 'group') descendantGroups(preset.groups, target.id).forEach(id => removedGroups.add(id));
+      else removedEntries.add(target.id);
+    }
+    onChange({ ...preset,
+      groups: preset.groups.filter(group => !removedGroups.has(group.id)),
+      entries: preset.entries.filter(entry => PINNED_ENTRY_IDS.has(entry.id) || !removedEntries.has(entry.id) && !removedGroups.has(entry.groupId)),
+      expandedGroupIds: preset.expandedGroupIds.filter(id => !removedGroups.has(id)),
+    });
+    multi.clear();
+    setDeleteBatch(null);
+  }
+
   const destinationId = selected?.kind === 'group' ? selected.id : selectedValue?.groupId || '';
   const canModify = Boolean(selectedValue) && !PINNED_ENTRY_IDS.has(selectedValue.id);
   function pasteMove() {
@@ -226,7 +271,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
     setMoving(null);
   }
 
-  const inspector = selectedValue && (!compact || editing) ? <SettingLibraryInspector
+  const inspector = !multi.active && selectedValue && (!compact || editing) ? <SettingLibraryInspector
     selected={{ kind: selected.kind, value: selectedValue }}
     library={library}
     allowCustomPromptPositions
@@ -241,8 +286,6 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
     onRequestDeleteOpening={() => {}}
     onPromptPositionsChange={(promptPositions, entries = preset.entries) => onChange({ ...preset, promptPositions, entries })}
   /> : null;
-  const Layout = compact ? EditorSidebarLayout : 'section';
-
   const menuTarget = context.menu?.target;
   const createTarget = menuTarget ? { kind: menuTarget.kind, id: menuTarget.value.id } : null;
   const pinnedMenuTarget = menuTarget?.kind === 'entry' && PINNED_ENTRY_IDS.has(menuTarget.value.id);
@@ -257,26 +300,32 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
   );
 
   return (
-    <Layout className="preset-prompt-editor setting-library-layout" aria-label="预设提示词" onMouseDown={() => setAddOpen(false)}
-      {...(compact ? { inspector, inspectorTitle: selected?.kind === 'group' ? '文件夹' : selectedValue?.title || '提示词', onCloseInspector: closeEditor } : {})}>
-      <div className="setting-library-browser">
-        <div className="setting-library-toolbar" onMouseDown={(event) => event.stopPropagation()}>
-          <label className="setting-library-search">
+    <EditorSidebarLayout className={`preset-prompt-editor setting-library-layout${multi.active ? ' is-multiselect' : ''}`} aria-label="预设提示词" onMouseDown={() => setAddOpen(false)}
+      inspector={inspector} inspectorTitle={selected?.kind === 'group' ? '文件夹' : selectedValue?.title || '提示词'} onCloseInspector={closeEditor}>
+      <div className="setting-library-browser editor-collection-browser">
+        <div className="setting-library-toolbar editor-collection-toolbar" onMouseDown={(event) => event.stopPropagation()}>
+          <label className="setting-library-search editor-collection-search">
             <MagnifyingGlass size={15} aria-hidden="true" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索提示词" aria-label="搜索提示词" />
           </label>
+          <div className="editor-collection-actions">
           {!compact && <div className="setting-library-add-wrap">
-            <button type="button" className="setting-library-create-button" aria-expanded={addOpen} onClick={() => setAddOpen((value) => !value)}><Plus size={16} />新建</button>
+            <button type="button" className="setting-library-create-button editor-collection-action" disabled={multi.active} aria-expanded={addOpen} onClick={() => setAddOpen((value) => !value)}><Plus size={16} />新建</button>
             {addOpen ? <div className="setting-library-popover" role="menu">
               <button type="button" role="menuitem" onClick={() => createNode('group')}><CreateFolderIcon size={16} />文件夹</button>
               <button type="button" role="menuitem" onClick={() => createNode('entry')}><CreateEntryIcon size={16} />提示词</button>
               <button type="button" role="menuitem" onClick={() => createNode('reference')}><CreateReferenceIcon size={16} />EJS引用设定</button>
             </div> : null}
           </div>}
+          <Button className="editor-collection-action" variant="outline" icon={<ListChecks size={16} />}
+            aria-label={multi.active ? '完成' : '多选'} aria-pressed={multi.active} onClick={toggleMultiSelect}>{multi.active ? '完成' : '多选'}</Button>
           {saveAction}
+          </div>
         </div>
+        <EditorSelectionBar selection={multi} visibleIds={visibleTreeSelectionIds(nodes, query)} onCopy={copySelected}
+          onDelete={() => setDeleteBatch({ ids: selectedTreeRootIds(nodes, multi.selected), title: `删除选中的 ${multi.selected.size} 项？`, message: '所选文件夹及其内容会在保存后删除。' })} />
         <div
-          className="preset-prompt-tree setting-library-tree"
+          className="preset-prompt-tree setting-library-tree editor-sidebar-directory"
           tabIndex={0}
           aria-label="预设提示词列表"
           onMouseDown={(event) => {
@@ -284,16 +333,17 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
           }}
           onContextMenu={openTreeContextMenu}
         >
-          <SettingTreeActionsContext.Provider value={{ openContextMenu: openTreeNodeContextMenu, updateEntryById: updateTreeEntry, openEditor: compact ? openEditor : undefined }}>
+          <SettingTreeActionsContext.Provider value={{ openContextMenu: openTreeNodeContextMenu, updateEntryById: updateTreeEntry, selection: multi, openEditor: compact && !multi.active ? openEditor : undefined }}>
             <SettingLibraryTree
               key={preset.id}
               nodes={nodes}
-              touchReorder={compact && !moving}
-              dragEnabled={!moving}
+              touchReorder={compact && !moving && !multi.active}
+              dragEnabled={!moving && !multi.active}
               query={query}
-              selectedId={selected ? nodeKey(selected.kind, selected.id) : ''}
+              selectedId={!multi.active && selected ? nodeKey(selected.kind, selected.id) : ''}
               expandedIds={preset.expandedGroupIds.map((id) => nodeKey('group', id))}
               onSelectedIdChange={(id) => {
+                if (multi.active) { if (selectableIds.includes(id)) multi.check(id, !multi.selected.has(id)); return; }
                 const next = parseNodeKey(id);
                 setSelected(next.id ? next : null);
                 setEditing(false);
@@ -306,7 +356,7 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
           {!query && !nodes.length ? <p className="setting-library-empty">还没有预设提示词</p> : null}
           {query && !searchHasResults ? <p className="setting-library-empty">没有匹配的提示词</p> : null}
         </div>
-        {compact && <MobileEditorActions label="提示词操作" selectionId={selected ? nodeKey(selected.kind, selected.id) : ''}
+        {compact && !multi.active && <MobileEditorActions label="提示词操作" selectionId={selected ? nodeKey(selected.kind, selected.id) : ''}
           canEdit={Boolean(selectedValue)} canModify={canModify} clipboard={moving}
           canPaste={Boolean(moving && canTransferSettingNode(preset, moving.target, destinationId))}
           onEdit={() => openEditor()} onMove={() => { setMoving({ target: selected }); setSelected(null); }}
@@ -323,15 +373,15 @@ export function PresetPromptEditor({ preset, onChange, saveAction }) {
           ] : []} />}
       </div>
 
-      {!compact && inspector}
       {context.menu ? <PresetContextMenu menu={context.menu} actions={menuActions} onClose={context.close} /> : null}
+      <ConfirmationDialog target={deleteBatch} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteBatch(null)} onConfirm={confirmDeleteBatch} />
       <ConfirmationDialog
         target={pendingHiddenTimelineDisableId ? HIDDEN_TIMELINE_DISABLE_CONFIRMATION : null}
         confirmLabel="仍要关闭"
         onCancel={() => setPendingHiddenTimelineDisableId('')}
         onConfirm={confirmHiddenTimelineDisable}
       />
-    </Layout>
+    </EditorSidebarLayout>
   );
 }
 

@@ -16,10 +16,20 @@ final class PlatformBrowser extends BrowserSurface {
     private final WebView web;
     private final Listener listener;
     private final String source;
+    private final WebViewChoicePrompts choicePrompts;
+    private boolean appearanceDark;
     private ScriptHandler documentScript;
     private volatile String currentUrl="";
     PlatformBrowser(Activity activity, String source, Bridge bridge, Listener listener) {
-        this.listener=listener; this.source=source; web=new WebView(activity);
+        this.listener=listener; web=new WebView(activity);
+        try(java.io.InputStream script=activity.getAssets().open("standard-choice-prompts.js")) {
+            this.source=source+"\n"+RuntimeInstaller.readText(script);
+        } catch(java.io.IOException error) { throw new IllegalStateException("Packaged choice UI is missing",error); }
+        choicePrompts=new WebViewChoicePrompts(activity,()->appearanceDark,(id,success,result)->{
+            try { command("emit",new JSONObject().put("event","eleckoi:platform-result")
+                .put("detail",new JSONObject().put("id",id).put("success",success).put("result",result)),null); }
+            catch(Exception error) { listener.failure("选择框返回失败："+error); }
+        });
         WebSettings settings=web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true); settings.setAllowFileAccess(false); settings.setAllowContentAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
@@ -27,7 +37,7 @@ final class PlatformBrowser extends BrowserSurface {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
         web.addJavascriptInterface(new Transport(bridge),"ElecKoiAndroidTransport");
         web.setWebViewClient(new WebViewClient() {
-            @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon) { currentUrl=url; }
+            @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon) { choicePrompts.dismiss(); currentUrl=url; }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if (!"eleckoi-media".equals(request.getUrl().getScheme())) return null;
                 Resource result=listener.media(request.getUrl(),request.getMethod(),request.getRequestHeaders());
@@ -38,7 +48,7 @@ final class PlatformBrowser extends BrowserSurface {
                 listener.external(request.getUrl().toString()); return true;
             }
             private void ready(String url) { if(listener.sameHost(url)) {
-                web.evaluateJavascript(source,null); listener.documentReady();
+                web.evaluateJavascript(PlatformBrowser.this.source,null); listener.documentReady();
             } }
             @Override public void onPageFinished(WebView view,String url) { ready(url); }
             @Override public void onPageCommitVisible(WebView view,String url) { ready(url); }
@@ -69,7 +79,10 @@ final class PlatformBrowser extends BrowserSurface {
         @JavascriptInterface public String invoke(String method,String arguments) {
             try {
                 if(!listener.sameHost(getUrl())) throw new SecurityException("Host page not active");
-                Object value=bridge.invoke(method,new JSONArray(arguments));
+                JSONArray input=new JSONArray(arguments);
+                Object value;
+                if("nativeChoice".equals(method)) { choicePrompts.handle(input.getString(0),input.getString(1),input.getJSONObject(2)); value=null; }
+                else value=bridge.invoke(method,input);
                 return new JSONObject().put("success",true).put("result",value==null?JSONObject.NULL:value).toString();
             } catch(Exception error) {
                 try { return new JSONObject().put("success",false).put("error",error.toString()).toString(); }
@@ -78,6 +91,7 @@ final class PlatformBrowser extends BrowserSurface {
         }
     }
     @Override android.view.View view() { return web; }
+    @Override void setAppearance(boolean dark,int color) { appearanceDark=dark; setBackgroundColor(color); }
     @Override String getUrl() { return currentUrl; }
     @Override String identity() { android.content.pm.PackageInfo info=WebView.getCurrentWebViewPackage(); return info==null?"unknown":info.packageName+" "+info.versionName; }
     @Override String userAgent() { return web.getSettings().getUserAgentString(); }
@@ -104,5 +118,5 @@ final class PlatformBrowser extends BrowserSurface {
     @Override void goBack() { web.goBack(); }
     @Override void onResume() { web.onResume(); }
     @Override void onPause() { web.onPause(); }
-    @Override void destroy() { if(documentScript!=null) documentScript.remove(); web.removeJavascriptInterface("ElecKoiAndroidTransport"); web.destroy(); }
+    @Override void destroy() { currentUrl=""; choicePrompts.dismiss(); if(documentScript!=null) documentScript.remove(); web.removeJavascriptInterface("ElecKoiAndroidTransport"); web.destroy(); }
 }

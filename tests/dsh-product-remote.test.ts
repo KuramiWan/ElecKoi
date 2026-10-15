@@ -14,9 +14,11 @@ import ElecKoiSystemApi, {
   ConversationChangeFeed,
   ProductRecordChangeFeed,
   type PersonaProfile,
+  type RegexRuleCollection,
   type SettingLibrary,
   type VariableConfig
 } from '@eleckoi/dsh-product-api'
+import type { RegexRuleEditorCollection } from '@eleckoi/dsh-product-api/types'
 import { TYPERT_REMOTE } from '@eleckoi/dsh-product-api/remote'
 import { TYPERT } from '@eleckoi/dsh-product-api/typert'
 import productDataPlugin from '@eleckoi/dsh-product-data'
@@ -643,7 +645,7 @@ describe('ElecKoi DSH Remote contract', () => {
       }) as string
       expect(JSON.parse(exportedArchive)).toMatchObject({
         format: 'eleckoi.desktop-chat-history',
-        version: 1,
+        version: 2,
         snapshot: { conversationId: createdConversation.conversation.id },
         sessionLogs: [{ header: { id: createdConversation.runtimeSessionId } }]
       })
@@ -895,6 +897,17 @@ describe('ElecKoi DSH Remote contract', () => {
         args: { characterId: 'character-1' }
       }) as SettingLibrary
       expect(settingLibrary.characterId).toBe('character-1')
+      const regexEditor = await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'readRegexEditor',
+        args: { target: { scope: 'character', ownerId: 'character-1' } } }) as RegexRuleEditorCollection
+      expect(regexEditor).toMatchObject({ globalEnabled: true, characterEnabled: true })
+      const disabledRegex = await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'saveRegexEditor',
+        args: { collection: { ...regexEditor, globalEnabled: false, characterEnabled: false } } }) as RegexRuleEditorCollection
+      expect(disabledRegex).toMatchObject({ globalEnabled: false, characterEnabled: false })
+      const runtimeRegex = await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'readRegexRules',
+        args: { characterId: 'character-1' } }) as RegexRuleCollection
+      expect(runtimeRegex).toMatchObject({ globalEnabled: false, characterEnabled: false })
+      await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'saveRegexEditor',
+        args: { collection: { ...disabledRegex, globalEnabled: true, characterEnabled: true } } })
       await ctx.typertGateway.invoke({
         namespace: 'eleckoiCharacterConfiguration',
         method: 'saveSettingLibrary',

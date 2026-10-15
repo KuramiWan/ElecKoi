@@ -13,9 +13,14 @@ declare module '@deepseek-ai/cordis' {
       frontendDirectory(): string
       updateTasks(action: 'inspect' | 'lock' | 'unlock'): Promise<boolean>
       onFailure(listener: (error: Error) => void): () => void
+      close(): Promise<void>
+      disableUserPlugins(): Promise<string | undefined>
     }
     electronWindows: ElectronWindowHost
     updates: UpdateService
+  }
+  interface Events {
+    'eleckoi/desktop-fatal'(error: Error): void
   }
 }
 

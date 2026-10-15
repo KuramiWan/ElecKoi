@@ -17,6 +17,13 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
     ? activeModelOption.reasoningEffort
     : "";
   const reasoningAvailable = modelCapabilities.reasoningEfforts.length > 0;
+  const inheritsCapabilities = form.builtin && form.useBuiltinModels !== false && activeModelOption?.capabilitiesOverride !== true;
+  const inputModalities = activeModelOption?.inputModalities || (activeModelOption?.supportsImageInput ? ['text', 'image'] : ['text']);
+
+  function toggleModality(modality, checked) {
+    const next = checked ? [...inputModalities.filter(item => item !== modality), modality] : inputModalities.filter(item => item !== modality);
+    onChange({ inputModalities: next, supportsImageInput: next.includes('image') });
+  }
 
   function updateReasoningEffort(value) {
     onChange({
@@ -57,7 +64,7 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
           <input type="number" min="1" max="4000000" disabled={!form.model} value={activeModelOption?.maxOutputTokens ?? ""} onChange={(event) => onChange({ maxOutputTokens: optionalNumber(event.target.value) })} placeholder="自动" />
         </label>
         <label>
-          <span>推理强度 <small>{compact ? '当前请求' : '当前请求 · DSH / pi-ai'}</small></span>
+          <span>推理强度 <small>当前请求</small></span>
           <select disabled={!form.model || !reasoningAvailable} value={selectedEffort} onChange={(event) => updateReasoningEffort(event.target.value)}>
             {options.map((effort) => <option key={effort.id} value={effort.id}>{compact && !effort.id ? '上游默认' : effort.label}</option>)}
           </select>
@@ -70,15 +77,25 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
           <span>Top P <small>{compact ? '留空不发送' : '0–1'}</small></span>
           <input type="number" min="0" max="1" step="0.01" disabled={!form.model} value={activeModelOption?.topP ?? ""} onChange={(event) => onChange({ topP: optionalNumber(event.target.value) })} placeholder={compact ? '留空' : '上游默认'} />
         </label>
-        <label className="model-capability-toggle">
-          <span>{compact ? '支持图片输入' : '图片输入'} {!compact && <small>声明当前模型接受图片</small>}</span>
-          <input type="checkbox" disabled={!form.model} checked={activeModelOption?.supportsImageInput === true} onChange={(event) => onChange({ supportsImageInput: event.target.checked })} />
-        </label>
+      </div>
+      <div className="model-capabilities">
+        <div className="model-capabilities-heading">
+          <span>模型能力声明</span>
+          {form.builtin && form.useBuiltinModels !== false && <label className="model-capability-toggle">
+            <input type="checkbox" disabled={!form.model} checked={inheritsCapabilities} onChange={event => onChange({ capabilitiesOverride: !event.target.checked })} />
+            <span>使用目录默认</span>
+          </label>}
+        </div>
+        <fieldset className="model-input-capabilities" aria-label="输入能力" disabled={!form.model || inheritsCapabilities}>
+          <div>
+            <label><input type="checkbox" checked={inputModalities.includes('text')} onChange={event => toggleModality('text', event.target.checked)} />文本</label>
+            <label><input type="checkbox" checked={inputModalities.includes('image')} onChange={event => toggleModality('image', event.target.checked)} />图片</label>
+          </div>
+        </fieldset>
         {showReasoningProfileEditor && modelCapabilities.canDeclareReasoning ? (
-          <fieldset className="model-reasoning-profile" disabled={!form.model}>
+          <fieldset className="model-reasoning-profile" disabled={!form.model || inheritsCapabilities}>
             <legend>
-              <span>接口支持档位</span>
-              <small>按当前模型实际能力声明</small>
+              <span>支持推理档位</span>
             </legend>
             <div className="model-reasoning-efforts">
               {reasoningEffortIds.map((effort) => {
@@ -101,6 +118,7 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
         ) : null}
       </div>
       {parameterError ? <p className="model-parameter-error">上下文需为 4,096–4,000,000；压缩不能超过上下文；输出需为 1–4,000,000；温度为 0–2，Top P 为 0–1；已声明推理能力时至少选择一个非关闭档位。</p> : null}
+      {activeModelOption?.inputModalities?.length === 0 && <p className="model-parameter-error">至少选择一种输入能力。</p>}
     </section>
   );
 }

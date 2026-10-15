@@ -135,7 +135,7 @@ export function MobilePresetEditor() {
   useMobileBack(() => { subpage.back(); return true; }, Boolean(subpage));
   return <EditorPresentationContext.Provider value={{ compact: true, registerSubpage, registerSaveFeedback }}>
     <div className="mobile-root-page mobile-preset-editor" data-editor-subpage={Boolean(subpage) || undefined}>
-      <PresetWorkspace renderEditorSection={view.renderPresetEditorSection} onNotify={view.chat.notify}
+      <PresetWorkspace characterConfiguration={view.characterConfiguration} renderEditorSection={view.renderPresetEditorSection} onNotify={view.chat.notify}
         renderHeader={({ tab, profileEditing, dirty, saving, error, active, onActivate, onSave }) => <>
           <MobileHeader title={subpage?.title || '预设'} back={subpage?.back || view.goBack}>
             {subpage?.actions}

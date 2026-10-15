@@ -1,4 +1,5 @@
 import { SystemBarOverlay } from '../ui/SystemBarOverlay.jsx';
+import { useRenderedDisplay } from '../../modules/displayTemplates/index.js';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faChevronLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
@@ -7,7 +8,7 @@ import { OfficialMarkdown } from "./OfficialMarkdown.jsx";
 import { Avatar } from "../ui/Avatar.jsx";
 import { AvatarPreviewDialog } from "./AvatarPreviewDialog.jsx";
 import { AgentHistoryIcon, AgentPencilIcon, AgentSpeakerIcon, CopyIcon, HistoryIcon, MessageChevronRightIcon, MessagePencilIcon, MoreDotsIcon, RefreshMessageIcon, SpeakerIcon } from "../icons/elecKoiMessageIcons.jsx";
-import { AgentProcessIcon } from "../../modules/chat/components/AgentProcessIcon.jsx";
+import { AgentProcessStatus } from "../../modules/chat/components/AgentProcessStatus.jsx";
 import { ChatImageGallery } from "./ChatImageGallery.jsx";
 import { generatedImageSegments } from './generatedImagePresentation.js';
 import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
@@ -95,6 +96,9 @@ function MessagePresentation({ message, content, streaming, renderMessageContent
 }
 
 function SettledRichPresentation({ message, presentation, renderMarkdown, fallback }) {
+  const generation = useMemo(() => ({ key: crypto.randomUUID(), presentation, messageId: message.id,
+    conversationId: message.conversationId, source: message.content }), [presentation, message.id, message.conversationId, message.content]);
+  const [committed, setCommitted] = useState(null);
   const [settled, setSettled] = useState({ presentation: null, parts: [] });
   const ready = settled.presentation === presentation
     && presentation.parts.filter(part => part.kind === 'rich').every(part => settled.parts.includes(part.id));
@@ -102,30 +106,32 @@ function SettledRichPresentation({ message, presentation, renderMarkdown, fallba
     const parts = previous.presentation === presentation ? previous.parts : [];
     return parts.includes(id) ? previous : { presentation, parts: [...parts, id] };
   });
-  let rootIndex = 0;
+  useLayoutEffect(() => { if (ready) setCommitted(generation); }, [ready, generation]);
+  const previous = !ready && committed && committed !== generation && committed.messageId === message.id
+    && committed.conversationId === message.conversationId && committed.source === message.content ? committed : null;
+  const layers = previous ? [previous, generation] : [generation];
   return <div style={{ position: 'relative' }}>
-    {!ready ? renderMarkdown(fallback, 'frontend-pending') : null}
-    <div className="rich-message-presentation rich-message-staging" aria-hidden={!ready}
-      style={ready ? undefined : { position: 'absolute', insetInline: 0, top: 0, visibility: 'hidden' }}>
-      {presentation.parts.map((part) => {
-    if (part.kind !== "rich") return renderMarkdown(part.source, part.id);
-    const currentRootIndex = rootIndex;
-    rootIndex += 1;
-    return <RichMessageFrame
-      key={part.id}
-      message={message}
-      document={part.document}
-      rootIndex={currentRootIndex}
-      onSettled={() => markSettled(part.id)}
-    />;
-  })}</div></div>;
+    {!ready && !previous ? renderMarkdown(fallback, 'frontend-pending') : null}
+    {layers.map(layer => {
+      let rootIndex = 0;
+      const visible = layer === previous || ready;
+      return <div key={layer.key} className="rich-message-presentation rich-message-staging" aria-hidden={!visible} inert={!visible}
+        style={visible ? undefined : { position: 'absolute', insetInline: 0, top: 0, visibility: 'hidden' }}>
+        {layer.presentation.parts.map(part => {
+          if (part.kind !== 'rich') return renderMarkdown(part.source, part.id);
+          return <RichMessageFrame key={part.id} message={message} document={part.document} rootIndex={rootIndex++}
+            onSettled={layer === generation ? () => markSettled(part.id) : undefined} />;
+        })}
+      </div>;
+    })}</div>;
 }
 
-function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onRegenerateImage, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {
+function MessageBubbleComponent({ message = {}, displayTemplates, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onRegenerateImage, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {
   const { role, content, pending = false } = message;
-  const displayContent = message.displayContent ?? content;
+  const renderedDisplay = useRenderedDisplay(message, message.displayContent ?? content ?? '', displayTemplates);
+  const displayContent = renderedDisplay.content;
   const isUser = role === "user";
-  const editableContent = !isUser && message.generatedImageAttachments?.length ? displayContent : content;
+  const editableContent = !isUser && message.generatedImageAttachments?.length ? message.displayContent ?? content : content;
   const roleplayTimestamp = layoutMode === "roleplay" && showRoleplayTimestamp
     ? formatMessageTimestamp(message.created_at ?? message.createdAt)
     : "";
@@ -336,11 +342,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
           }}
           autoFocus={typeof document === "undefined" || document.documentElement.dataset.eleckoiMobile !== "true"}
           aria-label="编辑消息"
-        /><div><button type="button" onClick={() => { setDraft(editableContent || ''); setEditing(false); }}>取消</button><button type="button" className="primary" onClick={saveEdit}>保存</button></div></div> : liveProcess ? <button type="button" className="agent-process-inline" onClick={openProcess} aria-label={`查看处理过程：${liveProcess.title}`}>
-          <AgentProcessIcon name={liveProcess.icon} size={liveProcess.icon === 'reasoning' ? 27 : 17} animated={liveProcess.icon === 'reasoning'} />
-          <span className="agent-process-inline-label">{liveProcess.title}</span>
-          <MessageChevronRightIcon size={14} />
-        </button> : displayContent ? <div ref={markdownRef} className="bubble markdown-message">
+        /><div><button type="button" onClick={() => { setDraft(editableContent || ''); setEditing(false); }}>取消</button><button type="button" className="primary" onClick={saveEdit}>保存</button></div></div> : liveProcess ? <AgentProcessStatus presentation={liveProcess} onClick={openProcess} /> : displayContent ? <div ref={markdownRef} className="bubble markdown-message">
           {!isUser && message.generatedImageAttachments?.length ? generatedImageSegments(markdownTonePresentation.markdown, message.generatedImageAttachments, pending).map((segment, index) => segment.type === 'images'
             ? <ChatImageGallery key={`images-${index}`} images={segment.images} conversationId={message.conversationId} agentMessage={layoutMode === 'agent'} loadImage={loadImage} onRegenerateImage={onRegenerateImage} />
             : <MessagePresentation key={`text-${index}`} message={message} content={segment.content} streaming={pending} renderMessageContent={renderMessageContent} />) : <MessagePresentation
@@ -351,6 +353,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
           />}
         </div> : null}
         {!isUser && !pending && !displayContent && !editing ? <ChatImageGallery images={message.generatedImageAttachments || []} conversationId={message.conversationId} agentMessage={layoutMode === "agent"} loadImage={loadImage} onRegenerateImage={onRegenerateImage} /> : null}
+        {renderedDisplay.error ? <pre className="script-execution-error" role="alert">{renderedDisplay.error}</pre> : null}
         {pluginAfter}
         {layoutMode === "agent" && isUser && !pending && !editing ? <div className="agent-user-actions" aria-label="用户消息操作">
           <button type="button" onClick={() => navigator.clipboard?.writeText(displayContent || "")} aria-label="复制" title="复制" disabled={!displayContent}><CopyIcon /></button>

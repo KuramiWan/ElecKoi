@@ -21,7 +21,6 @@ export function DynamicSettingsNameDialog({ dialog, busy, onCancel, onConfirm })
           <input
             ref={inputRef}
             value={value}
-            maxLength={dialog.maxLength || 60}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") onCancel();

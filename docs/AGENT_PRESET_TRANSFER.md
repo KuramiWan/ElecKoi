@@ -97,3 +97,7 @@ Desktop 与 Android 使用共享 Host 的同一编码器与产品数据服务，
 4. 解包所有 PNG，确认只有一个 `eleckoi_agent_preset` 文本块。
 5. 对同一预设的 JSON 与 PNG 解包结果做字节比较，必须完全一致。
 6. 搜索导出文件，确认不存在聊天背景、会话运行状态、本机模型配置 ID 以及任何第三方兼容字段。
+
+## EJS显示模板
+
+原生 JSON 与 PNG 数据携带 `ejs_display_templates: { enabled, templates }`。每个模板包含稳定 id、唯一 name、enabled、position、pattern、flags、source、delimiter、openDelimiter、closeDelimiter、rmWhitespace；position 为 before/after/replace/partial。导入校验字段、唯一名称和编号，保持引用及顺序，库保持停用，不携带源 ownerId 和 revision。库独立于设定版本。详见 [显示模板教程](plugins/ejs-display-templates.md)。

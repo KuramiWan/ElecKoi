@@ -1,8 +1,9 @@
 import { useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
-import { CaretRight, CaretUp, DotsThree, NotePencil, Plus } from '../../../ui/icons/interfaceIcons.jsx';
+import { CaretRight, CaretUp, NotePencil, Plus } from '../../../ui/icons/interfaceIcons.jsx';
 import { TrashIcon } from '../../../ui/icons/index.jsx';
 import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
 import { calendarDateValue, createTimelineDraft, createUsageDraft, introductionDraftPatch, isIntroductionDraftDirty, visibleTimelineRecords } from '../model/presetIntroductionDraft.js';
 import '../styles/preset-usage.css';
 
@@ -13,10 +14,10 @@ export function PresetContentComposer({ draft, formRef, saving, error, onChange,
   }}>
     <fieldset disabled={saving}>
       {timeline ? <div className="preset-content-composer-heading">
-        <input className="preset-content-composer-title" aria-label="更新标题" placeholder="更新标题" maxLength={80} value={draft.value.title} onChange={(event) => onChange({ ...draft.value, title: event.target.value })} />
-        <input className="preset-content-composer-date" aria-label="更新日期" type={!draft.value.dateLabel || calendarDateValue(draft.value.dateLabel) ? 'date' : 'text'} maxLength={24} value={calendarDateValue(draft.value.dateLabel) || draft.value.dateLabel} onChange={(event) => onChange({ ...draft.value, dateLabel: event.target.value })} />
+        <input className="preset-content-composer-title" aria-label="更新标题" placeholder="更新标题" value={draft.value.title} onChange={(event) => onChange({ ...draft.value, title: event.target.value })} />
+        <input className="preset-content-composer-date" aria-label="更新日期" type={!draft.value.dateLabel || calendarDateValue(draft.value.dateLabel) ? 'date' : 'text'} value={calendarDateValue(draft.value.dateLabel) || draft.value.dateLabel} onChange={(event) => onChange({ ...draft.value, dateLabel: event.target.value })} />
       </div> : null}
-      <textarea aria-label={timeline ? '更新内容' : '使用说明'} placeholder={timeline ? '写下这次更新…' : '写下使用说明…'} rows={4} maxLength={timeline ? 800 : 1000} value={timeline ? draft.value.note : draft.value} onChange={(event) => onChange(timeline ? { ...draft.value, note: event.target.value } : event.target.value)} />
+      <textarea aria-label={timeline ? '更新内容' : '使用说明'} placeholder={timeline ? '写下这次更新…' : '写下使用说明…'} rows={4} value={timeline ? draft.value.note : draft.value} onChange={(event) => onChange(timeline ? { ...draft.value, note: event.target.value } : event.target.value)} />
       <div className="preset-content-composer-footer">
         <span className="preset-content-error" role={error ? 'alert' : undefined}>{error}</span>
         <div className="preset-content-actions">
@@ -44,23 +45,6 @@ function ContentDialog({ title, children, onClose, busy }) {
   }}><h2 id={titleId}>{title}</h2>{children}</dialog>;
 }
 
-function RecordActions({ item, saving, onEdit, onDelete }) {
-  const ref = useRef(null);
-  const label = item.title || item.dateLabel || '更新记录';
-  function choose(action) { ref.current.open = false; action(); }
-  return <details ref={ref} className="preset-update-menu" name="preset-update-actions" onBlur={(event) => {
-    if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
-  }} onKeyDown={(event) => {
-    if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector('summary').focus(); }
-  }}>
-    <summary aria-label={`操作：${label}`} title="记录操作" aria-disabled={saving || undefined} tabIndex={saving ? -1 : 0} onClick={(event) => { if (saving) event.preventDefault(); }}><DotsThree size={22} weight="bold" /></summary>
-    <div className="preset-update-menu-items">
-      <button type="button" disabled={saving} onClick={() => choose(onEdit)}><NotePencil size={16} aria-hidden="true" /><span>编辑</span></button>
-      <button type="button" className="is-delete" disabled={saving} onClick={() => choose(onDelete)}><TrashIcon size={16} /><span>删除</span></button>
-    </div>
-  </details>;
-}
-
 export function PresetIntroductionEditor({ preset, editorRef, saving, error, onClearError, onSaveProfile }) {
   const { compact } = useEditorPresentation();
   const profile = preset.profile;
@@ -71,23 +55,13 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
   const [notice, setNotice] = useState('');
   const [expanded, setExpanded] = useState(false);
   const formRef = useRef(null);
-  const timelineRef = useRef(null);
+  const context = useEditorContextMenu();
   const timelineId = useId();
   const usageEditRef = useRef(null);
   const addRef = useRef(null);
   const busyRef = useRef(false);
   const dirty = isIntroductionDraftDirty(draft);
   const { records, hiddenCount } = visibleTimelineRecords(profile.timeline, expanded, Boolean(draft?.isNew));
-
-  useEffect(() => {
-    const closeMenus = (event) => {
-      timelineRef.current?.querySelectorAll('details[open]').forEach((menu) => {
-        if (!menu.contains(event.target)) menu.open = false;
-      });
-    };
-    document.addEventListener('pointerdown', closeMenus);
-    return () => document.removeEventListener('pointerdown', closeMenus);
-  }, []);
 
   function toggleEarlier() {
     if (saving || busyRef.current) return;
@@ -146,13 +120,16 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
     </section>
     <section className="preset-content-section preset-updates" aria-label="更新记录">
       <div className="preset-content-section-heading"><h2>更新记录</h2><button ref={addRef} type="button" className="preset-content-button is-section-action" disabled={saving || Boolean(draft?.isNew)} onClick={() => openDraft(createTimelineDraft())}><Plus size={15} />添加更新</button></div>
-      <ol ref={timelineRef} id={timelineId} className="preset-update-list" aria-label="更新时间线，最新记录在前">
+      <ol id={timelineId} className="preset-update-list" aria-label="更新时间线，最新记录在前">
         {draft?.kind === 'timeline' && draft.isNew ? <li className="preset-update-step is-editing"><i className="preset-update-node" aria-hidden="true" />{composer}</li> : null}
         {records.map((item, index) => <li className={`preset-update-step${index === 0 ? ' is-latest' : ''}${draft?.kind === 'timeline' && draft.value.id === item.id ? ' is-editing' : ''}`} key={item.id}>
         <i className="preset-update-node" aria-hidden="true" />
-        {draft?.kind === 'timeline' && !draft.isNew && draft.value.id === item.id ? composer : <article className="preset-update-record">
+        {draft?.kind === 'timeline' && !draft.isNew && draft.value.id === item.id ? composer : <article className="preset-update-record" tabIndex={0}
+          aria-label={`更新记录：${item.title || item.dateLabel || '未命名更新'}`}
+          onContextMenu={event => context.open(event, item)} onKeyDown={event => {
+            if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') context.open(event, item);
+          }}>
           <div className="preset-update-record-heading"><h3>{item.title}</h3>{item.dateLabel ? <span className="preset-update-record-date">{item.dateLabel}</span> : null}
-            <RecordActions item={item} saving={saving} onEdit={() => openDraft(createTimelineDraft(item))} onDelete={() => requestLeave(() => { onClearError(); setDeleting(item); })} />
           </div>
           {item.note ? <p>{item.note}</p> : null}
         </article>}
@@ -160,6 +137,10 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
       {hiddenCount > 0 || expanded && profile.timeline.length > (draft?.isNew ? 2 : 3) ? <button type="button" className={`preset-updates-expand${expanded ? ' is-expanded' : ''}`} aria-expanded={expanded} aria-controls={timelineId} disabled={saving} onClick={toggleEarlier}><span>{expanded ? '收起更早记录' : `展开更早 ${hiddenCount} 条记录`}</span>{expanded ? <CaretUp size={17} /> : <CaretRight size={17} />}</button> : null}
       {!profile.timeline.length && !draft?.isNew ? <div className="preset-updates-empty">暂无更新记录</div> : null}
     </section>
+    {context.menu && <EditorContextMenu menu={context.menu} label="更新记录操作" onClose={context.close} actions={[
+      { label: '编辑', icon: NotePencil, disabled: saving, run: () => openDraft(createTimelineDraft(context.menu.target)) },
+      { label: '删除', icon: TrashIcon, danger: true, disabled: saving, run: () => requestLeave(() => { onClearError(); setDeleting(context.menu.target); }) },
+    ]} />}
     {!draft && error && !deleting ? <p className="preset-content-error" role="alert">{error}</p> : null}
     {(!compact || notice !== '已保存') && <span className="preset-content-sr-only" role="status">{notice}</span>}
     <UnsavedChangesDialog

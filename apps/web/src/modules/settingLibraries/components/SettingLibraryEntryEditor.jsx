@@ -189,7 +189,7 @@ function BasicSection({ entry, nameInputRef, onChange }) {
     <div className="setting-library-entry-section">
       <label className="setting-library-field-card setting-library-title-field">
         <span>条目标题</span>
-        <input ref={nameInputRef} value={entry.title} maxLength={60} placeholder="条目标题/待命名" onChange={(event) => onChange({ ...entry, title: event.target.value })} />
+        <input ref={nameInputRef} value={entry.title} placeholder="条目标题/待命名" onChange={(event) => onChange({ ...entry, title: event.target.value })} />
       </label>
       <section className="setting-library-field-card">
         <div className="setting-library-field-heading"><strong>条目图标</strong><span>可选</span></div>
@@ -269,7 +269,7 @@ function TriggerSection({ entry, onChange }) {
           {entry.agentReadStrategy === "normal" && entry.contentMode === "plain_text" ? (
             <label className="setting-library-field-card setting-library-text-field">
               <span>注释（AI 读目录时靠它判断）</span>
-              <textarea value={entry.agentSelectionHint} maxLength={200} placeholder="写给 AI 看的一句话" onChange={(event) => onChange({ ...entry, agentSelectionHint: event.target.value })} />
+              <textarea value={entry.agentSelectionHint} placeholder="写给 AI 看的一句话" onChange={(event) => onChange({ ...entry, agentSelectionHint: event.target.value })} />
             </label>
           ) : null}
           {entry.agentReadStrategy !== "required" ? (

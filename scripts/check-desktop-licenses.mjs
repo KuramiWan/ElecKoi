@@ -47,3 +47,10 @@ if (notice.replaceAll('\r\n', '\n') !== expectedNotice) {
 }
 
 console.log('Desktop third-party license notice is current.')
+
+const ejsRoot = resolve(root, 'apps/web/node_modules/ejs')
+const ejsMetadata = JSON.parse(await readFile(resolve(ejsRoot, 'package.json'), 'utf8'))
+if (ejsMetadata.version !== '3.1.10' || ejsMetadata.license !== 'Apache-2.0') throw new Error('EJS 版本或许可证与锁定合同不一致')
+const ejsLicense = await readFile(resolve(ejsRoot, 'LICENSE'), 'utf8')
+const bundledEjsLicense = await readFile(resolve(root, 'apps/web/public/licenses/ejs/LICENSE.txt'), 'utf8')
+if (ejsLicense.replaceAll('\r\n', '\n') !== bundledEjsLicense.replaceAll('\r\n', '\n')) throw new Error('EJS 随网页分发的许可证缺失或已变更')

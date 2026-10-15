@@ -1,13 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
-import { ChevronRightIcon, DownloadIcon, PlugIcon, PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
-import { configVersionName } from "../model/modelProviderCatalog.js";
+import { ChevronRightIcon, DownloadIcon, PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
 
 const API_FORMATS = [
   { id: "responses", label: "Responses API" },
-  { id: "chat_completions", label: "Chat Completions" },
+  { id: "chat_completions", label: "Chat Completions API" },
   { id: "anthropic_messages", label: "Messages API" },
-  { id: "google_gemini", label: "Generate Content" },
+  { id: "google_gemini", label: "Generate Content API" },
 ];
 
 export function ModelBasicConfigSection({ editor, compact = false, renderModelPicker, renderManualModel }) {
@@ -20,23 +19,9 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
     form,
     activeProvider,
     isImageProvider,
-    versionPickerRef,
-    versionMenuOpen,
-    setVersionMenuOpen,
-    selectedVersionName,
-    providerVersionItems,
-    selectedConfigId,
-    selectConfigId,
-    createConfigPlaceholder,
-    willClearCurrentConfig,
-    confirmDeleteConfig,
-    setConfirmDeleteConfig,
-    canDeleteCurrent,
-    currentVersionConfig,
-    setDeleteTargetConfig,
-    deleteTargetVersionName,
-    deleting,
-    deleteCurrentConfig,
+    isPersisted,
+    providerIdError,
+    onDelete,
     modelPickerRef,
     manualModelRef,
     modelMenuOpen,
@@ -52,15 +37,11 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
     manualModelName,
     setManualModelName,
     addManualModel,
-    connectionTest,
-    testingConnection,
-    testConnection,
     updateField,
     onRevealApiKey,
     onCredentialError,
   } = editor;
   const isDedicatedDeepSeek = activeProvider.id === "deepseek";
-  const PickerField = compact ? "div" : "label";
 
   useEffect(() => {
     revealGeneration.current += 1;
@@ -68,7 +49,7 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
     setSavedApiKey("");
     setReadingApiKey(false);
     return () => { revealGeneration.current += 1; };
-  }, [form.id, form.credentialRef, form.credentialConfigured, selectedConfigId, activeProvider.id]);
+  }, [form.id, form.credentialRef, form.credentialConfigured, activeProvider.id]);
 
   async function toggleApiKey() {
     if (showApiKey) {
@@ -99,65 +80,21 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
           <span>配置名称</span>
           <input value={form.name || ""} onChange={(event) => updateField("name", event.target.value)} placeholder="待命名" />
         </label>;
-  const versionField = !isImageProvider ? <label>
-            <span>配置版本</span>
-            <div className="model-version-picker" ref={versionPickerRef}>
-              <button className="model-split-select-value" type="button" onClick={() => setVersionMenuOpen((current) => !current)}>
-                {selectedVersionName}
-              </button>
-              <button className="model-split-select-arrow" type="button" title="展开配置版本" onClick={() => setVersionMenuOpen((current) => !current)}>
-                <ChevronRightIcon />
-              </button>
-              <div className={`model-version-menu ${versionMenuOpen ? "open" : ""}`}>
-                {providerVersionItems.length ? providerVersionItems.map((item) => (
-                  <button
-                    key={item.id}
-                    className={item.id === selectedConfigId ? "active" : ""}
-                    type="button"
-                    onClick={() => {
-                      setVersionMenuOpen(false);
-                      selectConfigId(item.id);
-                    }}
-                  >
-                    {configVersionName({ ...item, name: item.id === form.id ? form.name : item.name }, providerVersionItems)}
-                  </button>
-                )) : <div className="model-picker-empty">暂无配置</div>}
-              </div>
-            </div>
-          </label> : null;
-  const configActions = !isImageProvider ? <>
-          <button className="model-icon-button" type="button" title="新建配置" onClick={() => createConfigPlaceholder()}><PlusIcon />{compact && <span>新建</span>}</button>
-          <div className="model-delete-menu">
-            <button
-              className="model-icon-button danger"
-              type="button"
-              title={willClearCurrentConfig ? "清空当前配置" : "删除当前配置"}
-              aria-expanded={confirmDeleteConfig}
-              disabled={!canDeleteCurrent}
-              onClick={() => {
-                const nextOpen = !confirmDeleteConfig;
-                setDeleteTargetConfig(nextOpen ? currentVersionConfig : null);
-                setConfirmDeleteConfig(nextOpen);
-              }}
-            ><TrashIcon />{compact && <span>删除</span>}</button>
-            {confirmDeleteConfig ? (
-              <div className="model-delete-popover">
-                <strong>{willClearCurrentConfig ? "清空配置：" : "删除配置："}{deleteTargetVersionName}</strong>
-                <span>{willClearCurrentConfig ? "这是当前模型库的最后一个配置，会清空参数并还原成初始配置。" : "当前配置会从本地删除，其他模型配置不受影响。"}</span>
-                <div>
-                  <button type="button" onClick={() => { setConfirmDeleteConfig(false); setDeleteTargetConfig(null); }}>取消</button>
-                  <button type="button" className="danger" disabled={deleting} onClick={deleteCurrentConfig}>确认删除</button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </> : null;
+  const providerIdField = <label className="model-provider-id-field">
+    <span>Provider ID</span>
+    <input value={form.id || ''} readOnly={form.builtin || isPersisted} onChange={event => updateField('id', event.target.value)} placeholder="acme-gateway" />
+    {providerIdError && <small role="alert" className="model-parameter-error">Provider ID 必须唯一，使用小写字母、数字和连字符，并以小写字母开头。</small>}
+    {!form.builtin && <small>以小写字母开头的标识，在请求中唯一标识该提供商，并用于派生凭据名。</small>}
+  </label>;
+  const directoryToggle = !isImageProvider && form.builtin && !isDedicatedDeepSeek
+    ? <label className="model-directory-toggle"><input type="checkbox" checked={form.useBuiltinModels !== false} onChange={event => updateField("useBuiltinModels", event.target.checked)} />使用内置模型目录</label>
+    : null;
   const connectionFields = <>{!isImageProvider ? <div className="model-form-single-row">
         <label>
           <span>接口格式</span>
           <div className="model-api-format-control">
-            <select disabled={isDedicatedDeepSeek} value={form.api_format === "deepseek_messages" ? "anthropic_messages" : form.api_format || "responses"} onChange={(event) => updateField("api_format", event.target.value)}>
-              {(isDedicatedDeepSeek ? API_FORMATS.filter((format) => format.id === "anthropic_messages") : API_FORMATS)
+            <select disabled={isDedicatedDeepSeek || form.builtin} value={form.api_format === "deepseek_messages" ? "anthropic_messages" : form.api_format || "responses"} onChange={(event) => updateField("api_format", event.target.value)}>
+              {(form.builtin && !isDedicatedDeepSeek ? [{ id: "catalog", label: "提供商默认" }] : isDedicatedDeepSeek ? API_FORMATS.filter((format) => format.id === "anthropic_messages") : API_FORMATS)
                 .map((format) => <option key={format.id} value={format.id}>{format.label}</option>)}
             </select>
             <ChevronRightIcon />
@@ -167,7 +104,7 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
       <div className="model-form-single-row">
         <label>
           <span>API 地址</span>
-          <input value={form.base_url || ""} onChange={(event) => updateField("base_url", event.target.value)} placeholder={activeProvider.baseUrlPlaceholder} />
+          <input value={form.base_url || ""} onChange={(event) => updateField("base_url", event.target.value)} placeholder={form.builtin && !isDedicatedDeepSeek ? "提供商默认" : activeProvider.baseUrlPlaceholder} />
         </label>
       </div>
       <div className="model-form-single-row">
@@ -190,11 +127,11 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
           </label>
         </div>
       ) : <div className="model-form-single-row">
-        <PickerField className="model-picker-field">
+        <div className="model-picker-field" ref={compact ? undefined : manualModelRef}>
           {!compact && <span>模型列表</span>}
           <div className="model-picker-control">
             <div className="model-picker-shell" ref={modelPickerRef}>
-              <button className={`model-picker-value ${(form.model || "").trim() ? "" : "empty"}`} type="button" aria-label={compact ? `选择模型：${form.model || '未选择'}` : undefined} aria-expanded={modelMenuOpen} onClick={() => setModelMenuOpen((current) => !current)}>
+              <button className={`model-picker-value ${(form.model || "").trim() ? "" : "empty"}`} type="button" aria-label={`选择模型：${form.model || '未选择'}`} aria-expanded={modelMenuOpen} onClick={() => setModelMenuOpen((current) => !current)}>
                 {(form.model || "").trim() || activeProvider.modelPlaceholder}
               </button>
               <button type="button" title="展开模型列表" onClick={() => setModelMenuOpen((current) => !current)}><ChevronRightIcon /></button>
@@ -222,23 +159,36 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
                 )) : <div className="model-picker-empty">读取模型后会显示在这里</div>}
               </div>}
             </div>
-            {!compact && modelActions}
           </div>
-        </PickerField>
+          {!compact && <div className="model-list-actions">{modelActions}</div>}
+          {!compact && manualModelOpen && <div className="model-manual-add" id="model-manual-add-form">
+            <label htmlFor="model-manual-model-id">模型 ID</label>
+            <div className="model-manual-add-row">
+              <input id="model-manual-model-id" autoFocus value={manualModelName}
+                onChange={event => setManualModelName(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); addManualModel(); }
+                  if (event.key === 'Escape') setManualModelOpen(false);
+                }} placeholder="填写提供商实际模型 ID" aria-label="模型名" />
+              <button type="button" onClick={addManualModel}>添加</button>
+              <button type="button" onClick={() => setManualModelOpen(false)}>取消</button>
+            </div>
+          </div>}
+        </div>
       </div>;
-  const manualModelControl = <div className="model-manual-add-anchor" ref={manualModelRef}>
-            {!compact &&
+  const manualModelControl = <div className="model-manual-add-anchor" ref={compact ? manualModelRef : undefined}>
               <button
                 className="model-add-button"
                 type="button"
                 aria-expanded={manualModelOpen}
-                aria-controls="model-manual-add-popover"
+                aria-controls={compact ? undefined : 'model-manual-add-form'}
+                aria-haspopup={compact ? 'dialog' : undefined}
                 onClick={() => {
                   setModelMenuOpen(false);
                   setManualModelOpen((current) => !current);
                 }}
-              ><PlusIcon /><span>添加模型</span></button>}
-              {renderManualModel ? renderManualModel(editor) : manualModelOpen ? (
+              ><PlusIcon /><span>添加模型</span></button>
+              {compact && (renderManualModel ? renderManualModel(editor) : manualModelOpen ? (
                 <div className="model-manual-add" id="model-manual-add-popover">
                   <input
                     autoFocus
@@ -256,21 +206,17 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
                     <button type="button" onClick={addManualModel}>添加并使用</button>
                   </div>
                 </div>
-              ) : null}
+              ) : null)}
             </div>;
   const modelActions = <>{manualModelControl}
             <button className="model-fetch-button" type="button" onClick={fetchModels} disabled={loadingModels}>
               <DownloadIcon /><span>{loadingModels ? "读取中" : "读取模型"}</span>
             </button>
-            <button className={`model-test-button ${connectionTest.status === "success" ? "success" : ""}`} type="button" onClick={testConnection} disabled={testingConnection}>
-              {testingConnection ? <span className="model-test-spinner" aria-hidden="true" /> : connectionTest.status === "success" ? <span className="model-test-check" aria-hidden="true" /> : <PlugIcon size={17} />}
-              <span>{testingConnection ? "测试中" : connectionTest.status === "success" ? "成功" : "测试连接"}</span>
-            </button>
           </>;
   if (compact) return <>
     <section className="mobile-model-section">
-      <div className="mobile-model-section-heading"><h3>配置</h3><div className="mobile-model-section-actions">{configActions}</div></div>
-      <div className="mobile-model-field-group mobile-model-configuration">{versionField}{nameField}</div>
+      <div className="mobile-model-section-heading"><h3>配置</h3><button className="model-icon-button danger" type="button" aria-label="删除配置" onClick={onDelete}><TrashIcon /></button></div>
+      <div className="mobile-model-field-group mobile-model-configuration">{nameField}{providerIdField}</div>
     </section>
     <section className="mobile-model-section">
       <div className="mobile-model-section-heading"><h3>连接</h3></div>
@@ -278,18 +224,19 @@ export function ModelBasicConfigSection({ editor, compact = false, renderModelPi
     </section>
     <section className="mobile-model-section">
       <div className="mobile-model-section-heading"><h3>模型</h3></div>
-      <div className="mobile-model-field-group mobile-model-selection">{renderModelField()}</div>
+      <div className="mobile-model-field-group mobile-model-selection">{directoryToggle}{renderModelField()}</div>
       {!isImageProvider && <div className="mobile-model-connection-actions">{modelActions}</div>}
     </section>
   </>;
   return (
     <section className="model-form-section">
       <h3>基础配置</h3>
-      <div className={`model-form-row model-name-version-row${isImageProvider ? " is-image" : ""}`}>
+      <div className={`model-form-row model-name-provider-row${isImageProvider ? " is-image" : ""}`}>
         {nameField}
-        {!isImageProvider && <div className="model-version-control">{versionField}{configActions}</div>}
+        {providerIdField}
       </div>
       {connectionFields}
+      {directoryToggle}
       {renderModelField()}
     </section>
   );

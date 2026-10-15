@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React, { act } from 'react';
+import { withLibraryVersions } from './helpers/editorLibraryVersions.js';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 import { ScriptLibrariesPanel } from '../apps/web/src/modules/scripts/components/ScriptLibrariesPanel.jsx';
@@ -34,22 +35,26 @@ describe('native script library status display', () => {
       read: async (scope, ownerId) => { expect(ownerId).toBe(owners[scope]); return structuredClone(libraries[scope]); },
       subscribe: () => () => {}, subscribeChanges: () => () => {}, saveAll: vi.fn(), openDirectory: vi.fn(async () => {}),
     };
+    withLibraryVersions(services, 'scripts');
     const node = document.createElement('div'); document.body.append(node); const root = createRoot(node);
     try {
       await act(async () => root.render(<ScriptLibrariesPanel characterId="synthetic-character" scriptLibraries={services} scriptRuntimeConnection={connection} />));
       const group = scope => node.querySelector(`[aria-label="${{ global: '全局脚本', character: '角色脚本', preset: '预设脚本' }[scope]}"]`);
-      for (const [scope, label] of Object.entries({ global: '全局脚本', character: '角色脚本', preset: '预设脚本' })) {
-        await act(async () => node.querySelector(`[aria-label="打开${label}目录"]`).click());
+      await act(() => [...node.querySelectorAll('button')].find(button => button.textContent === '管理').click());
+      for (const scope of ['global', 'character']) {
+        await act(() => { const select = document.querySelector('.editor-management-fields select'); select.value = scope; select.dispatchEvent(new Event('change', { bubbles: true })); });
+        await act(async () => [...document.querySelectorAll('.editor-management-modal button')].find(button => button.textContent === '打开源码目录').click());
         expect(services.openDirectory).toHaveBeenLastCalledWith(scope, owners[scope]);
       }
       expect(services.saveAll).not.toHaveBeenCalled();
       services.openDirectory.mockRejectedValueOnce(new Error('Synthetic directory open failure'));
-      await act(async () => node.querySelector('[aria-label="打开角色脚本目录"]').click());
+      await act(async () => [...document.querySelectorAll('.editor-management-modal button')].find(button => button.textContent === '打开源码目录').click());
+      await act(() => document.querySelector('.editor-management-modal [aria-label="关闭"]').click());
       expect(node.textContent).toContain('Synthetic directory open failure');
       expect(services.saveAll).not.toHaveBeenCalled();
       expect(group('global').querySelector('.script-state').textContent).toBe('运行错误');
       expect(group('character').querySelector('.script-state').textContent).toBe('运行中');
-      expect(group('preset').querySelector('.script-state').textContent).toBe('未启动');
+      expect(group('preset')).toBeNull();
       await act(async () => group('global').querySelector('.script-list-name').click());
       expect(node.querySelector('.script-inspector [role=alert]').textContent).toBe('Synthetic global startup error');
       await act(async () => group('character').querySelector('.script-list-name').click());
@@ -63,10 +68,10 @@ describe('native script library status display', () => {
 });
 
 describe('script library editing commands', () => {
-  async function mount(compact = false) {
+  async function mount(compact = false, treesByScope = {}) {
     const libraries = Object.fromEntries(['global', 'character', 'preset'].map(scope => [scope, {
       scope, ownerId: scope === 'global' ? '' : `synthetic-${scope}`, enabled: true, revision: 1, variables: {},
-      trees: [{ ...createScriptItem('script', 'synthetic-script'), name: `Synthetic ${scope} script` }],
+      trees: treesByScope[scope] || [{ ...createScriptItem('script', 'synthetic-script'), name: `Synthetic ${scope} script` }],
     }]));
     const service = {
       activePreset: async () => ({ id: 'synthetic-preset', name: 'Synthetic preset' }),
@@ -74,6 +79,7 @@ describe('script library editing commands', () => {
       saveAll: vi.fn(async values => values.map(library => ({ ...library, revision: library.revision + 1 }))),
       openDirectory: vi.fn(),
     };
+    withLibraryVersions(service, 'scripts');
     const node = document.createElement('div'); document.body.append(node); const root = createRoot(node);
     await act(async () => root.render(<EditorPresentationContext.Provider value={{ compact }}>
       <ScriptLibrariesPanel characterId="synthetic-character" scriptLibraries={service} />
@@ -85,15 +91,15 @@ describe('script library editing commands', () => {
     return { node, service, row, menu, rightClick, action, async close() { await act(() => root.unmount()); node.remove(); } };
   }
 
-  it('uses the shared toolbar-offset inspector and removes folder creation and assignment controls', async () => {
+  it('uses the shared toolbar-offset inspector with script classification folders', async () => {
     const page = await mount();
     try {
       expect(page.node.querySelector('[aria-label*="新建"][aria-label*="文件夹"], [aria-label*="新建"][aria-label*="分组"]')).toBeNull();
-      await page.rightClick('character'); await page.action('编辑');
+      await page.rightClick('character'); await page.action('重命名');
       const pane = page.node.querySelector('.editor-sidebar-pane');
       expect(pane.classList.contains('is-overlay')).toBe(true);
-      expect(page.node.querySelector('.script-toolbar').closest('.editor-sidebar-pane')).toBeNull();
-      expect(page.node.querySelector('.script-inspector select')).toBeNull();
+      expect(page.node.querySelector('.editor-collection-toolbar').closest('.editor-sidebar-pane')).toBeNull();
+      expect(page.node.querySelector('.script-inspector select')).toBeTruthy();
       expect(page.node.querySelector('.script-inspector input').value).toBe('Synthetic character script');
     } finally { await page.close(); }
   });
@@ -125,17 +131,73 @@ describe('script library editing commands', () => {
     const page = await mount(true);
     try {
       await page.rightClick('character');
-      expect(document.activeElement.textContent).toBe('编辑');
+      expect(document.activeElement.textContent).toBe('重命名');
       await act(() => page.menu().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
       expect(document.activeElement.textContent).toBe('复制');
       await act(() => page.menu().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
       expect(page.menu()).toBeNull();
       expect(document.activeElement).toBe(page.row('character').querySelector('button'));
-      await page.rightClick('character'); await page.action('编辑');
+      await page.rightClick('character'); await page.action('重命名');
       expect(page.node.querySelector('.editor-page-list').hidden).toBe(true);
       expect(page.node.querySelector('.editor-page-feedback .setting-library-save-button')).toBeTruthy();
       await act(() => page.node.querySelector('[aria-label="关闭编辑器"]').click());
       expect(page.node.querySelector('.editor-page-list').hidden).toBe(false);
+    } finally { await page.close(); }
+  });
+
+  async function dragEvent(node, type, dataTransfer, clientY = 40) {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, { dataTransfer: { value: dataTransfer }, clientY: { value: clientY } });
+    await act(() => node.dispatchEvent(event));
+  }
+  async function dragTo(page, sourceId, targetId, progress = .5, scope = '角色脚本') {
+    const group = page.node.querySelector(`[aria-label="${scope}"]`);
+    const source = group.querySelector(`[data-script-id="${sourceId}"] .script-list-name`);
+    const target = group.querySelector(`[data-script-id="${targetId}"]`);
+    const rect = vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({ top: 20, height: 40 });
+    const transfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+    try {
+      await dragEvent(source, 'dragstart', transfer);
+      await dragEvent(target, 'dragover', transfer, 20 + 40 * progress);
+      await dragEvent(target, 'drop', transfer);
+      await dragEvent(source, 'dragend', transfer);
+    } finally { rect.mockRestore(); }
+  }
+  it('drags into folders, changes sibling order, returns to the root and saves the final tree without changing source', async () => {
+    const first = { ...createScriptItem('script', 'first'), name: '合成脚本一', content: 'export default () => "first";' };
+    const second = { ...createScriptItem('script', 'second'), name: '合成脚本二' };
+    const folder = createScriptItem('folder', 'folder'), other = { ...createScriptItem('folder', 'other'), scripts: [second] };
+    const page = await mount(false, { character: [first, folder, other] });
+    try {
+      await dragTo(page, first.id, folder.id);
+      expect(page.node.querySelector('[aria-label="角色脚本"] .script-folder [data-script-id="first"]').classList.contains('is-nested')).toBe(true);
+      await dragTo(page, first.id, other.id);
+      await dragTo(page, first.id, second.id, .1);
+      expect([...page.node.querySelector('[aria-label="角色脚本"] .script-folder:last-child').querySelectorAll('[data-script-id]')].map(row => row.dataset.scriptId)).toEqual(['other', 'first', 'second']);
+      await dragTo(page, first.id, folder.id, .1);
+      await dragTo(page, other.id, folder.id, .1);
+      await act(async () => page.node.querySelector('.setting-library-save-button').click());
+      expect(page.service.saveAll).toHaveBeenCalledWith([expect.objectContaining({ scope: 'character', trees: [first, other, folder] })]);
+    } finally { await page.close(); }
+  });
+  it('rejects cross-scope and folder-nesting drops and disables sorting in a filtered or multi-selected list', async () => {
+    const folder = { ...createScriptItem('folder', 'folder'), scripts: [createScriptItem('script', 'nested')] };
+    const page = await mount(false, { character: [createScriptItem('script', 'synthetic-script'), folder] });
+    try {
+      const transfer = { setData: vi.fn() };
+      const source = page.row('global').querySelector('.script-list-name');
+      await dragEvent(source, 'dragstart', transfer);
+      await dragEvent(page.row('character'), 'dragover', transfer);
+      await dragEvent(page.row('character'), 'drop', transfer);
+      await dragTo(page, folder.id, 'nested');
+      expect(page.node.querySelector('.setting-library-save-button').disabled).toBe(true);
+      const input = page.node.querySelector('input[aria-label="搜索脚本"]');
+      await act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Synthetic'); input.dispatchEvent(new Event('input', { bubbles: true })); });
+      expect(page.node.querySelector('.script-list-name').draggable).toBe(false);
+      await act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ''); input.dispatchEvent(new Event('input', { bubbles: true })); });
+      await act(() => page.node.querySelector('[aria-label="多选"]').click());
+      expect(page.node.querySelector('.script-list-name').draggable).toBe(false);
+      expect(page.service.saveAll).not.toHaveBeenCalled();
     } finally { await page.close(); }
   });
 });

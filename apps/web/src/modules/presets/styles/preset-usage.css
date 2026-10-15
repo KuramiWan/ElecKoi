@@ -51,20 +51,6 @@
 .preset-update-record p { margin: 4px 0 0; color: var(--preset-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .preset-updates-empty { display: grid; min-height: 112px; place-items: center; padding: 16px; color: var(--preset-secondary); text-align: center; }
 
-.preset-update-menu { position: relative; flex: none; }
-.preset-update-menu summary {
-  display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 8px;
-  color: var(--preset-secondary); cursor: pointer; list-style: none;
-}
-.preset-update-menu summary::-webkit-details-marker { display: none; }
-.preset-update-menu summary[aria-disabled] { opacity: .45; cursor: default; }
-.preset-update-menu-items {
-  position: absolute; z-index: 10; top: calc(100% + 4px); right: 0; display: grid; gap: 2px; min-width: 100px; padding: 5px;
-  border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-raised); box-shadow: 0 8px 24px var(--shadow-color);
-}
-.preset-update-menu-items button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-height: 34px; padding: 6px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-.preset-update-menu-items button > svg { flex: 0 0 16px; width: 16px; height: 16px; }
-.preset-update-menu-items .is-delete { color: #c93737; }
 
 .preset-updates-expand {
   position: relative; isolation: isolate; display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -105,7 +91,7 @@
 .preset-content-button.is-primary { background: var(--blue); color: var(--on-accent); font-weight: 600; }
 .preset-content-button.is-danger { background: #c93737; color: #fff; }
 .preset-content-button:disabled { opacity: .5; cursor: default; }
-.preset-usage-content button:focus-visible, .preset-update-menu summary:focus-visible, .preset-content-dialog button:focus-visible,
+.preset-usage-content button:focus-visible, .preset-update-record:focus-visible, .preset-content-dialog button:focus-visible,
 .preset-content-composer input:focus-visible, .preset-content-composer textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .preset-content-dialog {
   box-sizing: border-box; width: min(400px, calc(100vw - 48px)); padding: 24px; border: 1px solid var(--line-strong);
@@ -118,8 +104,6 @@
 .preset-content-dialog .preset-content-actions { margin-top: 24px; }
 .preset-content-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (hover: hover) and (pointer: fine) {
-  .preset-update-menu summary:hover:not([aria-disabled]), .preset-update-menu-items button:hover:not(:disabled) { background: var(--active); color: var(--text); }
-  .preset-update-menu-items .is-delete:hover:not(:disabled) { color: #c93737; }
   .preset-content-button:hover:not(:disabled) { background: var(--control-bg-hover); }
   .preset-content-button.is-primary:hover:not(:disabled) { background: var(--blue-hover); }
   .preset-content-button.is-danger:hover:not(:disabled) { background: #ae2929; }

@@ -1,4 +1,4 @@
-import { DEFAULT_CHAT_DISPLAY_PREFERENCES, DEFAULT_CHAT_TEXT_COLORS } from '@shared/contracts/settings/schemas';
+import { DEFAULT_CHAT_DISPLAY_PREFERENCES, DEFAULT_CHAT_TEXT_COLORS, RICH_MESSAGE_FLOOR_RANGE } from '@shared/contracts/settings/schemas';
 import { resolveChatDisplayProfile } from '../../appearance/index.js';
 
 export const chatLayouts = [
@@ -20,6 +20,10 @@ export const textColorOptions = [
   { key: 'underline', label: '下划线文本' },
   { key: 'quote', label: '引号内文本' },
 ];
+export const richMessageFloorTuner = {
+  ...RICH_MESSAGE_FLOOR_RANGE, label: '自动运行楼层数', step: 1, precision: 0, suffix: '楼',
+};
+export const richMessageLimitDescription = '按最近的 AI 消息计数，更早的富消息点击加载，最多额外运行一个旧楼层。重新加载可能重置卡片内部状态。';
 export const chatDisplayTuners = {
   avatar_size: { label: '头像大小', min: 24, max: 96, step: 0.5, precision: 1 },
   name_font_size: { label: '名字大小', min: 10, max: 18, step: 0.5, precision: 1 },

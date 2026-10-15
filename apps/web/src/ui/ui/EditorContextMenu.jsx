@@ -51,7 +51,7 @@ export function EditorContextMenu({ menu, actions, onClose, label = '编辑操�
       }
       if (event.key === 'Escape' || event.key === 'Tab') {
         event.preventDefault(); event.stopPropagation(); onClose();
-        const trigger = menu.trigger.matches('button') ? menu.trigger : menu.trigger.querySelector('button');
+        const trigger = menu.trigger.matches('button, [tabindex]') ? menu.trigger : menu.trigger.querySelector('button');
         trigger?.focus();
       }
     }}>

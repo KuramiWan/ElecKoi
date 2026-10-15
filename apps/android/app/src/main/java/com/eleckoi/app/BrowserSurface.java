@@ -18,6 +18,7 @@ abstract class BrowserSurface {
         void external(String url);
         void failure(String message);
         void console(String level, String message, String source, int line);
+        default void diagnostic(JSONObject event) { }
         void documentReady();
         void chooseFiles(String[] types, boolean multiple, boolean save, String name, Consumer<Uri[]> completion);
         void download(String url, String disposition, String mime, InputStream body);
@@ -43,6 +44,7 @@ abstract class BrowserSurface {
     abstract void onPause();
     abstract void destroy();
     void setBackgroundColor(int color) { view().setBackgroundColor(color); }
+    void setAppearance(boolean dark, int color) { setBackgroundColor(color); }
     static JSONObject payload(String key, Object value) {
         try { return new JSONObject().put(key,value); } catch(Exception error) { throw new IllegalArgumentException(error); }
     }

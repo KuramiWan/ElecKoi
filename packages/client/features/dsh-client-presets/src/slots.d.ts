@@ -61,6 +61,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'root'
       owner: PresetEditorOwner
     }
+    'eleckoi.preset.editor.scripts': {
+      kind: 'chain'
+      scope: 'root'
+      owner: PresetEditorOwner
+    }
+    'eleckoi.preset.editor.displayTemplates': {
+      kind: 'chain'
+      scope: 'root'
+      owner: PresetEditorOwner
+    }
     'eleckoi.preset.manager': {
       kind: 'chain'
       scope: 'root'

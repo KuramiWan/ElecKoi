@@ -55,7 +55,11 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 async function mount() {
-  const view = { route: { kind: 'preset-editor' }, routeBusy: false, chat: { notify: notification }, characterConfiguration: { regexRules: { test: vi.fn() } },
+  const view = { route: { kind: 'preset-editor' }, routeBusy: false, chat: { notify: notification }, characterConfiguration: { regexRules: { test: vi.fn(), editor: () => ({
+      getSnapshot: () => ({ status: 'ready', value: { target: { scope: 'preset', ownerId: preset.id }, ownerRevision: '0'.repeat(64), globalRules: [], agentPresetRules: structuredClone(preset.regexRules), characterRules: [], versions: [], activeVersionId: '', revision: 0 } }), subscribe: () => () => {},
+      read: async () => ({ target: { scope: 'preset', ownerId: preset.id }, ownerRevision: '0'.repeat(64), globalRules: [],
+        agentPresetRules: structuredClone(preset.regexRules), characterRules: [], versions: [], activeVersionId: '', revision: 0 }),
+      save: vi.fn(async value => value) }) } },
     registerBackHandler(handler) { handlers.push(handler); return () => handlers.splice(handlers.indexOf(handler), 1); }, goBack() {}, guardRef };
   function EditorRoute() {
     const { setSelectedPresetId } = usePresets();
@@ -231,7 +235,7 @@ describe('Android preset presentation', () => {
     await back();
     expect(document.querySelector('.mobile-preset-tool-config')).toBeNull();
     expect(document.querySelector('.preset-tool-toggle').getAttribute('aria-checked')).toBe('false');
-    await click(tab('预设正则'));
+    await click(tab('正则'));
     await click(button('不保存'));
     await click(tab('工具'));
     expect(document.querySelector('.preset-tool-toggle').getAttribute('aria-checked')).toBe('true');
@@ -240,14 +244,14 @@ describe('Android preset presentation', () => {
 
   it('selects a regex, edits on its own page, and returns without losing the draft', async () => {
     await mount();
-    await click(tab('预设正则'));
-    await click(document.querySelector('.preset-regex-open'));
+    await click(tab('正则'));
+    await click(document.querySelector('.regex-rule-row'));
     expect(document.querySelector('.regex-inspector')).toBeNull();
     await click(button('编辑'));
     await change(document.querySelector('.regex-inspector input'), '合成规则修改');
     await back();
-    expect(document.querySelector('.preset-regex-open').textContent).toBe('合成规则修改');
-    expect(document.querySelector('.preset-regex-open').getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.regex-rule-row').textContent).toBe('合成规则修改');
+    expect(document.querySelector('.regex-rule-row').classList.contains('is-selected')).toBe(true);
     expect(model.save).not.toHaveBeenCalled();
   });
 

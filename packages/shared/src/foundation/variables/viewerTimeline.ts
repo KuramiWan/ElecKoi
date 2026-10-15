@@ -116,19 +116,28 @@ export function buildVariableViewerTimeline(
 
   for (const message of messages) {
     if (message.role !== 'assistant' || message.status === 'streaming') continue
+    const isOpening = message.id === 'opening'
+    if (!isOpening) numberedFloor += 1
+    if (message.variableSnapshotAvailable === false) {
+      floors.push({ id: message.id, label: isOpening ? '开场' : `第 ${numberedFloor} 楼`,
+        messagePreview: floorPreview(message.content), createdAt: message.createdAt,
+        state: { rawJson: '', root: null, errorMessage: '无历史状态', topLevelCount: 0, valueCount: 0 },
+        changedValueCount: 0, changedPaths: [] })
+      previous = { rawJson: '', root: null, errorMessage: '无历史状态', topLevelCount: 0, valueCount: 0 }
+      continue
+    }
     const rawAtFloor = message.variableStateJson.trim() ? message.variableStateJson : carriedRaw
     const stateAtFloor = parseVariableStateDocument(rawAtFloor)
-    const isOpening = message.id === 'opening'
-    const changedPaths = isOpening ? [] : changedVariablePaths(previous.root ?? undefined, stateAtFloor.root ?? undefined)
+    const comparable = previous.root !== null && stateAtFloor.root !== null
+    const changedPaths = isOpening || !comparable ? [] : changedVariablePaths(previous.root, stateAtFloor.root)
     if (message.variableStateJson.trim()) carriedRaw = message.variableStateJson
-    if (!isOpening) numberedFloor += 1
     floors.push({
       id: message.id,
       label: isOpening ? '开场' : `第 ${numberedFloor} 楼`,
       messagePreview: floorPreview(message.content),
       createdAt: message.createdAt,
       state: stateAtFloor,
-      changedValueCount: isOpening ? 0 : countVariableChanges(previous.root ?? undefined, stateAtFloor.root ?? undefined),
+      changedValueCount: isOpening || !comparable ? 0 : countVariableChanges(previous.root, stateAtFloor.root),
       changedPaths
     })
     previous = stateAtFloor

@@ -4,9 +4,10 @@ import { join } from 'node:path'
 import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
 import { SqliteDatabase } from '../packages/host/product-data/src/storage/sqlite/SqliteDatabase'
-import { commonSchemaSql } from '../packages/host/product-data/src/storage/sqlite/migrations/commonSchemaSql'
 import { AgentPresetRepository } from '../packages/host/product-data/src/domain/agentPresets'
 import { CURRENT_SCHEMA_VERSION } from '../packages/host/product-data/src/storage/sqlite/schemaVersion'
+import { schemaV10Sql } from './helpers/presetSchemaV10'
+import { DEFAULT_CREATOR_HISTORY_COMPACTION_CONTENT, HISTORY_COMPACTION_ENTRY_ID } from '../packages/shared/src/contracts/presets/builtIns'
 
 const stores: SqliteDatabase[] = []
 const directories: string[] = []
@@ -23,7 +24,8 @@ describe('preset purposes', () => {
     const original = repository.active()
     const creator = repository.active('creator')
     expect(creator.purpose).toBe('creator')
-    expect(creator.entries.map(item => item.kind)).toEqual(['normal'])
+    expect(creator.entries.map(item => item.kind)).toEqual(['history_compaction', 'normal'])
+    expect(creator.entries[0]).toMatchObject({ content: DEFAULT_CREATOR_HISTORY_COMPACTION_CONTENT, enabled: true, triggerMode: null, position: null })
     expect(creator.toolGroups.filter(item => item.included || item.enabled).map(item => item.id)).toEqual(['builtin:creator'])
     const roleGroup = repository.createGroup('合成分组').groups.find(item => item.purpose === 'roleplay')!
     const creationGroup = repository.createGroup('合成分组', 'creator').groups.find(item => item.purpose === 'creator')!
@@ -58,14 +60,33 @@ describe('preset purposes', () => {
     expect(() => repository.import(document, 'eleckoi', 'roleplay')).toThrow('用途与当前分类不同')
   })
 
+  it('fills the missing creator template in existing presets and saved versions while preserving edits', () => {
+    const { repository, store } = open()
+    const original = repository.active('creator')
+    const custom = repository.create('Synthetic custom creator', '', 'creator')
+    repository.save({ ...custom, entries: custom.entries.map(entry => entry.kind === 'history_compaction'
+      ? { ...entry, content: 'Synthetic custom summary.', enabled: false } : entry) })
+    store.native.prepare('DELETE FROM agent_preset_entries WHERE presetId = ? AND entryId = ?').run(original.id, HISTORY_COMPACTION_ENTRY_ID)
+    store.native.prepare('DELETE FROM agent_preset_version_entries WHERE presetId = ? AND entryId = ?').run(original.id, HISTORY_COMPACTION_ENTRY_ID)
+    store.close(); store.open()
+    const reopened = new AgentPresetRepository(store)
+    const restored = reopened.get(original.id)
+    expect(restored.entries.find(entry => entry.kind === 'history_compaction')?.content).toBe(DEFAULT_CREATOR_HISTORY_COMPACTION_CONTENT)
+    expect(restored.entries.find(entry => entry.kind === 'normal')).toEqual(original.entries.find(entry => entry.kind === 'normal'))
+    const version = store.native.prepare('SELECT payloadJson FROM agent_preset_version_entries WHERE presetId = ? AND versionId = ? AND entryId = ?')
+      .get(original.id, original.activeVersionId, HISTORY_COMPACTION_ENTRY_ID) as { payloadJson: string }
+    expect(JSON.parse(version.payloadJson).content).toBe(DEFAULT_CREATOR_HISTORY_COMPACTION_CONTENT)
+    expect(reopened.get(custom.id).entries.find(entry => entry.kind === 'history_compaction')).toMatchObject({ content: 'Synthetic custom summary.', enabled: false })
+    expect(store.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+    expect(store.native.pragma('foreign_key_check')).toEqual([])
+    expect(store.native.pragma('integrity_check', { simple: true })).toBe('ok')
+  }, 30_000)
+
   it('migrates the v10 global selection and preset relationships without changing identities', () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-preset-migration-')); directories.push(directory)
     const path = join(directory, 'test.sqlite3')
     const old = new Database(path)
-    const v10 = commonSchemaSql.replaceAll(", `purpose` TEXT NOT NULL DEFAULT 'roleplay'", '')
-      .replace('`purpose` TEXT NOT NULL, `activePresetId` TEXT NOT NULL, PRIMARY KEY(`purpose`)', '`singletonId` INTEGER NOT NULL, `activePresetId` TEXT NOT NULL, PRIMARY KEY(`singletonId`)')
-      .replace('PRAGMA user_version = 11', 'PRAGMA user_version = 10')
-    old.exec(v10)
+    old.exec(schemaV10Sql)
     old.prepare('INSERT INTO agent_preset_library_groups VALUES (?, ?, ?)').run('synthetic-group', '合成分组', 0)
     old.prepare('INSERT INTO agent_presets (id,name,modelFamily,libraryGroupId,sortIndex,expandedGroupIdsJson) VALUES (?,?,?,?,?,?)').run('synthetic-preset', '合成预设', 'general', 'synthetic-group', 0, '[]')
     old.prepare('INSERT INTO agent_preset_state VALUES (?,?)').run(1, 'synthetic-preset')

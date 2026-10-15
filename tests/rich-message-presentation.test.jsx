@@ -33,6 +33,26 @@ async function signal(frame, type, payload = {}) {
 }
 
 describe('settled rich message presentation', () => {
+  it('retains the committed document during a configuration replacement, then swaps without returning to raw text', async () => {
+    await render({ ...message, displayContent });
+    const previous = [...container.querySelectorAll('iframe')];
+    for (const frame of previous) { await signal(frame, 'eleckoi:frontend-ready'); await signal(frame, 'eleckoi:rich-height', { height: 80 }); }
+    const visible = container.querySelector('.rich-message-staging');
+    const nextContent = 'Narrative\n' + decorateRichDisplayReplacement('<section>Changed panel</section>');
+    await render({ ...message, displayContent: nextContent });
+    expect(visible.isConnected).toBe(true);
+    expect(visible.style.visibility).not.toBe('hidden');
+    expect(previous.every(frame => frame.isConnected)).toBe(true);
+    expect(container.textContent).not.toContain('[PANEL-A]');
+    const next = [...container.querySelectorAll('iframe')].find(frame => !previous.includes(frame));
+    expect(next.closest('.rich-message-staging').style.visibility).toBe('hidden');
+    await signal(next, 'eleckoi:frontend-ready');
+    expect(visible.isConnected).toBe(true);
+    await signal(next, 'eleckoi:rich-height', { height: 120 });
+    expect(visible.isConnected).toBe(false);
+    expect([...container.querySelectorAll('iframe')]).toEqual([next]);
+    expect(next.closest('.rich-message-staging').style.visibility).not.toBe('hidden');
+  });
   it('shows a frontend failure instead of waiting forever behind the previous text', async () => {
     await render({ ...message, displayContent });
     const frames = [...container.querySelectorAll('iframe')];

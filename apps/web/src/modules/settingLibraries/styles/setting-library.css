@@ -1574,6 +1574,11 @@
   box-shadow: none;
 }
 
+.immersive-markdown-body > textarea.is-code {
+  white-space: pre;
+  tab-size: 2;
+}
+
 html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   position: relative;
   z-index: 520;
@@ -1935,6 +1940,7 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
 
 .setting-library-manager-body {
   display: grid;
+  grid-auto-rows: max-content;
   min-width: 0;
   min-height: 0;
   align-content: start;
@@ -1949,6 +1955,17 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   background: color-mix(in srgb, var(--list) 58%, transparent);
   border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
   border-radius: 9px;
+}
+
+.setting-library-sources-body {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: stretch;
+}
+
+.setting-library-sources-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .setting-library-manager-card h3 {
@@ -2253,7 +2270,18 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   display: grid;
   width: 16px;
   height: 16px;
+  min-height: 16px;
   padding: 0;
+  place-items: center;
+  background: transparent;
+  border: 0;
+}
+
+.setting-library-tri-checkbox-mark {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
   place-items: center;
   color: #fff;
   background: var(--field-bg);
@@ -2261,9 +2289,20 @@ html.immersive-editor-open .qq-character-editor-window-shell .window-controls {
   border-radius: 4px;
 }
 
-.setting-library-tri-checkbox.is-checked {
+.setting-library-tri-checkbox.is-checked .setting-library-tri-checkbox-mark {
   background: var(--blue);
   border-color: var(--blue);
+}
+
+:root[data-eleckoi-mobile="true"] .editor-management-modal .setting-library-picker-row {
+  grid-template-columns: 44px 17px minmax(0, 1fr) auto;
+  min-height: 48px;
+}
+
+:root[data-eleckoi-mobile="true"] .editor-management-modal .setting-library-tri-checkbox {
+  width: 44px;
+  height: 48px;
+  min-height: 48px;
 }
 
 .setting-library-merge-button {

@@ -25,38 +25,38 @@ export const agentPresetModelFamilySchema = z.enum([
 ])
 
 export const agentPresetModelTagSchema = z.object({
-  id: z.string().min(1).max(40),
-  label: z.string().min(1).max(40),
-  providerId: z.string().max(80)
+  id: z.string().min(1),
+  label: z.string().min(1),
+  providerId: z.string()
 })
 
 export const agentPresetTimelineItemSchema = z.object({
   id: z.string().min(1),
-  title: z.string().max(80),
-  dateLabel: z.string().max(24),
-  note: z.string().max(800)
+  title: z.string(),
+  dateLabel: z.string(),
+  note: z.string()
 })
 
 export const agentPresetProfileSchema = z.object({
-  authorName: z.string().max(40),
+  authorName: z.string(),
   authorAvatarPath: z.string(),
-  usageInstructions: z.string().max(8_000),
-  timeline: z.array(agentPresetTimelineItemSchema).max(100)
+  usageInstructions: z.string(),
+  timeline: z.array(agentPresetTimelineItemSchema)
 })
 
 export const agentPresetLibraryGroupSchema = z.object({
   id: z.string().min(1),
   purpose: agentPresetPurposeSchema,
-  name: z.string().min(1).max(60),
+  name: z.string().min(1),
   sortIndex: z.number().int().nonnegative()
 })
 
 export const agentPresetSummarySchema = z.object({
   id: z.string().min(1),
   purpose: agentPresetPurposeSchema,
-  name: z.string().min(1).max(60),
+  name: z.string().min(1),
   modelFamily: agentPresetModelFamilySchema,
-  modelTags: z.array(agentPresetModelTagSchema).max(8),
+  modelTags: z.array(agentPresetModelTagSchema),
   libraryGroupId: z.string(),
   activeVersionId: z.string(),
   activeVersionNumber: z.number().int().positive(),
@@ -73,9 +73,9 @@ export const agentPresetCatalogSchema = z.object({
 export const agentPresetSchema = z.object({
   id: z.string().min(1),
   purpose: agentPresetPurposeSchema,
-  name: z.string().min(1).max(60),
+  name: z.string().min(1),
   modelFamily: agentPresetModelFamilySchema,
-  modelTags: z.array(agentPresetModelTagSchema).max(8),
+  modelTags: z.array(agentPresetModelTagSchema),
   libraryGroupId: z.string(),
   activeVersionId: z.string().min(1),
   activeVersionNumber: z.number().int().positive(),

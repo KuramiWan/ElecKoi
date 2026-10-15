@@ -24,11 +24,6 @@
   padding: 9px 10px;
 }
 
-.conversation-list .search-row {
-  grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 10px;
-}
-
 .conversation-character-picker {
   position: fixed;
   z-index: 1000;

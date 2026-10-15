@@ -9,11 +9,11 @@ import { commonTables } from '../packages/host/product-data/src/storage/sqlite/s
 import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../packages/host/product-data/src/storage/sqlite/installSchema'
 import { schemaV10Sql, restoreV10PresetFixture } from './helpers/presetSchemaV10'
 import { commonSchemaSql } from '../packages/host/product-data/src/storage/sqlite/migrations/commonSchemaSql'
+import { restoreLegacyConversationStorage } from './helpers/conversationStorageV11'
 import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
 import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
 import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
 import { PersonaRepository } from '../packages/host/product-data/src/domain/personas/PersonaRepository'
-import { resolveConversationSeed } from '../packages/host/product-data/src/domain/conversations/conversationSeed'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 import { SettingLibraryRepository } from '../packages/host/product-data/src/domain/settingLibraries/SettingLibraryRepository'
 import { emptyEntry } from '../packages/host/product-data/src/domain/settingLibraries/settingLibraryNormalization'
@@ -54,6 +54,36 @@ function card(id = 'card-a') {
 
 const unreleasedGenerationTableSql = 'CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )'
 
+describe('global display template schema migration', () => {
+  it('preserves v11 character data and adds shared display and version storage across reopen', () => {
+    const { path, database, characters } = harness()
+    characters.replaceAll({ active_character_id: 'synthetic-character', groups: [], items: [card('synthetic-character')] })
+    database.close()
+    const legacy = new Database(path)
+    restoreLegacyConversationStorage(legacy)
+    legacy.exec('DROP TABLE display_template_libraries; DROP TABLE editor_library_versions')
+    legacy.pragma('user_version = 11')
+    const before = legacy.prepare('SELECT * FROM characters').all()
+    legacy.close()
+    const upgraded = new SqliteDatabase(path)
+    upgraded.open()
+    try {
+      expect(upgraded.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+      expect(upgraded.native.prepare('SELECT * FROM characters').all()).toEqual(before)
+      expect(upgraded.native.prepare('SELECT * FROM display_template_libraries').all()).toEqual([])
+      expect(upgraded.native.prepare('SELECT * FROM editor_library_versions').all()).toEqual([])
+      upgraded.native.prepare('INSERT INTO display_template_libraries VALUES (?, ?, ?, ?, ?, ?, ?)').run('global', '', null, null, 0, 1, '[]')
+      expect(() => upgraded.native.prepare('INSERT INTO display_template_libraries VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run('global', 'synthetic-invalid-owner', null, null, 0, 0, '[]')).toThrow()
+      expect(upgraded.native.pragma('foreign_key_check')).toEqual([])
+      expect(upgraded.native.pragma('integrity_check', { simple: true })).toBe('ok')
+    } finally { upgraded.close() }
+    upgraded.open()
+    try { expect(upgraded.native.prepare('SELECT revision FROM display_template_libraries WHERE scope = ?').get('global')).toEqual({ revision: 1 }) }
+    finally { upgraded.close() }
+  }, 30_000)
+})
+
 describe('unreleased database baseline consolidation', () => {
   it.each([9, 10])('removes the unused table from development v%s and preserves product records across reopen', (version) => {
     const { path, database, conversations } = harness()
@@ -75,7 +105,7 @@ describe('unreleased database baseline consolidation', () => {
       expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(reopened.native.prepare('SELECT * FROM script_libraries').all()).toEqual([])
       expect(reopened.native.prepare("SELECT 1 FROM sqlite_master WHERE name='conversation_generation_results'").get()).toBeUndefined()
-      expect(productRecords(reopened.native)).toEqual(before)
+      expect(productRecords(reopened.native)).toEqual({ ...before, display_template_libraries: [], editor_library_versions: [], regex_libraries: [] })
       expect(new ConversationRepository(reopened).get(conversationId).title).toBe('合成迁移聊天')
       expect(JSON.parse(new VariableStateRepository(reopened, new VariableConfigRepository(reopened)).viewerStates(conversationId).currentStateJson)).toEqual({ score: 7 })
       expect(reopened.native.pragma('foreign_key_check')).toEqual([])
@@ -84,7 +114,7 @@ describe('unreleased database baseline consolidation', () => {
     reopened.open()
     try {
       expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(productRecords(reopened.native)).toEqual(before)
+      expect(productRecords(reopened.native)).toEqual({ ...before, display_template_libraries: [], editor_library_versions: [], regex_libraries: [] })
     } finally { reopened.close() }
   }, 30_000)
 
@@ -136,13 +166,15 @@ const schemaV7Sql = schemaV10Sql
 
 function productRecords(database: Database.Database) {
   // Script libraries have separate migration and data-retention assertions.
-  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('conversation_generation_results', 'script_libraries') ORDER BY name")
+  // Runtime-state retention has its own exact migration assertions.
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('conversation_generation_results', 'script_libraries', 'agent_setting_snapshots', 'conversation_state_snapshots') ORDER BY name")
     .all() as { name: string }[]
   return Object.fromEntries(tables.map(({ name }) => [name,
     (database.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[])
       .map((row) => Object.fromEntries(Object.entries(name === 'agent_preset_state' ? { singletonId: 1, activePresetId: row.activePresetId } : row)
         .filter(([key]) => (name !== 'chat_sessions' || key !== 'historyUserMessageCount')
           && (name !== 'agent_conversations' || key !== 'variableVersionId')
+          && (name !== 'agent_responses' || !['variableStateJson', 'storedRegexRulesJson'].includes(key))
           && (!['agent_presets', 'agent_preset_library_groups'].includes(name) || key !== 'purpose'))))
   ]))
 }
@@ -325,7 +357,7 @@ describe('shared SQLite baseline', () => {
         expect(database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
         expect((database.native.pragma('table_info(chat_sessions)') as { name: string }[]).map(column => column.name))
           .not.toContain('historyUserMessageCount')
-        expect(productRecords(database.native)).toEqual(expected!)
+        expect(productRecords(database.native)).toEqual({ ...expected!, display_template_libraries: [], editor_library_versions: [], regex_libraries: [] })
         expect(database.native.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='chat_sessions' ORDER BY name").all())
           .toEqual([
             { name: 'index_chat_sessions_characterId' },
@@ -541,12 +573,13 @@ describe('shared SQLite baseline', () => {
         .run('speaker', 'conversation', 'user', 'user', '用户', '')
       database.prepare('INSERT INTO agent_turns(id,conversationId,speakerId,kind,createdAt,variableStateJson) VALUES (?,?,?,?,?,?)')
         .run('turn', 'conversation', 'speaker', 'user', 'created', '{}')
+      database.prepare('INSERT INTO agent_branch_turns VALUES (?,?,?)').run('branch', 0, 'turn')
       database.prepare('INSERT INTO agent_responses(id,conversationId,turnId,responseIndex,speakerId,status,createdAt,variableStateJson,runtimeThreadId) VALUES (?,?,?,?,?,?,?,?,?)')
         .run('reply', 'conversation', 'turn', 0, 'speaker', 'completed', 'created', '{}', 'existing-session')
       database.prepare("INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex) VALUES (?,'response',?,0,'assistant_text',?,'',0)")
         .run('conversation', 'reply', '现有回复')
       database.prepare("INSERT INTO agent_content_parts(conversationId,ownerType,ownerId,partIndex,kind,text,payloadJson,chunkIndex) VALUES (?,'response',?,1,'setting_library_state','',?,0)")
-        .run('conversation', 'reply', '["state"]')
+        .run('conversation', 'reply', '[]')
 
       installSchema(database)
 
@@ -555,8 +588,8 @@ describe('shared SQLite baseline', () => {
         .toEqual({ runtimeThreadId: 'existing-session', dshTurn: null })
       expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_content_parts'").get())
         .toBeUndefined()
-      expect(database.prepare("SELECT stateJson FROM agent_setting_snapshots WHERE ownerType='response' AND ownerId='reply'").get())
-        .toEqual({ stateJson: '["state"]' })
+      expect(database.prepare("SELECT settingLibraryStateJson FROM conversation_state_snapshots WHERE boundaryType='reply' AND boundaryId='reply'").get())
+        .toBeUndefined()
       expect(database.pragma('foreign_key_check')).toEqual([])
       expect(database.pragma('integrity_check', { simple: true })).toBe('ok')
     } finally {
@@ -990,7 +1023,13 @@ describe('shared SQLite baseline', () => {
       database.prepare('INSERT INTO agent_preset_version_contents VALUES (?,?,?,?)')
         .run('synthetic-preset', 'preset-version', 'tool_configuration', toolConfiguration)
 
-      database.prepare('INSERT INTO agent_conversations VALUES (?,?,?)').run('synthetic-session', '', 'synthetic-session')
+      database.prepare('INSERT INTO agent_conversations VALUES (?,?,?)').run('synthetic-session', 'synthetic-branch', 'synthetic-session')
+      database.prepare('INSERT INTO agent_branches VALUES (?,?)').run('synthetic-branch', 'synthetic-session')
+      database.prepare('INSERT INTO conversation_speakers VALUES (?,?,?,?,?,?)')
+        .run('synthetic-speaker', 'synthetic-session', 'user', 'user', '合成用户', '')
+      database.prepare('INSERT INTO agent_turns VALUES (?,?,?,?,?,?)')
+        .run('synthetic-owner', 'synthetic-session', 'synthetic-speaker', 'user', timestamp, '{}')
+      database.prepare('INSERT INTO agent_branch_turns VALUES (?,?,?)').run('synthetic-branch', 0, 'synthetic-owner')
       const snapshot = JSON.stringify([{
         targetType: 'entry', targetId: 'snapshot-entry', operation: 'upsert',
         payloadJson: JSON.stringify(snapshotEntry), updatedAt: timestamp
@@ -1031,9 +1070,9 @@ describe('shared SQLite baseline', () => {
       const conversation = reopened.native.prepare(`SELECT payloadJson FROM conversation_setting_changes
         WHERE sessionId='synthetic-session' AND targetType='entry'`).get() as { payloadJson: string }
       expect(settingLibraryEntrySchema.parse(JSON.parse(conversation.payloadJson)).position).toBe('insert_point_3')
-      const snapshotRow = reopened.native.prepare(`SELECT stateJson FROM agent_setting_snapshots
-        WHERE ownerId='synthetic-owner'`).get() as { stateJson: string }
-      const snapshotValue = JSON.parse(snapshotRow.stateJson) as Array<{ payloadJson: string }>
+      const snapshotRow = reopened.native.prepare(`SELECT settingLibraryStateJson FROM conversation_state_snapshots
+        WHERE boundaryId='synthetic-owner'`).get() as { settingLibraryStateJson: string }
+      const snapshotValue = JSON.parse(snapshotRow.settingLibraryStateJson) as Array<{ payloadJson: string }>
       expect(settingLibraryEntrySchema.parse(JSON.parse(snapshotValue[0]!.payloadJson)).position).toBe('insert_point_4')
 
       const storedVersionEntry = reopened.native.prepare(`SELECT payloadJson FROM agent_preset_version_entries
@@ -1134,215 +1173,6 @@ describe('shared SQLite baseline', () => {
     const saved = characters.get()
     expect(saved.items.map((item) => item.id)).toEqual(['card-a', 'card-b', 'card-c'])
     expect(saved.items.find((item) => item.id === 'card-a')?.name).toBe('只更新 A')
-  })
-
-  it('stores ordered replies by different speakers and rejects a cross-conversation turn', () => {
-    const { conversations, messages, database } = harness()
-    const a = conversations.create({}).conversation.id, b = conversations.create({}).conversation.id
-    const user = messages.create(a, 'user', '原文', 'complete')
-    messages.createResponse(a, user.turnId!, '旁白原文', 'complete', { id: 'narrator', name: '旁白', avatar: '', kind: 'narrator' })
-    messages.createResponse(a, user.turnId!, '人物原文', 'complete', { id: 'member', name: '人物', avatar: '', kind: 'card_character' })
-    expect(messages.list(a).map((message) => message.content)).toEqual(['原文', '旁白原文', '人物原文'])
-    expect(messages.list(a).slice(1).map((message) => message.responseIndex)).toEqual([0, 1])
-    expect(() => messages.createResponse(b, user.turnId!, 'wrong', 'complete', { id: 'member', name: '', avatar: '', kind: 'card_character' })).toThrow('活动分支')
-    expect(database.native.pragma('foreign_key_check')).toEqual([])
-  })
-
-  it('binds an active historical reply to its exact DSH turn without changing message text', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    messages.create(conversationId, 'user', '当前输入', 'complete')
-    const reply = messages.create(conversationId, 'assistant', '当前回复', 'complete', undefined, 'runtime-a')
-
-    expect(messages.unboundActiveResponses()).toEqual([{
-      conversationId, messageId: reply.id, runtimeThreadId: 'runtime-a'
-    }])
-    messages.bindHistoricalDshTurn(conversationId, reply.id, 'runtime-a', 3)
-    expect(messages.unboundActiveResponses()).toEqual([])
-    expect(database.native.prepare('SELECT dshTurn FROM agent_responses WHERE id=?').get(reply.id))
-      .toEqual({ dshTurn: 3 })
-    expect(messages.list(conversationId).map((message) => message.content)).toEqual(['当前输入', '当前回复'])
-  })
-
-  it('reads bound conversation text from the DSH turn after duplicate content is removed', () => {
-    const { conversations, messages } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const user = messages.create(conversationId, 'user', '当前输入', 'complete')
-    const reply = messages.create(conversationId, 'assistant', '当前回复', 'complete', undefined, 'runtime-a')
-    messages.bindHistoricalDshTurn(conversationId, reply.id, 'runtime-a', 3)
-    const calls: string[] = []
-    const detach = messages.attachTranscriptReader((runtimeThreadId) => {
-      calls.push(runtimeThreadId)
-      return [{ turn: 3, completed: true, userSeq: 1, userText: '当前输入', userImages: [{
-        attachmentId: 'sha256:synthetic', mediaType: 'image/png', bytes: 128, width: 16, height: 8
-      }], assistantText: '当前回复', process: [] }]
-    })
-    try {
-      expect(messages.list(conversationId).map((message) => message.content)).toEqual(['当前输入', '当前回复'])
-      expect(messages.get(conversationId, user.id).content).toBe('当前输入')
-      expect(messages.get(conversationId, user.id).inputImageAttachments?.[0]?.attachmentId).toBe('sha256:synthetic')
-      expect(messages.findInputImage(conversationId, 'sha256:synthetic').width).toBe(16)
-      expect(messages.listInputImageReferences()).toContainEqual({ conversationId, attachmentId: 'sha256:synthetic' })
-      expect(messages.get(conversationId, reply.id).content).toBe('当前回复')
-      expect(calls.every((id) => id === 'runtime-a')).toBe(true)
-    } finally {
-      detach()
-    }
-    expect(messages.get(conversationId, reply.id).content).toBe('当前回复')
-  })
-
-  it('removes a completed image reference from SQLite after the DSH log confirms it', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const image = { attachmentId: 'sha256:synthetic-image', mediaType: 'image/png' as const,
-      bytes: 128, width: 16, height: 8 }
-    const user = messages.create(conversationId, 'user', '图片', 'complete', undefined, '', [image])
-    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, 'runtime-image')
-    messages.bindDshTurn(conversationId, reply.id, 'runtime-image', 1)
-    const detach = messages.attachTranscriptReader(() => [{
-      turn: 1, completed: true, userSeq: 1, userText: '图片', userImages: [image], assistantText: '收到', process: []
-    }])
-    try {
-      messages.finish(reply.id, '收到', 'complete')
-      expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
-        .toBeUndefined()
-      expect(messages.get(conversationId, reply.id).content).toBe('收到')
-      expect(messages.get(conversationId, user.id).inputImageAttachments).toEqual([image])
-      expect(messages.findInputImage(conversationId, image.attachmentId)).toEqual(image)
-      expect(database.native.prepare('SELECT turnId FROM agent_pending_inputs WHERE turnId=?').get(user.id))
-        .toBeUndefined()
-    } finally { detach() }
-  })
-
-  it('restores an uploaded file and image on a failed input after restarting', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const image = { attachmentId: `sha256:${'a'.repeat(64)}`, mediaType: 'image/png' as const,
-      bytes: 128, width: 16, height: 8 }
-    const pendingFile = { attachmentId: 'draft:file', name: 'notes.txt', bytes: 12 }
-    const uploadedFile = { ...pendingFile, attachmentId: `sha256:${'b'.repeat(64)}` }
-    const user = messages.create(conversationId, 'user', '', 'complete', undefined, '', [image], [pendingFile])
-    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, conversationId)
-    messages.recordUploadedFile(reply.id, pendingFile.attachmentId, uploadedFile)
-    messages.finish(reply.id, '', 'error')
-
-    database.close()
-    database.open()
-    const restored = new MessageRepository(database)
-    expect(restored.get(conversationId, user.id)).toMatchObject({
-      content: '', inputImageAttachments: [image], inputFileAttachments: [uploadedFile]
-    })
-    expect(restored.listInputFileReferences()).toContainEqual({ conversationId, file: uploadedFile })
-    expect(restored.findInputFile(conversationId, uploadedFile.attachmentId, uploadedFile.name)).toEqual(uploadedFile)
-    expect(restored.findInputImage(conversationId, image.attachmentId)).toEqual(image)
-    restored.deleteFrom(conversationId, user.id)
-    expect(database.native.prepare('SELECT turnId FROM agent_pending_inputs WHERE turnId=?').get(user.id))
-      .toBeUndefined()
-  }, 20_000)
-
-  it('recovers a cancelled file message already recorded in the DSH Session after restart', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const sessionId = 'runtime-synthetic'
-    for (let turn = 1; turn <= 2; turn += 1) {
-      messages.create(conversationId, 'user', `input-${turn}`, 'complete')
-      const reply = messages.create(conversationId, 'assistant', `reply-${turn}`, 'complete', undefined, sessionId)
-      messages.bindHistoricalDshTurn(conversationId, reply.id, sessionId, turn)
-    }
-    const user = messages.create(conversationId, 'user', '', 'complete')
-    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, sessionId)
-    messages.finish(reply.id, '', 'cancelled')
-    database.native.prepare('DELETE FROM agent_pending_inputs WHERE turnId=?').run(user.id)
-    database.close()
-    database.open()
-
-    const restored = new MessageRepository(database)
-    expect(restored.get(conversationId, user.id).inputFileAttachments).toBeUndefined()
-    const file = { attachmentId: `sha256:${'c'.repeat(64)}`, name: 'sample.txt', bytes: 12 }
-    const detach = restored.attachTranscriptReader(() => [1, 2, 3].map((turn) => ({
-      turn, startSeq: turn * 10, userSeq: turn * 10 + 1, userMessageId: `user-${turn}`,
-      userText: turn === 3 ? '' : `input-${turn}`, userImages: [], userFiles: turn === 3 ? [file] : [],
-      assistantSeq: turn === 3 ? null : turn * 10 + 2,
-      assistantMessageId: turn === 3 ? null : `assistant-${turn}`,
-      assistantText: turn === 3 ? '' : `reply-${turn}`, process: [], completed: true
-    })))
-    try {
-      restored.reconcileUnboundActiveResponses(sessionId)
-      expect(database.native.prepare('SELECT dshTurn FROM agent_responses WHERE id=?').get(reply.id))
-        .toEqual({ dshTurn: 3 })
-      expect(restored.get(conversationId, user.id).inputFileAttachments).toEqual([file])
-      expect(restored.listInputFileReferences()).toContainEqual({ conversationId, file })
-    } finally { detach() }
-  }, 20_000)
-
-  it('projects a completed reply through its saved display rule without keeping another text copy', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const user = messages.create(conversationId, 'user', '问题', 'complete')
-    const reply = messages.create(conversationId, 'assistant', '', 'streaming', undefined, 'runtime-regex')
-    messages.bindDshTurn(conversationId, reply.id, 'runtime-regex', 1)
-    const detach = messages.attachTranscriptReader(() => [{
-      turn: 1, completed: true, userSeq: 1, userText: '问题', userImages: [], assistantText: '原文', process: []
-    }])
-    try {
-      messages.finish(reply.id, '显示文本', 'complete', undefined, undefined, [{
-        id: 'display-rule', name: 'display', pattern: '原文', replacement: '显示文本',
-        targets: ['AiOutput'], enabled: true, displayOnly: false, promptOnly: false,
-        runOnEdit: false, order: 0
-      }])
-      expect(messages.get(conversationId, user.id).content).toBe('问题')
-      expect(messages.get(conversationId, reply.id).content).toBe('显示文本')
-      expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
-        .toBeUndefined()
-    } finally { detach() }
-  })
-
-  it('pages turns without gaps or repeated messages', () => {
-    const { conversations, messages } = harness()
-    const id = conversations.create({}).conversation.id
-    for (let i = 0; i < 125; i++) { messages.create(id, 'user', String(i), 'complete'); messages.create(id, 'assistant', 'reply '+i, 'complete') }
-    let cursor: number | undefined
-    const seen: string[] = []
-    const seenFloors: number[] = []
-    do {
-      const page = messages.page(id, cursor, 40)
-      seen.unshift(...page.messages.map((message) => message.content))
-      seenFloors.unshift(...page.messages.map((message) => message.messageIndex!))
-      if (!page.hasMore) break
-      cursor = page.beforeSequence!
-    } while (true)
-    expect(seen).toHaveLength(250)
-    expect(seenFloors).toEqual(Array.from({ length: 250 }, (_, index) => index))
-    expect(seen[0]).toBe('0')
-    expect(seen.at(-1)).toBe('reply 124')
-    expect(() => messages.page(id, -1)).toThrow('游标')
-    expect(() => messages.page(id, undefined, 201)).toThrow('轮次数')
-  })
-
-  it('keeps a terminal reply immutable when a late checkpoint or duplicate completion arrives', () => {
-    const { conversations, messages } = harness()
-    const id = conversations.create({}).conversation.id
-    messages.create(id, 'user', 'input', 'complete')
-    const reply = messages.create(id, 'assistant', '', 'streaming')
-    messages.finish(reply.id, 'final', 'complete')
-    messages.appendCheckpoint(reply.id, 'late delta')
-    expect(messages.finish(reply.id, 'late failure', 'error')).toMatchObject({ content: 'final', status: 'complete' })
-  })
-
-  it('projects the variable snapshot stored on each message instead of the latest conversation state', () => {
-    const { conversations, messages, database } = harness()
-    const id = conversations.create({}).conversation.id
-    database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
-      .run('{"step":1}', id)
-    const first = messages.create(id, 'user', 'one', 'complete')
-    const reply = messages.create(id, 'assistant', '', 'streaming')
-    messages.finish(reply.id, 'answer', 'complete', undefined, '{"step":2}')
-    database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
-      .run('{"step":99}', id)
-
-    expect(messages.get(id, first.id).variableStateJson).toBe('{"step":1}')
-    expect(messages.get(id, reply.id).variableStateJson).toBe('{"step":2}')
-    expect(messages.list(id).map((message) => message.variableStateJson)).toEqual(['{"step":1}', '{"step":2}'])
   })
 
   it('enforces deferred active variable versions and cascades the whole card-owned version tree', () => {
@@ -1592,232 +1422,6 @@ describe('shared SQLite baseline', () => {
     expect(settingLibraries.get('card-a').entries.find((candidate) => candidate.id === entry.id)?.content).toBe('母设定')
   })
 
-  it('creates a story conversation with the saved primary opening as its first assistant message', () => {
-    const { characters, database } = harness()
-    characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card()] })
-    const settingLibraries = new SettingLibraryRepository(database)
-    const variables = new VariableConfigRepository(database)
-    const library = settingLibraries.get('card-a')
-    const opening = library.entries.find((entry) => entry.id === 'fixed-opening-assistant')!
-    settingLibraries.save('card-a', {
-      ...library,
-      entries: library.entries.map((entry) => entry.id === opening.id ? {
-        ...opening,
-        content: '<FINAL>保存后的开场白</FINAL>',
-        openingMessages: [{
-          id: 'opening-primary',
-          title: '默认开场',
-          content: '<FINAL>保存后的开场白</FINAL>',
-          initialVariableStateJson: '{"好感":10}'
-        }],
-        defaultOpeningMessageId: 'opening-primary'
-      } : entry)
-    })
-    const conversations = new ConversationRepository(database, (characterId, db) => (
-      resolveConversationSeed(characterId, db, settingLibraries, variables)
-    ))
-    const messages = new MessageRepository(database)
-
-    const created = conversations.create({ metadata: { characterId: 'card-a' } })
-
-    expect(messages.list(created.conversation.id)).toEqual([
-      expect.objectContaining({ id: 'opening', role: 'assistant', content: '<FINAL>保存后的开场白</FINAL>', status: 'complete' })
-    ])
-    expect(conversations.list()[0]?.conversation.preview).toBe('保存后的开场白')
-    expect(database.native.prepare("SELECT kind,stateJson FROM chat_session_variable_states WHERE sessionId=? ORDER BY kind")
-      .all(created.conversation.id)).toEqual([
-      { kind: 'current', stateJson: '{"好感":10}' },
-      { kind: 'initial', stateJson: '{"好感":10}' }
-    ])
-    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
-      .get(created.conversation.id)).toEqual({ historyMessageCount: 1 })
-  })
-
-  it('stores opening choices and edits only in the conversation snapshot', () => {
-    const { characters, database } = harness()
-    characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card()] })
-    const settingLibraries = new SettingLibraryRepository(database)
-    const variables = new VariableConfigRepository(database)
-    const library = settingLibraries.get('card-a')
-    settingLibraries.save('card-a', {
-      ...library,
-      entries: library.entries.map((entry) => entry.id === 'fixed-opening-assistant' ? {
-        ...entry,
-        content: '主开场',
-        openingMessages: [
-          { id: 'primary', title: '主开场', content: '主开场', initialVariableStateJson: '{"好感":1}' },
-          { id: 'backup', title: '备用', content: '备用开场', initialVariableStateJson: '{"好感":2}' }
-        ],
-        defaultOpeningMessageId: 'primary'
-      } : entry)
-    })
-    const conversations = new ConversationRepository(database, (characterId, db) => (
-      resolveConversationSeed(characterId, db, settingLibraries, variables)
-    ))
-    const messages = new MessageRepository(database)
-    const conversationId = conversations.create({ metadata: { characterId: 'card-a' } }).conversation.id
-
-    conversations.selectOpening(conversationId, 'backup')
-    expect(messages.list(conversationId)[0]).toMatchObject({
-      id: 'opening',
-      content: '备用开场',
-      selectedOpeningId: 'backup'
-    })
-    expect(conversations.get(conversationId).preview).toBe('备用开场')
-    expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
-      .get(conversationId)).toEqual({ stateJson: '{"好感":2}' })
-
-    conversations.updateOpening(conversationId, '只改当前对话的备用开场')
-    expect(messages.list(conversationId)[0]).toMatchObject({
-      content: '只改当前对话的备用开场',
-      openingOptions: expect.arrayContaining([
-        expect.objectContaining({ id: 'backup', content: '只改当前对话的备用开场' })
-      ])
-    })
-    expect(settingLibraries.get('card-a').entries.find((entry) => entry.id === 'fixed-opening-assistant')?.openingMessages)
-      .toContainEqual(expect.objectContaining({ id: 'backup', content: '备用开场' }))
-
-    messages.create(conversationId, 'user', '开始聊天', 'complete')
-    conversations.touch(conversationId, '最近的真实消息')
-    expect(conversations.get(conversationId).preview).toBe('只改当前对话的备用开场')
-
-    const deleted = messages.deleteFrom(conversationId, 'opening')
-    expect(deleted).toMatchObject({ deletedMessageCount: 2, remainingMessageCount: 0 })
-    expect(messages.list(conversationId)).toEqual([])
-    expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
-      .get(conversationId)).toEqual({ stateJson: '{"好感":2}' })
-    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 0 })
-    expect(database.native.pragma('foreign_key_check')).toEqual([])
-  })
-
-  it('regenerates from a user turn without deleting its unchanged input and restores its variable snapshot', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    messages.create(conversationId, 'user', '第一轮', 'complete')
-    messages.create(conversationId, 'assistant', '第一轮回复', 'complete', undefined, 'runtime-a')
-    database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
-      .run('{"轮次":1}', conversationId)
-    const secondUser = messages.create(conversationId, 'user', '第二轮原文', 'complete')
-    const secondAssistant = messages.create(conversationId, 'assistant', '第二轮回复', 'complete', undefined, 'runtime-b')
-    database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
-      .run('{"轮次":2}', conversationId)
-
-    const prepared = messages.prepareRegeneration(conversationId, secondAssistant.id)
-    expect(prepared).toMatchObject({ turnId: secondUser.turnId, text: '第二轮原文' })
-    expect(prepared.runtimeThreadId).not.toBe('runtime-b')
-    expect(prepared.obsoleteRuntimeThreadIds).toEqual(['runtime-b'])
-    expect(messages.list(conversationId).map((message) => message.content)).toEqual(['第一轮', '第一轮回复', '第二轮原文'])
-    expect(messages.list(conversationId).map((message) => message.messageIndex)).toEqual([0, 1, 2])
-    expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
-      .get(conversationId)).toEqual({ stateJson: '{"轮次":1}' })
-    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 3 })
-
-    messages.create(conversationId, 'assistant', '重新生成的回复', 'complete')
-    expect(messages.list(conversationId).map((message) => message.messageIndex)).toEqual([0, 1, 2, 3])
-    expect(messages.prepareRegeneration(conversationId, secondUser.id, '第二轮已编辑')).toMatchObject({ text: '第二轮已编辑' })
-    expect(messages.list(conversationId).at(-1)?.content).toBe('第二轮已编辑')
-    expect(database.native.pragma('foreign_key_check')).toEqual([])
-  })
-
-  it('reprojects per-turn usage after regeneration and removes it with a deleted reply', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const user = messages.create(conversationId, 'user', '问题', 'complete')
-    const oldReply = messages.create(conversationId, 'assistant', '旧回复', 'complete', undefined, 'runtime-usage')
-    database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(oldReply.id)
-    let replyText = '旧回复'
-    let totalTokens = 120
-    const detach = messages.attachTranscriptReader(() => [{
-      turn: 1, completed: true, userSeq: 1, userText: '问题', userImages: [],
-      assistantText: replyText, process: [],
-      turnUsage: { uncachedInputTokens: totalTokens - 20, outputTokens: 20, totalTokens }
-    }])
-    try {
-      expect(messages.list(conversationId).find((message) => message.id === oldReply.id)?.turnUsage?.totalTokens).toBe(120)
-
-      messages.prepareRegeneration(conversationId, oldReply.id)
-      expect(messages.list(conversationId).map((message) => message.id)).toEqual([user.id])
-
-      const newReply = messages.create(conversationId, 'assistant', '新回复', 'complete', undefined, 'runtime-usage')
-      expect(messages.list(conversationId).find((message) => message.id === newReply.id)?.turnUsage).toBeUndefined()
-      database.native.prepare('UPDATE agent_responses SET dshTurn=1 WHERE id=?').run(newReply.id)
-      replyText = '新回复'
-      totalTokens = 240
-      expect(messages.list(conversationId).find((message) => message.id === newReply.id)?.turnUsage?.totalTokens).toBe(240)
-
-      messages.deleteFrom(conversationId, newReply.id)
-      expect(messages.list(conversationId).map((message) => message.id)).toEqual([user.id])
-      expect(messages.list(conversationId).some((message) => message.turnUsage)).toBe(false)
-    } finally { detach() }
-  })
-
-  it('deletes a message tail together with process, media caches and rewinds native state', () => {
-    const { conversations, messages, database } = harness()
-    const conversationId = conversations.create({}).conversation.id
-    const settings = new SettingLibraryRepository(database)
-    const image = {
-      attachmentId: `sha256:${'a'.repeat(64)}`,
-      mediaType: 'image/png' as const,
-      bytes: 12,
-      width: 2,
-      height: 3
-    }
-    const settingBeforeSecond = JSON.stringify([{
-      targetType: 'entry', targetId: 'place', operation: 'delete', payloadJson: 'null', updatedAt: '2026-01-01T00:00:00.000Z'
-    }])
-    const settingAfterSecond = JSON.stringify([{
-      targetType: 'entry', targetId: 'weather', operation: 'delete', payloadJson: 'null', updatedAt: '2026-01-02T00:00:00.000Z'
-    }])
-
-    database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
-      .run('{"beforeFirst":1}', conversationId)
-    const firstUser = messages.create(conversationId, 'user', '第一轮', 'complete')
-    messages.writeSettingLibraryStateSnapshot(conversationId, firstUser.id, '[]')
-    const firstAssistant = messages.create(conversationId, 'assistant', '', 'streaming', undefined, 'runtime-a')
-    messages.finish(firstAssistant.id, '第一轮回复', 'complete', undefined, '{"afterFirst":2}')
-    messages.writeSettingLibraryStateSnapshot(conversationId, firstAssistant.id, '[]')
-
-    database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
-      .run('{"betweenRounds":3}', conversationId)
-    settings.restoreConversationRuntimeState(conversationId, settingBeforeSecond)
-    const secondUser = messages.create(conversationId, 'user', '第二轮', 'complete', undefined, '', [image])
-    messages.writeSettingLibraryStateSnapshot(conversationId, secondUser.id, settingBeforeSecond)
-    const secondAssistant = messages.create(conversationId, 'assistant', '', 'streaming', undefined, 'runtime-b')
-    messages.upsertProcessItem(secondAssistant.id, {
-      id: 'tool-second', kind: 'tool', status: 'complete', toolName: 'generate_image',
-      arguments: '{"prompt":"scene"}', summary: '生成图片', detail: '完成',
-      startedAtMillis: 1, completedAtMillis: 2
-    })
-    messages.finish(secondAssistant.id, '第二轮回复', 'complete', undefined, '{"afterSecond":4}')
-    settings.restoreConversationRuntimeState(conversationId, settingAfterSecond)
-    messages.writeSettingLibraryStateSnapshot(conversationId, secondAssistant.id, settingAfterSecond)
-    database.native.prepare("UPDATE chat_session_variable_states SET stateJson=? WHERE sessionId=? AND kind='current'")
-      .run('{"afterSecond":4}', conversationId)
-    const deleted = messages.deleteFrom(conversationId, secondUser.id)
-    expect(deleted).toMatchObject({
-      deletedMessageCount: 2,
-      remainingMessageCount: 2,
-      deletedAttachmentIds: [image.attachmentId],
-      obsoleteRuntimeThreadIds: ['runtime-b'],
-      retainedRuntimeThreadIds: ['runtime-a', conversationId],
-      rollbackSettingLibraryStateJson: settingBeforeSecond
-    })
-    settings.restoreConversationRuntimeState(conversationId, deleted.rollbackSettingLibraryStateJson!)
-    expect(messages.list(conversationId).map((message) => message.content)).toEqual(['第一轮', '第一轮回复'])
-    expect(database.native.prepare("SELECT stateJson FROM chat_session_variable_states WHERE sessionId=? AND kind='current'")
-      .get(conversationId)).toEqual({ stateJson: '{"betweenRounds":3}' })
-    expect(settings.snapshotConversationRuntimeState(conversationId)).toBe(settingBeforeSecond)
-    expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get())
-      .toBeUndefined()
-    expect(database.native.prepare('SELECT DISTINCT runtimeThreadId FROM agent_responses WHERE conversationId=?')
-      .all(conversationId)).toEqual([{ runtimeThreadId: 'runtime-a' }])
-    expect(database.native.prepare('SELECT historyMessageCount FROM chat_sessions WHERE id=?')
-      .get(conversationId)).toEqual({ historyMessageCount: 2 })
-    expect(database.native.pragma('foreign_key_check')).toEqual([])
-  })
-
   it('persists complete variable versions and seeds new character conversations from the active state', () => {
     const { characters, database } = harness()
     characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card()] })
@@ -1866,55 +1470,6 @@ describe('shared SQLite baseline', () => {
       stateJson: '{\n  "状态": {\n    "心情": "开心"\n  }\n}'
     })
     expect(database.native.pragma('foreign_key_check')).toEqual([])
-  })
-
-  it('keeps streaming text in memory and marks an interrupted response as failed after reopening', async () => {
-    const { conversations, messages, database } = harness()
-    const id = conversations.create({}).conversation.id
-    messages.create(id, 'user', 'input', 'complete')
-    const reply = messages.create(id, 'assistant', '', 'streaming')
-    const prefix = 'x'.repeat(64 * 1024 - 1) + '😀' + 'y'.repeat(100)
-    messages.appendCheckpoint(reply.id, prefix)
-    messages.appendCheckpoint(reply.id, 'tail')
-    expect(messages.list(id).at(-1)?.content).toBe(prefix + 'tail')
-    database.close(); database.open()
-    expect(new MessageRepository(database).list(id).at(-1)).toMatchObject({ content: '', status: 'error' })
-    await conversations.delete(id)
-    expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get()).toBeUndefined()
-  })
-
-  it('removes a card and its chats while preserving another card and shared configuration', () => {
-    const { characters, conversations, messages, database } = harness()
-    characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card(), card('card-b')] })
-    const a = conversations.create({ metadata: { characterId: 'card-a' } }).conversation.id
-    const b = conversations.create({ metadata: { characterId: 'card-b' } }).conversation.id
-    messages.create(a, 'user', 'a', 'complete'); messages.create(b, 'user', 'b', 'complete')
-    characters.delete(['card-a'])
-    expect(conversations.exists(a)).toBe(false)
-    expect(messages.list(b).map((message) => message.content)).toEqual(['b'])
-    expect(database.native.pragma('foreign_key_check')).toEqual([])
-  })
-
-
-  it('restores a consistent SQLite snapshot in an independent directory', async () => {
-    const { database, characters, conversations, messages } = harness()
-    characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card()] })
-    const id = conversations.create({ metadata: { characterId: 'card-a' } }).conversation.id
-    messages.create(id, 'user', 'backup source', 'complete')
-    const directory = mkdtempSync(join(tmpdir(), 'eleckoi-restore-test-'))
-    directories.push(directory)
-    const destination = join(directory, 'restored.sqlite3')
-    await database.backupTo(destination)
-    const restored = new SqliteDatabase(destination)
-    connections.push(restored)
-    restored.open()
-    const restoredConversations = new ConversationRepository(restored)
-    expect(restoredConversations.getMetadata(id).characterId).toBe('card-a')
-    expect(new MessageRepository(restored).list(id)[0]?.id).toBeTruthy()
-    expect(restored.native.prepare("SELECT name FROM sqlite_master WHERE name='agent_content_parts'").get()).toBeUndefined()
-    expect(restored.native.pragma('foreign_key_check')).toEqual([])
-    expect(restored.native.pragma('integrity_check', { simple: true })).toBe('ok')
-    await expect(database.backupTo(destination)).rejects.toThrow('新的文件')
   })
 
   it('rejects an altered common view without rebuilding or clearing data', () => {

@@ -40,7 +40,7 @@
 :root[data-eleckoi-mobile="true"] .character-basic-content :is(.semi-input-wrapper-focus, .semi-input-textarea-wrapper-focus) { border-color: color-mix(in srgb, var(--text) 28%, transparent); }
 :root[data-eleckoi-mobile="true"] :is(.dsh-search-field, .web-search-key-field, .chat-model-list-tools label):focus-within { border-color: color-mix(in srgb, var(--text) 28%, transparent); outline: none; box-shadow: none; }
 :root[data-eleckoi-mobile="true"] :is(.side-panel-collapse-button, .side-panel-expand-button):focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 38%, transparent); }
-:root[data-eleckoi-mobile="true"] :is(.model-group-row, .model-config-provider, .model-icon-button, .model-fetch-button, .model-add-button, .model-picker-value, .model-picker-shell button, .model-manual-add button, .model-connection-test-dialog button, .model-header-row button):focus-visible { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 38%, transparent); }
+:root[data-eleckoi-mobile="true"] :is(.model-group-row, .model-config-provider, .model-icon-button, .model-fetch-button, .model-add-button, .model-picker-value, .model-picker-shell button, .model-manual-add button, .model-header-row button):focus-visible { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 38%, transparent); }
 :root[data-eleckoi-mobile="true"] .model-reasoning-efforts button:focus-visible { border-color: color-mix(in srgb, var(--text) 28%, transparent); }
 :root[data-eleckoi-mobile="true"] .setting-library-entry-tabs button:focus-visible .setting-library-entry-tab-node { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 20%, transparent); }
 :root[data-eleckoi-mobile="true"] .setting-library-placement-row:focus-visible .setting-library-placement-choice,
@@ -88,6 +88,7 @@
 .mobile-drawer .qq-rail.expanded { height: 100%; align-items: stretch; padding: 12px 16px 16px; border: 0; }
 .mobile-drawer .rail-expanded-header { display: flex; align-items: center; gap: 10px; flex: none; height: 48px; margin-bottom: 16px; }
 .mobile-drawer .rail-brand-seat { position: relative; top: auto; left: auto; flex: none; transform: none; }
+.mobile-drawer .rail-expanded-header > .eleckoi-wordmark { min-width: 0; flex-shrink: 1; }
 .mobile-drawer .rail-expanded-header > strong { min-width: 0; font-size: 20px; font-weight: 600; }
 .mobile-drawer .rail-expanded-header > button { display: grid; place-items: center; width: 40px; min-height: 40px; margin-left: auto; padding: 0; border: 0; border-radius: 10px; background: transparent; flex: none; }
 .mobile-drawer .rail-nav-group { display: flex; flex-direction: column; gap: 4px; }
@@ -188,9 +189,6 @@
 .mobile-provider-row strong { font-size: 17px; font-weight: 500; }
 .mobile-provider-row strong, .mobile-provider-row small { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .mobile-provider-row small { color: var(--muted); font-size: 13px; }
-.mobile-provider-configs { padding-left: 58px; padding-right: 18px; }
-.mobile-provider-configs button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 4px 10px; border: 0; background: transparent; text-align: left; }
-.mobile-provider-configs strong { flex: 1; font-size: 14px; overflow-wrap: anywhere; }
 .mobile-state { margin: 24px 18px; text-align: center; color: var(--muted); font-size: 14px; }
 .mobile-message-list.is-empty { display: flex; align-items: center; justify-content: center; }
 .mobile-character-list.is-empty { position: relative; }
@@ -232,14 +230,18 @@
 .mobile-conversation-page .message-area { margin-right: 0; scrollbar-gutter: auto; scrollbar-width: none; overscroll-behavior: none; }
 .mobile-conversation-page [data-input-scroll] { overscroll-behavior: none; }
 .mobile-conversation-page .message-area::-webkit-scrollbar { display: none; }
+.mobile-conversation-page .markdown-message .md-table-wide { overflow-x: auto; }
 .mobile-conversation-page .message-roleplay {
   --mobile-message-tool-width: 26px;
+  --mobile-message-tool-gap: 2px;
+  --mobile-message-more-icon-width: 22px;
   --mobile-roleplay-avatar-width: max(24px, calc(var(--chat-avatar-width, 65px) * 55 / 65));
   --mobile-roleplay-avatar-height: var(--mobile-roleplay-avatar-width);
   --mobile-roleplay-avatar-radius: calc(var(--mobile-roleplay-avatar-width) / 2);
   --chat-roleplay-leading-stack-height: var(--mobile-roleplay-avatar-height);
   display: grid;
-  grid-template-columns: calc(var(--mobile-roleplay-avatar-width) + var(--chat-avatar-gap, 10px)) minmax(0, 1fr) var(--mobile-message-tool-width);
+  /* The body ends at the More icon's right edge; only Edit, its gap and the icon inset stay outside. */
+  grid-template-columns: calc(var(--mobile-roleplay-avatar-width) + var(--chat-avatar-gap, 10px)) minmax(0, 1fr) calc(var(--mobile-message-tool-width) + var(--mobile-message-tool-gap) + (var(--mobile-message-tool-width) - var(--mobile-message-more-icon-width)) / 2);
   gap: 0;
   width: 100%;
   padding: 0 var(--chat-horizontal-padding, 10px);
@@ -258,14 +260,14 @@
 .mobile-conversation-page .message-roleplay.mobile-tools-reserved .message-author-line { padding-right: 0; }
 .mobile-conversation-page .message-roleplay.mobile-tools-reserved .message-author { box-sizing: border-box; width: 100%; min-width: 0; padding-right: var(--mobile-message-tool-clearance, 0px); }
 .mobile-conversation-page .message-roleplay .message-timestamp { max-width: 100%; white-space: normal; }
-.mobile-conversation-page .message-roleplay > .message-tools { position: relative; grid-column: 2 / -1; justify-self: end; display: flex; gap: 2px; width: auto; max-width: 100%; margin-top: calc((18px - var(--mobile-roleplay-action-size)) / 2); opacity: 1; transition: opacity 125ms cubic-bezier(.42, 0, .58, 1); }
+.mobile-conversation-page .message-roleplay > .message-tools { position: relative; grid-column: 2 / -1; justify-self: end; display: flex; gap: var(--mobile-message-tool-gap); width: auto; max-width: 100%; margin-top: calc((18px - var(--mobile-roleplay-action-size)) / 2); opacity: 1; transition: opacity 125ms cubic-bezier(.42, 0, .58, 1); }
 .mobile-conversation-page .message-roleplay > .message-tools.swapping { opacity: 0; pointer-events: none; }
-.mobile-conversation-page .message-roleplay > .message-tools.expanded { flex-wrap: wrap; justify-content: flex-end; gap: 2px; margin-top: 0; }
+.mobile-conversation-page .message-roleplay > .message-tools.expanded { flex-wrap: wrap; justify-content: flex-end; gap: var(--mobile-message-tool-gap); margin-top: 0; }
 .mobile-conversation-page .message-roleplay > .message-tools.expanded :is(.message-tools-leading, .message-tools-expanded) { display: contents; }
 .mobile-conversation-page .message-roleplay > .message-tools.expanded :is(button, .turn-usage-trigger) { width: 26px; height: 26px; min-width: 0; min-height: 26px; padding: 0; }
-.mobile-conversation-page .message-roleplay .message-tools-leading { gap: 2px; }
+.mobile-conversation-page .message-roleplay .message-tools-leading { gap: var(--mobile-message-tool-gap); }
 .mobile-conversation-page .message-roleplay :is(.message-tools > button, .message-tools-leading > button, .message-tools-expanded > button) { width: var(--mobile-message-tool-width); height: var(--mobile-roleplay-action-size); min-height: var(--mobile-roleplay-action-size); flex: none; }
-.mobile-conversation-page .message-roleplay .message-tools-leading > button:last-child > svg { justify-self: end; }
+.mobile-conversation-page .message-roleplay .message-tools-leading > button:last-child > svg { justify-self: end; width: var(--mobile-message-more-icon-width); height: var(--mobile-message-more-icon-width); }
 .mobile-conversation-page .message-roleplay .message-tools > button:last-child > svg { width: 18px; height: 18px; }
 .mobile-conversation-page .message-roleplay > .message-tools > button:last-child > svg { justify-self: end; }
 .mobile-conversation-page .message-roleplay .message-tools button:is(:hover, :active) { background: transparent; }
@@ -355,8 +357,8 @@
 .mobile-creator-page .creator-studio-home-inner { min-width: 0; padding: 18px; }
 .mobile-creator-page .creator-studio-home-heading h1 { font-size: 18px; }
 .mobile-creator-page .creator-studio-project-search { min-width: 0; width: 100%; }
-html[data-eleckoi-mobile="true"] :is(.character-import-dialog, .preset-import-dialog, .app-error-dialog, .unsaved-changes-dialog, .model-connection-test-dialog, .community-dialog) { max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
-html[data-eleckoi-mobile="true"] :is(.character-import-dialog, .preset-import-dialog, .unsaved-changes-dialog, .model-connection-test-dialog) button { min-height: 48px; }
+html[data-eleckoi-mobile="true"] :is(.character-import-dialog, .preset-import-dialog, .app-error-dialog, .unsaved-changes-dialog, .community-dialog) { max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
+html[data-eleckoi-mobile="true"] :is(.character-import-dialog, .preset-import-dialog, .unsaved-changes-dialog) button { min-height: 48px; }
 
 html[data-eleckoi-mobile="true"] .agent-process-backdrop { align-items: end; padding: 0; background: transparent; font-family: 'ElecKoi Mobile Rounded', sans-serif; }
 html[data-eleckoi-mobile="true"] .agent-process-backdrop::before { content: ''; position: absolute; inset: 0; background: rgb(0 0 0 / 18%); animation: mobile-sheet-scrim-in 160ms linear; }

@@ -7,7 +7,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 
 type ConfigurationChange =
   | { kind: 'snapshot' }
-  | { kind: 'configuration'; domain: 'settingLibraries' | 'variables' | 'regexRules' | 'scripts' | 'agentPresets'; characterId?: string }
+  | { kind: 'configuration'; domain: 'settingLibraries' | 'variables' | 'regexRules' | 'scripts' | 'agentPresets' | 'displayTemplates'; characterId?: string }
 
 function configurationChanges() {
   const queue: ConfigurationChange[] = [{ kind: 'snapshot' }]
@@ -44,6 +44,47 @@ function configurationChanges() {
 }
 
 describe('DSH ElecKoi character configuration models', () => {
+  it('refreshes loaded preset and character display editors and chat selections from the same Remote change feed', async () => {
+    let plugin: any, cleanup = () => {}, activePreset = 'synthetic-preset', invalid = false
+    const changes = configurationChanges(), services = new Map<string, any>(), stored = new Map<string, any>()
+    const key = (scope: string, ownerId: string) => JSON.stringify([scope, ownerId])
+    const read = (scope: string, ownerId: string) => stored.get(key(scope, ownerId)) || { scope, ownerId, enabled: false, revision: 0, templates: [] }
+    runInNewContext(source, { AbortController, window: { __ModuleLoader__: { load(value: any) { plugin = value } } } })
+    plugin.factory().apply({ remote: { eleckoiCharacterConfiguration: {
+      changes: (signal: AbortSignal) => changes.open(signal),
+      readDisplayTemplates: async (scope: string, ownerId: string) => ({ ok: true, value: structuredClone(read(scope, ownerId)) }),
+      saveDisplayTemplates: async (library: any) => {
+        if (read(library.scope, library.ownerId).revision !== library.revision) return { ok: false, error: { message: 'Synthetic revision conflict' } }
+        const next = { ...structuredClone(library), revision: library.revision + 1 }; stored.set(key(next.scope, next.ownerId), next)
+        changes.emit({ kind: 'configuration', domain: 'displayTemplates' }); return { ok: true, value: next }
+      },
+      displayTemplatesForCharacter: async (characterId: string) => ({ ok: true, value: { characterId, libraries: [read('global', ''), read('preset', activePreset), read('character', invalid ? 'synthetic-other-character' : characterId)] } }),
+    } }, provide: (name: string, value: any) => services.set(name, value), effect: (run: () => () => void) => { cleanup = run() }, on: () => () => {} })
+    const model = services.get('eleckoiDisplayTemplates'), seen: unknown[] = []
+    const stop = model.subscribe((...args: unknown[]) => seen.push(args))
+    try {
+      await settle(); await model.read('preset', activePreset); await model.read('character', 'synthetic-character'); await model.readSelection('synthetic-character')
+      const draft = model.getSnapshot('preset', activePreset).value
+      await model.save({ ...draft, enabled: true }); await settle(); await settle()
+      expect(model.getSelectionSnapshot('synthetic-character').value.libraries[1]).toMatchObject({ enabled: true, revision: 1 })
+      expect(model.getSnapshot('preset', activePreset).value.revision).toBe(1)
+      const unchanged = model.getSelectionSnapshot('synthetic-character').value
+      changes.emit({ kind: 'configuration', domain: 'displayTemplates', characterId: 'synthetic-other-character' }); await settle(); await settle()
+      expect(model.getSelectionSnapshot('synthetic-character').value).toBe(unchanged)
+      await expect(model.save(draft)).rejects.toThrow('conflict')
+      const global = await model.read('global', '')
+      await model.save({ ...global, enabled: true }); await settle(); await settle()
+      expect(model.getSelectionSnapshot('synthetic-character').value.libraries[0]).toMatchObject({ scope: 'global', ownerId: '', enabled: true, revision: 1 })
+      activePreset = 'synthetic-next-preset'; changes.emit({ kind: 'configuration', domain: 'agentPresets' }); await settle(); await settle()
+      expect(model.getSelectionSnapshot('synthetic-character').value.libraries[1].ownerId).toBe(activePreset)
+      const accepted = model.getSelectionSnapshot('synthetic-character').value
+      invalid = true
+      await expect(model.readSelection('synthetic-character')).rejects.toThrow('归属不匹配')
+      expect(model.getSelectionSnapshot('synthetic-character')).toMatchObject({ status: 'error', value: accepted })
+      expect(seen.length).toBeGreaterThan(0)
+    } finally { stop(); cleanup() }
+    expect(changes.isStopped()).toBe(true)
+  })
   it('uses DSH Remote for character and conversation settings and refreshes after a connection reset', async () => {
     const calls: string[] = []
     const inputs: Array<{ name: string; input: unknown }> = []

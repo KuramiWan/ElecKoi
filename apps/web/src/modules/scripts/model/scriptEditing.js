@@ -17,6 +17,12 @@ export function updateScriptItem(library, id, change) {
     : tree.type === 'folder' ? { ...tree, scripts: tree.scripts.map(item => item.id === id ? { ...item, ...change } : item) } : tree) };
 }
 
+export function setScriptLibraryEnabled(library, enabled) {
+  return { ...library, enabled, trees: library.trees.map(tree => tree.type === 'folder'
+    ? { ...tree, enabled, scripts: tree.scripts.map(script => ({ ...script, enabled })) }
+    : { ...tree, enabled }) };
+}
+
 export function removeScriptItem(library, id) {
   return { ...library, trees: library.trees.filter(tree => tree.id !== id).map(tree => tree.type === 'folder'
     ? { ...tree, scripts: tree.scripts.filter(item => item.id !== id) } : tree) };
@@ -26,7 +32,7 @@ export function createScriptItem(type, id) {
   if (type === 'folder') return { type, id, name: '新文件夹', enabled: true, icon: '', color: '', scripts: [] };
   return { type: 'script', id, name: '新脚本', enabled: false,
     runtime: { kind: 'eleckoi-module', apiVersion: 1 },
-    content: 'export default ({ api, signal, settings }) => {\n  return () => {};\n};\n', info: '', data: {},
+    content: '', info: '', data: {},
     button: { enabled: true, buttons: [] }, export_with: { data: true, button: true } };
 }
 
@@ -48,6 +54,19 @@ export function moveScriptItem(library, id, destinationId, direction = 0) {
   const next = removeScriptItem(library, id);
   return destination ? updateScriptItem(next, destinationId, { scripts: [...destination.scripts.filter(script => script.id !== id), item] })
     : { ...next, trees: [...next.trees, item] };
+}
+
+export function reorderScriptItem(library, id, parentId, destinationIndex) {
+  const item = findScriptItem(library, id);
+  if (!item) throw new Error('脚本项目不存在。');
+  if (item.type === 'folder' && parentId) throw new Error('文件夹不能嵌套。');
+  const next = removeScriptItem(library, id);
+  const folder = parentId ? next.trees.find(tree => tree.id === parentId && tree.type === 'folder') : null;
+  if (parentId && !folder) throw new Error('目标文件夹不存在。');
+  const items = [...(folder ? folder.scripts : next.trees)];
+  if (!Number.isInteger(destinationIndex) || destinationIndex < 0 || destinationIndex > items.length) throw new Error('脚本排序位置无效。');
+  items.splice(destinationIndex, 0, item);
+  return folder ? updateScriptItem(next, parentId, { scripts: items }) : { ...next, trees: items };
 }
 
 export function parseScriptObject(text, label) {

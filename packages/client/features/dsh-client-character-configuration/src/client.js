@@ -330,6 +330,62 @@ window.__ModuleLoader__.load({
       }
     }
 
+    class RegexEditorsModel extends CharacterConfigurationModel {
+      constructor(bridge) {
+        super(bridge, 'regexRules', 'readRegexEditor', 'saveRegexEditor', null, (value, key) => {
+          const [scope, ownerId] = JSON.parse(key)
+          if (!value || value.target?.scope !== scope || value.target?.ownerId !== ownerId
+            || !Array.isArray(value.globalRules) || !Array.isArray(value.agentPresetRules)
+            || !Array.isArray(value.characterRules) || !Array.isArray(value.versions)
+            || !Number.isInteger(value.revision) || typeof value.ownerRevision !== 'string'
+            || (scope === 'character' ? value.agentPresetRules.length : value.characterRules.length)) {
+            throw new Error('正则编辑配置返回的数据格式不正确。')
+          }
+          return value
+        })
+      }
+      request(method, ...args) {
+        if (method === 'readRegexEditor') {
+          const [scope, ownerId] = JSON.parse(args[0])
+          return super.request(method, { scope, ownerId })
+        }
+        return super.request(method, ...args)
+      }
+      async save(key, collection) {
+        this.validate(collection, key)
+        const generation = this.nextGeneration(key)
+        const saved = this.validate(await this.request('saveRegexEditor', collection), key)
+        if (!this.disposed && this.generations.get(key) === generation) this.publish('configuration', key, { status: 'ready', value: saved, error: '' })
+        return saved
+      }
+      async import(key, collection, fallbackScope, documents) {
+        this.validate(collection, key)
+        const generation = this.nextGeneration(key)
+        const result = await this.request('importRegexEditor', collection, fallbackScope, documents)
+        const saved = this.validate(result?.collection, key)
+        if (!this.disposed && this.generations.get(key) === generation) this.publish('configuration', key, { status: 'ready', value: saved, error: '' })
+        return result
+      }
+      start() {
+        this.stopEvents = this.bridge.subscribe(change => {
+          if (change?.kind === 'snapshot' || change?.kind === 'configuration'
+            && (change.domain === 'regexRules' || change.domain === 'agentPresets')) this.refreshLoaded()
+        })
+      }
+      editor(scope, ownerId) {
+        if (!['character', 'preset'].includes(scope) || !ownerId) throw new Error('正则编辑需要明确的角色或预设归属。')
+        const key = JSON.stringify([scope, ownerId])
+        return {
+          getSnapshot: () => this.getSnapshot(key), read: () => this.read(key),
+          versions: editorVersionsService(this, this.bridge, 'regex', document => JSON.stringify([document.target.scope, document.target.ownerId])),
+          subscribe: listener => this.subscribe((kind, changedKey, snapshot) => { if (kind === 'configuration' && changedKey === key) listener(snapshot) }),
+          save: collection => this.save(key, collection),
+          import: (collection, fallbackScope, documents) => this.import(key, collection, fallbackScope, documents),
+          export: ruleIds => this.request('exportRegexEditor', { scope, ownerId }, ruleIds)
+        }
+      }
+    }
+
     class ScriptLibrariesModel extends CharacterConfigurationModel {
       constructor(bridge) {
         super(bridge, 'scripts', 'readScriptLibrary', 'saveScriptLibrary', null, (value, key) => {
@@ -348,9 +404,49 @@ window.__ModuleLoader__.load({
       refreshLoaded() { super.refreshLoaded() }
     }
 
+    function editorVersionsService(model, bridge, kind, documentKey) {
+      function validate(value, scope, ownerId) {
+        if (!value || value.kind !== kind || value.scope !== scope || value.ownerId !== ownerId
+          || !Number.isSafeInteger(value.revision) || typeof value.resourceRevision !== 'string'
+          || typeof value.activeVersionId !== 'string' || !Array.isArray(value.versions)
+          || !value.versions.some(version => version.id === value.activeVersionId)
+          || value.versions.some(version => typeof version.id !== 'string' || typeof version.name !== 'string' || typeof version.content !== 'string')) {
+          throw new Error('配置版本返回的数据或归属不正确。')
+        }
+        return value
+      }
+      return {
+        subscribe: listener => bridge.subscribe(change => {
+          if (change?.kind === 'snapshot' || change?.kind === 'configuration'
+            && change.domain === (kind === 'regex' ? 'regexRules' : kind)) listener()
+        }),
+        async read(scope, ownerId) {
+          return validate(await bridge.request('readEditorLibraryVersions', [{ kind, scope, ownerId }]), scope, ownerId)
+        },
+        async save(documents, versions) {
+          const requests = documents.map(document => {
+            const key = documentKey(document)
+            model.validate(document, key)
+            return { key, generation: model.nextGeneration(key) }
+          })
+          const result = await bridge.request('saveEditorLibraries', [{ kind, documents: documents.map(document => JSON.stringify(document)), versions }])
+          if (!Array.isArray(result?.documents) || result.documents.length !== documents.length || !Array.isArray(result.versions)
+            || result.versions.length !== versions.length) throw new Error('配置版本保存结果不完整。')
+          const saved = result.documents.map((content, index) => model.validate(JSON.parse(content), requests[index].key))
+          const storedVersions = result.versions.map((value, index) => validate(value, versions[index].scope, versions[index].ownerId))
+          if (!model.disposed) saved.forEach((value, index) => {
+            const { key, generation } = requests[index]
+            if (model.generations.get(key) === generation) model.publish('configuration', key, { status: 'ready', value, error: '' })
+          })
+          return { documents: saved, versions: storedVersions }
+        },
+      }
+    }
+
     function scriptLibraryService(model, bridge) {
       const key = (scope, ownerId) => JSON.stringify([scope, ownerId])
       return {
+        versions: editorVersionsService(model, bridge, 'scripts', document => key(document.scope, document.ownerId)),
         getSnapshot: (scope, ownerId) => model.getSnapshot(key(scope, ownerId)),
         read: (scope, ownerId) => model.read(key(scope, ownerId)),
         save: library => model.save(key(library.scope, library.ownerId), library),
@@ -391,6 +487,70 @@ window.__ModuleLoader__.load({
       }
     }
 
+    class DisplayTemplatesModel extends CharacterConfigurationModel {
+      constructor(bridge) {
+        super(bridge, 'displayTemplates', 'readDisplayTemplates', 'saveDisplayTemplates', null, (value, address) => {
+          const [scope, ownerId] = JSON.parse(address)
+          if (scope === 'selection') {
+            if (!value || value.characterId !== ownerId || !Array.isArray(value.libraries) || value.libraries.length !== 3
+              || value.libraries[0]?.scope !== 'global' || value.libraries[0]?.ownerId !== ''
+              || value.libraries[1]?.scope !== 'preset' || !value.libraries[1]?.ownerId
+              || value.libraries[2]?.scope !== 'character' || value.libraries[2]?.ownerId !== ownerId
+              || value.libraries.some(library => typeof library.enabled !== 'boolean' || !Array.isArray(library.templates)
+                || !Number.isSafeInteger(library.revision) || library.revision < 0)) throw new Error('显示模板组合归属不匹配。')
+            const previous = this.getSnapshot(address).value
+            if (previous?.characterId === value.characterId && previous.libraries.every((library, index) =>
+              library.scope === value.libraries[index].scope && library.ownerId === value.libraries[index].ownerId
+                && library.revision === value.libraries[index].revision)) return previous
+          } else if (!value || value.scope !== scope || value.ownerId !== ownerId || !Array.isArray(value.templates)
+            || typeof value.enabled !== 'boolean' || !Number.isSafeInteger(value.revision) || value.revision < 0) throw new Error('显示模板配置归属或格式不正确。')
+          return value
+        })
+      }
+      request(method, address, value) {
+        if (this.disposed) throw new Error('显示模板客户端模型已关闭。')
+        const [scope, ownerId] = JSON.parse(address)
+        if (method === 'saveDisplayTemplates') return this.bridge.request(method, [value])
+        return scope === 'selection' ? this.bridge.request('displayTemplatesForCharacter', [ownerId])
+          : this.bridge.request(method, [scope, ownerId])
+      }
+      start() {
+        this.stopEvents = this.bridge.subscribe(change => {
+          if (change?.kind === 'snapshot' || change?.kind === 'configuration'
+            && ['displayTemplates', 'agentPresets'].includes(change.domain)) this.refreshLoaded()
+        })
+      }
+      async saveAll(libraries) {
+        if (this.disposed) throw new Error('显示模板客户端模型已关闭。')
+        const addresses = libraries.map(library => JSON.stringify([library.scope, library.ownerId]))
+        const generations = addresses.map(address => this.nextGeneration(address))
+        const values = await this.bridge.request('saveDisplayTemplateLibraries', [libraries])
+        if (!Array.isArray(values) || values.length !== libraries.length) throw new Error('显示模板保存结果不完整。')
+        return values.map((value, index) => {
+          const saved = this.validate(value, addresses[index])
+          if (!this.disposed && this.generations.get(addresses[index]) === generations[index]) this.publish('configuration', addresses[index], { status: 'ready', value: saved, error: '' })
+          return saved
+        })
+      }
+    }
+
+    function displayTemplateService(model, bridge) {
+      const key = (scope, ownerId) => JSON.stringify([scope, ownerId])
+      return {
+        versions: editorVersionsService(model, bridge, 'displayTemplates', document => key(document.scope, document.ownerId)),
+        read: (scope, ownerId) => model.read(key(scope, ownerId)),
+        save: library => model.save(key(library.scope, library.ownerId), library),
+        saveAll: libraries => model.saveAll(libraries),
+        getSnapshot: (scope, ownerId) => model.getSnapshot(key(scope, ownerId)),
+        readSelection: characterId => model.read(key('selection', characterId)),
+        getSelectionSnapshot: characterId => model.getSnapshot(key('selection', characterId)),
+        subscribe: listener => model.subscribe((_kind, address, snapshot) => {
+          const [scope, ownerId] = JSON.parse(address)
+          listener(scope, ownerId, snapshot)
+        }),
+      }
+    }
+
     function apply(ctx) {
       const bridge = new CharacterConfigurationBridge(ctx.remote)
       const settingLibraries = new SettingLibrariesModel(bridge)
@@ -405,22 +565,30 @@ window.__ModuleLoader__.load({
         }
       )
       const regexRules = new RegexRulesModel(bridge)
+      const regexEditors = new RegexEditorsModel(bridge)
+      regexRules.editor = (scope, ownerId) => regexEditors.editor(scope, ownerId)
       const scripts = new ScriptLibrariesModel(bridge)
+      const displayTemplates = new DisplayTemplatesModel(bridge)
       ctx.provide('eleckoiSettingLibraries', settingLibraries)
       ctx.provide('eleckoiVariables', variables)
       ctx.provide('eleckoiRegexRules', regexRules)
       ctx.provide('eleckoiScriptLibraries', scriptLibraryService(scripts, bridge))
+      ctx.provide('eleckoiDisplayTemplates', displayTemplateService(displayTemplates, bridge))
       ctx.effect(() => {
         settingLibraries.start()
         variables.start()
         regexRules.start()
+        regexEditors.start()
         scripts.start()
+        displayTemplates.start()
         bridge.start()
         const stopReset = ctx.on('connection/reset', () => {
           settingLibraries.refreshLoaded()
           variables.refreshLoaded()
           regexRules.refreshLoaded()
+          regexEditors.refreshLoaded()
           scripts.refreshLoaded()
+          displayTemplates.refreshLoaded()
         })
         return () => {
           stopReset()
@@ -428,7 +596,9 @@ window.__ModuleLoader__.load({
           settingLibraries.dispose()
           variables.dispose()
           regexRules.dispose()
+          regexEditors.dispose()
           scripts.dispose()
+          displayTemplates.dispose()
         }
       }, 'eleckoi: character configuration models')
     }

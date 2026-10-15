@@ -84,7 +84,7 @@ describe("right sidebar shell layout", () => {
 
   it("keeps the right-sidebar title strip draggable", () => {
     expect(shellStyles).toMatch(
-      /\.dsh-rightbar-column::before\s*\{[^}]*top:\s*-40px;[^}]*height:\s*40px;[^}]*-webkit-app-region:\s*drag;/,
+      /\.dsh-rightbar-column::before\s*\{[^}]*top:\s*calc\(-1 \* var\(--window-caption-height, 40px\)\);[^}]*height:\s*var\(--window-caption-height, 40px\);[^}]*-webkit-app-region:\s*drag;/,
     );
   });
 

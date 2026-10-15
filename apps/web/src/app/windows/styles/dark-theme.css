@@ -8,7 +8,6 @@
   .character-contact-row strong,
   .character-card strong,
   .character-group-context-menu button,
-  .model-sidebar-header h2,
   .model-group-row,
   .model-provider-copy b,
   .model-detail-header h2,
@@ -17,7 +16,6 @@
   .model-section-heading h3,
   .model-section-heading h4,
   .model-delete-popover strong,
-  .model-version-menu button,
   .model-picker-menu button,
   .model-manual-add button,
   .app-settings-sidebar h2,
@@ -98,10 +96,8 @@
   .character-group-dialog,
   .model-provider-delete-dialog,
   .model-delete-popover,
-  .model-version-menu,
   .model-picker-menu,
   .model-manual-add,
-  .model-connection-test-dialog,
   .model-parameter-grid,
   .model-headers-editor,
   .app-settings-card,
@@ -138,8 +134,6 @@
   .conversation-character-picker-characters button:hover,
   .conversation-context-menu button:hover,
   .character-group-context-menu button:hover,
-  .model-version-menu button:hover,
-  .model-version-menu button.active,
   .model-picker-option:hover,
   .model-picker-option.active,
   .model-header-row button:hover,
@@ -212,12 +206,6 @@
   color: var(--text);
 }
 
-:root[data-theme="dark"] .model-manual-add button:last-child {
-  border-color: var(--blue);
-  background: var(--blue);
-  color: #fff;
-}
-
 :root[data-theme="dark"] .markdown-message th,
 :root[data-theme="dark"] .markdown-message td {
   border-color: var(--line-strong);
@@ -262,13 +250,13 @@
   color: var(--muted);
 }
 
-:root[data-theme="dark"] :is(.model-icon-button, .model-fetch-button, .model-add-button, .model-test-button, .model-save-actions > button.model-cancel-button) {
+:root[data-theme="dark"] :is(.model-icon-button, .model-fetch-button, .model-add-button, .model-save-actions > button.model-cancel-button) {
   border-color: var(--line-strong);
   background: var(--surface-raised);
   color: var(--text);
 }
 
-:root[data-theme="dark"] :is(.model-icon-button:disabled, .model-fetch-button:disabled, .model-add-button:disabled, .model-test-button:disabled) {
+:root[data-theme="dark"] :is(.model-icon-button:disabled, .model-fetch-button:disabled, .model-add-button:disabled) {
   background: var(--field-disabled);
   color: var(--soft-text);
 }

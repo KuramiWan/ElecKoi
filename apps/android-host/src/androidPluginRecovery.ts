@@ -1,0 +1,19 @@
+import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { OPTIONAL_BUNDLES, PROFILE_TEMPLATES, readProfileManifest, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
+import { ELECKOI_ANDROID_BUNDLES } from './androidPluginBundles'
+
+const webProfile = PROFILE_TEMPLATES.web
+if (webProfile === undefined) throw new Error('DSH web profile template is unavailable')
+export const ELECKOI_ANDROID_RECOVERY_BUNDLES = Object.freeze([
+  ...webProfile.bundles, ...ELECKOI_ANDROID_BUNDLES
+])
+
+/** Called by the new Host process only after the Android owner has stopped its predecessor. */
+export function disableAndroidUserPlugins(homeRoot: string): string | undefined {
+  const profile = join(homeRoot, 'profiles', 'android')
+  const selected = existsSync(join(profile, 'package.json')) ? readProfileManifest('eleckoi', profile).dsh?.profile?.bundles ?? [] : []
+  return sanitizeProfile('eleckoi', profile, [
+    ...ELECKOI_ANDROID_RECOVERY_BUNDLES, ...selected.filter(name => OPTIONAL_BUNDLES.includes(name))
+  ])
+}

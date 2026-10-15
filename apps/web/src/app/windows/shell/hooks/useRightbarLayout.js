@@ -96,10 +96,7 @@ export function useRightbarLayout({ model, shellRef, sidePanelCollapsed, collaps
     railWidth: 0,
     sidePanelWidth: 0,
   }));
-  const [animating, setAnimating] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const previousTrackRef = useRef(Boolean(state.track));
-  const previousViewportRef = useRef(geometry.viewportWidth);
   const widthRef = useRef(0);
   const dragBaseRef = useRef(0);
 
@@ -161,30 +158,6 @@ export function useRightbarLayout({ model, shellRef, sidePanelCollapsed, collaps
   const trackWidth = state.track ? width : 0;
   widthRef.current = width;
 
-  useLayoutEffect(() => {
-    const viewportChanged = previousViewportRef.current !== geometry.viewportWidth;
-    previousViewportRef.current = geometry.viewportWidth;
-    if (previousTrackRef.current === Boolean(state.track)) return;
-    previousTrackRef.current = Boolean(state.track);
-    if (!viewportChanged) setAnimating((token) => token + 1);
-  }, [geometry.viewportWidth, state.track]);
-
-  useEffect(() => {
-    if (!animating) return undefined;
-    const shell = shellRef.current;
-    if (!shell) return undefined;
-    const settle = () => setAnimating(0);
-    const onTransitionEnd = (event) => {
-      if (event.target === shell && event.propertyName === "--rightbar-track-width") settle();
-    };
-    shell.addEventListener("transitionend", onTransitionEnd);
-    const timer = window.setTimeout(settle, 600);
-    return () => {
-      shell.removeEventListener("transitionend", onTransitionEnd);
-      window.clearTimeout(timer);
-    };
-  }, [animating, shellRef]);
-
   const startResize = useCallback(() => {
     dragBaseRef.current = widthRef.current;
     setDragging(true);
@@ -200,7 +173,7 @@ export function useRightbarLayout({ model, shellRef, sidePanelCollapsed, collaps
     canShow: width > 0,
     fullscreen: Boolean(state.fullscreen),
     instant: Boolean(state.instant),
-    animating: animating > 0,
+    track: Boolean(state.track),
     dragging,
     showResizeHandle: Boolean(model && state.shown && !state.fullscreen && width > 0),
     shellStyle: {

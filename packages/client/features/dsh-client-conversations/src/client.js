@@ -2,16 +2,32 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-conversations',
   factory(require) {
     const React = require('react')
+    const EMPTY_ITEMS = Object.freeze([])
     const MessagesPage = React.lazy(() => import(new URL('eleckoi-page-messages.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.MessagesPage })))
 
-    const contentText = content => Array.isArray(content)
-      ? content.filter(block => block?.type === 'text').map(block => String(block.text || '')).join('')
-      : ''
+    // Chat publishes new immutable block values when text changes. Weak keys
+    // release derived text with the corresponding loaded history or live frame.
+    const contentTextCache = new WeakMap()
+    function contentText(content) {
+      if (!Array.isArray(content)) return ''
+      if (!contentTextCache.has(content)) contentTextCache.set(content,
+        content.filter(block => block?.type === 'text').map(block => String(block.text || '')).join(''))
+      return contentTextCache.get(content)
+    }
 
-    const assistantText = blocks => Array.isArray(blocks)
-      ? blocks.filter(block => block?.kind === 'text').map(block => String(block.text || '')).join('')
-      : ''
+    const assistantContentCache = new WeakMap()
+    function assistantContent(blocks) {
+      if (!Array.isArray(blocks)) return { text: '', final: '', live: { started: false, content: '' } }
+      let cached = assistantContentCache.get(blocks)
+      if (!cached) {
+        const text = blocks.filter(block => block?.kind === 'text').map(block => String(block.text || '')).join('')
+        cached = { text, final: finalReplyText(text), live: liveFinalReply(text) }
+        assistantContentCache.set(blocks, cached)
+      }
+      return cached
+    }
+    const assistantText = blocks => assistantContent(blocks).text
 
     const FinalOpenTag = '<FINAL>'
     const FinalCloseTag = '</FINAL>'
@@ -57,29 +73,82 @@ window.__ModuleLoader__.load({
 
     const orderedChatNodes = snapshot => orderedChatEntries(snapshot).map(entry => entry.node)
 
+    const sameReferences = (left = [], right = []) => left === right
+      || left.length === right.length && left.every((item, index) => item === right[index])
+
+    const sameRecord = (left, right) => left === right || Boolean(left && right)
+      && Object.keys(left).length === Object.keys(right).length
+      && Object.keys(left).every(key => Object.prototype.hasOwnProperty.call(right, key) && left[key] === right[key])
+
+    const processFields = ['id', 'kind', 'status', 'toolName', 'arguments', 'summary', 'detail', 'displayDetail',
+      'startedAtMillis', 'completedAtMillis', 'parentId']
+    function sameProcess(left, right) {
+      if (left === right) return true
+      const before = Array.isArray(left) ? left : EMPTY_ITEMS
+      const after = Array.isArray(right) ? right : EMPTY_ITEMS
+      return before.length === after.length && before.every((item, index) => item === after[index]
+        || processFields.every(key => item?.[key] === after[index]?.[key]))
+    }
+
+    function sameStreamSnapshot(left, right) {
+      return ['id', 'status', 'runId', 'requestId', 'messageId', 'renderKey', 'dshTurn',
+        'nodeKey', 'content', 'error'].every(key => left?.[key] === right?.[key])
+        && sameProcess(left?.process, right?.process)
+    }
+
+    function sameDisplayProjection(left, id, input) {
+      return left?.id === id && left.input.length === input.length && left.input.every((message, index) => {
+        const next = input[index]
+        return ['id', 'role', 'variableStateJson', 'status', 'createdAt'].every(key => message[key] === next[key])
+          && (message.role === 'assistant' && message.status === 'streaming' || message.content === next.content)
+          && sameReasoningInput(message.reasoning, next.reasoning)
+      })
+    }
+
+    function sameReasoningInput(left = EMPTY_ITEMS, right = EMPTY_ITEMS) {
+      return left === right || left.length === right.length && left.every((item, index) => item.id === right[index].id && item.text === right[index].text)
+    }
+
+    function reasoningText(item) {
+      return typeof item.detail === 'string' && item.detail.trim() ? item.detail : item.summary || ''
+    }
+
+    const messageAttachmentFields = new Set(['inputImageAttachments', 'inputFileAttachments', 'generatedImageAttachments'])
+    function reuseMessage(source, message) {
+      if (!source || Object.keys(source).length !== Object.keys(message).length) return message
+      return Object.keys(message).every(key => {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) return false
+        if (source[key] === message[key]) return true
+        if (key === 'processTiming') return sameRecord(source[key], message[key])
+        if (key === 'process') return sameReferences(source[key], message[key])
+        return messageAttachmentFields.has(key) && Array.isArray(source[key]) && Array.isArray(message[key])
+          && source[key].length === message[key].length
+          && source[key].every((item, index) => sameRecord(item, message[key][index]))
+      }) ? source : message
+    }
+
     function nodeTurn(node) {
       const turn = node?.location?.kind === 'step' || node?.location?.kind === 'turn'
         ? node.location.turn?.turn : node?.data?.turn
       return Number.isSafeInteger(turn) && turn > 0 ? Number(turn) : undefined
     }
 
-    function projectedUserTurn(nodes, index) {
-      const direct = nodeTurn(nodes[index])
-      if (direct !== undefined) return direct
-      // User nodes are not stamped with a turn by DSH. A completed tail is
-      // the authoritative boundary for the queued inputs immediately before
-      // it; if there is no later tail, the input is still outside a turn.
-      for (let cursor = index + 1; cursor < nodes.length; cursor += 1) {
-        const candidate = nodes[cursor]
-        if (candidate?.kind !== 'turn-tail') continue
-        const turn = nodeTurn(candidate)
-        if (turn !== undefined) return turn
+    function turnProcessTiming(node) {
+      const turn = node?.location?.kind === 'step' || node?.location?.kind === 'turn' ? node.location.turn : undefined
+      if (!turn) return undefined
+      const startedAtMillis = turn.start?.time
+      const completedAtMillis = turn.end?.time
+      if (!Number.isFinite(startedAtMillis) && !Number.isFinite(completedAtMillis)) return undefined
+      return {
+        ...(Number.isFinite(startedAtMillis) ? { startedAtMillis } : {}),
+        ...(Number.isFinite(completedAtMillis) ? { completedAtMillis } : {}),
       }
-      return undefined
     }
 
-    function toolProcess(block, parentId = '') {
+    function toolProcess(block, parentId = '', cache) {
       if (!block?.callId) return []
+      const cached = cache?.get(block)
+      if (cached?.parentId === parentId) return cached.items
       const settled = block.kind === 'tool-result'
       const name = settled ? block.call?.name || block.callId : block.name || block.callId
       const item = {
@@ -93,19 +162,24 @@ window.__ModuleLoader__.load({
         ...(settled ? { completedAtMillis: Number(block.time) || 0 } : {}),
         ...(parentId ? { parentId } : {})
       }
-      return [item, ...(block.subCalls || []).flatMap(child => toolProcess(child, item.id))]
+      const items = [item, ...(block.subCalls || []).flatMap(child => toolProcess(child, item.id, cache))]
+      cache?.set(block, { parentId, items })
+      return items
     }
 
     function officialProcess(snapshot, options = {}) {
       const byTurn = new Map()
+      const positionsByTurn = new Map()
       const append = (turn, item) => {
         if (!Number.isSafeInteger(turn) || turn < 0) return
-        const items = byTurn.get(turn) || []
-        const index = items.findIndex(candidate => candidate.id === item.id)
-        if (index < 0) byTurn.set(turn, [...items, item])
-        else byTurn.set(turn, items.map((candidate, at) => at === index ? item : candidate))
+        let items = byTurn.get(turn)
+        if (!items) { items = []; byTurn.set(turn, items); positionsByTurn.set(turn, new Map()) }
+        const positions = positionsByTurn.get(turn)
+        const index = positions.get(item.id)
+        if (index === undefined) { positions.set(item.id, items.length); items.push(item) }
+        else items[index] = item
       }
-      const nodes = orderedChatNodes(snapshot)
+      const nodes = options.nodes || orderedChatNodes(snapshot)
       // Idle maintenance has no turn owner. Only turn-owned requests belong
       // to an AI processing row; the official command card owns manual work.
       const compactions = (options.trajectory?.requests || [])
@@ -127,6 +201,32 @@ window.__ModuleLoader__.load({
         appendCompactionsThrough(node.anchorSeq)
         const turn = node.location?.kind === 'step' || node.location?.kind === 'turn'
           ? node.location.turn.turn : node.data?.turn
+        const cached = options.processCache?.get(node)
+        // Node identity changes on content or location updates. Image outcomes
+        // are a separate projection and must also invalidate assistant actions.
+        const illustrationInput = node.kind === 'assistant-step' ? options.illustrations : undefined
+        const skipNarrative = options.skipNarrativeNodes?.has(node) === true
+        if (cached && cached.illustrations === illustrationInput
+          && cached.includeAllNarrative === options.includeAllNarrative
+          && cached.skipNarrative === skipNarrative && cached.narrativeText === options.narrativeText) {
+          for (const item of cached.items) append(turn, item)
+          continue
+        }
+        const items = []
+        const appendNode = (owner, item) => { items.push(item); append(owner, item) }
+        if (node.kind === 'model-retry') {
+          for (const attempt of node.data.attempts) {
+            const status = { scheduled: 'running', started: 'complete', cancelled: 'cancelled' }[attempt.retryState]
+            if (!status) throw new Error(`未知模型重试状态：${attempt.retryState}`)
+            const maximum = attempt.mode === 'normal' ? attempt.maxRetries : '∞'
+            const title = { scheduled: '等待重试模型请求', started: '已重试模型请求', cancelled: '模型重试已取消' }[attempt.retryState]
+            appendNode(turn, { id: `model-retry:${node.key}:${attempt.retry}`, kind: 'action', toolName: 'model_retry', status,
+              arguments: '', summary: `${title}（${attempt.retry}/${maximum}）`,
+              detail: JSON.stringify({ provider: attempt.provider, mode: attempt.mode, retry: attempt.retry,
+                ...(attempt.mode === 'normal' ? { maxRetries: attempt.maxRetries } : {}), delayMs: attempt.delayMs, failure: attempt.failure }),
+              startedAtMillis: attempt.time })
+          }
+        }
         if (node.kind === 'assistant-step') {
           const blocks = node.data?.blocks || []
           const raw = assistantText(blocks)
@@ -137,7 +237,7 @@ window.__ModuleLoader__.load({
             const imageEnd = raw.indexOf('</ACTION_CALL>', imageStart + imageOpen.length)
             const batches = (options.illustrations || []).filter(batch => batch.turn === turn && batch.step === node.data?.step)
             const batch = batches.length === 1 ? batches[0] : undefined
-            append(turn, { id: `illustration:${turn}:${node.data?.step}`, kind: 'action', toolName: 'generate_image',
+            appendNode(turn, { id: `illustration:${turn}:${node.data?.step}`, kind: 'action', toolName: 'generate_image',
               status: batch ? batch.status === 'generating' ? 'running' : batch.status === 'complete' ? 'complete' : 'error'
                 : node.data?.status === 'running' ? 'running' : 'error',
               arguments: raw.slice(imageStart + imageOpen.length, imageEnd < 0 ? finalStart < 0 ? undefined : finalStart : imageEnd).trim(),
@@ -145,7 +245,7 @@ window.__ModuleLoader__.load({
           }
           const hasToolCall = blocks.some(block => block?.kind === 'tool-call')
           blocks.forEach((block, index) => {
-            if (block?.kind === 'reasoning' && block.text) append(turn, {
+            if (block?.kind === 'reasoning' && block.text) appendNode(turn, {
               id: `reasoning:${turn}:${node.data?.step ?? 0}:${index}`,
               kind: 'reasoning', status: node.data?.status === 'running' ? 'running' : 'complete',
               toolName: 'reasoning', arguments: '', summary: '', detail: block.text,
@@ -156,7 +256,7 @@ window.__ModuleLoader__.load({
               : block?.text
             if ((hasToolCall || options.includeAllNarrative === true)
               && !options.skipNarrativeNodes?.has(node)
-              && block?.kind === 'text' && narrativeText) append(turn, {
+              && block?.kind === 'text' && narrativeText) appendNode(turn, {
               id: `narrative:${turn}:${node.data?.step ?? 0}:${index}`,
               kind: 'narrative', status: node.data?.status === 'running' ? 'running' : 'complete',
               toolName: 'assistant_narrative', arguments: '', summary: narrativeText, detail: narrativeText,
@@ -165,8 +265,10 @@ window.__ModuleLoader__.load({
           })
         }
         if (node.kind === 'tool-call') {
-          for (const item of toolProcess(node.data?.root)) append(turn, item)
+          for (const item of toolProcess(node.data?.root, '', options.toolCache)) appendNode(turn, item)
         }
+        options.processCache?.set(node, { items, illustrations: illustrationInput,
+          includeAllNarrative: options.includeAllNarrative, skipNarrative, narrativeText: options.narrativeText })
       }
       appendCompactionsThrough(Number.POSITIVE_INFINITY)
       return byTurn
@@ -208,7 +310,7 @@ window.__ModuleLoader__.load({
       return assigned
     }
 
-    function childSessionProcess(entry, target) {
+    function childSessionProcess(entry, target, processCache, toolCache) {
       const snapshot = target?.getSnapshot()
       if (!snapshot) return []
       const prefix = `subagent:${entry.id}:`
@@ -230,7 +332,7 @@ window.__ModuleLoader__.load({
       const items = [...officialProcess(snapshot, {
         includeAllNarrative: true,
         skipNarrativeNodes: closingAssistantNodes,
-        narrativeText: value => finalReplyText(value),
+        narrativeText: finalReplyText, processCache, toolCache,
       }).values()].flat().map(item => ({
         ...item,
         id: `${prefix}${item.id}`,
@@ -238,7 +340,7 @@ window.__ModuleLoader__.load({
       }))
       for (const node of nodes) {
         if (node.kind !== 'turn-tail' || !node.data?.closing) continue
-        const content = finalReplyText(assistantText(node.data.closing.blocks)).trim()
+        const content = assistantContent(node.data.closing.blocks).final.trim()
         if (!content) continue
         items.push({
           id: `${prefix}final:${node.data.turn}`,
@@ -251,8 +353,8 @@ window.__ModuleLoader__.load({
       return items
     }
 
-    function officialProcessWithSubagents(snapshot, catalog, subagentSessions, trajectory, illustrations = []) {
-      const byTurn = officialProcess(snapshot, { trajectory, illustrations })
+    function officialProcessWithSubagents(snapshot, catalog, subagentSessions, trajectory, illustrations = [], processCache, nodes, toolCache) {
+      const byTurn = officialProcess(snapshot, { trajectory, illustrations, processCache, nodes, toolCache })
       // DSH records every subagent in an independent child Session. A parent
       // tool call contains only the delegation receipt, so its visible process
       // must join the parent catalog identity with the child's official Chat
@@ -262,7 +364,7 @@ window.__ModuleLoader__.load({
         const root = assignments.get(entry.id)
         const child = subagentSessions.get(entry.id)
         if (!root || !child?.target) continue
-        const delegated = childSessionProcess(entry, child.target).map(item => ({
+        const delegated = childSessionProcess(entry, child.target, processCache, toolCache).map(item => ({
           ...item,
           parentId: item.parentId || root.item.id,
         }))
@@ -276,36 +378,37 @@ window.__ModuleLoader__.load({
 
     function mergedProcess(product = [], official = []) {
       const items = [...product]
+      const positions = new Map()
+      items.forEach((item, index) => { if (!positions.has(item.id)) positions.set(item.id, index) })
       for (const item of official) {
-        const index = items.findIndex(candidate => candidate.id === item.id)
-        if (index < 0) items.push(item)
-        else items[index] = { ...items[index], ...item }
+        const index = positions.get(item.id)
+        if (index === undefined) { positions.set(item.id, items.length); items.push(item) }
+        else {
+          const merged = { ...items[index], ...item }
+          if (!sameRecord(items[index], merged)) items[index] = merged
+        }
       }
-      return items
+      return sameReferences(product, items) ? product : items
     }
 
-    // DSH may notify both the Session state and the chat target for one
-    // logical update. Keep the live snapshot stable when the affected nodes
-    // did not change; React can then preserve the already-mounted message
-    // rows while the official target continues to own the projection.
-    function streamSnapshotKey(snapshot) {
-      const process = Array.isArray(snapshot?.process) ? snapshot.process.map(item => [
-        item?.id, item?.kind, item?.status, item?.toolName, item?.arguments,
-        item?.summary, item?.detail, item?.startedAtMillis, item?.completedAtMillis, item?.parentId
-      ]) : []
-      return JSON.stringify([
-        snapshot?.id, snapshot?.status, snapshot?.runId, snapshot?.requestId,
-        snapshot?.messageId, snapshot?.renderKey, snapshot?.dshTurn,
-        snapshot?.nodeKey, snapshot?.content, snapshot?.error, process
-      ])
+    const inputAttachmentCache = new WeakMap()
+    function inputAttachments(content) {
+      if (!Array.isArray(content)) return { images: EMPTY_ITEMS, files: EMPTY_ITEMS }
+      let cached = inputAttachmentCache.get(content)
+      if (!cached) {
+        cached = { images: collectInputImages(content), files: collectInputFiles(content) }
+        inputAttachmentCache.set(content, cached)
+      }
+      return cached
     }
-
-    const inputImages = content => Array.isArray(content) ? content.flatMap(block => {
+    const inputImages = content => inputAttachments(content).images
+    const inputFiles = content => inputAttachments(content).files
+    const collectInputImages = content => Array.isArray(content) ? content.flatMap(block => {
       const attachment = block?.type === 'image' ? block.attachment : null
       return attachment?.attachmentId ? [{ ...attachment }] : []
     }) : []
 
-    const inputFiles = content => Array.isArray(content) ? content.flatMap(block => {
+    const collectInputFiles = content => Array.isArray(content) ? content.flatMap(block => {
       const attachment = block?.type === 'file' ? block.attachment : null
       return attachment?.attachmentId ? [{ ...attachment }] : []
     }) : []
@@ -384,10 +487,25 @@ window.__ModuleLoader__.load({
       })
     }
 
-    function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map(), pendingSubmissions = [], sessionRunning, inputLinks = [], abortedTurns = [], regeneratingInputTurn, illustrations = []) {
+    function officialMessages(snapshot, details, runtimeSessionId, processByTurn = new Map(), pendingSubmissions = [], sessionRunning, inputLinks = [], abortedTurns = [], regeneratingInputTurn, illustrations = [], loadedEntries) {
       if (!snapshot) return (details?.messages || []).filter(message => message.id === 'opening')
-      const entries = orderedChatEntries(snapshot)
+      const entries = loadedEntries || orderedChatEntries(snapshot)
       const nodes = entries.map(entry => entry.node)
+      const assistantEntriesByTurn = new Map()
+      const userTurns = new Map()
+      let nextTailTurn
+      // Unstamped inputs belong to the next completed tail in the loaded window.
+      // Resolve every boundary in one reverse pass, including queued inputs.
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const entry = entries[index], node = entry.node
+        if (node.kind === 'turn-tail' && nodeTurn(node) !== undefined) nextTailTurn = nodeTurn(node)
+        if (node.kind === 'user' || node.kind === 'steering') userTurns.set(node, nodeTurn(node) ?? nextTailTurn)
+        if (node.kind === 'assistant-step') {
+          const turn = nodeTurn(node), current = assistantEntriesByTurn.get(turn) || []
+          current.push(entry); assistantEntriesByTurn.set(turn, current)
+        }
+      }
+      for (const current of assistantEntriesByTurn.values()) current.reverse()
       const imagesByTurn = new Map()
       for (const batch of illustrations) {
         const images = batch.frames.map(frame => ({ ...frame.attachment, id: `${batch.batchId}:${frame.id}`,
@@ -409,7 +527,7 @@ window.__ModuleLoader__.load({
         const turn = nodeTurn(entry.node)
         if (entry.node.kind !== 'assistant-step' || !Number.isSafeInteger(turn) || closedTurns.has(turn)) return
         const blocks = entry.node.data?.blocks || []
-        const hasActivity = liveFinalReply(assistantText(blocks)).started
+        const hasActivity = assistantContent(blocks).live.started
           || (processByTurn.get(turn) || []).length > 0
         // The official Session can publish the running assistant-step before
         // its first text/process event. Keep that real DSH node visible while
@@ -422,7 +540,7 @@ window.__ModuleLoader__.load({
         const node = entry.node
         if (node.kind === 'user' || node.kind === 'steering') {
           const input = node.data
-          const dshTurn = projectedUserTurn(nodes, nodeIndex)
+          const dshTurn = userTurns.get(node)
           return [{
             role: 'user', seq: input.seq, time: input.time, content: contentText(input.content),
             images: inputImages(input.content), files: inputFiles(input.content), dshMessageId: input.messageId || '',
@@ -442,6 +560,7 @@ window.__ModuleLoader__.load({
           return [{
             role: 'assistant', seq: node.anchorSeq, time: process[0].startedAtMillis,
             content: '', displayContent: '', nodeKey: entry.key, dshTurn: turn,
+            processTiming: turnProcessTiming(node),
             pending: sessionRunning === true && !endedTurns.has(turn) && !aborted.has(turn)
               && node.location?.turn?.status !== 'closed',
             interrupted: aborted.has(turn),
@@ -450,14 +569,14 @@ window.__ModuleLoader__.load({
         if (node.kind === 'assistant-step') {
           const turn = nodeTurn(node)
           if (!Number.isSafeInteger(turn) || closedTurns.has(turn) || latestOpenAssistantByTurn.get(turn) !== nodeIndex) return []
-          const raw = assistantText(node.data?.blocks)
-          const live = liveFinalReply(raw)
+          const { text: raw, live } = assistantContent(node.data?.blocks)
           const finalNode = node.data?.finalNode
           return [{
             role: 'assistant', seq: finalNode?.seq ?? node.data?.seq ?? node.anchorSeq ?? Number.MAX_SAFE_INTEGER,
             time: node.data?.time, content: raw,
             displayContent: live.started ? live.content : '',
             dshMessageId: finalNode?.messageId || '', nodeKey: entry.key, dshTurn: turn,
+            processTiming: turnProcessTiming(node),
             // Only a durable assistant/message has a mutation target. DSH can
             // also close a live-only interruption with a fractional view seq.
             sessionEventSeq: Number.isSafeInteger(finalNode?.seq) ? finalNode.seq : undefined,
@@ -474,15 +593,16 @@ window.__ModuleLoader__.load({
         const tail = node.data
         const closing = tail.closing
         const finalNode = closing.finalNode
-        const closingAssistant = entries.find(candidate => candidate.node.kind === 'assistant-step'
-          && nodeTurn(candidate.node) === tail.turn
-          && ((finalNode.messageId && candidate.node.data?.messageId === finalNode.messageId)
+        const closingAssistant = (assistantEntriesByTurn.get(tail.turn) || EMPTY_ITEMS).find(candidate =>
+          ((finalNode.messageId && candidate.node.data?.messageId === finalNode.messageId)
             || (Number.isSafeInteger(finalNode.seq) && candidate.node.data?.seq === finalNode.seq)))
+        const closingContent = assistantContent(closing.blocks)
         return [{
-          role: 'assistant', seq: finalNode.seq, time: finalNode.time, content: assistantText(closing.blocks),
-          displayContent: finalReplyText(assistantText(closing.blocks)),
+          role: 'assistant', seq: finalNode.seq, time: finalNode.time, content: closingContent.text,
+          displayContent: closingContent.final,
           dshMessageId: finalNode.messageId || '', interrupted: aborted.has(tail.turn) || finalNode.interrupted === true,
           usage: closing.usage, turnUsage: tail.tokenUsage, sessionEventSeq: finalNode.seq, dshTurn: tail.turn,
+          processTiming: turnProcessTiming(node),
           nodeKey: closingAssistant?.key || ''
         }]
       })
@@ -508,18 +628,38 @@ window.__ModuleLoader__.load({
       const candidates = product.filter(message => message.id !== 'opening')
       const matched = new Map()
       const claimedCandidates = new Set()
+      const byMessageId = new Map(), bySequence = new Map()
+      const indexCandidate = (lookup, role, key, index) => {
+        let byKey = lookup.get(role)
+        if (!byKey) { byKey = new Map(); lookup.set(role, byKey) }
+        const indices = byKey.get(key) || []
+        indices.push(index); byKey.set(key, indices)
+      }
+      candidates.forEach((candidate, index) => {
+        if (candidate.dshMessageId) indexCandidate(byMessageId, candidate.role, candidate.dshMessageId, index)
+        indexCandidate(bySequence, candidate.role, candidate.sessionEventSeq, index)
+      })
+      const availableCandidate = indices => {
+        while (indices?.length && claimedCandidates.has(candidates[indices[0]])) indices.shift()
+        return indices?.[0] ?? Number.POSITIVE_INFINITY
+      }
       for (let index = 0; index < projected.length; index += 1) {
         const item = projected[index]
-        const sourceIndex = candidates.findIndex(candidate => !claimedCandidates.has(candidate)
-          && candidate.role === item.role
-          && ((item.dshMessageId && candidate.dshMessageId === item.dshMessageId)
-            || candidate.sessionEventSeq === item.seq))
-        if (sourceIndex >= 0) {
+        const sourceIndex = Math.min(item.dshMessageId
+          ? availableCandidate(byMessageId.get(item.role)?.get(item.dshMessageId)) : Number.POSITIVE_INFINITY,
+        availableCandidate(bySequence.get(item.role)?.get(item.seq)))
+        if (Number.isFinite(sourceIndex)) {
           const source = candidates[sourceIndex]
           claimedCandidates.add(source)
           matched.set(index, source)
         }
       }
+      const inputLinksByTurn = new Map()
+      for (const link of inputLinks) if (!inputLinksByTurn.has(link.turn)) inputLinksByTurn.set(link.turn, link)
+      const sourceBySequence = new Map()
+      projected.forEach((item, index) => {
+        if (!sourceBySequence.has(item.seq)) sourceBySequence.set(item.seq, matched.get(index))
+      })
       const visible = projected.map((item, index) => {
         const source = matched.get(index)
         const id = source?.id || item.dshMessageId || item.nodeKey || (item.requestId
@@ -528,6 +668,9 @@ window.__ModuleLoader__.load({
         const runtimeVariableState = item.role === 'assistant' && Number.isSafeInteger(item.dshTurn)
           ? details?.runtimeVariableStateByTurn?.[String(item.dshTurn)]
           : undefined
+        const sourceVariableState = source?.variableSnapshotAvailable === false ? undefined
+          : source?.nativeVariableStateJson ?? source?.variableStateJson
+        const historicalVariableState = runtimeVariableState ?? sourceVariableState
         const message = {
           ...(source || {}), id, conversationId: details?.conversation?.id || source?.conversationId || '',
           ...(Number.isInteger(source?.productSequence ?? source?.sequence) ? { productSequence: source.productSequence ?? source.sequence } : {}),
@@ -537,7 +680,7 @@ window.__ModuleLoader__.load({
           ...(Object.prototype.hasOwnProperty.call(item, 'dshTurn') ? { dshTurn: item.dshTurn } : {}),
           ...(item.role === 'assistant' && Number.isSafeInteger(item.dshTurn) ? {
             dshTurn: item.dshTurn,
-            inputEventSeq: inputLinks.find(link => link.turn === item.dshTurn)?.inputEventSeq,
+            inputEventSeq: inputLinksByTurn.get(item.dshTurn)?.inputEventSeq,
             renderKey: `dsh-reply-${runtimeSessionId}-${item.dshTurn}`
           } : {}),
           ...(item.nodeKey ? { dshNodeKey: item.nodeKey } : {}),
@@ -550,17 +693,17 @@ window.__ModuleLoader__.load({
           displayContent: !item.pending && source?.content === item.content && typeof source.displayContent === 'string'
             ? source.displayContent
             : item.displayContent ?? item.content,
-          // The DSH turn is the stable identity after regeneration. Its
-          // checkpoint is the exact post-reply state used by the old renderer;
-          // product-row metadata is only a fallback for pre-checkpoint history.
-          variableStateJson: runtimeVariableState || source?.variableStateJson || '{}',
-          ...(typeof (runtimeVariableState ?? source?.variableStateJson) === 'string'
-            ? { nativeVariableStateJson: runtimeVariableState ?? source.variableStateJson } : {}),
+          // The product database supplies the completed state for this exact
+          // DSH turn; a missing historical value stays explicitly unavailable.
+          variableStateJson: historicalVariableState ?? '{}',
+          variableSnapshotAvailable: typeof historicalVariableState === 'string',
+          nativeVariableStateJson: historicalVariableState,
           createdAt: source?.createdAt || new Date(item.time || Date.now()).toISOString(),
           ...(item.kind ? { kind: item.kind } : {}),
           ...(item.error ? { error: item.error, dshTurn: item.dshTurn } : {}),
           status: item.error ? 'error' : item.pending ? 'streaming' : item.interrupted ? 'cancelled' : 'complete',
           process: mergedProcess(source?.process, processByTurn.get(item.dshTurn)),
+          processTiming: item.processTiming,
           ...(item.turnUsage || source?.turnUsage ? { turnUsage: item.turnUsage || source.turnUsage } : {}),
           ...(item.images?.length ? { inputImageAttachments: item.images } : {}),
           ...(item.role === 'assistant' && imagesByTurn.get(item.dshTurn)?.length ? { generatedImageAttachments: imagesByTurn.get(item.dshTurn) } : {}),
@@ -571,12 +714,12 @@ window.__ModuleLoader__.load({
         const hasText = String(message.content || '').trim().length > 0
         return { message, keep: hasText || hasAttachments || hasProcess || message.status === 'streaming' }
       }).filter(item => item.keep).map(item => item.message)
-      const anchor = visible.findIndex(message => Number.isSafeInteger(matched.get(projected.findIndex(item => item.seq === message.sequence))?.messageIndex))
+      const anchor = visible.findIndex(message => Number.isSafeInteger(sourceBySequence.get(message.sequence)?.messageIndex))
       const firstFloor = !details?.hasMore || anchor < 0 ? opening.length : Math.max(opening.length,
-        matched.get(projected.findIndex(item => item.seq === visible[anchor].sequence)).messageIndex
+        sourceBySequence.get(visible[anchor].sequence).messageIndex
           - visible.slice(0, anchor).filter(message => message.kind !== 'turn-error').length)
       let messageFloor = firstFloor
-      return [...opening, ...visible.map(message => ({ ...message,
+      return [...opening, ...visible.map(message => reuseMessage(sourceBySequence.get(message.sequence), { ...message,
         messageIndex: message.kind === 'turn-error' ? undefined : messageFloor++ }))]
     }
 
@@ -604,7 +747,6 @@ window.__ModuleLoader__.load({
         this.streamSnapshot = { id: '', status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '', sequence: 0, content: '', process: [], error: '' }
         this.streamState = this.streamSnapshot
         this.chatSnapshot = { details: this.detailsSnapshot, stream: this.streamSnapshot }
-        this.streamStateKey = streamSnapshotKey(this.streamState)
         this.streamListeners = new Set()
         this.generationListeners = new Set()
         this.streamGeneration = 0
@@ -639,11 +781,16 @@ window.__ModuleLoader__.load({
         this.changeFeed = null
         this.stopEvents = () => {}
         this.stopRegexRules = () => {}
-        this.displayProjectionKey = ''
+        this.displayProjectionSignature = null
         this.displayProjectionGeneration = 0
         this.displayProjectionResults = new Map()
         this.displayProjectionPromise = null
         this.officialProjectionSignature = null
+        this.lastAcceptedSession = null
+        this.nodeProcessCache = new WeakMap()
+        this.toolProcessCache = new WeakMap()
+        this.inputContinuationsValue = undefined
+        this.inputContinuationLinks = EMPTY_ITEMS
       }
 
       getSnapshot = () => this.snapshot
@@ -654,6 +801,12 @@ window.__ModuleLoader__.load({
       }
 
       getDetailsSnapshot = () => this.detailsSnapshot
+
+      getSessionReference(runtimeSessionId) {
+        if (this.disposed || !runtimeSessionId || !this.sessionTarget
+          || this.sessionReference?.sessionId !== runtimeSessionId) return null
+        return this.sessionReference
+      }
 
       getStatsSnapshot = () => this.statsSnapshot
 
@@ -978,9 +1131,7 @@ window.__ModuleLoader__.load({
       // final-body marker while DSH remains the source of truth.
       publishOfficialState(nextDetails, officialProjectionSignature, nextStream) {
         const details = this.prepareDetails(nextDetails, officialProjectionSignature)
-        const nextKey = streamSnapshotKey(nextStream)
         this.streamState = nextStream
-        this.streamStateKey = nextKey
         this.cancelStreamFrame()
         this.streamSnapshot = this.streamState
         this.chatSnapshot = { details: this.detailsSnapshot, stream: this.streamSnapshot }
@@ -999,7 +1150,10 @@ window.__ModuleLoader__.load({
             variableStateJson: typeof message.nativeVariableStateJson === 'string' ? message.nativeVariableStateJson
               : typeof message.variableStateJson === 'string' ? message.variableStateJson : '{}',
             status: message.status,
-            createdAt: message.createdAt
+            createdAt: message.createdAt,
+            ...(message.role === 'assistant' ? { reasoning: (message.process || [])
+              .filter(item => item.kind === 'reasoning' && item.status !== 'running')
+              .map(item => ({ id: item.id, text: reasoningText(item) })) } : {})
           }))
       }
 
@@ -1007,17 +1161,32 @@ window.__ModuleLoader__.load({
         if (next.status !== 'ready' || !next.details || this.displayProjectionResults.size === 0) return next
         let changed = false
         const messages = next.details.messages.map(message => {
-          if (message.role === 'assistant' && message.status === 'streaming') return message
           const cached = this.displayProjectionResults.get(message.id)
           const result = cached?.result
           if (!cached || cached.role !== message.role
-            || !result || result.sourceContent !== message.content
+            || !result
             || typeof result.displayContent !== 'string'
             || typeof result.variableStateJson !== 'string') return message
-          if (message.displayContent === result.displayContent
-            && message.variableStateJson === result.variableStateJson) return message
-          changed = true
-          return { ...message, displayContent: result.displayContent, variableStateJson: result.variableStateJson }
+          let projected = message
+          if (message.status !== 'streaming' && result.sourceContent === message.content
+            && (message.displayContent !== result.displayContent || message.variableStateJson !== result.variableStateJson)) {
+            projected = { ...projected, displayContent: result.displayContent, variableStateJson: result.variableStateJson }
+          }
+          if (Array.isArray(result.reasoning) && message.process?.length) {
+            const byId = new Map(result.reasoning.map(item => [item.id, item]))
+            let processChanged = false
+            const process = message.process.map(item => {
+              const display = byId.get(item.id)
+              if (item.kind !== 'reasoning' || item.status === 'running' || !display
+                || display.sourceText !== reasoningText(item) || typeof display.displayText !== 'string'
+                || item.displayDetail === display.displayText) return item
+              processChanged = true
+              return { ...item, displayDetail: display.displayText }
+            })
+            if (processChanged) projected = { ...projected, process }
+          }
+          if (projected !== message) changed = true
+          return projected
         })
         return changed ? { ...next, details: { ...next.details, messages } } : next
       }
@@ -1028,13 +1197,8 @@ window.__ModuleLoader__.load({
         const input = this.displayProjectionInput(details.messages || [])
         // Live text is rendered directly. Keep its row for depth calculations,
         // but only settled text changes request a regex display projection.
-        const key = `${id}\u0000${JSON.stringify(input.map(message => {
-          if (message.role !== 'assistant' || message.status !== 'streaming') return message
-          const { content, ...identity } = message
-          return identity
-        }))}`
-        if (key === this.displayProjectionKey) return this.displayProjectionPromise
-        this.displayProjectionKey = key
+        if (sameDisplayProjection(this.displayProjectionSignature, id, input)) return this.displayProjectionPromise
+        this.displayProjectionSignature = { id, input }
         const generation = ++this.displayProjectionGeneration
         const operation = projectDisplay.call(this.remote.eleckoiConversations, id, input).then((response) => {
           const results = this.unwrap(response, '生成消息显示内容失败。')
@@ -1055,7 +1219,7 @@ window.__ModuleLoader__.load({
           const projected = this.applyDisplayProjection(current)
           if (projected !== current) this.publishDetails(projected)
         }).catch((error) => {
-          if (generation === this.displayProjectionGeneration) this.displayProjectionKey = ''
+          if (generation === this.displayProjectionGeneration) this.displayProjectionSignature = null
           console.error('ElecKoi 消息显示投影失败：', error)
         })
         this.displayProjectionPromise = operation
@@ -1068,10 +1232,8 @@ window.__ModuleLoader__.load({
       }
 
       publishStream(next, publication = 'immediate') {
-        const nextKey = streamSnapshotKey(next)
-        if (nextKey === this.streamStateKey) return
+        if (sameStreamSnapshot(next, this.streamState)) return
         this.streamState = next
-        this.streamStateKey = nextKey
         if (publication === 'animation-frame' && typeof requestAnimationFrame === 'function') {
           if (this.streamFrame !== undefined) return
           this.streamFrame = requestAnimationFrame(() => {
@@ -1121,7 +1283,7 @@ window.__ModuleLoader__.load({
             const current = this.detailsSnapshot
             if (kind !== 'configuration' || snapshot?.status !== 'ready'
               || !current.details || current.details.metadata?.characterId !== characterId) return
-            this.displayProjectionKey = ''
+            this.displayProjectionSignature = null
             this.scheduleDisplayProjection(current.id, current.details)
           })
         }
@@ -1375,7 +1537,7 @@ window.__ModuleLoader__.load({
           kind: 'released', running: false, events: [],
         })
         this.displayProjectionGeneration += 1
-        this.displayProjectionKey = ''
+        this.displayProjectionSignature = null
         // Same-chat Session rewrites keep unchanged authored display documents.
         // applyDisplayProjection still rejects entries whose source/input changed.
         this.displayProjectionPromise = null
@@ -1390,6 +1552,11 @@ window.__ModuleLoader__.load({
         this.sessionTarget = null
         this.sessionTrajectoryTarget = null
         this.officialProjectionSignature = null
+        this.lastAcceptedSession = null
+        this.nodeProcessCache = new WeakMap()
+        this.toolProcessCache = new WeakMap()
+        this.inputContinuationsValue = undefined
+        this.inputContinuationLinks = EMPTY_ITEMS
         this.sessionReference?.release()
         this.sessionReference = null
       }
@@ -1411,30 +1578,33 @@ window.__ModuleLoader__.load({
         child.reference?.release()
       }
 
-      officialProcess(chat) {
+      officialProcess(chat, nodes) {
         return officialProcessWithSubagents(chat, this.subagentCatalog, this.subagentSessions,
-          this.sessionTrajectoryTarget?.getSnapshot(), this.illustrations(this.sessionReference?.sessionId))
+          this.sessionTrajectoryTarget?.getSnapshot(), this.illustrations(this.sessionReference?.sessionId), this.nodeProcessCache, nodes, this.toolProcessCache)
       }
 
       inputContinuations(runtimeSessionId) {
         const reference = this.sessionReference
-        if (reference?.sessionId !== runtimeSessionId) return []
+        if (reference?.sessionId !== runtimeSessionId) return EMPTY_ITEMS
         const value = reference.binding.session.projections?.faceOf('eleckoiInputContinuations')?.getSnapshot()
-        if (!Array.isArray(value?.links)) return []
+        if (!Array.isArray(value?.links)) return EMPTY_ITEMS
+        if (this.inputContinuationsValue === value) return this.inputContinuationLinks
+        this.inputContinuationsValue = value
         const inputsBySeq = new Map((value.inputs || []).map(input => [input.eventSeq, input]))
-        return value.links.map(link => {
+        this.inputContinuationLinks = value.links.map(link => {
           const input = inputsBySeq.get(link.inputEventSeq)
           // Regeneration preserves the original admission. Its exact event
           // and message identities distinguish that retired turn from a stop.
           return { ...link, inputTurn: input && input.messageId === link.inputMessageId ? input.turn : undefined }
         })
+        return this.inputContinuationLinks
       }
 
       illustrations(runtimeSessionId) {
         const reference = this.sessionReference
-        if (!reference || reference.sessionId !== runtimeSessionId) return []
+        if (!reference || reference.sessionId !== runtimeSessionId) return EMPTY_ITEMS
         const value = reference.binding.session.projections?.faceOf('eleckoiIllustrations')?.getSnapshot()
-        return Array.isArray(value) ? value : []
+        return Array.isArray(value) ? value : EMPTY_ITEMS
       }
 
       regeneratingInputTurn(runtimeSessionId) {
@@ -1517,16 +1687,16 @@ window.__ModuleLoader__.load({
         if (changed) this.subagentProjectionRevision += 1
       }
 
-      createOfficialProjectionSignature(chat, runtimeSessionId, hasMore, pendingSubmissions = [], sessionRunning) {
-        const nodes = orderedChatNodes(chat)
+      createOfficialProjectionSignature(chat, runtimeSessionId, hasMore, pendingSubmissions = [], sessionRunning, loadedNodes) {
+        const nodes = loadedNodes || orderedChatNodes(chat)
         return {
           runtimeSessionId,
           hasMore,
           subagentProjectionRevision: this.subagentProjectionRevision,
-          inputContinuationsKey: JSON.stringify(this.inputContinuations(runtimeSessionId)),
+          inputContinuations: this.inputContinuations(runtimeSessionId),
           illustrations: this.sessionReference?.binding.session.projections?.faceOf('eleckoiIllustrations')?.getSnapshot(),
           regeneratingInputTurn: this.regeneratingInputTurn(runtimeSessionId),
-          abortedTurnsKey: JSON.stringify(this.abortedTurns(runtimeSessionId)),
+          abortedTurns: this.abortedTurns(runtimeSessionId),
           canChangeOpening: this.openingChangeAllowed(this.detailsSnapshot.id, runtimeSessionId),
           sessionRunning,
           pendingSubmissions,
@@ -1542,10 +1712,11 @@ window.__ModuleLoader__.load({
         return left?.runtimeSessionId === right?.runtimeSessionId
           && left?.hasMore === right?.hasMore
           && left?.subagentProjectionRevision === right?.subagentProjectionRevision
-          && left?.inputContinuationsKey === right?.inputContinuationsKey
+          && left?.inputContinuations?.length === right?.inputContinuations?.length
+          && left.inputContinuations.every((item, index) => sameRecord(item, right.inputContinuations[index]))
           && left?.illustrations === right?.illustrations
           && left?.regeneratingInputTurn === right?.regeneratingInputTurn
-          && left?.abortedTurnsKey === right?.abortedTurnsKey
+          && sameReferences(left?.abortedTurns, right?.abortedTurns)
           && left?.canChangeOpening === right?.canChangeOpening
           && left?.sessionRunning === right?.sessionRunning
           && left?.pendingSubmissions?.length === right?.pendingSubmissions?.length
@@ -1720,18 +1891,29 @@ window.__ModuleLoader__.load({
         if (this.disposed || id !== this.detailsSnapshot.id) return
         const sessionState = session.getSnapshot()
         const chat = target.getSnapshot()
+        const entries = orderedChatEntries(chat)
+        const nodes = entries.map(entry => entry.node)
+        const eventWindow = this.sessionReference?.binding.eventSource.getSnapshot()
+        const hasMore = Boolean(eventWindow?.hasMore)
+        const pendingSubmissions = sessionState.pendingSubmissions || EMPTY_ITEMS
+        const sessionRunning = sessionState.running === true
+        const signature = this.createOfficialProjectionSignature(chat, runtimeSessionId, hasMore, pendingSubmissions, sessionRunning, nodes)
+        const lifecycle = { promptError: sessionState.promptError, lastAgentError: sessionState.lastAgentError,
+          openError: sessionState.openError, removed: sessionState.removed }
+        const accepted = this.lastAcceptedSession
+        // Session and target notifications can describe one publication. Skip
+        // repeated work only if lifecycle, official nodes and displayed state agree.
+        if (accepted?.details === this.detailsSnapshot && accepted.stream === this.streamState
+          && accepted.events === eventWindow?.entries && sameRecord(accepted.lifecycle, lifecycle)
+          && this.sameOfficialProjection(signature, accepted.signature)) return
         const details = this.detailsSnapshot.details
-        const processByTurn = this.officialProcess(chat)
+        const processByTurn = this.officialProcess(chat, nodes)
         let pendingDetails = null
         if (details) {
-          const hasMore = Boolean(this.sessionReference?.binding.eventSource.getSnapshot().hasMore)
-          const pendingSubmissions = sessionState.pendingSubmissions || []
-          const sessionRunning = sessionState.running === true
-          const signature = this.createOfficialProjectionSignature(chat, runtimeSessionId, hasMore, pendingSubmissions, sessionRunning)
           if (!this.sameOfficialProjection(signature, this.officialProjectionSignature)) {
             const next = {
               ...details, runtimeSessionId,
-              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn, pendingSubmissions, sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId), this.regeneratingInputTurn(runtimeSessionId), this.illustrations(runtimeSessionId)),
+              messages: officialMessages(chat, { ...details, hasMore }, runtimeSessionId, processByTurn, pendingSubmissions, sessionRunning, this.inputContinuations(runtimeSessionId), this.abortedTurns(runtimeSessionId), this.regeneratingInputTurn(runtimeSessionId), this.illustrations(runtimeSessionId), entries),
               hasMore,
             }
             next.beforeSequence = next.messages.find(message => message.id !== 'opening')?.sequence ?? null
@@ -1743,8 +1925,8 @@ window.__ModuleLoader__.load({
         }
         const retiredTurns = new Set([
           ...this.abortedTurns(runtimeSessionId),
-          ...orderedChatNodes(chat).filter(node => node.kind === 'turn-tail' && node.data?.closing).map(nodeTurn),
-          ...(this.sessionReference?.binding.eventSource.getSnapshot().entries || [])
+          ...nodes.filter(node => node.kind === 'turn-tail' && node.data?.closing).map(nodeTurn),
+          ...(eventWindow?.entries || EMPTY_ITEMS)
             .filter(entry => entry.type === 'event' && entry.event.type === 'turn/end'
               && ['aborted', 'interrupted'].includes(entry.event.data?.reason?.kind))
             .map(entry => entry.event.data.turn),
@@ -1754,7 +1936,7 @@ window.__ModuleLoader__.load({
         const liveTurn = [...(chat?.timeline?.turns?.values() || [])]
           .findLast(turn => turn.status === 'open' && !retiredTurns.has(turn.turn))?.turn
           ?? previousTurn
-        const runningAssistant = orderedChatNodes(chat)
+        const runningAssistant = nodes
           .findLast(node => node.kind === 'assistant-step'
             && !retiredTurns.has(nodeTurn(node)) && node.location?.turn?.status !== 'closed'
             && node.data?.status !== 'interrupted'
@@ -1766,13 +1948,13 @@ window.__ModuleLoader__.load({
         // identify a future run whose turn/start has not arrived yet.
         const sameLiveTurn = current.id === id && current.status === 'running'
           && (current.dshTurn === openTurn || (openTurn === undefined && retiredTurns.has(current.dshTurn)))
-        const projectedReply = liveFinalReply(assistantText(runningAssistant?.data?.blocks))
+        const projectedReply = assistantContent(runningAssistant?.data?.blocks).live
         const content = projectedReply.started ? projectedReply.content
           : !runningAssistant && sameLiveTurn ? current.content : ''
         const promptError = sessionState.promptError?.op === 'send'
           ? sessionState.promptError.error?.message || '生成失败。'
           : ''
-        const terminalFailure = orderedChatNodes(chat).findLast(node => node.kind === 'turn-error' && nodeTurn(node) === openTurn)
+        const terminalFailure = nodes.findLast(node => node.kind === 'turn-error' && nodeTurn(node) === openTurn)
         const executionError = promptError || sessionState.lastAgentError || terminalFailure?.data?.message || sessionState.openError?.message
           || (sessionState.removed ? 'DSH 会话已关闭。' : '')
         const cancellationSettling = this.cancelledStreamConversations.has(id)
@@ -1782,7 +1964,7 @@ window.__ModuleLoader__.load({
         // Dropping the live row at that boundary made a one-turn chat go
         // blank for one render before the final assistant node arrived.
         const turnTail = sameLiveTurn && Number.isSafeInteger(current.dshTurn)
-          ? orderedChatNodes(chat).find(node => node.kind === 'turn-tail' && node.data?.turn === current.dshTurn)
+          ? nodes.find(node => node.kind === 'turn-tail' && node.data?.turn === current.dshTurn)
           : null
         // The official Session event stream is the authority for why a turn
         // ended. An aborted/interrupted turn can have no closing text node,
@@ -1790,7 +1972,7 @@ window.__ModuleLoader__.load({
         // That path is intentionally retained for a normally completed turn
         // whose final assistant projection arrives one pass later.
         const endedTurnReason = sameLiveTurn && Number.isSafeInteger(current.dshTurn)
-          ? (this.sessionReference?.binding.eventSource.getSnapshot().entries || [])
+          ? (eventWindow?.entries || EMPTY_ITEMS)
             .filter(entry => entry.type === 'event')
             .map(entry => entry.event)
             .findLast(event => event.type === 'turn/end' && event.data?.turn === current.dshTurn)
@@ -1879,6 +2061,8 @@ window.__ModuleLoader__.load({
         } else if (pendingDetails) {
           this.publishDetails(pendingDetails.snapshot, pendingDetails.signature)
         }
+        this.lastAcceptedSession = { details: this.detailsSnapshot, stream: this.streamState,
+          events: eventWindow?.entries, lifecycle, signature }
       }
 
       async cancelStream(expectedRunId) {
@@ -2098,7 +2282,7 @@ window.__ModuleLoader__.load({
         this.primeRewindRequest(input, request)
         this.detailGeneration += 1
         this.displayProjectionGeneration += 1
-        this.displayProjectionKey = ''
+        this.displayProjectionSignature = null
         if (this.detailsSnapshot.id === input.conversationId) this.publishDetails(this.detailsSnapshot)
         let prepared
         try {

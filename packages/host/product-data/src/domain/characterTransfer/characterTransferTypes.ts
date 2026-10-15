@@ -2,10 +2,10 @@ import type { RegexRule } from '@shared/contracts/regex/schemas'
 import type { SettingLibrary } from '@shared/contracts/settingLibrary/schemas'
 import type { VariableConfig } from '@shared/contracts/variables/schemas'
 import type { PortableScriptLibrary } from '@product-data/domain/scripts'
+import type { PortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 
 export interface PortableCharacter {
   name: string
-  group: string
   frontendBeautyEnabled: boolean
   profileAge: string
   profileSex: string
@@ -30,6 +30,7 @@ export interface PortableCharacterPackage {
   variableConfigJson: string
   regexRules: RegexRule[]
   scriptLibrary?: PortableScriptLibrary
+  displayTemplates?: PortableDisplayTemplates
 }
 
 export interface DecodedCharacterCard {

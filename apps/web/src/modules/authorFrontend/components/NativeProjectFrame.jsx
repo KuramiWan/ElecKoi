@@ -18,7 +18,7 @@ export function NativeProjectFrame({ content, project, entryFile, revision, cont
   const source = useMemo(() => {
     const folder = entryFile.includes('/') ? entryFile.slice(0, entryFile.lastIndexOf('/') + 1).split('/').map(encodeURIComponent).join('/') : '';
     return buildAuthorDocumentSource(content, channel, autoHeight, {
-      baseUrl: `/eleckoi/frontends/${encodeURIComponent(project.id)}/${folder}`, context: currentContext.current,
+      baseUrl: `/eleckoi/frontends/${encodeURIComponent(project.id)}/${folder}`, context: currentContext.current, runtimeDiagnostics: false,
       globalStyles: (project.manifest?.globalStyles || []).map(path => frontendAssetUrl(project, path, revision)),
     });
   }, [content, channel, autoHeight, project.id, project.manifest, entryFile, revision]);

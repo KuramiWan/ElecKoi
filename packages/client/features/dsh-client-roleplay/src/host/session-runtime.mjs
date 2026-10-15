@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { readSessionSnapshot, removeSessionSnapshot, snapshotPath, writeSessionSnapshot } from './session-snapshot.mjs'
-import { historicalRuntimeState } from './historical-runtime-state.mjs'
 import { historyStatsProjection } from './history-stats-projection.mjs'
 import { durableProductPluginSpecifier } from './preset-definition.mjs'
 import { turnOutcomesProjection } from './turn-outcomes-projection.mjs'
@@ -59,7 +58,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     return { runtime, previous, mainModel, effectiveToolPolicy, requestedPreset }
   }
 
-  const prepare = async (conversationId, text, creating = false, signal) => {
+  const prepare = async (conversationId, text, creating = false, signal, initialTurn) => {
     signal?.throwIfAborted()
     await ctx.eleckoiConversationLifecycle.drain(conversationId)
     const {
@@ -76,13 +75,9 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     if (!creating) await requireIdleSession(ctx, runtime.runtimeSessionId)
     const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
     mkdirSync(sessionRoot, { recursive: true })
-    const nextTurn = creating ? 1 : await nextSessionTurn(ctx, runtime.runtimeSessionId)
+    const nextTurn = initialTurn ?? (creating ? 1 : await nextSessionTurn(ctx, runtime.runtimeSessionId))
     const operationId = creating ? undefined : randomUUID()
-    writeRuntimeCheckpoint(
-      sessionRoot,
-      nextTurn,
-      ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
-    )
+    ctx.eleckoiProductData.recordRuntimeBeforeTurn(conversationId, runtime.runtimeSessionId, nextTurn)
     const variableStateFile = join(sessionRoot, 'eleckoi-variable-state.json')
     const settingStateFile = join(sessionRoot, 'eleckoi-setting-library-state.json')
     const contextFile = join(sessionRoot, 'eleckoi-conversation-context.json')
@@ -167,12 +162,11 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       return Promise.resolve().then(action).finally(() => generationOptions.delete(conversationId))
     },
     async adoptFork(conversationId, sourceConversationId, sourceTurn, afterTurn) {
-      const sourceRoot = join(bridgeRoot, safePathPart(sourceConversationId))
-      const state = (afterTurn ? readCompletedRuntimeCheckpoint(sourceRoot, sourceTurn)
-        : readRuntimeCheckpoint(sourceRoot, sourceTurn))?.state
-      if (!state) throw new Error(`缺少第 ${sourceTurn} 轮${afterTurn ? '完成后' : '开始前'}的历史运行状态，未复制当前变量。`)
+      const state = ctx.eleckoiProductData.runtimeStateAt(sourceConversationId,
+        ctx.eleckoiProductData.runtimeSessionId(sourceConversationId), sourceTurn, afterTurn ? 'after' : 'before')
       ctx.eleckoiProductData.restoreConversationRuntime(conversationId, state)
-      const prepared = await prepare(conversationId, '', true)
+      const nextTurn = await nextSessionTurn(ctx, ctx.eleckoiProductData.runtimeSessionId(conversationId))
+      const prepared = await prepare(conversationId, '', true, undefined, nextTurn)
       await presetRegistrar.registerForSession(prepared.runtimeSessionId)
       return prepared.runtimeSessionId
     },
@@ -227,16 +221,16 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     async prepareRegeneration(conversationId, text) {
       const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
       const state = ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
+      const history = ctx.eleckoiProductData.captureRuntimeHistory(conversationId)
       const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
       const files = [
         snapshotPath(snapshotRoot, sessionId),
-        checkpointPath(sessionRoot),
         ...['eleckoi-variable-state.json', 'eleckoi-setting-library-state.json', 'eleckoi-conversation-context.json']
           .map(name => join(sessionRoot, name))
       ].map(path => ({ path, content: existsSync(path) ? readFileSync(path) : undefined }))
       const rollback = () => {
         ctx.eleckoiConversationLifecycle.forget(conversationId)
-        ctx.eleckoiProductData.restoreConversationRuntime(conversationId, state)
+        ctx.eleckoiProductData.restoreRuntimeHistory(conversationId, state, history)
         for (const file of files) {
           if (file.content === undefined) rmSync(file.path, { force: true })
           else writeAtomically(file.path, file.content)
@@ -253,42 +247,22 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       }
     },
     variableStatesByTurn(conversationId) {
-      const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
-      return Object.fromEntries(readRuntimeCheckpoints(sessionRoot)
-        .filter(item => item.phase === 'after')
-        .map(item => [String(item.turn), item.state.variableStateJson]))
+      return ctx.eleckoiProductData.runtimeVariablesByTurn(conversationId)
     },
     prepareRestoreBeforeTurn(conversationId, sessionId, fromTurn, beforeMessageId) {
       const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
       if (snapshot.conversationId !== conversationId) {
         throw new Error('DSH Session 与当前聊天不匹配，不能回退运行状态。')
       }
-      const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
-      const checkpoint = readRuntimeCheckpoint(sessionRoot, fromTurn)
-      const hasRoleplayHistory = (!checkpoint || beforeMessageId)
-        && ctx.eleckoiProductData.readConversationDetails(conversationId).metadata.characterId
-      const archive = hasRoleplayHistory
-        ? ctx.eleckoiProductData.exportConversationArchive(conversationId) : undefined
-      const historical = archive && beforeMessageId
-        ? historicalRuntimeState(archive, sessionId, fromTurn, beforeMessageId) : undefined
-      const exactHistoricalInput = archive?.tables.agent_turns.some(row => row.id === beforeMessageId && row.kind === 'user')
-      const state = exactHistoricalInput ? historical : checkpoint?.state
-        ?? (archive && historicalRuntimeState(archive, sessionId, fromTurn))
-      if (!state) throw new Error(`缺少第 ${fromTurn} 轮之前的历史运行状态，未修改聊天。`)
+      const state = ctx.eleckoiProductData.runtimeStateAt(conversationId, sessionId, fromTurn, 'before', beforeMessageId)
       ctx.eleckoiProductData.validateConversationRuntimeSnapshot(state)
       const previous = ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
-      const checkpointFile = checkpointPath(sessionRoot)
-      const checkpointContent = existsSync(checkpointFile) ? readFileSync(checkpointFile) : undefined
-      return { state, apply() {
-        ctx.eleckoiProductData.restoreConversationRuntime(conversationId, state)
-        mkdirSync(sessionRoot, { recursive: true })
-        writeRuntimeCheckpoint(sessionRoot, fromTurn, state)
-        trimRuntimeCheckpoints(sessionRoot, fromTurn)
+      const history = ctx.eleckoiProductData.captureRuntimeHistory(conversationId)
+      return { state, apply(retainedInputIds) {
+        ctx.eleckoiProductData.applyRuntimeRewind(conversationId, sessionId, fromTurn, state, retainedInputIds)
         refreshSettingBranches()
       }, rollback() {
-        ctx.eleckoiProductData.restoreConversationRuntime(conversationId, previous)
-        if (checkpointContent === undefined) rmSync(checkpointFile, { force: true })
-        else writeAtomically(checkpointFile, checkpointContent)
+        ctx.eleckoiProductData.restoreRuntimeHistory(conversationId, previous, history)
         refreshSettingBranches()
       } }
     },
@@ -320,9 +294,8 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
             ? readVariableBridgeState(snapshot.variableStateFile) : undefined
           if (!await ctx.sessions.flush(session)) throw new Error('DSH Session 没有持久保存服务。')
           if (event.data.reason.kind === 'completed') {
-            ctx.eleckoiProductData.commitConversationRuntime(snapshot.conversationId, variableState, undefined, undefined, snapshot.generationVariableStateJson)
-            writeCompletedRuntimeCheckpoint(join(bridgeRoot, safePathPart(snapshot.conversationId)), turn,
-              ctx.eleckoiProductData.snapshotConversationRuntime(snapshot.conversationId))
+            ctx.eleckoiProductData.completeConversationRuntime(snapshot.conversationId, session.id, turn,
+              variableState, snapshot.generationVariableStateJson)
           } else if (event.data.reason.kind !== 'aborted') {
             throw new Error(event.data.reason.error?.message || 'DSH 本轮生成未完成。')
           }
@@ -352,91 +325,6 @@ async function nextSessionTurn(ctx, sessionId) {
   return lastTurn + 1
 }
 
-function checkpointPath(sessionRoot) {
-  return join(sessionRoot, 'eleckoi-runtime-checkpoints.json')
-}
-
-function readRuntimeCheckpoints(sessionRoot) {
-  const path = checkpointPath(sessionRoot)
-  if (!existsSync(path)) return []
-  const document = parsedObject(readFileSync(path, 'utf8'), '聊天运行状态检查点')
-  if (![1, 2].includes(document.version) || !Array.isArray(document.checkpoints)) {
-    throw new Error('聊天运行状态检查点格式不正确。')
-  }
-  const identities = new Set()
-  const checkpoints = document.checkpoints.map((item) => {
-    // Old records identify a pre-input boundary, not an immutable completed reply.
-    const turn = document.version === 1 ? item?.beforeTurn : item?.turn
-    const phase = document.version === 1 ? 'before' : item?.phase
-    if (!item || typeof item !== 'object' || Array.isArray(item)
-      || !Number.isSafeInteger(turn) || turn < 1 || !['before', 'after'].includes(phase)
-      || !item.state || typeof item.state !== 'object' || Array.isArray(item.state)
-      || typeof item.state.variableStateJson !== 'string'
-      || typeof item.state.settingLibraryStateJson !== 'string') {
-      throw new Error('聊天运行状态检查点内容不正确。')
-    }
-    const identity = `${phase}:${turn}`
-    if (identities.has(identity)) throw new Error(`聊天运行状态检查点重复：${identity}，未修改记录。`)
-    identities.add(identity)
-    parsedObject(item.state.variableStateJson, '历史变量状态')
-    if (!Array.isArray(JSON.parse(item.state.settingLibraryStateJson))) {
-      throw new Error('历史设定状态必须是 JSON array，未修改记录。')
-    }
-    return {
-      turn, phase,
-      state: {
-        variableStateJson: item.state.variableStateJson,
-        settingLibraryStateJson: item.state.settingLibraryStateJson
-      }
-    }
-  }).sort((left, right) => left.turn - right.turn || left.phase.localeCompare(right.phase))
-  if (document.version === 1) saveRuntimeCheckpoints(sessionRoot, checkpoints)
-  return checkpoints
-}
-
-function writeRuntimeCheckpoint(sessionRoot, beforeTurn, state) {
-  writeRuntimeState(sessionRoot, beforeTurn, 'before', state)
-}
-
-function writeCompletedRuntimeCheckpoint(sessionRoot, turn, state) {
-  writeRuntimeState(sessionRoot, turn, 'after', state)
-}
-
-function writeRuntimeState(sessionRoot, turn, phase, state) {
-  if (!Number.isSafeInteger(turn) || turn < 1) {
-    throw new Error('聊天运行状态检查点轮次不正确。')
-  }
-  parsedObject(state.variableStateJson, '历史变量状态')
-  if (!Array.isArray(JSON.parse(state.settingLibraryStateJson))) throw new Error('历史设定状态必须是 JSON array。')
-  const checkpoints = readRuntimeCheckpoints(sessionRoot)
-    .filter(item => item.turn !== turn || item.phase !== phase)
-  checkpoints.push({ turn, phase, state })
-  checkpoints.sort((left, right) => left.turn - right.turn || left.phase.localeCompare(right.phase))
-  saveRuntimeCheckpoints(sessionRoot, checkpoints)
-}
-
-function saveRuntimeCheckpoints(sessionRoot, checkpoints) {
-  writeAtomically(checkpointPath(sessionRoot), `${JSON.stringify({ version: 2, checkpoints }, null, 2)}\n`)
-}
-
-function readRuntimeCheckpoint(sessionRoot, fromTurn) {
-  if (!Number.isSafeInteger(fromTurn) || fromTurn < 1) throw new Error('聊天回退轮次不正确。')
-  const checkpoints = readRuntimeCheckpoints(sessionRoot)
-  return checkpoints.find(item => item.phase === 'before' && item.turn === fromTurn)
-    ?? checkpoints.find(item => item.phase === 'after' && item.turn === fromTurn - 1)
-}
-
-function readCompletedRuntimeCheckpoint(sessionRoot, turn) {
-  if (!Number.isSafeInteger(turn) || turn < 1) throw new Error('聊天完成轮次不正确。')
-  return readRuntimeCheckpoints(sessionRoot).find(item => item.phase === 'after' && item.turn === turn)
-}
-
-function trimRuntimeCheckpoints(sessionRoot, fromTurn) {
-  const checkpoints = readRuntimeCheckpoints(sessionRoot)
-    .filter(item => item.turn < fromTurn || (item.turn === fromTurn && item.phase === 'before'))
-  saveRuntimeCheckpoints(sessionRoot, checkpoints)
-}
-
 async function requireIdleSession(ctx, sessionId) {
   const resolved = await ctx.sessionController.resolveAgent(sessionId)
   if ('error' in resolved) throw resolved.error
@@ -461,11 +349,6 @@ export function materializeAgentPreset(root, templatePath, preset, toolPolicy, m
   composition = applyPresetToolPolicy(composition, new Set(toolPolicy.disabledGroupIds))
   const plugins = parseYaml(composition)
   if (!Array.isArray(plugins)) throw new Error('DSH Agent 预设组合必须是插件列表。')
-  if (options.includeUploadedFiles === false) {
-    const index = plugins.findIndex(plugin => plugin.id === 'uploaded-file-tools')
-    if (index === -1) throw new Error('DSH Agent 模板缺少正式的附件工具声明。')
-    plugins.splice(index, 1)
-  }
   plugins.push(...(options.plugins ?? []))
   const imageConfigId = preset.toolModelConfigIds?.['builtin:auto-illustration']
   if (imageConfigId && !toolPolicy.disabledGroupIds.includes('builtin:auto-illustration')) {

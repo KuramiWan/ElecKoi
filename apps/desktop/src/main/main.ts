@@ -6,6 +6,7 @@ import { configureElectron, configureRuntimeUserData } from '@main/host/startup/
 import { getBootstrapLogger } from '@main/platform/logging/AppLog'
 import { localMediaScheme } from '@main/platform/electron/mediaProtocol'
 import { windowsAppUserModelId } from '@main/platform/electron/windowsAppIdentity'
+import { DesktopFatalRecovery } from '@main/platform/electron/desktopFatalRecovery'
 
 const logger = getBootstrapLogger()
 protocol.registerSchemesAsPrivileged([localMediaScheme, {
@@ -25,7 +26,18 @@ const startupProfiles = new StartupProfileStore()
 const startupProfile = startupProfiles.load(join(app.getPath('userData'), 'startup-profile.json'))
 configureElectron(startupProfile)
 
-const host = new DesktopHost()
+const host = new DesktopHost(error => { void reportFatal(error) })
+const recovery = new DesktopFatalRecovery({
+  show: options => dialog.showMessageBox(options),
+  stop: () => host.stopPluginHost(),
+  disableUserPlugins: async () => {
+    const backupPath = await host.disableUserPlugins()
+    logger.info({ backupPath }, '用户插件已停用，ElecKoi 内置组合已保留')
+  },
+  exit: () => app.quit(),
+  restart: () => { app.relaunch(); app.quit() },
+  diagnostic: error => logger.error({ err: error, effects: host.diagnostics() }, 'ElecKoi 运行失败')
+})
 const ownsPrimaryInstance = app.requestSingleInstanceLock()
 let shutdownStarted = false
 let shutdownComplete = false
@@ -43,9 +55,7 @@ async function startDesktop(): Promise<void> {
     app.setAppUserModelId(windowsAppUserModelId)
     await host.mountInteractive()
   } catch (error) {
-    logger.error({ err: error, effects: host.diagnostics() }, 'ElecKoi Desktop 启动失败')
-    dialog.showErrorBox('ElecKoi 启动失败', `${formatError(error)}\n\n请把这段错误发给开发者。`)
-    app.quit()
+    await reportFatal(error)
   }
 }
 
@@ -64,7 +74,8 @@ app.on('before-quit', (event) => {
     })
 })
 
-function formatError(error: unknown): string {
-  if (error instanceof Error) return error.stack ?? error.message
-  return String(error)
+async function reportFatal(error: unknown): Promise<void> {
+  await app.whenReady()
+  try { await recovery.report(error) }
+  catch (failure) { logger.error({ err: failure }, '原生恢复操作失败'); app.quit() }
 }

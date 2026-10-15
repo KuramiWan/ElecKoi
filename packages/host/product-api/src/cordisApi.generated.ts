@@ -313,6 +313,42 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: '管理完整设定库、变量定义和正则配置，通过官方 Typert Remote 公开跨端调用。',
     methods: [
       {
+        signature: '@Remote readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary',
+        description: '读取共享全局或明确所属角色、预设的显示模板，结果不进入 Agent 设定目录。',
+        parameters: [{ name: 'scope', description: '全局、角色或预设归属。' }, { name: 'ownerId', description: '全局使用空字符串，其他归属使用明确编号。' }],
+        returns: '完整显示模板库及保存版本。',
+      },
+      {
+        signature: '@Remote readEditorLibraryVersions(address: EditorLibraryAddress): EditorLibraryVersions',
+        description: '读取明确归属的命名配置版本，脚本归档只在需要编辑版本时读取。',
+        parameters: [{ name: 'address', description: '类型、作用域与所属编号；全局使用空所属编号。' }],
+        returns: '当前版本、命名版本正文和并发修改标识。',
+      },
+      {
+        signature: '@Remote saveEditorLibraries(request: EditorLibrarySaveRequest): EditorLibrarySaveResult',
+        description: '原子保存配置草稿及其命名版本，源码资源在同一操作中保持完整。',
+        parameters: [{ name: 'request', description: '明确类型的配置文档、版本草稿与读取时的修改标识。' }],
+        returns: '保存后的配置文档和版本；冲突时保留原数据。',
+      },
+      {
+        signature: '@Remote saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary',
+        description: '按读取版本保存显示模板并通知已有聊天重新显示。',
+        parameters: [{ name: 'library', description: '保留读取 revision 的完整库。' }],
+        returns: '已接受的库及递增版本。',
+      },
+      {
+        signature: '@Remote saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[]',
+        description: '在同一事务中保存编辑器修改的全局和所属显示模板。',
+        parameters: [{ name: 'libraries', description: '修改后的库及各自 revision；归属不得重复。' }],
+        returns: '与输入顺序相同的保存结果；任一冲突时全部回滚。',
+      },
+      {
+        signature: '@Remote displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection',
+        description: '返回全局、当前扮演预设及指定角色的显示模板，各库保持独立归属。',
+        parameters: [{ name: 'characterId', description: '聊天绑定角色编号。' }],
+        returns: '全局、预设、角色顺序排列的库。',
+      },
+      {
         signature: '@Remote({ mode: \'stream\' }) changes(signal: AbortSignal): AsyncIterable<CharacterConfigurationChange>',
         description: '订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。',
         parameters: [{ name: 'signal', description: '取消调用或结束订阅流的信号。' }],
@@ -419,6 +455,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: '读取完整正则配置及其 revision。',
         parameters: [{ name: 'characterId', description: '角色编号。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
+      },
+      {
+        signature: '@Remote readRegexEditor(target: RegexEditorTarget): RegexRuleEditorCollection',
+        description: '读取全局及明确归属的正则，不依赖当前启用预设或角色。',
+        parameters: [{ name: 'target', description: '编辑归属，必须提供明确的角色或预设编号。' }],
+        returns: '仅含允许范围的规则及版本成员。',
+      },
+      {
+        signature: '@Remote saveRegexEditor(collection: RegexRuleEditorCollection): RegexRuleEditorCollection',
+        description: '原子保存全局及编辑归属的正则，保留其他归属的规则与版本成员。',
+        parameters: [{ name: 'collection', description: '携带全局及归属版本校验的编辑草稿。' }],
+        returns: '保存后的编辑配置；过期草稿拒绝保存。',
+      },
+      {
+        signature: '@Remote importRegexEditor(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]): RegexRuleEditorImportResult',
+        description: '导入全局及指定归属的规则，拒绝跨归属文件。',
+        parameters: [{ name: 'collection', description: '导入前的编辑配置与版本。' }, { name: 'fallbackScope', description: '文件没有归属字段时使用的允许范围。' }, { name: 'documents', description: '正则 JSON 文件。' }],
+        returns: '导入结果；归属冲突时不写入。',
+      },
+      {
+        signature: '@Remote exportRegexEditor(target: RegexEditorTarget, ruleIds: string[]): { fileName: string; json: string }',
+        description: '导出当前编辑归属内选中的规则。',
+        parameters: [{ name: 'target', description: '明确的编辑归属。' }, { name: 'ruleIds', description: '仅限当前编辑器中的规则编号。' }],
+        returns: '可下载的 JSON 文件名与内容。',
       },
       {
         signature: '@Remote saveRegexRules( characterId: string, collection: RegexRuleCollection, expectedRevision: number ): RegexRuleCollection',
@@ -826,20 +886,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'eleckoiModelsApi',
-    summary: '管理模型目录、连接测试和用户主动查看的密钥，通过官方 Typert Remote 公开跨端调用。',
-    description: '管理模型目录、连接测试和用户主动查看的密钥，通过官方 Typert Remote 公开跨端调用。',
+    summary: '管理模型目录和用户主动查看的密钥，通过官方 Typert Remote 公开跨端调用。',
+    description: '管理模型目录和用户主动查看的密钥，通过官方 Typert Remote 公开跨端调用。',
     methods: [
       {
         signature: '@Remote revealApiKey(configId: string): Promise<string>',
         description: '按模型配置编号读取密钥，供用户主动查看。',
         parameters: [{ name: 'configId', description: '模型配置编号。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
-      },
-      {
-        signature: '@Remote testConnection(input: ModelConnectionInput): Promise<{ supported: true }>',
-        description: '通过官方适配器测试工具调用，不创建聊天。',
-        parameters: [{ name: 'input', description: '本次操作的输入，字段见参数类型。' }],
-        returns: '工具调用成功时返回 supported: true；失败抛出错误。',
       },
       {
         signature: '@Remote discoverModels(input: ModelDiscoveryInput): Promise<ModelDiscoveryResult[]>',
@@ -1064,7 +1118,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CharacterConfigurationChange',
-    declaration: 'export type CharacterConfigurationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'configuration\';\n    domain: \'settingLibraries\' | \'variables\' | \'regexRules\' | \'agentPresets\' | \'scripts\';\n    characterId?: string;\n};',
+    declaration: 'export type CharacterConfigurationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'configuration\';\n    domain: \'settingLibraries\' | \'variables\' | \'regexRules\' | \'agentPresets\' | \'scripts\' | \'displayTemplates\';\n    characterId?: string;\n};',
   },
   {
     name: 'CharacterExportFormat',
@@ -1120,11 +1174,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConversationMessageDisplayInput',
-    declaration: 'export interface ConversationMessageDisplayInput {\n    id: string;\n    role: \'user\' | \'assistant\';\n    content: string;\n    variableStateJson: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    createdAt: string;\n}',
+    declaration: 'export interface ConversationMessageDisplayInput {\n    id: string;\n    role: \'user\' | \'assistant\';\n    content: string;\n    variableStateJson: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    createdAt: string;\n    reasoning?: ConversationReasoningDisplayInput[];\n}',
   },
   {
     name: 'ConversationMessageDisplayResult',
-    declaration: 'export interface ConversationMessageDisplayResult {\n    id: string;\n    sourceContent: string;\n    displayContent: string;\n    variableStateJson: string;\n}',
+    declaration: 'export interface ConversationMessageDisplayResult {\n    id: string;\n    sourceContent: string;\n    displayContent: string;\n    variableStateJson: string;\n    reasoning?: ConversationReasoningDisplayResult[];\n}',
   },
   {
     name: 'ConversationMessageMetadata',
@@ -1141,6 +1195,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ConversationOpeningOption',
     declaration: 'export interface ConversationOpeningOption {\n    id: string;\n    title: string;\n    content: string;\n    variableVersionId?: string;\n    displayContent?: string;\n    initialVariableStateJson: string;\n}',
+  },
+  {
+    name: 'ConversationReasoningDisplayInput',
+    declaration: 'export interface ConversationReasoningDisplayInput {\n    id: string;\n    text: string;\n}',
+  },
+  {
+    name: 'ConversationReasoningDisplayResult',
+    declaration: 'export interface ConversationReasoningDisplayResult {\n    id: string;\n    sourceText: string;\n    displayText: string;\n}',
   },
   {
     name: 'ConversationRecord',
@@ -1199,6 +1261,42 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type DisplayPreferenceValue = null | boolean | number | string | DisplayPreferenceValue[] | {\n    [key: string]: DisplayPreferenceValue;\n};',
   },
   {
+    name: 'DisplayTemplate',
+    declaration: 'export interface DisplayTemplate {\n    id: string;\n    name: string;\n    enabled: boolean;\n    position: \'before\' | \'after\' | \'replace\';\n    pattern: string;\n    flags: string;\n    source: string;\n}',
+  },
+  {
+    name: 'DisplayTemplateLibrary',
+    declaration: 'export interface DisplayTemplateLibrary {\n    scope: DisplayTemplateScope;\n    ownerId: string;\n    enabled: boolean;\n    revision: number;\n    templates: DisplayTemplate[];\n}',
+  },
+  {
+    name: 'DisplayTemplateScope',
+    declaration: 'export type DisplayTemplateScope = \'global\' | \'character\' | \'preset\';',
+  },
+  {
+    name: 'DisplayTemplateSelection',
+    declaration: 'export interface DisplayTemplateSelection {\n    characterId: string;\n    libraries: DisplayTemplateLibrary[];\n}',
+  },
+  {
+    name: 'EditorLibraryAddress',
+    declaration: 'export interface EditorLibraryAddress {\n    kind: EditorLibraryKind;\n    scope: \'global\' | \'character\' | \'preset\';\n    ownerId: string;\n}',
+  },
+  {
+    name: 'EditorLibraryKind',
+    declaration: 'export type EditorLibraryKind = \'scripts\' | \'displayTemplates\' | \'regex\';',
+  },
+  {
+    name: 'EditorLibrarySaveRequest',
+    declaration: 'export interface EditorLibrarySaveRequest {\n    kind: EditorLibraryKind;\n    documents: string[];\n    versions: EditorLibraryVersions[];\n}',
+  },
+  {
+    name: 'EditorLibrarySaveResult',
+    declaration: 'export interface EditorLibrarySaveResult {\n    documents: string[];\n    versions: EditorLibraryVersions[];\n}',
+  },
+  {
+    name: 'EditorLibraryVersions',
+    declaration: 'export interface EditorLibraryVersions extends EditorLibraryAddress {\n    revision: number;\n    resourceRevision: string;\n    activeVersionId: string;\n    versions: Array<{\n        id: string;\n        name: string;\n        content: string;\n    }>;\n}',
+  },
+  {
     name: 'ElecKoiHostStatus',
     declaration: 'export interface ElecKoiHostStatus {\n    architecture: \'dsh-remote\';\n    protocolVersion: 1;\n}',
   },
@@ -1251,12 +1349,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type FrontendWorkspace = Omit<Native.FrontendWorkspace, \'projects\'> & {\n    projects: FrontendProject[];\n};',
   },
   {
-    name: 'ModelConnectionInput',
-    declaration: 'export interface ModelConnectionInput {\n    configId: string;\n    model: string;\n    baseURL: string;\n    api: string;\n    apiKey?: string;\n    headers?: Record<string, string>;\n}',
-  },
-  {
     name: 'ModelDiscoveryInput',
-    declaration: 'export interface ModelDiscoveryInput {\n    configId: string;\n    baseURL: string;\n    api: string;\n    apiKey?: string;\n    headers?: Record<string, string>;\n}',
+    declaration: 'export interface ModelDiscoveryInput {\n    builtinProvider?: string;\n    configId: string;\n    baseURL: string;\n    api: string;\n    apiKey?: string;\n    headers?: Record<string, string>;\n}',
   },
   {
     name: 'ModelDiscoveryResult',
@@ -1303,12 +1397,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ProductRecordChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'records\';\n    domain: \'characters\' | \'persona\' | \'creatorProjects\';\n    ids?: string[];\n};',
   },
   {
+    name: 'RegexEditorTarget',
+    declaration: 'export interface RegexEditorTarget {\n    scope: \'character\' | \'preset\';\n    ownerId: string;\n}',
+  },
+  {
     name: 'RegexRule',
     declaration: 'export interface RegexRule {\n    id: string;\n    name: string;\n    pattern: string;\n    replacement: string;\n    targets: RegexRuleTarget[];\n    enabled: boolean;\n    displayOnly: boolean;\n    promptOnly: boolean;\n    runOnEdit: boolean;\n    order: number;\n    trimStrings?: string[];\n    minDepth?: number | null;\n    maxDepth?: number | null;\n    substituteRegex?: 0 | 1 | 2;\n}',
   },
   {
     name: 'RegexRuleCollection',
-    declaration: 'export interface RegexRuleCollection {\n    characterId: string;\n    agentPresetId: string;\n    agentPresetName: string;\n    agentPresetRegexRevision: string;\n    globalRules: RegexRule[];\n    agentPresetRules: RegexRule[];\n    characterRules: RegexRule[];\n    versions: RegexRuleVersion[];\n    activeVersionId: string;\n    revision: number;\n}',
+    declaration: 'export interface RegexRuleCollection {\n    characterId: string;\n    agentPresetId: string;\n    agentPresetName: string;\n    agentPresetRegexRevision: string;\n    globalEnabled?: boolean;\n    agentPresetEnabled?: boolean;\n    characterEnabled?: boolean;\n    globalRules: RegexRule[];\n    agentPresetRules: RegexRule[];\n    characterRules: RegexRule[];\n    versions: RegexRuleVersion[];\n    activeVersionId: string;\n    revision: number;\n}',
+  },
+  {
+    name: 'RegexRuleEditorCollection',
+    declaration: 'export interface RegexRuleEditorCollection {\n    target: RegexEditorTarget;\n    ownerRevision: string;\n    globalEnabled?: boolean;\n    agentPresetEnabled?: boolean;\n    characterEnabled?: boolean;\n    globalRules: RegexRule[];\n    agentPresetRules: RegexRule[];\n    characterRules: RegexRule[];\n    versions: RegexRuleVersion[];\n    activeVersionId: string;\n    revision: number;\n}',
+  },
+  {
+    name: 'RegexRuleEditorImportResult',
+    declaration: 'export interface RegexRuleEditorImportResult {\n    collection: RegexRuleEditorCollection;\n    importedFileCount: number;\n    importedRuleCount: number;\n    failedFileNames: string[];\n}',
   },
   {
     name: 'RegexRuleImportDocument',
@@ -1324,7 +1430,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'RegexRuleTarget',
-    declaration: 'export type RegexRuleTarget = \'UserInput\' | \'AiOutput\' | \'SlashCommand\' | \'SettingContent\' | \'Reasoning\';',
+    declaration: 'export type RegexRuleTarget = \'UserInput\' | \'AiOutput\' | \'SettingContent\' | \'Reasoning\';',
   },
   {
     name: 'RegexRuleTestResult',

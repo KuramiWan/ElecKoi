@@ -113,6 +113,24 @@
         "mode": "replace",
         "scope": "root",
         "relation": "provides"
+      },
+      {
+        "id": "eleckoi.preset.editor.scripts",
+        "kind": "ui-slot",
+        "title": "预设原生脚本编辑区",
+        "description": "替换或扩展独立配置入口。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
+        "id": "eleckoi.preset.editor.displayTemplates",
+        "kind": "ui-slot",
+        "title": "EJS显示模板编辑区",
+        "description": "替换或扩展独立配置入口。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
       }
     ]
   },

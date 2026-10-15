@@ -1,10 +1,7 @@
-import customIcon from "../../../assets/model-icons/whale-maid-thinking.png";
+import customIcon from "../../../assets/eleckoi-app-icon.png";
 import deepseekIcon from "../../../assets/model-icons/deepseek.svg";
-import moonshotIcon from "../../../assets/model-icons/moonshot.svg";
 import novelAiIcon from "../../../assets/model-icons/novelai.svg";
 import openAiIcon from "../../../assets/model-icons/openai.svg";
-import zaiIcon from "../../../assets/model-icons/zai.svg";
-import zhipuIcon from "../../../assets/model-icons/zhipu.svg";
 import { normalizeNovelAiImageSettings } from '@shared/contracts/agent/novelAiImageSettings';
 
 export const modelProviderSections = [
@@ -15,7 +12,7 @@ export const modelProviderSections = [
 const providerCatalog = [
   {
     id: "custom",
-    label: "自定义模型提供商",
+    label: "自定义提供商",
     badge: "自定义",
     summary: "添加并配置自定义模型提供商。",
     initials: "API",
@@ -42,53 +39,6 @@ const providerCatalog = [
     defaultApiFormat: "deepseek_messages",
     section: "general",
     fixed: true,
-  },
-  {
-    id: "zhipu",
-    label: "智谱开放平台",
-    badge: "官方 API",
-    summary: "智谱 AI 国内开放平台。",
-    initials: "GLM",
-    icon: zhipuIcon,
-    baseUrlPlaceholder: "默认：https://open.bigmodel.cn/api/paas/v4",
-    apiKeyPlaceholder: "填写智谱 API Key",
-    modelPlaceholder: "填写模型名称，例如 glm-4.5",
-    defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
-    defaultApiFormat: "chat_completions",
-    section: "general",
-    fixed: false,
-  },
-  {
-    id: "zai",
-    label: "Z.ai",
-    badge: "官方 API",
-    summary: "智谱 AI 国际平台。",
-    initials: "Z",
-    icon: zaiIcon,
-    monochrome: true,
-    baseUrlPlaceholder: "默认：https://api.z.ai/api/paas/v4",
-    apiKeyPlaceholder: "填写 Z.ai API Key",
-    modelPlaceholder: "填写模型名称，例如 glm-4.5",
-    defaultBaseUrl: "https://api.z.ai/api/paas/v4",
-    defaultApiFormat: "chat_completions",
-    section: "general",
-    fixed: false,
-  },
-  {
-    id: "moonshot",
-    label: "月之暗面",
-    badge: "官方 API",
-    summary: "月之暗面 Kimi 开放平台。",
-    initials: "K",
-    icon: moonshotIcon,
-    monochrome: true,
-    baseUrlPlaceholder: "默认：https://api.moonshot.cn/v1",
-    apiKeyPlaceholder: "填写月之暗面 API Key",
-    modelPlaceholder: "填写模型名称，例如 kimi-k2.5",
-    defaultBaseUrl: "https://api.moonshot.cn/v1",
-    defaultApiFormat: "chat_completions",
-    section: "general",
-    fixed: false,
   },
   {
     id: "openai_image",
@@ -143,20 +93,15 @@ export function catalogItem(providerId) {
   return providerCatalog.find((item) => item.id === id) || providerCatalog[0];
 }
 
-export function mergeProviderMeta(providers, configs = [], activeProviderId = "") {
-  const backendById = new Map((providers || []).map((item) => [normalizeProviderId(item.id), item]));
-  const configuredProviderIds = new Set((configs || []).map((item) => normalizeProviderId(item.provider)));
-  const activeId = normalizeProviderId(activeProviderId);
-  return providerCatalog
-    .filter((item) => item.fixed || configuredProviderIds.has(item.id) || item.id === activeId)
-    .map((item) => withProviderSearchText(item, configs, backendById));
-}
-
 export function addableProviderItems(providers) {
   const backendById = new Map((providers || []).map((item) => [normalizeProviderId(item.id), item]));
   return providerCatalog
-    .filter((item) => !item.fixed)
+    .filter((item) => item.id === 'custom' || item.section === 'image')
     .map((item) => withProviderSearchText(item, [], backendById));
+}
+
+export function builtinProviderItems(providers = []) {
+  return providers.filter(route => !['zai', 'zai-coding-cn', 'moonshotai', 'moonshotai-cn'].includes(route.provider));
 }
 
 export function filterProviderItems(items, keyword) {
@@ -203,10 +148,26 @@ export function blankConfigForProvider(providerId, name = "") {
   };
 }
 
-export function configVersionName(config) {
-  return (config?.name || "").trim() || "未命名";
+export function modelOptionsKey(config) {
+  return String(config?.id || config?.provider || '').trim();
 }
 
-export function modelOptionsKey(config) {
-  return String(config?.id || config?.provider || "").trim();
+export function configProviderMeta(config, providers = []) {
+  if (isImageProviderId(config?.provider) || config?.provider === 'deepseek') return catalogItem(config.provider);
+  const route = providers.find(item => item.provider === config?.id);
+  if (config?.builtin && route) {
+    return { ...catalogItem('custom'), id: route.provider, label: route.displayName || route.provider,
+      badge: '内置提供商', summary: '',
+      icon: route.provider === 'openai' ? openAiIcon : route.provider === 'deepseek' ? deepseekIcon : undefined,
+      initials: (route.displayName || route.provider).slice(0, 2).toUpperCase() };
+  }
+  return catalogItem('custom');
+}
+
+export function configurationItems(configs, providers = []) {
+  return configs.map(config => {
+    const meta = configProviderMeta(config, providers);
+    const label = config.name?.trim() || meta.label;
+    return { ...meta, id: config.id, config, label, summary: config.id, fixed: false, searchText: [label, config.id, config.model].join(' ').toLocaleLowerCase() };
+  });
 }

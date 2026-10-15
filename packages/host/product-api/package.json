@@ -263,7 +263,17 @@
           "readScriptLibrary",
           "readScriptWorkspace",
           "saveScriptLibrary",
-          "saveScriptLibraries"
+          "saveScriptLibraries",
+          "readDisplayTemplates",
+          "saveDisplayTemplates",
+          "displayTemplatesForCharacter",
+          "readRegexEditor",
+          "saveRegexEditor",
+          "importRegexEditor",
+          "exportRegexEditor",
+          "saveDisplayTemplateLibraries",
+          "readEditorLibraryVersions",
+          "saveEditorLibraries"
         ],
         "owner": "eleckoiCharacterConfiguration"
       },
@@ -440,13 +450,12 @@
         "owner": "eleckoiWebSearch"
       },
       {
-        "title": "模型连接测试",
+        "title": "模型目录与密钥",
         "scope": "host",
         "id": "eleckoiModelsRemote",
         "kind": "remote",
-        "description": "通过官方 LLM 适配器测试工具调用，不创建聊天或 Session。",
+        "description": "读取官方模型目录和用户主动查看的密钥，不创建聊天或 Session。",
         "members": [
-          "testConnection",
           "discoverModels",
           "revealApiKey"
         ],

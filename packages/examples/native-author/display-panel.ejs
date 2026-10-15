@@ -1,0 +1,8 @@
+<!doctype html>
+<html><head><meta name="eleckoi-author-api" content="0.1.0"><style>body{font:14px/1.6 system-ui;margin:12px}button{min-height:44px;padding:8px 12px}output{color:#a00}</style></head><body>
+<p>历史积分：<%= getvar('score', { defaults: 0 }) %></p>
+<% const match = rawContent.match(/<option>([\s\S]*?)<\/option>/); const choices = match ? match[1].trim().split('\n').filter(value => value.trim()) : []; %>
+<% for (const choice of choices) { %><button type="button" data-choice><%= choice %></button><% } %>
+<output id="error"></output>
+<script>window.ElecKoiReady.then(api=>{document.querySelectorAll('[data-choice]').forEach(button=>{button.onclick=async()=>{try{await api.input.set(button.textContent)}catch(error){document.getElementById('error').textContent=error.message}}})}).catch(error=>{document.getElementById('error').textContent=error.message});</script>
+</body></html>

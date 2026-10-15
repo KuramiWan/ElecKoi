@@ -1,4 +1,5 @@
 import { createSystemMessage, freezeMessage, isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
+import { transformReasoningPrompt } from '@eleckoi/dsh-product-data'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readSessionSnapshot } from './session-snapshot.mjs'
@@ -55,7 +56,29 @@ export function projectRequestInput(surface, snapshot, transform) {
   const messages = projectRequestMessages(
     projectCurrentUserPrompt(projectProductHistory(surface, snapshot), transform), snapshot.plan
   )
-  return appendRequestInstructions(messages, transform.instructions)
+  return projectRequestReasoning(appendRequestInstructions(messages, transform.instructions), snapshot.reasoningPromptRules, snapshot.reasoningPromptMacros)
+}
+
+/** Apply prompt rules to the active turn without mutating Session blocks or opaque adapter replay data. */
+export function projectRequestReasoning(messages, rules = [], macros) {
+  if (!rules.length) return messages
+  const currentUserIndex = messages.findLastIndex(isDirectUserMessage)
+  if (currentUserIndex < 0) return messages
+  return messages.map((message, index) => {
+    if (index <= currentUserIndex || message.role !== 'assistant') return message
+    let changed = false
+    const content = message.content.map(block => {
+      if (block.type !== 'reasoning') return block
+      const text = transformReasoningPrompt(block.text, rules, macros)
+      if (text === block.text) return block
+      if (message.source.replayState !== undefined) {
+        throw new Error('推理文本携带模型回放数据，不能用提示词正则修改；请将该规则改为仅修改显示内容。')
+      }
+      changed = true
+      return { ...block, text }
+    })
+    return changed ? freezeMessage({ ...message, content }) : message
+  })
 }
 
 /** Add preset positions and instructions without replacing or filtering native Session history. */
@@ -126,6 +149,8 @@ export function requestProjectionSnapshot(context) {
   return {
     plan: requestProjectionPlan(context),
     historyMode: context?.historyMode === 'prefix' ? 'prefix' : 'replace',
+    reasoningPromptRules: Array.isArray(context?.reasoningPromptRules) ? context.reasoningPromptRules : [],
+    reasoningPromptMacros: context?.reasoningPromptMacros,
     history: (Array.isArray(context?.history) ? context.history : [])
       .flatMap((item) => isProductHistoryEntry(item)
         ? [{ role: item.role, content: item.content }]
@@ -472,10 +497,10 @@ export function settingInjections(context) {
       const anchor = custom?.anchor || entry.position || 'insert_point_1'
       const title = String(entry.title || '').trim() || '未命名设定'
       return {
-        id: String(entry.id || '').slice(0, 128),
+        id: String(entry.id || ''),
         anchor,
         role: anchor === 'instructions' ? 'system' : entry.insertRole === 'assistant' ? 'assistant' : 'user',
-        content: entry.content.slice(0, 40_000),
+        content: entry.content,
         placementRank: custom?.side === 'before_setting_position' ? 0 : custom?.side === 'after_setting_position' ? 2 : 1,
         positionOrder: custom?.order ?? 0,
         order: Number.isInteger(entry.order) ? entry.order : 1,

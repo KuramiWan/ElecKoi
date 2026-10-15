@@ -15,7 +15,8 @@
 
 .rail-brand-seat {
   position: absolute;
-  top: -35px;
+  /* Match the centered mark's left inset above the navigation rail. */
+  top: calc((var(--rail-column-width) - 1px - 30px) / 2 - var(--window-caption-height, 40px));
   left: 50%;
   display: grid;
   place-items: center;

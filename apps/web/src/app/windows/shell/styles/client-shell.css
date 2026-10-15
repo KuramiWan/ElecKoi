@@ -3,7 +3,7 @@
 .main-panel-shell {
   position: relative;
   display: grid;
-  grid-template-rows: 40px minmax(0, 1fr);
+  grid-template-rows: var(--window-caption-height, 40px) minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -34,7 +34,7 @@
 }
 
 .side-panel-shell.has-footer-actions {
-  grid-template-rows: 40px minmax(0, 1fr) auto;
+  grid-template-rows: var(--window-caption-height, 40px) minmax(0, 1fr) auto;
 }
 
 .side-panel-header {
@@ -44,7 +44,7 @@
   justify-content: space-between;
   width: var(--side-panel-content-width);
   min-width: var(--side-panel-content-width);
-  height: 40px;
+  height: var(--window-caption-height, 40px);
   padding: 0 8px 0 10px;
   background: var(--list);
   -webkit-app-region: drag;
@@ -65,6 +65,16 @@
   font-size: 17px;
   font-weight: 800;
   text-overflow: clip;
+}
+
+.eleckoi-wordmark {
+  display: block;
+  flex: none;
+}
+
+.side-panel-brand > .eleckoi-wordmark {
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .side-panel-collapse-button {
@@ -123,8 +133,8 @@
   z-index: 10;
   min-width: 0;
   min-height: 0;
-  height: calc(100% - 40px);
-  margin-top: 40px;
+  height: calc(100% - var(--window-caption-height, 40px));
+  margin-top: var(--window-caption-height, 40px);
   overflow: visible;
   background: var(--chat);
 }
@@ -132,17 +142,17 @@
 .dsh-rightbar-column::before {
   content: "";
   position: absolute;
-  top: -40px;
+  top: calc(-1 * var(--window-caption-height, 40px));
   right: 0;
   left: 0;
   z-index: 1;
-  height: 40px;
+  height: var(--window-caption-height, 40px);
   -webkit-app-region: drag;
 }
 
 .rightbar-resizer {
   position: absolute;
-  top: 40px;
+  top: var(--window-caption-height, 40px);
   bottom: 0;
   left: calc(100% - var(--rightbar-normal-width));
   z-index: 16;

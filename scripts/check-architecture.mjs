@@ -239,6 +239,7 @@ const exclusiveSqlTableOwners = new Map([
   ['agent_branch_turns', 'conversations'],
   ['agent_turns', 'conversations'],
   ['agent_responses', 'conversations'],
+  ['conversation_state_snapshots', 'conversations'],
   ['conversation_speakers', 'conversations'],
   ['chat_session_variable_states', 'conversations'],
   ['conversation_setting_changes', 'settingLibraries'],

@@ -3,6 +3,7 @@ import { ModelImageParametersSection } from "./ModelImageParametersSection.jsx";
 import { ModelNetworkSection } from "./ModelNetworkSection.jsx";
 import { ModelParametersSection } from "./ModelParametersSection.jsx";
 import { ProviderLogo } from "./ProviderLogo.jsx";
+import { TrashIcon } from "../../../ui/icons/index.jsx";
 
 export function ModelConfigDetail({
   showHeader = true,
@@ -13,6 +14,8 @@ export function ModelConfigDetail({
   saveBlockedByParameters,
   onCancel,
   onSave,
+  onDelete,
+  deleting,
   basicEditor,
   parameterEditor,
   networkEditor,
@@ -23,6 +26,7 @@ export function ModelConfigDetail({
         {showHeader && <header className="model-detail-header">
           <h2>模型配置</h2>
           <div className="model-save-actions">
+            <button type="button" className="model-icon-button danger" aria-label="删除配置" title="删除配置" disabled={deleting} onClick={onDelete}><TrashIcon /></button>
             <button className="model-cancel-button" type="button" disabled={!hasUnsavedChanges || saving} onClick={onCancel}>
               取消
             </button>
@@ -37,9 +41,7 @@ export function ModelConfigDetail({
             <ProviderLogo provider={activeProvider} className="model-hero-icon" />
           </div>
           <div className="model-hero-copy">
-            <span>{activeProvider.badge}</span>
             <h3>{activeProvider.label}</h3>
-            <p>{activeProvider.summary}</p>
           </div>
         </div>
 

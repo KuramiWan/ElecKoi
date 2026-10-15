@@ -468,6 +468,14 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     setStatus("就绪");
   }
 
+  useEffect(() => {
+    // Host-side deletion deactivates the catalog even when another window or
+    // an authoring tool initiated it. Drop the local display selection too.
+    if (conversations && sessionId && !detailsSnapshot.id && detailsSnapshot.status === "idle") {
+      clearActiveChat();
+    }
+  }, [conversations, detailsSnapshot.id, detailsSnapshot.status, sessionId]);
+
   function togglePinChat(chatId) {
     togglePinnedChat(chatId);
   }

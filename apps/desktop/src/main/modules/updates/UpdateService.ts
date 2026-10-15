@@ -9,7 +9,6 @@ import type { UpdateInstallResult, UpdateStatus } from '@shared/contracts/update
 
 const INITIAL_CHECK_DELAY_MS = 15_000
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000
-const MAX_RELEASE_NOTES_LENGTH = 4_000
 const PROGRESS_BROADCAST_INTERVAL_MS = 250
 
 export interface UpdateServiceOptions {
@@ -285,7 +284,7 @@ export function normalizeReleaseNotes(notes: UpdateInfo['releaseNotes']): string
     .replace(/\n{3,}/g, '\n\n')
     .trim()
   if (!plain) return null
-  return plain.slice(0, MAX_RELEASE_NOTES_LENGTH)
+  return plain
 }
 
 function cleanSingleLine(value: string | null, maxLength: number): string | null {

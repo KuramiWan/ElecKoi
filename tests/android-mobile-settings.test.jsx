@@ -66,6 +66,21 @@ async function selectAvatar() {
 }
 
 describe('Android settings presentation with shared PC contracts', () => {
+  it('edits rich message limits on their own screen and retains the count when switched off', async () => {
+    await mount('chat');
+    await click('富消息');
+    expect(view.settingsPage).toBe('chat:rich');
+    expect(container.querySelector('.mobile-settings-preview')).toBeNull();
+    expect(container.querySelector('[role="switch"]').getAttribute('aria-checked')).toBe('true');
+    expect(container.querySelector('[aria-label="自动运行楼层数数值"]').value).toBe('10');
+    await click('自动运行楼层数增加');
+    expect(update.mock.lastCall[0]).toMatchObject({ rich_message_limit_enabled: true, rich_message_floor_limit: 11 });
+    await click('限制富消息运行楼层');
+    expect(update.mock.lastCall[0]).toMatchObject({ rich_message_limit_enabled: false, rich_message_floor_limit: 11 });
+    expect(container.querySelector('.tuner-slider-row')).toBeNull();
+    await click('返回'); await click('富消息'); await click('限制富消息运行楼层');
+    expect(container.querySelector('[aria-label="自动运行楼层数数值"]').value).toBe('11');
+  });
   it('renders the selected list artwork instead of forcing a cover image', async () => {
     container = document.createElement('div'); document.body.append(container); root = createRoot(container);
     const characters = new Map([['character-a', { id: 'character-a', name: '合成角色', persona: { assistant_avatar: 'avatar.png', assistant_cover: 'cover.png' } }]]);

@@ -1,7 +1,32 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { SettingLibrary, SettingLibraryConversation, VariableConfig, RegexRule, RegexRuleCollection, RegexRuleScope, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleTestResult, RegexRuleTarget, ScriptLibrary, ScriptLibraryScope } from '@eleckoi/dsh-product-api/types'
+import type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from '@eleckoi/dsh-product-api/types'
+import type { EditorLibraryVersions } from '@eleckoi/dsh-product-api/types'
+import type { SettingLibrary, SettingLibraryConversation, VariableConfig, RegexRule, RegexRuleCollection, RegexRuleEditorCollection, RegexRuleEditorImportResult, RegexRuleScope, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleTestResult, RegexRuleTarget, ScriptLibrary, ScriptLibraryScope } from '@eleckoi/dsh-product-api/types'
 
 export interface ConfigurationSnapshot<T> { status: 'idle' | 'loading' | 'ready' | 'error'; value: T | null; error: string }
+
+export interface EditorLibraryVersionModel<T> {
+  /**
+   * 订阅配置或版本的真实变更通知。
+   * @param listener - 需要重新读取当前归属版本时的回调。
+   * @returns 取消订阅函数。
+   */
+  subscribe(listener: () => void): () => void
+  /**
+   * 读取一个明确归属的命名版本集合。
+   * @param scope - 全局、角色或预设。
+   * @param ownerId - 所属编号；全局为空字符串。
+   * @returns 版本正文及并发修改标识。
+   */
+  read(scope: 'global' | 'character' | 'preset', ownerId: string): Promise<EditorLibraryVersions>
+  /**
+   * 在同一操作中保存配置与版本草稿。
+   * @param documents - 本编辑器当前配置及读取时的版本。
+   * @param versions - 同一归属的命名版本草稿。
+   * @returns 已保存配置与新版本标识。
+   */
+  save(documents: T[], versions: EditorLibraryVersions[]): Promise<{ documents: T[]; versions: EditorLibraryVersions[] }>
+}
 
 /** 读取和保存角色配置，保留完整字段、触发方式和提示词插入位置。 */
 export interface ElecKoiSettingLibraries {
@@ -125,6 +150,13 @@ export interface ElecKoiVariables {
 /** 读取和保存角色配置，保留完整字段、触发方式和提示词插入位置。 */
 export interface ElecKoiRegexRules {
   /**
+   * 获取仅编辑全局和明确归属的独立编辑器；运行时完整配置不受编辑入口影响。
+   * @param scope - 角色或预设归属。
+   * @param ownerId - 明确的所属编号，不使用当前启用预设代替。
+   * @returns 同归属可订阅的正则编辑服务。
+   */
+  editor(scope: 'character' | 'preset', ownerId: string): ElecKoiRegexEditor
+  /**
    * 读取指定角色在页面中的配置状态。
    * @param characterId - 角色编号。
    * @returns 当前页面保存的状态对象。
@@ -181,8 +213,40 @@ export interface ElecKoiRegexRules {
   test(text: string, rule: RegexRule, target: RegexRuleTarget): Promise<RegexRuleTestResult>
 }
 
+/** 只读写全局及指定归属的正则编辑服务。 */
+export interface ElecKoiRegexEditor {
+  versions: EditorLibraryVersionModel<RegexRuleEditorCollection>
+  /** @returns 当前编辑配置状态。 */
+  getSnapshot(): ConfigurationSnapshot<RegexRuleEditorCollection>
+  /** @returns 全局及当前归属的配置。 */
+  read(): Promise<RegexRuleEditorCollection>
+  /**
+   * @param listener - 配置状态回调。
+   * @returns 取消订阅函数。
+   */
+  subscribe(listener: (snapshot: ConfigurationSnapshot<RegexRuleEditorCollection>) => void): () => void
+  /**
+   * @param collection - 保留全局及归属版本的草稿。
+   * @returns 原子保存后的配置，冲突时拒绝覆盖。
+   */
+  save(collection: RegexRuleEditorCollection): Promise<RegexRuleEditorCollection>
+  /**
+   * @param collection - 当前编辑配置及版本。
+   * @param fallbackScope - 文件没有归属字段时采用的允许范围。
+   * @param documents - 导入 JSON 文件。
+   * @returns 导入结果；跨归属文件拒绝导入。
+   */
+  import(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]): Promise<RegexRuleEditorImportResult>
+  /**
+   * @param ruleIds - 当前编辑器中选择的规则编号。
+   * @returns 可下载的文件名和 JSON。
+   */
+  export(ruleIds: string[]): Promise<{ fileName: string; json: string }>
+}
+
 /** 按正式归属读取、保存和订阅全局、角色与预设脚本库。 */
 export interface ElecKoiScriptLibraries {
+  versions: EditorLibraryVersionModel<ScriptLibrary>
   /**
    * 在 Host 桌面打开指定脚本库的源码目录，不保存当前界面草稿。
    * @param scope - 全局、角色或预设作用域。
@@ -235,12 +299,62 @@ export interface ElecKoiScriptLibraries {
   activePreset(): Promise<{ id: string; name: string }>
 }
 
+/** 按角色或预设管理独立显示模板，通过配置事件刷新聊天与编辑页。 */
+export interface ElecKoiDisplayTemplates {
+  versions: EditorLibraryVersionModel<DisplayTemplateLibrary>
+  /**
+   * 读取明确归属的库。
+   * @param scope - 全局、角色或预设。
+   * @param ownerId - 所属编号；全局为空字符串。
+   * @returns 库及保存版本。
+   */
+  read(scope: DisplayTemplateScope, ownerId: string): Promise<DisplayTemplateLibrary>
+  /**
+   * 比较读取版本并保存库。
+   * @param library - 完整库及读取版本。
+   * @returns 已保存库。
+   */
+  save(library: DisplayTemplateLibrary): Promise<DisplayTemplateLibrary>
+  /**
+   * 原子保存各个已修改的显示模板库。
+   * @param libraries - 不重复的归属及各自读取版本。
+   * @returns 按输入顺序返回的保存结果，任一冲突全部回滚。
+   */
+  saveAll(libraries: DisplayTemplateLibrary[]): Promise<DisplayTemplateLibrary[]>
+  /**
+   * 取得页面当前缓存状态。
+   * @param scope - 全局、角色或预设。
+   * @param ownerId - 所属编号；全局为空字符串。
+   * @returns 不可变状态快照。
+   */
+  getSnapshot(scope: DisplayTemplateScope, ownerId: string): ConfigurationSnapshot<DisplayTemplateLibrary>
+  /**
+   * 读取聊天需要的全局、预设和角色库。
+   * @param characterId - 角色编号。
+   * @returns 按计算顺序排列的组合。
+   */
+  readSelection(characterId: string): Promise<DisplayTemplateSelection>
+  /**
+   * 取得组合当前状态。
+   * @param characterId - 角色编号。
+   * @returns 组合状态。
+   */
+  getSelectionSnapshot(characterId: string): ConfigurationSnapshot<DisplayTemplateSelection>
+  /**
+   * 监听库及组合状态。
+   * @param listener - 收到准确归属和新状态的函数。
+   * @returns 撤回函数。
+   */
+  subscribe(listener: (scope: DisplayTemplateScope | 'selection', ownerId: string, snapshot: ConfigurationSnapshot<DisplayTemplateLibrary | DisplayTemplateSelection>) => void): () => void
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     eleckoiSettingLibraries: ElecKoiSettingLibraries
     eleckoiVariables: ElecKoiVariables
     eleckoiRegexRules: ElecKoiRegexRules
     eleckoiScriptLibraries: ElecKoiScriptLibraries
+    eleckoiDisplayTemplates: ElecKoiDisplayTemplates
   }
 }
 

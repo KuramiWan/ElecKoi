@@ -30,7 +30,6 @@ export function introductionDraftPatch(profile, draft) {
   const item = { ...draft.value, title: draft.value.title.trim(), note: draft.value.note.trim() };
   if (!item.title && !item.note) throw new Error('填写更新标题或内容后再保存');
   if (draft.isNew) {
-    if (profile.timeline.length >= 100) throw new Error('更新记录最多保留 100 条');
     return { timeline: [item, ...profile.timeline] };
   }
   return { timeline: profile.timeline.map((current) => current.id === item.id ? item : current) };

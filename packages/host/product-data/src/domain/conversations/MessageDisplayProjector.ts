@@ -11,6 +11,7 @@ import {
 } from '@shared/foundation/characterCardMacros'
 
 interface CachedProjection {
+  messageId: string
   sourceContent: string
   variableStateJson: string
   completedAssistant: boolean
@@ -21,9 +22,15 @@ interface CachedProjection {
 
 export class MessageDisplayProjector {
   private readonly cache = new Map<string, CachedProjection>()
+  private readonly reasoningCache = new Map<string, { messageId: string; text: string; variableStateJson: string; macroScope: string; displayText: string }>()
   private activeScope = ''
 
   constructor(private readonly compatibility: MessageDisplayCompatibility) {}
+
+  retainMessages(ids: ReadonlySet<string>): void {
+    for (const [key, entry] of this.cache) if (!ids.has(entry.messageId)) this.cache.delete(key)
+    for (const [key, entry] of this.reasoningCache) if (!ids.has(entry.messageId)) this.reasoningCache.delete(key)
+  }
 
   project(
     message: ChatMessage,
@@ -36,6 +43,7 @@ export class MessageDisplayProjector {
     const scope = `${message.conversationId}\u0000${collection.characterId}\u0000${collection.revision}\u0000${collection.agentPresetId}\u0000${collection.agentPresetRegexRevision}`
     if (scope !== this.activeScope) {
       this.cache.clear()
+      this.reasoningCache.clear()
       this.activeScope = scope
     }
     const cacheKey = `${message.id}\u0000${target}\u0000${depth ?? ''}`
@@ -89,6 +97,7 @@ export class MessageDisplayProjector {
       ? resolveCharacterCardMacros(variableDisplayContent, macroValues)
       : variableDisplayContent
     this.cache.set(cacheKey, {
+      messageId: message.id,
       sourceContent: message.content,
       variableStateJson: message.variableStateJson,
       completedAssistant,
@@ -97,6 +106,31 @@ export class MessageDisplayProjector {
       displayVariableStateJson
     })
     return projectedMessage(message, displayContent, displayVariableStateJson)
+  }
+
+  projectReasoning(message: ChatMessage, items: readonly { id: string; text: string }[], collection: RegexRuleCollection,
+    macroValues?: CharacterCardMacroValues, depth?: number): { id: string; sourceText: string; displayText: string }[] {
+    const rules = rulesForSurface(collection, 'Reasoning', 'Display')
+    const macroScope = macroValues ? `${macroValues.userName}\u0000${macroValues.characterName}` : ''
+    return items.map(item => {
+      const key = `${message.id}\u0000${item.id}\u0000${depth ?? ''}`
+      const cached = this.reasoningCache.get(key)
+      if (cached?.text === item.text && cached.variableStateJson === message.variableStateJson && cached.macroScope === macroScope) {
+        return { id: item.id, sourceText: item.text, displayText: cached.displayText }
+      }
+      const displayText = transformWithRegexRules(item.text, rules, 'Reasoning', {
+        ...(depth === undefined ? {} : { depth }),
+        expandMacros: (text, escape) => {
+          const expanded = macroValues ? resolveCharacterCardMacros(text, {
+            userName: escape?.(macroValues.userName) ?? macroValues.userName,
+            characterName: escape?.(macroValues.characterName) ?? macroValues.characterName,
+          }) : text
+          return this.compatibility.resolveVariableMacros(expanded, message.variableStateJson)
+        },
+      })
+      this.reasoningCache.set(key, { messageId: message.id, text: item.text, variableStateJson: message.variableStateJson, macroScope, displayText })
+      return { id: item.id, sourceText: item.text, displayText }
+    })
   }
 }
 

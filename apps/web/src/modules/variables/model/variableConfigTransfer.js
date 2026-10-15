@@ -78,7 +78,7 @@ function parseObject(value, index, idMap) {
   const id = sourceId || createVariableId("object");
   if (sourceId) idMap.set(sourceId, id);
   return {
-    id, name: text(value?.name).slice(0, 40), parentId: text(value?.parent_id),
+    id, name: text(value?.name), parentId: text(value?.parent_id),
     enabled: value?.enabled !== false, description: text(value?.description), updateRule: text(value?.update_rule),
     dynamicKey: value?.dynamic_key === true, order: integer(value?.order, index + 1),
     treeViewOrder: integer(value?.tree_view_order, index + 1), createdAt: text(value?.created_at) || stamp(),
@@ -89,7 +89,7 @@ function parseObject(value, index, idMap) {
 function parseVariable(value, index, objectIdMap) {
   const type = variableValueTypeSchema.parse(value?.type ?? "");
   return {
-    id: text(value?.id) || createVariableId("variable"), title: text(value?.title).slice(0, 60),
+    id: text(value?.id) || createVariableId("variable"), title: text(value?.title),
     objectId: objectIdMap.get(text(value?.object_id)) || "", enabled: value?.enabled !== false,
     type, defaultValue: text(value?.default_value), description: text(value?.description),
     updateRule: text(value?.update_rule), readMode: value?.read_mode === "required" ? "required" : "on_demand",
@@ -107,7 +107,7 @@ function parseVersion(value, existingNames, requestedName = "") {
   for (const object of objects) object.parentId = objectIdMap.get(object.parentId) || "";
   const variables = (Array.isArray(value?.variables) ? value.variables : []).filter((item) => item && typeof item === "object")
     .map((item, index) => parseVariable(item, index, objectIdMap));
-  const name = uniqueVariableName(requestedName || text(value?.name) || "导入版本", existingNames).slice(0, 60);
+  const name = uniqueVariableName(requestedName || text(value?.name) || "导入版本", existingNames);
   const createdAt = text(value?.created_at) || stamp();
   return withGeneratedInitialState({
     id: createVariableId("variable-version"), name,
@@ -140,7 +140,7 @@ export function createVariableVersion(config, { name = "", sourceVersionId = "" 
   const synced = syncActiveVersion(config);
   const names = new Set(synced.versions.map((item) => item.name));
   const requestedName = name.trim();
-  const versionName = requestedName ? uniqueVariableName(requestedName, names).slice(0, 60) : "";
+  const versionName = requestedName ? uniqueVariableName(requestedName, names) : "";
   const createdAt = stamp();
   const source = synced.versions.find((item) => item.id === sourceVersionId);
   const version = source ? {

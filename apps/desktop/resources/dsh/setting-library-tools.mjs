@@ -224,8 +224,6 @@ function writeFile(library, path, args) {
       return { operation: 'write_file', path, created: false, changed: false }
     }
     Object.assign(current.raw, {
-      title: leaf,
-      groupId,
       content: args.content,
       agentSelectionHint: selectionHint,
       updatedAt: timestamp
@@ -325,7 +323,19 @@ function catalogOf(library) {
       selectionHint: raw.agentReadStrategy === 'normal' && raw.contentMode === 'plain_text' ? String(raw.agentSelectionHint || '') : '',
       readStrategy: raw.agentReadStrategy || 'normal' }
   })
-  return { entries: readable, groups, byGroup, byPath: new Map(readable.map((entry) => [entry.path, entry])), groupPath }
+  const byPath = new Map(), directories = new Map()
+  for (const group of groups) {
+    const path = groupPath(group.id)
+    if (directories.has(path)) throw new Error(`设定文件夹路径不唯一：${path}。请修改冲突的文件夹名称。`)
+    directories.set(path, group.id)
+  }
+  for (const entry of readable) {
+    if (byPath.has(entry.path) || directories.has(entry.path)) {
+      throw new Error(`设定路径不唯一：${entry.path}。请修改冲突的条目或文件夹名称。`)
+    }
+    byPath.set(entry.path, entry)
+  }
+  return { entries: readable, groups, byGroup, byPath, groupPath }
 }
 
 function isFixedEntry(entry) {
@@ -791,10 +801,9 @@ function safeSegment(value) {
     .trim()
     .replace(/[\\/:*?"<>|]/g, '_')
     .replace(/[\u0000-\u001f]/g, '')
-    .replace(/^[. ]+|[. ]+$/g, '')
-    .slice(0, 72) || '未命名'
+    .replace(/^[. ]+|[. ]+$/g, '') || '未命名'
 }
-function normalizeSelectionHint(value) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 200) }
+function normalizeSelectionHint(value) { return String(value || '') }
 function globRegex(pattern) {
   let source = '^'
   for (let index = 0; index < pattern.length; index += 1) {

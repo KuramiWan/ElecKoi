@@ -12,6 +12,7 @@ import { createNativeMessageBindings } from './messages.js'
 import { createNativeChatBindings } from './chats.js'
 import { createNativeSettingLibraryBindings, createNativePresetBindings } from './settings.js'
 import { createNativeScriptSettingsBindings } from './script-settings.js'
+import { createNativeDisplayTemplateBindings } from './display-templates.js'
 import { NativeAudioRuntime, nativeAudioMethods } from './audio.js'
 import { NativeGenerationEvents } from './generation.js'
 import { NativeScriptUi, type NativeScriptUiOwner } from './script-ui.js'
@@ -349,6 +350,9 @@ export class NativeAuthorClient {
     const settings = createNativeSettingLibraryBindings(this.options.remote.eleckoiCharacterConfiguration,
       this.options.conversations.getDetailsSnapshot().details!.metadata.characterId, () => this.assertChat(conversationId))
     const presets = createNativePresetBindings(this.options.remote.eleckoiAgentPresets, () => this.assertChat(conversationId))
+    const displayTemplates = createNativeDisplayTemplateBindings(this.options.remote.eleckoiCharacterConfiguration,
+      this.options.remote.eleckoiAgentPresets, this.options.conversations.getDetailsSnapshot().details!.metadata.characterId,
+      () => this.assertChat(conversationId))
     const scriptSettings = script ? createNativeScriptSettingsBindings(this.options.remote.eleckoiAuthorScripts,
       conversationId, script.version, script.identity, () => this.refreshConfiguration()) : {}
     return {
@@ -366,6 +370,7 @@ export class NativeAuthorClient {
         if (Object.hasOwn(chats, method)) return chats[method]!(params, options)
         if (Object.hasOwn(settings, method)) return settings[method]!(params, options)
         if (Object.hasOwn(presets, method)) return presets[method]!(params, options)
+        if (Object.hasOwn(displayTemplates, method)) return displayTemplates[method]!(params, options)
         if (Object.hasOwn(scriptSettings, method)) return scriptSettings[method]!(params, options)
         if (nativeAudioMethods.includes(method as typeof nativeAudioMethods[number])) return this.audio.invoke(conversationId, method, params, options.signal)
         const details = this.options.conversations.getDetailsSnapshot().details!
@@ -373,7 +378,7 @@ export class NativeAuthorClient {
         const openings = () => (opening?.openingOptions || []).map(item => ({ ...item, initialVariableState: JSON.parse(item.initialVariableStateJson) }))
         switch (method) {
           case 'app.getInfo': return { name: 'ElecKoi', apiVersion: '0.1.0', stage: 'preview' }
-          case 'app.getCapabilities': return authorApiDefinitions.filter(item => Object.hasOwn(bindings, item.method) || Object.hasOwn(messages, item.method) || Object.hasOwn(chats, item.method) || Object.hasOwn(settings, item.method) || Object.hasOwn(presets, item.method) || Object.hasOwn(scriptSettings, item.method) || !!uiOwner && ['ui.openPanel', 'ui.closePanel'].includes(item.method) || nativeAudioMethods.includes(item.method as typeof nativeAudioMethods[number]) || ['app.getInfo', 'app.getCapabilities', 'context.current', 'openings.list', 'openings.current', 'openings.select', 'chat.send', 'chat.stopGeneration', 'input.get', 'input.set', 'input.append', 'input.clear', 'input.send', 'events.list'].includes(item.method))
+          case 'app.getCapabilities': return authorApiDefinitions.filter(item => Object.hasOwn(bindings, item.method) || Object.hasOwn(messages, item.method) || Object.hasOwn(chats, item.method) || Object.hasOwn(settings, item.method) || Object.hasOwn(presets, item.method) || Object.hasOwn(scriptSettings, item.method) || Object.hasOwn(displayTemplates, item.method) || !!uiOwner && ['ui.openPanel', 'ui.closePanel'].includes(item.method) || nativeAudioMethods.includes(item.method as typeof nativeAudioMethods[number]) || ['app.getInfo', 'app.getCapabilities', 'context.current', 'openings.list', 'openings.current', 'openings.select', 'chat.send', 'chat.stopGeneration', 'input.get', 'input.set', 'input.append', 'input.clear', 'input.send', 'events.list'].includes(item.method))
           case 'context.current': return { surface: messageId ? 'message-renderer' : 'chat-ui', scope: 'current-character', conversationId,
             messageId, characterId: details.metadata.characterId, conversationTitle: details.conversation.title }
           case 'openings.list': return { items: openings() }

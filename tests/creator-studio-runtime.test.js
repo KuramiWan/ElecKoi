@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Loader, { Group } from '@deepseek-ai/cordis-plugin-loader'
 import AgentPresetRegistry from '@deepseek-ai/dsh-agent-preset-registry'
 import AgentRegistry, { installModelSelection } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -9,6 +9,10 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import Commands from '@deepseek-ai/dsh-commands'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
+import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
+import * as compactCommand from '@deepseek-ai/dsh-command-compact'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import { CharacterConfigurationChangeFeed, ProductRecordChangeFeed } from '../packages/host/product-api/src/index'
 import * as studioAgent from '../packages/client/features/dsh-client-creator-studio/src/host/agent.mjs'
@@ -19,11 +23,11 @@ import { officialChatFixture } from './helpers/officialTrajectory.js'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const cleanups = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup() })
-async function fixture(stream, creatorTools = true) {
+async function fixture(stream, creatorTools = true, { compaction = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'eleckoi-studio-'))
   cleanups.push(() => { const child = relative(tmpdir(), root); if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path'); rmSync(root, { recursive: true, force: true }) })
   for (const [key, value] of Object.entries({ ELECKOI_DATABASE_PATH: join(root, 'product.sqlite'), ELECKOI_MEDIA_ROOT: join(root, 'media') })) {
@@ -37,7 +41,7 @@ async function fixture(stream, creatorTools = true) {
     synthetic: { parameters: modelParameters }
   } } }] })
   cleanups.push(() => ctx.fiber.dispose())
-  for (const plugin of [LlmRuntime, SessionStore, SessionProjectionRegistry, SystemPrompt, ToolRuntime, AgentRegistry]) await ctx.plugin(plugin)
+  for (const plugin of [LlmRuntime, SessionStore, SessionProjectionRegistry, SystemPrompt, ToolRuntime, AgentRegistry, Commands, TokenMeter]) await ctx.plugin(plugin)
   await ctx.plugin(JsonlSessionPersistence, { root: join(root, 'sessions'), compression: 'none' })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(productDataPlugin)
@@ -48,10 +52,13 @@ async function fixture(stream, creatorTools = true) {
   } })
   ctx.sessionProjections.register(creatorStudioProjection)
   await ctx.plugin(Loader)
+  ctx.loader.builtins.group = Group
   ctx.loader.builtins['synthetic-studio-agent'] = studioAgent
+  ctx.loader.builtins['synthetic-compaction'] = BasicCompactionEngine
+  ctx.loader.builtins['synthetic-compact-command'] = compactCommand
   await ctx.plugin(AgentPresetRegistry, { default: 'synthetic-studio-preset' })
   const requests = []
-  const modelInfo = { synthetic: { reasoning: { efforts: [{ id: 'high', name: '合成高档位' }] }, defaultMaxTokens: 1024 } }
+  const modelInfo = { synthetic: { reasoning: { efforts: [{ id: 'high', name: '合成高档位' }] }, defaultMaxTokens: 1024, context: { contextWindow: 1_000_000 } } }
   class Adapter extends LlmAdapter {
     async resolveModel(provider, id) { return { provider, id, name: id, ...modelInfo[id] } }
     async *stream(options) { requests.push(options); yield* stream(options, requests.length) }
@@ -60,7 +67,13 @@ async function fixture(stream, creatorTools = true) {
   const character = ctx.eleckoiProductData.createCharacter({ id: 'synthetic-character', name: '合成编辑目标', group: '', persona: { assistant_name: '合成角色', assistant_avatar: '', assistant_cover: '' } }).items[0]
   const config = { presetId: 'agent-preset-creator', creatorTools }
   const agentOptions = { provider: 'synthetic', model: 'synthetic' }
-  await ctx.agentPresets.register({ id: 'synthetic-studio-preset', plugins: [{ id: 'creator', name: 'cordis:synthetic-studio-agent', config }] })
+  await ctx.agentPresets.register({ id: 'synthetic-studio-preset', plugins: [
+    ...(compaction ? [{ id: 'compaction', name: 'cordis:group', group: true, isolate: { compaction: true }, config: [
+      { id: 'basic', name: 'cordis:synthetic-compaction', config: { thresholdRatio: 0.007, retainTokens: 0, maxTokens: 8192, compactionRetries: 1 } },
+      { id: 'command', name: 'cordis:synthetic-compact-command' },
+    ] }] : []),
+    { id: 'creator', name: 'cordis:synthetic-studio-agent', config },
+  ] })
   const setup = async owner => { await ctx.agentPresets.mount(owner, 'synthetic-studio-preset') }
   let handle = await ctx.agents.create({ sessionId: SessionId('synthetic-studio-session'), meta: { agentPreset: 'synthetic-studio-preset' }, agentOptions, setup })
   handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: config.presetId, characterId: character.id }, { ignorable: true })
@@ -79,6 +92,163 @@ async function* text(text) {
   yield { type: 'finish', reason: { kind: 'stop' } }
 }
 describe('AI creator studio official Agent integration', { timeout: 30_000 }, () => {
+  it.each(['manual', 'automatic'])('uses the Studio model reasoning setting for %s compaction and resumes the same summary', async mode => {
+    const f = await fixture(async function* (request) {
+      if (request.purpose === 'compaction' && request.reasoningEffort !== 'high') throw new Error('Synthetic provider requires its selected reasoning effort')
+      yield* text(request.purpose === 'compaction' ? 'Synthetic condensed history.' : 'Synthetic reply.')
+    }, true, { compaction: true })
+    f.modelParameters.synthetic = { reasoningEffort: 'high' }
+    const send = async text => {
+      f.handle.agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+      await f.handle.agent.whenIdle()
+    }
+    const originalInput = 'Synthetic history. '.repeat(1800)
+    await send(originalInput)
+    expect(f.ctx.tokenMeter.measure(f.handle.agent.session).totalTokens).toBeGreaterThan(7000)
+    if (mode === 'manual') {
+      const commands = f.ctx.commands
+      expect(commands.list(f.handle.agent).some(command => command.name === 'compact')).toBe(true)
+      const result = await commands.execute(f.handle.agent, '/compact', [], new AbortController().signal)
+      expect(result.result.kind, JSON.stringify(result)).toBe('success')
+    } else await send('Synthetic continuation.')
+    const compactions = f.requests.filter(request => request.purpose === 'compaction')
+    expect(compactions).toHaveLength(1)
+    expect(JSON.stringify(compactions[0].messages)).toContain(originalInput)
+    expect(compactions[0]).toMatchObject({ provider: 'synthetic', model: 'synthetic', reasoningEffort: 'high', maxTokens: 8192 })
+    expect(compactions[0].messages.at(-1).content[0].text).toContain('较早的创作工作室对话')
+    expect(compactions[0].messages.at(-1).content[0].text).not.toContain('较早的角色扮演对话')
+    expect(compactions[0].tools).toEqual(f.handle.agent.session.requestHeader().tools)
+    expect(f.handle.agent.session.snapshotEvents().some(event => event.type === 'compaction/end')).toBe(true)
+    expect(f.handle.agent.session.snapshotEvents().find(event => event.type === 'compaction/end').data.error).toBeUndefined()
+    expect(f.handle.agent.status).toBe('idle')
+    await f.reopen()
+    expect(f.handle.agent.session.id).toBe('synthetic-studio-session')
+    expect(JSON.stringify(f.handle.agent.session.deriveMessages())).toContain('Synthetic condensed history.')
+    expect(f.handle.agent.session.snapshotEvents().some(event => event.type === 'user/message' && JSON.stringify(event.data).includes(originalInput))).toBe(true)
+    await send('Synthetic resumed continuation.')
+    expect(JSON.stringify(f.requests.at(-1).messages)).toContain('Synthetic condensed history.')
+  })
+  it('uses edited compaction instructions without leaking the template into ordinary requests or another Agent', async () => {
+    const f = await fixture(async function* () { yield* text('Synthetic summary.') }, false, { compaction: true })
+    const preset = f.ctx.eleckoiProductData.readAgentPreset('agent-preset-creator')
+    const template = preset.entries.find(entry => entry.kind === 'history_compaction')
+    f.ctx.eleckoiProductData.updateAgentPresetEntries(preset.id, [{ id: template.id, changes: { content: 'Synthetic custom compaction instructions.' } }])
+    const selection = { current: { provider: 'synthetic', model: 'synthetic', reasoningEffort: 'high' } }
+    cleanups.push(installModelSelection(f.handle.agent.ctx, selection))
+    f.handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Synthetic history. '.repeat(100) }], source: { kind: 'user' } }))
+    await f.handle.agent.whenIdle()
+    expect(f.requests[0].reasoningEffort).toBe('high')
+    expect(JSON.stringify(f.requests[0].messages)).not.toContain('Synthetic custom compaction instructions.')
+    const compact = () => f.ctx.commands.execute(f.handle.agent, '/compact', [], new AbortController().signal)
+    const customized = await compact()
+    expect(customized.result.kind, JSON.stringify(customized)).toBe('success')
+    expect(f.requests.at(-1)).toMatchObject({ purpose: 'compaction', reasoningEffort: 'high' })
+    expect(f.requests.at(-1).messages.at(-1).content[0].text).toContain('Synthetic custom compaction instructions.')
+    f.ctx.eleckoiProductData.updateAgentPresetEntries(preset.id, [{ id: template.id, changes: { enabled: false } }])
+    f.handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Synthetic newer history. '.repeat(100) }], source: { kind: 'user' } }))
+    await f.handle.agent.whenIdle()
+    expect((await compact()).result.kind).toBe('success')
+    expect(f.requests.at(-1).messages.at(-1).content[0].text).not.toContain('Synthetic custom compaction instructions.')
+    expect(f.requests.at(-1).reasoningEffort).toBe('high')
+    const peer = await f.ctx.agents.create({ sessionId: SessionId('synthetic-compaction-peer'), agentOptions: { provider: 'synthetic', model: 'synthetic' } })
+    cleanups.push(() => peer.dispose())
+    const request = { provider: 'synthetic', model: 'synthetic', sessionId: peer.agent.id, purpose: 'compaction',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'Synthetic peer summary instruction.' }] }], signal: new AbortController().signal }
+    await Array.fromAsync(f.ctx.llm.stream(request))
+    expect(f.requests.at(-1).messages).toEqual(request.messages)
+    expect(f.requests.at(-1).reasoningEffort).toBeUndefined()
+    f.modelInfo.synthetic.reasoning.efforts.push({ id: 'low', name: 'Synthetic low effort' })
+    await Array.fromAsync(f.ctx.llm.stream({ ...request, sessionId: f.handle.agent.id, reasoningEffort: 'low' }))
+    expect(f.requests.at(-1).reasoningEffort).toBe('low')
+  })
+  it('preserves the conversation and reports a failed summary without committing a replacement', async () => {
+    const f = await fixture(async function* (request) {
+      if (request.purpose === 'compaction') throw new Error('Synthetic summary service unavailable')
+      yield* text('Synthetic reply.')
+    }, true, { compaction: true })
+    f.handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Synthetic retained history.' }], source: { kind: 'user' } }))
+    await f.handle.agent.whenIdle()
+    const before = f.handle.agent.session.deriveMessages()
+    const result = await f.ctx.commands.execute(f.handle.agent, '/compact', [], new AbortController().signal)
+    expect(result.result.kind).toBe('error')
+    expect(f.handle.agent.session.deriveMessages()).toEqual(before)
+    const events = f.handle.agent.session.snapshotEvents()
+    expect(JSON.stringify(events.find(event => event.type === 'compaction/end').data.error)).toContain('Synthetic summary service unavailable')
+    expect(f.handle.agent.status).toBe('idle')
+  })
+  it('discovers and executes keyword batches and group edits through the actual scoped DSH tool dispatcher', async () => {
+    const f = await fixture(async function* () { yield* text('Synthetic completion') })
+    const execute = (name, args) => f.handle.agent.ctx.tools.execute({ callId: 'synthetic-authoring-fix', name, arguments: args, agent: f.handle.agent, signal: new AbortController().signal })
+    const value = async (capability_id, args) => {
+      const result = await execute('eleckoi_call_capability', { capability_id, arguments: args })
+      expect(result.isError, JSON.stringify(result)).not.toBe(true)
+      return JSON.parse(result.content.find(item => item.type === 'text').text).value
+    }
+    const guide = await execute('eleckoi_describe_toolset', { toolset_id: 'settings', operation_ids: ['settings.update_many', 'settings.update_group'], include_schema: true })
+    expect(guide.isError, JSON.stringify(guide)).not.toBe(true)
+    expect(JSON.stringify(guide)).toContain('keyword')
+    const folder = await value('settings.create_group', { name: 'Synthetic folder', parentId: '', order: 1, treeViewOrder: 1 })
+    const first = await value('settings.create', { title: 'Synthetic first', groupId: folder.id, content: 'Synthetic first content', keywords: ['trigger'] })
+    const second = await value('settings.create', { title: 'Synthetic second', content: 'Synthetic second content', keywords: ['trigger'] })
+    await value('settings.update_many', { updates: [first, second].map(item => ({ id: item.id, changes: { agentReadStrategy: 'keyword' } })) })
+    await value('settings.update_group', { id: folder.id, changes: { name: 'Synthetic renamed folder' } })
+    await value('character.update', { group: 'Synthetic character group' })
+    const library = f.ctx.eleckoiProductData.readSettingLibrary(f.character.id)
+    expect(library.entries.filter(item => item.agentReadStrategy === 'keyword').map(item => item.id)).toEqual([first.id, second.id])
+    expect(library.groups.find(item => item.id === folder.id).name).toBe('Synthetic renamed folder')
+    expect(f.ctx.eleckoiProductData.readCharacters().items.find(item => item.id === f.character.id).group).toBe('Synthetic character group')
+    const group = await value('variables.create_object', { name: 'SyntheticGroup', parentId: '', enabled: true, description: '', updateRule: '', dynamicKey: false, order: 1, treeViewOrder: 1 })
+    await value('variables.update_object', { id: group.id, changes: { name: 'SyntheticRenamedGroup' } })
+    expect(f.ctx.eleckoiProductData.readVariableConfig(f.character.id).objects.find(item => item.id === group.id).name).toBe('SyntheticRenamedGroup')
+    await value('variables.remove_object', { id: group.id })
+    expect(f.ctx.eleckoiProductData.readVariableConfig(f.character.id).objects.some(item => item.id === group.id)).toBe(false)
+  })
+
+  it('allows explicit global and preset configuration without a selected character while enforcing character ownership', async () => {
+    const f = await fixture(async function* () { yield* text('Synthetic completion') })
+    const data = f.ctx.eleckoiProductData, presetId = data.readAgentPresetCatalog().activePresetIds.roleplay
+    f.handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: 'agent-preset-creator', characterId: '' }, { ignorable: true })
+    const records = vi.spyOn(f.ctx.eleckoiProductRecordChanges, 'publish')
+    const execute = args => f.handle.agent.ctx.tools.execute({ callId: 'synthetic-explicit-scope', name: 'eleckoi_call_capability', arguments: args, agent: f.handle.agent, signal: new AbortController().signal })
+    const value = async (capability_id, args) => {
+      const result = await execute({ capability_id, arguments: args })
+      expect(result.isError, JSON.stringify(result)).not.toBe(true)
+      return JSON.parse(result.content.find(item => item.type === 'text').text).value
+    }
+    for (const target of [{ scope: 'global' }, { scope: 'preset', presetId }]) {
+      const library = await value('displayTemplates.read', target)
+      await value('displayTemplates.configure', { target, expectedRevision: library.revision, enabled: true })
+      expect(data.readDisplayTemplates(target.scope, target.scope === 'global' ? '' : presetId).enabled).toBe(true)
+      for (const kind of ['scripts', 'displayTemplates', 'regex']) {
+        const state = await value('editorVersions.read', { kind, target })
+        expect(state.scope).toBe(target.scope)
+        const document = kind === 'regex' ? data.readRegexEditor({ scope: 'preset', ownerId: presetId })
+          : kind === 'scripts' ? data.readScriptLibrary(target.scope, target.scope === 'global' ? '' : presetId)
+            : data.readDisplayTemplates(target.scope, target.scope === 'global' ? '' : presetId)
+        await value('editorVersions.save', { kind, documents: [JSON.stringify(document)], versions: [state] })
+      }
+    }
+    const scripts = await value('presetScripts.read', { presetId })
+    await value('presetScripts.save', { presetId, expectedRevision: scripts.revision, enabled: scripts.enabled, variables: { synthetic: 1 }, trees: scripts.trees })
+    expect(data.readScriptLibrary('preset', presetId).variables).toEqual({ synthetic: 1 })
+    expect(records).not.toHaveBeenCalled()
+    for (const args of [
+      { capability_id: 'displayTemplates.read', arguments: { scope: 'character' } },
+      { capability_id: 'editorVersions.read', arguments: { kind: 'regex', target: { scope: 'character' } } },
+      { capability_id: 'editorVersions.save', arguments: { kind: 'displayTemplates', documents: [JSON.stringify(data.readDisplayTemplates('character', f.character.id))], versions: [] } },
+    ]) {
+      const result = await execute(args)
+      expect(result.isError).toBe(true)
+      expect(JSON.stringify(result)).toContain('选择角色')
+    }
+    f.handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: 'agent-preset-creator', characterId: f.character.id }, { ignorable: true })
+    data.createCharacter({ id: 'synthetic-unrelated-owner', name: 'Synthetic unrelated owner' })
+    const denied = await execute({ capability_id: 'editorVersions.save', arguments: { kind: 'displayTemplates', documents: [JSON.stringify(data.readDisplayTemplates('character', 'synthetic-unrelated-owner'))], versions: [] } })
+    expect(denied.isError).toBe(true)
+    expect(JSON.stringify(denied)).toContain('不属于当前编辑角色')
+    records.mockRestore()
+  })
+
   it('does not offer creation when the creator tool group is disabled', async () => {
     const f = await fixture(async function* () { yield* text('合成普通回复') }, false)
     f.handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: 'agent-preset-creator', characterId: '' }, { ignorable: true })
@@ -284,7 +454,7 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
     await f.close()
     expect(readDshSessionLog(join(f.root, 'sessions'), 'synthetic-studio-session').header.id).toBe('synthetic-studio-session')
   })
-  it.each([false, true])('keeps complete native history in later requests after reopen=%s', async reopen => {
+  it.each([false, true])('keeps complete native history in later requests and compaction after reopen=%s', async reopen => {
     const f = await fixture(async function* (_options, request) {
       if (request === 1) {
         yield { type: 'block-start', index: 0, blockType: 'reasoning' }
@@ -308,6 +478,16 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
     expect(f.requests).toHaveLength(3)
     for (const message of previous) expect(f.requests[2].messages.find(item => item.id === message.id)).toEqual(message)
     expect(f.handle.agent.session.id).toBe('synthetic-studio-session')
+    const native = f.handle.agent.session.deriveMessages()
+    const tools = f.handle.agent.session.requestHeader().tools
+    await Array.fromAsync(f.handle.agent.ctx.llm.stream({
+      provider: 'synthetic', model: 'synthetic', sessionId: f.handle.agent.id, purpose: 'compaction',
+      messages: [...native, { role: 'user', content: [{ type: 'text', text: 'Synthetic native compaction instruction.' }] }],
+      tools, toolHistory: f.handle.agent.session.toolHistory(), maxTokens: 8192,
+    }))
+    const compact = f.requests.at(-1)
+    for (const message of native) expect(compact.messages.find(item => item.id === message.id)).toEqual(message)
+    expect(compact.tools).toEqual(tools)
   })
   it('executes a character setting edit through the Agent loop and retains native tool events', async () => {
     const f = await fixture(async function* (options, request) {

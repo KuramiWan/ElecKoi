@@ -251,6 +251,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '当前页面保存的状态对象。',
       },
       {
+        signature: 'getSessionReference(runtimeSessionId: string): SessionReference | null',
+        description: '读取当前聊天已经就绪的正式 Session 引用，生命周期由聊天服务持有，调用者不得释放。',
+        parameters: [{ name: 'runtimeSessionId', description: '必须与当前聊天一致的正式 Session 编号。' }],
+        returns: '已就绪的借用引用；尚未就绪或身份不一致时返回 null。',
+      },
+      {
         signature: 'subscribeDetails(listener: () => void): () => void',
         description: '订阅当前聊天的消息变化。',
         parameters: [{ name: 'listener', description: '状态变化回调。' }],
@@ -621,6 +627,55 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'eleckoiDisplayTemplates',
+    summary: '按角色或预设管理独立显示模板，通过配置事件刷新聊天与编辑页。',
+    description: '按角色或预设管理独立显示模板，通过配置事件刷新聊天与编辑页。',
+    methods: [
+      {
+        signature: 'read(scope: DisplayTemplateScope, ownerId: string): Promise<DisplayTemplateLibrary>',
+        description: '读取明确归属的库。',
+        parameters: [{ name: 'scope', description: '全局、角色或预设。' }, { name: 'ownerId', description: '所属编号；全局为空字符串。' }],
+        returns: '库及保存版本。',
+      },
+      {
+        signature: 'save(library: DisplayTemplateLibrary): Promise<DisplayTemplateLibrary>',
+        description: '比较读取版本并保存库。',
+        parameters: [{ name: 'library', description: '完整库及读取版本。' }],
+        returns: '已保存库。',
+      },
+      {
+        signature: 'saveAll(libraries: DisplayTemplateLibrary[]): Promise<DisplayTemplateLibrary[]>',
+        description: '原子保存各个已修改的显示模板库。',
+        parameters: [{ name: 'libraries', description: '不重复的归属及各自读取版本。' }],
+        returns: '按输入顺序返回的保存结果，任一冲突全部回滚。',
+      },
+      {
+        signature: 'getSnapshot(scope: DisplayTemplateScope, ownerId: string): ConfigurationSnapshot<DisplayTemplateLibrary>',
+        description: '取得页面当前缓存状态。',
+        parameters: [{ name: 'scope', description: '全局、角色或预设。' }, { name: 'ownerId', description: '所属编号；全局为空字符串。' }],
+        returns: '不可变状态快照。',
+      },
+      {
+        signature: 'readSelection(characterId: string): Promise<DisplayTemplateSelection>',
+        description: '读取聊天需要的全局、预设和角色库。',
+        parameters: [{ name: 'characterId', description: '角色编号。' }],
+        returns: '按计算顺序排列的组合。',
+      },
+      {
+        signature: 'getSelectionSnapshot(characterId: string): ConfigurationSnapshot<DisplayTemplateSelection>',
+        description: '取得组合当前状态。',
+        parameters: [{ name: 'characterId', description: '角色编号。' }],
+        returns: '组合状态。',
+      },
+      {
+        signature: 'subscribe(listener: (scope: DisplayTemplateScope | \'selection\', ownerId: string, snapshot: ConfigurationSnapshot<DisplayTemplateLibrary | DisplayTemplateSelection>) => void): () => void',
+        description: '监听库及组合状态。',
+        parameters: [{ name: 'listener', description: '收到准确归属和新状态的函数。' }],
+        returns: '撤回函数。',
+      },
+    ],
+  },
+  {
     key: 'eleckoiFrontendProjects',
     summary: 'Native file projects use the generated Remote, independently of chat/script readiness.',
     description: 'Native file projects use the generated Remote, independently of chat/script readiness.',
@@ -688,20 +743,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'deleteProvider(provider: string, preferredId?: string): Promise<ClientModelConfig | undefined>',
-        description: '删除指定提供商的配置，返回剩余的首选配置。',
-        parameters: [{ name: 'provider', description: '提供商编号。' }, { name: 'preferredId', description: '删除后优先选择的剩余配置编号。' }],
-        returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
-      },
-      {
         signature: 'discover(config: ClientModelConfig): Promise<ClientModelOption[]>',
         description: '读取模型列表并合并当前配置明确声明的参数。',
-        parameters: [{ name: 'config', description: '模型配置和明确声明的模型能力。' }],
-        returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
-      },
-      {
-        signature: 'testConnection(config: ClientModelConfig): Promise<{ supported: true }>',
-        description: '使用官方适配器发起一次工具调用测试。',
         parameters: [{ name: 'config', description: '模型配置和明确声明的模型能力。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
@@ -852,6 +895,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: '读取和保存角色配置，保留完整字段、触发方式和提示词插入位置。',
     description: '读取和保存角色配置，保留完整字段、触发方式和提示词插入位置。',
     methods: [
+      {
+        signature: 'editor(scope: \'character\' | \'preset\', ownerId: string): ElecKoiRegexEditor',
+        description: '获取仅编辑全局和明确归属的独立编辑器；运行时完整配置不受编辑入口影响。',
+        parameters: [{ name: 'scope', description: '角色或预设归属。' }, { name: 'ownerId', description: '明确的所属编号，不使用当前启用预设代替。' }],
+        returns: '同归属可订阅的正则编辑服务。',
+      },
       {
         signature: 'getSnapshot(characterId: string): ConfigurationSnapshot<RegexRuleCollection>',
         description: '读取指定角色在页面中的配置状态。',
@@ -1144,11 +1193,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ClientModelConfig',
-    declaration: 'export interface ClientModelConfig {\n    id: string;\n    name?: string;\n    provider?: string;\n    model?: string;\n    model_options?: ClientModelOption[];\n    enabled?: boolean;\n    base_url?: string;\n    api_format?: string;\n    api_key?: string;\n    custom_headers?: Record<string, string>;\n    proxy_url?: string;\n    credentialRef?: string;\n    credentialConfigured?: boolean;\n    clearCredential?: boolean;\n    settingsNs?: string;\n    settingsPath?: string[];\n    clearConfiguration?: boolean;\n    image_settings?: Record<string, import(\'@eleckoi/dsh-product-api/types\').VariableJsonValue>;\n}',
+    declaration: 'export interface ClientModelConfig {\n    id: string;\n    name?: string;\n    provider?: string;\n    model?: string;\n    model_options?: ClientModelOption[];\n    enabled?: boolean;\n    base_url?: string;\n    api_format?: string;\n    api_key?: string;\n    custom_headers?: Record<string, string>;\n    proxy_url?: string;\n    credentialRef?: string;\n    credentialConfigured?: boolean;\n    clearCredential?: boolean;\n    settingsNs?: string;\n    settingsPath?: string[];\n    builtin?: boolean;\n    useBuiltinModels?: boolean;\n    draftKey?: string;\n    clearConfiguration?: boolean;\n    image_settings?: Record<string, import(\'@eleckoi/dsh-product-api/types\').VariableJsonValue>;\n}',
   },
   {
     name: 'ClientModelOption',
-    declaration: 'export interface ClientModelOption {\n    id: string;\n    name: string;\n    description?: string;\n    inputModalities?: readonly (\'text\' | \'image\')[];\n    contextWindowTokens?: number;\n    maxOutputTokens?: number;\n    supportsImageInput?: boolean;\n    reasoningEfforts?: false | Record<string, string | null>;\n    reasoningEffort?: string;\n    temperature?: number;\n    topP?: number;\n    autoCompactTokenLimit?: number;\n    isUserAdded?: boolean;\n}',
+    declaration: 'export interface ClientModelOption {\n    id: string;\n    name: string;\n    description?: string;\n    inputModalities?: readonly (\'text\' | \'image\')[];\n    contextWindowTokens?: number;\n    maxOutputTokens?: number;\n    supportsImageInput?: boolean;\n    overrideFields?: string[];\n    capabilitiesOverride?: boolean;\n    catalogDefaults?: ClientModelOption;\n    reasoningEfforts?: false | Record<string, string | null>;\n    reasoningEffort?: string;\n    temperature?: number;\n    topP?: number;\n    autoCompactTokenLimit?: number;\n    isUserAdded?: boolean;\n}',
+  },
+  {
+    name: 'ClientModelProvider',
+    declaration: 'export interface ClientModelProvider {\n    provider: string;\n    displayName?: string;\n    settingsNs: string;\n    settingsPath: string[];\n    declared?: boolean;\n}',
   },
   {
     name: 'ConfigurationSnapshot',
@@ -1168,7 +1221,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConversationClientMessage',
-    declaration: 'export interface ConversationClientMessage extends Omit<ConversationMessageMetadata, \'dshTurn\'> {\n    content?: string;\n    displayContent?: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    sequence?: number;\n    productSequence?: number;\n    sessionEventSeq?: number;\n    dshTurn?: number | null;\n    requestId?: string;\n    nativeVariableStateJson?: string;\n    inputEventSeq?: number;\n    process?: ConversationProcessItem[];\n    dshMessageId?: string;\n    runtimeSessionId?: string;\n    renderKey?: string;\n    dshNodeKey?: string;\n    turnUsage?: TurnTailChatData[\'tokenUsage\'];\n    inputImageAttachments?: (ImageAttachmentRef | ConversationPendingImage)[];\n    generatedImageAttachments?: ConversationGeneratedImage[];\n    inputFileAttachments?: (FileAttachmentRef | ConversationPendingFile)[];\n}',
+    declaration: 'export interface ConversationClientMessage extends Omit<ConversationMessageMetadata, \'dshTurn\'> {\n    content?: string;\n    displayContent?: string;\n    status: \'complete\' | \'streaming\' | \'error\' | \'cancelled\';\n    sequence?: number;\n    productSequence?: number;\n    sessionEventSeq?: number;\n    dshTurn?: number | null;\n    requestId?: string;\n    nativeVariableStateJson?: string;\n    variableSnapshotAvailable?: boolean;\n    inputEventSeq?: number;\n    process?: ConversationProcessItem[];\n    processTiming?: {\n        startedAtMillis?: number;\n        completedAtMillis?: number;\n    };\n    dshMessageId?: string;\n    runtimeSessionId?: string;\n    renderKey?: string;\n    dshNodeKey?: string;\n    turnUsage?: TurnTailChatData[\'tokenUsage\'];\n    inputImageAttachments?: (ImageAttachmentRef | ConversationPendingImage)[];\n    generatedImageAttachments?: ConversationGeneratedImage[];\n    inputFileAttachments?: (FileAttachmentRef | ConversationPendingFile)[];\n}',
   },
   {
     name: 'ConversationDetailsSnapshot',
@@ -1200,7 +1253,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConversationProcessItem',
-    declaration: 'export interface ConversationProcessItem {\n    id: string;\n    kind: \'tool\' | \'command\' | \'file_change\' | \'compaction\' | \'subagent\' | \'action\' | \'narrative\' | \'reasoning\';\n    status: \'running\' | \'complete\' | \'error\' | \'cancelled\';\n    toolName: string;\n    arguments: string;\n    summary: string;\n    detail: string;\n    startedAtMillis: number;\n    completedAtMillis?: number;\n    parentId?: string;\n    delegatedModel?: string;\n}',
+    declaration: 'export interface ConversationProcessItem {\n    id: string;\n    kind: \'tool\' | \'command\' | \'file_change\' | \'compaction\' | \'subagent\' | \'action\' | \'narrative\' | \'reasoning\';\n    status: \'running\' | \'complete\' | \'error\' | \'cancelled\';\n    toolName: string;\n    arguments: string;\n    summary: string;\n    detail: string;\n    displayDetail?: string;\n    startedAtMillis: number;\n    completedAtMillis?: number;\n    parentId?: string;\n    delegatedModel?: string;\n}',
   },
   {
     name: 'ConversationRegenerateInput',
@@ -1239,8 +1292,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreatorStudioSnapshot {\n    status: \'loading\' | \'ready\' | \'error\';\n    collection: CreatorProjectCollection;\n    error: string;\n}',
   },
   {
+    name: 'EditorLibraryVersionModel',
+    declaration: 'export interface EditorLibraryVersionModel<T> {\n    subscribe(listener: () => void): () => void;\n    read(scope: \'global\' | \'character\' | \'preset\', ownerId: string): Promise<EditorLibraryVersions>;\n    save(documents: T[], versions: EditorLibraryVersions[]): Promise<{\n        documents: T[];\n        versions: EditorLibraryVersions[];\n    }>;\n}',
+  },
+  {
+    name: 'ElecKoiRegexEditor',
+    declaration: 'export interface ElecKoiRegexEditor {\n    versions: EditorLibraryVersionModel<RegexRuleEditorCollection>;\n    getSnapshot(): ConfigurationSnapshot<RegexRuleEditorCollection>;\n    read(): Promise<RegexRuleEditorCollection>;\n    subscribe(listener: (snapshot: ConfigurationSnapshot<RegexRuleEditorCollection>) => void): () => void;\n    save(collection: RegexRuleEditorCollection): Promise<RegexRuleEditorCollection>;\n    import(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]): Promise<RegexRuleEditorImportResult>;\n    export(ruleIds: string[]): Promise<{\n        fileName: string;\n        json: string;\n    }>;\n}',
+  },
+  {
     name: 'ModelCatalogSnapshot',
-    declaration: 'export interface ModelCatalogSnapshot {\n    status: \'loading\' | \'ready\' | \'error\';\n    configs: ClientModelConfig[];\n    error: string;\n}',
+    declaration: 'export interface ModelCatalogSnapshot {\n    status: \'loading\' | \'ready\' | \'error\';\n    configs: ClientModelConfig[];\n    providers: ClientModelProvider[];\n    error: string;\n}',
   },
   {
     name: 'NativeAuthorChatHandlers',

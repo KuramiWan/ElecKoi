@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ConversationRepository } from '../packages/host/product-data/src/domain/conversations/ConversationRepository'
-import { MessageRepository } from '../packages/host/product-data/src/domain/conversations/MessageRepository'
 import { CharacterRepository } from '../packages/host/product-data/src/domain/personas/CharacterRepository'
 import { PersonaRepository } from '../packages/host/product-data/src/domain/personas/PersonaRepository'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
@@ -39,7 +38,6 @@ function harness() {
     database,
     media,
     conversations,
-    messages: new MessageRepository(database),
     characters: new CharacterRepository(database, conversations, media),
     personas: new PersonaRepository(database, conversations, media)
   }
@@ -76,7 +74,7 @@ describe('persona media persistence and cleanup', () => {
   })
 
   it('externalizes user and character images and replaces every live snapshot reference', () => {
-    const { database, media, conversations, messages, characters, personas } = harness()
+    const { database, media, conversations, characters, personas } = harness()
     const oldUser = image('old-user')
     const oldAvatar = image('old-avatar')
     const oldPortrait = image('old-portrait')
@@ -101,13 +99,8 @@ describe('persona media persistence and cleanup', () => {
       characterAvatar: characterPersona.assistant_avatar,
       characterPersona
     } }).conversation
-    const turn = messages.create(conversation.id, 'user', '你好', 'complete')
-    messages.createResponse(conversation.id, turn.turnId!, '你好', 'complete', {
-      id: character.id,
-      name: characterName,
-      avatar: characterPersona.assistant_avatar,
-      kind: 'card_character'
-    })
+    database.native.prepare('INSERT INTO conversation_speakers VALUES (?,?,?,?,?,?)')
+      .run('synthetic-speaker', conversation.id, character.id, 'card_character', characterName, characterPersona.assistant_avatar)
 
     const oldUserPath = media.pathForReference(personas.get().user_avatar)!
     const oldAvatarPath = media.pathForReference(characterPersona.assistant_avatar)!

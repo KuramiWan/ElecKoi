@@ -37,6 +37,11 @@ export const mainWindowPlugin = {
         window.once('closed', () => { if (mainWindow === window) mainWindow = undefined })
         browserGuests.bind(window)
         configureMainWindow(appPaths, appLog, windows, window)
+        window.webContents.on('render-process-gone', (_event, details) => {
+          if (details.reason !== 'clean-exit') {
+            ctx.emit('eleckoi/desktop-fatal', new Error(`页面渲染进程退出：${details.reason} (${details.exitCode})`))
+          }
+        })
       }
     })
     windows.define('child', {
@@ -114,6 +119,7 @@ export const mainWindowPlugin = {
       )
       if (typeof message !== 'string') throw new Error('DSH 插件页面错误格式不正确。')
       appLog.error({ message }, 'DSH plugin client boot failed')
+      ctx.emit('eleckoi/desktop-fatal', new Error(message))
     })
     const syncNativeTheme = (event: Electron.IpcMainEvent, source: unknown) => {
       const mainContents = mainWindow?.webContents

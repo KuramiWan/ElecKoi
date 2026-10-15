@@ -1,10 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   addableProviderItems,
-  blankConfigForProvider,
-  catalogItem,
-  configVersionName,
-  mergeProviderMeta,
+  configurationItems,
+  configProviderMeta,
   modelProviderSections,
   modelOptionsKey,
   normalizeProviderId,
@@ -15,14 +13,10 @@ import {
   mergeModelOptions,
   modelParameterState,
   normalizedConfigs,
-  providerVersions,
   removeUserAddedModel,
 } from "../model/modelConfigDraft.js";
-import { useModelConnectionTest } from "../hooks/useModelConnectionTest.js";
-import { useModelProviderDeletion } from "../hooks/useModelProviderDeletion.js";
 import { useModelCapabilities } from "../hooks/useModelCapabilities.js";
 import { ModelConfigDetail } from "./ModelConfigDetail.jsx";
-import { ModelConnectionTestDialog } from "./ModelConnectionTestDialog.jsx";
 import { ModelProviderDeleteDialog } from "./ModelProviderDeleteDialog.jsx";
 import { ModelProviderSidebar } from "./ModelProviderSidebar.jsx";
 import { UnsavedChangesDialog } from "../../../ui/ui/UnsavedChangesDialog.jsx";
@@ -31,15 +25,12 @@ import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from "../../settings/
 export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   config,
   configs = [],
-  providers,
+  providers = [],
   modelOptionsByKey = {},
   onSave,
   onRevealApiKey,
   onDeleteConfig,
-  onDeleteProvider,
   onFetchModels,
-  onProbeModels,
-  onTestConnection,
   onNotify,
   onDirtyChange,
   renderEditor,
@@ -49,6 +40,9 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   navigationGuardRef,
 }, ref) {
   const [form, setForm] = useState(config);
+  const [draftConfigs, setDraftConfigs] = useState([]);
+  const draftBaselines = useRef(new Map());
+  const [deleteError, setDeleteError] = useState("");
   const [collapsedGroups, setCollapsedGroups, collapseStateReady] = usePersistentCollapseState(
     LIST_COLLAPSE_AREAS.models,
     { general: false },
@@ -57,10 +51,9 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   const [deleting, setDeleting] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
+  const [isDirty, setIsDirty] = useState(Boolean(config.draftKey));
   const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [versionMenuOpen, setVersionMenuOpen] = useState(false);
   const [confirmDeleteConfig, setConfirmDeleteConfig] = useState(false);
   const [deleteTargetConfig, setDeleteTargetConfig] = useState(null);
   const [localModelOptions, setLocalModelOptions] = useState({ key: "", items: [] });
@@ -69,29 +62,10 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   const [draftHeader, setDraftHeader] = useState({ name: "", value: "" });
   const loadingModelsRef = useRef(false);
   const formRef = useRef(config);
-  const isDirtyRef = useRef(false);
-  const holdProviderAfterDeleteRef = useRef("");
+  const isDirtyRef = useRef(Boolean(config.draftKey));
   const modelPickerRef = useRef(null);
   const manualModelRef = useRef(null);
-  const versionPickerRef = useRef(null);
   const pendingDraftActionRef = useRef(null);
-  const {
-    connectionTest,
-    setConnectionTest,
-    connectionTestDialog,
-    dismissConnectionTest,
-    testingConnection,
-    testConnection,
-  } = useModelConnectionTest({
-    formRef,
-    onProbeModels,
-    onTestConnection,
-    onNotify,
-    onBeforeTest: () => {
-      setModelMenuOpen(false);
-      setManualModelOpen(false);
-    },
-  });
 
   function showNotice(type, text) {
     onNotify?.(type, text);
@@ -109,12 +83,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
   useEffect(() => {
     const current = formRef.current || {};
-    const heldProvider = holdProviderAfterDeleteRef.current;
-    if (heldProvider && normalizeProviderId(config.provider) !== heldProvider) {
-      holdProviderAfterDeleteRef.current = "";
-      return;
-    }
-    holdProviderAfterDeleteRef.current = "";
+    if (current === config) return;
 
     const sameSavedConfig = Boolean(current.id && config.id && current.id === config.id);
     const sameDraftConfig =
@@ -132,14 +101,18 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
     formRef.current = config;
     setForm(config);
-    setIsDirty(false);
-    setConnectionTest({ status: "idle", message: "" });
+    isDirtyRef.current = Boolean(config.draftKey);
+    setIsDirty(Boolean(config.draftKey));
     setConfirmDeleteConfig(false);
     setDeleteTargetConfig(null);
     setManualModelOpen(false);
     setManualModelName("");
     setDraftHeader({ name: "", value: "" });
   }, [config]);
+
+  useEffect(() => {
+    if (config.draftKey && config.builtin) void fetchModels();
+  }, [config.draftKey]);
 
   useEffect(() => {
     formRef.current = form;
@@ -149,19 +122,20 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     isDirtyRef.current = isDirty;
   }, [isDirty]);
 
-  const activeProvider = catalogItem(form.provider);
+  const activeProvider = configProviderMeta(form, providers);
   const activeProviderId = normalizeProviderId(form.provider);
   const isImageProvider = activeProvider.section === "image";
-  const providerItems = useMemo(
-    () => mergeProviderMeta(providers, configs, activeProviderId),
-    [activeProviderId, configs, providers],
-  );
   const createProviderItems = useMemo(() => addableProviderItems(providers), [providers]);
   const configItems = useMemo(() => normalizedConfigs(configs), [configs]);
-  const providerConfigItems = useMemo(
-    () => configItems.filter((item) => normalizeProviderId(item.provider) === activeProviderId),
-    [activeProviderId, configItems],
-  );
+  const allConfigs = useMemo(() => {
+    const items = [...configItems, ...draftConfigs.filter(draft => !configItems.some(item => item.id === draft.id))];
+    const key = form.draftKey;
+    const index = items.findIndex(item => key ? item.draftKey === key : item.id === form.id);
+    if (index >= 0) items[index] = form;
+    else if (form.id) items.push(form);
+    return items;
+  }, [configItems, draftConfigs, form]);
+  const providerItems = useMemo(() => configurationItems(allConfigs, providers), [allConfigs, providers]);
 
   useEffect(() => {
     const current = formRef.current || {};
@@ -173,10 +147,6 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   }, [configItems]);
 
   const hasUnsavedChanges = isDirty;
-  const providerVersionItems = useMemo(
-    () => providerVersions(form, providerConfigItems, activeProviderId),
-    [activeProviderId, form, providerConfigItems],
-  );
   const currentModelOptionsKey = modelOptionsKey(form);
   const scopedModelOptions = localModelOptions.key === currentModelOptionsKey
     ? localModelOptions.items
@@ -192,23 +162,9 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   );
   const imageParameterError = useMemo(() => isImageProvider ? imageSettingsError(form) : "", [form, isImageProvider]);
   const modelCapabilities = useModelCapabilities(form, form.model);
-  const saveBlockedByParameters = isImageProvider ? Boolean(imageParameterError) : Boolean(parameterError);
-  const providerDeletion = useModelProviderDeletion({
-    activeProviderId,
-    configItems,
-    formRef,
-    isDirtyRef,
-    onDeleteProvider,
-    onRequestDraftReplacement: requestDraftReplacement,
-    onApplyActiveConfig: (nextForm) => {
-      setConnectionTest({ status: "idle", message: "" });
-      formRef.current = nextForm;
-      isDirtyRef.current = false;
-      setForm(nextForm);
-      setIsDirty(false);
-    },
-    onNotify: showNotice,
-  });
+  const providerIdError = !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(form.id || '')
+    || Boolean(form.draftKey && configItems.some(item => item.id === form.id));
+  const saveBlockedByParameters = providerIdError || (isImageProvider ? Boolean(imageParameterError) : Boolean(parameterError));
 
   useEffect(() => {
     onDirtyChange?.(hasUnsavedChanges);
@@ -218,9 +174,6 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     function closeMenus(event) {
       if (modelPickerRef.current && !modelPickerRef.current.contains(event.target)) {
         setModelMenuOpen(false);
-      }
-      if (versionPickerRef.current && !versionPickerRef.current.contains(event.target)) {
-        setVersionMenuOpen(false);
       }
       if (manualModelRef.current && !manualModelRef.current.contains(event.target)) {
         setManualModelOpen(false);
@@ -233,9 +186,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
   function updateField(key, value) {
     setConfirmDeleteConfig(false);
-    setDeleteTargetConfig(null);
-    setConnectionTest({ status: "idle", message: "" });
-    if (["provider", "base_url", "api_key", "api_format", "custom_headers"].includes(key)) {
+    setDeleteTargetConfig(null);    if (["provider", "base_url", "api_key", "api_format", "custom_headers"].includes(key)) {
       setLocalModelOptions({ key: "", items: [] });
     }
     isDirtyRef.current = true;
@@ -251,9 +202,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   }
 
   function updateActiveModelOption(patch) {
-    if (!(formRef.current?.model || "").trim()) return;
-    setConnectionTest({ status: "idle", message: "" });
-    isDirtyRef.current = true;
+    if (!(formRef.current?.model || "").trim()) return;    isDirtyRef.current = true;
     setIsDirty(true);
     setForm((current) => {
       const modelId = current.model.trim();
@@ -261,8 +210,16 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       const index = items.findIndex((item) => item.id === modelId);
       const base = index >= 0
         ? items[index]
-        : { id: modelId, name: modelId, isUserAdded: true, temperature: null, topP: null, supportsImageInput: false };
-      const nextOption = { ...base, ...patch, id: modelId, name: base.name || modelId };
+        : { id: modelId, name: modelId, isUserAdded: true, temperature: null, topP: null, inputModalities: ["text"], supportsImageInput: false };
+      const fields = new Set(base.overrideFields || []);
+      for (const [field, native] of [['contextWindowTokens', 'contextWindow'], ['maxOutputTokens', 'maxTokens']]) {
+        if (Object.hasOwn(patch, field)) { if (patch[field] == null) fields.delete(native); else fields.add(native); }
+      }
+      const nextOption = { ...base, ...patch, overrideFields: [...fields], id: modelId, name: base.name || modelId };
+      if (patch.capabilitiesOverride === false && base.catalogDefaults) {
+        Object.assign(nextOption, { inputModalities: base.catalogDefaults.inputModalities, supportsImageInput: base.catalogDefaults.supportsImageInput, reasoningEfforts: base.catalogDefaults.reasoningEfforts });
+        if (!Object.hasOwn(nextOption.reasoningEfforts || {}, nextOption.reasoningEffort || '')) nextOption.reasoningEffort = null;
+      }
       if (index >= 0) items[index] = nextOption;
       else items.push(nextOption);
       const next = { ...current, model_options: items };
@@ -273,15 +230,14 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
   function selectModel(modelId) {
     const id = String(modelId || "").trim();
-    if (!id) return;
-    setConnectionTest({ status: "idle", message: "" });
-    const current = formRef.current;
+    if (!id) return;    const current = formRef.current;
     const exists = (current.model_options || []).some((item) => item.id === id);
     isDirtyRef.current = true;
     setIsDirty(true);
     const next = {
       ...current,
       model: id,
+      useBuiltinModels: exists ? current.useBuiltinModels : false,
       model_options: exists
         ? current.model_options
         : [...(current.model_options || []), {
@@ -290,6 +246,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
             isUserAdded: true,
             temperature: null,
             topP: null,
+            inputModalities: ["text"],
             supportsImageInput: false,
           }],
     };
@@ -306,9 +263,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     const next = removeUserAddedModel(current, id, modelItems);
     if (next === current) return;
 
-    const visibleItems = modelItems.filter((item) => item.id !== id);
-    setConnectionTest({ status: "idle", message: "" });
-    setLocalModelOptions({ key: modelOptionsKey(next), items: visibleItems });
+    const visibleItems = modelItems.filter((item) => item.id !== id);    setLocalModelOptions({ key: modelOptionsKey(next), items: visibleItems });
     isDirtyRef.current = true;
     setIsDirty(true);
     formRef.current = next;
@@ -374,37 +329,17 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     const current = formRef.current || form;
     const providerId = normalizeProviderId(current.provider);
     const persisted = configItems.find((item) => item.id === current.id)
-      || configItems.find((item) => normalizeProviderId(item.provider) === providerId)
+      || draftBaselines.current.get(current.draftKey)
       || initialConfigForProvider(providerId);
     formRef.current = persisted;
     isDirtyRef.current = false;
     setForm(persisted);
-    setIsDirty(false);
-    setConnectionTest({ status: "idle", message: "" });
-    setLocalModelOptions({ key: "", items: [] });
-    setModelMenuOpen(false);
-    setVersionMenuOpen(false);
-    setManualModelOpen(false);
+    setIsDirty(false);    setLocalModelOptions({ key: "", items: [] });
+    setModelMenuOpen(false);    setManualModelOpen(false);
     setManualModelName("");
     setDraftHeader({ name: "", value: "" });
   }
 
-  function selectProvider(providerId) {
-    setModelMenuOpen(false);
-    setVersionMenuOpen(false);
-    setConfirmDeleteConfig(false);
-    setDeleteTargetConfig(null);
-    requestDraftReplacement(() => {
-      const provider = normalizeProviderId(providerId);
-      const firstMatch = configItems.find((item) => normalizeProviderId(item.provider) === provider);
-      const next = firstMatch || initialConfigForProvider(provider);
-      setConnectionTest({ status: "idle", message: "" });
-      formRef.current = next;
-      setForm(next);
-      setIsDirty(false);
-      isDirtyRef.current = false;
-    });
-  }
 
   function toggleGroup(groupId) {
     setCollapsedGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
@@ -413,13 +348,18 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   async function saveCurrentConfig() {
     if (!onSave || saving) return false;
     if (saveBlockedByParameters) {
-      showNotice("error", "模型参数超出允许范围，请修正后再保存。");
+      showNotice("error", providerIdError ? "Provider ID 需唯一，并以小写字母开头，使用小写字母、数字和连字符。" : "请修正模型参数或输入能力后再保存。");
       return false;
     }
     const snapshot = formRef.current;
     setSaving(true);
     try {
       const saved = await onSave(snapshot);
+      if (!saved) throw new Error("模型配置保存后未返回有效配置。");
+      if (snapshot.draftKey) {
+        setDraftConfigs(items => items.filter(item => item.draftKey !== snapshot.draftKey));
+        draftBaselines.current.delete(snapshot.draftKey);
+      }
       formRef.current = saved;
       isDirtyRef.current = false;
       setForm(saved);
@@ -450,83 +390,68 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
   function selectConfigId(configId) {
     if (!configId) return;
-    const item = providerVersionItems.find((candidate) => candidate.id === configId);
+    const item = allConfigs.find((candidate) => candidate.id === configId);
     if (!item) return;
-    setModelMenuOpen(false);
-    setVersionMenuOpen(false);
-    setConfirmDeleteConfig(false);
+    setModelMenuOpen(false);    setConfirmDeleteConfig(false);
     setDeleteTargetConfig(null);
-    requestDraftReplacement(() => {
-      setConnectionTest({ status: "idle", message: "" });
-      formRef.current = item;
+    requestDraftReplacement(() => {      formRef.current = item;
       setForm(item);
       setIsDirty(false);
       isDirtyRef.current = false;
     });
   }
 
-  function createConfigPlaceholder(providerId = activeProviderId) {
-    const provider = catalogItem(providerId);
-    const draft = initialConfigForProvider(provider.id);
-    setConfirmDeleteConfig(false);
-    setDeleteTargetConfig(null);
+  function createConfigPlaceholder(providerId = 'custom') {
+    const route = providers.find(item => item.provider === providerId);
+    const existing = route && allConfigs.find(item => item.id === route.provider);
+    if (existing) { selectConfigId(existing.id); return; }
     requestDraftReplacement(() => {
-      setConnectionTest({ status: "idle", message: "" });
+      const draft = initialConfigForProvider(providerId, providers);
+      draft.draftKey = draft.id;
+      draftBaselines.current.set(draft.draftKey, draft);
+      setDraftConfigs(items => [...items, draft]);
       formRef.current = draft;
-      isDirtyRef.current = false;
+      isDirtyRef.current = true;
       setForm(draft);
-      setIsDirty(false);
+      setIsDirty(true);
+      if (route) void fetchModels();
     });
   }
 
+  function requestDelete(config = formRef.current, returnFocus = document.activeElement) {
+    setDeleteTargetConfig({ ...config, label: config.name || config.id, hasUnsavedChanges: config.id === formRef.current.id && isDirtyRef.current, returnFocus });
+    setDeleteError('');
+    setConfirmDeleteConfig(true);
+  }
+
   async function deleteCurrentConfig() {
-    const target = deleteTargetConfig || formRef.current || form;
+    const target = deleteTargetConfig;
     if (!target?.id || deleting) return;
-    const deletedProvider = normalizeProviderId(target.provider);
-    const targetProviderConfigs = configItems.filter((item) => normalizeProviderId(item.provider) === deletedProvider);
-    const remainingProviderConfigs = targetProviderConfigs.filter((item) => item.id !== target.id);
     setDeleting(true);
-    setConfirmDeleteConfig(false);
-    setDeleteTargetConfig(null);
-    holdProviderAfterDeleteRef.current = deletedProvider;
     try {
-      let nextForm;
-      const persistedTarget = configItems.some((item) => item.id === target.id);
-      if (!persistedTarget) {
-        nextForm = targetProviderConfigs[0] || initialConfigForProvider(deletedProvider);
-        showNotice("success", "已丢弃未保存的配置草稿");
-      } else if (targetProviderConfigs.length <= 1 && catalogItem(deletedProvider).fixed !== false) {
-        const cleared = { ...blankConfigForProvider(deletedProvider), id: target.id || initialConfigForProvider(deletedProvider).id };
-        nextForm = onSave ? await onSave({ ...cleared, clearConfiguration: true }) : cleared;
-        showNotice("success", "当前配置已清空");
-      } else if (onDeleteConfig) {
-        const activeAfterDelete = await onDeleteConfig(target.id);
-        nextForm = remainingProviderConfigs[0] || activeAfterDelete || initialConfigForProvider("custom");
-        showNotice("success", "当前配置已删除");
-      } else {
-        throw new Error("当前配置无法删除");
+      const persisted = configItems.some(item => item.id === target.id);
+      const nextSaved = persisted ? await onDeleteConfig(target.id) : null;
+      setDraftConfigs(items => items.filter(item => item.draftKey !== target.draftKey));
+      draftBaselines.current.delete(target.draftKey);
+      if (formRef.current.id === target.id) {
+        const next = nextSaved || allConfigs.find(item => item.id !== target.id) || initialConfigForProvider('custom');
+        formRef.current = next;
+        isDirtyRef.current = false;
+        setForm(next);
+        setIsDirty(false);
       }
-      if (remainingProviderConfigs.length && normalizeProviderId(nextForm.provider) !== deletedProvider) {
-        nextForm = remainingProviderConfigs[0] || initialConfigForProvider(deletedProvider);
-      }
-      setConnectionTest({ status: "idle", message: "" });
-      formRef.current = nextForm;
-      setForm(nextForm);
-      setIsDirty(false);
-      isDirtyRef.current = false;
+      setConfirmDeleteConfig(false);
+      setDeleteTargetConfig(null);
+      showNotice('success', target.id === 'deepseek-official' ? '内置 DeepSeek 配置已清空' : '当前配置已删除');
     } catch (error) {
-      showNotice("error", error.message || "删除配置失败");
-    } finally {
-      setDeleting(false);
-    }
+      setDeleteError(error.message || '删除配置失败');
+    } finally { setDeleting(false); }
   }
 
   async function fetchModels() {
     if (loadingModelsRef.current) return;
     loadingModelsRef.current = true;
-    setLoadingModels(true);
-    setConnectionTest({ status: "idle", message: "" });
-    setModelMenuOpen(false);
+    setLoadingModels(true);    setModelMenuOpen(false);
     try {
       const fetchConfig = formRef.current;
       const fetchKey = modelOptionsKey(fetchConfig);
@@ -537,7 +462,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
         return;
       }
       const ids = new Set(discovered.map((item) => item.id));
-      const models = [...discovered, ...(fetchConfig.model_options || [])
+      const models = [...discovered.map(item => ({ ...item, ...(fetchConfig.builtin ? { catalogDefaults: item.catalogDefaults || { ...item } } : {}) })), ...(fetchConfig.model_options || [])
         .filter((item) => item.isUserAdded && !ids.has(item.id))];
       setLocalModelOptions({ key: fetchKey, items: models });
       const modelIds = models.map((item) => item.id || item.name).filter(Boolean);
@@ -568,29 +493,18 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     }
   }
 
-  const selectedConfigId = providerVersionItems.some((item) => item.id === form.id) ? form.id : providerVersionItems[0]?.id || "";
-  const selectedConfig = providerVersionItems.find((item) => item.id === selectedConfigId) || form;
-  const currentVersionConfig = selectedConfig?.id === form.id ? form : selectedConfig;
-  const selectedVersionName = selectedConfig ? configVersionName({ ...selectedConfig, name: selectedConfig.id === form.id ? form.name : selectedConfig.name }, providerVersionItems) : "未命名";
-  const deleteTarget = deleteTargetConfig || currentVersionConfig || form;
-  const deleteTargetProviderId = normalizeProviderId(deleteTarget?.provider || activeProviderId);
-  const deleteTargetVersions = configItems.filter((item) => normalizeProviderId(item.provider) === deleteTargetProviderId);
-  const deleteTargetVersionName = deleteTarget
-    ? configVersionName({ ...deleteTarget, name: deleteTarget.id === form.id ? form.name : deleteTarget.name }, deleteTargetProviderId === activeProviderId ? providerVersionItems : deleteTargetVersions)
-    : "当前配置";
-  const willClearCurrentConfig = deleteTargetVersions.length <= 1 && catalogItem(deleteTargetProviderId).fixed !== false;
-  const canDeleteCurrent = Boolean(currentVersionConfig?.id) && !deleting;
   const sidePanel = (
     <ModelProviderSidebar
       providerItems={providerItems}
       createProviderItems={createProviderItems}
-      activeProviderId={activeProviderId}
+      activeProviderId={form.id}
       collapsedGroups={collapsedGroups}
       collapseStateReady={collapseStateReady}
       onToggle={toggleGroup}
-      onSelect={selectProvider}
+      onSelect={selectConfigId}
       onCreate={createConfigPlaceholder}
-      onRequestDelete={providerDeletion.requestDelete}
+      onRequestDelete={(item, trigger) => requestDelete(item.config, trigger)}
+      builtinProviders={providers}
     />
   );
 
@@ -598,13 +512,12 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     showHeader, activeProvider, isImageProvider, hasUnsavedChanges, saving, saveBlockedByParameters,
     onCancel: cancelCurrentChanges,
     onSave: saveCurrentConfig,
+    onDelete: () => requestDelete(),
+    deleting,
     basicEditor: {
-      form, activeProvider, isImageProvider, versionPickerRef, versionMenuOpen, setVersionMenuOpen,
-      selectedVersionName, providerVersionItems, selectedConfigId, selectConfigId, createConfigPlaceholder,
-      willClearCurrentConfig, confirmDeleteConfig, setConfirmDeleteConfig, canDeleteCurrent, currentVersionConfig,
-      setDeleteTargetConfig, deleteTargetVersionName, deleting, deleteCurrentConfig, modelPickerRef, manualModelRef, modelMenuOpen,
+      form, activeProvider, isImageProvider, providerIdError, isPersisted: !form.draftKey && configItems.some(item => item.id === form.id), onDelete: () => requestDelete(), modelPickerRef, manualModelRef, modelMenuOpen,
       setModelMenuOpen, modelItems, removableModelIds, selectModel, deleteModel, loadingModels, fetchModels, manualModelOpen, setManualModelOpen,
-      manualModelName, setManualModelName, addManualModel, connectionTest, testingConnection, testConnection, updateField,
+      manualModelName, setManualModelName, addManualModel, updateField,
       onRevealApiKey, onCredentialError: message => showNotice("error", message),
     },
     parameterEditor: {
@@ -632,13 +545,10 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       formRef.current = next;
       isDirtyRef.current = true;
       setForm(next);
-      setIsDirty(true);
-      setConnectionTest({ status: "idle", message: "" });
-    },
+      setIsDirty(true);    },
     onCancel: cancelCurrentChanges,
     onSave: saveCurrentConfig,
     onFetchModels: fetchModels,
-    onTestConnection: testConnection,
   }, builtInMainPanel) ?? builtInMainPanel;
 
   const overlays = (
@@ -652,13 +562,12 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
         onSave={saveDraftAndContinue}
         onDiscard={discardDraftAndContinue}
       />
-      <ModelConnectionTestDialog state={connectionTestDialog} onDismiss={dismissConnectionTest} />
       <ModelProviderDeleteDialog
-        target={providerDeletion.target}
-        deleting={providerDeletion.deleting}
-        error={providerDeletion.error}
-        onCancel={providerDeletion.cancelDelete}
-        onConfirm={providerDeletion.confirmDelete}
+        target={confirmDeleteConfig ? deleteTargetConfig : null}
+        deleting={deleting}
+        error={deleteError}
+        onCancel={() => { setConfirmDeleteConfig(false); setDeleteTargetConfig(null); }}
+        onConfirm={deleteCurrentConfig}
       />
     </>
   );

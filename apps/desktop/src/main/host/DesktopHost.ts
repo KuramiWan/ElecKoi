@@ -10,6 +10,10 @@ export class DesktopHost {
   private foundationMounted = false
   private interactiveMounted = false
 
+  constructor(onFailure: (error: Error) => void = () => {}) {
+    this.root.on('eleckoi/desktop-fatal', onFailure)
+  }
+
   async mountFoundation(): Promise<void> {
     if (this.foundationMounted) return
     await this.root.plugin(platformPlugin)
@@ -28,6 +32,16 @@ export class DesktopHost {
 
   diagnostics() {
     return this.root.fiber.getEffects()
+  }
+
+  async stopPluginHost(): Promise<void> {
+    await this.root.get('pluginHost')?.close()
+  }
+
+  async disableUserPlugins(): Promise<string | undefined> {
+    const host = this.root.get('pluginHost')
+    if (host === undefined) throw new Error('DSH 插件宿主未装载，无法恢复插件配置。')
+    return host.disableUserPlugins()
   }
 
   async dispose(): Promise<void> {

@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 export interface ClientModelOption {
   id: string; name: string; description?: string; inputModalities?: readonly ('text' | 'image')[];
   contextWindowTokens?: number; maxOutputTokens?: number; supportsImageInput?: boolean;
+  overrideFields?: string[]; capabilitiesOverride?: boolean; catalogDefaults?: ClientModelOption;
   reasoningEfforts?: false | Record<string, string | null>; reasoningEffort?: string;
   temperature?: number; topP?: number; autoCompactTokenLimit?: number; isUserAdded?: boolean;
 }
@@ -11,9 +12,11 @@ export interface ClientModelConfig {
   enabled?: boolean; base_url?: string; api_format?: string; api_key?: string;
   custom_headers?: Record<string, string>; proxy_url?: string; credentialRef?: string;
   credentialConfigured?: boolean; clearCredential?: boolean; settingsNs?: string; settingsPath?: string[];
+  builtin?: boolean; useBuiltinModels?: boolean; draftKey?: string;
   clearConfiguration?: boolean; image_settings?: Record<string, import('@eleckoi/dsh-product-api/types').VariableJsonValue>;
 }
-export interface ModelCatalogSnapshot { status: 'loading' | 'ready' | 'error'; configs: ClientModelConfig[]; error: string }
+export interface ClientModelProvider { provider: string; displayName?: string; settingsNs: string; settingsPath: string[]; declared?: boolean }
+export interface ModelCatalogSnapshot { status: 'loading' | 'ready' | 'error'; configs: ClientModelConfig[]; providers: ClientModelProvider[]; error: string }
 
 /** 通过官方模型目录、Settings 和 Credentials 管理模型配置。 */
 export interface ElecKoiModels {
@@ -46,24 +49,11 @@ export interface ElecKoiModels {
    */
   deleteConfig(id: string): Promise<ClientModelConfig | undefined>
   /**
-   * 删除指定提供商的配置，返回剩余的首选配置。
-   * @param provider - 提供商编号。
-   * @param preferredId - 删除后优先选择的剩余配置编号。
-   * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
-   */
-  deleteProvider(provider: string, preferredId?: string): Promise<ClientModelConfig | undefined>
-  /**
    * 读取模型列表并合并当前配置明确声明的参数。
    * @param config - 模型配置和明确声明的模型能力。
    * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
    */
   discover(config: ClientModelConfig): Promise<ClientModelOption[]>
-  /**
-   * 使用官方适配器发起一次工具调用测试。
-   * @param config - 模型配置和明确声明的模型能力。
-   * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
-   */
-  testConnection(config: ClientModelConfig): Promise<{ supported: true }>
   /**
    * 按配置编号读取密钥，供用户主动查看。
    * @param configId - 模型配置编号。

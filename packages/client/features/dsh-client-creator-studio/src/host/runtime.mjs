@@ -15,7 +15,7 @@ export async function installCreatorStudioRuntime(ctx) {
   const registrations = new Map()
   const register = id => {
     if (registrations.has(id)) return registrations.get(id)
-    const job = ctx.agentPresets.register(readRuntimePresetDefinition(join(root, id, 'preset.json'), id, template))
+    const job = ctx.agentPresets.register(readRuntimePresetDefinition(join(root, id, 'preset.json'), id, template, ['uploaded-file-tools']))
       .catch(error => { registrations.delete(id); throw error })
     registrations.set(id, job)
     return job
@@ -75,7 +75,7 @@ export async function installCreatorStudioRuntime(ctx) {
       const revision = createHash('sha256').update(JSON.stringify({ preset, model })).digest('hex')
       const id = `eleckoi-creator-${revision}`
       materializeAgentPreset(root, template, { ...preset, versionId: preset.activeVersionId }, { disabledGroupIds }, model,
-        { id, includeUploadedFiles: false, plugins: [{ id: 'creator-studio-agent', name: '@eleckoi/dsh-client-creator-studio/agent',
+        { id, plugins: [{ id: 'creator-studio-agent', name: '@eleckoi/dsh-client-creator-studio/agent',
           config: { presetId: preset.id, creatorTools: !disabledGroupIds.includes('builtin:creator') } }] })
       await register(id)
       const { sessionId } = await ctx.sessionController.create({ sessionId: `session-${randomUUID()}`, cwd, agentPreset: id })

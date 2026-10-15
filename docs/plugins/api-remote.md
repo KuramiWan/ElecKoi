@@ -8,14 +8,14 @@
 - `ctx.remote.eleckoiAuthorFrontends`：`changes`、`delete`、`exportProject`、`importProject`、`readFile`、`replaceFiles`、`restoreDefault`、`select`、`setMessageRenderer`、`updateProject`、`workspace`、`writeFile`
 - `ctx.remote.eleckoiAuthorScripts`：`connect`、`getSettings`、`read`、`setSettings`
 - `ctx.remote.eleckoiAuthorVariables`：`applyPatch`、`getConfig`、`getState`、`merge`、`reset`、`setState`
-- `ctx.remote.eleckoiCharacterConfiguration`：`changes`、`exportRegexRules`、`importRegexRules`、`readConversationSettingLibraries`、`readRegexRules`、`readScriptLibrary`、`readScriptWorkspace`、`readSettingLibrary`、`readVariableConfig`、`replaceSettingLibraryContent`、`resetConversationSettingLibrary`、`saveConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`saveRegexRules`、`saveScriptLibraries`、`saveScriptLibrary`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`saveVariableConfig`、`saveVariableConfigViewState`、`testRegexRule`、`updateSettingLibraryEntries`
+- `ctx.remote.eleckoiCharacterConfiguration`：`changes`、`displayTemplatesForCharacter`、`exportRegexEditor`、`exportRegexRules`、`importRegexEditor`、`importRegexRules`、`readConversationSettingLibraries`、`readDisplayTemplates`、`readEditorLibraryVersions`、`readRegexEditor`、`readRegexRules`、`readScriptLibrary`、`readScriptWorkspace`、`readSettingLibrary`、`readVariableConfig`、`replaceSettingLibraryContent`、`resetConversationSettingLibrary`、`saveConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`saveDisplayTemplateLibraries`、`saveDisplayTemplates`、`saveEditorLibraries`、`saveRegexEditor`、`saveRegexRules`、`saveScriptLibraries`、`saveScriptLibrary`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`saveVariableConfig`、`saveVariableConfigViewState`、`testRegexRule`、`updateSettingLibraryEntries`
 - `ctx.remote.eleckoiCharacters`：`changes`、`commitImport`、`create`、`delete`、`discardImport`、`export`、`list`、`prepareImport`、`saveGroups`、`select`、`update`
 - `ctx.remote.eleckoiConversationModels`：`current`、`select`
 - `ctx.remote.eleckoiConversations`：`authorState`、`changes`、`create`、`delete`、`deleteMessagesFrom`、`details`、`editMessage`、`exportArchive`、`fork`、`importArchive`、`list`、`preparePrompt`、`projectDisplay`、`readGeneratedImage`、`regenerateImage`、`regenerateMessage`、`rename`、`replaceVariableState`、`requestPreview`、`requestPreviews`、`revealFile`、`selectOpening`、`startRegeneration`、`updateOpening`、`variableTimeline`、`waitForGeneration`
 - `ctx.remote.eleckoiCreatorStudio`：`changes`、`create`、`delete`、`list`
 - `ctx.remote.eleckoiCreatorStudioSessions`：`create`、`delete`、`deleteMessagesFrom`、`list`、`messages`、`open`、`pin`、`regenerate`、`rename`、`selectCharacter`
 - `ctx.remote.eleckoiDisplayPreferences`：`read`、`setChatDisplay`、`updateUi`
-- `ctx.remote.eleckoiModels`：`discoverModels`、`revealApiKey`、`testConnection`
+- `ctx.remote.eleckoiModels`：`discoverModels`、`revealApiKey`
 - `ctx.remote.eleckoiPersona`：`changes`、`read`、`save`
 - `ctx.remote.eleckoiSystem`：`status`
 - `ctx.remote.eleckoiWebSearch`：`select`、`selection`、`testTavily`
@@ -28,7 +28,7 @@ import type {
   TypertRemoteContribution,
 } from '@deepseek-ai/dsh-typert-protocol'
 import type { FrontendExport, FrontendFile, FrontendFileInput, FrontendFileQuery, FrontendImport, FrontendJson, FrontendOwner, FrontendReplaceFiles, FrontendWorkspace, NativeFrontendChange } from '@eleckoi/dsh-product-api/frontends'
-import type { AgentPreset, AgentPresetCatalog, AgentPresetExportFormat, AgentPresetExportResult, AgentPresetImportDocument, AgentPresetImportResult, AgentPresetImportSource, AgentPresetPurpose, AuthorConversationState, CharacterCollection, CharacterConfigurationChange, CharacterExportFormat, CharacterExportResult, CharacterGroupAssignment, CharacterImportFile, CharacterImportPreview, CharacterImportResult, CharacterImportSource, CharacterRecord, ConversationChange, ConversationCreateInput, ConversationDetailsMetadata, ConversationMessageDisplayInput, ConversationMessageDisplayResult, ConversationModelSelection, ConversationRequestPreview, ConversationRequestPreviewSummary, ConversationSummary, CreateCreatorProjectInput, CreatorProjectCollection, CreatorStudioMessage, CreatorStudioSession, CreatorStudioSessionSummary, DisplayPreferencesSnapshot, DisplayPreferenceValue, ElecKoiHostStatus, ModelConnectionInput, ModelDiscoveryInput, ModelDiscoveryResult, NativeAuthorRuleReply, NativeAuthorRuleTask, NativeAuthorScriptCatalog, NativeAuthorScriptIdentity, NativeAuthorScriptSettings, PersonaProfile, ProductRecordChange, RegexRule, RegexRuleCollection, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleScope, RegexRuleTarget, RegexRuleTestResult, ScriptLibrary, ScriptLibraryScope, ScriptWorkspace, SettingLibrary, SettingLibraryContent, SettingLibraryConversation, SettingLibraryEntry, SettingLibraryEntryUpdate, TavilyConnection, VariableConfig, VariableViewerTimeline, WebSearchMode } from '@eleckoi/dsh-product-api/types'
+import type { AgentPreset, AgentPresetCatalog, AgentPresetExportFormat, AgentPresetExportResult, AgentPresetImportDocument, AgentPresetImportResult, AgentPresetImportSource, AgentPresetPurpose, AuthorConversationState, CharacterCollection, CharacterConfigurationChange, CharacterExportFormat, CharacterExportResult, CharacterGroupAssignment, CharacterImportFile, CharacterImportPreview, CharacterImportResult, CharacterImportSource, CharacterRecord, ConversationChange, ConversationCreateInput, ConversationDetailsMetadata, ConversationMessageDisplayInput, ConversationMessageDisplayResult, ConversationModelSelection, ConversationRequestPreview, ConversationRequestPreviewSummary, ConversationSummary, CreateCreatorProjectInput, CreatorProjectCollection, CreatorStudioMessage, CreatorStudioSession, CreatorStudioSessionSummary, DisplayPreferencesSnapshot, DisplayPreferenceValue, DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection, EditorLibraryAddress, EditorLibrarySaveRequest, EditorLibrarySaveResult, EditorLibraryVersions, ElecKoiHostStatus, ModelDiscoveryInput, ModelDiscoveryResult, NativeAuthorRuleReply, NativeAuthorRuleTask, NativeAuthorScriptCatalog, NativeAuthorScriptIdentity, NativeAuthorScriptSettings, PersonaProfile, ProductRecordChange, RegexEditorTarget, RegexRule, RegexRuleCollection, RegexRuleEditorCollection, RegexRuleEditorImportResult, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleScope, RegexRuleTarget, RegexRuleTestResult, ScriptLibrary, ScriptLibraryScope, ScriptWorkspace, SettingLibrary, SettingLibraryContent, SettingLibraryConversation, SettingLibraryEntry, SettingLibraryEntryUpdate, TavilyConnection, VariableConfig, VariableViewerTimeline, WebSearchMode } from '@eleckoi/dsh-product-api/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$656c65636b6f694167656e7450726573657473 {
@@ -76,9 +76,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   }
   interface TypertRemoteNamespace$656c65636b6f69436861726163746572436f6e66696775726174696f6e {
     changes: (signal?: AbortSignal) => RemoteStreamHandle<CharacterConfigurationChange, never>
+    displayTemplatesForCharacter: (characterId: string) => Promise<RemoteResult<DisplayTemplateSelection>>
+    exportRegexEditor: (target: RegexEditorTarget, ruleIds: string[]) => Promise<RemoteResult<{ fileName: string; json: string; }>>
     exportRegexRules: (characterId: string, ruleIds: string[]) => Promise<RemoteResult<{ fileName: string; json: string; }>>
+    importRegexEditor: (collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]) => Promise<RemoteResult<RegexRuleEditorImportResult>>
     importRegexRules: (characterId: string, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[], expectedRevision: number) => Promise<RemoteResult<RegexRuleImportResult>>
     readConversationSettingLibraries: (characterId: string) => Promise<RemoteResult<SettingLibraryConversation[]>>
+    readDisplayTemplates: (scope: DisplayTemplateScope, ownerId: string) => Promise<RemoteResult<DisplayTemplateLibrary>>
+    readEditorLibraryVersions: (address: EditorLibraryAddress) => Promise<RemoteResult<EditorLibraryVersions>>
+    readRegexEditor: (target: RegexEditorTarget) => Promise<RemoteResult<RegexRuleEditorCollection>>
     readRegexRules: (characterId: string) => Promise<RemoteResult<RegexRuleCollection>>
     readScriptLibrary: (scope: ScriptLibraryScope, ownerId: string) => Promise<RemoteResult<ScriptLibrary>>
     readScriptWorkspace: (scope: ScriptLibraryScope, ownerId: string) => Promise<RemoteResult<ScriptWorkspace>>
@@ -88,6 +94,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     resetConversationSettingLibrary: (characterId: string, conversationId: string) => Promise<RemoteResult<void>>
     saveConversationSettingLibrary: (characterId: string, conversationId: string, library: SettingLibrary) => Promise<RemoteResult<SettingLibrary>>
     saveConversationSettingLibraryVersion: (characterId: string, conversationId: string, name: string) => Promise<RemoteResult<SettingLibrary>>
+    saveDisplayTemplateLibraries: (libraries: DisplayTemplateLibrary[]) => Promise<RemoteResult<DisplayTemplateLibrary[]>>
+    saveDisplayTemplates: (library: DisplayTemplateLibrary) => Promise<RemoteResult<DisplayTemplateLibrary>>
+    saveEditorLibraries: (request: EditorLibrarySaveRequest) => Promise<RemoteResult<EditorLibrarySaveResult>>
+    saveRegexEditor: (collection: RegexRuleEditorCollection) => Promise<RemoteResult<RegexRuleEditorCollection>>
     saveRegexRules: (characterId: string, collection: RegexRuleCollection, expectedRevision: number) => Promise<RemoteResult<RegexRuleCollection>>
     saveScriptLibraries: (libraries: ScriptLibrary[]) => Promise<RemoteResult<ScriptLibrary[]>>
     saveScriptLibrary: (library: ScriptLibrary) => Promise<RemoteResult<ScriptLibrary>>
@@ -169,7 +179,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$656c65636b6f694d6f64656c73 {
     discoverModels: (input: ModelDiscoveryInput) => Promise<RemoteResult<ModelDiscoveryResult[]>>
     revealApiKey: (configId: string) => Promise<RemoteResult<string>>
-    testConnection: (input: ModelConnectionInput) => Promise<RemoteResult<{ supported: true; }>>
   }
   interface TypertRemoteNamespace$656c65636b6f69506572736f6e61 {
     changes: (signal?: AbortSignal) => RemoteStreamHandle<ProductRecordChange, never>
@@ -221,9 +230,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'eleckoiAuthorVariables/reset': (conversationId: string, signal?: AbortSignal) => Promise<RemoteResult<string>>
     'eleckoiAuthorVariables/setState': (conversationId: string, stateJson: string, signal?: AbortSignal) => Promise<RemoteResult<string>>
     'eleckoiCharacterConfiguration/changes': (signal?: AbortSignal) => RemoteStreamHandle<CharacterConfigurationChange, never>
+    'eleckoiCharacterConfiguration/displayTemplatesForCharacter': (characterId: string) => Promise<RemoteResult<DisplayTemplateSelection>>
+    'eleckoiCharacterConfiguration/exportRegexEditor': (target: RegexEditorTarget, ruleIds: string[]) => Promise<RemoteResult<{ fileName: string; json: string; }>>
     'eleckoiCharacterConfiguration/exportRegexRules': (characterId: string, ruleIds: string[]) => Promise<RemoteResult<{ fileName: string; json: string; }>>
+    'eleckoiCharacterConfiguration/importRegexEditor': (collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]) => Promise<RemoteResult<RegexRuleEditorImportResult>>
     'eleckoiCharacterConfiguration/importRegexRules': (characterId: string, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[], expectedRevision: number) => Promise<RemoteResult<RegexRuleImportResult>>
     'eleckoiCharacterConfiguration/readConversationSettingLibraries': (characterId: string) => Promise<RemoteResult<SettingLibraryConversation[]>>
+    'eleckoiCharacterConfiguration/readDisplayTemplates': (scope: DisplayTemplateScope, ownerId: string) => Promise<RemoteResult<DisplayTemplateLibrary>>
+    'eleckoiCharacterConfiguration/readEditorLibraryVersions': (address: EditorLibraryAddress) => Promise<RemoteResult<EditorLibraryVersions>>
+    'eleckoiCharacterConfiguration/readRegexEditor': (target: RegexEditorTarget) => Promise<RemoteResult<RegexRuleEditorCollection>>
     'eleckoiCharacterConfiguration/readRegexRules': (characterId: string) => Promise<RemoteResult<RegexRuleCollection>>
     'eleckoiCharacterConfiguration/readScriptLibrary': (scope: ScriptLibraryScope, ownerId: string) => Promise<RemoteResult<ScriptLibrary>>
     'eleckoiCharacterConfiguration/readScriptWorkspace': (scope: ScriptLibraryScope, ownerId: string) => Promise<RemoteResult<ScriptWorkspace>>
@@ -233,6 +248,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'eleckoiCharacterConfiguration/resetConversationSettingLibrary': (characterId: string, conversationId: string) => Promise<RemoteResult<void>>
     'eleckoiCharacterConfiguration/saveConversationSettingLibrary': (characterId: string, conversationId: string, library: SettingLibrary) => Promise<RemoteResult<SettingLibrary>>
     'eleckoiCharacterConfiguration/saveConversationSettingLibraryVersion': (characterId: string, conversationId: string, name: string) => Promise<RemoteResult<SettingLibrary>>
+    'eleckoiCharacterConfiguration/saveDisplayTemplateLibraries': (libraries: DisplayTemplateLibrary[]) => Promise<RemoteResult<DisplayTemplateLibrary[]>>
+    'eleckoiCharacterConfiguration/saveDisplayTemplates': (library: DisplayTemplateLibrary) => Promise<RemoteResult<DisplayTemplateLibrary>>
+    'eleckoiCharacterConfiguration/saveEditorLibraries': (request: EditorLibrarySaveRequest) => Promise<RemoteResult<EditorLibrarySaveResult>>
+    'eleckoiCharacterConfiguration/saveRegexEditor': (collection: RegexRuleEditorCollection) => Promise<RemoteResult<RegexRuleEditorCollection>>
     'eleckoiCharacterConfiguration/saveRegexRules': (characterId: string, collection: RegexRuleCollection, expectedRevision: number) => Promise<RemoteResult<RegexRuleCollection>>
     'eleckoiCharacterConfiguration/saveScriptLibraries': (libraries: ScriptLibrary[]) => Promise<RemoteResult<ScriptLibrary[]>>
     'eleckoiCharacterConfiguration/saveScriptLibrary': (library: ScriptLibrary) => Promise<RemoteResult<ScriptLibrary>>
@@ -300,7 +319,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'eleckoiDisplayPreferences/updateUi': (ui: Record<string, DisplayPreferenceValue>, expectedRevision?: number) => Promise<RemoteResult<DisplayPreferencesSnapshot>>
     'eleckoiModels/discoverModels': (input: ModelDiscoveryInput) => Promise<RemoteResult<ModelDiscoveryResult[]>>
     'eleckoiModels/revealApiKey': (configId: string) => Promise<RemoteResult<string>>
-    'eleckoiModels/testConnection': (input: ModelConnectionInput) => Promise<RemoteResult<{ supported: true; }>>
     'eleckoiPersona/changes': (signal?: AbortSignal) => RemoteStreamHandle<ProductRecordChange, never>
     'eleckoiPersona/read': () => Promise<RemoteResult<PersonaProfile>>
     'eleckoiPersona/save': (profile: PersonaProfile) => Promise<RemoteResult<PersonaProfile>>

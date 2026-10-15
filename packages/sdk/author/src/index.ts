@@ -4,6 +4,8 @@ import { AUTHOR_API_STAGE, AUTHOR_API_VERSION } from './version'
 export { AUTHOR_API_STAGE, AUTHOR_API_VERSION } from './version'
 
 export * from './contracts'
+export * from './display-templates'
+export * from './editor-versions'
 export * from './browser'
 export * from './errors'
 export * from './variables'
@@ -11,11 +13,16 @@ export * from './scripts'
 export * from './rule-registry'
 export * from './script-session'
 export * from './document'
+export * from './rich-document'
 
 export const authorApiPermissions = {
   appRead: 'app.read',
   contextRead: 'context.read',
   scriptRead: 'script.read',
+  displayTemplatesRead: 'display_templates.read',
+  displayTemplatesWrite: 'display_templates.write',
+  editorVersionsRead: 'editor_versions.read',
+  editorVersionsWrite: 'editor_versions.write',
   scriptWrite: 'script.write',
   uiWrite: 'ui.write',
   variablesRead: 'variables.read',
@@ -59,6 +66,10 @@ const definition = (
 ): AuthorApiDefinition => ({ method, namespace, description, permission, stage: AUTHOR_API_STAGE, since: AUTHOR_API_VERSION })
 
 export const authorApiDefinitions: readonly AuthorApiDefinition[] = [
+  definition('displayTemplates.read', 'displayTemplates', '读取共享全局、所属角色或当前扮演预设的 EJS显示模板', authorApiPermissions.displayTemplatesRead),
+  definition('displayTemplates.save', 'displayTemplates', '按读取版本保存 EJS显示模板并刷新已有消息', authorApiPermissions.displayTemplatesWrite),
+  definition('editorVersions.read', 'editorVersions', '读取共享全局、所属角色或当前扮演预设的完整配置版本', authorApiPermissions.editorVersionsRead),
+  definition('editorVersions.save', 'editorVersions', '原子保存正则、脚本或 EJS显示模板的配置及命名版本', authorApiPermissions.editorVersionsWrite),
   definition('app.getInfo', 'app', '读取应用与作者 API 版本信息', authorApiPermissions.appRead),
   definition('app.getCapabilities', 'app', '读取当前页面可调用的完整 API 清单', authorApiPermissions.appRead),
   definition('context.current', 'context', '读取当前页面上下文', authorApiPermissions.contextRead),
@@ -149,6 +160,10 @@ export const characterConversationPermissions: ReadonlySet<AuthorApiPermission> 
   authorApiPermissions.chatWrite,
   authorApiPermissions.characterRead,
   authorApiPermissions.settingLibraryRead,
+  authorApiPermissions.displayTemplatesRead,
+  authorApiPermissions.displayTemplatesWrite,
+  authorApiPermissions.editorVersionsRead,
+  authorApiPermissions.editorVersionsWrite,
   authorApiPermissions.settingLibraryWrite,
   authorApiPermissions.presetsRead,
   authorApiPermissions.presetsWrite,

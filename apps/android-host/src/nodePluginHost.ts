@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline'
 import { startPluginHostApplication, type PluginHostApplication } from './pluginHostApplication'
 import { loadNodeHostConfiguration, nodeHostPackageManager, preparePluginHost } from './pluginHostConfiguration'
+import { disableAndroidUserPlugins } from './androidPluginRecovery'
 import {
   HOST_CONTROL_PROTOCOL_VERSION, HOST_CONTROL_STDOUT_PREFIX, isParentHostMessage,
   type ChildHostMessage
@@ -15,10 +16,14 @@ function send(message: NodeHostMessage): Promise<void> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
-  if (args.length !== 2 || args[0] !== '--config') {
-    throw new Error('Usage: node eleckoi-host.mjs --config /absolute/path/runtime-config.json')
+  if (args[0] !== '--config' || (args.length !== 2 && !(args.length === 3 && args[2] === '--disable-user-plugins'))) {
+    throw new Error('Usage: node eleckoi-host.mjs --config /absolute/path/runtime-config.json [--disable-user-plugins]')
   }
   const config = loadNodeHostConfiguration(args[1]!)
+  if (args[2] === '--disable-user-plugins') {
+    const backupPath = disableAndroidUserPlugins(config.homeRoot)
+    await send({ type: 'profile-recovered', ...(backupPath === undefined ? {} : { backupPath }) })
+  }
   const prepared = preparePluginHost(config)
   Object.assign(process.env, prepared.environment)
   process.chdir(prepared.profileDirectory)

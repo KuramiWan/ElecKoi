@@ -44,6 +44,7 @@
   },
   "include": [
     "apps/android-host/src/androidPluginBundles.ts",
+    "apps/android-host/src/androidPluginRecovery.ts",
     "apps/android-host/src/androidPluginBundleManifest.json",
     "apps/desktop/electron.vite.config.ts",
     "scripts/vite-author-vendor-plugin.ts",
@@ -59,6 +60,7 @@
     "packages/host/product-api/src/client/remoteApi.generated.ts",
     "packages/client/features/dsh-client-author/src/generation.ts",
     "packages/client/features/dsh-client-author/src/messages.ts",
+    "packages/client/features/dsh-client-author/src/display-templates.ts",
     "tests/**/*.ts",
     "vitest.config.ts"
   ]

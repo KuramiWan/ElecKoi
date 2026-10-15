@@ -20,6 +20,8 @@ import { SettingLibraryTree, SettingTreeActionsContext } from "./SettingLibraryT
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
+import { EditorCollectionToolbar, EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
+import { selectableTreeIds, selectedTreeRootIds, visibleTreeSelectionIds } from '../../../ui/ui/editorCollectionSelection.js';
 import {
   PINNED_ENTRY_IDS,
   canTransferSettingNode,
@@ -366,6 +368,16 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
 
   function confirmDelete() {
     if (!deleteTarget) return;
+    if (deleteTarget.kind === 'batch') {
+      const targets = deleteTarget.ids.map(parseNodeKey);
+      changeLibrary(current => {
+        const groups = new Set(targets.filter(target => target.kind === 'group').flatMap(target => [...descendants(current.groups, target.id)]));
+        const entries = new Set(targets.filter(target => target.kind === 'entry').map(target => target.id));
+        return { ...current, groups: current.groups.filter(group => !groups.has(group.id)),
+          entries: current.entries.filter(entry => PINNED_ENTRY_IDS.has(entry.id) || !groups.has(entry.groupId) && !entries.has(entry.id)) };
+      });
+      selectNode(''); setDeleteTarget(null); multi.clear(); return;
+    }
     if (deleteTarget.kind === "opening") {
       updateEntryById(deleteTarget.id, (entry) => deleteOpening(entry, deleteTarget.messageId));
       setDeleteTarget(null);
@@ -478,6 +490,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
 
   function openTreeContextMenu(event) {
     event.preventDefault();
+    if (!libraryRef.current) return;
     setMenuOpen(false);
     setContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 176),
@@ -500,7 +513,20 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
 
   const selectedIcon = selected.kind === "group" ? DshFolderClosedIcon : nodeIcon(selected.value);
   const SelectedIcon = selectedIcon || FileText;
-  const inspector = selected.value && (!compact || editing) ? (
+  const multi = useEditorMultiSelect(selectableTreeIds(nodes), characterId);
+  function copySelected() {
+    const targets = selectedTreeRootIds(nodes, multi.selected).map(parseNodeKey);
+    changeLibrary(current => targets.reduce((next, target) => {
+      const value = target.kind === 'group' ? next.groups.find(item => item.id === target.id) : next.entries.find(item => item.id === target.id);
+      return copySettingNode(next, target, target.kind === 'group' ? value.parentId : value.groupId).library;
+    }, current));
+    multi.clear();
+  }
+  function askDeleteBatch() { setDeleteTarget({ kind: 'batch', ids: selectedTreeRootIds(nodes, multi.selected), title: `删除选中的 ${multi.selected.size} 项？`, message: '所选文件夹及其内容会在保存后删除。' }); }
+  const createItems = [{ label: '文件夹', Icon: CreateFolderIcon, run: () => requestAddNode('group') },
+    { label: '设定', Icon: CreateEntryIcon, run: () => requestAddNode('entry') },
+    { label: 'EJS引用设定', Icon: CreateReferenceIcon, run: () => requestAddNode('reference') }];
+  const inspector = !multi.active && selected.value && (!compact || editing) ? (
     <SettingLibraryInspector
       selected={selected}
       library={library}
@@ -520,11 +546,9 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     />
   ) : null;
 
-  if (!library && !compact) return <div className="setting-library-loading">{error || "正在读取…"}</div>;
-
   return (
     <EditorSidebarLayout
-      className="setting-library-layout"
+      className={`setting-library-layout${multi.active ? ' is-multiselect' : ''}`}
       inspector={inspector}
       inspectorTitle={selected.kind === 'group' ? '编辑文件夹' : selected.value?.title || '编辑设定'}
       onCloseInspector={requestCloseInspector}
@@ -532,37 +556,23 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       aria-label="设定库"
       onMouseDown={() => setMenuOpen(false)}
     >
-      <div className="setting-library-browser">
-        <div className="setting-library-toolbar" onMouseDown={(event) => event.stopPropagation()}>
-          <label className="setting-library-search">
-            <MagnifyingGlass size={15} aria-hidden="true" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索设定" aria-label="搜索设定" />
-          </label>
-          {!compact && <div className="setting-library-add-wrap">
-            <button type="button" className="setting-library-create-button" aria-label="新建" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}><Plus size={16} />新建</button>
-            {menuOpen ? (
-              <div className="setting-library-popover" role="menu">
-                <button type="button" role="menuitem" onClick={() => requestAddNode("group")}><CreateFolderIcon size={16} />文件夹</button>
-                <button type="button" role="menuitem" onClick={() => requestAddNode("entry")}><CreateEntryIcon size={16} />设定</button>
-                <button type="button" role="menuitem" onClick={() => requestAddNode("reference")}><CreateReferenceIcon size={16} />EJS引用设定</button>
-              </div>
-            ) : null}
-          </div>}
-          <button type="button" className="setting-library-manage-button" disabled={!library} aria-expanded={managerOpen} onClick={() => { setMenuOpen(false); setManagerOpen(true); }}><SlidersHorizontal size={16} />管理</button>
-          <SaveControl dirty={dirty} error={error} notice={saveNotice} saving={saving} onSave={save} />
-        </div>
+      <div className="setting-library-browser editor-collection-browser">
+        <EditorCollectionToolbar query={query} onQueryChange={setQuery} placeholder="搜索设定" selection={{ ...multi, toggle: () => { multi.toggle(); selectNode(''); setEditing(false); setContextMenu(null); } }} disabled={saving || !library}
+          createItems={createItems}
+          onManage={() => setManagerOpen(true)} save={<SaveControl dirty={dirty} error={error} notice={saveNotice} saving={saving} onSave={save} />} />
+        <EditorSelectionBar selection={multi} visibleIds={visibleTreeSelectionIds(nodes, query)} disabled={saving} onCopy={copySelected} onDelete={askDeleteBatch} />
 
         <div className="setting-library-tree editor-sidebar-directory" onMouseDown={handleTreeMouseDown} onContextMenu={openTreeContextMenu}>
-          <SettingTreeActionsContext.Provider value={{ openContextMenu, updateEntryById, openEditor: compact ? openEditor : undefined }}>
+          <SettingTreeActionsContext.Provider value={{ openContextMenu, updateEntryById, selection: multi, saving, openEditor: compact && !multi.active ? openEditor : undefined }}>
             <SettingLibraryTree
               key={characterId}
               nodes={nodes}
-              touchReorder={compact && !clipboard}
-              dragEnabled={!clipboard}
+              touchReorder={compact && !clipboard && !multi.active}
+              dragEnabled={!clipboard && !multi.active}
               query={query}
-              selectedId={selectedKey}
+              selectedId={multi.active ? '' : selectedKey}
               expandedIds={expandedKeys}
-              onSelectedIdChange={selectNode}
+              onSelectedIdChange={key => { if (multi.active) { if (selectableTreeIds(nodes).includes(key)) multi.check(key, !multi.selected.has(key)); } else selectNode(key); }}
               onExpandedIdsChange={handleExpandedKeysChange}
               onMove={handleMove}
               ariaLabel="设定文件夹树"
@@ -570,16 +580,11 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
           </SettingTreeActionsContext.Provider>
           {!library ? <p className="setting-library-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p> : !searchHasResults ? <p className="setting-library-empty">没有匹配的设定</p> : null}
         </div>
-        {compact && library && <MobileEditorActions label="设定操作" selectionId={selectedKey}
+        {compact && library && !multi.active && <MobileEditorActions label="设定操作" selectionId={selectedKey} busy={saving} createItems={createItems}
           canEdit={Boolean(selected.value)} canModify={Boolean(selected.value) && !PINNED_ENTRY_IDS.has(selected.value.id)}
           clipboard={clipboard} canPaste={Boolean(clipboard && canTransferSettingNode(library, clipboard.target, parentForNewNode()))}
           onEdit={() => openEditor()} onMove={() => startTransfer('cut')} onPaste={pasteSelection} onCancel={() => setClipboard(null)}
           onDelete={() => askDelete(selected.kind, selected.value.id)}
-          createItems={[
-            { label: '文件夹', Icon: CreateFolderIcon, run: () => requestAddNode('group') },
-            { label: '设定', Icon: CreateEntryIcon, run: () => requestAddNode('entry') },
-            { label: 'EJS引用设定', Icon: CreateReferenceIcon, run: () => requestAddNode('reference') },
-          ]}
           moreItems={selected.value && !PINNED_ENTRY_IDS.has(selected.value.id) ? [
             { label: '复制', Icon: Copy, run: () => startTransfer('copy') },
             { label: '重命名', Icon: PencilSimple, run: () => { openEditor(); requestAnimationFrame(() => nameInputRef.current?.select()); } },

@@ -2,8 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyn
 import { CheckCircle } from '@phosphor-icons/react';
 import { CharacterManagerIcon, ChevronRightIcon, ImportIcon, PlusIcon, TrashIcon } from '../../../ui/icons/index.jsx';
 import { Avatar } from '../../../ui/ui/Avatar.jsx';
-import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
-import { SidebarCreateButton } from '../../../ui/ui/SidebarCreateButton.jsx';
+import { SidebarSectionHeader } from '../../../ui/ui/SidebarSectionHeader.jsx';
 import { useSidebarListScroll } from '../../../ui/hooks/useSidebarListScroll.js';
 import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
 import { useEditorPresentation, useEditorSubpage } from '../../../ui/ui/EditorPresentationContext.jsx';
@@ -15,7 +14,9 @@ import { PresetContextMenu, usePresetContextMenu } from './PresetContextMenu.jsx
 import { PresetProfileHeader } from './PresetProfileHeader.jsx';
 import { PresetProfileEditor } from './PresetProfileEditor.jsx';
 import { PresetPromptEditor } from './PresetPromptEditor.jsx';
-import { PresetRegexEditor } from './PresetRegexEditor.jsx';
+import { ScriptLibrariesPanel } from '../../scripts/index.js';
+import { DisplayTemplatesPanel } from '../../displayTemplates/index.js';
+import { RegexRulesPanel } from '../../regex/index.js';
 import { PresetToolsEditor } from './PresetToolsEditor.jsx';
 import { fileBase64, PresetImportDialog } from './PresetTransfer.jsx';
 import { openPresetManagerWindow } from '../window/openPresetManagerWindow.js';
@@ -28,7 +29,9 @@ const TABS = [
   { id: 'introduction', label: '使用说明' },
   { id: 'prompts', label: '预设提示词' },
   { id: 'tools', label: '工具' },
-  { id: 'regex', label: '预设正则' },
+  { id: 'regex', label: '正则' },
+  { id: 'displayTemplates', label: 'EJS显示模板' },
+  { id: 'scripts', label: '脚本' },
 ];
 const EMPTY_PRESET_CATALOG = { status: 'loading', catalog: null, error: '' };
 const subscribeEmptyCatalog = () => () => {};
@@ -268,20 +271,17 @@ export function PresetListPanel() {
   }
 
   return <aside className="character-list-panel preset-list-panel" aria-label="预设列表">
-    <div className="preset-list-title-row">
-      <h2>预设</h2>
-    </div>
-    <PresetPurposeSwitch value={purpose} onChange={value => { setPurpose(value); setSelectedGroup(ALL_PRESETS); setKeyword(''); }} />
-    <div className="search-row character-list-search preset-list-search">
-      <DshSearchField value={keyword} onValueChange={setKeyword} placeholder="搜索预设…" ariaLabel="搜索预设" />
-      <SidebarCreateButton title="新建" expanded={createOpen} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setCreateOpen((value) => !value); }} />
-    </div>
+    <SidebarSectionHeader title="预设" value={keyword} onValueChange={setKeyword} placeholder="搜索预设名称"
+      createLabel="新建预设" createExpanded={createOpen}
+      onCreatePointerDown={(event) => event.stopPropagation()}
+      onCreate={(event) => { event.stopPropagation(); setCreateOpen((value) => !value); }} onSearchFocus={() => setCreateOpen(false)} />
     {createOpen ? <div className="character-create-menu preset-create-menu" onPointerDown={(event) => event.stopPropagation()}>
       <button type="button" onClick={addPreset}><PlusIcon /><span>新建预设</span></button>
       <button type="button" disabled={importing} onClick={beginImport}><ImportIcon /><span>导入预设</span></button>
     </div> : null}
     <input ref={importInputRef} type="file" accept="image/png,application/json,.png,.json" hidden onChange={handleImport} />
     <button type="button" className="character-manager-entry preset-manager-entry" onClick={openPresetManagerWindow}><CharacterManagerIcon /><span>预设管理器</span></button>
+    <PresetPurposeSwitch value={purpose} onChange={value => { setPurpose(value); setSelectedGroup(ALL_PRESETS); setKeyword(''); }} />
     <div ref={scrollRef} className="character-list-scroll preset-list-scroll">
       {collapseStateReady ? sections.map(renderGroup) : null}
       {shouldShowPresetCatalogLoading(catalog, error) ? <p className="preset-list-state">正在读取…</p> : null}
@@ -306,6 +306,7 @@ export function PresetListRow({ preset, selected, active, onClick, onContextMenu
 }
 
 export function PresetWorkspace({
+  characterConfiguration,
   requestedTab = '',
   onRequestedTabHandled,
   onNotify,
@@ -323,15 +324,20 @@ export function PresetWorkspace({
   const [error, setError] = useState('');
   const [profileEditing, setProfileEditing] = useState(false);
   const introductionRef = useRef(null);
+  const scriptsRef = useRef(null), templatesRef = useRef(null), regexRef = useRef(null);
+  const [editorDirty, setEditorDirty] = useState(false);
   const savingRef = useRef(false);
   const dirtyRef = useRef(false);
+  const presetDirtyRef = useRef(false);
   const pendingLatestRef = useRef(null);
   const externalChangeRef = useRef(false);
   const allowCloseRef = useRef(false);
   const requestedTabRef = useRef(requestedTab);
   const requestedTabHandledRef = useRef(onRequestedTabHandled);
   const [pendingAction, setPendingAction] = useState(null);
-  const dirty = Boolean(preset && persisted && JSON.stringify(preset) !== JSON.stringify(persisted));
+  const presetDirty = Boolean(preset && persisted && JSON.stringify(preset) !== JSON.stringify(persisted));
+  const dirty = editorDirty || presetDirty;
+  presetDirtyRef.current = presetDirty;
   dirtyRef.current = dirty;
   requestedTabRef.current = requestedTab;
   requestedTabHandledRef.current = onRequestedTabHandled;
@@ -360,6 +366,7 @@ export function PresetWorkspace({
     if (!selectedPresetId) return;
     let active = true;
     setLoading(true);
+    setEditorDirty(false);
     setError('');
     catalogModel.read(selectedPresetId).then((loaded) => {
       if (!active) return;
@@ -380,7 +387,7 @@ export function PresetWorkspace({
     let active = true;
     const applyLatest = (loaded) => {
         if (!active || savingRef.current) return;
-        if (dirtyRef.current) {
+        if (presetDirtyRef.current) {
           if (JSON.stringify(loaded) !== JSON.stringify(persisted)) {
             pendingLatestRef.current = loaded;
             externalChangeRef.current = true;
@@ -430,6 +437,13 @@ export function PresetWorkspace({
   }, [dirty]);
 
   async function save(candidate = preset) {
+    const editor = tab === 'scripts' ? scriptsRef.current : tab === 'displayTemplates' ? templatesRef.current : tab === 'regex' ? regexRef.current : null;
+    if (editor) {
+      if (savingRef.current) return false;
+      savingRef.current = true; setSaving(true);
+      try { const saved = await editor.save(); if (saved) setEditorDirty(false); return saved; }
+      finally { savingRef.current = false; setSaving(false); }
+    }
     if (!candidate || savingRef.current) return false;
     if (externalChangeRef.current) {
       setError('当前预设已在其他窗口更新，请放弃未保存修改后重新打开。');
@@ -457,6 +471,7 @@ export function PresetWorkspace({
   }
 
   function discardChanges() {
+    scriptsRef.current?.discard?.(); templatesRef.current?.discard?.(); regexRef.current?.discard?.(); setEditorDirty(false);
     const latest = pendingLatestRef.current || persisted;
     pendingLatestRef.current = null;
     externalChangeRef.current = false;
@@ -559,8 +574,16 @@ export function PresetWorkspace({
       savePromptOpen={Boolean(pendingAction?.reminderOnly)}
       saveAction={saveAction}
     />;
+  } else if (tab === 'scripts') {
+    tabEditor = <ScriptLibrariesPanel key={preset.id} ref={scriptsRef} presetId={preset.id} presetName={preset.name} manageSaveShortcut={false}
+      scriptLibraries={characterConfiguration?.scripts} scriptRuntimeConnection={characterConfiguration?.scriptRuntimeConnection}
+      onDirtyChange={setEditorDirty} />;
+  } else if (tab === 'displayTemplates') {
+    tabEditor = <DisplayTemplatesPanel key={preset.id} ref={templatesRef} scope="preset" ownerId={preset.id}
+      displayTemplates={characterConfiguration?.displayTemplates} onDirtyChange={setEditorDirty} />;
   } else if (tab === 'regex') {
-    tabEditor = <PresetRegexEditor preset={preset} onChange={setPreset} saveAction={saveAction} onTest={onTestRegex} />;
+    tabEditor = <RegexRulesPanel key={preset.id} ref={regexRef} presetId={preset.id} regexRules={characterConfiguration?.regexRules}
+      manageSaveShortcut={false} onDirtyChange={setEditorDirty} />;
   }
   const renderedTabEditor = renderEditorSection?.(tab, extensionOwner, tabEditor) ?? tabEditor;
 

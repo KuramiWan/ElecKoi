@@ -66,3 +66,5 @@ pnpm check:plugin-docs
 - 只有本目录和插件中心列出的开发接口属于 ElecKoi 公开接入面。
 - 已删除的 `window.eleckoi` 与 Desktop Gateway、页面组件内部 props、DSH 内部注册表和 SQLite schema 都不是第三方插件 API。
 - 公开接口发生不兼容变化时，应提升相应 bundle 版本并同步更新类型、manifest、文档和安装探针。
+
+- [EJS显示模板](ejs-display-templates.md)：AI 消息显示入口、标准语法、片段替换与历史状态。

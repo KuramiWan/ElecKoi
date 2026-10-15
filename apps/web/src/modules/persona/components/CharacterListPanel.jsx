@@ -6,8 +6,7 @@ import { CharacterGroupList } from "./CharacterGroupList.jsx";
 import { CharacterImportDialog } from "./CharacterImportDialog.jsx";
 import { DeleteCharacterDialog } from "./DeleteCharacterDialog.jsx";
 import { ALL_CHARACTERS, characterGroup, characterName } from "./characterUtils.js";
-import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
-import { SidebarCreateButton } from "../../../ui/ui/SidebarCreateButton.jsx";
+import { SidebarSectionHeader } from "../../../ui/ui/SidebarSectionHeader.jsx";
 import { useSidebarListScroll } from "../../../ui/hooks/useSidebarListScroll.js";
 import { LIST_COLLAPSE_AREAS, usePersistentCollapseState } from "../../settings/index.js";
 import { openCharacterManagerWindow } from "../window/openCharacterManagerWindow.js";
@@ -189,18 +188,11 @@ export function CharacterListPanel({ characters, activeCharacterId, artworkMode,
 
   return (
     <aside className="character-list-panel">
-      <div className="search-row character-list-search">
-        <DshSearchField value={keyword} onValueChange={setKeyword} placeholder="搜索角色…" ariaLabel="搜索角色" />
-        <SidebarCreateButton
-          title="新建"
-          expanded={createMenuOpen}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            setCreateMenuOpen((current) => !current);
-          }}
-        />
-      </div>
+      <SidebarSectionHeader title="角色" value={keyword} onValueChange={setKeyword}
+        placeholder="搜索角色名称" createLabel="新建角色"
+        createExpanded={createMenuOpen} onCreatePointerDown={(event) => event.stopPropagation()}
+        onCreate={(event) => { event.stopPropagation(); setCreateMenuOpen((current) => !current); }}
+        onSearchFocus={() => setCreateMenuOpen(false)} />
 
       {createMenuOpen ? (
         <div className="character-create-menu" onPointerDown={(event) => event.stopPropagation()}>

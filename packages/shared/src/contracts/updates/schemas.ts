@@ -23,7 +23,7 @@ export const updateStatusSchema = z.object({
   currentVersion: z.string().min(1),
   availableVersion: z.string().min(1).nullable(),
   releaseName: z.string().max(200).nullable(),
-  releaseNotes: z.string().max(4_000).nullable(),
+  releaseNotes: z.string().nullable(),
   releaseDate: z.string().max(100).nullable(),
   downloadSizeBytes: z.number().nonnegative().nullable(),
   progress: updateProgressSchema.nullable(),

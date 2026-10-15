@@ -7,7 +7,7 @@ import { TunerSliderRow } from '../ui/ui/TunerSliderRow.jsx';
 import { UnsavedChangesDialog } from '../ui/ui/UnsavedChangesDialog.jsx';
 import { ChatDisplayPreview, UserProfileSettings } from '../modules/settings/components/SettingsPanel.jsx';
 import { AboutSettings } from '../modules/settings/components/AboutSettings.jsx';
-import { chatDisplaySettings, chatDisplayTuners, chatLayouts, avatarShapes, reasoningDisplayModes, textColorOptions } from '../modules/settings/model/chatDisplaySettings.js';
+import { chatDisplaySettings, chatDisplayTuners, chatLayouts, avatarShapes, reasoningDisplayModes, textColorOptions, richMessageFloorTuner, richMessageLimitDescription } from '../modules/settings/model/chatDisplaySettings.js';
 import { MobileHeader, useMobileBack, useMobileScroll } from './MobileChrome.jsx';
 import { MobileChevronRightIcon } from './MobileIcons.jsx';
 import './mobile-settings.css';
@@ -76,6 +76,7 @@ function ProfileAvatars({ owner, children }) {
 const detailTitles = {
   'chat:layout': '对话布局', 'chat:avatar': '头像与名字', 'chat:text': '正文文字',
   'chat:spacing': '间距与留白', 'chat:reasoning': '思维链显示', 'chat:colors': '文本颜色', 'chat:bubble': '气泡样式',
+  'chat:rich': '富消息',
 };
 const themeChoices = [{ id: 'light', label: '浅色' }, { id: 'dark', label: '深色' }];
 const artworkChoices = [{ id: 'cover', label: '封面立绘' }, { id: 'avatar', label: '头像' }];
@@ -129,6 +130,7 @@ export function MobileSettingsPage() {
         <SettingsRow icon={ArrowsOutLineVertical} label="间距与留白" value={`${profile.reply_spacing} / ${profile.turn_spacing}`} onClick={() => open('chat:spacing')} />
         <SettingsRow icon={SlidersHorizontal} label="思维链显示" value={reasoningDisplayModes.find(item => item.id === preferences.reasoning_display_mode)?.label} onClick={() => open('chat:reasoning')} />
         <SettingsRow icon={Palette} label="文本颜色" onClick={() => open('chat:colors')} />
+        <SettingsRow icon={ChatCircleDots} label="富消息" onClick={() => open('chat:rich')} />
         {layout === 'agent' && <SettingsRow icon={ChatCircleDots} label="气泡样式" onClick={() => open('chat:bubble')} />}
       </SettingsGroup>
       <SettingsGroup><SettingsSwitch label="生成统计" checked={preferences.generation_stats_enabled} onChange={value => updatePreferences({ generation_stats_enabled: value })} /></SettingsGroup>
@@ -147,6 +149,17 @@ export function MobileSettingsPage() {
     content = <SettingsGroup><div className="mobile-settings-tuners">{tune('reply_spacing')}{tune('turn_spacing', layout === 'agent' ? '轮次间距' : '消息间距')}</div></SettingsGroup>;
   } else if (page === 'chat:reasoning') {
     content = <SettingsGroup><SettingsChoices label={title} options={reasoningDisplayModes} value={preferences.reasoning_display_mode} onChange={value => updatePreferences({ reasoning_display_mode: value })} /></SettingsGroup>;
+  } else if (page === 'chat:rich') {
+    content = <>
+      <SettingsGroup><SettingsSwitch label="限制富消息运行楼层" checked={preferences.rich_message_limit_enabled}
+        onChange={value => updatePreferences({ rich_message_limit_enabled: value })} />
+        {preferences.rich_message_limit_enabled && <div className="mobile-settings-tuners">
+          <TunerSliderRow {...richMessageFloorTuner} value={preferences.rich_message_floor_limit}
+            onChange={value => updatePreferences({ rich_message_floor_limit: Math.round(value) })} />
+        </div>}
+      </SettingsGroup>
+      <p className="mobile-settings-note">{richMessageLimitDescription}</p>
+    </>;
   } else if (page === 'chat:colors') {
     content = <><SettingsGroup>{textColorOptions.map(option => <label key={option.key} className="mobile-settings-color"><span>{option.label}</span><input type="color" aria-label={option.label} value={preferences.text_colors[option.key]} onChange={event => model.updateTextColor(option.key, event.target.value)} /></label>)}</SettingsGroup>
       <button type="button" className="mobile-settings-reset" onClick={model.resetTextColors}>恢复默认</button></>;

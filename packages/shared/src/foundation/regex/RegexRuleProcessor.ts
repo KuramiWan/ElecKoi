@@ -5,6 +5,7 @@ import type {
   RegexRuleSurface,
   RegexRuleTarget
 } from '@shared/contracts/regex/schemas'
+import { completedRichDocumentAssemblyRanges, hasOpenRichDocumentAssembly } from '@shared/foundation/richMessage'
 
 interface ParsedPattern {
   body: string
@@ -78,7 +79,7 @@ function replacementFor(match: RegExpExecArray, source: string, trimStrings: str
   )
 }
 
-function applyRule(text: string, rule: RegexRule, replacementDecorator?: (replacement: string) => string, options: RegexTransformOptions = {}): string {
+function applyRule(text: string, rule: RegexRule, replacementDecorator?: (replacement: string, prefix: () => string) => string, options: RegexTransformOptions = {}): string {
   const expand = (value: string, escape?: (value: string) => string): string => {
     if (!value.includes('{{')) return value
     if (!options.expandMacros) throw new Error(`Regex rule ${rule.id} requires the macro runtime`)
@@ -104,7 +105,7 @@ function applyRule(text: string, rule: RegexRule, replacementDecorator?: (replac
   for (let match = expression.exec(text); match; match = expression.exec(text)) {
     matched = true
     const replacement = replacementForMatch(match)
-    const decorated = replacementDecorator?.(replacement) ?? replacement
+    const decorated = replacementDecorator?.(replacement, () => output + text.slice(cursor, match.index)) ?? replacement
     const matchEnd = match.index + match[0].length
     if (sourceOffset !== undefined && projectedOffset === undefined && sourceOffset <= matchEnd) {
       projectedOffset = sourceOffset < match.index ? output.length + sourceOffset - cursor
@@ -154,8 +155,9 @@ export function transformWithRegexRules(
       && (rule.maxDepth == null || rule.maxDepth < 0 || options.depth <= rule.maxDepth)))
   const protectedSegments = options.protectDecoratedReplacements ? [] as string[] : null
   const decorateReplacement = options.replacementDecorator
-    ? (replacement: string) => {
+    ? (replacement: string, prefix: () => string) => {
       const decorated = options.replacementDecorator?.(replacement) ?? replacement
+      if (decorated !== replacement && hasOpenRichDocumentAssembly(prefix())) return replacement
       if (protectedSegments && decorated !== replacement) {
         const index = protectedSegments.push(decorated) - 1
         return protectedReplacementToken(index)
@@ -165,7 +167,19 @@ export function transformWithRegexRules(
     : undefined
   let output = text
   for (const rule of activeRules) {
+    const assembling = protectedSegments && hasOpenRichDocumentAssembly(output)
     output = applyRule(output, rule, decorateReplacement, options)
+    if (protectedSegments && options.replacementDecorator) {
+      for (const range of completedRichDocumentAssemblyRanges(output, Boolean(assembling)).reverse()) {
+        const segment = output.slice(range.start, range.end)
+        const decorated = options.replacementDecorator(segment)
+        if (decorated === segment) continue
+        const token = protectedReplacementToken(protectedSegments.push(decorated) - 1)
+        if (options.position && options.position.offset >= range.end) options.position.offset += token.length - segment.length
+        else if (options.position && options.position.offset > range.start) options.position.offset = range.start
+        output = output.slice(0, range.start) + token + output.slice(range.end)
+      }
+    }
   }
   return protectedSegments
     ? restoreDecoratedSegments(output, protectedSegments, options.position)
@@ -175,7 +189,7 @@ export function transformWithRegexRules(
 export function ruleAppliesToSurface(rule: RegexRule, surface: RegexRuleSurface, target: RegexRuleTarget): boolean {
   if (surface === 'Stored') return !rule.displayOnly && !rule.promptOnly
   if (surface === 'Display') return rule.displayOnly || (!rule.displayOnly && !rule.promptOnly)
-  return rule.promptOnly || (target === 'SettingContent' && !rule.displayOnly && !rule.promptOnly)
+  return rule.promptOnly || ((target === 'SettingContent' || target === 'Reasoning') && !rule.displayOnly && !rule.promptOnly)
 }
 
 const scopeKeys: Record<RegexRuleScope, keyof Pick<RegexRuleCollection, 'globalRules' | 'agentPresetRules' | 'characterRules'>> = {
@@ -190,10 +204,10 @@ const versionScopeKeys: Record<RegexRuleScope, 'globalEnabledIds' | 'agentPreset
   Character: 'characterEnabledIds'
 }
 
-export function includeImportedRulesInActiveVersion(
-  collection: RegexRuleCollection,
+export function includeImportedRulesInActiveVersion<T extends Pick<RegexRuleCollection, 'versions' | 'activeVersionId'>>(
+  collection: T,
   importedRules: Array<{ scope: RegexRuleScope; rule: RegexRule }>
-): RegexRuleCollection {
+): T {
   if (!collection.activeVersionId || importedRules.length === 0) return collection
   const activeVersion = collection.versions.find((version) => version.id === collection.activeVersionId)
   if (!activeVersion) return collection
@@ -224,6 +238,8 @@ export function rulesForSurface(
 ): RegexRule[] {
   const activeVersion = collection.versions.find((version) => version.id === collection.activeVersionId)
   return (Object.keys(scopeKeys) as RegexRuleScope[]).flatMap((scope) => {
+    const enabledKey = scope === 'Global' ? 'globalEnabled' : scope === 'AgentPreset' ? 'agentPresetEnabled' : 'characterEnabled'
+    if (collection[enabledKey] === false) return []
     const allowedIds = scope === 'Global'
       ? activeVersion?.globalEnabledIds
       : scope === 'AgentPreset'

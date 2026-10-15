@@ -1,62 +1,30 @@
-import { SystemBarOverlay } from './SystemBarOverlay.jsx';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
+import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
+import './editor-collection-controls.css';
+import '../styles/version-name-dialog.css';
 
-export function VersionNameDialog({ title, confirmLabel, versions, onCancel, onCreate }) {
-  const titleId = useId();
+export function VersionNameDialog({ title, confirmLabel, versions, onCancel, onCreate, initialName = '', excludeId }) {
   const errorId = useId();
-  const inputRef = useRef(null);
-  const formRef = useRef(null);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName);
   const [validation, setValidation] = useState('');
-
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    inputRef.current?.focus();
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        onCancel();
-      } else if (event.key === 'Tab') {
-        const controls = [...formRef.current.querySelectorAll('input, button')];
-        const target = event.shiftKey ? controls.at(-1) : controls[0];
-        const boundary = event.shiftKey ? controls[0] : controls.at(-1);
-        if (document.activeElement === boundary) {
-          event.preventDefault();
-          target.focus();
-        }
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown, true);
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, [onCancel]);
-
-  return (
-    <SystemBarOverlay className="version-name-overlay" role="presentation" onMouseDown={onCancel}>
-      <form ref={formRef} className="version-name-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}
-        onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => {
-          event.preventDefault();
-          const normalized = name.trim();
-          if (!normalized) return setValidation('请输入版本名称');
-          if (versions.some((version) => version.name.trim() === normalized)) return setValidation('版本名称已存在');
-          onCreate(normalized);
-        }}>
-        <h2 id={titleId}>{title}</h2>
+  function submit(event) {
+    event?.preventDefault();
+    const normalized = name.trim();
+    if (!normalized) return setValidation('请输入版本名称');
+    if (versions.some(version => version.id !== excludeId && version.name.trim() === normalized)) return setValidation('版本名称已存在');
+    onCreate(normalized);
+  }
+  return <Modal open title={title} closeLabel="关闭" onClose={onCancel} className="editor-management-modal version-name-dialog"
+    contentClassName="editor-management-content" footer={<><Button variant="outline" onClick={onCancel}>取消</Button><Button variant="primary" onClick={submit}>{confirmLabel}</Button></>}>
+      <form onSubmit={submit}><div className="editor-management-fields">
         <label>
           <span>版本名称</span>
-          <input ref={inputRef} value={name} maxLength={60} placeholder="版本名称" aria-invalid={Boolean(validation)}
+          <input data-modal-autofocus value={name} placeholder="版本名称" aria-invalid={Boolean(validation)}
             aria-describedby={validation ? errorId : undefined}
             onChange={(event) => { setName(event.target.value); setValidation(''); }} />
         </label>
-        {validation ? <small id={errorId} role="alert">{validation}</small> : null}
-        <div className="version-name-actions">
-          <button type="button" onClick={onCancel}>取消</button>
-          <button type="submit" className="is-primary">{confirmLabel}</button>
         </div>
+        {validation ? <small id={errorId} role="alert">{validation}</small> : null}
       </form>
-    </SystemBarOverlay>
-  );
+    </Modal>;
 }
