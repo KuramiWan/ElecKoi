@@ -30,7 +30,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "test": "vitest run"
+    "test": "pnpm --dir ../../.. test:host packages/host/runtime/tests"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.4",

@@ -7,5 +7,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["../plugin-api-client.types.ts"]
+  "include": ["./plugin-api-client.types.ts"]
 }

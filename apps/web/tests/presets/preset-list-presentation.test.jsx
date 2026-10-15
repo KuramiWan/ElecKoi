@@ -1,0 +1,265 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { readFileSync } from 'node:fs';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { PresetPromptEditor, shouldConfirmHiddenTimelineDisable } from '../../src/modules/presets/components/PresetPromptEditor.jsx';
+import { RegexRuleList } from '../../src/modules/regex/components/RegexRuleList.jsx';
+import { REGEX_SCOPES } from '../../src/modules/regex/model/regexRulesEditing.js';
+const presetRegexList = rules => <RegexRuleList collection={{ globalRules: [], agentPresetRules: rules, characterRules: [] }} scopes={REGEX_SCOPES.filter(scope => scope.id !== 'Character')} query="" selectedId="" collapsed={new Set()} draggedId="" />;
+import { PresetToolsEditor } from '../../src/modules/presets/components/PresetToolsEditor.jsx';
+import { PresetProfileHeader } from '../../src/modules/presets/components/PresetProfileHeader.jsx';
+import { buildPresetListSections, PresetListRow, presetListContextActions, shouldShowPresetCatalogLoading } from '../../src/modules/presets/components/PresetPanel.jsx';
+import { createEntryDraft } from '../../src/modules/settingLibraries/model/settingLibraryEditing.js';
+import { treeNodes } from '../../src/modules/settingLibraries/model/settingLibraryTree.js';
+import { SettingLibraryInspector } from '../../src/modules/settingLibraries/components/SettingLibraryInspector.jsx';
+import { TrashIcon } from '../../src/ui/icons/index.jsx';
+import { SETTING_LIBRARY_CREATE_ICONS } from '../../src/ui/icons/settingLibraryCreateIcons.jsx';
+import { PresetPurposeSwitch } from '../../src/modules/presets/components/PresetPurposeSwitch.jsx';
+
+vi.mock('../../src/modules/settingLibraries/index.js', async () => {
+  const react = await import('react');
+  const drafts = await import('../../src/modules/settingLibraries/model/settingLibraryEditing.js');
+  const tree = await import('../../src/modules/settingLibraries/model/settingLibraryTree.js');
+  return {
+    ...drafts,
+    ...tree,
+    ConfirmationDialog: () => null,
+    SettingLibraryInspector: () => null,
+    SettingLibraryTree: () => null,
+    SettingTreeActionsContext: react.createContext(null),
+  };
+});
+vi.mock('../../src/modules/regex/index.js', () => ({ RegexRuleInspector: () => null, newRegexId: () => crypto.randomUUID() }));
+
+vi.stubGlobal('React', React);
+vi.stubGlobal('window', { innerWidth: 1280 });
+afterAll(() => vi.unstubAllGlobals());
+const preset = { id: 'test', name: '测试', groups: [], entries: [], regexRules: [], expandedGroupIds: [], promptPositions: [], activeVersionId: '' };
+const props = { preset, onChange: () => {}, saveAction: null };
+
+describe('preset list consistency', () => {
+  it('shares Android-aligned create icons between preset prompts and setting libraries', () => {
+    const FolderIcon = SETTING_LIBRARY_CREATE_ICONS.group;
+    const EntryIcon = SETTING_LIBRARY_CREATE_ICONS.entry;
+    expect(renderToStaticMarkup(<FolderIcon size={17} />)).toContain('data-icon="dsh-project-add"');
+    expect(renderToStaticMarkup(<EntryIcon size={17} />)).toContain('data-icon="setting-library-entry"');
+
+    for (const file of [
+      '../../src/modules/presets/components/PresetPromptEditor.jsx',
+      '../../src/modules/settingLibraries/components/SettingLibraryPanel.jsx',
+    ]) {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      expect(source).toContain('SETTING_LIBRARY_CREATE_ICONS');
+      expect(source).not.toMatch(/\b(?:FolderPlus|FilePlus)\b/);
+    }
+  });
+
+  it('matches Android creation capabilities and setting-library menu order', () => {
+    const presetSource = readFileSync(new URL('../../src/modules/presets/components/PresetPromptEditor.jsx', import.meta.url), 'utf8');
+    expect(presetSource).not.toContain("createNode('cache'");
+    expect(presetSource).not.toContain('新建缓存设定');
+
+    const librarySource = readFileSync(new URL('../../src/modules/settingLibraries/components/SettingLibraryPanel.jsx', import.meta.url), 'utf8');
+    const entryOffsets = [...librarySource.matchAll(/requestAddNode\(["']entry["']/g)].map((match) => match.index);
+    const referenceOffsets = [...librarySource.matchAll(/requestAddNode\(["']reference["']/g)].map((match) => match.index);
+    expect(librarySource).not.toContain('requestAddNode("cache"');
+    expect(entryOffsets).toHaveLength(2);
+    expect(referenceOffsets).toHaveLength(2);
+    expect(entryOffsets.every((offset, index) => offset < referenceOffsets[index])).toBe(true);
+  });
+
+  it('identifies the active preset category without activating a different global preset', () => {
+    const html = renderToStaticMarkup(<PresetPurposeSwitch value="creator" onChange={() => {}} />);
+    expect(html).toContain('角色扮演预设');
+    expect(html).toContain('aria-pressed="true">创作预设');
+  });
+
+  it('keeps preset rows to the preset name without an author or prompt-count summary', () => {
+    const html = renderToStaticMarkup(<PresetListRow
+      preset={{ ...preset, entryCount: 2, profile: { authorName: '作者简介', authorAvatarPath: '' } }}
+      selected={false}
+      active
+      onClick={() => {}}
+      onContextMenu={() => {}}
+    />);
+    expect(html).toContain('<strong>测试</strong>');
+    expect(html).toContain('使用中');
+    expect(html).not.toContain('作者简介');
+    expect(html).not.toContain('2 条提示词');
+  });
+
+  it('stops showing the loading row after an empty-group catalog is loaded', () => {
+    expect(shouldShowPresetCatalogLoading(null, '')).toBe(true);
+    expect(shouldShowPresetCatalogLoading({ groups: [], presets: [] }, '')).toBe(false);
+  });
+
+  it('shows all presets first without inventing a built-in group', () => {
+    const groups = [{ id: 'custom-group', name: '收藏' }];
+    const presets = [
+      { id: 'builtin', libraryGroupId: '' },
+      { id: 'custom', libraryGroupId: '' },
+    ];
+    const sections = buildPresetListSections(groups, presets);
+    expect(sections.map((section) => section.name)).toEqual(['全部预设', '收藏']);
+    expect(sections[0].presets.map((item) => item.id)).toEqual(['builtin', 'custom']);
+  });
+
+  it('keeps model tags stable while the activation control stays in its own header slot', () => {
+    const profilePreset = { ...preset, modelTags: [{ id: 'general', label: '通用' }], profile: { authorName: '', authorAvatarPath: '' } };
+    const inactive = renderToStaticMarkup(<PresetProfileHeader preset={profilePreset} active={false} onActivate={() => {}} onEdit={() => {}} />);
+    const active = renderToStaticMarkup(<PresetProfileHeader preset={profilePreset} active onActivate={() => {}} onEdit={() => {}} />);
+    expect(inactive).toContain('preset-profile-hero-tags');
+    expect(inactive).toContain('preset-profile-use');
+    expect(active).toContain('preset-profile-hero-tags');
+    expect(active).toContain('preset-profile-active');
+  });
+
+  it('scopes preset manager avatar sizing without stretching the delete marker', () => {
+    const css = readFileSync(new URL('../../src/modules/presets/styles/preset-panel.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.preset-manager-card-open\s*>\s*\.preset-manager-avatar\s*\{/);
+    expect(css).not.toMatch(/\.preset-manager-card-open\s*>\s*span\s*\{/);
+    expect(css).toMatch(/\.preset-manager-card-open\s*\{[^}]*width:\s*100%;/s);
+  });
+
+  it('offers PNG and JSON from the existing preset manager export control', () => {
+    const source = readFileSync(new URL('../../src/modules/presets/components/PresetManager.jsx', import.meta.url), 'utf8');
+    expect(source).toContain('aria-haspopup="menu"');
+    expect(source).toContain('PNG 预设卡');
+    expect(source).toContain("exportPreset('png')");
+    expect(source).toContain('JSON 预设');
+    expect(source).toContain("exportPreset('json')");
+  });
+
+  it('opens preset group actions from the whole sidebar while limiting the all-presets row to creation', () => {
+    const source = readFileSync(new URL('../../src/modules/presets/components/PresetManager.jsx', import.meta.url), 'utf8');
+    expect(source).toContain('className="preset-manager-groups" onContextMenu={(event) => openGroupMenu(event)}');
+    expect(source).toContain('onContextMenu={(event) => openGroupMenu(event, null)}');
+    expect(source).toContain("groupMenu.group ? <>");
+  });
+
+  it('uses the shared delete icon throughout preset surfaces', () => {
+    const presetComponents = [
+      'PresetPanel.jsx',
+      'PresetIntroductionEditor.jsx',
+      'PresetPromptEditor.jsx',
+    ];
+    for (const file of presetComponents) {
+      const source = readFileSync(new URL(`../../src/modules/presets/components/${file}`, import.meta.url), 'utf8');
+      expect(source, file).not.toMatch(/import\s*\{[^}]*\bTrash\b[^}]*\}\s*from\s*['"]@phosphor-icons\/react['"]/s);
+      expect(source, file).toContain('TrashIcon');
+    }
+  });
+
+  it('offers icon actions for activation and removable preset deletion', () => {
+    const actions = presetListContextActions({ id: 'custom' }, 'active', () => {}, () => {});
+    expect(actions.map((action) => action.label)).toEqual(['使用此预设', '删除预设']);
+    expect(actions.every((action) => typeof action.icon === 'object' || typeof action.icon === 'function')).toBe(true);
+    expect(actions.find((action) => action.label === '删除预设')?.icon).toBe(TrashIcon);
+    expect(presetListContextActions({ id: 'agent-preset-standard' }, 'agent-preset-standard', () => {}, () => {})).toEqual([]);
+  });
+
+  it.each([
+    [PresetPromptEditor, '还没有预设提示词', '预设提示词列表'],
+  ])('uses the shared muted, centered empty state and a keyboard-focusable list', (Editor, empty, label) => {
+    const html = renderToStaticMarkup(<Editor {...props} />);
+    expect(html).toContain(`<p class="setting-library-empty">${empty}</p>`);
+    expect(html).toContain(`tabindex="0" aria-label="${label}"`);
+  });
+
+  it('keeps prompt rows to an open action and a switch, without an inline delete button', () => {
+    const promptSource = readFileSync(new URL('../../src/modules/presets/components/PresetPromptEditor.jsx', import.meta.url), 'utf8');
+    const treeSource = readFileSync(new URL('../../src/modules/settingLibraries/components/SettingLibraryTree.jsx', import.meta.url), 'utf8');
+    expect(promptSource).toContain('<SettingLibraryTree');
+    expect(treeSource).toContain('role="switch"');
+    expect(treeSource).not.toContain('TrashIcon');
+    expect(treeSource).not.toContain('>删除<');
+    expect(treeSource).not.toContain('>复制<');
+  });
+
+  it('pins the two preset-owned runtime prompts above ordinary prompts', () => {
+    const ordinary = { ...createEntryDraft('', 1, []), id: 'ordinary', title: '普通提示词', treeViewOrder: 1 };
+    const hidden = { ...createEntryDraft('', 1, []), id: 'built-in-hidden-tool-timeline', title: '隐藏工具时间线', kind: 'hidden_tool_timeline', treeViewOrder: Number.MIN_SAFE_INTEGER };
+    const compaction = { ...createEntryDraft('', 1, []), id: 'built-in-roleplay-history-compaction', title: '自动压缩摘要模板', kind: 'history_compaction', treeViewOrder: Number.MIN_SAFE_INTEGER + 1 };
+    const nodes = treeNodes({ ...preset, entries: [ordinary, compaction, hidden] });
+    expect(nodes.map((node) => node.label)).toEqual(['隐藏工具时间线', '自动压缩摘要模板', '普通提示词']);
+  });
+
+  it('keeps hidden tool timeline as a full setting editor and confirms before disabling it', () => {
+    const hidden = {
+      ...createEntryDraft('', 1, []),
+      id: 'built-in-hidden-tool-timeline',
+      title: '隐藏工具时间线',
+      iconId: 'timeline',
+      kind: 'hidden_tool_timeline',
+      position: 'insert_point_4',
+    };
+    const html = renderToStaticMarkup(<SettingLibraryInspector
+      selected={{ kind: 'entry', value: hidden }}
+      library={{ ...preset, entries: [hidden], promptPositions: [] }}
+      nameInputRef={{ current: null }}
+      SelectedIcon={() => React.createElement('svg')}
+      onClose={() => {}}
+      onUpdateEntry={() => {}}
+      onEntriesChange={() => {}}
+      onOpenEntry={() => {}}
+      onPromptPositionsChange={() => {}}
+    />);
+
+    expect(html).toContain('aria-label="设定编辑区域"');
+    expect(html).toContain('>触发<');
+    expect(html).toContain('>插入<');
+    expect(html).not.toContain('时间线协议');
+    expect(shouldConfirmHiddenTimelineDisable(hidden, false)).toBe(true);
+    expect(shouldConfirmHiddenTimelineDisable(hidden, true)).toBe(false);
+    expect(shouldConfirmHiddenTimelineDisable({ ...hidden, id: 'ordinary', kind: 'normal' }, false)).toBe(false);
+  });
+
+  it('keeps regex rows to an accessible open action and a switch without overflow actions', () => {
+    const rule = { id: 'rule', name: '隐藏状态栏', enabled: true, pattern: '', replacement: '' };
+    const html = renderToStaticMarkup(presetRegexList([rule]));
+    const row = html.slice(html.indexOf('class="regex-rule-row'));
+    expect(row).toContain('tabindex="0"');
+    expect(row).toContain('regex-rule-main');
+    expect(row).toMatch(/<input(?=[^>]*type="checkbox")(?=[^>]*checked="")/);
+    expect(row).not.toContain('删除');
+    expect(row).not.toContain('复制');
+  });
+
+  it('visually marks disabled regex rules without disabling their controls', () => {
+    const html = renderToStaticMarkup(presetRegexList([{ id: 'off', name: '停用', pattern: '', replacement: '', enabled: false }]));
+    expect(html).toContain('regex-rule-row');
+    expect(html).toContain('type="checkbox"');
+    expect(html).not.toContain('checked=""');
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it('shows only tool groups included by the preset and uses add instead of new', () => {
+    const toolGroups = [
+      { id: 'builtin:variables', name: '剧情变量', description: '读取剧情变量', source: 'built_in', included: true, enabled: true, members: [{ name: 'read_variables', description: '' }] },
+      { id: 'builtin:web', name: '联网搜索', description: '搜索最新信息', source: 'built_in', included: false, enabled: false, members: [{ name: 'web_search', description: '' }] },
+    ];
+    const html = renderToStaticMarkup(<PresetToolsEditor {...props} preset={{ ...preset, toolGroups }} />);
+    expect(html).toContain('placeholder="搜索工具"');
+    expect(html).toContain('>添加<');
+    expect(html).toContain('剧情变量');
+    expect(html).not.toContain('联网搜索');
+    expect(html).toContain('预设自带');
+    expect(html).toContain('role="switch" aria-checked="true"');
+    expect(html).toContain('aria-label="关闭剧情变量"');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).not.toContain('read_variables');
+    expect(html).not.toContain('>新建<');
+    expect(html).toContain('data-tool-group-icon="builtin:variables"');
+  });
+
+  it('keeps an included disabled tool visible so it can be re-enabled directly', () => {
+    const toolGroups = [
+      { id: 'builtin:variables', name: '剧情变量', description: '读取剧情变量', source: 'built_in', included: true, enabled: false, members: [] },
+    ];
+    const html = renderToStaticMarkup(<PresetToolsEditor {...props} preset={{ ...preset, toolGroups }} />);
+    expect(html).toContain('preset-tool-row is-disabled');
+    expect(html).toContain('剧情变量');
+    expect(html).toContain('role="switch" aria-checked="false"');
+    expect(html).toContain('aria-label="开启剧情变量"');
+  });
+});

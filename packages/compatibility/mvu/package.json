@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "test": "vitest run"
+    "test": "pnpm --dir ../../.. test:unit packages/compatibility/mvu/tests"
   },
   "devDependencies": {
     "tsdown": "0.16.6",

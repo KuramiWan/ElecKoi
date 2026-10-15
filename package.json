@@ -26,8 +26,7 @@
     "preview": "pnpm --filter eleckoi-desktop preview",
     "pretypecheck": "pnpm build:workspace-runtime",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "pretest": "pnpm build:workspace-runtime",
-    "test": "node scripts/run-tests-and-restore-electron.mjs",
+    "test": "node scripts/run-tests.mjs all",
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:docs": "node scripts/check-docs.mjs",
     "generate:author-docs": "node scripts/generate-author-docs.mjs",
@@ -47,7 +46,15 @@
     "check:android-runtime": "node scripts/android-runtime/check-runtime.mjs",
     "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "check:licenses": "node scripts/generate-third-party-notices.mjs --check",
-    "build:installation-helper": "node scripts/build-windows-installation-helper.mjs"
+    "build:installation-helper": "node scripts/build-windows-installation-helper.mjs",
+    "test:unit": "node scripts/run-tests.mjs unit",
+    "test:ui": "node scripts/run-tests.mjs ui",
+    "test:host": "node scripts/run-tests.mjs host",
+    "test:desktop": "node scripts/run-tests.mjs desktop",
+    "test:android": "node scripts/run-tests.mjs android",
+    "test:tooling": "node scripts/run-tests.mjs tooling",
+    "test:browser": "node scripts/run-tests.mjs browser",
+    "test:integration": "node scripts/run-tests.mjs integration"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.4",

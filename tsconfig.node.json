@@ -62,6 +62,8 @@
     "packages/client/features/dsh-client-author/src/messages.ts",
     "packages/client/features/dsh-client-author/src/display-templates.ts",
     "tests/**/*.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "apps/*/tests/**/*.ts",
+    "packages/**/tests/**/*.ts"
   ]
 }

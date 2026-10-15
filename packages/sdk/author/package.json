@@ -30,7 +30,7 @@
   },
   "scripts": {
     "build": "tsdown",
-    "test": "vitest run"
+    "test": "pnpm --dir ../../.. test:unit packages/sdk/author/tests"
   },
   "devDependencies": {
     "tsdown": "0.16.6",
