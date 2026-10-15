@@ -45,6 +45,7 @@
 
 ## 文档维护
 
+- [v0.2.11 预发布说明](releases/v0.2.11.md)
 - [v0.2.10 发布说明](releases/v0.2.10.md)
 - [v0.2.9 发布说明](releases/v0.2.9.md)
 - [v0.2.8 发布说明](releases/v0.2.8.md)
