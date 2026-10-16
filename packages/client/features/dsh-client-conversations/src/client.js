@@ -214,6 +214,13 @@ window.__ModuleLoader__.load({
         }
         const items = []
         const appendNode = (owner, item) => { items.push(item); append(owner, item) }
+        if (node.kind === 'turn-error' || node.kind === 'turn-max-tokens') {
+          appendNode(turn, { id: `${node.kind}:${node.key}`, kind: 'action',
+            toolName: node.kind === 'turn-error' ? 'turn_error' : 'turn_max_tokens', status: 'error',
+            arguments: '', summary: node.kind === 'turn-error' ? '生成失败' : '输出达到模型长度上限',
+            detail: JSON.stringify(node.data), startedAtMillis: Number(node.data.time) || 0,
+            completedAtMillis: Number(node.data.time) || 0 })
+        }
         if (node.kind === 'model-retry') {
           for (const attempt of node.data.attempts) {
             const status = { scheduled: 'running', started: 'complete', cancelled: 'cancelled' }[attempt.retryState]
@@ -513,7 +520,8 @@ window.__ModuleLoader__.load({
           status: frame.status, ...(frame.error ? { error: frame.error } : {}) }))
         imagesByTurn.set(batch.turn, [...(imagesByTurn.get(batch.turn) || []), ...images])
       }
-      const failedTurns = new Set(nodes.filter(node => node.kind === 'turn-error').map(nodeTurn))
+      const failuresByTurn = new Map(nodes.filter(node => node.kind === 'turn-error').map(node => [nodeTurn(node), node.data]))
+      const failedTurns = new Set(failuresByTurn.keys())
       const endedTurns = new Set(nodes.filter(node => node.kind === 'turn-tail')
         .map(nodeTurn).filter(Number.isSafeInteger))
       const aborted = new Set(abortedTurns)
@@ -671,6 +679,7 @@ window.__ModuleLoader__.load({
         const sourceVariableState = source?.variableSnapshotAvailable === false ? undefined
           : source?.nativeVariableStateJson ?? source?.variableStateJson
         const historicalVariableState = runtimeVariableState ?? sourceVariableState
+        const failure = item.role === 'assistant' ? failuresByTurn.get(item.dshTurn) : undefined
         const message = {
           ...(source || {}), id, conversationId: details?.conversation?.id || source?.conversationId || '',
           ...(Number.isInteger(source?.productSequence ?? source?.sequence) ? { productSequence: source.productSequence ?? source.sequence } : {}),
@@ -700,8 +709,8 @@ window.__ModuleLoader__.load({
           nativeVariableStateJson: historicalVariableState,
           createdAt: source?.createdAt || new Date(item.time || Date.now()).toISOString(),
           ...(item.kind ? { kind: item.kind } : {}),
-          ...(item.error ? { error: item.error, dshTurn: item.dshTurn } : {}),
-          status: item.error ? 'error' : item.pending ? 'streaming' : item.interrupted ? 'cancelled' : 'complete',
+          error: failure?.message || '',
+          status: failure ? 'error' : item.pending ? 'streaming' : item.interrupted ? 'cancelled' : 'complete',
           process: mergedProcess(source?.process, processByTurn.get(item.dshTurn)),
           processTiming: item.processTiming,
           ...(item.turnUsage || source?.turnUsage ? { turnUsage: item.turnUsage || source.turnUsage } : {}),
@@ -1704,7 +1713,8 @@ window.__ModuleLoader__.load({
             .filter(request => request.purpose === 'compaction' && Number.isSafeInteger(request.turn) && request.turn > 0),
           nodes: nodes.filter(node => node.kind === 'user' || node.kind === 'steering'
             || node.kind === 'turn-tail' || node.kind === 'turn-process'
-            || node.kind === 'assistant-step' || node.kind === 'tool-call')
+            || node.kind === 'assistant-step' || node.kind === 'tool-call' || node.kind === 'model-retry'
+            || node.kind === 'turn-error' || node.kind === 'turn-max-tokens')
         }
       }
 

@@ -1,4 +1,4 @@
-/** Filters DSH request declarations with the character-scoped ElecKoi tool catalog. */
+/** Restricts preset-owned tool groups; other tools retain their DSH registration policy. */
 
 export const name = 'eleckoi-tool-policy'
 export const inject = ['tools']
@@ -25,7 +25,7 @@ export function filterDeclarations(tools, disabledGroupIds) {
 }
 
 export function classify(declaration) {
-  if (!declaration || typeof declaration !== 'object') return 'builtin:other'
+  if (!declaration || typeof declaration !== 'object') return undefined
   const type = string(declaration.type)
   if (type === 'web_search') return 'builtin:web'
   if (type === 'namespace') {
@@ -46,7 +46,7 @@ export function classify(declaration) {
   if (MCP_RESOURCE_TOOLS.has(toolName)) return 'builtin:mcp-resources'
   if (PLUGIN_DISCOVERY_TOOLS.has(toolName)) return 'builtin:plugin-discovery'
   if (COLLABORATION_TOOLS.has(toolName)) return 'builtin:collaboration'
-  return 'builtin:other'
+  return undefined
 }
 
 function isEssential(declaration) {

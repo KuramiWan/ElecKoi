@@ -8,14 +8,15 @@ import { expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const { build } = createRequire(require.resolve('vite/package.json'))('esbuild');
-it('keeps the official bottom control above the composer after deleting most messages on desktop and narrow screens', async () => {
+it('keeps official chat controls and extension content on their shared layout tracks across screen sizes', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'eleckoi-chat-bottom-'));
   try {
     const source = await readFile(resolve('node_modules/@deepseek-ai/dsh-client-ui-chat/lib/client.js'), 'utf8');
     if (source.split('return module.exports;').length !== 2) throw new Error('Unexpected Chat Client bundle boundary');
     await build({ entryPoints: ['apps/web/tests/browser/chat-bottom-control.fixture.jsx'], outfile: resolve(directory, 'fixture.js'),
       bundle: true, format: 'iife', jsx: 'automatic', logLevel: 'silent',
-      loader: { '.woff2': 'file', '.woff': 'file', '.ttf': 'file', '.png': 'file' },
+      alias: { '@shared': resolve('packages/shared/src') },
+      loader: { '.woff2': 'file', '.woff': 'file', '.ttf': 'file', '.png': 'file', '.svg': 'file' },
       plugins: [{ name: 'official-chat-fixture', setup(build) {
         build.onResolve({ filter: /^official-chat-fixture$/ }, () => ({ path: 'official-chat-fixture', namespace: 'chat-fixture' }));
         build.onLoad({ filter: /.*/, namespace: 'chat-fixture' }, () => ({ resolveDir: resolve('.'), contents: `
@@ -40,7 +41,7 @@ it('keeps the official bottom control above the composer after deleting most mes
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
     await promisify(execFile)(require('electron'), [resolve('apps/web/tests/browser/chat-bottom-control.probe.cjs'), htmlPath, reportPath],
       { env, timeout: 45000, windowsHide: true });
-    const reports = JSON.parse(await readFile(reportPath, 'utf8'));
+    const { scroll: reports, alignment } = JSON.parse(await readFile(reportPath, 'utf8'));
     expect(reports).toHaveLength(2);
     for (const report of reports) {
       const evidence = JSON.stringify(report);
@@ -53,6 +54,16 @@ it('keeps the official bottom control above the composer after deleting most mes
       expect(report.restored.scrollTop, evidence).toBe(0);
       expect(report.returned.following, evidence).toBe(true);
       expect(report.returned.scrollTop, evidence).toBe(report.returned.floor);
+    }
+    expect(alignment).toHaveLength(12);
+    for (const report of alignment) {
+      const evidence = JSON.stringify(report);
+      expect(report.horizontalOverflow, evidence).toBeLessThanOrEqual(1);
+      expect(report.targets, evidence).toHaveLength(3);
+      for (const rect of report.targets) {
+        expect(rect.left, evidence).toBeCloseTo(report.body.left, 0);
+        expect(rect.right, evidence).toBeCloseTo(report.body.right, 0);
+      }
     }
   } finally {
     const path = relative(tmpdir(), directory);

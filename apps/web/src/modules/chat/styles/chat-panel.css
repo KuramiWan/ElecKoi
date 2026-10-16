@@ -400,23 +400,17 @@
   --dsh-chat-flow-gap: 0px;
 }
 
-/* Align the flow item itself; slot outlet anchors use display: contents. */
-.message-area :is(
-  [data-chat-flow-kind="command"],
-  [data-chat-flow-kind="manual-compaction"],
-  [data-chat-flow-kind="compaction"]
-) {
+/* Product message rows own their reading layout. Every other official flow
+   item shares one content seat, including nodes contributed by plugins.
+   Align the flow item because slot outlet anchors use display: contents. */
+.message-area [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
   box-sizing: border-box;
   width: min(var(--chat-composer-card-max-width), 100%);
   margin-inline: auto;
   padding-inline: var(--chat-horizontal-padding, 16px);
 }
 
-.message-area.layout-roleplay :is(
-  [data-chat-flow-kind="command"],
-  [data-chat-flow-kind="manual-compaction"],
-  [data-chat-flow-kind="compaction"]
-) {
+.message-area.layout-roleplay [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
   width: min(calc(var(--chat-reading-width) + 2 * var(--chat-roleplay-side-rail)), 100%);
   padding-inline: var(--chat-roleplay-side-rail);
 }
@@ -2727,11 +2721,7 @@ button.chat-file-card:hover { border-color: var(--blue); }
     scrollbar-gutter: auto;
   }
 
-  .message-area.layout-roleplay :is(
-    [data-chat-flow-kind="command"],
-    [data-chat-flow-kind="manual-compaction"],
-    [data-chat-flow-kind="compaction"]
-  ) {
+  .message-area.layout-roleplay [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
     padding-inline-end: var(--chat-horizontal-padding, 10px);
   }
 

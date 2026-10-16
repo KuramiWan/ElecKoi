@@ -46,7 +46,6 @@ export const AGENT_TOOL_GROUPS: ReadonlyArray<Omit<AgentToolGroup, 'enabled' | '
 export const AGENT_TOOL_GROUP_IDS = new Set(AGENT_TOOL_GROUPS.map((item) => item.id))
 export const AGENT_TOOL_EXPLICIT_OPT_IN = new Set(['builtin:auto-illustration', 'builtin:creator'])
 export const DEFAULT_AGENT_TOOL_GROUP_IDS = new Set(['builtin:variables', 'builtin:setting-library'])
-export const ALWAYS_DISABLED_AGENT_TOOL_GROUP_IDS = ['builtin:other', 'builtin:remote-dsh']
 
 export function agentToolGroups(enabledIds: ReadonlySet<string> = DEFAULT_AGENT_TOOL_GROUP_IDS): AgentToolGroup[] {
   return AGENT_TOOL_GROUPS.map((item) => ({

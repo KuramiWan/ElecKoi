@@ -42,6 +42,7 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
   scroller.getBoundingClientRect = () => ({ top: 0, bottom: 200, left: 0, right: 800, width: 800, height: 200 })
   const root = createRoot(scroller)
   let messages = []
+  const nodeRenderers = new Map()
   const richMessagePolicy = { enabled: false, floorLimit: 1 }
   const rowProps = {
     conversationId: 'chat-test', layoutMode: 'roleplay', profile: { reply_spacing: 10, turn_spacing: 10 },
@@ -52,7 +53,8 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
   const renderSlot = (name, owner, options) => {
     if (name === 'conversation.chat.node') {
       const seat = selectRoleplayChatSeat(messages, sessionId, owner.node)
-      const fallback = owner.node.kind === 'manual-compaction'
+      const Renderer = nodeRenderers.get(owner.node.kind)
+      const fallback = Renderer ? <Renderer {...owner} /> : owner.node.kind === 'manual-compaction'
         ? <ManualCompactionNodeView node={owner.node} t={fixture.props.t} /> : options?.fallback ?? null
       return seat ? <MessageList {...rowProps} messages={messages} seat={seat} officialNode />
         : seat === undefined ? fallback : null
@@ -61,7 +63,7 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
       seat={selectRoleplayPendingInput(messages, sessionId, owner.input)} />
     return options?.fallback ?? null
   }
-  return { fixture, scroller, root, rowProps, richMessagePolicy,
+  return { fixture, scroller, root, rowProps, richMessagePolicy, nodeRenderers,
     async render(nextMessages = messages, next = {}, viewProps = {}) {
       messages = nextMessages
       await act(async () => { fixture.update(next); root.render(<RichMessageRenderProvider messages={messages} {...richMessagePolicy}>
@@ -80,6 +82,29 @@ function mountChat(sessionId = 'session-render', fixture = chatFixture(sessionId
 }
 
 describe('official ChatView with roleplay presentation', () => {
+  it('renders plugin nodes alongside roleplay messages through their registered renderers', async () => {
+    const view = mountChat()
+    const renderImage = vi.fn(({ node }) => <img alt={node.data.caption} src="data:image/png;base64,AA==" />)
+    const renderPanel = vi.fn(({ node }) => <aside>{node.data.text}</aside>)
+    view.nodeRenderers.set('synthetic-image-result', renderImage)
+    view.nodeRenderers.set('synthetic-plugin-panel', renderPanel)
+    const nodes = [userNode('input', 1, 'request'), turnNode('reply', 1, 'closed'),
+      { key: 'plugin-image', kind: 'synthetic-image-result', anchorSeq: 20,
+        location: { kind: 'session' }, data: { caption: 'Synthetic generated image' } },
+      { key: 'plugin-panel', kind: 'synthetic-plugin-panel', anchorSeq: 21,
+        location: { kind: 'session' }, data: { text: 'Synthetic plugin panel' } }]
+    const reply = { id: 'reply', role: 'assistant', runtimeSessionId: 'session-render',
+      renderKey: 'dsh-reply-session-render-1', content: 'Synthetic reply', status: 'complete' }
+    try {
+      await view.render([reply], { order: nodes.map(node => node.key), nodes: new Map(nodes.map(node => [node.key, node])) })
+      expect(view.scroller.querySelector('img[alt="Synthetic generated image"]')).not.toBeNull()
+      expect(view.scroller.querySelector('aside')?.textContent).toBe('Synthetic plugin panel')
+      expect(renderImage).toHaveBeenCalled()
+      expect(renderPanel).toHaveBeenCalled()
+      expect(view.scroller.textContent.match(/Synthetic reply/g)).toHaveLength(1)
+      expect(view.scroller.textContent.match(/合成输入/g)).toHaveLength(1)
+    } finally { await view.close() }
+  })
   it('restores the official reading position with deferred rich messages and keeps the same Chat owner', async () => {
     const ready = { status: 'ready', error: '' }
     window.__ElecKoiHtmlResources = { assetsBaseUrl: '/eleckoi/html/', sdk: libraries,
@@ -188,6 +213,40 @@ describe('official ChatView with roleplay presentation', () => {
     expect(selectRoleplayChatSeat([], 'session-render', {
       key: 'synthetic-auto-checkpoint', kind: 'compaction', data: { kind: 'compaction', seq: 20 },
     })).toBeNull()
+  })
+  it.each(['turn-error', 'turn-max-tokens'])('keeps %s and tool records inside the AI process while retaining its visible status', async noticeKind => {
+    const view = mountChat()
+    let selectedMessage
+    view.rowProps.onOpenProcess = message => { selectedMessage = message }
+    const host = document.createElement('div')
+    document.body.append(host)
+    const dialog = createRoot(host)
+    const tool = { key: 'synthetic-tool', kind: 'tool-call', anchorSeq: 3,
+      location: { kind: 'step', turn: { turn: 1 } }, data: { root: { kind: 'tool-result', callId: 'synthetic-call' } } }
+    const notice = { key: 'synthetic-notice', kind: noticeKind, anchorSeq: 4,
+      location: { kind: 'turn', turn: { turn: 1 } }, data: { turn: 1, message: 'Synthetic generation failure' } }
+    const nodes = [turnNode('synthetic-process', 1, 'closed'), tool, notice]
+    const process = [{ id: 'synthetic-call', kind: 'tool', toolName: 'eleckoi_glob_setting_files', status: 'error',
+      summary: 'eleckoi_glob_setting_files', arguments: '{}', detail: 'Synthetic tool failure' },
+    { id: 'synthetic-notice', kind: 'action', toolName: noticeKind === 'turn-error' ? 'turn_error' : 'turn_max_tokens',
+      status: 'error', detail: JSON.stringify(notice.data) }]
+    const message = { id: 'synthetic-reply', runtimeSessionId: 'session-render', renderKey: 'dsh-reply-session-render-1',
+      role: 'assistant', content: noticeKind === 'turn-error' ? '' : 'Synthetic partial reply', status: 'error', process }
+    const label = noticeKind === 'turn-error' ? '生成失败' : '输出达到模型长度上限'
+    try {
+      await view.render([message], { order: nodes.map(node => node.key), nodes: new Map(nodes.map(node => [node.key, node])) })
+      expect(view.scroller.querySelectorAll('.message-flow-row')).toHaveLength(1)
+      expect(view.scroller.textContent).not.toContain('message.unknownSurface')
+      expect(view.scroller.textContent).not.toContain('Synthetic tool failure')
+      const button = view.scroller.querySelector(`[aria-label="查看处理过程：${label}"]`)
+      expect(button).not.toBeNull()
+      await act(async () => button.click())
+      expect(selectedMessage.process).toEqual(process)
+      await act(async () => dialog.render(<AgentProcessDialog message={selectedMessage} onClose={() => {}} />))
+      await act(async () => document.querySelector('.agent-process-group').click())
+      expect(document.querySelector('[role="dialog"]').textContent).toContain('查找设定文件失败')
+      expect(document.querySelector('[role="dialog"]').textContent).toContain(label)
+    } finally { await act(async () => dialog.unmount()); await view.close() }
   })
   it('retains the official compression progress and failure node in roleplay', async () => {
     const node = { key: 'compact-command', kind: 'manual-compaction', anchorSeq: 12,

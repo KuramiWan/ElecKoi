@@ -134,6 +134,7 @@ describe('agent preset repository', () => {
     expect(saved.roleplayPlan.steps).toEqual(['读取当前设定', '输出最终正文'])
     expect(repository.runtimeSelection().roleplayPlan.steps).toEqual(['读取当前设定', '输出最终正文'])
     expect(repository.disabledToolGroupIds()).not.toContain('builtin:web')
+    expect(repository.disabledToolGroupIds()).toEqual(saved.toolGroups.filter(group => !group.enabled).map(group => group.id))
     expect(repository.runtimeContext()?.entries.some((entry) => entry.kind === 'history_compaction')).toBe(false)
     expect(repository.runtimeContext()?.entries.find((entry) => entry.kind === 'hidden_tool_timeline')).toMatchObject({
       content: expect.stringContaining('最终可见回复必须且只能使用一对 <FINAL> 与 </FINAL> 标签完整包裹')

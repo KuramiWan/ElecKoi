@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import { ALWAYS_DISABLED_AGENT_TOOL_GROUP_IDS } from '@product-data/domain/agentTools'
 import type { AgentSettingLibraryRuntimeContext } from '@shared/contracts/agent/runtime'
 import { isHistoryCompactionEntry, presetHistoryCompactionInstructions } from '@shared/contracts/presets/builtIns'
 import type { AgentPreset } from '@shared/contracts/presets/schemas'
@@ -36,7 +35,7 @@ export function projectAgentPresetRuntimeContext(
 
 export function disabledAgentPresetToolGroupIds(preset: AgentPreset): string[] {
   const disabled = preset.toolGroups.filter((group) => !group.enabled).map((group) => group.id)
-  return [...new Set([...disabled, ...ALWAYS_DISABLED_AGENT_TOOL_GROUP_IDS])]
+  return [...new Set(disabled)]
 }
 
 export function projectAgentPresetRuntimeSelection(preset: AgentPreset): {

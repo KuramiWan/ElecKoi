@@ -16,7 +16,11 @@ export function selectRoleplayChatSeat(messages, runtimeSessionId, node) {
     return index < 0 ? null : { item: messages[index], index };
   }
   if (node.kind !== 'user' && node.kind !== 'steering') {
-    return ['turn-error', 'turn-max-tokens', 'command', 'manual-compaction'].includes(node.kind) ? undefined : null;
+    // These built-in details stay in the trajectory or the roleplay process row.
+    // Every other node belongs to its registered DSH or plugin renderer.
+    return ['context', 'turn-trigger', 'system-prompt', 'assistant-step', 'tool-call', 'compaction', 'model-retry',
+      'turn-error', 'turn-max-tokens', 'turn-tail']
+      .includes(node.kind) ? null : undefined;
   }
   const input = node.data;
   const requestId = input.source?.kind === 'user' ? input.source.rpcId : undefined;

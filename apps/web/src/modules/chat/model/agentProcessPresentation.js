@@ -16,6 +16,9 @@ const actions = {
 };
 
 export function processItemPresentation(item) {
+  if (item.toolName === 'turn_error' || item.toolName === 'turn_max_tokens') {
+    return { title: item.toolName === 'turn_error' ? '生成失败' : '输出达到模型长度上限', target: '', icon: 'description' };
+  }
   if (item.toolName === 'model_retry') return { title: item.summary, target: '', icon: 'description' };
   if (item.kind === 'reasoning' || item.toolName === 'reasoning') {
     return {

@@ -220,7 +220,60 @@ describe('DSH ElecKoi conversation client model', () => {
       expect(items).toHaveLength(2)
       expect(items[0].id).toBe(identity)
       expect(items[1]).toMatchObject({ status: 'cancelled', summary: '模型重试已取消（2/5）' })
-      expect(selectRoleplayChatSeat([], 'synthetic-session', { kind: 'turn-error' })).toBeUndefined()
+      expect(selectRoleplayChatSeat([], 'synthetic-session', { kind: 'turn-error' })).toBeNull()
+    } finally { mounted.dispose() }
+  })
+
+  it.each(['error', 'max-tokens'])('keeps tool results and %s details in the owning reply during updates and history replay', async reasonKind => {
+    const mounted = mountCatalog(async () => ({ ok: true, data: [] }))
+    const catalog = mounted.catalog as any, fixture = officialChatFixture()
+    const event = (type: string, seq: number, data: any, surfaceOp?: string) => ({ type, seq, time: seq * 100, data,
+      ...(surfaceOp ? { surfaceOp } : {}) })
+    const events = [event('turn/start', 1, { turn: 1 }), event('step/start', 2, { turn: 1, step: 1 }),
+      event('user/message', 3, { id: 'synthetic-input', role: 'user', source: { kind: 'user', rpcId: 'synthetic-request' },
+        content: [{ type: 'text', text: 'Synthetic input' }] }, 'append')]
+    for (const [index, isError] of [false, true].entries()) {
+      events.push(event('tool/call', 4 + index * 2, { turn: 1, step: 1, callId: `synthetic-call-${index}`,
+        name: 'eleckoi_glob_setting_files', arguments: '{}' }))
+      events.push(event('tool/result', 5 + index * 2, { turn: 1, step: 1, message: {
+        id: `synthetic-result-${index}`, role: 'tool', source: { callId: `synthetic-call-${index}` }, isError,
+        content: [{ type: 'text', text: isError ? 'Synthetic tool failure' : 'Synthetic tool success' }] } }, 'append'))
+    }
+    let chat = fixture.replace(events), running = true
+    const state = { getSnapshot: () => ({ running }) }, target = { getSnapshot: () => chat }
+    const reply = () => catalog.getDetailsSnapshot().details.messages.find((message: any) => message.role === 'assistant')
+    try {
+      await settle()
+      catalog.detailsSnapshot = { id: 'synthetic-chat', status: 'ready', runtimeSessionId: 'synthetic-session', error: '',
+        details: { conversation: { id: 'synthetic-chat' }, metadata: {}, messages: [], hasMore: false } }
+      catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+      expect(reply().process).toMatchObject([{ status: 'complete', detail: 'Synthetic tool success' },
+        { status: 'error', detail: 'Synthetic tool failure' }])
+      for (const node of chat.nodes.values() as any) {
+        if (node.kind === 'tool-call') expect(selectRoleplayChatSeat([], 'synthetic-session', node)).toBeNull()
+      }
+      if (reasonKind === 'max-tokens') events.push(event('assistant/message', 8, { turn: 1, step: 1, stream: [], message: {
+        id: 'synthetic-partial-reply', role: 'assistant', source: { provider: 'synthetic', model: 'synthetic' },
+        content: [{ type: 'text', text: '<FINAL>Synthetic partial reply</FINAL>' }] } }, 'append'))
+      events.push(event('step/end', 9, { turn: 1, step: 1 }), event('turn/end', 10, { turn: 1,
+        reason: reasonKind === 'error' ? { kind: 'error', error: { message: 'Synthetic generation failure', code: 'TEST_FAILURE' } }
+          : { kind: 'max-tokens' } }))
+      chat = fixture.replace(events); running = false
+      catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+      const noticeKind = reasonKind === 'error' ? 'turn-error' : 'turn-max-tokens'
+      const notice = [...chat.nodes.values()].find((node: any) => node.kind === noticeKind) as any
+      expect(selectRoleplayChatSeat([], 'synthetic-session', notice)).toBeNull()
+      const completed = reply()
+      expect(completed.process).toHaveLength(3)
+      expect(completed.process.at(-1)).toMatchObject({ toolName: reasonKind === 'error' ? 'turn_error' : 'turn_max_tokens', status: 'error' })
+      expect(JSON.parse(completed.process.at(-1).detail)).toEqual(notice.data)
+      expect(completed.status).toBe(reasonKind === 'error' ? 'error' : 'complete')
+      expect(catalog.getDetailsSnapshot().details.messages.find((message: any) => message.role === 'user').status).toBe('complete')
+      expect(completed.displayContent).toBe(reasonKind === 'error' ? '' : 'Synthetic partial reply')
+      chat = fixture.replace(events)
+      catalog.acceptOfficialSession('synthetic-chat', 'synthetic-session', state, target)
+      expect(reply().process).toEqual(completed.process)
+      expect(catalog.getDetailsSnapshot().details.messages.filter((message: any) => message.role === 'assistant')).toHaveLength(1)
     } finally { mounted.dispose() }
   })
 
@@ -528,7 +581,8 @@ describe('DSH ElecKoi conversation client model', () => {
           else expect(result.value.cancelled).toBe(outcome === 'cancelled')
           expect(catalog.activeRequests.size).toBe(0)
         }
-        expect(assertOneReplacement(turn).status).toBe(outcome === 'cancelled' ? 'cancelled' : 'complete')
+        expect(assertOneReplacement(turn).status).toBe(outcome === 'cancelled' ? 'cancelled' : outcome === 'error' ? 'error' : 'complete')
+        if (outcome === 'error') expect(assertOneReplacement(turn).process.at(-1)).toMatchObject({ toolName: 'turn_error', status: 'error' })
         catalog.releaseOfficialSession(); await catalog.bindOfficialSession(record.id)
         assertOneReplacement(turn)
       }

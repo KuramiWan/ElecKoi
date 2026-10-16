@@ -13,7 +13,7 @@ import { ChatImageGallery } from "./ChatImageGallery.jsx";
 import { generatedImageSegments } from './generatedImagePresentation.js';
 import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
 import { TurnUsage } from "../../modules/chat/components/TurnUsage.jsx";
-import { liveProcessPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
+import { liveProcessPresentation, processItemPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
 import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
 import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
 import { finalReplyText } from "@shared/foundation/finalReply";
@@ -165,6 +165,9 @@ function MessageBubbleComponent({ message = {}, displayTemplates, avatar, pinSrc
   const liveProcess = shouldShowInlineAgentProcess(message, displayContent)
     ? liveProcessPresentation(message.process)
     : null;
+  const terminalItem = !isUser && !pending && message.process?.findLast(item =>
+    item.toolName === 'turn_error' || item.toolName === 'turn_max_tokens');
+  const terminalProcess = terminalItem ? { ...processItemPresentation(terminalItem), running: false } : null;
   const markdownTonePresentation = useMemo(
     () => prepareMarkdownTextTones(displayContent || ""),
     [displayContent],
@@ -352,6 +355,7 @@ function MessageBubbleComponent({ message = {}, displayTemplates, avatar, pinSrc
             renderMessageContent={renderMessageContent}
           />}
         </div> : null}
+        {!editing && terminalProcess ? <AgentProcessStatus presentation={terminalProcess} onClick={openProcess} /> : null}
         {!isUser && !pending && !displayContent && !editing ? <ChatImageGallery images={message.generatedImageAttachments || []} conversationId={message.conversationId} agentMessage={layoutMode === "agent"} loadImage={loadImage} onRegenerateImage={onRegenerateImage} /> : null}
         {renderedDisplay.error ? <pre className="script-execution-error" role="alert">{renderedDisplay.error}</pre> : null}
         {pluginAfter}

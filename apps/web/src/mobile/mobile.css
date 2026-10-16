@@ -212,6 +212,12 @@
 .mobile-group-edit-row button:first-child { flex: 1; }
 .mobile-group-edit-row button:last-child { font-size: 12px; color: var(--muted); }
 .mobile-conversation-page .chat-panel { --chat-scroll-horizontal-padding: 0px; --mobile-roleplay-action-size: 48px; flex: 1; min-width: 0; min-height: 0; grid-template-rows: 68px minmax(0, 1fr); }
+.mobile-conversation-page .chat-panel {
+  --mobile-message-tool-width: 26px;
+  --mobile-message-tool-gap: 2px;
+  --mobile-message-more-icon-width: 22px;
+  --mobile-roleplay-avatar-width: max(24px, calc(var(--chat-avatar-width, 65px) * 55 / 65));
+}
 .mobile-conversation-page .chat-header { min-height: 68px; padding: 0 8px; grid-template-rows: 40px 28px; align-content: stretch; background: var(--surface-raised); border: 0; }
 .mobile-conversation-page .chat-header-title-row { min-height: 40px; gap: 2px; }
 .mobile-conversation-page .mobile-conversation-back { display: grid; place-items: center; flex: none; width: 36px; height: 40px; padding: 0; border: 0; background: transparent; }
@@ -231,11 +237,12 @@
 .mobile-conversation-page [data-input-scroll] { overscroll-behavior: none; }
 .mobile-conversation-page .message-area::-webkit-scrollbar { display: none; }
 .mobile-conversation-page .markdown-message .md-table-wide { overflow-x: auto; }
+.mobile-conversation-page .message-area.layout-roleplay [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
+  width: 100%;
+  padding-inline-start: calc(var(--chat-horizontal-padding, 10px) + var(--mobile-roleplay-avatar-width) + var(--chat-avatar-gap, 10px));
+  padding-inline-end: calc(var(--chat-horizontal-padding, 10px) + var(--mobile-message-tool-width) + var(--mobile-message-tool-gap) + (var(--mobile-message-tool-width) - var(--mobile-message-more-icon-width)) / 2);
+}
 .mobile-conversation-page .message-roleplay {
-  --mobile-message-tool-width: 26px;
-  --mobile-message-tool-gap: 2px;
-  --mobile-message-more-icon-width: 22px;
-  --mobile-roleplay-avatar-width: max(24px, calc(var(--chat-avatar-width, 65px) * 55 / 65));
   --mobile-roleplay-avatar-height: var(--mobile-roleplay-avatar-width);
   --mobile-roleplay-avatar-radius: calc(var(--mobile-roleplay-avatar-width) / 2);
   --chat-roleplay-leading-stack-height: var(--mobile-roleplay-avatar-height);
