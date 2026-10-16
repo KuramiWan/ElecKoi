@@ -10,7 +10,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 it('bridges the official view roster, header, plugin children and composer without copying their state', async () => {
   let registration: any
   runInNewContext(source, { window: { __ModuleLoader__: { load(value: unknown) { registration = value } } } })
-  const effects: Array<() => void> = [], cleanups: Array<() => void> = []
+  const effects: Array<() => () => void> = [], cleanups: Array<() => void> = []
   const React = { createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }), useLayoutEffect: (effect: () => () => void) => effects.push(effect) }
   const slots: any = new SlotCore()
   slots.inject = (name: string, install: () => () => void) => {
@@ -55,7 +55,7 @@ it('bridges the official view roster, header, plugin children and composer witho
   product.props.renderHeaderSlot('eleckoi.creator-studio.session.header.corner', {}); expect(renderHeaderSlot).toHaveBeenCalled()
   const conversation = entry('eleckoi.creator-studio.conversation')
   conversation.component({ reference: { sessionId: 'synthetic-visible-studio' }, SessionProvider: 'Provider', renderSlot: () => null })
-  const unmount = effects[0]()
+  const unmount = effects[0]!()
   expect(retain).toHaveBeenCalledWith('synthetic-visible-studio', { source: 'mainView' })
   unmount(); expect(release).toHaveBeenCalledOnce()
   removeView(); removeAction(); await settle()

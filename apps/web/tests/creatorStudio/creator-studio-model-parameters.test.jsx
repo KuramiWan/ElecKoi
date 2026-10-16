@@ -27,7 +27,9 @@ function fixture() {
   const props = { model, models, title: '合成工作室', presetName: '合成创作预设', onError: vi.fn(), sessionId: 'synthetic-studio-session',
     useSession: select => select(session), useInput: select => select({}), useSessionStatus: select => select(new Map()),
     useProjection: key => key === 'modelSelection' ? projection : null, useInspectCall: select => select({}), useStore: select => select({ view: 'chat' }),
-    actions: {}, openView: vi.fn(), renderSlot: (name, owner) => name === 'eleckoi.creator-studio.composer.bar' ? owner.modelAccessory : null,
+    useConversationViews: select => select([{ id: 'chat', label: '对话' }, { id: 'trajectory', label: '轨迹' }]),
+    actions: {}, openView: vi.fn(), selectView: vi.fn(), renderHeaderSlot: () => null,
+    renderSlot: (name, owner) => name === 'eleckoi.creator-studio.composer.bar' ? owner.modelAccessory : null,
     renderSlotChain: (_name, _owner, options) => options.fallback };
   return { props, models, model, configs };
 }
