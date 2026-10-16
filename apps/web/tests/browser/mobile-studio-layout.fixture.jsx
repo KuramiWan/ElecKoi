@@ -29,6 +29,8 @@ const view = { creatorStudio: { sessions: model }, models: { subscribe: () => ()
   renderCreatorStudioConversation: ({ component: Component, props }) => <Component {...props} sessionId={sessionId}
     useSession={select => select(session)} useInput={select => select({})} useSessionStatus={select => select(new Map())}
     useProjection={() => null} useInspectCall={select => select({})} useStore={select => select(useSyncExternalStore(subscribeStore, readStore))}
+    useConversationViews={select => select([{ id: 'chat', label: '对话' }, { id: 'trajectory', label: '轨迹' }])}
+    selectView={id => openView(id)} renderHeaderSlot={() => null}
     openView={openView} actions={{ completeViewRequest }} renderSlotChain={(_name, _owner, options) => options.fallback}
     renderSlot={(name, owner, options) => name === 'eleckoi.creator-studio.view' ? <div data-slot={name} data-view={options.only}>
       {options.only === 'trajectory' ? <TrajectoryView {...trajectoryProps} viewRequest={owner.viewRequest} completeViewRequest={owner.completeViewRequest} />

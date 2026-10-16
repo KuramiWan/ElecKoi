@@ -5,6 +5,10 @@ import type { ComponentType } from 'react'
 import type { SessionReference } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap { eleckoiCreatorStudio: unknown }
+}
+
 export interface CreatorStudioConversationSnapshot {
   status: 'idle' | 'loading' | 'ready' | 'error'
   active: CreatorStudioSession | null

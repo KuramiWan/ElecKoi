@@ -39,7 +39,8 @@ window.__ModuleLoader__.load({
         try {
           const active = await this.call(create ? 'create' : 'open', value)
           await this.sessions.refresh()
-          reference = this.sessions.retain(active.sessionId, { source: 'mainView' })
+          // The catalog retains data; StudioConversation owns the visible mainView.
+          reference = this.sessions.retain(active.sessionId, { source: 'eleckoiCreatorStudio' })
           await reference.ready
           if (this.disposed || generation !== this.generation) { reference.release(); return }
           const previous = this.reference
@@ -299,6 +300,10 @@ window.__ModuleLoader__.load({
         'conversation.input.dock': { kind: 'list', scope: 'session' },
       }
       function StudioConversation({ reference, component, props, SessionProvider, renderSlot }) {
+        React.useLayoutEffect(() => {
+          const visible = ctx.sessions.retain(reference.sessionId, { source: 'mainView' })
+          return () => visible.release()
+        }, [reference])
         return React.createElement(SessionProvider, { session: reference, empty: () => null }, renderSlot('eleckoi.creator-studio.session', { component, props }))
       }
       ctx.slots.inject('eleckoi.creator-studio.conversation', () => ctx.slots.register({
@@ -307,7 +312,13 @@ window.__ModuleLoader__.load({
       }, StudioConversation))
       projectSeat('conversation.session', 'eleckoi.creator-studio.session', undefined, { children: {
         ...Object.fromEntries(Object.entries(composerSeats).map(([name, spec]) => [studioSeat(name), spec])),
-      }, component: ({ component, props, ...native }) => React.createElement(component, { ...props, ...native }) })
+        'eleckoi.creator-studio.session.header': { kind: 'single', scope: 'session' },
+      }, component: ({ component, props, ...native }) => native.renderSlot('eleckoi.creator-studio.session.header', { component, props, native }) })
+      projectSeat('conversation.session.header', 'eleckoi.creator-studio.session.header', undefined, {
+        component: ({ component, props, native, selectView, renderSlot }) => React.createElement(component, {
+          ...props, ...native, selectView, renderHeaderSlot: renderSlot,
+        }),
+      })
       for (const name of Object.keys(composerSeats)) projectSeat(name, studioSeat(name))
       ctx.effect(() => {
         projects.start()

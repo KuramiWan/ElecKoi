@@ -1669,7 +1669,7 @@ window.__ModuleLoader__.load({
           // the same official read path used by the upstream subagent sidebar;
           // no Session log layout or private child transport is reconstructed.
           const address = { parentSessionId: runtimeSessionId, childSessionId: entry.id, mode: entry.mode }
-          const reference = this.sessions.retain(address, { source: 'mainView' })
+          const reference = this.sessions.retain(address, { source: 'eleckoiConversations' })
           const child = { entry, reference, target: null, stopTarget: () => {}, stopSession: () => {}, released: false }
           this.subagentSessions.set(entry.id, child)
           void reference.ready.then(childBinding => {
@@ -1794,7 +1794,8 @@ window.__ModuleLoader__.load({
         if (!reference) {
           if (!this.sessions.list.getSnapshot().byId[runtimeSessionId]) await this.sessions.refresh()
           if (this.disposed || generation !== this.sessionBindingGeneration || id !== this.detailsSnapshot.id) return
-          reference = this.sessions.retain(runtimeSessionId, { source: 'mainView' })
+          // The catalog retains data; only a mounted conversation owns mainView.
+          reference = this.sessions.retain(runtimeSessionId, { source: 'eleckoiConversations' })
           this.sessionReference = reference
         }
         try {

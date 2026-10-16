@@ -43,7 +43,7 @@ export function MobileCreatorStudioPage() {
     }
   }
   async function create() {
-    if (await perform(() => model.create(state.active?.characterId || ''))) setDrawer(false);
+    if (await perform(() => model.create(target?.id || ''))) setDrawer(false);
   }
   return <div className="mobile-root-page mobile-creator-studio-page">
     <MobileHeader title="AI 创作工作室" back={() => view.goBack()}>
@@ -59,7 +59,7 @@ export function MobileCreatorStudioPage() {
     </section>
     {drawer && !picker && <CreatorStudioSidebar model={model} state={state} target={target} busy={busy} error={error || state.error} perform={perform}
       onCreate={create} onSelectCharacter={() => setPicker(true)} onClose={() => setDrawer(false)} />}
-    {picker && <CreatorStudioCharacterPicker characters={characters} selectedId={state.active?.characterId || ''} busy={busy} error={error} onSelect={choose} onClose={() => setPicker(false)} />}
+    {picker && <CreatorStudioCharacterPicker characters={characters} selectedId={target?.id || ''} busy={busy} error={error} onSelect={choose} onClose={() => setPicker(false)} />}
   </div>;
 }
 

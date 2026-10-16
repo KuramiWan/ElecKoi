@@ -8,7 +8,7 @@ import { MobileDialog } from './MobileChrome.jsx';
 
 /** Official Chat keeps its native tool cards; the resident mobile composer owns input and stats. */
 export function MobileCreatorStudioConversation({ model, editing = false, onCreate, onSelectCharacter, onError,
-  sessionId, useSession, useInput, useSessionStatus, useProjection, useInspectCall, useStore, actions, openView, renderSlot, renderSlotChain }) {
+  sessionId, useSession, useInput, useSessionStatus, useProjection, useInspectCall, useConversationViews, useStore, actions, openView, selectView, renderHeaderSlot, renderSlot, renderSlotChain }) {
   const view = useMainPageView();
   const session = useSession(snapshot => snapshot);
   const input = useInput(snapshot => snapshot);
@@ -16,11 +16,12 @@ export function MobileCreatorStudioConversation({ model, editing = false, onCrea
   const projectedModel = useProjection('modelSelection');
   const inspectCall = useInspectCall(value => value);
   const activeView = useStore(value => value.view);
+  const tabs = useConversationViews(value => value);
+  const active = tabs.find(tab => tab.id === activeView) ?? tabs.find(tab => tab.id === 'chat') ?? tabs[0];
   const viewRequest = useStore(value => value.viewRequest ?? null);
   const viewOwner = { inspectCall, viewRequest, openView, completeViewRequest: actions.completeViewRequest };
   const models = useSyncExternalStore(view.models.subscribe, view.models.getSnapshot);
   const [defaultModel, setDefaultModel] = useState(null);
-  const [normalView, setNormalView] = useState(() => activeView === 'trajectory' ? 'trajectory' : 'chat');
   const [tools, setTools] = useState(false);
   const [messages, setMessages] = useState(null);
   const [deleteFrom, setDeleteFrom] = useState(null);
@@ -33,10 +34,6 @@ export function MobileCreatorStudioConversation({ model, editing = false, onCrea
     return () => { active = false; };
   }, [model, onError]);
   useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(error.message)); }, [model, session.running, onError]);
-  useEffect(() => {
-    if (activeView === 'chat' || activeView === 'trajectory') setNormalView(activeView);
-  }, [activeView, sessionId]);
-  function selectView(next) { setNormalView(next); openView(next); }
   async function regenerate() {
     try { await model.regenerate(); } catch (error) { onError(error.message); }
   }
@@ -66,21 +63,25 @@ export function MobileCreatorStudioConversation({ model, editing = false, onCrea
   }, { fallback: resident, overlay: true });
   return <MobileConversationPage>
     <div className="creator-studio-session-body">
-      <div className="chat-header-tabs creator-studio-view-tabs" role="tablist" aria-label="工作室视图">
-        {[['chat', '对话'], ['trajectory', '轨迹']].map(([id, label]) => <button type="button" role="tab" key={id}
-          aria-selected={normalView === id} onClick={() => selectView(id)}>{label}</button>)}
+      <div className="creator-studio-view-header">
+      <div className="chat-header-tabs creator-studio-view-tabs" role="tablist" aria-label="工作室视图" data-conversation-tabs="">
+        {tabs.map(({ id, label }) => <button type="button" role="tab" key={id}
+          aria-selected={active?.id === id} onClick={() => selectView(id)}>{label}</button>)}
       </div>
-      <div className={`creator-studio-chat-scroll${normalView === 'trajectory' ? ' creator-studio-trajectory trajectory-host' : ''}`} data-conversation-scroll={normalView === 'chat' ? 'true' : undefined}>
-        {renderSlot('eleckoi.creator-studio.view', viewOwner, { only: normalView })}
+      <div className="creator-studio-header-actions">
+        {renderHeaderSlot('eleckoi.creator-studio.session.header.actions', {})}
+        {renderHeaderSlot('eleckoi.creator-studio.session.header.utilities', {})}
+        {renderHeaderSlot('eleckoi.creator-studio.session.header.corner', {})}
+      </div>
+      </div>
+      <div className={`creator-studio-chat-scroll${active?.id !== 'chat' ? ' creator-studio-panel-view' : ''}${active?.id === 'trajectory' ? ' creator-studio-trajectory trajectory-host' : ''}`} data-conversation-scroll={active?.id === 'chat' ? 'true' : undefined}>
+        {active && renderSlot('eleckoi.creator-studio.view', viewOwner, { only: active.id })}
       </div>
       <div className="chat-composer-region" data-composer-seat="true" inert={editing ? true : undefined} aria-busy={editing || undefined}>
         {renderSlot('eleckoi.creator-studio.input.dock', { session, input })}
         {composer}
       </div>
     </div>
-    {activeView && activeView !== 'chat' && activeView !== 'trajectory' && <MobileDialog title="详情" onClose={() => openView(normalView)} className="creator-studio-native-detail">
-      {renderSlot('eleckoi.creator-studio.view', viewOwner, { only: activeView })}
-    </MobileDialog>}
     {tools && <AgentToolsDialog purpose="creator" presetCatalog={view.presets} onNotify={notify}
       onClose={() => setTools(false)} onManage={view.openPresetTools} />}
     {messages && <MobileDialog title="删除消息" busy={deleting} onClose={() => setMessages(null)} className="creator-studio-message-picker creator-studio-confirmation">

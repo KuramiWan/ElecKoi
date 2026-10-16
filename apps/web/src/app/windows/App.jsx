@@ -43,7 +43,7 @@ function AppContent({ renderWindow, ...windowProps } = {}) {
     return <PresetManagerWindow presetCatalog={presets} renderPresetManager={renderPresetManager} />;
   }
   if (params.get("view") === "creator-studio") {
-    return <CreatorStudioWindow characterCatalog={characters} projectCatalog={creatorStudio} models={models} presetCatalog={presets}
+    return <CreatorStudioWindow characterCatalog={characters} projectCatalog={creatorStudio} models={models} presetCatalog={presets} rightbar={rightbar}
       renderCreatorStudioConversation={windowProps.renderCreatorStudioConversation} />;
   }
 

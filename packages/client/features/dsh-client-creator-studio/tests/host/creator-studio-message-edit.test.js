@@ -24,6 +24,7 @@ async function fixture() {
   const session = Session.create(SessionId(id))
   const initial = { presetId: 'synthetic-creator', characterId: 'synthetic-initial' }
   const selected = { ...initial, characterId: 'synthetic-selected' }
+  const characters = [{ id: initial.characterId }, { id: selected.characterId }]
   session.append(CREATOR_STUDIO_EVENT, initial, { ignorable: true })
   session.append('turn/start', { turn: 1 })
   session.append('step/start', { turn: 1, step: 1 })
@@ -51,6 +52,7 @@ async function fixture() {
   }
   const dispose = await installCreatorStudioRuntime({
     sessionController: controller, agents: { get: () => agent },
+    eleckoiProductData: { readCharacters: () => ({ items: characters }) },
     eleckoiSessionEditor: {
       transaction: async (_id, action) => action(),
       rewind: async (_id, turn, seq, retain) => { agent = undefined; return rewindDshSession(join(root, 'logs'), id, turn, seq, retain) },
@@ -58,10 +60,26 @@ async function fixture() {
     provide: (_name, value) => { service = value },
   })
   cleanups.push(dispose)
-  return { id, input, inputEvent, selected, controller, service, current: () => agent }
+  return { id, input, inputEvent, selected, characters, controller, service, current: () => agent }
 }
 
 describe('Studio message edits retain independent conversation preferences', { timeout: 30_000 }, () => {
+  it('opens the same conversation after deleting its selected character and allows selecting another target', async () => {
+    const f = await fixture()
+    f.characters.splice(f.characters.findIndex(item => item.id === f.selected.characterId), 1)
+    const before = f.current().session.snapshotEvents()
+    await expect(f.service.open(f.id)).resolves.toEqual({ sessionId: f.id, ...f.selected, characterId: '' })
+    expect(f.current().session.id).toBe(f.id)
+    expect(f.current().session.snapshotEvents().slice(0, before.length)).toEqual(before)
+    expect(f.current().session.snapshotEvents().findLast(event => event.type === CREATOR_STUDIO_EVENT).data).toEqual(f.selected)
+    await expect(f.service.selectCharacter(f.id, 'synthetic-initial')).resolves.toEqual({
+      sessionId: f.id, presetId: f.selected.presetId, characterId: 'synthetic-initial'
+    })
+    await expect(f.service.selectCharacter(f.id, '')).resolves.toEqual({ sessionId: f.id, ...f.selected, characterId: '' })
+    await expect(f.service.selectCharacter(f.id, f.selected.characterId)).rejects.toThrow('找不到所选角色')
+    expect(f.current().session.snapshotEvents().filter(event => event.type === 'user/message')).toHaveLength(1)
+  })
+
   it.each(['delete', 'regenerate'])('keeps the current character and user title after %s removes later events', async operation => {
     const f = await fixture()
     if (operation === 'delete') await f.service.deleteMessagesFrom(f.id, f.inputEvent.seq, 'user')

@@ -47,6 +47,14 @@ export function MobileConversationPage({ children, wallpaper }) {
 
   function selectInputMode(event) {
     if (!(event.target instanceof Element)) return;
+    const editAction = event.target.closest('.message-inline-editor button');
+    const activeEditor = document.activeElement;
+    if (editAction && activeEditor instanceof Element && activeEditor.matches('.message-inline-editor textarea')
+      && editAction.closest('.message-inline-editor') === activeEditor.closest('.message-inline-editor')) {
+      // Keep the IME and viewport stable until this button's click commits or cancels the edit.
+      if ((event.type === 'pointerdown' || event.type === 'mousedown') && event.button === 0) event.preventDefault();
+      return;
+    }
     const textArea = event.target.closest('[data-input-scroll]');
     const input = event.target.closest(textEditors) ?? textArea?.querySelector('[data-composer-input]');
     if (!input || event.target.closest('button')) {

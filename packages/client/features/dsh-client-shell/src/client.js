@@ -499,7 +499,7 @@ window.__ModuleLoader__.load({
               throw new Error(`layout.selectPanel: main panel "${id}" is not registered`)
             }
             const mobile = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === 'android'
-            const panelId = mobile && (id === null || id === 'conversation') ? null : id === 'messages' ? null : id
+            const panelId = mobile && (id === null || id === 'conversation' || id === 'creatorStudio') ? null : id === 'messages' ? null : id
             const windowPanelId = mobile ? id ?? 'conversation' : undefined
             if (panelSnapshot.activePanelId === panelId && panelSnapshot.windowPanelId === windowPanelId) { showSidebar(false); return }
             const commit = () => {

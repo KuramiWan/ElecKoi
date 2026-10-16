@@ -8,6 +8,7 @@ import { characterAvatar, characterGroup, characterName } from '../../../utils/c
 import { DshNewChatIcon, DshPanelLeftIcon, DshEllipsisIcon, DshEditIcon, DshTrashIcon } from '../../../ui/icons/dshComposerIcons.jsx';
 import { WindowControls } from '../../../app/windows/shell/components/TitleBar.jsx';
 import { CreatorStudioConversation } from './CreatorStudioConversation.jsx';
+import { useRightbarLayout } from '../../../app/windows/shell/hooks/useRightbarLayout.js';
 import '../styles/creator-studio-simple.css';
 
 function conversationGroups(items) {
@@ -21,11 +22,13 @@ function conversationGroups(items) {
   return [...groups];
 }
 
-export function CreatorStudioSimplePage({ characterCatalog, model, models, presetCatalog, renderConversation, onBack }) {
+export function CreatorStudioSimplePage({ characterCatalog, model, models, presetCatalog, renderConversation, rightbar, onBack }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const characters = useSyncExternalStore(characterCatalog.subscribe, characterCatalog.getSnapshot);
-  const presets = useSyncExternalStore(presetCatalog.subscribe, presetCatalog.getSnapshot);
   const [collapsed, setCollapsed] = useState(false), [query, setQuery] = useState('');
+  const shell = useRef(null);
+  const collapseSidePanel = useCallback(() => setCollapsed(true), []);
+  const rightbarLayout = useRightbarLayout({ model: rightbar, shellRef: shell, sidePanelCollapsed: collapsed, collapseSidePanel });
   const [matches, setMatches] = useState(null), [searchError, setSearchError] = useState('');
   const [selecting, setSelecting] = useState(false), [selected, setSelected] = useState(new Set());
   const [picker, setPicker] = useState(false), [menuId, setMenuId] = useState('');
@@ -60,7 +63,6 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
   }, [model, query]);
   const target = characters.collection.items.find(item => item.id === state.active?.characterId);
   const active = state.items.find(item => item.sessionId === state.active?.sessionId);
-  const preset = presets.catalog?.presets.find(item => item.id === state.active?.presetId);
   const contentHits = new Set(matches?.items.map(item => item.sessionId));
   const groups = conversationGroups(state.items.filter(item => item.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()) || contentHits.has(item.sessionId)));
   const unpinSelected = selected.size > 0 && state.items.filter(item => selected.has(item.sessionId)).every(item => item.pinned);
@@ -69,7 +71,7 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
   async function pinSelected() {
     if (await perform(async () => { for (const id of selected) await model.pin(id, !unpinSelected); })) stopSelecting();
   }
-  async function create() { await perform(() => model.create(state.active?.characterId || '')); }
+  async function create() { await perform(() => model.create(target?.id || '')); }
   async function choose(characterId) { if (await perform(() => model.selectCharacter(characterId))) setPicker(false); }
   async function remove() {
     if (await perform(async () => {
@@ -81,7 +83,8 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
       if (!model.getSnapshot().active) await model.restoreRecent();
     })) { setDeleting(null); stopSelecting(); }
   }
-  return <main className={`qq-shell creator-simple-shell${collapsed ? ' is-sidebar-collapsed' : ''}`}>
+  return <main ref={shell} className={`qq-shell creator-simple-shell${collapsed ? ' is-sidebar-collapsed' : ''}`}
+    style={rightbarLayout.shellStyle} data-rightbar-dragging={rightbarLayout.dragging || undefined}>
     <header className="creator-simple-titlebar" data-tauri-drag-region>
       <div className="creator-simple-titlebar-sidebar" data-tauri-drag-region>
         <button type="button" aria-label="返回工作室入口" title="返回工作室入口" onClick={onBack}><ArrowLeft size={18} /></button>
@@ -123,18 +126,19 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
         </footer>}
       </aside>}
       <section className="creator-simple-content" aria-label="工作室对话">
-        <div className="creator-simple-content-actions">
-          <button type="button" aria-label="新建工作室对话" title="新建对话" disabled={busy} onClick={create}><DshNewChatIcon size={19} /></button>
-        </div>
         {error || state.error ? <p className="creator-simple-error" role="alert">{error || state.error}</p> : null}
         {state.reference ? renderConversation({ reference: state.reference, component: CreatorStudioConversation,
-          props: { model, models, presetCatalog, editing: state.editingSessionId === state.active?.sessionId, title: active?.title || '新对话', presetName: preset?.name || (presets.status === 'loading' ? '加载创作预设…' : '创作预设不可用'),
+          props: { model, models, presetCatalog, creating: busy, editing: state.editingSessionId === state.active?.sessionId, title: active?.title || '新对话',
             onCreate: create, onSelectCharacter: () => setPicker(true), onError: setError } }) : <div className="creator-simple-loading">
           {busy || state.status === 'loading' ? <span role="status">加载对话…</span> : <button type="button" onClick={() => void perform(() => model.restoreRecent())}>重试</button>}
         </div>}
       </section>
+      <div className="creator-simple-rightbar">
+        {rightbar?.render({ width: rightbarLayout.width, viewportWidth: rightbarLayout.viewportWidth, canShow: rightbarLayout.canShow })}
+      </div>
     </section>
-    {picker && <CreatorStudioCharacterDialog collection={characters.collection} selectedId={state.active?.characterId || ''} busy={busy}
+    {rightbarLayout.showResizeHandle && rightbarLayout.resizeHandle}
+    {picker && <CreatorStudioCharacterDialog collection={characters.collection} selectedId={target?.id || ''} busy={busy}
       error={error || characters.error} onSelect={choose} onClose={() => setPicker(false)} />}
     <Modal open={!!renaming} title="重命名对话" closeLabel="关闭" onClose={() => !busy && setRenaming(null)} className="creator-simple-dialog"
       footer={<button type="button" disabled={busy || !name.trim()} onClick={() => void perform(() => model.rename(renaming.sessionId, name.trim())).then(success => success && setRenaming(null))}>保存</button>}>

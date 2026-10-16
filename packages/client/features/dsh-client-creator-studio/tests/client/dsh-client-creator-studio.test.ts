@@ -2,9 +2,68 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from '../../../../../../tests/helpers/dshClientPlugin'
+import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 
 const source = readFileSync(new URL('../../src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
+
+it('bridges the official view roster, header, plugin children and composer without copying their state', async () => {
+  let registration: any
+  runInNewContext(source, { window: { __ModuleLoader__: { load(value: unknown) { registration = value } } } })
+  const effects: Array<() => void> = [], cleanups: Array<() => void> = []
+  const React = { createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }), useLayoutEffect: (effect: () => () => void) => effects.push(effect) }
+  const slots: any = new SlotCore()
+  slots.inject = (name: string, install: () => () => void) => {
+    let dispose: (() => void) | undefined
+    const sync = () => { dispose?.(); dispose = slots.spec(name) ? install() : undefined }
+    const stop = slots.subscribeDeclaration(name, sync); sync()
+    cleanups.push(() => { stop(); dispose?.() })
+  }
+  const root = slots.register({ name: 'root', children: {
+    'eleckoi.creator-studio.conversation': { kind: 'single', scope: 'root' },
+    'conversation.session': { kind: 'single', scope: 'session' },
+    'conversation.session.header': { kind: 'single', scope: 'session' },
+    'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
+  } }, () => null)
+  const release = vi.fn(), retain = vi.fn(() => ({ release }))
+  registration.factory(() => React).apply({ remote: {}, sessions: { retain }, slots, provide() {}, effect() {} })
+  const store = () => null, inject = () => ({ hooks: {} })
+  const register = (options: any, component: any = () => null) => { const dispose = slots.register(options, component); cleanups.push(dispose); return dispose }
+  register({ name: 'conversation.session', store, inject, children: { 'conversation.view': { kind: 'list', scope: 'session' } } })
+  register({ name: 'conversation.session.header', store, inject, children: { 'conversation.session.header.corner': { kind: 'single', scope: 'session' } } })
+  register({ name: 'conversation.composer.bar', children: { 'conversation.input.right': { kind: 'list', scope: 'session' } } })
+  const Sidebar = () => null, Control = () => null
+  register({ name: 'conversation.session.header.corner', store, inject }, Sidebar)
+  register({ name: 'conversation.input.right', id: 'synthetic-image-provider' }, Control)
+  const removeView = register({ name: 'conversation.view', id: 'synthetic-gallery', label: '画廊', store, inject,
+    children: { 'synthetic-gallery.actions': { kind: 'list', scope: 'session' } } })
+  const removeAction = register({ name: 'synthetic-gallery.actions', id: 'synthetic-action' }, Control)
+  await settle()
+  const entry = (name: string) => slots.entriesOfSlot(name)[0]
+  expect(entry('eleckoi.creator-studio.view')).toMatchObject({ store, inject })
+  expect(entry('eleckoi.creator-studio.session.header.corner')).toMatchObject({ store, inject })
+  expect(entry('eleckoi.creator-studio.input.right').options.id).toBe('synthetic-image-provider')
+  expect(entry('eleckoi.creator-studio.synthetic-gallery.actions').options.id).toBe('synthetic-action')
+  const Product = () => null, native = { useConversationViews: () => [], renderSlot: (name: string, owner: unknown) => ({ name, owner }) }
+  const session = entry('eleckoi.creator-studio.session').component({ component: Product, props: {}, ...native })
+  const headerOwner = session.type(session.props).owner
+  const selectView = vi.fn(), renderHeaderSlot = vi.fn()
+  const header = entry('eleckoi.creator-studio.session.header').component({ ...headerOwner, selectView, renderSlot: renderHeaderSlot })
+  const product = header.type(header.props)
+  expect(product.props.useConversationViews).toBe(native.useConversationViews)
+  product.props.selectView('synthetic-gallery'); expect(selectView).toHaveBeenCalledWith('synthetic-gallery')
+  product.props.renderHeaderSlot('eleckoi.creator-studio.session.header.corner', {}); expect(renderHeaderSlot).toHaveBeenCalled()
+  const conversation = entry('eleckoi.creator-studio.conversation')
+  conversation.component({ reference: { sessionId: 'synthetic-visible-studio' }, SessionProvider: 'Provider', renderSlot: () => null })
+  const unmount = effects[0]()
+  expect(retain).toHaveBeenCalledWith('synthetic-visible-studio', { source: 'mainView' })
+  unmount(); expect(release).toHaveBeenCalledOnce()
+  removeView(); removeAction(); await settle()
+  expect(slots.entriesOfSlot('eleckoi.creator-studio.view')).toHaveLength(0)
+  expect(slots.spec('eleckoi.creator-studio.synthetic-gallery.actions')).toBeUndefined()
+  for (const dispose of cleanups.reverse()) dispose()
+  root()
+})
 
 function studioSessions(items: Array<{ sessionId: string; title: string; pinned: boolean }>) {
   let registration: any

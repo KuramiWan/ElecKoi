@@ -9,6 +9,10 @@ import type { ConversationRequestPreview, ConversationRequestPreviewSummary } fr
 import type { SessionStatsProjection } from '@deepseek-ai/dsh-session-stats/client'
 import type { TokenUsageProjection, ContextPressureProjection, ContextBreakdownProjection } from '@deepseek-ai/dsh-token-meter/client'
 
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap { eleckoiConversations: unknown }
+}
+
 export interface ConversationProcessItem { id: string; kind: 'tool' | 'command' | 'file_change' | 'compaction' | 'subagent' | 'action' | 'narrative' | 'reasoning'; status: 'running' | 'complete' | 'error' | 'cancelled'; toolName: string; arguments: string; summary: string; detail: string; displayDetail?: string; startedAtMillis: number; completedAtMillis?: number; parentId?: string; delegatedModel?: string }
 /** 尚未进入正式 Session 的图片预览。 */
 export interface ConversationPendingImage { attachmentId: string; name: string; dataUrl: string; width?: number; height?: number }

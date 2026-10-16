@@ -9,7 +9,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.React = React;
 const cleanups = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
-async function mount(selectedCharacter = false) {
+async function mount(selectedCharacter = false, characterExists = selectedCharacter) {
   const current = { sessionId: 'synthetic-current', characterId: selectedCharacter ? 'synthetic-character' : '', presetId: 'synthetic-creator' };
   let snapshot = { status: 'ready', active: current, reference: {}, error: '', items: [
     { ...current, title: '合成对话', updatedAt: Date.now(), pinned: false, pinIndex: -1 },
@@ -22,7 +22,7 @@ async function mount(selectedCharacter = false) {
     pin: vi.fn(async id => { snapshot = { ...snapshot, items: snapshot.items.map(item => item.sessionId === id ? { ...item, pinned: true, pinIndex: 0 } : item) }; listeners.forEach(listener => listener()); }),
     rename: vi.fn(async () => {}), delete: vi.fn(async () => {}), search: vi.fn(async () => ({ items: [], hasMore: false })),
   };
-  const characterSnapshot = { collection: { items: selectedCharacter ? [{ id: 'synthetic-character', name: '合成角色', avatar: '' }] : [], groups: [] }, status: 'ready', error: '' };
+  const characterSnapshot = { collection: { items: characterExists ? [{ id: 'synthetic-character', name: '合成角色', avatar: '' }] : [], groups: [] }, status: 'ready', error: '' };
   const view = { creatorStudio: { sessions: model }, characters: { subscribe: () => () => {}, getSnapshot: () => characterSnapshot },
     renderCreatorStudioConversation: vi.fn(() => <div>合成会话内容</div>), goBack: vi.fn(), registerBackHandler: () => () => {} };
   const node = document.createElement('div'); document.body.append(node);
@@ -53,6 +53,15 @@ describe('Android AI creator studio navigation', () => {
     await f.click('新建工作室对话');
     expect(f.model.create).toHaveBeenCalledWith('');
     expect(f.view.renderCreatorStudioConversation.mock.calls[0][0].component.name).toBe('MobileCreatorStudioConversation');
+  });
+  it('keeps the conversation visible and creates without a target after its selected character is deleted', async () => {
+    const f = await mount(true, false);
+    expect(f.node.textContent).toContain('合成会话内容');
+    await f.click('新建工作室对话');
+    expect(f.model.create).toHaveBeenCalledWith('');
+    await f.click('工作室侧边栏');
+    await f.click('选择角色');
+    expect([...f.node.querySelectorAll('.creator-studio-character-picker button')].find(button => button.textContent === '不选择角色').getAttribute('aria-pressed')).toBe('true');
   });
   it('offers row management and selects conversations before enabling the pin/delete footer', async () => {
     const f = await mount();

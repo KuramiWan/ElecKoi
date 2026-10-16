@@ -160,7 +160,7 @@ describe('DSH child Session process projection', () => {
       expect(process.filter(item => item.toolName === 'assistant_final')).toHaveLength(1)
       expect(sessions.retain).toHaveBeenCalledWith({
         parentSessionId: 'parent-1', childSessionId: 'child-1', mode: 'one-shot',
-      }, { source: 'mainView' })
+      }, { source: 'eleckoiConversations' })
     } finally {
       dispose()
     }

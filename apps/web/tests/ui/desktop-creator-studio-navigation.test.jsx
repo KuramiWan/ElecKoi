@@ -39,20 +39,20 @@ function studioFixture() {
     characterCatalog: store({ status: 'ready', error: '', collection: { groups: ['合成分组'], items: [{ id: 'synthetic-character', name: '合成角色', group: '合成分组', avatar: '' }] } }),
     projectCatalog: { sessions: model }, models: store({ configs: [] }),
     presetCatalog: store({ status: 'ready', error: '', catalog: { presets: [{ id: 'synthetic-creator', name: '合成创作预设' }] } }),
-    renderCreatorStudioConversation: vi.fn(owner => <div data-native-studio>{owner.props.title} · {owner.props.presetName}</div>),
+    renderCreatorStudioConversation: vi.fn(owner => <div><div data-native-studio>{owner.props.title}</div><button aria-label="新建工作室对话" onClick={owner.props.onCreate} /></div>),
   };
   return { model, props };
 }
 describe('Desktop simple AI creator studio', () => {
-  it('restores the recent Session and sends its bound preset and title to the native conversation assembly', async () => {
+  it('restores the recent Session and sends its title to the native conversation assembly', async () => {
     const { model, props } = studioFixture(), f = await mount(<CreatorStudioWindow {...props} />);
     expect(model.restoreRecent).not.toHaveBeenCalled();
     await f.click('进入简易版');
     expect(model.restoreRecent).toHaveBeenCalledOnce();
-    expect(f.node.querySelector('[data-native-studio]').textContent).toBe('合成对话 · 合成创作预设');
+    expect(f.node.querySelector('[data-native-studio]').textContent).toBe('合成对话');
     expect(props.renderCreatorStudioConversation.mock.calls[0][0].component.name).toBe('CreatorStudioConversation');
     expect(f.node.querySelector('[aria-label="收起对话列表"]').closest('.creator-simple-titlebar-sidebar')).toBeTruthy();
-    expect([...f.node.querySelectorAll('.creator-simple-content-actions button')].map(button => button.getAttribute('aria-label'))).toEqual(['新建工作室对话']);
+    expect(f.node.querySelectorAll('[aria-label="新建工作室对话"]')).toHaveLength(1);
     await f.click('收起对话列表');
     expect(f.node.querySelector('.creator-simple-sidebar')).toBeNull();
     await f.click('展开对话列表');
@@ -61,6 +61,13 @@ describe('Desktop simple AI creator studio', () => {
     expect(document.querySelector('[role=dialog]')).toBeNull();
     await f.click('新建工作室对话');
     expect(model.create).toHaveBeenCalledWith('synthetic-character');
+    model.create.mockClear();
+    await act(async () => props.characterCatalog.publish({ status: 'ready', error: '', collection: { groups: [], items: [] } }));
+    await f.click('新建工作室对话');
+    expect(model.create).toHaveBeenCalledWith('');
+    await f.click('选择角色');
+    expect([...document.querySelectorAll('[role=dialog] button')].find(button => button.textContent === '不选择角色').getAttribute('aria-pressed')).toBe('true');
+    await f.click('不选择角色');
     await f.click('返回工作室入口');
     expect(model.release).toHaveBeenCalledOnce();
     expect(f.node.textContent).toContain('开发者专用');

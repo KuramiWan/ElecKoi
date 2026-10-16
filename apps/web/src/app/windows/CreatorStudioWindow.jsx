@@ -38,7 +38,7 @@ function CreatorStudioDevelopmentNotice({ onSimple, onDeveloper }) {
   </main>;
 }
 
-export function CreatorStudioWindow({ characterCatalog, projectCatalog, models, presetCatalog, renderCreatorStudioConversation }) {
+export function CreatorStudioWindow({ characterCatalog, projectCatalog, models, presetCatalog, renderCreatorStudioConversation, rightbar }) {
   const [mode, setMode] = useState('entry');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
@@ -56,7 +56,7 @@ export function CreatorStudioWindow({ characterCatalog, projectCatalog, models, 
 
   if (mode === 'entry') return <CreatorStudioDevelopmentNotice onSimple={() => setMode('simple')} onDeveloper={() => setMode('developer')} />;
   if (mode === 'simple') return <CreatorStudioSimplePage characterCatalog={characterCatalog} model={projectCatalog.sessions}
-    models={models} presetCatalog={presetCatalog} renderConversation={renderCreatorStudioConversation} onBack={() => setMode('entry')} />;
+    models={models} presetCatalog={presetCatalog} rightbar={rightbar} renderConversation={renderCreatorStudioConversation} onBack={() => setMode('entry')} />;
 
   const openProject = (project) => {
     setActiveProject(project);

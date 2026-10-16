@@ -3,7 +3,7 @@ import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope'
 import { creatorCapabilities, creatorToolsets, creatorAuthoringInstructions } from '@eleckoi/dsh-product-data'
 import { applyDisabledPolicy, extendNativeRequestInput, projectCompactionRequest, requestProjectionSnapshot, requestSnapshot, sessionInstructions } from '@eleckoi/dsh-client-roleplay'
-import { CREATOR_STUDIO_EVENT, creatorStudioProjection } from './projection.mjs'
+import { CREATOR_STUDIO_EVENT, creatorStudioProjection, resolveCreatorStudioSelection } from './projection.mjs'
 import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
 
 export const name = 'eleckoi-creator-studio-agent'
@@ -18,7 +18,7 @@ export function apply(ctx, config) {
     if (!owns(agent)) throw new Error('该会话不属于当前 AI 创作工作室作用域。')
     const state = ctx.sessionProjections.stateOf(agent.session, creatorStudioProjection.key)
     if (!state || state.presetId !== config.presetId) throw new Error('AI 创作工作室会话缺少正式预设绑定。')
-    return state
+    return resolveCreatorStudioSelection(state, ctx.eleckoiProductData.readCharacters().items)
   }
   const capabilities = creatorCapabilities(ctx.eleckoiProductData)
   const toolsets = creatorToolsets
@@ -43,7 +43,7 @@ export function apply(ctx, config) {
         if (selected.size && operations.length !== selected.size) throw new Error('所选操作不属于这个能力组。')
         return { toolset, operations: operations.map(({ execute, inputSchema, ...item }) => ({ ...item, ...(args.include_schema ? { inputSchema } : {}) })) }
       } })))
-    disposers.push(ctx.tools.register(defineTool({ name: 'eleckoi_call_capability', description: '执行已发现的创作操作；普通调用必须同时提供 capability_id 与 arguments。角色资料绑定当前编辑目标，全局配置和明确 presetId 的预设配置独立于角色选择。可以新建空角色作为编辑目标。参数必须符合已查询的输入结构。创作工具结果溢出时，只传 result 按提示续读全文或搜索，不重新执行创作操作。',
+    disposers.push(ctx.tools.register(defineTool({ name: 'eleckoi_call_capability', description: '执行已发现的创作操作；普通调用必须同时提供 capability_id 与 arguments。角色操作使用菜单当前选择的编辑目标；未选择角色不影响普通对话、全局配置和明确 presetId 的预设配置。可以新建空角色作为编辑目标。参数必须符合已查询的输入结构。创作工具结果溢出时，只传 result 按提示续读全文或搜索，不重新执行创作操作。',
       parameters: { capability_id: { type: 'string' }, arguments: { type: 'object', additionalProperties: true }, result: resultReadParameter }, output,
       execute(args, exec) {
         exec.signal.throwIfAborted()
@@ -106,7 +106,6 @@ export function apply(ctx, config) {
     }
     const context = { settingLibrary }
     const target = state.characterId ? ctx.eleckoiProductData.readCharacters().items.find(item => item.id === state.characterId) : undefined
-    if (state.characterId && !target) throw new Error('所选角色已不存在，请重新选择角色。')
     const missingTarget = config.creatorTools ? '未选择角色。可调用 character.create 新建空角色并作为当前工作室编辑目标；修改已有角色时请用户从菜单选择角色。' : '未选择角色。'
     const instructions = [sessionInstructions({ conversationContext: context }), config.creatorTools ? creatorAuthoringInstructions : '', `当前编辑目标：${target ? JSON.stringify({ id: target.id, name: target.name }) : missingTarget}`].filter(Boolean).join('\n\n')
     const messages = extendNativeRequestInput(options.messages, requestProjectionSnapshot(context).plan, instructions)

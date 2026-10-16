@@ -7,8 +7,15 @@
 .creator-studio-conversation { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
 .creator-studio-conversation > * { flex: 1; min-width: 0; min-height: 0; }
 .creator-studio-session-body { height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.mobile-creator-studio-page .creator-studio-session-body > .creator-studio-view-tabs { flex: none; height: 28px; padding: 0 16px; background: var(--mobile-header-bg); }
+.creator-studio-view-header { display: flex; flex: none; min-width: 0; height: 28px; background: var(--mobile-header-bg); }
+.mobile-creator-studio-page .creator-studio-view-tabs { flex: 1; min-width: 0; height: 28px; padding: 0 16px; overflow-x: auto; }
+.creator-studio-view-tabs [role=tab] { flex: none; }
+.creator-studio-header-actions { display: flex; align-items: center; flex: none; padding-right: 8px; }
+.creator-studio-header-actions [data-sidebar-right-expand] { height: 28px; min-height: 28px; width: 36px; }
+.creator-studio-header-actions [data-sidebar-right-expand] svg { width: 18px; height: 18px; }
 .creator-studio-chat-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 0 16px; }
+.creator-studio-chat-scroll.creator-studio-panel-view { display: flex; overflow: hidden; padding: 0; }
+.creator-studio-panel-view > [data-slot] { flex: 1; min-width: 0; min-height: 0; }
 .creator-studio-chat-scroll.creator-studio-trajectory { --dsh-composer-height: 0px; display: flex; overflow: hidden; padding: 0; }
 .creator-studio-trajectory > [data-slot], .creator-studio-trajectory > [data-slot] > * { flex: 1; min-width: 0; min-height: 0; }
 .creator-studio-session-body > .chat-composer-region { flex: none; padding: 0 12px; }

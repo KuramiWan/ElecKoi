@@ -3,7 +3,7 @@ import { mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { materializeAgentPreset, readRuntimePresetDefinition, currentRequestSnapshot } from '@eleckoi/dsh-client-roleplay'
 import { requireSessionMessage, sessionMessageText, sessionMessageTurn } from '@eleckoi/dsh-product-api'
-import { CREATOR_STUDIO_EVENT, creatorStudioProjection, creatorStudioStateSchema } from './projection.mjs'
+import { CREATOR_STUDIO_EVENT, creatorStudioProjection, creatorStudioStateSchema, resolveCreatorStudioSelection } from './projection.mjs'
 
 /** Studio commands create ordinary DSH Sessions; the official Controller owns their Agent handles. */
 export async function installCreatorStudioRuntime(ctx) {
@@ -30,7 +30,7 @@ export async function installCreatorStudioRuntime(ctx) {
     const inspection = await ctx.sessionController.inspect(sessionId)
     const event = inspection.events.findLast(item => item.type === CREATOR_STUDIO_EVENT)
     if (!event) throw new Error('这不是 AI 创作工作室会话。')
-    return { inspection, state: creatorStudioStateSchema.parse(event.data) }
+    return { inspection, state: resolveCreatorStudioSelection(creatorStudioStateSchema.parse(event.data), ctx.eleckoiProductData.readCharacters().items) }
   }
   const reopenAfterMessageEdit = async (sessionId, inspection, state) => {
     await ctx.sessionController.create({ sessionId, cwd: inspection.meta.cwd, agentPreset: inspection.meta.agentPreset })
@@ -55,11 +55,13 @@ export async function installCreatorStudioRuntime(ctx) {
   const service = {
     async list() {
       const { items } = await ctx.sessionController.list({})
+      const characters = ctx.eleckoiProductData.readCharacters().items
       return items.flatMap(item => {
         const state = item.projections?.values?.[creatorStudioProjection.key]
         if (!state) return []
         const pinIndex = ctx.workspaceRegistry.pinnedSessionIds.indexOf(item.sessionId)
-        return [{ sessionId: String(item.sessionId), title: item.projections?.values?.title ?? '新对话', updatedAt: item.updatedAt, pinned: pinIndex >= 0, pinIndex, ...creatorStudioStateSchema.parse(state) }]
+        return [{ sessionId: String(item.sessionId), title: item.projections?.values?.title ?? '新对话', updatedAt: item.updatedAt, pinned: pinIndex >= 0, pinIndex,
+          ...resolveCreatorStudioSelection(creatorStudioStateSchema.parse(state), characters) }]
       })
     },
     async create(characterId = '') {
@@ -86,7 +88,6 @@ export async function installCreatorStudioRuntime(ctx) {
     },
     async open(sessionId) {
       const { inspection, state } = await readState(sessionId)
-      requireCharacter(state.characterId)
       await ctx.sessionController.create({ sessionId, cwd: inspection.meta.cwd, agentPreset: inspection.meta.agentPreset })
       return { sessionId, ...state }
     },

@@ -88,6 +88,9 @@ describe('ElecKoi DSH client navigation', () => {
     expect(layout.panelInfo.getSnapshot().activePanelId).toBeNull()
     if (platform === 'android') {
       expect(layout.panelInfo.getSnapshot().windowPanelId).toBe('messages')
+      slots.register({ name: 'main', key: 'creatorStudio' }, () => null)
+      layout.selectPanel('creatorStudio')
+      expect(layout.panelInfo.getSnapshot()).toEqual({ activePanelId: null, windowPanelId: 'creatorStudio' })
       expect(slots.entriesOfSlot('sidebar')).toHaveLength(1)
       expect(slots.entriesOfSlot('sidebar')[0]?.options.registrant).toBe('@eleckoi/dsh-client-shell')
       layout.selectPanel(null)
