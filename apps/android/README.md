@@ -69,8 +69,8 @@ Windows-only Release 不触发 Android 更新。标准版按唯一 `android-upda
   "platform": "android",
   "variant": "standard",
   "applicationId": "com.eleckoi.app",
-  "versionCode": 6,
-  "versionName": "0.2.11",
+  "versionCode": 7,
+  "versionName": "0.2.12",
   "apkAsset": "app-standard-release.apk",
   "sha256": "<实际 APK 的 64 位小写 SHA-256>"
 }
