@@ -6,6 +6,7 @@ export const updatePhaseSchema = z.enum([
   'checking',
   'available',
   'downloading',
+  'verifying',
   'ready',
   'installing',
   'error'
@@ -27,7 +28,8 @@ export const updateStatusSchema = z.object({
   releaseDate: z.string().max(100).nullable(),
   downloadSizeBytes: z.number().nonnegative().nullable(),
   progress: updateProgressSchema.nullable(),
-  message: z.string().max(300).nullable()
+  message: z.string().max(300).nullable(),
+  failedOperation: z.enum(['check', 'download', 'install']).optional()
 })
 
 export const updateInstallResultSchema = z.object({

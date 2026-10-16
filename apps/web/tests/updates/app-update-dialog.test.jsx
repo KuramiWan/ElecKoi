@@ -49,6 +49,11 @@ it('keeps complete notes and update controls through download and install withou
   expect(document.activeElement).toBe(notes)
   expect(document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')).toBe('46')
   expect(document.querySelector('.is-primary').disabled).toBe(true)
+  updates.status = { ...updates.status, phase: 'verifying', progress: { percent: 100 } }
+  await render()
+  expect(document.querySelector('.is-primary').textContent).toBe('正在校验')
+  expect(document.querySelector('.is-primary').disabled).toBe(true)
+  expect(document.activeElement).toBe(notes)
   updates.status = { ...updates.status, phase: 'ready' }
   await render()
   await act(async () => document.querySelector('.is-primary').click())
@@ -59,4 +64,22 @@ it('keeps complete notes and update controls through download and install withou
   expect(document.activeElement).toBe(document.querySelector('.is-primary'))
   await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })))
   expect(document.querySelector('[role="dialog"]')).toBeNull()
+})
+
+it.each([
+  ['check', '重新检查', 'check'],
+  ['download', '重新下载', 'download'],
+  ['install', '重试安装', 'install']
+])('retries the failed %s stage without repeating another stage', async (failedOperation, label, action) => {
+  const updates = {
+    status: { phase: 'error', failedOperation, availableVersion: '1.0.1', currentVersion: '1.0.0', message: '合成更新错误' },
+    check: vi.fn(), download: vi.fn(), install: vi.fn(async () => ({ accepted: true }))
+  }
+  await act(async () => root.render(<AppUpdateController updates={updates} />))
+  const button = document.querySelector('.is-primary')
+  expect(button.textContent).toBe(label)
+  await act(async () => button.click())
+  for (const stage of ['check', 'download', 'install']) {
+    expect(updates[stage]).toHaveBeenCalledTimes(stage === action ? 1 : 0)
+  }
 })

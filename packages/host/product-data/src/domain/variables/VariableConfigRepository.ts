@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type { VariableConfig, VariableConfigVersion } from '@shared/contracts/variables/schemas'
 import { variableConfigSchema } from '@shared/contracts/variables/schemas'
 import { requireCharacter } from '@product-data/domain/personas'
@@ -219,23 +219,27 @@ export class VariableConfigRepository {
       { characterId, versionId: version.id, kind: VARIABLE_INITIAL_STATE_CONTENT_KIND, content: version.initialStateJson },
       { characterId, versionId: version.id, kind: VARIABLE_SCHEMA_CODE_CONTENT_KIND, content: version.schemaCode }
     ]).run()
+    // Reuse one statement inside the existing transaction so the library size
+    // does not become the number of parameters in a single SQLite statement.
     if (version.objects.length) {
-      db.insert(variableConfigObjects).values(version.objects.map((item, sortIndex) => ({
+      const insertObject = db.insert(variableConfigObjects).values({
         characterId,
         versionId: version.id,
-        objectId: item.id,
-        sortIndex,
-        payloadJson: writeVariableObject(item)
-      }))).run()
+        objectId: sql.placeholder('objectId'),
+        sortIndex: sql.placeholder('sortIndex'),
+        payloadJson: sql.placeholder('payloadJson')
+      }).prepare()
+      version.objects.forEach((item, sortIndex) => insertObject.run({ objectId: item.id, sortIndex, payloadJson: writeVariableObject(item) }))
     }
     if (version.variables.length) {
-      db.insert(variableConfigVariables).values(version.variables.map((item, sortIndex) => ({
+      const insertVariable = db.insert(variableConfigVariables).values({
         characterId,
         versionId: version.id,
-        variableId: item.id,
-        sortIndex,
-        payloadJson: writeVariable(item)
-      }))).run()
+        variableId: sql.placeholder('variableId'),
+        sortIndex: sql.placeholder('sortIndex'),
+        payloadJson: sql.placeholder('payloadJson')
+      }).prepare()
+      version.variables.forEach((item, sortIndex) => insertVariable.run({ variableId: item.id, sortIndex, payloadJson: writeVariable(item) }))
     }
   }
 }

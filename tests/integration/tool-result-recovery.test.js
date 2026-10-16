@@ -20,6 +20,13 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, wr
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { composeEntries, initProfile, loadLayeredEnv, loadOverlayPatches, loadProfileDirectory, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-app-boot'
+import { runProfile } from '@deepseek-ai/dsh/profile-boot'
+import { ELECKOI_DESKTOP_BUNDLES, ELECKOI_INSTALL_ANCHOR } from '../../apps/desktop-host/src/desktopPluginBundles'
+import { preparePluginHost } from '../../apps/android-host/src/pluginHostConfiguration'
+import { ELECKOI_INSTALL_ANCHOR as ANDROID_INSTALL_ANCHOR } from '../../apps/android-host/src/androidPluginBundles'
+import { resolve } from 'node:path'
+import { captureSerializedRequest } from '../helpers/captureModelRequest.js'
 
 const RESULT_READER = RESULT_READERS.settings
 const cleanups = []
@@ -53,6 +60,176 @@ async function fixture({ root, sessionId = 'result-owner', stream } = {}) {
   const save = content => ctx.spillStore.saveText({ owner: { sessionId: handle.agent.session.id }, source: { kind: 'tool', toolName: 'eleckoi_read_setting_files', callId: 'synthetic-call', label: 'result' }, suggestedName: 'result.txt', content })
   return { ctx, root, handle, exec, requests, save, read: args => ctx.spillStore.readResult(args, exec, 'settings') }
 }
+
+async function profileFixture(platform, existingRoot) {
+  const root = existingRoot ?? mkdtempSync(join(tmpdir(), 'eleckoi-result-profile-'))
+  if (!existingRoot) cleanups.push(() => {
+    const child = relative(tmpdir(), root)
+    if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path')
+    rmSync(root, { recursive: true, force: true })
+  })
+  const resources = resolve('apps/desktop/resources/dsh')
+  const paths = { runtimeDataRoot: root, homeRoot: join(root, 'home'), workspaceRoot: join(root, 'workspace'),
+    productDatabasePath: join(root, 'product.sqlite'), productMediaRoot: join(root, 'media'),
+    resourceRoot: resources, presetTemplatePath: join(resources, 'agent-preset-template/agent.cordis.yml'),
+    agentPatchPath: join(resources, 'desktop-agent.patch.yml') }
+  const prepared = preparePluginHost(paths)
+  const profileDirectory = platform === 'android' ? prepared.profileDirectory : join(paths.homeRoot, 'profiles/desktop')
+  if (platform === 'desktop') initProfile(profileDirectory, [...PROFILE_TEMPLATES.web.bundles, ...ELECKOI_DESKTOP_BUNDLES, '@eleckoi/dsh-web-search-tavily'])
+  const previous = Object.fromEntries(Object.keys(prepared.environment).map(key => [key, process.env[key]]))
+  Object.assign(process.env, prepared.environment)
+  cleanups.push(() => { for (const [key, value] of Object.entries(previous)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value
+  } })
+  const installAnchor = platform === 'android' ? ANDROID_INSTALL_ANCHOR : ELECKOI_INSTALL_ANCHOR
+  const profile = loadProfileDirectory('dsh', profileDirectory, installAnchor)
+  expect(profile.skippedBundles).toEqual([])
+  const desktopOverlay = join(profileDirectory, 'eleckoi-plugin-host.patch.yml')
+  if (platform === 'desktop') writeFileSync(desktopOverlay, JSON.stringify([
+    { id: 'session-persistence-jsonl', config: { root: join(root, 'sessions'), compression: 'none' } },
+    ...['desktop-product-telemetry', 'product-analytics', 'ui-layout', 'ui-sidebar', 'ui-settings-general', 'ui-settings-models']
+      .map(id => ({ id, disabled: true })),
+  ]))
+  const running = await runProfile({ environment: loadLayeredEnv('dsh'), profile: platform,
+    resolvedProfile: { profile, installAnchor },
+    patchFiles: platform === 'android' ? prepared.patchFiles : [desktopOverlay, paths.agentPatchPath],
+    args: ['--no-open', '--port', '0'] })
+  cleanups.push(() => running.ctx.fiber.dispose())
+  let stream
+  class Adapter extends LlmAdapter {
+    async resolveModel(provider, id) { return { provider, id, name: id, context: { contextWindow: 100_000_000 }, defaultMaxTokens: 8192 } }
+    async *stream(request) { yield* stream(request) }
+  }
+  running.ctx.llm.registerAdapter(['synthetic-profile'], new Adapter())
+  await running.ctx.agentDefaultModel.saveSelection({ provider: 'synthetic-profile', model: 'synthetic-profile' })
+  return { ctx: running.ctx, root, setStream(value) { stream = value } }
+}
+
+describe('Shipped Host tool-result composition', () => {
+  it('replaces the store in the retained SDK composition using the official patch semantics', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eleckoi-sdk-result-profile-'))
+    cleanups.push(() => {
+      const child = relative(tmpdir(), root)
+      if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path')
+      rmSync(root, { recursive: true, force: true })
+    })
+    initProfile(root, PROFILE_TEMPLATES.sdk.bundles)
+    const profile = loadProfileDirectory('dsh', root, ELECKOI_INSTALL_ANCHOR)
+    expect(profile.skippedBundles).toEqual([])
+    const entries = composeEntries([...profile.layers.map(layer => layer.patches),
+      loadOverlayPatches('dsh', resolve('apps/desktop/resources/dsh/cordis.yml'))])
+    expect(entries.find(entry => entry.id === 'spill-local').disabled).toBe(true)
+    const store = entries.filter(entry => entry.id === 'eleckoi-tool-result-store')
+    expect(store).toHaveLength(1)
+    expect(store[0].disabled).not.toBe(true)
+    expect(store[0].name).toMatch(/tool-result-store\.mjs$/)
+  })
+
+  it.each(['desktop', 'android'])('%s recovers all three tool groups through its actual profile and saved presets', async platform => {
+    const f = await profileFixture(platform), { ctx, root } = f
+    expect(typeof ctx.spillStore.readResult).toBe('function')
+    expect(ctx.spillStore.root).toBe(join(root, 'home', 'tool-results'))
+    const count = 10_001, data = ctx.eleckoiProductData
+    const character = data.createCharacter({ id: 'synthetic-profile-character', name: '合成编辑目标' }).items[0]
+    const library = data.readSettingLibrary(character.id)
+    const entries = Array.from({ length: count }, (_, index) => ({ ...emptyEntry(`synthetic-profile-${index}`),
+      title: `合成目录-${String(index).padStart(5, '0')}`,
+      content: `开始-${index}|${'合成正文𠮷😀'.repeat([0, Math.floor(count / 2), count - 1].includes(index) ? 20_001 : 1)}|末尾关键词-${index}`,
+      agentReadStrategy: 'normal' }))
+    data.saveSettingLibrary(character.id, { ...library, entries })
+    const config = data.readVariableConfig(character.id)
+    const variables = Array.from({ length: count }, (_, index) => ({ id: `synthetic-variable-${index}`, title: `合成变量-${String(index).padStart(5, '0')}`,
+      objectId: '', enabled: true, type: 'string', defaultValue: JSON.stringify(`合成变量正文-${index}`),
+      description: `合成说明-${index}`, updateRule: `合成更新规则-${index}`, readMode: 'required',
+      order: index + 1, treeViewOrder: index, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }))
+    data.saveVariableConfig(character.id, { ...config, variables,
+      initialStateJson: JSON.stringify(Object.fromEntries(variables.map((variable, index) => [variable.title, `合成变量正文-${index}`]))) })
+    const chat = await ctx.eleckoiConversationsApi.create({ metadata: { characterId: character.id } })
+    const roleplayId = await ctx.eleckoiRoleplaySessions.preparePrompt(chat.conversation.id, '合成大量条目续读')
+    const roleplay = (await ctx.sessionController.resolveAgent(roleplayId)).agent
+    const studio = await ctx.eleckoiCreatorStudioRuntime.create(character.id)
+    const creator = (await ctx.sessionController.resolveAgent(studio.sessionId)).agent
+    const receipts = []
+    for (const [agent, toolName, args, keyword] of [
+      [roleplay, 'eleckoi_read_setting_files', { paths: entries.map(entry => entry.title) }, '末尾关键词-'],
+      [roleplay, 'eleckoi_read_variables', { paths: variables.map(variable => `/${variable.title}`) }, '合成变量正文-'],
+      [creator, 'eleckoi_call_capability', { capability_id: 'settings.list', arguments: {} }, '合成目录-'],
+    ]) {
+      let ref, original, step = 0, offset = 0, recovered = '', found = []
+      const trace = []
+      let finalRequest
+      const reader = RESULT_READERS[resultDomain(toolName)]
+      const saveText = ctx.spillStore.saveText.bind(ctx.spillStore)
+      const save = vi.spyOn(ctx.spillStore, 'saveText').mockImplementation(async input => {
+        original = input.content; ref = await saveText(input); return ref
+      })
+      f.setStream(async function* (request) {
+        const toolText = request.messages.findLast(message => message.role === 'tool')?.content[0].text
+        trace.push({ step, purpose: request.purpose, last: toolText?.slice(0, 500) })
+        if (step === 1) {
+          expect(toolText).toContain(reader)
+          expect(toolText).toContain(ref.locator)
+        } else if (step === 2) {
+          const page = JSON.parse(toolText)
+          found = page.matches
+          expect(page.next_offset).toBeNull()
+        } else if (step > 2) {
+          const page = JSON.parse(toolText)
+          expect(page.kind).toBe('tool_result_page')
+          recovered += page.content; offset = page.next_offset
+        }
+        const done = step > 2 && offset === null
+        if (done) finalRequest = request
+        const parameters = step === 0 ? args : step === 1
+          ? { result: { file_path: ref.locator, query: keyword, limit: count * 10 } }
+          : { result: { file_path: ref.locator, offset, limit: Math.ceil(Buffer.byteLength(original) / 2) } }
+        yield { type: 'block-start', index: 0, blockType: done ? 'text' : 'tool-call' }
+        yield { type: 'block-end', index: 0, block: done ? { type: 'text', text: '合成完整结果已恢复' }
+          : { type: 'tool-call', id: `synthetic-profile-call-${step++}`, name: step === 1 ? toolName : reader, arguments: JSON.stringify(parameters) } }
+        yield { type: 'finish', reason: { kind: done ? 'stop' : 'tool-calls' } }
+      })
+      await ctx.sessionController.prompt({ sessionId: agent.id, requestId: `synthetic-${toolName}`, mode: 'queue',
+        content: [{ type: 'text', text: '合成条目全部续读及末尾关键词查找' }] }, new AbortController().signal)
+      await agent.whenIdle()
+      expect(recovered.length, JSON.stringify({ trace, ends: agent.session.snapshotEvents().filter(event => event.type === 'turn/end' || event.type === 'assistant/error') })).toBe(original?.length)
+      expect(recovered).toBe(original)
+      expect(found).toHaveLength(original.split(keyword).length - 1)
+      expect(found.length).toBeGreaterThanOrEqual(count)
+      for (const index of [0, Math.floor(count / 2), count - 1]) {
+        expect(recovered).toContain(toolName === 'eleckoi_read_variables' ? `合成变量正文-${index}`
+          : toolName === 'eleckoi_call_capability' ? entries[index].title : `末尾关键词-${index}`)
+      }
+      expect(save).toHaveBeenCalledOnce()
+      save.mockRestore()
+      const wire = await captureSerializedRequest('deepseek_messages', finalRequest)
+      const toolOutputs = finalRequest.messages.filter(message => message.role === 'tool')
+        .map(message => message.content.filter(block => block.type === 'text').map(block => block.text).join(''))
+      const wireOutputs = wire.messages.flatMap(message => message.content.filter(block => block.type === 'tool_result')
+        .map(block => block.content.map(part => part.text || '').join('')))
+      expect(wireOutputs).toEqual(toolOutputs)
+      expect(wireOutputs.some(text => text.includes(`${keyword}${count - 1}`)
+        || text.includes(entries.at(-1).title))).toBe(true)
+      const schemas = agent.ctx.tools.schemas(agent)
+      const domain = resultDomain(toolName)
+      expect(schemas.filter(tool => resultDomain(tool.name) === domain)).toHaveLength(domain === 'creator' ? 3 : 4)
+      receipts.push({ sessionId: agent.id, reader, file_path: ref.locator, original, query: `${keyword}${count - 1}` })
+    }
+    await Promise.all([ctx.sessions.flush(roleplay.session), ctx.sessions.flush(creator.session)])
+    await ctx.fiber.dispose()
+    const restarted = await profileFixture(platform, root)
+    await restarted.ctx.eleckoiRoleplaySessions.prepareSessionAccess(chat.conversation.id)
+    await restarted.ctx.eleckoiCreatorStudioRuntime.open(studio.sessionId)
+    for (const receipt of receipts) {
+      const { agent } = await restarted.ctx.sessionController.resolveAgent(receipt.sessionId)
+      const result = await agent.ctx.tools.execute({ callId: 'synthetic-restored-reader', name: receipt.reader,
+        arguments: { result: { file_path: receipt.file_path, query: receipt.query } }, agent, signal: new AbortController().signal })
+      expect(result.isError).not.toBe(true)
+      const page = JSON.parse(result.content[0].text)
+      expect(page).toMatchObject({ kind: 'tool_result_page', next_offset: null })
+      expect(page.matches.length).toBeGreaterThan(0)
+    }
+  }, 120_000)
+})
 
 describe('Complete tool-result access', { timeout: 30_000 }, () => {
   it('writes one complete artifact and one small ownership record per result, with no files added by repeated reads', async () => {

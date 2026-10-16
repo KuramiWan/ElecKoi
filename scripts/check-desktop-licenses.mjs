@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const expectedVersion = '1.7.0'
@@ -54,3 +55,15 @@ if (ejsMetadata.version !== '3.1.10' || ejsMetadata.license !== 'Apache-2.0') th
 const ejsLicense = await readFile(resolve(ejsRoot, 'LICENSE'), 'utf8')
 const bundledEjsLicense = await readFile(resolve(root, 'apps/web/public/licenses/ejs/LICENSE.txt'), 'utf8')
 if (ejsLicense.replaceAll('\r\n', '\n') !== bundledEjsLicense.replaceAll('\r\n', '\n')) throw new Error('EJS 随网页分发的许可证缺失或已变更')
+
+const updateSources = resolve(root, 'apps/desktop/src/main/modules/updates/dsh')
+const provenance = JSON.parse(await readFile(resolve(updateSources, 'provenance.json'), 'utf8'))
+const digest = text => createHash('sha256').update(text.replaceAll('\r\n', '\n')).digest('hex')
+if (digest(await readFile(resolve(root, provenance.licenseFile), 'utf8')) !== provenance.licenseSha256) {
+  throw new Error('DSH Desktop 更新模块随包许可证与来源记录不一致')
+}
+for (const file of provenance.files) {
+  if (digest(await readFile(resolve(updateSources, file.path), 'utf8')) !== file.localSha256) {
+    throw new Error(`DSH Desktop 更新模块与锁定来源记录不一致：${file.path}`)
+  }
+}

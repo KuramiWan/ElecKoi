@@ -1,0 +1,43 @@
+{
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+  "license": "MIT",
+  "licenseFile": "apps/desktop/resources/licenses/dsh-desktop-MIT.txt",
+  "files": [
+    {
+      "path": "update-coordinator.ts",
+      "source": "apps/desktop/src/update-coordinator.ts",
+      "sha256": "25af5dccba70f312fa2154fb9a006c9d4820a1e8f5b844b7723a2cfbd74007fe",
+      "changes": [
+        "Relative TypeScript import suffixes use .js for the local compiler."
+      ],
+      "localSha256": "24b696f2a646c1a64df2dd0330bb5822ae165df2f640c8b00ed19d08c8f96d4c"
+    },
+    {
+      "path": "update-http-executor.ts",
+      "source": "apps/desktop/src/update-http-executor.ts",
+      "sha256": "7230d88ece24770bb45ddac28ff6b9a0ed60f1b20a4361da44fc5265a1cc4eb8",
+      "changes": [],
+      "localSha256": "7230d88ece24770bb45ddac28ff6b9a0ed60f1b20a4361da44fc5265a1cc4eb8"
+    },
+    {
+      "path": "update-error.ts",
+      "source": "apps/desktop/src/update-error.ts",
+      "sha256": "1cc7ef0e3bffb99f1e5ffaac15449fd9259b9f0cda101a9db070054233110472",
+      "changes": [
+        "Relative TypeScript import suffixes use .js for the local compiler."
+      ],
+      "localSha256": "820989047b0c11e7ba7cc15a946ed8bbaf4ab7052ce864b3ebc463bf3fb14160"
+    },
+    {
+      "path": "ipc.ts",
+      "source": "apps/desktop/src/ipc.ts",
+      "changes": [
+        "Only DesktopUpdatePreparationFailureKind and DesktopUpdateState are included; unrelated IPC declarations are omitted.",
+        "Terminal blank lines are normalized."
+      ],
+      "localSha256": "9812e884fccb24f5369f17b41125a1dae997670a0150791dbb06302e59598f70"
+    }
+  ],
+  "licenseSha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+}

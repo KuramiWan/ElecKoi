@@ -25,7 +25,8 @@ import productDataPlugin from '@eleckoi/dsh-product-data'
 import { CharacterConfigurationChangeFeed, ProductRecordChangeFeed } from '../../packages/host/product-api/src/index'
 import { installCreatorStudioRuntime } from '../../packages/client/features/dsh-client-creator-studio/src/host/runtime.mjs'
 import { creatorStudioProjection } from '../../packages/client/features/dsh-client-creator-studio/src/host/projection.mjs'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -38,10 +39,10 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 
 async function fixture(existing, { productionTemplate = false, stream } = {}) {
   const root = existing?.root ?? mkdtempSync(join(tmpdir(), 'eleckoi-studio-files-'))
-  if (!existing) cleanups.push(() => {
+  if (!existing) cleanups.push(async () => {
     const child = relative(tmpdir(), root)
     if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path')
-    rmSync(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   })
   const resources = join(root, 'resources'), template = join(resources, 'agent-preset-template', 'agent.cordis.yml')
   mkdirSync(join(resources, 'agent-preset-template'), { recursive: true })

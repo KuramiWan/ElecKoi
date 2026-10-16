@@ -348,6 +348,10 @@
     "zod": "4.1.11",
     "@eleckoi/desktop-host": "workspace:*",
     "@eleckoi/web-client": "workspace:*",
-    "@eleckoi/product-shared": "workspace:*"
+    "@eleckoi/product-shared": "workspace:*",
+    "semver": "7.8.5"
+  },
+  "devDependencies": {
+    "@types/semver": "7.8.0"
   }
 }

@@ -8,9 +8,7 @@
     personaSuffix: ''
 
 - id: spill-local
-  name: './tool-result-store.mjs'
-  config:
-    root: !!js dshHomePath('tool-results')
+  disabled: true
 
 - id: spill-policy
   config:
@@ -131,6 +129,11 @@
   disabled: true
 
 - insert:
+    - id: eleckoi-tool-result-store
+      name: './tool-result-store.mjs'
+      config:
+        root: !!js dshHomePath('tool-results')
+
     - id: agent-preset-registry
       name: '@deepseek-ai/dsh-agent-preset-registry'
       config:

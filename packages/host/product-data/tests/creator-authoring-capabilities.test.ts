@@ -20,10 +20,26 @@ async function fixture() {
   data.saveSettingLibrary(characterId, data.readSettingLibrary(characterId))
   const operations = creatorCapabilities(data)
   const call = (id: string, input: unknown = {}) => operations.find(item => item.id === id)!.execute(characterId, input) as any
-  return { data, call, operations, characterId }
+  return { ctx, data, call, operations, characterId }
 }
 
 describe('Creator authoring matches the native setting, schema, script and regex contracts', { timeout: 30_000 }, () => {
+  it('saves and reopens every object in a variable configuration larger than one SQL parameter budget', async () => {
+    const f = await fixture(), config = f.data.readVariableConfig(f.characterId)
+    const objects = Array.from({ length: 10_001 }, (_, index) => ({
+      id: `synthetic-object-${index}`, name: `合成变量组-${index}`, parentId: '', enabled: true,
+      description: `合成说明-${index}`, updateRule: '', dynamicKey: false, order: index + 1, treeViewOrder: index,
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    }))
+    const saved = f.data.saveVariableConfig(f.characterId, { ...config, objects: [...config.objects, ...objects] })
+    expect(saved.objects.filter(object => object.id.startsWith('synthetic-object-'))).toHaveLength(objects.length)
+    await f.ctx.fiber.dispose()
+    const reopened = new Context()
+    cleanups.push(() => reopened.fiber.dispose())
+    await reopened.plugin(productDataPlugin)
+    expect(reopened.eleckoiProductData.readVariableConfig(f.characterId)).toEqual(saved)
+  })
+
   it('enables and disables keyword matching in an atomic batch, preserving content, keywords, versions and other characters', async () => {
     const f = await fixture(), other = f.data.saveSettingLibrary('synthetic-other-character', f.data.readSettingLibrary('synthetic-other-character'))
     const entries = ['first', 'second'].map(title => f.call('settings.create', { title, content: `Synthetic ${title}`, keywords: ['synthetic-trigger'], keywordIgnoreCase: false }))

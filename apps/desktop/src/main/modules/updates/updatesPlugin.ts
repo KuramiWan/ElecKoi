@@ -43,7 +43,6 @@ export const updatesPlugin = {
     const detachUpdaterLogger = attachUpdaterLogger(updater, appLog)
 
     const enabled = app.isPackaged && process.platform === 'win32'
-    if (enabled) configureGitHubApiUpdates(updater)
     preserveWindowsUpdateInstallDirectory(updater, process.execPath, app.isPackaged, process.platform)
     const updates = new UpdateService({
       updater,
@@ -70,6 +69,8 @@ export const updatesPlugin = {
       },
       logger: appLog
     })
+    // Providers capture their HTTP executor when the feed is configured.
+    if (enabled) configureGitHubApiUpdates(updater)
     ctx.provide('updates', updates)
 
     const assertSender = (event: Electron.IpcMainInvokeEvent): void => assertTrustedDshClientFrame(
