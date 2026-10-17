@@ -1,5 +1,7 @@
 import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import { isDeepStrictEqual } from 'node:util'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export interface ConversationRuntimeState {
   variableStateJson: string
@@ -24,22 +26,22 @@ export function validateRuntimeState(state: {
 }): void {
   if (state.variableStateJson !== null) {
     const value: unknown = JSON.parse(state.variableStateJson)
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('历史变量状态必须是 JSON object。')
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '历史变量状态必须是 JSON object。', { what: '历史变量状态' })
   }
   if (state.settingLibraryStateJson !== null) {
     const rows: unknown = JSON.parse(state.settingLibraryStateJson)
-    if (!Array.isArray(rows)) throw new Error('历史设定状态必须是 JSON array。')
+    if (!Array.isArray(rows)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '历史设定状态必须是 JSON array。', { what: '历史设定状态' })
     const ids = new Set<string>()
     for (const value of rows) {
       const row = value as Record<string, unknown>
       if (!row || typeof row !== 'object' || Array.isArray(row) || !['entry', 'group'].includes(String(row.targetType))
         || !['upsert', 'delete'].includes(String(row.operation)) || typeof row.targetId !== 'string' || !row.targetId
         || typeof row.payloadJson !== 'string' || typeof row.updatedAt !== 'string' || !row.updatedAt) {
-        throw new Error('历史设定差异的标识或操作不正确。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '历史设定差异的标识或操作不正确。', { what: '历史设定差异' })
       }
       JSON.parse(row.payloadJson)
       const id = `${row.targetType}:${row.targetId}`
-      if (ids.has(id)) throw new Error('历史设定差异包含重复目标。')
+      if (ids.has(id)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '历史设定差异包含重复目标。', { what: '历史设定差异的目标' })
       ids.add(id)
     }
   }
@@ -52,7 +54,7 @@ export class ConversationStateRepository {
   private branch(conversationId: string): string {
     const row = this.store.native.prepare('SELECT activeBranchId FROM agent_conversations WHERE id=?')
       .get(conversationId) as { activeBranchId: string } | undefined
-    if (!row) throw new Error('找不到聊天状态所属的会话。')
+    if (!row) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到聊天状态所属的会话。', { what: '会话' })
     return row.activeBranchId
   }
 
@@ -64,7 +66,7 @@ export class ConversationStateRepository {
 
   recordTurn(conversationId: string, runtimeSessionId: string, turn: number,
     phase: 'before' | 'after', state: { variableStateJson: string | null; settingLibraryStateJson: string | null }): void {
-    if (!runtimeSessionId || !Number.isSafeInteger(turn) || turn < 1) throw new Error('聊天状态缺少有效的 Session 与轮次。')
+    if (!runtimeSessionId || !Number.isSafeInteger(turn) || turn < 1) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '聊天状态缺少有效的 Session 与轮次。', { field: 'runtimeSessionId' })
     validateRuntimeState(state)
     this.insert({ conversationId, branchId: this.branch(conversationId), runtimeSessionId,
       boundaryType: 'turn', boundaryId: String(turn), phase, turn, ...state })
@@ -72,7 +74,7 @@ export class ConversationStateRepository {
 
   recordInput(conversationId: string, runtimeSessionId: string, messageId: string,
     state: { variableStateJson: string | null; settingLibraryStateJson: string | null }): void {
-    if (!runtimeSessionId || !messageId) throw new Error('输入状态缺少正式消息标识。')
+    if (!runtimeSessionId || !messageId) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '输入状态缺少正式消息标识。', { field: 'messageId' })
     validateRuntimeState(state)
     this.insert({ conversationId, branchId: this.branch(conversationId), runtimeSessionId,
       boundaryType: 'input', boundaryId: messageId, phase: 'before', turn: null, ...state })
@@ -86,7 +88,7 @@ export class ConversationStateRepository {
       const parsed = (raw: string | null) => raw === null ? null : JSON.parse(raw)
       if (existing && (!isDeepStrictEqual(parsed(existing.variableStateJson), parsed(snapshot.variableStateJson))
         || !isDeepStrictEqual(parsed(existing.settingLibraryStateJson), parsed(snapshot.settingLibraryStateJson)))) {
-        throw new Error('已完成轮次的历史状态不能覆盖；重新生成必须先回退该轮次。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '已完成轮次的历史状态不能覆盖；重新生成必须先回退该轮次。', { what: '回退这一轮' })
       }
       if (existing) return
     }
@@ -101,7 +103,7 @@ export class ConversationStateRepository {
   replace(conversationId: string, snapshots: ConversationStateSnapshot[]): void {
     const branchId = this.branch(conversationId)
     for (const snapshot of snapshots) {
-      if (snapshot.conversationId !== conversationId || snapshot.branchId !== branchId) throw new Error('历史状态与当前聊天分支不匹配。')
+      if (snapshot.conversationId !== conversationId || snapshot.branchId !== branchId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '历史状态与当前聊天分支不匹配。', { what: '历史状态与当前聊天分支' })
       validateRuntimeState(snapshot)
     }
     this.store.withWriteTx(() => {
@@ -151,10 +153,10 @@ export class ConversationStateRepository {
     if (phase === 'before' && inputId) rows = this.list(conversationId).filter(row => row.runtimeSessionId === runtimeSessionId
       && row.boundaryType === 'input' && row.boundaryId === inputId && row.phase === 'before')
     if (!rows.length) rows = this.candidates(conversationId, runtimeSessionId, turn, phase)
-    if (rows.length > 1) throw new Error(`第 ${turn} 轮对应多个历史状态，不能任意选择；现有数据未修改。`)
+    if (rows.length > 1) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, `第 ${turn} 轮对应多个历史状态，不能任意选择；现有数据未修改。`, { what: '这一轮的历史状态' })
     const state = rows[0]
     if (!state || state.variableStateJson === null || state.settingLibraryStateJson === null) {
-      throw new Error(`缺少第 ${turn} 轮${phase === 'before' ? '之前' : '完成后'}的历史运行状态，未修改聊天。`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `缺少第 ${turn} 轮${phase === 'before' ? '之前' : '完成后'}的历史运行状态，未修改聊天。`, { what: '这一轮的历史运行状态' })
     }
     validateRuntimeState(state)
     return { variableStateJson: state.variableStateJson, settingLibraryStateJson: state.settingLibraryStateJson }

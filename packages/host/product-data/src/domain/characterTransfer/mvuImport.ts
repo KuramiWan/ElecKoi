@@ -8,6 +8,8 @@ import type {
   VariableObjectConfig, VariableValueType
 } from '@shared/contracts/variables/schemas'
 import { DEFAULT_VARIABLE_CONFIG_VERSION_ID } from '@shared/contracts/variables/schemas'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { assertMvuJson, loadMvuSchema, structuralMvuSchema, type ImportedMvuSchema } from './mvuSchema'
 
 type JsonObject = Record<string, unknown>
@@ -55,7 +57,7 @@ export function convertMvuVariables(
       assertMvuJson(state)
       return state
     } catch (error) {
-      throw new Error(`开场白 ${index + 1} 的变量初始化失败：${errorMessage(error)}`, { cause: error })
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `开场白 ${index + 1} 的变量初始化失败：${errorMessage(error)}`, { what: '开场白的变量初始化内容', path: `openings[${index}]` })
     }
   })
   const versions: VariableConfigVersion[] = []
@@ -137,43 +139,43 @@ function parseStateObject(source: string): JsonObject {
   const blocks = taggedBlocks(source, 'initvar')
   if (blocks.length) return blocks.reduce<JsonObject>((state, block) => mergeState(state, parseStateObject(block)), {})
   const clean = unfence(source)
-  if (!clean) throw new Error('变量初始化内容为空。')
+  if (!clean) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量初始化内容为空。', { what: '变量初始化内容' })
   try {
     const parsed: unknown = /^(?:\{|\[)/.test(clean) ? JSON5.parse(clean) : parseYaml(clean)
     const state = record(parsed)
-    if (!state) throw new Error('初始化内容必须是对象。')
+    if (!state) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '初始化内容必须是对象。', { what: '变量初始化内容' })
     assertMvuJson(state)
     return state
   } catch (error) {
-    throw new Error(`变量初始化内容无法解析：${errorMessage(error)}`, { cause: error })
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `变量初始化内容无法解析：${errorMessage(error)}`, { what: '变量初始化内容' })
   }
 }
 
 function parseYaml(source: string): unknown {
   const document = parseDocument(source, { merge: true, uniqueKeys: true })
-  if (document.errors.length) throw new Error(document.errors.map(error => error.message).join('; '))
+  if (document.errors.length) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, document.errors.map(error => error.message).join('; '), { what: '变量初始化内容的 YAML' })
   return document.toJS({ maxAliasCount: 64 }) as unknown
 }
 
 function applyOpeningPatch(seed: JsonObject, source: string): JsonObject {
   const parsed: unknown = JSON5.parse(unfence(source))
-  if (!Array.isArray(parsed)) throw new Error('JSONPatch 内容必须是操作数组。')
+  if (!Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'JSONPatch 内容必须是操作数组。', { what: 'JSONPatch 操作列表' })
   let state = structuredClone(seed)
   for (const candidate of parsed) {
     const operation = record(candidate)
-    if (!operation || typeof operation.path !== 'string') throw new Error('JSONPatch 操作缺少明确路径。')
+    if (!operation || typeof operation.path !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'JSONPatch 操作缺少明确路径。', { what: 'JSONPatch 操作路径' })
     const path = statePointer(operation.path)
     let normalized: JsonObject = { ...operation, path }
     if (operation.op === 'delta') {
       const current: unknown = jsonPatch.getValueByPointer(state, path)
       if (typeof current !== 'number' || typeof operation.value !== 'number' || !Number.isFinite(current + operation.value)) {
-        throw new Error('JSONPatch delta 只能更新已有的有限数值。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'JSONPatch delta 只能更新已有的有限数值。', { what: 'JSONPatch delta 的目标数值' })
       }
       normalized = { op: 'replace', path, value: current + operation.value }
     } else if (operation.op === 'insert') normalized.op = 'add'
     if (typeof operation.from === 'string') normalized.from = statePointer(operation.from)
     const result: unknown = jsonPatch.applyPatch(state, [normalized as unknown as Operation], true, true, true).newDocument
-    if (!record(result)) throw new Error('JSONPatch 不能把变量根节点改为非对象。')
+    if (!record(result)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'JSONPatch 不能把变量根节点改为非对象。', { what: 'JSONPatch 修改后的变量根节点' })
     assertMvuJson(result)
     state = result as JsonObject
   }
@@ -188,7 +190,7 @@ function taggedBlocks(source: string, tag: string): string[] {
   const expression = new RegExp(`<(${tag})(?:\\s[^>]*)?>([\\s\\S]*?)<\\/\\1\\s*>`, 'gi')
   const matches = [...source.matchAll(expression)]
   const remainder = source.replace(expression, '')
-  if (new RegExp(`<\\/?(?:${tag})(?:\\s|>)`, 'i').test(remainder)) throw new Error('变量初始化或补丁标签未完整闭合。')
+  if (new RegExp(`<\\/?(?:${tag})(?:\\s|>)`, 'i').test(remainder)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量初始化或补丁标签未完整闭合。', { what: '变量初始化或补丁标签' })
   return matches.map(match => match[2]!)
 }
 
@@ -242,11 +244,11 @@ function valueType(value: unknown): VariableValueType {
   if (Array.isArray(value)) return 'array'
   if (typeof value === 'number' || typeof value === 'boolean') return typeof value as 'number' | 'boolean'
   if (typeof value === 'string') return 'string'
-  throw new Error('变量值不是受支持的 JSON 类型。')
+  throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '变量值不是受支持的 JSON 类型。', { what: '变量值的类型', expected: 'JSON 类型' })
 }
 
 function checkKey(key: string, limit: number): void {
-  if (!key || key !== key.trim() || key.length > limit) throw new Error(`变量键无法由当前原生配置完整表示（长度限制 ${limit}）。`)
+  if (!key || key !== key.trim() || key.length > limit) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `变量键无法由当前原生配置完整表示（长度限制 ${limit}）。`, { field: 'key' })
 }
 
 function unfence(source: string): string { return source.trim().replace(/^```(?:yaml|yml|json|json5)?\s*\n/i, '').replace(/\n```\s*$/, '').trim() }
