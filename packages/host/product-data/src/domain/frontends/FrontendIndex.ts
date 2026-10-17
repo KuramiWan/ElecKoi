@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FrontendValue } from './types'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export type FrontendSection = 'projects' | 'character-settings' | 'application-settings'
 type Entries = Record<string, FrontendValue>
@@ -17,9 +19,9 @@ export class FrontendIndex {
     if (this.draft) return this.draft
     if (!existsSync(this.path)) return { version: 1, projects: {}, 'character-settings': {}, 'application-settings': {} }
     const value: unknown = JSON.parse(readFileSync(this.path, 'utf8'))
-    if (!isObject(value) || value.version !== 1) throw new Error('Unsupported or invalid frontend project index')
+    if (!isObject(value) || value.version !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Unsupported or invalid frontend project index', { what: '前端项目索引', path: this.path })
     for (const section of ['projects', 'character-settings', 'application-settings']) {
-      if (!isObject(value[section])) throw new Error(`Invalid frontend index section: ${section}`)
+      if (!isObject(value[section])) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `Invalid frontend index section: ${section}`, { what: '前端项目索引的分区', path: section })
     }
     return value as unknown as Index
   }
