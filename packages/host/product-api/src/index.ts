@@ -246,6 +246,9 @@ const TAVILY_WEB_PROVIDER = 'tavily'
 const TAVILY_API_KEY_REF = 'TAVILY_API_KEY'
 const DISPLAY_PREFERENCES_NAMESPACE = 'eleckoi-display-preferences'
 
+// 「确实不处理」的具名声明：语义见 packages/shared/src/foundation/swallowedFailure.ts。
+const bestEffort = (): void => {}
+
 
 export class ConversationChangeFeed extends RemoteChangeFeed<ConversationChange> {
   constructor() {
@@ -683,7 +686,11 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     try {
       const header: unknown = first ? JSON.parse(first) : undefined
       tavernHeader = !!header && typeof header === 'object' && !Array.isArray(header) && Object.hasOwn(header, 'chat_metadata')
-    } catch { /* A multiline native archive is parsed below. */ }
+    } catch {
+      // A multiline native archive is parsed below.
+      // 探测酒馆头失败只说明首行不是 JSON 头，不属于要报告的失败。
+      bestEffort()
+    }
     if (tavernHeader) {
       const imported = parseChatImport(json)
       const details = await this.create({ metadata: { characterId } })

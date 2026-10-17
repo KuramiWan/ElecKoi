@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
     const PresetsPage = React.lazy(() => import(new URL('eleckoi-page-presets.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.PresetsPage })))
     class PresetCatalog {
@@ -167,8 +167,8 @@ window.__ModuleLoader__.load({
             item?.accept?.()
             if (change?.kind === 'snapshot'
               || (change?.kind === 'configuration' && change.domain === 'agentPresets')) {
-              void this.refresh().catch(() => {})
-              for (const id of this.details.keys()) void this.read(id).catch(() => {})
+              void this.refresh().catch(failureAlreadyPublished)
+              for (const id of this.details.keys()) void this.read(id).catch(failureAlreadyPublished)
             }
           }
         } catch (error) {
@@ -249,8 +249,8 @@ window.__ModuleLoader__.load({
       ctx.effect(() => {
         catalog.start()
         const stopReset = ctx.on('connection/reset', () => {
-          void catalog.refresh().catch(() => {})
-          for (const id of catalog.details.keys()) void catalog.read(id).catch(() => {})
+          void catalog.refresh().catch(failureAlreadyPublished)
+          for (const id of catalog.details.keys()) void catalog.read(id).catch(failureAlreadyPublished)
         })
         return () => {
           stopReset()

@@ -15,6 +15,9 @@ export type {} from '@eleckoi/dsh-product-api/remote'
 export { invalidResponseFailure, MISSING_ERROR_ISSUE_PATH, MISSING_RESULT_ISSUE_PATH } from './invalidResponse.js'
 export type { InvalidResponseFailure, InvalidResponseIssue } from './invalidResponse.js'
 export { failureOrInvalidResponse, unwrapOrFail } from './unwrapFailure.js'
+export { bestEffort, failureAlreadyPublished, rejectionIsAwaitedElsewhere } from './swallowedFailure.js'
+export { internalFailure, INTERNAL_FAILURE_CODE } from './invalidResponse.js'
+export type { InternalFailure } from './invalidResponse.js'
 export type { RemoteResultEnvelope } from './unwrapFailure.js'
 
 export const inject = ['remote']

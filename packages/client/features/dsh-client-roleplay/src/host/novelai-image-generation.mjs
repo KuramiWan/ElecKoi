@@ -4,6 +4,10 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 const RESPONSE_LIMIT = 32 * 1024 * 1024
 const ERROR_LIMIT = 64 * 1024
 
+// 「确实不处理」的具名声明：语义见 packages/shared/src/foundation/swallowedFailure.ts。
+// 本文件是独立 bundle 的源，运行时取不到那个包，所以就地定义（同名同义，空函数）。
+const bestEffort = () => {}
+
 /** One Host queue serializes NovelAI requests across selected preset instances. */
 export function createNovelAiImageGeneration(ctx) {
   let queue = Promise.resolve()
@@ -86,6 +90,6 @@ async function readBody(response, limit) {
       chunks.push(value)
     }
     return Buffer.concat(chunks).toString('utf8')
-  } catch (error) { await reader.cancel().catch(() => {}); throw error }
+  } catch (error) { await reader.cancel().catch(bestEffort); throw error }
   finally { reader.releaseLock() }
 }

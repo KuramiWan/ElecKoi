@@ -7,6 +7,8 @@
 import { describe, expect, it } from 'vitest'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import {
+  INTERNAL_FAILURE_CODE,
+  internalFailure,
   INVALID_RESPONSE_CODE,
   MISSING_ERROR_ISSUE_PATH,
   MISSING_RESULT_ISSUE_PATH,
@@ -83,5 +85,27 @@ describe('unwrapOrFail', () => {
     }
     const coded = { code: 'eleckoi/internal' }
     expect(failureOrInvalidResponse(coded, 'x')).toBe(coded)
+  })
+})
+
+describe('internalFailure：载体不是产品失败时的折法', () => {
+  it('INTERNAL_FAILURE_CODE 逐字等于码表里的 internal', () => {
+    expect(INTERNAL_FAILURE_CODE).toBe(ELECKOI_FAILURE_CODES.internal)
+  })
+
+  it('把 provider 的 message 当诊断、code/status 放进详情', () => {
+    const failure = internalFailure('余额不足', { code: 'RATE_LIMIT', status: 429 })
+    expect(failure).toMatchObject({
+      isDSHRemoteError: true,
+      code: ELECKOI_FAILURE_CODES.internal,
+      message: '余额不足',
+      details: { code: 'RATE_LIMIT', status: 429 }
+    })
+  })
+
+  it('**不写 details.what**：否则渲染层会给通用句，provider 那句就到不了用户眼前', () => {
+    for (const details of [{}, { code: 'AUTH' }, { status: 401 }]) {
+      expect(internalFailure('认证失败', details).details).not.toHaveProperty('what')
+    }
   })
 })

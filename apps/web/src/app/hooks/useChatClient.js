@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChatSessions } from "../../modules/chat/index.js";
 import { getModelMeta, useModelRuntime } from "../../modules/models/index.js";
 import { usePersonaCharacters } from "../../modules/persona/index.js";
+import { failureAlreadyPublished } from "../../utils/swallowedFailure.js";
 
 export function useChatClient({ conversations, characters: characterCatalog, models: modelCatalog, persona: personaModel, navigation } = {}) {
   const [localActiveSection, setLocalActiveSection] = useState("messages");
@@ -166,7 +167,7 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     loadPersona()
       .then(() => loadCharacters())
       .catch((error) => setStatus(error.message));
-    chatSessions.loadSessions(initialChatId).catch(() => {});
+    chatSessions.loadSessions(initialChatId).catch(failureAlreadyPublished);
     return () => {
       chatSessions.abortActiveRequest();
     };

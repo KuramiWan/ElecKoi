@@ -5,6 +5,7 @@ import {
   normalizeConversationEntryIds,
   restoreConversationEntry,
 } from "../model/chatSessionView.js";
+import { failureAlreadyPublished } from "../../../utils/swallowedFailure.js";
 
 const EMPTY_SNAPSHOT = Object.freeze({ ui: Object.freeze({}) });
 const EMPTY_SUBSCRIBE = () => () => {};
@@ -23,7 +24,7 @@ export function useConversationListPreferences() {
     void preferences?.updateUi((current) => ({
       ...current,
       [key]: update(normalizeConversationEntryIds(current?.[key])),
-    })).catch(() => {});
+    })).catch(failureAlreadyPublished);
   }
 
   function togglePinChat(chatId) {

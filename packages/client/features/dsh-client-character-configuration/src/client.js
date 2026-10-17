@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     // 边界⑥ 的信封拆解只有一份实现：@eleckoi/dsh-product-api 的 client 面（本包是 desktop
     // bundle 成员，运行时用同一个 id 取）。它失败时抛出宿主给的失败对象本身，不再把码压成 message。
-    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
 
     const idle = { status: 'idle', value: null, error: '' }
 
@@ -169,10 +169,10 @@ window.__ModuleLoader__.load({
 
       refreshLoaded(characterId) {
         if (characterId) {
-          if (this.snapshots.has(characterId)) void this.read(characterId).catch(() => {})
+          if (this.snapshots.has(characterId)) void this.read(characterId).catch(failureAlreadyPublished)
           return
         }
-        for (const loadedId of this.snapshots.keys()) void this.read(loadedId).catch(() => {})
+        for (const loadedId of this.snapshots.keys()) void this.read(loadedId).catch(failureAlreadyPublished)
       }
 
       start() {
@@ -264,11 +264,11 @@ window.__ModuleLoader__.load({
       refreshLoaded(characterId) {
         super.refreshLoaded(characterId)
         if (characterId) {
-          if (this.conversationSnapshots.has(characterId)) void this.readConversations(characterId).catch(() => {})
+          if (this.conversationSnapshots.has(characterId)) void this.readConversations(characterId).catch(failureAlreadyPublished)
           return
         }
         for (const loadedId of this.conversationSnapshots.keys()) {
-          void this.readConversations(loadedId).catch(() => {})
+          void this.readConversations(loadedId).catch(failureAlreadyPublished)
         }
       }
 

@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-persona',
   factory(require) {
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
     class PersonaProfile {
       constructor(remote) {
         this.remote = remote
@@ -26,7 +26,7 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
         this.changeAbort = new AbortController()
         void this.consumeChanges(this.changeAbort.signal)
       }
@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
           for await (const change of stream) {
             if (signal.aborted || this.disposed) break
             if (change?.kind === 'snapshot' || change?.domain === 'persona') {
-              await this.refresh().catch(() => {})
+              await this.refresh().catch(failureAlreadyPublished)
             }
           }
         } catch (error) {
@@ -109,7 +109,7 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiPersona', profile)
       ctx.effect(() => {
         profile.start()
-        const stopReset = ctx.on('connection/reset', () => { void profile.refresh().catch(() => {}) })
+        const stopReset = ctx.on('connection/reset', () => { void profile.refresh().catch(failureAlreadyPublished) })
         return () => {
           stopReset()
           profile.dispose()

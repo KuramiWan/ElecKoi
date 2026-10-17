@@ -5,6 +5,7 @@ import {
 } from "../../modules/persona/index.js";
 import { showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
+import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const EMPTY_CHARACTERS = { active_character_id: "", groups: [], items: [] };
 const EMPTY_PERSONA = { user_name: "用户", user_avatar: "" };
@@ -39,7 +40,7 @@ export function CharacterManagerWindow({ characterCatalog, personaModel, renderC
   useEffect(() => {
     applyAppearanceTheme(null);
     document.title = "角色卡管理器 - ElecKoi";
-    showCurrentWindow().catch(() => {});
+    showCurrentWindow().catch(bestEffort);
     const updateCharacters = () => {
       const snapshot = characterCatalog.getSnapshot();
       if (snapshot.status === "ready") {

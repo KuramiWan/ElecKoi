@@ -2,6 +2,7 @@ import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretRight, CheckCircle, WarningCircle } from "../../../ui/icons/interfaceIcons.jsx";
 import { ImportIcon, XIcon } from "../../../ui/icons/index.jsx";
+import { bestEffort } from "../../../utils/swallowedFailure.js";
 
 const SOURCES = [
   { id: "eleckoi", title: "本项目角色卡", detail: "导入 ElecKoi 导出的角色卡" },
@@ -19,7 +20,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
   const [error, setError] = useState("");
 
   const close = useCallback(async () => {
-    if (preview?.token) await onDiscard(preview.token).catch(() => {});
+    if (preview?.token) await onDiscard(preview.token).catch(bestEffort);
     onClose();
   }, [onClose, onDiscard, preview?.token]);
 

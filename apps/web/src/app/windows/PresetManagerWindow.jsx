@@ -8,6 +8,7 @@ import {
 } from "../../modules/presets/index.js";
 import { showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
+import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const ALL_PRESETS = "全部预设";
 
@@ -46,7 +47,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   useEffect(() => {
     applyAppearanceTheme(null);
     document.title = "预设管理器 - ElecKoi";
-    showCurrentWindow().catch(() => {});
+    showCurrentWindow().catch(bestEffort);
     const update = () => {
       const snapshot = presetCatalog.getSnapshot();
       if (snapshot.status === "ready") acceptCatalog(snapshot.catalog);

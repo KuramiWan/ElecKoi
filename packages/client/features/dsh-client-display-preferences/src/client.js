@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-display-preferences',
   factory(require) {
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'eleckoi-display-preferences'
 
     class DisplayPreferences {
@@ -81,7 +81,8 @@ window.__ModuleLoader__.load({
           )
           return this.adopt(snapshot)
         })
-        this.writeQueue = operation.catch(() => {})
+        // `operation` 由调用方 await（`return operation`）；这里只为队列只留一条拒绝。
+        this.writeQueue = operation.catch(rejectionIsAwaitedElsewhere)
         return operation
       }
 
@@ -98,7 +99,7 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
       }
 
       dispose() {
@@ -114,7 +115,7 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiDisplayPreferences', model)
       ctx.effect(() => {
         model.start()
-        const refresh = () => { void model.refresh().catch(() => {}) }
+        const refresh = () => { void model.refresh().catch(failureAlreadyPublished) }
         const stopReset = ctx.on('connection/reset', refresh)
         const stopSettings = ctx.remote.$on('settings/document-updated', ns => {
           if (ns === SETTINGS_NAMESPACE) refresh()

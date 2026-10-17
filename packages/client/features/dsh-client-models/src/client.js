@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'eleckoi-client-models'
     const protocols = { responses: 'openai-responses', chat_completions: 'openai-completions',
       anthropic_messages: 'anthropic-messages', google_gemini: 'google-generative-ai' }
@@ -89,7 +89,8 @@ window.__ModuleLoader__.load({
 
       enqueue(run) {
         const task = this.writeQueue.then(run)
-        this.writeQueue = task.catch(() => {})
+        // `task` 由调用方 await（`return task`）；这里只为队列只留一条拒绝。
+        this.writeQueue = task.catch(rejectionIsAwaitedElsewhere)
         return task
       }
 
@@ -377,7 +378,7 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
       }
 
       dispose() {
@@ -401,7 +402,7 @@ window.__ModuleLoader__.load({
       }, () => React.createElement(NavigationIcon)))
       ctx.effect(() => {
         catalog.start()
-        const stopReset = ctx.on('connection/reset', () => { catalog.builtinModels.clear(); void catalog.refresh().catch(() => {}) })
+        const stopReset = ctx.on('connection/reset', () => { catalog.builtinModels.clear(); void catalog.refresh().catch(failureAlreadyPublished) })
         return () => {
           stopReset()
           catalog.dispose()

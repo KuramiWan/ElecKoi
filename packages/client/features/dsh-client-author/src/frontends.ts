@@ -34,7 +34,7 @@ export class NativeFrontendClient {
             while (current() && requested > accepted) {
               const result = await this.projects.workspace(fixedOwner)
               if (!current()) return
-              if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+              if (!result.ok) throw result.error
               const workspace = result.value
               if (workspace.scope !== fixedOwner.scope || fixedOwner.scope === 'character' && workspace.characterId !== fixedOwner.characterId) throw new Error('Frontend workspace owner mismatch')
               if (workspace.revision < accepted) throw new Error('Frontend workspace revision decreased')

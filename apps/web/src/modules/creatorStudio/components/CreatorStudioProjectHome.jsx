@@ -24,6 +24,7 @@ import {
   CreatorStudioProjectsIcon,
   CreatorStudioSkillsIcon,
 } from "./CreatorStudioNavigationIcons.jsx";
+import { failureAlreadyPublished } from "../../../utils/swallowedFailure.js";
 
 const CREATE_OPTIONS = [
   { id: "blank", title: "从零创作角色", description: "建立空白角色项目", Icon: FolderSimplePlus },
@@ -447,8 +448,8 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
     const stopProjects = projectCatalog.subscribe(updateProjects);
     updateCharacters();
     updateProjects();
-    void characterCatalog.refresh().catch(() => {});
-    void projectCatalog.refresh().catch(() => {});
+    void characterCatalog.refresh().catch(failureAlreadyPublished);
+    void projectCatalog.refresh().catch(failureAlreadyPublished);
     return () => { stopCharacters(); stopProjects(); };
   }, [characterCatalog, projectCatalog]);
 

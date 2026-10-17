@@ -26,6 +26,7 @@ import { hasVariableSearchResults, variableTreeNodes } from "../model/variableCo
 import { VariableConfigInspector } from "./VariableConfigInspector.jsx";
 import { VariableConfigManager } from "./VariableConfigManager.jsx";
 import { VariableConfigTree, VariableEntryIcon, VariableGroupIcon, VariableTreeActionsContext, VARIABLE_INITIALIZATION_OBJECT_ID } from "./VariableConfigTree.jsx";
+import { reportFailure } from "../../../utils/failureText.js";
 
 function isTextInput(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
@@ -242,7 +243,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     persistedRef.current = applyViewState(persistedRef.current);
     setConfig((current) => applyViewState(current));
     setPersisted((current) => applyViewState(current));
-    void variables.saveViewState(characterId, next).catch(() => {});
+    void variables.saveViewState(characterId, next).catch(error => reportFailure(error, "保存变量面板视图状态"))
   }
 
   function openContextMenu(event, node) {

@@ -199,7 +199,10 @@ async function checkClientImplementation(root, row, members) {
       unwrapOrFail: (result, what) => {
         if (!result?.ok) throw new Error(what)
         return result.value
-      }
+      },
+      failureAlreadyPublished: () => {},
+      rejectionIsAwaitedElsewhere: () => {},
+      bestEffort: () => {}
     }
     throw new Error(`接口探针不支持执行依赖：${name}`)
   }) } } }

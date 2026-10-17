@@ -3,7 +3,8 @@ export async function requestNativeFrontend(service, owner, method, params = {})
   if (!service) throw new Error('原生前端插件未启用');
   const remote = service.projects;
   const result = await invoke();
-  if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
+  // 直接抛失败对象：码与详情逐字保留；折叠按结构标记识别，不需要 Error 实例。
+  if (!result.ok) throw result.error;
   return result.value;
   function invoke() {
   switch (method) {

@@ -12,6 +12,8 @@
  * 所以桩按同一个 id 返回同一份实现——**测试里不许再抄第二份 `if (!result?.ok) throw new Error(...)`**。
  */
 import {
+  INTERNAL_FAILURE_CODE,
+  internalFailure,
   MISSING_ERROR_ISSUE_PATH,
   MISSING_RESULT_ISSUE_PATH,
   invalidResponseFailure
@@ -26,8 +28,13 @@ export function dshClientRequire(name: string): any {
       unwrapOrFail,
       failureOrInvalidResponse,
       invalidResponseFailure,
+      internalFailure,
+      INTERNAL_FAILURE_CODE,
       MISSING_ERROR_ISSUE_PATH,
-      MISSING_RESULT_ISSUE_PATH
+      MISSING_RESULT_ISSUE_PATH,
+      failureAlreadyPublished: () => {},
+      rejectionIsAwaitedElsewhere: () => {},
+      bestEffort: () => {}
     }
   }
   throw new Error(`Unexpected client module ${name}`)

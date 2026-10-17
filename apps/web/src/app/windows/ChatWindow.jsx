@@ -8,6 +8,7 @@ import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { MainPageContext } from "./MainPageContext.jsx";
+import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const CHAT_WINDOW_STYLE = {
   "--side-panel-width": "0px",
@@ -19,7 +20,7 @@ export function ChatWindow({ conversations, characters, characterConfiguration, 
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
 
   useEffect(() => {
-    showCurrentWindow().catch(() => {});
+    showCurrentWindow().catch(bestEffort);
   }, []);
 
   useEffect(() => {

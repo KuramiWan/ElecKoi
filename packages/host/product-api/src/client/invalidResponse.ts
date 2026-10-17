@@ -42,6 +42,9 @@ export const MISSING_RESULT_ISSUE_PATH = 'result'
 /** 信封不成立时记进 `details.issues` 的路径：拿到了 `result`，但它的失败分支没有可用失败。 */
 export const MISSING_ERROR_ISSUE_PATH = 'result.error'
 
+/** 兜底码。必须与 `ELECKOI_FAILURE_CODES.internal` 逐字相同（有用例守）。 */
+export const INTERNAL_FAILURE_CODE = 'eleckoi/internal'
+
 /** 一条契约违例（与 `contracts/errors/details.ts` 的 `EleckoiFailureIssue` 同形）。 */
 export interface InvalidResponseIssue {
   readonly path: string
@@ -80,4 +83,30 @@ export function invalidResponseFailure(
     message: what,
     details: { issues: [{ path, message: what }] }
   }
+}
+
+/** 兜底失败的形状：与官方线上形状一致，详情是自由扁平对象（`internal` 码的契约形状）。 */
+export interface InternalFailure {
+  readonly isDSHRemoteError: true
+  readonly code: string
+  readonly message: string
+  readonly details: Readonly<Record<string, unknown>>
+}
+
+/**
+ * 兜底失败：拿不到更有语义的码时的形状。
+ *
+ * 用在"载体不是产品失败"的地方——例如 LLM 的 `LlmFailure`（`{ message, code, status }`：
+ * DSH 的 provider 码，不在我们的码表里）。把 provider 码**原样当产品码**传下去会污染码表，
+ * 所以折成兜底码，并把 provider 的 `code` / `status` 记进详情做诊断。
+ *
+ * ⚠️ **不写 `details.what`**：渲染层看到带 `what` 的兜底码会给通用句；不写 `what` 时它退回
+ * 开发者诊断，于是 provider 自己那句（常是"余额不足"这类用户看得懂的话）仍然能到用户眼前。
+ *
+ * @param message - 开发者诊断：优先用载体自己的 message。
+ * @param details - 额外诊断（provider 的 code / status 等）。
+ * @returns 带兜底码的失败对象。
+ */
+export function internalFailure(message: string, details: Readonly<Record<string, unknown>> = {}): InternalFailure {
+  return { isDSHRemoteError: true, code: INTERNAL_FAILURE_CODE, message, details }
 }

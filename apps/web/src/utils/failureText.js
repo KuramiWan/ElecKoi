@@ -21,6 +21,7 @@
  * 普通对象。**永不抛**。
  */
 import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { describeFailure } from "@shared/foundation/describeFailure";
 import { foldFailure } from "@shared/foundation/failure";
 
 /** 认不出语义时的通用说法（不是某个码的文案）。 */
@@ -173,7 +174,7 @@ export function resolveFailure(failure, options = {}) {
     text: userText(failure, folded, fallbackText(options.fallback)),
     code: folded.code,
     details: folded.details,
-    diagnostic: `${RENDERER_FAILURE_LOG_MARKER} [${folded.code}] ${folded.message}${detailSuffix(folded.details)}`,
+    diagnostic: `${RENDERER_FAILURE_LOG_MARKER} ${describeFailure(folded)}`,
     channel,
   };
 }
@@ -274,11 +275,6 @@ function developerMessage(failure) {
 function fallbackText(fallback) {
   const text = typeof fallback === "string" ? fallback.trim() : "";
   return text || GENERIC_FAILURE_TEXT;
-}
-
-function detailSuffix(details) {
-  const formatted = formatFailureDetails(details);
-  return formatted ? `（${formatted}）` : "";
 }
 
 function detailString(value) {

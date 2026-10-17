@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-web-search',
   factory(require) {
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'web-search-tavily'
     const TAVILY_API_KEY_REF = 'TAVILY_API_KEY'
     const DEEPSEEK_NAMESPACE = 'eleckoi-web-deepseek'
@@ -169,7 +169,7 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
       }
 
       dispose() {
@@ -185,7 +185,7 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiWebSearch', settings)
       ctx.effect(() => {
         settings.start()
-        const refresh = () => { void settings.refresh().catch(() => {}) }
+        const refresh = () => { void settings.refresh().catch(failureAlreadyPublished) }
         const stopReset = ctx.on('connection/reset', refresh)
         const stopCredentials = ctx.remote.$on('credentials/reference-updated', ref => {
           if (ref === settings.getSnapshot().apiKeyRef || ref === settings.getSnapshot().deepseek.apiKeyRef) refresh()

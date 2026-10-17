@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
     /** Own one independent official Client Session reference for the Studio surface. */
     class CreatorStudioSessions {
       constructor(remote, sessions) {
@@ -167,7 +167,7 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
         this.changeAbort = new AbortController()
         void this.consumeChanges(this.changeAbort.signal)
       }
@@ -180,7 +180,7 @@ window.__ModuleLoader__.load({
           for await (const change of stream) {
             if (signal.aborted || this.disposed) break
             if (change?.kind === 'snapshot' || change?.domain === 'creatorProjects') {
-              await this.refresh().catch(() => {})
+              await this.refresh().catch(failureAlreadyPublished)
             }
           }
         } catch (error) {
@@ -323,7 +323,7 @@ window.__ModuleLoader__.load({
       for (const name of Object.keys(composerSeats)) projectSeat(name, studioSeat(name))
       ctx.effect(() => {
         projects.start()
-        const stopReset = ctx.on('connection/reset', () => { void projects.refresh().catch(() => {}) })
+        const stopReset = ctx.on('connection/reset', () => { void projects.refresh().catch(failureAlreadyPublished) })
         return () => {
           stopReset()
           projects.dispose()
