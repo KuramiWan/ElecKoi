@@ -1,3 +1,6 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
+
 export const FRONTEND_VIEWS = ['main', 'chat', 'character-editor', 'character-manager', 'preset-manager', 'creator-studio'];
 const registrant = '@eleckoi/application-frontend';
 
@@ -22,24 +25,24 @@ export function collectFrontendTargets(slots) {
 export function validateFrontendBindings(project, targets, view) {
   if (!project) return [];
   const manifest = project.manifest;
-  if (!manifest || manifest.manifestVersion !== 1) throw new Error(`${project.name}: 不支持的前端 manifest 版本`);
+  if (!manifest || manifest.manifestVersion !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `${project.name}: 不支持的前端 manifest 版本`, { what: '前端清单版本', expected: '1' });
   // The project version bounds the manifest; each document declares its own runtime.
-  if (!/^(0\.1\.|1\.)/.test(manifest.sdkVersion)) throw new Error(`${project.name}: 不支持 SDK ${manifest.sdkVersion}`);
-  for (const binding of manifest.bindings || []) if (binding.view && !FRONTEND_VIEWS.includes(binding.view)) throw new Error(`${project.name}: 未注册的窗口 ${binding.view}`);
-  for (const binding of manifest.bindings || []) if (binding.target === 'page' && binding.view && binding.view !== 'main') throw new Error(`${project.name}: main 页面 ${binding.pageId} 不属于窗口 ${binding.view}`);
+  if (!/^(0\.1\.|1\.)/.test(manifest.sdkVersion)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `${project.name}: 不支持 SDK ${manifest.sdkVersion}`, { what: '前端 SDK 版本', expected: '0.1.x 或 1.x' });
+  for (const binding of manifest.bindings || []) if (binding.view && !FRONTEND_VIEWS.includes(binding.view)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `${project.name}: 未注册的窗口 ${binding.view}`, { what: '窗口' });
+  for (const binding of manifest.bindings || []) if (binding.target === 'page' && binding.view && binding.view !== 'main') throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, `${project.name}: main 页面 ${binding.pageId} 不属于窗口 ${binding.view}`, { what: '页面与所属窗口' });
   const bindings = (manifest.bindings || []).filter(binding => (!binding.view || binding.view === view) && (binding.target !== 'page' || view === 'main'));
   for (const binding of bindings) {
     if (binding.target === 'root') continue;
     const target = targets.find(item => binding.target === 'page' ? item.target === 'page' && item.pageId === binding.pageId
       : item.target === 'slot' && item.slot === binding.slot);
-    if (!target) throw new Error(`${project.name} · ${binding.entryFile}: 未注册的 ${binding.target} ${binding.pageId || binding.slot}`);
-    if (['keyed', 'list'].includes(target.kind) && !binding.entryKey) throw new Error(`${binding.slot}: 必须指定 entryKey`);
+    if (!target) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `${project.name} · ${binding.entryFile}: 未注册的 ${binding.target} ${binding.pageId || binding.slot}`, { what: binding.target === 'page' ? '前端页面' : '前端挂载点' });
+    if (['keyed', 'list'].includes(target.kind) && !binding.entryKey) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `${binding.slot}: 必须指定 entryKey`, { field: 'entryKey' });
   }
-  if (bindings.filter(binding => binding.target === 'root').length > 1) throw new Error(`${project.name}: 当前窗口存在多个 root 绑定`);
+  if (bindings.filter(binding => binding.target === 'root').length > 1) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `${project.name}: 当前窗口存在多个 root 绑定`, { what: 'root 绑定' });
   const identities = new Set();
   for (const binding of bindings) {
     const identity = binding.target === 'page' ? `main:${binding.pageId}` : `${binding.slot || 'root'}:${binding.entryKey || ''}`;
-    if (identities.has(identity)) throw new Error(`${project.name}: 重复绑定 ${identity}`);
+    if (identities.has(identity)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `${project.name}: 重复绑定 ${identity}`, { what: '前端绑定' });
     identities.add(identity);
   }
   return bindings;
