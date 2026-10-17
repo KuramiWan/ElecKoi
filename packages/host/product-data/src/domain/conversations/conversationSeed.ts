@@ -1,4 +1,6 @@
 import type { OpeningMessageOption } from '@shared/contracts/entities/chat'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { ElecKoiDatabase } from '@product-data/storage/sqlite/SqliteDatabase'
 import type { SettingLibraryEntry } from '@shared/contracts/settingLibrary/schemas'
 import type { VariableConfig } from '@shared/contracts/variables/schemas'
@@ -35,7 +37,7 @@ export function resolveConversationSeed(
   const openingOptions = (entry?.openingMessages ?? []).map((candidate) => {
     const versionId = candidate.variableVersionId || config.activeVersionId
     const version = config.versions.find((item) => item.id === versionId)
-    if (!version) throw new Error(`开场白“${candidate.title || '未命名开场白'}”绑定的变量版本不存在。`)
+    if (!version) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `开场白“${candidate.title || '未命名开场白'}”绑定的变量版本不存在。`, { what: '变量版本' })
     return {
       id: candidate.id, title: candidate.title, content: candidate.content,
       variableVersionId: versionId,

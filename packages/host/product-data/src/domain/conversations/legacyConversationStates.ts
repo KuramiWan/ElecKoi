@@ -1,10 +1,12 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { validateRuntimeState } from './ConversationStateRepository'
 
 type Row = Record<string, string | number | null>
 
 function stringCell(row: Row, key: string, allowEmpty = false): string {
   const value = row[key]
-  if (typeof value !== 'string' || (!allowEmpty && !value)) throw new Error(`旧聊天数据缺少有效字段 ${key}。`)
+  if (typeof value !== 'string' || (!allowEmpty && !value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, `旧聊天数据缺少有效字段 ${key}。`, { what: '旧聊天数据' })
   return value
 }
 
@@ -18,7 +20,7 @@ export function legacyConversationStates(tables: Record<string, Row[]>): Row[] {
     conversationId: stringCell(row, 'conversationId'), kind: stringCell(row, 'kind'), variableStateJson: stringCell(row, 'variableStateJson', true) }))
   const replyRows = (tables.agent_responses ?? []).map(row => {
     if (row.dshTurn !== null && (typeof row.dshTurn !== 'number' || !Number.isSafeInteger(row.dshTurn) || row.dshTurn < 1)) {
-      throw new Error('旧回复的正式轮次不正确。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧回复的正式轮次不正确。', { what: '旧回复的正式轮次' })
     }
     return { ...row, id: stringCell(row, 'id'), conversationId: stringCell(row, 'conversationId'),
       turnId: stringCell(row, 'turnId'), runtimeThreadId: stringCell(row, 'runtimeThreadId', true),
@@ -41,26 +43,26 @@ export function legacyConversationStates(tables: Record<string, Row[]>): Row[] {
   for (const row of tables.agent_setting_snapshots ?? []) {
     const ownerId = stringCell(row, 'ownerId')
     const owner = row.ownerType === 'turn' ? turns.get(ownerId) : row.ownerType === 'response' ? repliesById.get(ownerId) : undefined
-    if (!owner || owner.conversationId !== row.conversationId) throw new Error('旧设定快照缺少明确的消息归属，未删除数据。')
+    if (!owner || owner.conversationId !== row.conversationId) throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧设定快照缺少明确的消息归属，未删除数据。', { what: '旧设定快照的消息归属' })
     settings.set(`${row.ownerType}:${ownerId}`, row)
   }
   const result: Row[] = []
   for (const input of turns.values()) {
     const conversation = conversations.get(input.conversationId)
-    if (!conversation || typeof input.variableStateJson !== 'string') throw new Error('旧输入状态缺少有效的聊天归属或变量记录。')
+    if (!conversation || typeof input.variableStateJson !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧输入状态缺少有效的聊天归属或变量记录。', { what: '旧输入状态的聊天归属或变量记录' })
     const owners = responses.get(input.id) ?? []
     const sessions = new Set(owners.map(row => row.runtimeThreadId).filter((id): id is string => typeof id === 'string' && !!id))
     if (typeof conversation.runtimeThreadId === 'string' && conversation.runtimeThreadId) sessions.add(conversation.runtimeThreadId)
     for (const placement of placements.get(input.id) ?? []) {
-      if (branches.get(placement.branchId)?.conversationId !== input.conversationId) throw new Error('旧输入状态与分支归属不一致。')
+      if (branches.get(placement.branchId)?.conversationId !== input.conversationId) throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧输入状态与分支归属不一致。', { what: '旧输入状态与分支归属' })
       for (const runtimeSessionId of sessions) {
         const numbers = new Set(owners.filter(row => row.runtimeThreadId === runtimeSessionId && row.dshTurn !== null).map(row => row.dshTurn))
         const turn = numbers.size === 1 ? [...numbers][0]! : null
         const state = { variableStateJson: input.variableStateJson,
           settingLibraryStateJson: settings.get(`turn:${input.id}`)?.stateJson ?? null }
-        if (state.settingLibraryStateJson !== null && typeof state.settingLibraryStateJson !== 'string') throw new Error('旧设定快照格式不正确。')
+        if (state.settingLibraryStateJson !== null && typeof state.settingLibraryStateJson !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧设定快照格式不正确。', { what: '旧设定快照' })
         validateRuntimeState(state as { variableStateJson: string; settingLibraryStateJson: string | null })
-        if (input.kind !== 'opening' && input.kind !== 'user') throw new Error('旧输入状态的轮次种类不受支持。')
+        if (input.kind !== 'opening' && input.kind !== 'user') throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧输入状态的轮次种类不受支持。', { what: '旧输入状态的轮次种类', expected: 'opening 或 user' })
         result.push({ conversationId: input.conversationId, branchId: placement.branchId, runtimeSessionId,
           boundaryType: input.kind === 'opening' ? 'opening' : 'input', boundaryId: input.id,
           phase: 'before', turn, ...state })
@@ -70,11 +72,11 @@ export function legacyConversationStates(tables: Record<string, Row[]>): Row[] {
   for (const reply of replyRows) {
     const input = turns.get(reply.turnId)
     if (!input || input.conversationId !== reply.conversationId || typeof reply.variableStateJson !== 'string') {
-      throw new Error('旧回复状态与输入归属不一致。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧回复状态与输入归属不一致。', { what: '旧回复状态的输入归属' })
     }
     const state = { variableStateJson: reply.variableStateJson,
       settingLibraryStateJson: settings.get(`response:${reply.id}`)?.stateJson ?? null }
-    if (state.settingLibraryStateJson !== null && typeof state.settingLibraryStateJson !== 'string') throw new Error('旧设定快照格式不正确。')
+    if (state.settingLibraryStateJson !== null && typeof state.settingLibraryStateJson !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧设定快照格式不正确。', { what: '旧设定快照' })
     validateRuntimeState(state as { variableStateJson: string; settingLibraryStateJson: string | null })
     for (const placement of placements.get(reply.turnId) ?? []) result.push({
       conversationId: reply.conversationId, branchId: placement.branchId, runtimeSessionId: reply.runtimeThreadId,
