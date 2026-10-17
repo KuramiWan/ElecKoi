@@ -1,4 +1,6 @@
 import { and, eq } from 'drizzle-orm'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { ElecKoiDatabase } from '@product-data/storage/sqlite/SqliteDatabase'
 import { agentConversations, chatSessions, chatSessionVariableStates } from '@product-data/storage/sqlite/schema/common'
 
@@ -6,7 +8,7 @@ export function readConversationVariableBinding(conversationId: string, db: Elec
   const binding = db.select({ characterId: chatSessions.characterId, versionId: agentConversations.variableVersionId })
     .from(agentConversations).innerJoin(chatSessions, eq(chatSessions.id, agentConversations.id))
     .where(eq(agentConversations.id, conversationId)).get()
-  if (!binding) throw new Error('找不到变量配置所属的聊天存档。')
+  if (!binding) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到变量配置所属的聊天存档。', { what: '聊天存档' })
   return binding
 }
 
@@ -19,18 +21,18 @@ export function conversationVariableVersionIds(characterId: string, db: ElecKoiD
 function requireConversation(conversationId: string, db: ElecKoiDatabase): void {
   const session = db.select({ id: chatSessions.id }).from(chatSessions)
     .where(eq(chatSessions.id, conversationId)).get()
-  if (!session) throw new Error('找不到变量状态所属的聊天存档。')
+  if (!session) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到变量状态所属的聊天存档。', { what: '聊天存档' })
 }
 
 function validatedObjectJson(raw: string): string {
   let value: unknown
   try {
     value = JSON.parse(raw || '{}')
-  } catch (error) {
-    throw new Error('当前变量状态不是合法 JSON。', { cause: error })
+  } catch {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '当前变量状态不是合法 JSON。', { what: '当前变量状态' })
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('当前变量状态必须是 JSON object。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '当前变量状态必须是 JSON object。', { what: '当前变量状态' })
   }
   return raw || '{}'
 }
