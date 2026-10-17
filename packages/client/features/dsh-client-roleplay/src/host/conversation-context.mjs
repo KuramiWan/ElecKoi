@@ -362,6 +362,12 @@ export function projectProductHistory(messages, context) {
   ]
 }
 
+/** Visible user input and final replies of earlier turns, without tool steps or FINAL tags. */
+export function visibleDialogueHistory(messages) {
+  return previousTurnDialogue(Array.isArray(messages) ? messages : [])
+    .map((message) => ({ role: message.role, content: messageText(message) }))
+}
+
 function previousTurnDialogue(messages) {
   const history = []
   let finalReply

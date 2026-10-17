@@ -396,6 +396,19 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
     expect(readDshSessionLog(f.sessionRoot, f.conversationId).events).toEqual(before)
   })
 
+  it('writes the visible conversation history into the setting library bridge', async () => {
+    const f = await fixture(true, { finalReply: true })
+    await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, '合成新输入')
+    const bridge = JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId,
+      'eleckoi-setting-library-state.json'), 'utf8'))
+    expect(bridge.history).toEqual([
+      { role: 'assistant', content: '合成开场白' },
+      { role: 'user', content: '合成旧输入' },
+      { role: 'assistant', content: 'Synthetic reply' },
+      { role: 'user', content: '合成新输入' }
+    ])
+  })
+
   it('rewinds an old native session and prepares and starts regeneration through Remote', async () => {
     const f = await fixture()
     await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'regenerateMessage',
@@ -406,6 +419,11 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
       .filter(event => event.type === 'assistant/message')).toHaveLength(0)
     expect(contextBridge(f)).toMatchObject({ historyMode: 'prefix', currentUserInput: '合成替换输入',
       history: [{ role: 'assistant', content: '合成开场白' }] })
+    expect(JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId,
+      'eleckoi-setting-library-state.json'), 'utf8')).history).toEqual([
+      { role: 'assistant', content: '合成开场白' },
+      { role: 'user', content: '合成替换输入' }
+    ])
     expect(JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, `${f.conversationId}.json`), 'utf8')).model)
       .toMatchObject({ provider: 'test', model: 'test', temperature: 0.6, topP: 0.8 })
     await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'startRegeneration',
