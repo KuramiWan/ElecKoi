@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CHAT_IMAGE_LIMITS } from "@shared/contracts/agent/imageLimits";
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 
 const CHAT_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const CHAT_IMAGE_EXTENSION_TYPES = new Map([
@@ -27,21 +29,21 @@ export function useChatInputImages({ modelConfig, isSending }) {
   function addInputImages(files) {
     const candidates = [...(files || [])];
     if (!candidates.length) return;
-    if (isSending) throw new Error("正在生成，暂时无法添加图片。");
+    if (isSending) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, "正在生成，暂时无法添加图片。", { what: "等当前回复生成完成" });
     if (inputImagesRef.current.length + candidates.length > CHAT_IMAGE_LIMITS.maxImagesPerMessage) {
-      throw new Error(`每条消息最多添加 ${CHAT_IMAGE_LIMITS.maxImagesPerMessage} 张图片。`);
+      throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, `每条消息最多添加 ${CHAT_IMAGE_LIMITS.maxImagesPerMessage} 张图片。`, { what: "每条消息的图片数量", field: "files" });
     }
     const validated = candidates.map((file) => {
       const mediaType = resolveImageMediaType(file);
-      if (!mediaType) throw new Error("仅支持 PNG、JPEG、WebP 和 GIF 图片。");
-      if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new Error("图片内容为空。");
-      if (file.size > CHAT_IMAGE_LIMITS.maxImageBytes) throw new Error("单张图片不能超过 20 MB。");
+      if (!mediaType) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "仅支持 PNG、JPEG、WebP 和 GIF 图片。", { what: "图片格式", field: "type" });
+      if (!Number.isSafeInteger(file.size) || file.size <= 0) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片内容为空。", { what: "图片内容", field: "size" });
+      if (file.size > CHAT_IMAGE_LIMITS.maxImageBytes) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "单张图片不能超过 20 MB。", { what: "单张图片的大小", field: "size" });
       return { file, mediaType };
     });
     const candidateBytes = validated.reduce((total, image) => total + image.file.size, 0);
     const currentBytes = inputImagesRef.current.reduce((total, image) => total + image.bytes, 0);
     if (currentBytes + candidateBytes > CHAT_IMAGE_LIMITS.maxMessageImageBytes) {
-      throw new Error("每条消息的图片总计不能超过 200 MB。");
+      throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "每条消息的图片总计不能超过 200 MB。", { what: "每条消息的图片总大小", field: "files" });
     }
     const admitted = validated.map(({ file, mediaType }) => ({
       localId: globalThis.crypto?.randomUUID?.() || `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -74,7 +76,7 @@ export function useChatInputImages({ modelConfig, isSending }) {
 export async function encodeImageDraft(image) {
   const bytes = new Uint8Array(await image.file.arrayBuffer());
   const mediaType = detectImageMediaType(bytes);
-  if (!mediaType) throw new Error("图片格式无法识别，仅支持 PNG、JPEG、WebP 和 GIF。");
+  if (!mediaType) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片格式无法识别，仅支持 PNG、JPEG、WebP 和 GIF。", { what: "图片格式", field: "type" });
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));

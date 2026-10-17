@@ -38,6 +38,8 @@ import {
   encodeVariableConfigSnapshot
 } from './portableSnapshots'
 import { isPng, removePngText, writePngText } from '@product-data/storage/media/PngTextChunkCodec'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const CARD_PAYLOAD_KEYWORDS = new Set(['eleckoi-card', 'chara', 'ccv3'])
 
@@ -65,7 +67,7 @@ export class CharacterTransferService {
 
   export(characterId: string, format: CharacterExportFormat): CharacterExportResult {
     const character = this.characters.get().items.find((item) => item.id === characterId)
-    if (!character) throw new Error('找不到对应的角色卡。')
+    if (!character) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '找不到对应的角色卡。', { what: '角色卡' })
     const persona = record(character.persona)
     const assets = [
       this.portableAsset('avatar.circle', string(persona.assistant_avatar, string(character.avatar))),
@@ -73,7 +75,7 @@ export class CharacterTransferService {
       this.portableAsset('avatar.portrait', string(persona.assistant_cover))
     ].filter((asset): asset is PortableAsset => !!asset)
     if (assets.reduce((total, asset) => total + asset.bytes.length, 0) > 48 * 1024 * 1024) {
-      throw new Error('角色图片总大小不能超过 48 MB')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色图片总大小不能超过 48 MB', { field: 'size' })
     }
     const packageData = {
       character: {
@@ -145,8 +147,8 @@ export class CharacterTransferService {
   }
 
   prepare(files: CharacterImportFile[], source: CharacterImportSource): CharacterImportPreview {
-    if (!files.length) throw new Error('请至少选择一张角色卡')
-    if (files.length > 50) throw new Error('一次最多导入 50 张角色卡')
+    if (!files.length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请至少选择一张角色卡', { what: '选择至少一张角色卡' })
+    if (files.length > 50) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '一次最多导入 50 张角色卡', { field: 'files' })
     const items = files.map((file, index): PreparedItem => {
       let imageAvailable = false
       try {
@@ -183,7 +185,7 @@ export class CharacterTransferService {
   commit(token: string): CharacterImportResult {
     const items = this.prepared.get(token)
     this.prepared.delete(token)
-    if (!items) throw new Error('角色卡已失效，请重新选择')
+    if (!items) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '角色卡已失效，请重新选择', { what: '重新选择角色卡' })
     const importedCharacterIds: string[] = []
     const failedMessages: string[] = []
     for (const item of items) {
@@ -195,7 +197,7 @@ export class CharacterTransferService {
         failedMessages.push(`${item.decoded.packageData.character.name}：${error instanceof Error ? error.message : '导入失败'}`)
       }
     }
-    if (!importedCharacterIds.length) throw new Error(failedMessages[0] || '没有可导入的角色卡')
+    if (!importedCharacterIds.length) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, failedMessages[0] || '没有可导入的角色卡', { what: '角色卡' })
     const collection = this.characters.select(importedCharacterIds[0]!)
     return { collection, importedCharacterIds, failedMessages }
   }
@@ -307,10 +309,10 @@ function retargetVariables(config: VariableConfig, characterId: string): Variabl
 
 function decodeInput(base64: string): Uint8Array {
   const normalized = base64.trim()
-  if (!normalized) throw new Error('角色卡文件为空')
+  if (!normalized) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡文件为空', { field: 'file' })
   const bytes = Buffer.from(normalized, 'base64')
-  if (!bytes.length) throw new Error('角色卡文件为空')
-  if (bytes.length > 96 * 1024 * 1024) throw new Error('角色卡不能超过 96 MB')
+  if (!bytes.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡文件为空', { field: 'file' })
+  if (bytes.length > 96 * 1024 * 1024) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡不能超过 96 MB', { field: 'size' })
   return bytes
 }
 
@@ -399,7 +401,7 @@ async function writeUniqueExportFile(directory: string, fileName: string, bytes:
       throw cause
     }
   }
-  throw new Error('导出目录中的同名文件过多。')
+  throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '导出目录中的同名文件过多。', { what: '导出文件' })
 }
 
 function exportFailureMessage(cause: unknown, fallback: string): string {
