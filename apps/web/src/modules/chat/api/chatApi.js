@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { conversationPreviewText } from "../../../ui/messages/conversationPreviewText.js";
 
 function mapMessage(message) {
@@ -63,13 +65,13 @@ export function mapChatDetails(details) {
 }
 
 export async function getChat(sessionId, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const details = await model.open(sessionId);
   return details ? { chat: mapChatDetails(details) } : null;
 }
 
 export async function getChatMessages(sessionId, options = {}) {
-  if (!options.model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!options.model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const page = await options.model.pageOlder(sessionId, options.beforeSequence);
   if (!page) return null;
   return {
@@ -81,7 +83,7 @@ export async function getChatMessages(sessionId, options = {}) {
 }
 
 export async function createChat(title, role = {}, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const input = {
     title: title || "新对话",
     metadata: {
@@ -96,23 +98,23 @@ export async function createChat(title, role = {}, { model } = {}) {
 }
 
 export async function deleteChat(sessionId, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   await model.delete(sessionId);
   return { ok: true };
 }
 
 export async function exportChatHistory(sessionId, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   return { json: await model.exportArchive(sessionId) };
 }
 
 export async function importChatHistory(characterId, json, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   return { conversationId: await model.importArchive(characterId, json) };
 }
 
 export async function deleteChatMessagesFrom(sessionId, message, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const result = await model.deleteMessagesFrom(
     sessionId,
     Number(message?.sessionEventSeq),
@@ -122,7 +124,7 @@ export async function deleteChatMessagesFrom(sessionId, message, { model } = {})
 }
 
 export async function editChatMessage(sessionId, message, content, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const details = await model.editMessage(
     sessionId,
     Number(message?.sessionEventSeq),
@@ -133,13 +135,13 @@ export async function editChatMessage(sessionId, message, content, { model } = {
 }
 
 export async function selectChatOpening(sessionId, openingId, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const details = await model.selectOpening(sessionId, openingId);
   return { chat: mapChatDetails(details) };
 }
 
 export async function updateChatOpening(sessionId, content, { model } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const details = await model.updateOpening(sessionId, content);
   return { chat: mapChatDetails(details) };
 }
@@ -149,7 +151,7 @@ export async function applyChatHistoryPolicy() {
 }
 
 export async function sendChatMessage(payload, requestId = "", { model, signal } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const result = await model.send({
     conversationId: payload.session_id,
     requestId,
@@ -163,12 +165,12 @@ export async function sendChatMessage(payload, requestId = "", { model, signal }
 }
 
 export function revealChatFile(conversationId, attachmentId, name, { model } = {}) {
-  if (!model) return Promise.reject(new Error("DSH 聊天服务尚未就绪"));
+  if (!model) return Promise.reject(new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" }));
   return model.revealFile(conversationId, attachmentId, name);
 }
 
 export async function regenerateChatMessage(sessionId, payload = {}, requestId = "", { model, signal } = {}) {
-  if (!model) throw new Error("DSH 聊天服务尚未就绪");
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
   const result = await model.regenerate({
     conversationId: sessionId,
     requestId,
