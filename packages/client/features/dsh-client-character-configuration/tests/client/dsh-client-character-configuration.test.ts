@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+import { dshClientRequire } from '../../../../../../tests/helpers/dshClientPlugin'
 
 const source = readFileSync(new URL('../../src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -50,11 +52,11 @@ describe('DSH ElecKoi character configuration models', () => {
     const key = (scope: string, ownerId: string) => JSON.stringify([scope, ownerId])
     const read = (scope: string, ownerId: string) => stored.get(key(scope, ownerId)) || { scope, ownerId, enabled: false, revision: 0, templates: [] }
     runInNewContext(source, { AbortController, window: { __ModuleLoader__: { load(value: any) { plugin = value } } } })
-    plugin.factory().apply({ remote: { eleckoiCharacterConfiguration: {
+    plugin.factory(dshClientRequire).apply({ remote: { eleckoiCharacterConfiguration: {
       changes: (signal: AbortSignal) => changes.open(signal),
       readDisplayTemplates: async (scope: string, ownerId: string) => ({ ok: true, value: structuredClone(read(scope, ownerId)) }),
       saveDisplayTemplates: async (library: any) => {
-        if (read(library.scope, library.ownerId).revision !== library.revision) return { ok: false, error: { message: 'Synthetic revision conflict' } }
+        if (read(library.scope, library.ownerId).revision !== library.revision) return { ok: false, error: new RemoteError('gateway/internal', 'Synthetic revision conflict', {}) }
         const next = { ...structuredClone(library), revision: library.revision + 1 }; stored.set(key(next.scope, next.ownerId), next)
         changes.emit({ kind: 'configuration', domain: 'displayTemplates' }); return { ok: true, value: next }
       },
@@ -89,7 +91,7 @@ describe('DSH ElecKoi character configuration models', () => {
     const calls: string[] = []
     const inputs: Array<{ name: string; input: unknown }> = []
     const stopped: string[] = []
-    let registration: { id: string; factory: () => { apply: (ctx: unknown) => void } } | undefined
+    let registration: { id: string; factory: (require?: (name: string) => unknown) => { apply: (ctx: unknown) => void } } | undefined
     let onReset: (() => void) | undefined
     let cleanup = () => {}
     const services = new Map<string, any>()
@@ -104,17 +106,17 @@ describe('DSH ElecKoi character configuration models', () => {
       window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
     })
     expect(registration?.id).toBe('@eleckoi/dsh-client-character-configuration')
-    registration!.factory().apply({
+    registration!.factory(dshClientRequire).apply({
       remote: {
         session: { openWorkspacePath: async (input: unknown) => {
           inputs.push({ name: 'scripts.openDirectory', input })
-          return openFailure ? { ok: false, error: { message: 'Synthetic directory open failure' } } : { ok: true, value: undefined }
+          return openFailure ? { ok: false, error: new RemoteError('gateway/internal', 'Synthetic directory open failure', {}) } : { ok: true, value: undefined }
         } },
         eleckoiAgentPresets: { catalog: async () => ({ ok: true, value: { activePresetIds: { roleplay: 'preset-1', creator: 'synthetic-creator' }, presets: [{ id: 'preset-1', name: 'Synthetic preset' }] } }) },
         eleckoiConversations: {
           list: async () => {
             calls.push('query.conversations.list')
-            return previewFailure ? { ok: false, error: { message: '消息预览读取失败' } } : {
+            return previewFailure ? { ok: false, error: new RemoteError('gateway/internal', '消息预览读取失败', {}) } : {
               ok: true, value: [{ id: 'conversation-1', preview }, { id: 'no-branch-chat', preview: '普通聊天' }]
             }
           }
@@ -127,7 +129,7 @@ describe('DSH ElecKoi character configuration models', () => {
           changes: (signal?: AbortSignal) => changes.open(signal),
           readScriptLibrary: async (scope: string, ownerId: string) => {
             inputs.push({ name: 'scripts.read', input: { scope, ownerId } })
-            return scriptFailure ? { ok: false, error: { message: 'Synthetic script read failure' } } : {
+            return scriptFailure ? { ok: false, error: new RemoteError('gateway/internal', 'Synthetic script read failure', {}) } : {
               ok: true, value: { scope, ownerId, enabled: false, trees: [], variables: { value: 2 }, revision: 1 }
             }
           },

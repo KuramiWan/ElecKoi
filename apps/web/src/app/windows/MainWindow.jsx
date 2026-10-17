@@ -4,6 +4,7 @@ import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
 import { AppToast } from "../../ui/ui/AppToast.jsx";
+import { resolveFailure } from "../../utils/failureText.js";
 import { SidebarContent } from "./shell/components/SidebarContent.jsx";
 import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
 import { PluginCenterSurface, PluginListPanel } from "./shell/components/PluginCenter.jsx";
@@ -59,8 +60,10 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
 
   useEffect(() => {
     if (globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === "android") return undefined;
-    return window.dshDesktop.host?.subscribeFailure((message) => {
-      chat.notify("error", message);
+    return window.dshDesktop.host?.subscribeFailure((notice) => {
+      // 宿主送的是失败对象（边界⑤），用户可见文案只在这里产生一次。
+      const resolved = resolveFailure(notice, { fallback: "插件服务意外退出，请重新打开插件中心。" });
+      chat.notify("error", resolved.text, resolved);
     });
   }, [chat.notify]);
 

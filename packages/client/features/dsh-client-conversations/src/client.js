@@ -2,6 +2,21 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-conversations',
   factory(require) {
     const React = require('react')
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail, internalFailure, failureAlreadyPublished, rejectionIsAwaitedElsewhere, bestEffort } = require('@eleckoi/dsh-product-api')
+    /**
+     * 载体不是产品失败（例如 LLM 的 `LlmFailure`：`{ message, code, status }`）时的折法：
+     * 折成兜底码，provider 的 message 当诊断（不写 `details.what`，所以它仍能给用户看），
+     * provider 的 code / status 进详情供日志诊断。
+     */
+    const providerFailure = (error, fallback) => internalFailure(
+      typeof error?.message === 'string' && error.message.trim() ? error.message : fallback,
+      {
+        ...typeof error?.code === 'string' && error.code ? { code: error.code } : {},
+        ...error?.status !== undefined ? { status: error.status } : {}
+      })
+    /** 失败已经由被调方发了快照，这里只留一行诊断（console 会被主窗口转发进主日志）。 */
+    const reportClientFailure = (what, error) => console.error(`[eleckoi-client-failure] ${what}`, error)
     const EMPTY_ITEMS = Object.freeze([])
     const MessagesPage = React.lazy(() => import(new URL('eleckoi-page-messages.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.MessagesPage })))
@@ -439,7 +454,7 @@ window.__ModuleLoader__.load({
           if (settled) return
           const snapshot = session.getSnapshot()
           if (snapshot?.promptError?.op === 'send') {
-            finish(new Error(snapshot.promptError.error?.message || '生成失败。'))
+            finish(providerFailure(snapshot.promptError.error, '生成失败。'))
             return
           }
           // Agent execution errors arrive separately from prompt admission and journal frames.
@@ -461,7 +476,7 @@ window.__ModuleLoader__.load({
             : userIndex < 0 ? undefined : events.slice(userIndex + 1).find(event => event.type === 'turn/end')
           if (!ended) return
           const reason = ended.data?.reason
-          if (reason?.kind === 'error') finish(new Error(reason.error?.message || snapshot.lastAgentError || '生成失败。'))
+          if (reason?.kind === 'error') finish(providerFailure(reason.error, snapshot.lastAgentError || '生成失败。'))
           else finish(null, { cancelled: reason?.kind === 'aborted' || reason?.kind === 'interrupted' })
         }
         disposers.push(session.subscribe(check), eventSource.subscribe(check))
@@ -934,8 +949,7 @@ window.__ModuleLoader__.load({
       }
 
       unwrap(result, fallback) {
-        if (!result?.ok) throw new Error(result?.error?.message || fallback)
-        return result.value
+        return unwrapOrFail(result, fallback)
       }
 
       async readSelection() {
@@ -954,7 +968,8 @@ window.__ModuleLoader__.load({
           }], namespace?.revision), '保存当前聊天记录失败。')
           return selection
         })
-        this.selectionWriteQueue = operation.catch(() => {})
+        // `operation` 由调用方 await（`return operation`）；这里只为队列只留一条拒绝。
+        this.selectionWriteQueue = operation.catch(rejectionIsAwaitedElsewhere)
         return operation
       }
 
@@ -1018,7 +1033,7 @@ window.__ModuleLoader__.load({
           await this.remote.eleckoiConversations.replaceVariableState(conversationId, stateJson),
           '保存作者接口变量失败。'
         )
-        if (this.timelineSnapshot.id === conversationId) void this.refreshTimeline().catch(() => {})
+        if (this.timelineSnapshot.id === conversationId) void this.refreshTimeline().catch(failureAlreadyPublished)
         return JSON.parse(saved || '{}')
       }
 
@@ -1309,7 +1324,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (!this.disposed && !this.changeFeedAbort?.signal.aborted) {
             console.error('ElecKoi 会话变更流失败：', error)
-            void this.refresh().catch(() => {})
+            void this.refresh().catch(failureAlreadyPublished)
           }
         }
       }
@@ -1321,7 +1336,7 @@ window.__ModuleLoader__.load({
           if (change.error) {
             this.publishStream({ ...this.streamState, id: change.conversationId, status: 'error', error: change.error })
           }
-          void this.refreshDetails().catch(() => {})
+          void this.refreshDetails().catch(failureAlreadyPublished)
           return
         }
         if (change.kind === 'snapshot' || change.kind === 'catalog') {
@@ -1336,15 +1351,15 @@ window.__ModuleLoader__.load({
             if (this.disposed || generation !== this.generation) return
             const available = new Set(items.map(item => item.id))
             if (selectedId && this.detailsSnapshot.id === selectedId) {
-              if (available.has(selectedId)) void this.refreshDetails().catch(() => {})
+              if (available.has(selectedId)) void this.refreshDetails().catch(failureAlreadyPublished)
               else if (!this.sessionMutations.has(selectedId)
                 && !this.detailInvalidationFences.has(selectedId)) this.activate('')
             }
             if (timelineId && this.timelineSnapshot.id === timelineId) {
-              if (available.has(timelineId)) void this.refreshTimeline().catch(() => {})
+              if (available.has(timelineId)) void this.refreshTimeline().catch(failureAlreadyPublished)
               else this.closeTimeline(timelineId)
             }
-          }).catch(() => {})
+          }).catch(failureAlreadyPublished)
           return
         }
         if (change.kind !== 'messages' || change.conversationId !== this.detailsSnapshot.id) return
@@ -1362,15 +1377,15 @@ window.__ModuleLoader__.load({
             || this.detailInvalidationFences.has(change.conversationId)) return
           this.invalidateDetails(change.conversationId)
         } else {
-          void this.refreshDetails().catch(() => {})
+          void this.refreshDetails().catch(failureAlreadyPublished)
         }
       }
 
       restoreConnection() {
-        void this.refresh().catch(() => {})
-        if (this.detailsSnapshot.id) void this.refreshDetails().catch(() => {})
-        if (this.timelineSnapshot.id) void this.refreshTimeline().catch(() => {})
-        if (this.detailsSnapshot.id) void this.bindOfficialSession(this.detailsSnapshot.id).catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
+        if (this.detailsSnapshot.id) void this.refreshDetails().catch(failureAlreadyPublished)
+        if (this.timelineSnapshot.id) void this.refreshTimeline().catch(failureAlreadyPublished)
+        if (this.detailsSnapshot.id) void this.bindOfficialSession(this.detailsSnapshot.id).catch(failureAlreadyPublished)
       }
 
       async refresh() {
@@ -1386,7 +1401,7 @@ window.__ModuleLoader__.load({
           }
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', items, error: '' })
-            if (this.detailsSnapshot.id) void this.bindOfficialSession(this.detailsSnapshot.id).catch(() => {})
+            if (this.detailsSnapshot.id) void this.bindOfficialSession(this.detailsSnapshot.id).catch(failureAlreadyPublished)
           }
           return items
         } catch (error) {
@@ -1394,7 +1409,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               items: this.snapshot.items,
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -1529,7 +1544,7 @@ window.__ModuleLoader__.load({
         this.streamGeneration += 1
         this.publishStream({ id, status: 'idle', runId: '', requestId: '', messageId: '', nodeKey: '', sequence: 0, content: '', process: [], error: '' })
         if (id) {
-          void this.bindOfficialSession(id).catch(() => {})
+          void this.bindOfficialSession(id).catch(failureAlreadyPublished)
         }
       }
 
@@ -1756,7 +1771,8 @@ window.__ModuleLoader__.load({
           timeout = setTimeout(() => reject(new Error('等待 DSH 会话关闭通知超时。')), 15_000)
           check()
         }) : Promise.resolve()
-        void retired.catch(() => {})
+        // 同一个 promise 在下面 `await retired`；这里只消除重复的未处理拒绝。
+        void retired.catch(rejectionIsAwaitedElsewhere)
         try {
           const result = await operation()
           await retired
@@ -1767,7 +1783,7 @@ window.__ModuleLoader__.load({
           // A rejected preflight may keep the writer; a reverted edit replaces it.
           // In either case discard the retired generation before the next action.
           const runtimeSessionId = reference?.sessionId || this.runtimeSessionId(conversationId)
-          if (runtimeSessionId) await this.sessions.reloadHistory(runtimeSessionId).catch(() => {})
+          if (runtimeSessionId) await this.sessions.reloadHistory(runtimeSessionId).catch(error => reportClientFailure('恢复会话历史失败', error))
           throw error
         } finally {
           clearTimeout(timeout)
@@ -2091,7 +2107,7 @@ window.__ModuleLoader__.load({
         })
         if (session) {
           const result = await session.cancel()
-          if (!result?.ok) throw new Error(result?.error?.message || '停止生成失败。')
+          unwrapOrFail(result, '停止生成失败。')
         }
         return true
       }
@@ -2237,7 +2253,7 @@ window.__ModuleLoader__.load({
           content.push({ type: 'file', receiptId: file })
         }
         const accepted = await session.prompt(content, input.mode === 'steer' ? 'steer' : 'queue', input.signal, input.requestId)
-        if (!accepted?.ok) throw new Error(accepted?.error?.message || '生成请求失败。')
+        unwrapOrFail(accepted, '生成请求失败。')
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
         if (prepared.operationId) {
@@ -2312,7 +2328,7 @@ window.__ModuleLoader__.load({
             await this.sessions.refresh()
             await this.bindOfficialSession(input.conversationId)
             await this.refreshDetails()
-          })().catch(() => {})
+          })().catch(bestEffort)
           throw error
         } finally {
           request.rewindEventSeq = undefined
@@ -2390,7 +2406,7 @@ window.__ModuleLoader__.load({
         // with stale React identities (avatars/floors remain while actions
         // disappear).
         this.publishDetails({ id, status: 'loading', details: this.detailsSnapshot.details, runtimeSessionId, error: '' })
-        void this.refreshDetails().catch(() => {})
+        void this.refreshDetails().catch(failureAlreadyPublished)
       }
 
       assertDetails(value, id) {
@@ -2463,7 +2479,7 @@ window.__ModuleLoader__.load({
             this.publishDetails({
               ...this.detailsSnapshot,
               status: 'error',
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -2578,7 +2594,7 @@ window.__ModuleLoader__.load({
             this.publishTimeline({
               ...this.timelineSnapshot,
               status: 'error',
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error

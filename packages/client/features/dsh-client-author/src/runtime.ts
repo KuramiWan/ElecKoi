@@ -17,6 +17,11 @@ import { NativeAudioRuntime, nativeAudioMethods } from './audio.js'
 import { NativeGenerationEvents } from './generation.js'
 import { NativeScriptUi, type NativeScriptUiOwner } from './script-ui.js'
 
+// 两个「确实不处理」的具名声明：语义见 packages/shared/src/foundation/swallowedFailure.ts。
+// 本文件是独立 bundle 的源，运行时取不到那个包，所以就地定义（同名同义，空函数）。
+const failureAlreadyPublished = (): void => {}
+const rejectionIsAwaitedElsewhere = (): void => {}
+
 export interface NativeAuthorRuntimeOptions {
   window: AuthorBrowserWindow
   remote: Pick<Context['remote'], 'eleckoiAuthorScripts' | 'eleckoiAuthorVariables' | 'eleckoiConversations' | 'eleckoiCharacters' | 'eleckoiCharacterConfiguration' | 'eleckoiAgentPresets'>
@@ -204,19 +209,19 @@ export class NativeAuthorClient {
   async start(): Promise<void> {
     this.generation.start()
     this.stops.push(this.options.conversations.subscribeDetails(() => {
-      void this.refresh().catch(() => {})
+      void this.refresh().catch(failureAlreadyPublished)
     }))
     this.stops.push(this.options.libraries.subscribeChanges(() => {
       void this.refreshConfiguration().catch(error => this.fail(error))
     }))
     void this.consumeChanges().catch(error => { if (!this.closed) this.fail(error) })
     // Author errors remain editable without removing the management service.
-    await this.refresh().catch(() => {})
+    await this.refresh().catch(failureAlreadyPublished)
   }
 
   private async refreshConfiguration(): Promise<void> {
     const current = this.current
-    if (!current) { await this.refresh().catch(() => {}); return }
+    if (!current) { await this.refresh().catch(failureAlreadyPublished); return }
     const readRevision = ++this.configurationReadRevision
     const settingsRevision = this.settingsSnapshotRevision
     const stillCurrent = () => !this.closed && this.current === current && readRevision === this.configurationReadRevision
@@ -226,9 +231,9 @@ export class NativeAuthorClient {
     catch (error) { if (!stillCurrent()) return; throw error }
     if (this.closed || this.current !== current || readRevision !== this.configurationReadRevision
       || current.abort.signal.aborted && this.snapshot.status !== 'error') return
-    if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+    if (!result.ok) throw result.error
     // A real version change also cancels startup; duplicate file notifications do not restart it.
-    if (result.value.version !== current.catalog.version) await this.refresh(true).catch(() => {})
+    if (result.value.version !== current.catalog.version) await this.refresh(true).catch(failureAlreadyPublished)
     else if (this.snapshot.status !== 'error' && settingsRevision === this.settingsSnapshotRevision) {
       current.session.updateSettings(result.value.scripts); current.catalog = result.value
     }
@@ -249,7 +254,8 @@ export class NativeAuthorClient {
       if (!this.closed && revision === this.revision) this.fail(error)
       throw error
     })
-    this.queue = next.catch(() => {})
+    // `next` 由调用方 await（`return next`）；这里只为队列只留一条拒绝。
+    this.queue = next.catch(rejectionIsAwaitedElsewhere)
     return next
   }
 
@@ -268,7 +274,7 @@ export class NativeAuthorClient {
     try { result = await this.options.remote.eleckoiAuthorScripts.read(selected.id) }
     catch (error) { if (!stillCurrent()) return; throw error }
     if (!stillCurrent()) return
-    if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+    if (!result.ok) throw result.error
     const catalog = result.value
     if (this.current && this.current.catalog.version === catalog.version && this.current.revision === revision) {
       if (this.snapshot.status !== 'error' && settingsRevision === this.settingsSnapshotRevision) {

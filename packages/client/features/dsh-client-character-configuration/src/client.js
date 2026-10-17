@@ -1,6 +1,10 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-character-configuration',
-  factory() {
+  factory(require) {
+    // 边界⑥ 的信封拆解只有一份实现：@eleckoi/dsh-product-api 的 client 面（本包是 desktop
+    // bundle 成员，运行时用同一个 id 取）。它失败时抛出宿主给的失败对象本身，不再把码压成 message。
+    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
+
     const idle = { status: 'idle', value: null, error: '' }
 
     class CharacterConfigurationBridge {
@@ -16,8 +20,7 @@ window.__ModuleLoader__.load({
         const api = this.remote.eleckoiCharacterConfiguration
         if (typeof api[method] !== 'function') throw new Error(`不支持的角色配置操作：${method}`)
         const result = await api[method](...args)
-        if (!result?.ok) throw new Error(result?.error?.message || '角色配置操作失败。')
-        return result.value
+        return unwrapOrFail(result, '角色配置操作失败。')
       }
 
       subscribe(listener) {
@@ -66,17 +69,16 @@ window.__ModuleLoader__.load({
 
       async listCharacters() {
         const result = await this.remote.eleckoiCharacters.list()
-        if (!result?.ok) throw new Error(result?.error?.message || '读取角色列表失败。')
-        return result.value
+        return unwrapOrFail(result, '读取角色列表失败。')
       }
 
       async listConversations() {
         const result = await this.remote.eleckoiConversations.list()
-        if (!result?.ok) throw new Error(result?.error?.message || '读取聊天消息预览失败。')
-        if (!Array.isArray(result.value) || result.value.some(item => !item || typeof item.id !== 'string')) {
+        const value = unwrapOrFail(result, '读取聊天消息预览失败。')
+        if (!Array.isArray(value) || value.some(item => !item || typeof item.id !== 'string')) {
           throw new Error('会话目录返回的数据格式不正确。')
         }
-        return result.value
+        return value
       }
     }
 
@@ -132,7 +134,8 @@ window.__ModuleLoader__.load({
           if (!this.disposed && this.generations.get(characterId) === generation) {
             this.publish('configuration', characterId, {
               status: 'error', value: previous.value,
-              error: error instanceof Error ? error.message : String(error)
+              // 按形状取 message，不用 instanceof：RemoteError 可能是别的 realm 的副本。
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -166,10 +169,10 @@ window.__ModuleLoader__.load({
 
       refreshLoaded(characterId) {
         if (characterId) {
-          if (this.snapshots.has(characterId)) void this.read(characterId).catch(() => {})
+          if (this.snapshots.has(characterId)) void this.read(characterId).catch(failureAlreadyPublished)
           return
         }
-        for (const loadedId of this.snapshots.keys()) void this.read(loadedId).catch(() => {})
+        for (const loadedId of this.snapshots.keys()) void this.read(loadedId).catch(failureAlreadyPublished)
       }
 
       start() {
@@ -233,7 +236,8 @@ window.__ModuleLoader__.load({
           if (!this.disposed && this.conversationGenerations.get(characterId) === generation) {
             this.publishConversations(characterId, {
               status: 'error', value: previous.value,
-              error: error instanceof Error ? error.message : String(error)
+              // 按形状取 message，不用 instanceof：RemoteError 可能是别的 realm 的副本。
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -260,11 +264,11 @@ window.__ModuleLoader__.load({
       refreshLoaded(characterId) {
         super.refreshLoaded(characterId)
         if (characterId) {
-          if (this.conversationSnapshots.has(characterId)) void this.readConversations(characterId).catch(() => {})
+          if (this.conversationSnapshots.has(characterId)) void this.readConversations(characterId).catch(failureAlreadyPublished)
           return
         }
         for (const loadedId of this.conversationSnapshots.keys()) {
-          void this.readConversations(loadedId).catch(() => {})
+          void this.readConversations(loadedId).catch(failureAlreadyPublished)
         }
       }
 
@@ -453,7 +457,7 @@ window.__ModuleLoader__.load({
         async openDirectory(scope, ownerId) {
           const workspace = await bridge.request('readScriptWorkspace', [scope, ownerId])
           const result = await bridge.remote.session.openWorkspacePath({ path: workspace.path })
-          if (!result.ok) throw new Error(result.error.message)
+          unwrapOrFail(result, '打开脚本目录失败。')
         },
         async saveAll(libraries) {
           const requests = libraries.map(library => {
@@ -479,7 +483,7 @@ window.__ModuleLoader__.load({
         }),
         async activePreset() {
           const catalog = await bridge.remote.eleckoiAgentPresets.catalog()
-          if (!catalog?.ok) throw new Error(catalog?.error?.message || '读取当前预设失败。')
+          unwrapOrFail(catalog, '读取当前预设失败。')
           const preset = catalog.value.presets.find(item => item.id === catalog.value.activePresetIds.roleplay)
           if (!preset) throw new Error('当前预设不在预设目录中。')
           return { id: preset.id, name: preset.name }

@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@eleckoi/dsh-product-api'
+import { foldFailure } from '@shared/foundation/failure'
 import type { ChildHostMessage, ParentHostMessage } from './hostSessionProtocol'
 
 function send(message: ChildHostMessage): Promise<void> {
@@ -138,8 +139,16 @@ function installUpdateTaskControl(
 }
 
 void main().catch(async error => {
-  const message = error instanceof Error ? error.message : String(error)
-  await send({ type: 'fatal', message }).catch(() => undefined)
+  // 边界③：把这次装配失败折成契约形态，码与参数化详情随 fatal 帧一起交给父进程。
+  // 父进程不重新猜语义（它看不懂 DSH 的异常），只负责搬运到宿主失败通知上。
+  const failure = foldFailure(error)
+  await send({
+    type: 'fatal',
+    code: failure.code,
+    message: failure.message,
+    details: failure.details as Readonly<Record<string, unknown>>,
+    ...error instanceof Error && typeof error.stack === 'string' ? { stack: error.stack } : {}
+  }).catch(() => undefined)
   console.error(error)
   process.exitCode = 1
   if (process.connected) process.disconnect?.()

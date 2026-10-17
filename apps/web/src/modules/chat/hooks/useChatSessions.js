@@ -36,6 +36,7 @@ import { useChatHistoryPaging } from "./useChatHistoryPaging.js";
 import { useAuthorFrontendActions } from "./useAuthorFrontendActions.js";
 import { useChatInputImages } from "./useChatInputImages.js";
 import { getErrorMessage, isAbortError, runChatMessageSend, stopChatMessageSend, throwIfAborted } from "./chatMessageSend.js";
+import { failureAlreadyPublished } from "../../../utils/swallowedFailure.js";
 
 const EMPTY_CATALOG = { status: "loading", items: [], error: "" };
 const EMPTY_DETAILS = { id: "", status: "idle", details: null, error: "" };
@@ -219,7 +220,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     const nextMessages = chat?.messages || [];
     if (conversations && chat?.id && conversations.getDetailsSnapshot().id !== chat.id) {
       conversations.activate(chat.id);
-      void conversations.refreshDetails().catch(() => {});
+      void conversations.refreshDetails().catch(failureAlreadyPublished);
     }
     setMessagesWithScroll(nextMessages, behavior, {
       hasMore: chat?.messages_has_more,
@@ -384,7 +385,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     requestRef.current = null;
     activeRequest?.controller?.abort?.();
     if (activeRequest?.requestId && conversations) {
-      conversations.cancelRequest(activeRequest.conversationId || sessionId, activeRequest.requestId).catch(() => {});
+      conversations.cancelRequest(activeRequest.conversationId || sessionId, activeRequest.requestId).catch(failureAlreadyPublished);
     }
   }
 

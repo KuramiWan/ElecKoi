@@ -11,6 +11,8 @@ import { decodePortableScriptLibrary } from '@product-data/domain/scripts'
 import { decodePortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import { isPng, readPngText } from '@product-data/storage/media/PngTextChunkCodec'
 import type { DecodedCharacterCard, PortableCharacterPackage } from './characterTransferTypes'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 type JsonObject = Record<string, unknown>
 
@@ -19,14 +21,14 @@ const MAX_EXPANDED_BYTES = 96 * 1024 * 1024
 const MAX_ATTACHMENTS_BYTES = 48 * 1024 * 1024
 
 export function decodeCharacterCard(bytes: Uint8Array, source: 'eleckoi' | 'sillytavern'): DecodedCharacterCard {
-  if (bytes.length > MAX_INPUT_BYTES) throw new Error('角色卡不能超过 96 MB')
+  if (bytes.length > MAX_INPUT_BYTES) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡不能超过 96 MB', { field: 'size' })
   return source === 'sillytavern' ? decodeSillyTavern(bytes) : decodeElecKoi(bytes)
 }
 
 function decodeElecKoi(bytes: Uint8Array): DecodedCharacterCard {
   if (!isPng(bytes)) {
     const text = new TextDecoder().decode(bytes).trim()
-    if (!text.startsWith('{')) throw new Error('无法识别这个角色卡')
+    if (!text.startsWith('{')) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '无法识别这个角色卡', { what: '角色卡的格式' })
     const packageData = decodePortableRoot(parseJsonObject(text, 'ElecKoi 角色卡 JSON 已损坏'))
     return {
       packageData,
@@ -47,24 +49,24 @@ function decodeElecKoi(bytes: Uint8Array): DecodedCharacterCard {
       regexRules: packageData.regexRules
     }
   }
-  throw new Error('图片里没有 ElecKoi 角色卡数据')
+  throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '图片里没有 ElecKoi 角色卡数据', { what: '图片里的 ElecKoi 角色卡数据' })
 }
 
 function decodeSillyTavern(bytes: Uint8Array): DecodedCharacterCard {
   if (!isPng(bytes)) {
     const text = new TextDecoder().decode(bytes).trim()
-    if (!text.startsWith('{')) throw new Error('酒馆角色卡必须是 PNG 或 JSON 文件')
+    if (!text.startsWith('{')) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '酒馆角色卡必须是 PNG 或 JSON 文件', { what: '角色卡文件格式', expected: 'PNG 或 JSON' })
     return convertSillyTavernCard(parseJsonObject(text, '酒馆角色卡 JSON 已损坏'))
   }
   const chunks = readPngText(bytes)
   const encoded = chunks.get('ccv3')?.trim() || chunks.get('chara')?.trim()
-  if (!encoded) throw new Error('图片里没有酒馆角色卡数据')
+  if (!encoded) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '图片里没有酒馆角色卡数据', { what: '图片里的酒馆角色卡数据' })
   return { ...convertSillyTavernCard(parseEncodedJson(encoded, '酒馆角色卡数据无法解码')), sourceImage: bytes }
 }
 
 function convertSillyTavernCard(root: JsonObject): DecodedCharacterCard {
   const data = record(root.data)
-  if (!data) throw new Error('酒馆角色卡缺少角色数据')
+  if (!data) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '酒馆角色卡缺少角色数据', { what: '酒馆角色卡的角色数据' })
   const name = cleanString(data.name) || '未命名角色'
   const openings = [cleanString(data.first_mes), ...stringList(data.alternate_greetings)].map((item) => item.trim()).filter(Boolean)
     .filter((value, index, values) => values.indexOf(value) === index)
@@ -222,7 +224,7 @@ function convertedRegexRules(extensions: JsonObject | undefined): RegexRule[] {
     displayName: '酒馆角色卡',
     json: JSON.stringify({ regex_scripts: scripts })
   }], 'Character')
-  if (decoded.failedFileNames.length) throw new Error('角色卡正则包含不支持的应用目标或无效格式，未导入。')
+  if (decoded.failedFileNames.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '角色卡正则包含不支持的应用目标或无效格式，未导入。', { what: '角色卡正则的应用目标或格式' })
   return decoded.rules.map(({ rule }) => rule)
     .filter((rule) => validateRegexRule(rule) === null)
     .map((rule, order) => ({ ...rule, order }))
@@ -239,21 +241,21 @@ export function encodePortableCharacterPayload(value: PortableCharacterPackage):
 export function decodePortablePackage(encoded: string): PortableCharacterPackage {
   let expanded: Buffer
   try { expanded = gunzipSync(Buffer.from(encoded, 'base64'), { maxOutputLength: MAX_EXPANDED_BYTES }) }
-  catch (error) { throw new Error('ElecKoi 角色卡数据损坏', { cause: error }) }
+  catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, 'ElecKoi 角色卡数据损坏', { what: 'ElecKoi 角色卡数据' }) }
   const root = parseJsonObject(expanded.toString('utf8'), 'ElecKoi 角色卡数据损坏')
   return decodePortableRoot(root)
 }
 
 function decodePortableRoot(root: JsonObject): PortableCharacterPackage {
-  if (root.format !== 'eleckoi.character-card') throw new Error('这不是 ElecKoi 角色卡')
-  if (root.version !== 1) throw new Error('暂不支持这个角色卡版本')
+  if (root.format !== 'eleckoi.character-card') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '这不是 ElecKoi 角色卡', { what: '角色卡格式' })
+  if (root.version !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '暂不支持这个角色卡版本', { what: '角色卡版本', expected: '1' })
   const character = portableCharacter(record(root.character) ?? {})
   const assets = objectList(root.assets).map((asset) => ({
     key: string(asset.key).slice(0, 80),
     mediaType: string(asset.media_type).slice(0, 80),
     bytes: decodeBase64(string(asset.data), '角色卡附件损坏')
   }))
-  if (assets.reduce((total, asset) => total + asset.bytes.length, 0) > MAX_ATTACHMENTS_BYTES) throw new Error('角色附件总大小不能超过 48 MB')
+  if (assets.reduce((total, asset) => total + asset.bytes.length, 0) > MAX_ATTACHMENTS_BYTES) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色附件总大小不能超过 48 MB', { field: 'attachments' })
   return {
     character,
     assets,
@@ -331,7 +333,7 @@ function decodePortableRegexRules(value: unknown): RegexRule[] {
       order: Math.max(0, integer(source.order, index))
     }
     const validationMessage = validateRegexRule(rule)
-    if (validationMessage) throw new Error(`角色卡正则“${rule.name || rule.id}”无效：${validationMessage}`)
+    if (validationMessage) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `角色卡正则“${rule.name || rule.id}”无效：${validationMessage}`, { field: 'regexRules' })
     return rule
   }).sort((left, right) => left.order - right.order)
 }
@@ -351,24 +353,24 @@ function parseEncodedJson(value: string, message: string): JsonObject {
   const trimmed = value.trim()
   if (trimmed.startsWith('{')) return parseJsonObject(trimmed, message)
   try { return parseJsonObject(Buffer.from(trimmed, 'base64').toString('utf8'), message) }
-  catch (error) { throw new Error(message, { cause: error }) }
+  catch { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what: '角色卡数据' }) }
 }
 
 function parseJsonObject(value: string, message: string): JsonObject {
   try {
     const parsed: unknown = JSON.parse(value)
     const result = record(parsed)
-    if (!result) throw new Error(message)
+    if (!result) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what: '角色卡数据' })
     return result
-  } catch (error) { throw new Error(message, { cause: error }) }
+  } catch { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what: '角色卡数据' }) }
 }
 
 function decodeBase64(value: string, message: string): Uint8Array {
   try {
     const bytes = Buffer.from(value, 'base64')
-    if (!bytes.length && value) throw new Error(message)
+    if (!bytes.length && value) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what: '角色卡数据' })
     return bytes
-  } catch (error) { throw new Error(message, { cause: error }) }
+  } catch { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what: '角色卡数据' }) }
 }
 
 function settingGroup(id: string, name: string, order: number, timestamp: string): SettingLibraryGroup {

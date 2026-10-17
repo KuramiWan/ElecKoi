@@ -2,13 +2,14 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-models',
   factory(require) {
     const React = require('react')
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'eleckoi-client-models'
     const protocols = { responses: 'openai-responses', chat_completions: 'openai-completions',
       anthropic_messages: 'anthropic-messages', google_gemini: 'google-generative-ai' }
     const formats = Object.fromEntries(Object.entries(protocols).map(([format, api]) => [api, format]))
     const valueOf = (result, fallback) => {
-      if (!result?.ok) throw new Error(result?.error?.message || fallback)
-      return result.value
+      return unwrapOrFail(result, fallback)
     }
     const keyRef = id => `${id.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_API_KEY`
     const imageProvider = provider => ['openai_image', 'novelai_image'].includes(provider)
@@ -88,7 +89,8 @@ window.__ModuleLoader__.load({
 
       enqueue(run) {
         const task = this.writeQueue.then(run)
-        this.writeQueue = task.catch(() => {})
+        // `task` 由调用方 await（`return task`）；这里只为队列只留一条拒绝。
+        this.writeQueue = task.catch(rejectionIsAwaitedElsewhere)
         return task
       }
 
@@ -360,7 +362,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const result = await this.remote.session.modelCatalog()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取 DSH 模型目录失败。')
+          unwrapOrFail(result, '读取 DSH 模型目录失败。')
           const configs = this.remote.settings ? await this.configuredCatalog(result.value) : this.configsFromCatalog(result.value)
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', configs, providers: this.providers, error: '' })
@@ -369,14 +371,14 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'error', configs: this.snapshot.configs, providers: this.providers,
-              error: error instanceof Error ? error.message : String(error) })
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error) })
           }
           throw error
         }
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
       }
 
       dispose() {
@@ -400,7 +402,7 @@ window.__ModuleLoader__.load({
       }, () => React.createElement(NavigationIcon)))
       ctx.effect(() => {
         catalog.start()
-        const stopReset = ctx.on('connection/reset', () => { catalog.builtinModels.clear(); void catalog.refresh().catch(() => {}) })
+        const stopReset = ctx.on('connection/reset', () => { catalog.builtinModels.clear(); void catalog.refresh().catch(failureAlreadyPublished) })
         return () => {
           stopReset()
           catalog.dispose()

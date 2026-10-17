@@ -1,3 +1,4 @@
+import { bestEffort } from "../../utils/swallowedFailure.js";
 const STACK_KEY = Symbol.for('eleckoi.ui.overlay-back');
 
 /** Extension overlays consume Back before the underlying application route. */
@@ -5,7 +6,10 @@ export function registerOverlayBack(handler, target = window, priority = 100) {
   let owner = target;
   try {
     if (target.top?.location.origin === target.location.origin) owner = target.top;
-  } catch { /* Cross-origin frames own their navigation. */ }
+  } catch {
+    // 跨源 frame 自己负责自己的导航，这里没有可做的事。
+    bestEffort();
+  }
   let state = owner[STACK_KEY];
   if (!state) {
     state = { entries: [] };

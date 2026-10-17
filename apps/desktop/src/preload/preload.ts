@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { DESKTOP_SHELL_IPC, type DesktopBrowserBridge, type DesktopBrowserLeaseId, type DshDesktopProductApi } from '@shared/contracts/desktopShell'
+import type { DesktopHostFailureNotice } from '@shared/contracts/errors/ipc'
 import type { UpdateInstallResult, UpdateStatus } from '@shared/contracts/updates/schemas'
+import { hasDesktopIpcFailureMarker } from '@shared/foundation/ipcFailure'
 
 function createDesktopBrowserBridge(): DesktopBrowserBridge {
   const listeners = new Map<DesktopBrowserLeaseId, Set<(url: string) => void>>()
@@ -57,7 +59,11 @@ function createDesktopProductApi(): DshDesktopProductApi {
     },
     host: {
       subscribeFailure(listener) {
-        const handle = (_event: Electron.IpcRendererEvent, message: string): void => listener(message)
+        // 主进程送的是**失败对象**（边界⑤ 的线上形状），不是拼好的句子。
+        // 只转发带失败标记的值：没有标记说明送来的不是一次失败，宁可不显示，也不要显示一句错话。
+        const handle = (_event: Electron.IpcRendererEvent, value: unknown): void => {
+          if (hasDesktopIpcFailureMarker(value)) listener(value as DesktopHostFailureNotice)
+        }
         ipcRenderer.on(DESKTOP_SHELL_IPC.hostFailure, handle)
         return () => ipcRenderer.off(DESKTOP_SHELL_IPC.hostFailure, handle)
       }

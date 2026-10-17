@@ -297,7 +297,19 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
             ctx.eleckoiProductData.completeConversationRuntime(snapshot.conversationId, session.id, turn,
               variableState, snapshot.generationVariableStateJson)
           } else if (event.data.reason.kind !== 'aborted') {
-            throw new Error(event.data.reason.error?.message || 'DSH 本轮生成未完成。')
+            // LLM 的 `LlmFailure` 不是产品失败：折成兜底码 `eleckoi/internal`（与
+            // packages/host/product-api/src/client/invalidResponse.ts 的 INTERNAL_FAILURE_CODE 同一个值），
+            // provider 的 message 当诊断、code/status 进详情；不写 details.what，所以 provider 那句仍能给用户看。
+            const llm = event.data.reason.error
+            throw {
+              isDSHRemoteError: true,
+              code: 'eleckoi/internal',
+              message: typeof llm?.message === 'string' && llm.message.trim() ? llm.message : 'DSH 本轮生成未完成。',
+              details: {
+                ...typeof llm?.code === 'string' && llm.code ? { code: llm.code } : {},
+                ...llm?.status !== undefined ? { status: llm.status } : {}
+              }
+            }
           }
         } catch (error) {
           ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: String(error) })

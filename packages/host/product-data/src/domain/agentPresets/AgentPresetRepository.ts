@@ -26,7 +26,8 @@ import {
   agentPresetVersions
 } from '@product-data/storage/sqlite/schema/common'
 import type { AgentToolGroup } from '@shared/contracts/agent/tools'
-import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { regexRuleSchema } from '@shared/contracts/regex/schemas'
 import type {
   SettingLibraryEntry,
@@ -206,7 +207,11 @@ export class AgentPresetRepository {
     for (const purpose of ['roleplay', 'creator'] as const) {
       const state = states.find(item => item.purpose === purpose)
       if (!presets.some(item => item.id === state?.activePresetId && item.purpose === purpose)) {
-        throw new Error(`预设全局选择的数据不完整：${purpose}`)
+        throw new DesktopError(
+          ELECKOI_FAILURE_CODES.internal,
+          `预设全局选择的数据不完整：${purpose}`,
+          { what: '预设全局选择' }
+        )
       }
       activePresetIds[purpose] = state!.activePresetId
     }
@@ -216,7 +221,7 @@ export class AgentPresetRepository {
   get(presetId: string): AgentPreset {
     this.ensureInitialized()
     const row = this.store.db.select().from(agentPresets).where(eq(agentPresets.id, presetId)).get()
-    if (!row) throw new Error('找不到这个预设。')
+    if (!row) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, `找不到这个预设：${presetId}`, { what: '预设' })
     const contents = this.contentMap(row.id)
     const version = row.activeVersionId
       ? this.store.db.select().from(agentPresetVersions).where(and(
@@ -265,16 +270,17 @@ export class AgentPresetRepository {
 
   save(input: AgentPreset, expectedRegexRules?: AgentPreset['regexRules']): AgentPreset {
     const normalized = normalizePreset(input)
-    if (!this.exists(normalized.id)) throw new Error('找不到要保存的预设。')
+    if (!this.exists(normalized.id)) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, `找不到要保存的预设：${normalized.id}`, { what: '预设' })
     const identity = this.store.db.select({ purpose: agentPresets.purpose }).from(agentPresets).where(eq(agentPresets.id, normalized.id)).get()!
-    if (identity.purpose !== normalized.purpose) throw new Error('不能通过保存修改预设用途。')
+    if (identity.purpose !== normalized.purpose) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '不能通过保存修改预设用途。', { field: 'purpose' })
     this.writableGroupId(this.catalog(), normalized.libraryGroupId, normalized.purpose)
     if (expectedRegexRules) {
       const expected = expectedRegexRules.map((rule, order) => regexRuleSchema.parse({ ...rule, order }))
       if (regexRulesRevision(this.get(normalized.id).regexRules) !== regexRulesRevision(expected)) {
         throw new DesktopError(
-          DESKTOP_ERROR_CODES.CONFLICT,
-          '当前预设正则已在其他窗口更新，请重新打开后再保存。'
+          ELECKOI_FAILURE_CODES.conflictStaleRevision,
+          '当前预设正则已在其他窗口更新，请重新打开后再保存。',
+          { what: '预设正则' }
         )
       }
     }
@@ -337,11 +343,23 @@ export class AgentPresetRepository {
       const groups = new Set(current.groups.map(group => group.id))
       const positions = new Set(current.promptPositions.map(position => position.id))
       for (const entry of next.changed) {
-        if (entry.groupId && !groups.has(entry.groupId)) throw new Error(`条目所在的文件夹不存在：${entry.groupId}`)
-        if (entry.promptPositionId && !positions.has(entry.promptPositionId)) throw new Error(`条目的插入位置不存在：${entry.promptPositionId}`)
+        if (entry.groupId && !groups.has(entry.groupId)) throw new DesktopError(
+          ELECKOI_FAILURE_CODES.lookupNotFound,
+          `条目所在的文件夹不存在：${entry.groupId}`,
+          { what: '条目文件夹' }
+        )
+        if (entry.promptPositionId && !positions.has(entry.promptPositionId)) throw new DesktopError(
+          ELECKOI_FAILURE_CODES.lookupNotFound,
+          `条目的插入位置不存在：${entry.promptPositionId}`,
+          { what: '插入位置' }
+        )
         const accepted = normalized.entries.find(item => item.id === entry.id)
         if (JSON.stringify(accepted) !== JSON.stringify(entry)) {
-          throw new Error(`条目修改不符合预设的固定条目或插入位置规则：${entry.id}`)
+          throw new DesktopError(
+            ELECKOI_FAILURE_CODES.inputInvalid,
+            `条目修改不符合预设的固定条目或插入位置规则：${entry.id}`,
+            { field: 'entries' }
+          )
         }
       }
       // Keep the current entries and their active version in the same transaction.
@@ -355,7 +373,11 @@ export class AgentPresetRepository {
           eq(agentPresetVersionEntries.versionId, current.activeVersionId),
           eq(agentPresetVersionEntries.entryId, entry.id)
         )).run()
-        if (currentWrite.changes !== 1 || versionWrite.changes !== 1) throw new Error(`预设条目缺少保存数据：${entry.id}`)
+        if (currentWrite.changes !== 1 || versionWrite.changes !== 1) throw new DesktopError(
+          ELECKOI_FAILURE_CODES.internal,
+          `预设条目缺少保存数据：${entry.id}`,
+          { what: '预设条目' }
+        )
       }
       return next.changed
     })
@@ -539,14 +561,14 @@ export class AgentPresetRepository {
   renameGroup(groupId: string, name: string): AgentPresetCatalog {
     const catalog = this.catalog()
     const group = catalog.groups.find((item) => item.id === groupId)
-    if (!group) throw new Error('找不到这个分组。')
+    if (!group) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这个分组。', { what: '分组' })
     const normalized = uniqueName(name.trim() || group.name, new Set(catalog.groups.filter((item) => item.id !== groupId && item.purpose === group.purpose).map((item) => item.name)))
     this.store.db.update(agentPresetLibraryGroups).set({ name: normalized }).where(eq(agentPresetLibraryGroups.id, groupId)).run()
     return this.catalog()
   }
 
   assignGroup(presetId: string, groupId: string): AgentPresetCatalog {
-    if (!this.exists(presetId)) throw new Error('找不到这个预设。')
+    if (!this.exists(presetId)) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, `找不到这个预设：${presetId}`, { what: '预设' })
     const catalog = this.catalog()
     this.writableGroupId(catalog, groupId, this.get(presetId).purpose)
     this.store.db.update(agentPresets).set({ libraryGroupId: groupId }).where(eq(agentPresets.id, presetId)).run()
@@ -556,7 +578,7 @@ export class AgentPresetRepository {
   deleteGroup(groupId: string): AgentPresetCatalog {
     const catalog = this.catalog()
     const target = catalog.groups.find((item) => item.id === groupId)
-    if (!target) throw new Error('找不到这个分组。')
+    if (!target) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这个分组。', { what: '分组' })
     const hasAssignedPresets = catalog.presets.some((preset) => preset.libraryGroupId === groupId)
     const fallbackId = ''
     this.store.withWriteTx((db) => {
@@ -567,7 +589,9 @@ export class AgentPresetRepository {
   }
 
   delete(presetId: string): AgentPresetCatalog {
-    if (Object.values(DEFAULT_AGENT_PRESET_IDS).includes(presetId as typeof DEFAULT_AGENT_PRESET_IDS[keyof typeof DEFAULT_AGENT_PRESET_IDS])) throw new Error('默认预设不能删除。')
+    if (Object.values(DEFAULT_AGENT_PRESET_IDS).includes(presetId as typeof DEFAULT_AGENT_PRESET_IDS[keyof typeof DEFAULT_AGENT_PRESET_IDS])) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.safetyRefused, '默认预设不能删除。', { guard: '默认预设' })
+    }
     const preset = this.get(presetId)
     this.scripts.transaction(db => {
       db.update(agentPresetState).set({ activePresetId: DEFAULT_AGENT_PRESET_IDS[preset.purpose] })
@@ -592,14 +616,18 @@ export class AgentPresetRepository {
   } {
     if (db === this.store.db) this.ensureInitialized()
     const state = db.select().from(agentPresetState).where(eq(agentPresetState.purpose, 'roleplay')).get()
-    if (!state) throw new Error('当前没有可读取正则的 Agent 预设。')
+    if (!state) throw new DesktopError(
+      ELECKOI_FAILURE_CODES.statePrecondition,
+      '当前没有可读取正则的 Agent 预设。',
+      { what: '选择一个 Agent 预设' }
+    )
     return this.readRegexRules(state.activePresetId, db)
   }
 
   readRegexRules(presetId: string, db: ElecKoiDatabase = this.store.db) {
     if (db === this.store.db) this.ensureInitialized()
     const preset = db.select().from(agentPresets).where(eq(agentPresets.id, presetId)).get()
-    if (!preset) throw new Error('指定预设不存在。')
+    if (!preset) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, '指定预设不存在。', { what: '预设' })
     const content = db.select().from(agentPresetContents).where(and(
       eq(agentPresetContents.presetId, preset.id),
       eq(agentPresetContents.kind, CONTENT_REGEX_RULES)
@@ -615,7 +643,11 @@ export class AgentPresetRepository {
 
   replaceActiveRegexRules(rules: AgentPreset['regexRules'], db: ElecKoiDatabase): void {
     const state = db.select().from(agentPresetState).where(eq(agentPresetState.purpose, 'roleplay')).get()
-    if (!state) throw new Error('当前没有可保存正则的 Agent 预设。')
+    if (!state) throw new DesktopError(
+      ELECKOI_FAILURE_CODES.statePrecondition,
+      '当前没有可保存正则的 Agent 预设。',
+      { what: '选择一个 Agent 预设' }
+    )
     this.replaceRegexRules(state.activePresetId, rules, db)
   }
 
@@ -626,7 +658,7 @@ export class AgentPresetRepository {
 
   replaceRegexRules(presetId: string, rules: AgentPreset['regexRules'], db: ElecKoiDatabase): void {
     const preset = db.select().from(agentPresets).where(eq(agentPresets.id, presetId)).get()
-    if (!preset) throw new Error('指定预设不存在。')
+    if (!preset) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, '指定预设不存在。', { what: '预设' })
     const content = JSON.stringify(rules.map((rule, order) => regexRuleSchema.parse({ ...rule, order })))
     db.insert(agentPresetContents).values({ presetId: preset.id, kind: CONTENT_REGEX_RULES, content })
       .onConflictDoUpdate({
@@ -725,8 +757,12 @@ export class AgentPresetRepository {
   private writableGroupId(catalog: AgentPresetCatalog, requestedId: string, purpose: AgentPresetPurpose): string {
     if (!requestedId) return ''
     const requested = catalog.groups.find((group) => group.id === requestedId)
-    if (!requested) throw new Error('找不到这个分组。')
-    if (requested.purpose !== purpose) throw new Error('预设和分组的用途不一致。')
+    if (!requested) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这个分组。', { what: '分组' })
+    if (requested.purpose !== purpose) throw new DesktopError(
+      ELECKOI_FAILURE_CODES.stateMismatch,
+      '预设和分组的用途不一致。',
+      { what: '预设和分组的用途' }
+    )
     return requested.id
   }
 
@@ -783,7 +819,7 @@ export class AgentPresetRepository {
     subagentModelSelection: NonNullable<AgentPreset['subagentModelSelection']>
     toolModelConfigIds: NonNullable<AgentPreset['toolModelConfigIds']>
   } {
-    if (!raw) throw new Error('预设缺少工具配置。')
+    if (!raw) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设缺少工具配置。', { what: '预设工具配置' })
     try {
       const value = toolConfigurationSchema.parse(JSON.parse(raw))
       return {
@@ -793,7 +829,7 @@ export class AgentPresetRepository {
         toolModelConfigIds: value.toolModelConfigIds
       }
     } catch (error) {
-      throw new Error('预设工具配置已损坏。', { cause: error })
+      throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '预设工具配置已损坏。', { what: '预设工具配置' })
     }
   }
 }
@@ -924,7 +960,7 @@ function portableAvatar(reference: string, mediaAssets?: LocalMediaStore): {
     encoded = bytes.toString('base64')
   }
   if (!bytes.length || bytes.length > 8 * 1024 * 1024 || bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
-    throw new Error('预设作者头像已损坏或超过 8 MB。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '预设作者头像已损坏或超过 8 MB。', { what: '预设作者头像' })
   }
   return { transfer: { mediaType, base64: encoded }, bytes }
 }
@@ -1082,20 +1118,26 @@ function replaceVersionGroups(db: ElecKoiDatabase, presetId: string, versionId: 
 function parseObject(raw: string, label: string): Record<string, unknown> {
   try {
     const value: unknown = JSON.parse(raw)
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error()
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${label}的形状不对。`, { what: label })
+    }
     return value as Record<string, unknown>
   } catch (error) {
-    throw new Error(`${label}已损坏。`, { cause: error })
+    if (error instanceof DesktopError) throw error
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `${label}已损坏。`, { what: label })
   }
 }
 
 function parseList<T>(raw: string, schema: { parse(value: unknown): T }, label: string): T[] {
   try {
     const value: unknown = JSON.parse(raw)
-    if (!Array.isArray(value)) throw new Error()
+    if (!Array.isArray(value)) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${label}的形状不对。`, { what: label })
+    }
     return value.map((item) => schema.parse(item))
   } catch (error) {
-    throw new Error(`${label}已损坏。`, { cause: error })
+    if (error instanceof DesktopError) throw error
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `${label}已损坏。`, { what: label })
   }
 }
 
@@ -1107,7 +1149,7 @@ function parseStrings(raw: string, label: string): string[] {
   try {
     return parseUnknownStrings(JSON.parse(raw))
   } catch (error) {
-    throw new Error(`${label}已损坏。`, { cause: error })
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `${label}已损坏。`, { what: label })
   }
 }
 

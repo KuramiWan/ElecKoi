@@ -29,6 +29,7 @@ import { appWindow, showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { EditorPresentationContext, useEditorFeedbackHost } from '../../ui/ui/EditorPresentationContext.jsx';
 import { usePageFade } from '../../ui/hooks/usePageFade.js';
+import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const EDITOR_SECTIONS = [
   { id: "card", label: "基础资料", Icon: IdentificationCard },
@@ -161,7 +162,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         if (active) setLoaded(true);
       });
 
-    if (embeddedCharacterId === undefined) showCurrentWindow().catch(() => {});
+    if (embeddedCharacterId === undefined) showCurrentWindow().catch(bestEffort);
     return () => {
       active = false;
     };

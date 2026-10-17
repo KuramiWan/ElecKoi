@@ -41,6 +41,7 @@ import {
   parseNodeKey,
   treeNodes,
 } from "../model/settingLibraryTree.js";
+import { reportFailure } from "../../../utils/failureText.js";
 
 const CreateFolderIcon = SETTING_LIBRARY_CREATE_ICONS.group;
 const CreateEntryIcon = SETTING_LIBRARY_CREATE_ICONS.entry;
@@ -458,7 +459,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     persistedRef.current = applyViewState(persistedRef.current);
     setLibrary((current) => applyViewState(current));
     setPersisted((current) => applyViewState(current));
-    void settingLibraries.saveViewState(characterId, nextGroupIds).catch(() => {});
+    void settingLibraries.saveViewState(characterId, nextGroupIds).catch(error => reportFailure(error, "保存设置库视图状态"))
   }
 
   function openContextMenu(event, node) {
