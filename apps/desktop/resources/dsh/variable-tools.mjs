@@ -3,6 +3,13 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { describeVariableRuleFailure } from '@eleckoi/dsh-product-data/variables'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
+import {
+  ELECKOI_FAILURE_CODES,
+  isCodedFailure,
+  runRuntimePluginApply,
+  runtimePluginFailure,
+  withRuntimePluginExit
+} from './runtime-plugin-failure.mjs'
 
 const fixedObjectId = 'fixed-variable-initialization-object'
 const defaultCollectionPageSize = 20
@@ -15,12 +22,15 @@ export const name = 'eleckoi-variable-tools'
 export const inject = ['tools', 'eleckoiVariableProcessing']
 
 export function apply(ctx) {
-  return [
-    ctx.tools.register(globTool()),
-    ctx.tools.register(grepTool()),
-    ctx.tools.register(readTool(ctx)),
-    ctx.tools.register(patchTool(ctx.eleckoiVariableProcessing)),
-  ]
+  return runRuntimePluginApply(ctx, name, () => {
+    const register = (definition) => ctx.tools.register(withRuntimePluginExit(ctx, name, definition))
+    return [
+      register(globTool()),
+      register(grepTool()),
+      register(readTool(ctx)),
+      register(patchTool(ctx.eleckoiVariableProcessing)),
+    ]
+  })
 }
 
 function outputDefinition() {
@@ -217,17 +227,23 @@ function patchTool(processing) {
       let next, patched
       try {
         const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-        if (!snapshot.conversationId || !processing) throw new Error('当前 Session 缺少受管变量处理服务或聊天归属。')
+        if (!snapshot.conversationId || !processing) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Session 缺少受管变量处理服务或聊天归属。', { what: '变量处理服务' })
         const processed = await processing.process({ conversationId: snapshot.conversationId,
           before: bridge.state, schemaCode: bridge.config.schemaCode, signal: exec.signal,
           apply: state => {
             try { return applyOperations(state, args.operations) }
-            catch (error) { error.code = 'VARIABLE_PATCH_ERROR'; throw error }
+            catch (error) {
+              // 已带契约码的失败不再盖补丁戳（盖了会把码表里的码换成 VARIABLE_PATCH_ERROR）。
+              if (!isCodedFailure(error)) error.code = 'VARIABLE_PATCH_ERROR'
+              throw error
+            }
           } })
         next = processed.state
         patched = processed.patched
       } catch (error) {
         if (exec.signal?.aborted) throw exec.signal.reason
+        // 边界④：带码失败不是作者规则失败，原样抛给 apply() 装的统一出口（日志与再抛都在那里）。
+        if (isCodedFailure(error)) throw error
         if (error.code === 'VARIABLE_PATCH_ERROR') return { ...failure('patch_error', errorMessage(error)), paths: operationPaths(args.operations), state_unchanged: true }
         const validation = describeVariableRuleFailure(error)
         return {
@@ -268,10 +284,10 @@ function patchTool(processing) {
 function readBridge(bridgeFile) {
   const value = JSON.parse(readFileSync(bridgeFile, 'utf8'))
   if (!value || typeof value !== 'object' || Array.isArray(value) || !isObject(value.state)) {
-    throw new Error('变量运行时尚未准备好。')
+    throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '变量运行时尚未准备好。', { what: '变量运行时' })
   }
   if (value.enabled && (!isObject(value.config) || !isObject(value.config.initialState))) {
-    throw new Error('变量运行时配置不正确。')
+    throw runtimePluginFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量运行时配置不正确。', { what: '变量运行时配置' })
   }
   return value
 }
@@ -282,7 +298,7 @@ function writeBridge(bridgeFile, value) {
 
 function variableBridgeFor(exec) {
   const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-  if (!snapshot.variableStateFile) throw new Error('当前 Session 缺少变量运行时文件。')
+  if (!snapshot.variableStateFile) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Session 缺少变量运行时文件。', { what: '变量运行时文件' })
   return snapshot.variableStateFile
 }
 
@@ -640,7 +656,7 @@ function pointer(segments) { return '/' + segments.map(encodePointer).join('/') 
 function pointerLeaf(path) { return decodePointer(path.split('/').at(-1) || '') }
 function encodePointer(value) { return String(value).replace(/~/g, '~0').replace(/\//g, '~1') }
 function decodePointer(value) {
-  if (/~(?:[^01]|$)/.test(value)) throw new Error('path 包含无效的 JSON Pointer 转义')
+  if (/~(?:[^01]|$)/.test(value)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'path 包含无效的 JSON Pointer 转义', { field: 'path' })
   return value.replace(/~1/g, '/').replace(/~0/g, '~')
 }
 function parsePointer(path, index = 0) {

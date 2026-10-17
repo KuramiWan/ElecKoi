@@ -4,6 +4,13 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
 import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
+import {
+  ELECKOI_FAILURE_CODES,
+  recordRuntimePluginFailure,
+  runRuntimePluginApply,
+  runtimePluginFailure,
+  withRuntimePluginExit
+} from './runtime-plugin-failure.mjs'
 
 export const name = 'eleckoi-setting-library-tools'
 export const inject = ['tools', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
@@ -11,12 +18,15 @@ export const inject = ['tools', 'eleckoiProductData', 'eleckoiCharacterConfigura
 const requiredEntriesReadInstruction = '搜索结果的 required_entries 是本回合必读清单（固定必读及关键词、EJS 条件触发项），不受 pattern、path 或 files/matches 是否命中影响。若非空，回复用户前必须调用 eleckoi_read_setting_files，把本轮尚未读取或已失效的 path 一次传入 paths；已读取且正文未变化的条目无需重复读取，仅搜索不算读取。即使固定必读项标记为 cached_reference、正文已在前置缓存设定区，也必须读取，用工具回执的编号和标题核对前置正文。'
 
 export function apply(ctx) {
-  return [
-    ctx.tools.register(globTool()),
-    ctx.tools.register(grepTool()),
-    ctx.tools.register(readTool(ctx)),
-    ctx.tools.register(patchTool(ctx))
-  ]
+  return runRuntimePluginApply(ctx, name, () => {
+    const register = (definition) => ctx.tools.register(withRuntimePluginExit(ctx, name, definition))
+    return [
+      register(globTool()),
+      register(grepTool()),
+      register(readTool(ctx)),
+      register(patchTool(ctx))
+    ]
+  })
 }
 
 function globTool() {
@@ -160,7 +170,7 @@ function patchTool(ctx) {
         if (!result.changed) return { status: 'ok', scope: 'current_conversation', ...result }
         const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec.agent?.session?.id)
         if (!snapshot.conversationId || !snapshot.settingLibraryBaseline) {
-          throw new Error('当前对话缺少设定持久化上下文。')
+          throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前对话缺少设定持久化上下文。', { what: '设定持久化上下文' })
         }
         delete bridge.runtimeResolution
         writeBridge(bridgeFile, bridge)
@@ -183,8 +193,9 @@ function patchTool(ctx) {
         return { status: 'ok', scope: 'current_conversation', ...result }
       } catch (error) {
         if (bridgeWritten) writeFileSync(bridgeFile, original, 'utf8')
-        ctx.logger?.error(`分支设定修改未提交：${message(error)}`)
-        return { ...fail('change_rejected', message(error)), state_unchanged: true }
+        // 边界④：被拒的修改也走统一出口落一行诊断（码 + 开发者文案 + 详情 + 操作名），再按工具结果返回。
+        const failure = recordRuntimePluginFailure(ctx, name, String(args.operation || 'apply_setting_patch'), error)
+        return { ...fail('change_rejected', failure.message), state_unchanged: true }
       }
     }
   })
@@ -204,15 +215,18 @@ function applyOperation(library, args) {
   if (operation === 'move_directory') return moveDirectory(library, path, requiredPath(args.destination))
   if (operation === 'delete_file') return deleteFile(library, path)
   if (operation === 'delete_directory') return deleteDirectory(library, path)
-  throw new Error(`不支持 operation：${operation}`)
+  throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `不支持 operation：${operation}`, {
+    what: '这个文件操作',
+    expected: 'write_file、edit_file、make_directory、move_file、move_directory、delete_file、delete_directory'
+  })
 }
 
 function writeFile(library, path, args) {
-  if (typeof args.content !== 'string') throw new Error('write_file 缺少 content。')
+  if (typeof args.content !== 'string') throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'write_file 缺少 content。', { field: 'content' })
   const catalog = catalogOf(library)
   const current = catalog.byPath.get(path)
   if (current) assertMutableEntry(current.raw)
-  if (groupIdAt(library, path)) throw new Error(`无法写入文件：${path} 已是目录。`)
+  if (groupIdAt(library, path)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, `无法写入文件：${path} 已是目录。`, { what: '文件路径', path })
   const { parent, leaf } = splitPath(path)
   const groupId = ensureDirectory(library, parent)
   const timestamp = new Date().toISOString()
@@ -244,15 +258,15 @@ function writeFile(library, path, args) {
 
 function editFile(library, path, args) {
   const entry = requireEntry(library, path)
-  if (typeof args.old_string !== 'string') throw new Error('edit_file 缺少 old_string。')
-  if (typeof args.new_string !== 'string') throw new Error('edit_file 缺少 new_string。')
+  if (typeof args.old_string !== 'string') throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'edit_file 缺少 old_string。', { field: 'old_string' })
+  if (typeof args.new_string !== 'string') throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'edit_file 缺少 new_string。', { field: 'new_string' })
   const oldText = args.old_string
   const newText = args.new_string
-  if (!oldText) throw new Error('edit_file 的 old_string 不能为空。')
-  if (oldText === newText) throw new Error('edit_file 的 old_string 和 new_string 不能相同。')
+  if (!oldText) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'edit_file 的 old_string 不能为空。', { field: 'old_string' })
+  if (oldText === newText) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'edit_file 的 old_string 和 new_string 不能相同。', { field: 'new_string' })
   const count = entry.content.split(oldText).length - 1
-  if (!count) throw new Error('正文中找不到 old_string。')
-  if (count > 1 && args.replace_all !== true) throw new Error('old_string 出现多次，请提供更精确的文本或启用 replace_all。')
+  if (!count) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '正文中找不到 old_string。', { what: '要替换的原文片段' })
+  if (count > 1 && args.replace_all !== true) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, 'old_string 出现多次，请提供更精确的文本或启用 replace_all。', { what: '要替换的原文片段', path })
   entry.content = args.replace_all === true ? entry.content.split(oldText).join(newText) : entry.content.replace(oldText, newText)
   entry.updatedAt = new Date().toISOString()
   return { operation: 'edit_file', path, replacements: args.replace_all === true ? count : 1, changed: true }
@@ -261,10 +275,10 @@ function editFile(library, path, args) {
 function moveFile(library, source, destination, overwrite) {
   const entry = requireEntry(library, source)
   if (source === destination) return { operation: 'move_file', path: source, destination, changed: false }
-  if (groupIdAt(library, destination)) throw new Error(`无法移动文件：目标 ${destination} 是目录。`)
+  if (groupIdAt(library, destination)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, `无法移动文件：目标 ${destination} 是目录。`, { what: '目录', path: destination })
   const target = catalogOf(library).byPath.get(destination)
   if (target) assertMutableEntry(target.raw)
-  if (target && target.raw.id !== entry.id && !overwrite) throw new Error('目标文件已存在。')
+  if (target && target.raw.id !== entry.id && !overwrite) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, '目标文件已存在。', { what: '目标文件', path: destination })
   if (target && target.raw.id !== entry.id) library.entries = library.entries.filter((item) => item.id !== target.raw.id)
   const { parent, leaf } = splitPath(destination)
   entry.groupId = ensureDirectory(library, parent); entry.title = leaf; entry.updatedAt = new Date().toISOString()
@@ -272,13 +286,13 @@ function moveFile(library, source, destination, overwrite) {
 }
 
 function moveDirectory(library, source, destination) {
-  if (!source) throw new Error('不能移动根目录。')
+  if (!source) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.securityDenied, '不能移动根目录。', { what: '根目录', guard: '虚拟设定库根路径' })
   const sourceId = groupIdAt(library, source)
-  if (!sourceId) throw new Error('找不到源目录。')
+  if (!sourceId) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到源目录。', { what: '源目录' })
   assertMutableGroup(sourceId)
   if (destination === source) return { operation: 'move_directory', path: source, destination, changed: false }
-  if (destination.startsWith(`${source}/`)) throw new Error('目录不能移动到自己的子目录。')
-  if (catalogOf(library).byPath.has(destination) || groupIdAt(library, destination)) throw new Error('目标路径已存在。')
+  if (destination.startsWith(`${source}/`)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, '目录不能移动到自己的子目录。', { field: 'destination' })
+  if (catalogOf(library).byPath.has(destination) || groupIdAt(library, destination)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, '目标路径已存在。', { what: '目标路径', path: destination })
   const { parent, leaf } = splitPath(destination)
   const targetParentId = ensureDirectory(library, parent)
   const group = library.groups.find((item) => item.id === sourceId)
@@ -293,9 +307,9 @@ function deleteFile(library, path) {
 }
 
 function deleteDirectory(library, path) {
-  if (!path) throw new Error('不能删除根目录。')
+  if (!path) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.securityDenied, '不能删除根目录。', { what: '根目录', guard: '虚拟设定库根路径' })
   const groupId = groupIdAt(library, path)
-  if (!groupId) throw new Error('找不到目录。')
+  if (!groupId) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到目录。', { what: '目录' })
   assertMutableGroup(groupId)
   const ids = new Set([groupId])
   let changed = true
@@ -325,12 +339,12 @@ function catalogOf(library) {
   const byPath = new Map(), directories = new Map()
   for (const group of groups) {
     const path = groupPath(group.id)
-    if (directories.has(path)) throw new Error(`设定文件夹路径不唯一：${path}。请修改冲突的文件夹名称。`)
+    if (directories.has(path)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, `设定文件夹路径不唯一：${path}。请修改冲突的文件夹名称。`, { what: '设定文件夹路径', path })
     directories.set(path, group.id)
   }
   for (const entry of readable) {
     if (byPath.has(entry.path) || directories.has(entry.path)) {
-      throw new Error(`设定路径不唯一：${entry.path}。请修改冲突的条目或文件夹名称。`)
+      throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, `设定路径不唯一：${entry.path}。请修改冲突的条目或文件夹名称。`, { what: '设定路径', path: entry.path })
     }
     byPath.set(entry.path, entry)
   }
@@ -529,12 +543,12 @@ async function renderEjsController(target, candidates, state, messages) {
 
   const getwi = async (referenceOrLibrary, referenceName) => {
     const requested = referenceName === undefined ? referenceOrLibrary : referenceName
-    if (typeof requested !== 'string' || !requested.trim()) throw new Error('getwi 必须指定 EJS 引用设定的标题或完整路径。')
+    if (typeof requested !== 'string' || !requested.trim()) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'getwi 必须指定 EJS 引用设定的标题或完整路径。', { field: 'getwi' })
     const matches = [...(sourceByName.get(requested) || [])]
-    if (!matches.length) throw new Error(`getwi 找不到 EJS 引用设定：${requested}`)
-    if (matches.length !== 1) throw new Error(`getwi 引用标题不唯一，请使用完整路径：${requested}`)
+    if (!matches.length) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `getwi 找不到 EJS 引用设定：${requested}`, { what: 'EJS 引用设定' })
+    if (matches.length !== 1) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, `getwi 引用标题不唯一，请使用完整路径：${requested}`, { what: 'EJS 引用设定标题' })
     const nested = matches[0]
-    if (nested.raw.contentMode !== 'plain_text') throw new Error(`EJS 引用设定必须使用文字正文：${requested}`)
+    if (nested.raw.contentMode !== 'plain_text') throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `EJS 引用设定必须使用文字正文：${requested}`, { what: 'EJS 引用设定的正文模式', expected: 'plain_text' })
     references.push({ id: nested.raw.id, title: nested.raw.title || '', path: nested.path })
     return nested.content
   }
@@ -701,7 +715,7 @@ function ensureDirectory(library, path) {
   const parts = path.split('/'); let parentId = ''; let currentPath = ''
   for (const name of parts) {
     currentPath = [currentPath, name].filter(Boolean).join('/')
-    if (catalogOf(library).byPath.has(currentPath)) throw new Error(`无法创建目录：${currentPath} 已是文件。`)
+    if (catalogOf(library).byPath.has(currentPath)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, `无法创建目录：${currentPath} 已是文件。`, { what: '文件路径', path: currentPath })
     let group = library.groups.find((item) => item.parentId === parentId && safeSegment(item.name) === name)
     if (group) assertMutableGroup(group.id)
     if (!group) {
@@ -726,26 +740,26 @@ function groupIdAt(library, path) {
 
 function requireEntry(library, path) {
   const entry = catalogOf(library).byPath.get(path)?.raw
-  if (!entry) throw new Error(`找不到设定文件：${path}`)
+  if (!entry) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `找不到设定文件：${path}`, { what: '设定文件' })
   assertMutableEntry(entry)
   return entry
 }
 
 function assertMutableGroup(id) {
-  if (id.startsWith('agent-preset:')) throw new Error('Agent 预设只能读取，不能写入聊天分支。')
+  if (id.startsWith('agent-preset:')) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.securityDenied, 'Agent 预设只能读取，不能写入聊天分支。', { what: '只读的 Agent 预设', guard: 'Agent 预设只读' })
 }
 
 function assertMutableEntry(entry) {
   if (entry.kind !== 'normal' || entry.id.startsWith('agent-preset:') || entry.groupId?.startsWith('agent-preset:')) {
-    throw new Error('固定设定和 Agent 预设只能读取，不能写入聊天分支。')
+    throw runtimePluginFailure(ELECKOI_FAILURE_CODES.securityDenied, '固定设定和 Agent 预设只能读取，不能写入聊天分支。', { what: '只读的固定设定与 Agent 预设', guard: '固定设定与 Agent 预设只读' })
   }
 }
 
 function readBridge(bridgeFile, exec) {
   const bridge = JSON.parse(readFileSync(bridgeFile, 'utf8'))
-  if (!bridge || typeof bridge !== 'object' || Array.isArray(bridge)) throw new Error('设定库运行时尚未准备好。')
+  if (!bridge || typeof bridge !== 'object' || Array.isArray(bridge)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '设定库运行时尚未准备好。', { what: '设定库运行时' })
   if (!bridge.enabled) return bridge
-  if (!bridge.library) throw new Error('设定库运行时配置不正确。')
+  if (!bridge.library) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库运行时配置不正确。', { what: '设定库运行时配置' })
   const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
   if (snapshot.variablesEnabled && snapshot.variableStateFile) {
     const variableBridge = JSON.parse(readFileSync(snapshot.variableStateFile, 'utf8'))
@@ -760,7 +774,7 @@ function readBridge(bridgeFile, exec) {
 function writeBridge(bridgeFile, value) { writeFileSync(bridgeFile, JSON.stringify(value, null, 2), 'utf8') }
 function settingBridgeFor(exec) {
   const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-  if (!snapshot.settingStateFile) throw new Error('当前 Session 缺少设定库运行时文件。')
+  if (!snapshot.settingStateFile) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Session 缺少设定库运行时文件。', { what: '设定库运行时文件' })
   return snapshot.settingStateFile
 }
 function output() { return { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] } }
@@ -782,7 +796,7 @@ function directoryExists(catalog, path) { return !path || catalog.groups.some((g
 function inScope(path, scope) { return !scope || path.startsWith(`${scope}/`) }
 function relative(path, scope) { return scope ? path.slice(scope.length + 1) : path }
 function splitPath(path) { const parts = path.split('/'); return { parent: parts.slice(0, -1).join('/'), leaf: parts.at(-1) } }
-function requiredPath(value) { const path = normalizePath(value, false); if (!path) throw new Error('path 必须是非空的安全虚拟路径。'); return path }
+function requiredPath(value) { const path = normalizePath(value, false); if (!path) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'path 必须是非空的安全虚拟路径。', { field: 'path' }); return path }
 function normalizePath(value, allowRoot) {
   const segments = String(value || '')
     .trim()
@@ -815,4 +829,8 @@ function globRegex(pattern) {
   return new RegExp(`${source}$`)
 }
 function fail(status, detail) { return { status, message: detail } }
-function message(error) { return error instanceof Error ? error.message : String(error) }
+function message(error) {
+  if (error instanceof Error) return error.message
+  if (error !== null && typeof error === 'object' && typeof error.message === 'string') return error.message
+  return String(error)
+}
