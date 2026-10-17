@@ -87,6 +87,9 @@ jobs:
       - name: Verify Electron DSH runtime
         run: pnpm check:electron-dsh
 
+      - name: Verify update dialog discovery and reopening
+        run: pnpm exec electron scripts/probe-eleckoi-desktop-client.cjs --updates-check
+
       - name: Assemble Windows application
         env:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
@@ -133,7 +136,7 @@ jobs:
               if (-not $retained) { throw "An unrelated Release asset changed: $($asset.name)" }
             }
             $source = git rev-parse HEAD
-            $notice = "<!-- windows-rebuild -->`nWindows 安装包已重新打包，修复安装到低完整性标记目录后无法启动的问题。[本次 PC 构建源码](https://github.com/$env:GITHUB_REPOSITORY/commit/$source)。`n<!-- /windows-rebuild -->"
+            $notice = "<!-- windows-rebuild -->`nWindows 安装包已包含本次修复并重新打包。[本次 PC 构建源码](https://github.com/$env:GITHUB_REPOSITORY/commit/$source)。`n<!-- /windows-rebuild -->"
             $body = [regex]::Replace([string]$release.body, '(?s)<!-- windows-rebuild -->.*?<!-- /windows-rebuild -->\s*', '')
             $notes = Join-Path $env:RUNNER_TEMP 'rebuilt-release-notes.md'
             "$notice`n`n$body" | Set-Content -LiteralPath $notes -Encoding utf8

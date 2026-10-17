@@ -26,6 +26,7 @@ let window
 let failed = false
 let modelServer
 let modelRequests = 0
+let updateProbe
 const modelBodies = []
 const nativeAuthorMode = process.argv.includes('--native-author')
 const chatOnlyMode = process.argv.includes('--chat-only')
@@ -101,7 +102,11 @@ async function main() {
   ipcMain.handle('eleckoi:dsh-client-boot', () => ({ injections: [...ready.injections,
     { kind: 'global', name: '__ELECKOI_CLIENT_ASSETS__', value: assets }], streamBaseUrl: new URL(ready.url).origin }))
   ipcMain.handle('eleckoi:dsh-client-boot-failed', (_event, error) => errors.push(error))
-  ipcMain.handle('dsh-desktop:updates-status', () => ({ phase: 'disabled', currentVersion: app.getVersion(), availableVersion: null, releaseName: null, releaseNotes: null, releaseDate: null, downloadSizeBytes: null, progress: null, message: null }))
+  if (process.argv.includes('--updates-check')) {
+    updateProbe = require('./probe-eleckoi-updates-scenario.cjs').createUpdateProbe({ ipcMain, getWindow: () => window })
+  } else {
+    ipcMain.handle('dsh-desktop:updates-status', () => ({ phase: 'disabled', currentVersion: app.getVersion(), availableVersion: null, releaseName: null, releaseNotes: null, releaseDate: null, downloadSizeBytes: null, progress: null, message: null }))
+  }
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*'] }, (details, callback) => {
     const headers = Object.fromEntries(Object.entries(details.requestHeaders).map(([key, value]) => [key.toLowerCase(), value]))
     callback({ requestHeaders: { ...headers, origin: new URL(ready.url).origin, cookie, 'sec-fetch-site': 'same-origin' } })
@@ -136,6 +141,10 @@ async function main() {
     throw new Error(`${label}: ${(await window.webContents.executeJavaScript('document.body.innerText')).slice(0, 1600)}\n${errors.join('\n')}`)
   }
   await waitFor(`document.querySelector('.side-panel-brand .eleckoi-wordmark')`, 'ElecKoi shell did not render')
+  if (updateProbe) {
+    await updateProbe.run({ window, waitFor, errors })
+    return
+  }
   const remoteCall = async (method, args) => {
     const response = await fetch(new URL(`/api/${method}`, ready.url), {
       method: 'POST', headers: { cookie, origin: new URL(ready.url).origin,
@@ -409,6 +418,7 @@ async function main() {
 }
 main().catch(error => { process.stderr.write(`${error.stack || error}\n`); failed = true }).finally(async () => {
   try {
+    updateProbe?.dispose()
     if (window && !window.isDestroyed()) await window.loadURL('about:blank')
     window?.destroy()
     await host?.close()

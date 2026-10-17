@@ -12,14 +12,16 @@ export function AppUpdateController({ updates }) {
 
   useEffect(() => {
     if (status?.phase !== "error") setActionError("");
-  }, [status?.phase]);
+  }, [status?.phase, updates?.dialogRequest]);
 
-  const dialogKey = status?.availableVersion ? `${status.phase}:${status.availableVersion}` : "";
+  const dialogRequest = updates?.dialogRequest;
+  const explicitlyRequested = dialogRequest?.version === status?.availableVersion && dialogRequest?.phase === status?.phase;
+  const dialogKey = status?.availableVersion ? `${status.phase}:${status.availableVersion}:${dialogRequest?.id ?? 0}` : "";
   const open = Boolean(
     status?.availableVersion
     && VISIBLE_PHASES.has(status.phase)
     && dismissedKey !== dialogKey
-    && !(android && status.phase === 'error' && !status.manualCheck)
+    && !(android && status.phase === 'error' && !status.manualCheck && !explicitlyRequested)
   );
 
   const close = useCallback(() => {

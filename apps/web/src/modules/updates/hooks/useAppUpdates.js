@@ -4,6 +4,15 @@ export function useAppUpdates() {
   const android = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === "android";
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
+  const [dialogRequest, setDialogRequest] = useState(null);
+  const requestDialog = useCallback((nextStatus) => {
+    setDialogRequest(previous => ({
+      id: (previous?.id ?? 0) + 1,
+      version: nextStatus?.availableVersion,
+      phase: nextStatus?.phase,
+    }));
+  }, []);
+  const showDialog = useCallback(() => requestDialog(status), [requestDialog, status]);
 
   useEffect(() => {
     let active = true;
@@ -47,11 +56,15 @@ export function useAppUpdates() {
     }
   }, []);
 
-  const check = useCallback(() => requestStatus(() => {
-    const updates = updateService(android);
-    if (!updates) throw new Error("更新服务暂时不可用。");
-    return updates.check();
-  }), [android, requestStatus]);
+  const check = useCallback(async () => {
+    const nextStatus = await requestStatus(() => {
+      const updates = updateService(android);
+      if (!updates) throw new Error("更新服务暂时不可用。");
+      return updates.check();
+    });
+    requestDialog(nextStatus);
+    return nextStatus;
+  }, [android, requestDialog, requestStatus]);
   const download = useCallback(() => requestStatus(() => {
     const updates = updateService(android);
     if (!updates) throw new Error("更新服务暂时不可用。");
@@ -69,5 +82,6 @@ export function useAppUpdates() {
     }
   }, [android]);
 
-  return useMemo(() => ({ status, error, check, download, install }), [check, download, error, install, status]);
+  return useMemo(() => ({ status, error, check, download, install, showDialog, dialogRequest }),
+    [check, download, error, install, showDialog, dialogRequest, status]);
 }

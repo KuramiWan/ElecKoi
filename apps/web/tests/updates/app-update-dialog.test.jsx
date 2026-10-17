@@ -3,6 +3,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AppUpdateController } from '../../src/modules/updates/components/AppUpdateController.jsx'
+import { useAppUpdates } from '../../src/modules/updates/hooks/useAppUpdates.js'
+import { AboutSettings } from '../../src/modules/settings/components/AboutSettings.jsx'
 
 let root, host
 beforeEach(() => {
@@ -15,6 +17,67 @@ beforeEach(() => {
   root = createRoot(host)
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals() })
+
+function UpdateSettings() {
+  const updates = useAppUpdates()
+  return <><AboutSettings updates={updates} /><AppUpdateController updates={updates} /></>
+}
+
+function connectUpdateService(status) {
+  let listener
+  const service = {
+    status: vi.fn(async () => status),
+    subscribe: vi.fn(callback => { listener = callback; return () => { listener = undefined } }),
+    check: vi.fn(async () => status),
+    download: vi.fn(),
+    install: vi.fn(async () => ({ accepted: true }))
+  }
+  if (globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === 'android') vi.stubGlobal('ElecKoiPlatform', { updates: service })
+  else vi.stubGlobal('dshDesktop', { updates: service })
+  return { service, publish(next) { status = next; listener?.(next) } }
+}
+
+it.each(['desktop', 'android'])('reopens a dismissed version on %s from About and after another manual check without reopening on background notifications', async platform => {
+  vi.stubGlobal('__ELECKOI_CLIENT_PLATFORM__', { kind: platform })
+  const available = { phase: 'available', currentVersion: '0.2.12', availableVersion: '0.2.13' }
+  const bridge = connectUpdateService({ phase: 'idle', currentVersion: '0.2.12' })
+  bridge.service.check.mockImplementation(async () => {
+    bridge.publish({ ...available, phase: 'checking' })
+    bridge.publish(available)
+    return available
+  })
+  await act(async () => root.render(<UpdateSettings />))
+  const aboutButton = () => document.querySelector('.about-update-button')
+  const close = async () => act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
+  await act(async () => aboutButton().click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  await close()
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => bridge.publish({ ...available }))
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => aboutButton().click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  await close()
+  // An explicit check can return the same release again after the checking state.
+  await act(async () => bridge.publish({ phase: 'idle', currentVersion: '0.2.12' }))
+  await act(async () => aboutButton().click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+})
+
+it.each(['desktop', 'android'].flatMap(platform => ['downloading', 'verifying', 'ready', 'error'].map(phase => [platform, phase])))('reopens hidden %s %s controls from About without starting another update operation', async (platform, phase) => {
+  vi.stubGlobal('__ELECKOI_CLIENT_PLATFORM__', { kind: platform })
+  const { service } = connectUpdateService({ phase, currentVersion: '0.2.12', availableVersion: '0.2.13', failedOperation: phase === 'error' ? 'download' : undefined })
+  await act(async () => root.render(<UpdateSettings />))
+  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })))
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  const button = document.querySelector('.about-update-button')
+  expect(button.disabled).toBe(false)
+  await act(async () => button.click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  expect(service.check).not.toHaveBeenCalled()
+  expect(service.download).not.toHaveBeenCalled()
+  expect(service.install).not.toHaveBeenCalled()
+})
 
 it('uses the declared Android release and download action without desktop installation controls', async () => {
   vi.stubGlobal('__ELECKOI_CLIENT_PLATFORM__',{kind:'android'});
