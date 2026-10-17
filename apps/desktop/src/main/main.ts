@@ -1,9 +1,12 @@
 import { join } from 'node:path'
 import { app, dialog, protocol } from 'electron'
+import type { Logger } from 'pino'
 import { DesktopHost } from '@main/host/DesktopHost'
 import { StartupProfileStore } from '@main/host/startup/StartupProfileStore'
 import { configureElectron, configureRuntimeUserData } from '@main/host/startup/configureElectron'
-import { getBootstrapLogger } from '@main/platform/logging/AppLog'
+import { getBootstrapLogger, logAppSessionEnd, logAppSessionStart } from '@main/platform/logging/AppLog'
+import { appLogFilePath } from '@main/platform/logging/logRotation'
+import { installProcessFailureLogging } from '@main/platform/logging/processFailureLogging'
 import { localMediaScheme } from '@main/platform/electron/mediaProtocol'
 import { windowsAppUserModelId } from '@main/platform/electron/windowsAppIdentity'
 import { DesktopFatalRecovery } from '@main/platform/electron/desktopFatalRecovery'
@@ -41,6 +44,7 @@ const recovery = new DesktopFatalRecovery({
 const ownsPrimaryInstance = app.requestSingleInstanceLock()
 let shutdownStarted = false
 let shutdownComplete = false
+let sessionLog: Logger | undefined
 
 if (!ownsPrimaryInstance) {
   app.quit()
@@ -51,12 +55,32 @@ if (!ownsPrimaryInstance) {
 async function startDesktop(): Promise<void> {
   try {
     await host.mountFoundation()
+    // 进程级出口写进文件日志：platformPlugin 已经把 appLog 提供出来了；万一没有（不该发生），
+    // 退回 bootstrap logger，至少不静默。
+    installProcessFailureLogging(host.appLog ?? logger)
     await app.whenReady()
     app.setAppUserModelId(windowsAppUserModelId)
+    logSessionStart()
     await host.mountInteractive()
   } catch (error) {
     await reportFatal(error)
   }
+}
+
+/** 应用就绪：写会话开始标记（带日志文件路径）。 */
+function logSessionStart(): void {
+  const appLog = host.appLog
+  const appPaths = host.appPaths
+  if (appLog === undefined || appPaths === undefined) return
+  sessionLog = appLog
+  logAppSessionStart(appLog, appLogFilePath(appPaths.userData))
+}
+
+/** 正常退出：会话结束标记。崩溃 / 强杀时走不到这里，日志只剩 start。 */
+function logSessionEnd(): void {
+  if (sessionLog === undefined) return
+  logAppSessionEnd(sessionLog)
+  sessionLog = undefined
 }
 
 app.on('window-all-closed', () => app.quit())
@@ -69,6 +93,7 @@ app.on('before-quit', (event) => {
   void host.dispose()
     .catch((error) => logger.error({ err: error }, 'ElecKoi Desktop 关闭运行代失败'))
     .finally(() => {
+      logSessionEnd()
       shutdownComplete = true
       app.quit()
     })

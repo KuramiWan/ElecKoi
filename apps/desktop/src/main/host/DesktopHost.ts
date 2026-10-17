@@ -1,4 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
+import type { Logger } from 'pino'
+import type { AppPaths } from '@main/platform/filesystem/AppPaths'
 import { mainWindowPlugin } from '@main/platform/electron/mainWindowPlugin'
 import { mediaProtocolPlugin } from '@main/platform/electron/mediaProtocol'
 import { updatesPlugin } from '@main/modules/updates'
@@ -48,5 +50,21 @@ export class DesktopHost {
     await this.root.fiber.dispose()
     this.interactiveMounted = false
     this.foundationMounted = false
+  }
+
+  /**
+   * 主进程日志（`platformPlugin` 装载后可用）。
+   * 会话首尾标记与进程级出口用它，保证与宿主日志写进同一个文件。
+   */
+  get appLog(): Logger | undefined {
+    return this.root.get('appLog')
+  }
+
+  /**
+   * 路径归属（`platformPlugin` 装载后可用）。`userData` 以它为最终值：
+   * 启动配置可能改写 `app.setPath('userData')`，`main.ts` 自己不读 `app.getPath`。
+   */
+  get appPaths(): AppPaths | undefined {
+    return this.root.get('appPaths')
   }
 }
