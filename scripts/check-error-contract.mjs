@@ -44,9 +44,12 @@ const SCAN_ROOTS = [
   'apps/desktop-host/src/',
   'apps/android-host/src/',
   'apps/web/src/',
+  'apps/desktop/resources/dsh/',
   'packages/host/',
   'packages/client/',
-  'packages/shared/src/'
+  'packages/shared/src/',
+  'packages/sdk/',
+  'packages/compatibility/'
 ]
 
 /** 这些路径不参与扫描（第三方随包资源、测试、仓库工具）。 */
