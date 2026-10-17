@@ -1,5 +1,6 @@
 import { displayTemplateLibrarySchema, type DisplayTemplateLibrary, type DisplayTemplateScope, type PortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import type { ElecKoiSqliteStore, ElecKoiDatabase } from '@product-data/storage/sqlite/SqliteDatabase'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
 
 export class DisplayTemplateRepository {
@@ -7,7 +8,9 @@ export class DisplayTemplateRepository {
 
   get(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary {
     const empty = displayTemplateLibrarySchema.parse({ scope, ownerId, enabled: false, revision: 0, templates: [] })
-    if (scope !== 'global' && !this.owners[scope](this.store.db, ownerId)) throw new Error('显示模板的所属角色或预设不存在。')
+    if (scope !== 'global' && !this.owners[scope](this.store.db, ownerId)) throw new DesktopError(scope === 'character'
+      ? ELECKOI_FAILURE_CODES.characterNotFound : ELECKOI_FAILURE_CODES.agentPresetNotFound,
+    '显示模板的所属角色或预设不存在。', { what: scope === 'character' ? '角色' : '预设' })
     const row = this.store.native.prepare('SELECT enabled, revision, templatesJson FROM display_template_libraries WHERE scope = ? AND ownerId = ?').get(scope, ownerId) as { enabled: number; revision: number; templatesJson: string } | undefined
     return row ? displayTemplateLibrarySchema.parse({ ...empty, enabled: row.enabled === 1, revision: row.revision, templates: JSON.parse(row.templatesJson) }) : empty
   }
@@ -26,19 +29,19 @@ export class DisplayTemplateRepository {
   }
 
   portable(scope: DisplayTemplateScope, ownerId: string): PortableDisplayTemplates {
-    if (scope === 'global') throw new Error('共享全局模板不属于角色卡或预设的导出内容。')
+    if (scope === 'global') throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '共享全局模板不属于角色卡或预设的导出内容。', { what: '共享全局模板与导出内容' })
     const { enabled, templates } = this.get(scope, ownerId)
     return { enabled, templates }
   }
 
   import(scope: DisplayTemplateScope, ownerId: string, value: PortableDisplayTemplates): DisplayTemplateLibrary {
-    if (scope === 'global') throw new Error('角色卡或预设导入不能替换共享全局模板。')
+    if (scope === 'global') throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '角色卡或预设导入不能替换共享全局模板。', { what: '共享全局模板与导入' })
     const current = this.get(scope, ownerId)
     return this.save({ ...current, ...value, scope, ownerId, enabled: false })
   }
 
   saveAll(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[] {
-    if (new Set(libraries.map(library => JSON.stringify([library.scope, library.ownerId]))).size !== libraries.length) throw new Error('显示模板保存归属重复。')
+    if (new Set(libraries.map(library => JSON.stringify([library.scope, library.ownerId]))).size !== libraries.length) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '显示模板保存归属重复。', { what: '显示模板保存归属' })
     return this.store.native.transaction(() => libraries.map(library => this.save(library))).immediate()
   }
 }
