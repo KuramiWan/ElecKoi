@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 interface LegacyToolConfigRow {
   payloadJson: string
@@ -194,12 +196,12 @@ function normalizeToolConfiguration(raw?: string, previousPlan?: string[]): stri
   if (!raw) return JSON.stringify(currentToolConfiguration(DEFAULT_TOOL_GROUP_IDS, DEFAULT_TOOL_GROUP_IDS, undefined, previousPlan))
   let value: unknown
   try { value = JSON.parse(raw) } catch (error) {
-    throw new Error('预设工具配置已损坏，无法整理。', { cause: error })
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '预设工具配置已损坏，无法整理。', { what: '预设工具配置' })
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('预设工具配置不是对象，无法整理。')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设工具配置不是对象，无法整理。', { what: '预设工具配置' })
   const source = value as Record<string, unknown>
   if (source.version !== 2 && source.version !== CURRENT_TOOL_CONFIGURATION_VERSION) {
-    throw new Error('预设工具配置版本无法识别，拒绝猜测。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '预设工具配置版本无法识别，拒绝猜测。', { what: '预设工具配置的版本' })
   }
   const enabled = currentToolIds(source.enabledGroupIds, '启用工具组')
   const included = source.version === 2 && source.includedGroupIds === undefined
@@ -234,26 +236,26 @@ function currentToolConfiguration(
 
 function currentToolIds(value: unknown, label: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new Error(`预设${label}格式无效，无法整理。`)
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `预设${label}格式无效，无法整理。`, { what: '预设配置' })
   }
   return [...new Set(value.filter((item): item is string => typeof item === 'string' && CURRENT_TOOL_GROUP_IDS.has(item)))]
 }
 
 function readSubagentSelection(value: unknown): { configId: string; model: string } {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('预设子代理模型配置无效，无法整理。')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设子代理模型配置无效，无法整理。', { what: '预设子代理模型配置' })
   const source = value as Record<string, unknown>
   if (typeof source.configId !== 'string' || typeof source.model !== 'string') {
-    throw new Error('预设子代理模型配置无效，无法整理。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设子代理模型配置无效，无法整理。', { what: '预设子代理模型配置' })
   }
   return { configId: source.configId, model: source.model }
 }
 
 function readRoleplayPlan(value: unknown): string[] {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('预设角色扮演计划无效，无法整理。')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设角色扮演计划无效，无法整理。', { what: '预设角色扮演计划' })
   const steps = (value as Record<string, unknown>).steps
   if (!Array.isArray(steps) || steps.length < 1 || steps.length > 20
     || steps.some((step) => typeof step !== 'string' || !step.trim() || step.length > 2_000)) {
-    throw new Error('预设角色扮演计划无效，无法整理。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设角色扮演计划无效，无法整理。', { what: '预设角色扮演计划' })
   }
   return steps as string[]
 }
@@ -310,14 +312,14 @@ function readPresetVersionPlan(
 function planStepsFromEntry(raw: string): string[] {
   let value: unknown
   try { value = JSON.parse(raw) } catch (error) {
-    throw new Error('旧角色扮演计划已损坏，无法整理。', { cause: error })
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '旧角色扮演计划已损坏，无法整理。', { what: '旧角色扮演计划' })
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('旧角色扮演计划格式无效，无法整理。')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧角色扮演计划格式无效，无法整理。', { what: '旧角色扮演计划' })
   const content = (value as Record<string, unknown>).content
-  if (typeof content !== 'string') throw new Error('旧角色扮演计划正文无效，无法整理。')
+  if (typeof content !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧角色扮演计划正文无效，无法整理。', { what: '旧角色扮演计划正文' })
   const steps = content.split(/\r?\n/).map((step) => step.trim()).filter(Boolean)
   if (steps.length < 1 || steps.length > 20 || steps.some((step) => step.length > 2_000)) {
-    throw new Error('旧角色扮演计划无法完整转换，拒绝截断。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧角色扮演计划无法完整转换，拒绝截断。', { what: '旧角色扮演计划' })
   }
   return steps
 }
@@ -369,23 +371,23 @@ function readLegacyWebSearchSettings(row: LegacyToolConfigRow): WebSearchSetting
   try {
     value = JSON.parse(row.payloadJson)
   } catch (error) {
-    throw new Error('旧联网搜索配置已损坏，无法整理。', { cause: error })
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '旧联网搜索配置已损坏，无法整理。', { what: '旧联网搜索配置' })
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('旧联网搜索配置不是对象，无法整理。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧联网搜索配置不是对象，无法整理。', { what: '旧联网搜索配置' })
   }
   const webSearch = (value as Record<string, unknown>).webSearch
   if (webSearch === undefined) {
     return { mode: 'provider_native', maxResults: 5, tavilyApiKey: '', updatedAt: row.updatedAt }
   }
   if (!webSearch || typeof webSearch !== 'object' || Array.isArray(webSearch)) {
-    throw new Error('旧联网搜索配置格式无效，无法整理。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧联网搜索配置格式无效，无法整理。', { what: '旧联网搜索配置' })
   }
   const source = webSearch as Record<string, unknown>
   const mode = source.mode
   const maxResults = source.maxResults
-  if (mode !== 'provider_native' && mode !== 'tavily') throw new Error('旧联网搜索模式无效，无法整理。')
-  if (maxResults !== 3 && maxResults !== 5 && maxResults !== 8) throw new Error('旧联网搜索结果数量无效，无法整理。')
-  if (typeof source.tavilyApiKey !== 'string') throw new Error('旧 Tavily 凭据格式无效，无法整理。')
+  if (mode !== 'provider_native' && mode !== 'tavily') throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧联网搜索模式无效，无法整理。', { what: '旧联网搜索模式' })
+  if (maxResults !== 3 && maxResults !== 5 && maxResults !== 8) throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧联网搜索结果数量无效，无法整理。', { what: '旧联网搜索结果数量' })
+  if (typeof source.tavilyApiKey !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧 Tavily 凭据格式无效，无法整理。', { what: '旧 Tavily 凭据' })
   return { mode, maxResults, tavilyApiKey: source.tavilyApiKey, updatedAt: row.updatedAt }
 }
