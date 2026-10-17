@@ -7,32 +7,30 @@
  *
  * ## 这个出口做三件事
  *
- * 1. **折叠**：任意抛出 → 一条带码失败（`isDSHRemoteError` + `code` + `message` + `details`，
- *    与 `@eleckoi/dsh-product-api` 的 `productFailure` 同形）。
+ * 1. **折叠**：任意抛出 → 一条带码失败（`isDSHRemoteError` + `code` + `message` + `details`）。
  * 2. **落一行日志**：`ctx.logger.warn(...)` 写一行可检索的诊断（标记 + 码 + 开发者文案 +
  *    参数化详情 + 操作名 + 插件名），见 {@link runtimePluginFailureLine}。
  * 3. **仍然抛出**：出口不是吞掉——记录完把同一个失败对象抛出去，cordis / DSH 工具调度照旧看到失败。
  *
- * ## 为什么码表是本地副本
+ * ## 码表与构造器来自 product-api 的宿主入口
  *
- * 运行时插件由宿主的 Node 直接 import，不经 tsdown/tsc 打包，所以取不到契约包
- * （`@eleckoi/product-shared` 的 exports 指向 `.ts` 源码）。`@eleckoi/dsh-product-api`
- * 虽已在 `apps/desktop/package.json` 里，但它的包根（`lib/types/index.js`，`tsc` 直出）
- * 只转出 `src/index.ts` 的东西——`productFailure` 与码表只在 `/client` 子路径
- * （`lib/client.js`，浏览器 bundle，Node 里 import 会报 `window is not defined`）。
- * 所以这里放一份本地码表，逐字照抄 `packages/shared/src/contracts/errors/codes.ts`
- * （product-api 的 `errorCodes.generated.ts` 是同一份生成物）。守卫在
- * `packages/client/features/dsh-client-roleplay/tests/host/setting-library-runtime-tools.test.js`
- * 的「统一失败出口」用例：两边逐字相等，改码表不改这里会红。
+ * 运行时插件由宿主的 Node 直接 import、不经 tsdown/tsc 打包，所以只能取**已构建**的包：
+ * `@eleckoi/product-shared` 的 exports 指向 `.ts` 源码，拿不到。`@eleckoi/dsh-product-api`
+ * 是 `apps/desktop/package.json` 的 `workspace:*` 依赖、也在 `runtime-manifest.json` 的
+ * `desktopProfile.bundles` 里，包根（`lib/types/index.js`，`tsc` 直出）现在转出
+ * `productFailure` 与 `ELECKOI_FAILURE_CODES`（集成分支 9b1a644 补的两行转出），构造与码表
+ * 因此只有一份真相：本文件不写码字符串，也不重写 `productFailure` 的形状。
+ * 同目录插件已在 import `@eleckoi/dsh-client-roleplay/host/*.mjs`，解析路径同一条。
  *
- * ## 为什么抛的是 Error 子类（而不是纯对象）
+ * ## 为什么抛的是 Error 子类（而不是 productFailure 那个普通对象）
  *
  * 1. 插件 `apply()` 的抛出会经过 cordis 的 `composeError`/`handleError`
  *    （`@deepseek-ai/cordis/lib/index.js:171-207`）：没有 string `stack` 的抛出会被
  *    `new Error(reason)` 包一层，码和文案都变成 `[object Object]`。Error 子类保住 message 与 stack。
  * 2. 这些文件里已有 `error instanceof Error` 的判定与 `error.message` 的读取
  *    （例如 `patchTool` 的 catch），Error 子类让它们不用改语义。
- * 3. 契约形状照样满足：`isDSHRemoteError` + 字符串码 + `details` 一个不少。
+ * 3. 契约形状照样满足：字段仍由 `productFailure` 造，只是挂到 Error 上
+ *    （`isDSHRemoteError` + 字符串码 + `details` 一个不少）。
  *
  * ## 它不是 Cordis 插件
  *
@@ -41,59 +39,17 @@
  * （`check:dsh-runtime` 会查它在不在）。
  */
 
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
+
 /** 诊断行标记。日志里按它检索运行时插件失败；故意不带 `eleckoi/…` 码形态，免得跟码表混淆。 */
 export const RUNTIME_PLUGIN_FAILURE_EVENT = 'eleckoi/runtime-plugin-failure'
 
-/**
- * 契约码表的本地副本。
- *
- * 键是 ASCII 名（给代码读），值是线上码字符串；顺序与 `codes.ts` 的声明顺序一致。
- * 不要在这里加码——先改 `packages/shared/src/contracts/errors/codes.ts` 再照抄。
- */
-export const ELECKOI_FAILURE_CODES = {
-  internal: 'eleckoi/internal',
-
-  contractInvalidRequest: 'eleckoi/contract/invalid-request',
-  contractInvalidResponse: 'eleckoi/contract/invalid-response',
-  dataShapeInvalid: 'eleckoi/data/shape-invalid',
-  dataLegacyMismatch: 'eleckoi/data/legacy-mismatch',
-
-  inputInvalid: 'eleckoi/input/invalid',
-  inputUnsupported: 'eleckoi/input/unsupported',
-
-  lookupNotFound: 'eleckoi/lookup/not-found',
-  lookupDuplicate: 'eleckoi/lookup/duplicate',
-  characterNotFound: 'eleckoi/character/not-found',
-  creatorProjectNotFound: 'eleckoi/creator-project/not-found',
-  agentPresetNotFound: 'eleckoi/agent-preset/not-found',
-  creatorProjectNameTaken: 'eleckoi/creator-project/name-taken',
-
-  conflictStaleRevision: 'eleckoi/conflict/stale-revision',
-  stateMismatch: 'eleckoi/state/mismatch',
-  statePrecondition: 'eleckoi/state/precondition',
-
-  safetyRefused: 'eleckoi/safety/refused',
-  securityDenied: 'eleckoi/security/denied',
-  senderUntrusted: 'eleckoi/sender/untrusted',
-
-  lifecycleNotReady: 'eleckoi/lifecycle/not-ready',
-  lifecycleDisposed: 'eleckoi/lifecycle/disposed',
-  pluginLoadFailed: 'eleckoi/plugin/load-failed',
-
-  ioFailed: 'eleckoi/io/failed',
-  netOperationFailed: 'eleckoi/net/operation-failed',
-  timeoutExpired: 'eleckoi/timeout/expired',
-  storageCorrupt: 'eleckoi/storage/corrupt',
-  dbSchemaMismatch: 'eleckoi/db/schema-mismatch',
-  modelConfigInvalid: 'eleckoi/model/config-invalid',
-  mediaInvalid: 'eleckoi/media/invalid',
-
-  ipcCallFailed: 'eleckoi/ipc/call-failed'
-}
+/** 码表（转出去给用例核对与调用点用；真相是 `@eleckoi/dsh-product-api`）。 */
+export { ELECKOI_FAILURE_CODES }
 
 const FAILURE_CODE_SET = new Set(Object.values(ELECKOI_FAILURE_CODES))
 
-/** 一条带码失败：与 `productFailure` 同形，但**是** Error（理由见文件头）。 */
+/** 一条带码失败：字段由 `productFailure` 造（普通对象），容器是 Error（理由见文件头）。 */
 export class RuntimePluginFailure extends Error {
   /**
    * @param {string} code - 契约码（只用 {@link ELECKOI_FAILURE_CODES} 里的值）。
@@ -104,12 +60,7 @@ export class RuntimePluginFailure extends Error {
   constructor(code, message, details = {}, options) {
     super(message, options)
     this.name = 'RuntimePluginFailure'
-    /** 线上码字符串。 */
-    this.code = code
-    /** 参数化详情（扁平 JSON 对象）。 */
-    this.details = details
-    /** 网关与渲染层认的载体标记（与 `productFailure` 同一个字段）。 */
-    this.isDSHRemoteError = true
+    Object.assign(this, productFailure(code, message, details))
   }
 }
 

@@ -664,7 +664,7 @@ describe("DSH character setting-library tools", () => {
       .resolves.toMatchObject({ status: "change_rejected", state_unchanged: true });
   });
 
-  it("keeps the local failure-code table verbatim equal to the contract table", () => {
+  it("keeps the runtime-plugin failure code table verbatim equal to the contract table", () => {
     expect(PLUGIN_FAILURE_CODES).toEqual(CONTRACT_FAILURE_CODES);
     expect(Object.keys(PLUGIN_FAILURE_CODES)).toEqual(Object.keys(CONTRACT_FAILURE_CODES));
     expect(RUNTIME_PLUGIN_FAILURE_EVENT).toBe("eleckoi/runtime-plugin-failure");
