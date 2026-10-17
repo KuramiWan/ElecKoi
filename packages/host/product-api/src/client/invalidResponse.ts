@@ -33,7 +33,7 @@
  * 详情里只有契约参数名 `issues`，不是拼好的用户可见句子：用户可见文案的解析点在渲染层。
  */
 
-import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
+import { ELECKOI_FAILURE_CODES } from '../errorCodes.generated.js'
 
 /** 信封不成立时的契约码（从生成物派生，码表改了会自动跟上）。 */
 export const INVALID_RESPONSE_CODE = ELECKOI_FAILURE_CODES.contractInvalidResponse

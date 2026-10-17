@@ -9,7 +9,7 @@
  *
  * 真相只有一份：本脚本从 `packages/shared/src/contracts/errors/codes.ts` 读码表本体
  * （Node 24 的类型剥离能直接 import 那个 .ts），渲染成
- * `packages/host/product-api/src/client/errorCodes.generated.ts`。
+ * `packages/host/product-api/src/errorCodes.generated.ts`。
  * `check:error-codes` 校验产物是新的；产物头部写明"生成，请勿手改"。
  *
  * 用法：
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sourcePath = resolve(root, 'packages/shared/src/contracts/errors/codes.ts')
-const outputPath = resolve(root, 'packages/host/product-api/src/client/errorCodes.generated.ts')
+const outputPath = resolve(root, 'packages/host/product-api/src/errorCodes.generated.ts')
 const checkOnly = process.argv.includes('--check')
 
 const { ELECKOI_FAILURE_CODES } = await import(sourcePath)

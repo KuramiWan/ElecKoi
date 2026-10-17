@@ -6,6 +6,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { ELECKOI_FAILURE_DETAIL_PARAMS } from '@shared/contracts/errors/details'
+import { productFailure, PRODUCT_FAILURE_DETAIL_KEYS } from '../src/productFailure'
 import {
   INTERNAL_FAILURE_CODE,
   internalFailure,
@@ -107,5 +109,44 @@ describe('internalFailure：载体不是产品失败时的折法', () => {
     for (const details of [{}, { code: 'AUTH' }, { status: 401 }]) {
       expect(internalFailure('认证失败', details).details).not.toHaveProperty('what')
     }
+  })
+})
+
+describe('productFailure：两边共用的带码失败构造器', () => {
+  it('产出的形状过网关判据：isDSHRemoteError + 字符串码', () => {
+    const failure = productFailure(ELECKOI_FAILURE_CODES.characterNotFound, '找不到角色卡：c-1', { what: '角色卡' })
+    expect(failure.isDSHRemoteError).toBe(true)
+    expect(typeof failure.code).toBe('string')
+    expect(failure.code).toBe(ELECKOI_FAILURE_CODES.characterNotFound)
+    expect(failure.message).toBe('找不到角色卡：c-1')
+    expect(failure.details).toEqual({ what: '角色卡' })
+  })
+
+  it('是普通对象，能原样过 JSON（要穿过 IPC 与 Remote 信封两处序列化）', () => {
+    const failure = productFailure(ELECKOI_FAILURE_CODES.ioFailed, '写文件失败：/tmp/a', {
+      operation: 'write',
+      path: '/tmp/a'
+    })
+    expect(Object.getPrototypeOf(failure)).toBe(Object.prototype)
+    expect(JSON.parse(JSON.stringify(failure))).toEqual(failure)
+  })
+
+  it('码表里的每一条码都能构造出来，且码字符串通过生成物回读一致', () => {
+    for (const code of Object.values(ELECKOI_FAILURE_CODES)) {
+      const failure = productFailure(code, 'x')
+      expect(failure.code).toBe(code)
+      expect(Object.values(ELECKOI_FAILURE_CODES)).toContain(failure.code)
+    }
+  })
+
+  it('详情参数名闭集覆盖契约表用到的每一个参数（client 面拿不到契约包，靠这条守住）', () => {
+    const usedParams = new Set(Object.values(ELECKOI_FAILURE_DETAIL_PARAMS).flat())
+    const known: readonly string[] = PRODUCT_FAILURE_DETAIL_KEYS
+    // 契约表里用到的参数，本文件必须全都有——漏一个就意味着那条码的详情在 client 面构造不出来。
+    expect([...usedParams].filter((param) => !known.includes(param))).toEqual([])
+    // 反向只需盯住契约文档声明的八项（`actual` 已声明但当前没有码用到，所以不能拿"用到的并集"当等式）。
+    expect([...PRODUCT_FAILURE_DETAIL_KEYS].sort()).toEqual(
+      ['actual', 'expected', 'field', 'guard', 'issues', 'operation', 'path', 'what']
+    )
   })
 })
