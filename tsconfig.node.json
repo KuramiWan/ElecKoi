@@ -50,6 +50,8 @@
     "scripts/vite-author-vendor-plugin.ts",
     "apps/desktop/src/main/**/*.ts",
     "apps/desktop/src/preload/**/*.ts",
+    "apps/desktop-host/src/childHostFailure.ts",
+    "apps/desktop-host/src/hostSessionProtocol.ts",
     "packages/shared/src/**/*.ts",
     "packages/host/product-data/src/**/*.ts",
     "packages/host/product-api/src/hostInspect.ts",

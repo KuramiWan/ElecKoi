@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { ELECKOI_FAILURE_CODES } from '../src/contracts/errors/codes'
 import { DesktopError } from '../src/foundation/DesktopError'
+import { foldFailure } from '../src/foundation/failure'
 import {
   desktopHostFailureNoticeOf,
   desktopIpcFailureOf,
@@ -90,5 +91,21 @@ describe('desktopHostFailureNoticeOf', () => {
     })
     expect(notice.stack).toBe('at foo')
     expect(notice.logPath).toBe('/tmp/log')
+  })
+})
+
+describe('边界⑤ 的完整一跳：折叠 → 线上载荷 → 再折叠', () => {
+  it('契约失败过一遍线上形状后码与详情不变（JSON 往返）', () => {
+    const notice = desktopHostFailureNoticeOf({
+      code: ELECKOI_FAILURE_CODES.pluginLoadFailed,
+      message: 'DSH 插件宿主进程意外退出',
+      details: { what: 'DSH 插件宿主进程' },
+      stack: 'at boot'
+    })
+    const wire = JSON.parse(JSON.stringify(notice)) as typeof notice
+    const folded = foldFailure(wire)
+    expect(folded.code).toBe(ELECKOI_FAILURE_CODES.pluginLoadFailed)
+    expect(folded.details).toEqual({ what: 'DSH 插件宿主进程' })
+    expect(hasDesktopIpcFailureMarker(wire)).toBe(true)
   })
 })

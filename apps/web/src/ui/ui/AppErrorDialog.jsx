@@ -2,6 +2,7 @@ import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CopyIcon, XIcon } from "../icons/index.jsx";
+import { failureDetailLines, formatFailureDetails } from "../../utils/failureText.js";
 
 export function AppErrorDialog({ notice, onDismiss }) {
   const titleId = useId();
@@ -58,11 +59,22 @@ export function AppErrorDialog({ notice, onDismiss }) {
 
   async function copyError() {
     try {
-      await writeClipboard(notice.message);
+      // 复制要能直接交给开发者：一句话 + 码 + 参数化详情 + 诊断行。
+      await writeClipboard(copyPayload());
       setCopyState("copied");
     } catch {
       setCopyState("failed");
     }
+  }
+
+  function copyPayload() {
+    const failure = notice.failure;
+    const lines = [notice.message];
+    if (failure?.code) lines.push(`错误码：${failure.code}`);
+    const details = formatFailureDetails(failure?.details);
+    if (details) lines.push(details);
+    if (failure?.diagnostic) lines.push(failure.diagnostic);
+    return lines.join("\n");
   }
 
   const copyLabel = copyState === "copied" ? "已复制" : copyState === "failed" ? "重试复制" : "复制错误";
@@ -90,6 +102,22 @@ export function AppErrorDialog({ notice, onDismiss }) {
           </button>
         </header>
         <pre id={detailId} className="app-error-detail" tabIndex={0}>{notice.message}</pre>
+        {notice.failure && (notice.failure.code || failureDetailLines(notice.failure.details).length > 0) ? (
+          <dl className="app-error-failure">
+            {notice.failure.code ? (
+              <>
+                <dt>错误码</dt>
+                <dd>{notice.failure.code}</dd>
+              </>
+            ) : null}
+            {failureDetailLines(notice.failure.details).map(({ label, value }) => (
+              <React.Fragment key={label}>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </React.Fragment>
+            ))}
+          </dl>
+        ) : null}
         <div className="app-error-footer">
           <span id={statusId} className={`app-error-copy-status${copyState === "failed" ? " is-failed" : ""}`} role="status" aria-live="polite">
             {statusText}

@@ -83,8 +83,10 @@ export const ELECKOI_FAILURE_CODES = {
   // ---- 外部世界（IO、网络、数据库、模型） ----
   /** 文件系统或外部 IO 操作失败。详情带 `operation` / `path`。 */
   ioFailed: 'eleckoi/io/failed',
-  /** 网络请求或外部服务调用失败 / 超时。详情带 `operation` / `what`。 */
+  /** 网络请求或外部服务调用失败。详情带 `operation` / `what`。 */
   netOperationFailed: 'eleckoi/net/operation-failed',
+  /** 等一个操作等过了约定的时间。详情带 `what`（等的是什么，名词短语）。 */
+  timeoutExpired: 'eleckoi/timeout/expired',
   /** 存储里的内容损坏，无法解析。详情带 `what`。 */
   storageCorrupt: 'eleckoi/storage/corrupt',
   /** 数据库 schema、迁移链、表清单或外键不符。详情带 `what` / `expected`。 */
@@ -131,6 +133,7 @@ export const ELECKOI_FAILURE_CODE_LIST = [
   ELECKOI_FAILURE_CODES.pluginLoadFailed,
   ELECKOI_FAILURE_CODES.ioFailed,
   ELECKOI_FAILURE_CODES.netOperationFailed,
+  ELECKOI_FAILURE_CODES.timeoutExpired,
   ELECKOI_FAILURE_CODES.storageCorrupt,
   ELECKOI_FAILURE_CODES.dbSchemaMismatch,
   ELECKOI_FAILURE_CODES.modelConfigInvalid,

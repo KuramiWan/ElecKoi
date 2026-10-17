@@ -130,6 +130,8 @@ export const ELECKOI_BOUNDARIES = [
     folds: [
       { when: 'fatal 帧带契约码', code: null },
       { when: 'fatal 帧未带码', code: ELECKOI_FAILURE_CODES.internal },
+      { when: '子进程意外退出', code: ELECKOI_FAILURE_CODES.pluginLoadFailed },
+      { when: '启动 / 任务等待超过约定时间', code: ELECKOI_FAILURE_CODES.timeoutExpired },
       { when: '协议版本偏斜或握手失败', code: ELECKOI_FAILURE_CODES.internal },
       { when: '子进程未产出可读诊断（logPath 缺失或读不到）', code: ELECKOI_FAILURE_CODES.internal }
     ],

@@ -14,9 +14,11 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
   const [status, setStatus] = useState("就绪");
   const [notice, setNotice] = useState(null);
 
-  function notify(type, message) {
+  // `failure` 是可选的结构化失败（`resolveFailure` 的产物）：错误对话框要显示码与详情，
+  // 只给一句话会把码丢掉。
+  function notify(type, message, failure = null) {
     const id = Date.now();
-    setNotice({ id, type, message });
+    setNotice({ id, type, message, failure });
     if (type === "error") return;
     window.setTimeout(() => {
       setNotice((current) => (current?.id === id ? null : current));

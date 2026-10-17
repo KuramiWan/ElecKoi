@@ -10,6 +10,8 @@ import { installWindowsNativeFrame } from './windowsNativeFrame'
 import { DesktopBrowserGuests } from './desktopBrowserGuests'
 import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, isDshClientAsset, resolveElecKoiClientAssets, serveDshClientAsset, serveElecKoiClientAsset } from './dshClientDocument'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
+import { foldFailure } from '@shared/foundation/failure'
+import { desktopHostFailureNoticeOf } from '@shared/foundation/ipcFailure'
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
@@ -142,11 +144,19 @@ export const mainWindowPlugin = {
     const focusMainWindow = () => { void windows.open('main') }
     app.on('activate', focusMainWindow)
     app.on('second-instance', focusMainWindow)
-    const detachPluginFailure = pluginHost.onFailure(() => {
+    const detachPluginFailure = pluginHost.onFailure(error => {
+      // 边界⑤：把边界③ 折好的失败对象原样交给渲染层（只加子进程的 stack 指针）。
+      // 以前这里送一句写死的中文，码与详情在跨进程那一刻就没了——用户只看到「插件服务意外退出」，
+      // 开发者连是哪个码都查不到。
+      const failure = foldFailure(error)
+      const notice = desktopHostFailureNoticeOf({
+        ...failure,
+        ...typeof error === 'object' && error !== null && typeof (error as { stack?: unknown }).stack === 'string'
+          ? { stack: (error as { stack: string }).stack }
+          : {}
+      })
       for (const window of windows.all()) {
-        if (!window.isDestroyed()) {
-          window.webContents.send(DESKTOP_SHELL_IPC.hostFailure, '插件服务意外退出，请重新打开插件中心。')
-        }
+        if (!window.isDestroyed()) window.webContents.send(DESKTOP_SHELL_IPC.hostFailure, notice)
       }
     })
 

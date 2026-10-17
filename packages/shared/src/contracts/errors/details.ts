@@ -143,6 +143,11 @@ export interface EleckoiNetOperationFailedDetails {
   readonly what: string
 }
 
+/** 超时的详情：`what` 是等的是什么（名词短语，如 `DSH 插件宿主启动`）。 */
+export interface EleckoiTimeoutExpiredDetails {
+  readonly what: string
+}
+
 /** 存储损坏的详情：`what` 是损坏的东西（如 `创作项目索引`）。 */
 export interface EleckoiStorageCorruptDetails {
   readonly what: string
@@ -203,6 +208,7 @@ export interface EleckoiFailureDetailsMap {
   [ELECKOI_FAILURE_CODES.pluginLoadFailed]: EleckoiPluginLoadFailedDetails
   [ELECKOI_FAILURE_CODES.ioFailed]: EleckoiIoFailedDetails
   [ELECKOI_FAILURE_CODES.netOperationFailed]: EleckoiNetOperationFailedDetails
+  [ELECKOI_FAILURE_CODES.timeoutExpired]: EleckoiTimeoutExpiredDetails
   [ELECKOI_FAILURE_CODES.storageCorrupt]: EleckoiStorageCorruptDetails
   [ELECKOI_FAILURE_CODES.dbSchemaMismatch]: EleckoiDbSchemaMismatchDetails
   [ELECKOI_FAILURE_CODES.modelConfigInvalid]: EleckoiModelConfigInvalidDetails
@@ -258,6 +264,7 @@ export const ELECKOI_FAILURE_DETAIL_PARAMS: Readonly<
   [ELECKOI_FAILURE_CODES.pluginLoadFailed]: ['what', 'path'],
   [ELECKOI_FAILURE_CODES.ioFailed]: ['operation', 'path'],
   [ELECKOI_FAILURE_CODES.netOperationFailed]: ['operation', 'what'],
+  [ELECKOI_FAILURE_CODES.timeoutExpired]: ['what'],
   [ELECKOI_FAILURE_CODES.storageCorrupt]: ['what'],
   [ELECKOI_FAILURE_CODES.dbSchemaMismatch]: ['what', 'expected'],
   [ELECKOI_FAILURE_CODES.modelConfigInvalid]: ['field', 'what'],
