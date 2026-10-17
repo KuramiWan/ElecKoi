@@ -8,16 +8,18 @@ import {
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import type { VariableConfigRepository } from './VariableConfigRepository'
 import { loadVariableSchema } from './variableSchema'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 function normalizedObjectJson(raw: string): string {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw || '{}')
   } catch (error) {
-    throw new Error('当前变量状态不是合法 JSON。', { cause: error })
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '当前变量状态不是合法 JSON。', { what: '当前变量状态' })
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('当前变量状态必须是 JSON object。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '当前变量状态必须是 JSON object。', { what: '当前变量状态' })
   }
   return JSON.stringify(parsed, null, 2)
 }
