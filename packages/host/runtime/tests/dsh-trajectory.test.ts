@@ -114,7 +114,7 @@ describe('DSH trajectory projection', () => {
     }
 
     expect(readDshSessionLog(root, 'parent')?.header.id).toBe('parent')
-    removeDshSessionTree(root, 'parent')
+    expect(removeDshSessionTree(root, 'parent').sort()).toEqual(['child', 'grandchild', 'parent'])
 
     expect(existsSync(join(project, 'parent'))).toBe(false)
     expect(existsSync(join(project, 'child'))).toBe(false)

@@ -16,9 +16,10 @@ import { ElecKoiVariableProcessing } from '../../packages/host/product-api/src/v
 import { emptyEntry } from '../../packages/host/product-data/src/domain/settingLibraries/index'
 import { RESULT_READERS, resultDomain } from '../../packages/client/features/dsh-client-roleplay/src/host/tool-result-access.mjs'
 import { applyDisabledPolicy, filterDeclarations } from '../../packages/client/features/dsh-client-roleplay/src/host/tool-policy.mjs'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative } from 'node:path'
+import { dirname, isAbsolute, join, relative } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { composeEntries, initProfile, loadLayeredEnv, loadOverlayPatches, loadProfileDirectory, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
@@ -35,7 +36,7 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 async function fixture({ root, sessionId = 'result-owner', stream } = {}) {
   if (!root) {
     root = mkdtempSync(join(tmpdir(), 'eleckoi-tool-results-'))
-    cleanups.push(() => { const child = relative(tmpdir(), root); if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path'); rmSync(root, { recursive: true, force: true }) })
+    cleanups.push(async () => { const child = relative(tmpdir(), root); if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path'); await rm(root, { recursive: true, force: true }) })
   }
   const ctx = new Context(), requests = []
   cleanups.push(() => ctx.fiber.dispose())
@@ -63,10 +64,10 @@ async function fixture({ root, sessionId = 'result-owner', stream } = {}) {
 
 async function profileFixture(platform, existingRoot) {
   const root = existingRoot ?? mkdtempSync(join(tmpdir(), 'eleckoi-result-profile-'))
-  if (!existingRoot) cleanups.push(() => {
+  if (!existingRoot) cleanups.push(async () => {
     const child = relative(tmpdir(), root)
     if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup path')
-    rmSync(root, { recursive: true, force: true })
+    await rm(root, { recursive: true, force: true })
   })
   const resources = resolve('apps/desktop/resources/dsh')
   const paths = { runtimeDataRoot: root, homeRoot: join(root, 'home'), workspaceRoot: join(root, 'workspace'),
@@ -228,10 +229,34 @@ describe('Shipped Host tool-result composition', () => {
       expect(page).toMatchObject({ kind: 'tool_result_page', next_offset: null })
       expect(page.matches.length).toBeGreaterThan(0)
     }
+    await restarted.ctx.eleckoiConversationsApi.delete(chat.conversation.id)
+    for (const receipt of receipts) {
+      const retained = receipt.sessionId === studio.sessionId
+      expect(existsSync(receipt.file_path)).toBe(retained)
+      expect(existsSync(`${receipt.file_path}.owner.json`)).toBe(retained)
+    }
+    await restarted.ctx.eleckoiCreatorStudioRuntime.delete(studio.sessionId)
+    for (const receipt of receipts) {
+      expect(existsSync(receipt.file_path)).toBe(false)
+      expect(existsSync(`${receipt.file_path}.owner.json`)).toBe(false)
+    }
   }, 120_000)
 })
 
 describe('Complete tool-result access', { timeout: 30_000 }, () => {
+  it('refuses redirected result directories while still cleaning the other deleted Sessions', async () => {
+    const f = await fixture(), redirected = await f.save('合成保留正文'), retained = join(f.root, 'retained')
+    const other = await f.ctx.spillStore.saveText({ owner: { sessionId: 'synthetic-other' }, source: { kind: 'tool', toolName: RESULT_READER }, suggestedName: 'other.txt', content: '合成待删除正文' })
+    const directory = dirname(redirected.locator)
+    renameSync(directory, retained)
+    symlinkSync(retained, directory, process.platform === 'win32' ? 'junction' : 'dir')
+    try {
+      await expect(f.ctx.spillStore.removeSessionResults([f.handle.agent.id, 'synthetic-other'])).rejects.toThrow('真实目录')
+      expect(readdirSync(retained)).toHaveLength(2)
+      expect(existsSync(dirname(other.locator))).toBe(false)
+    } finally { unlinkSync(directory) }
+  })
+
   it('writes one complete artifact and one small ownership record per result, with no files added by repeated reads', async () => {
     const f = await fixture(), body = '合成正文😀'.repeat(10_001), refs = []
     const listFiles = () => readdirSync(f.root, { recursive: true }).filter(name => statSync(join(f.root, name)).isFile()).sort()

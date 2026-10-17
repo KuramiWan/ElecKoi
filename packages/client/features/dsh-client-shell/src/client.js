@@ -211,6 +211,8 @@ window.__ModuleLoader__.load({
           ['@deepseek-ai/dsh-session-format-v3-to-v4', 'DSH 旧会话迁移适配'],
           ['@deepseek-ai/dsh-session-persistence-jsonl', 'DSH 会话存储适配'],
           ['@deepseek-ai/dsh-spill-policy', 'DSH 工具结果续读适配'],
+          ['@deepseek-ai/dsh-web', 'DSH 联网提供器适配'],
+          ['@deepseek-ai/dsh-tool-web', 'DSH 联网工具适配'],
           ['@deepseek-ai/dsh-sdk-jsonrpc-server', 'DSH 桌面通信适配'],
           ['@earendil-works/pi-ai', '模型协议适配']
         ])

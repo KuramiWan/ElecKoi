@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { platformPlugin } from '../src/main/host/plugins'
 import { dshHostPlugin } from '../src/main/host/dshHostPlugin'
 import { mainWindowPlugin } from '../src/main/platform/electron/mainWindowPlugin'
 import { mediaProtocolPlugin } from '../src/main/platform/electron/mediaProtocol'
 import { updatesPlugin } from '../src/main/modules/updates'
+
+vi.mock('electron-updater', () => ({ default: { autoUpdater: {} } }))
 
 const plugins = [
   platformPlugin,

@@ -34,5 +34,6 @@ ADR 是 Architecture Decision Record，即架构决策记录，用于说明一�
 | 0036 | [独立 EJS 显示模板](0036-ejs-display-templates.md) | 已采纳 | 角色与预设的模板配置、数据归属和消息渲染时机。 |
 | 0037 | [统一编辑器与完整配置版本](0037-editor-collections-and-versions.md) | 已采纳 | 共用列表操作、批量启停及完整版本数据合同。 |
 | 0038 | [聊天运行状态由产品数据库统一保存](0038-conversation-runtime-state.md) | 已实施 | 变量和分支设定历史的正式保存边界、回退与归档。 |
+| 0039 | [DeepSeek 独立搜索与网页抓取接入 DSH Web](0039-deepseek-search-fetch.md) | 已实施 | 共用 Web 提供器、独立凭据与完整结果。 |
 
 本目录没有收录 0006—0011 和 0014；保留编号间隔，不复制内部历史材料来补齐。后续编号须同时核对两个工作树，避免复用未收录编号。

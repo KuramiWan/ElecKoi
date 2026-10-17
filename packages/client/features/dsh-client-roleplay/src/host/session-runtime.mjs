@@ -343,7 +343,6 @@ export function materializeAgentPreset(root, templatePath, preset, toolPolicy, m
     .replace('__ELECKOI_VARIABLE_TOOLS_PLUGIN__', JSON.stringify(durableProductPluginSpecifier('variable-tools')))
     .replace('__ELECKOI_ROLEPLAY_PLAN_TOOL_PLUGIN__', JSON.stringify(durableProductPluginSpecifier('roleplay-plan-tool')))
     .replace('__ELECKOI_ROLEPLAY_PLAN_STEPS__', JSON.stringify(preset.roleplayPlan.steps))
-    .replace('__ELECKOI_WEB_SEARCH_MAX_RESULTS__', '8')
     .replace('__ELECKOI_COMPACTION_THRESHOLD_RATIO__', String(compactionRatio(mainModel)))
     .replace('__ELECKOI_COMPACTION_RETENTION__', 'retainTokens: 0')
   composition = applyPresetToolPolicy(composition, new Set(toolPolicy.disabledGroupIds))

@@ -40,7 +40,7 @@ DSH 设置中的官方“内置插件”页继续保留一份完整运行清单�
 | 创作工作室 | `@eleckoi/dsh-client-creator-studio` | 创作项目目录、创建与删除 |
 | 模型选择 | `@eleckoi/dsh-client-models` | DSH 官方模型目录投影与对话模型选择入口 |
 | 用户资料 | `@eleckoi/dsh-client-persona` | 用户资料读取与编辑入口 |
-| 联网搜索设置 | `@eleckoi/dsh-client-web-search` | 搜索方式、Tavily Settings 与 Credentials 的 Client model |
+| 联网搜索设置 | `@eleckoi/dsh-client-web-search` | 搜索与抓取方式、Tavily／DeepSeek Settings 与 Credentials 的 Client model；Host 入口挂载共用 DeepSeek Search、Fetch 提供器 |
 | 显示偏好 | `@eleckoi/dsh-client-display-preferences` | DSH Settings 中的侧栏、聊天列表、消息显示与全局壁纸偏好 |
 | Agent 预设 | `@eleckoi/dsh-client-presets` | 预设读取、页面与编辑入口 |
 | 桌面界面 | `@eleckoi/dsh-client-shell` | root、main、sidebar、settings 与产品区域合同 |

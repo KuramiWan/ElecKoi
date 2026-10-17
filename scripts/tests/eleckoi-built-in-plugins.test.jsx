@@ -24,7 +24,6 @@ const bundleRoot = (name) => {
 const bundleManifest = (name) => JSON.parse(readFileSync(resolve(bundleRoot(name), 'package.json'), 'utf8'));
 const developerInterfaces = (name) => bundleManifest(name).eleckoi?.developerInterfaces ?? [];
 function packageSource(name) {
-    const root = resolve(bundleRoot(name), 'src');
     const files = [];
     const visit = (directory) => {
         for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -35,7 +34,21 @@ function packageSource(name) {
                 files.push(readFileSync(path, 'utf8'));
         }
     };
-    visit(root);
+    visit(resolve(bundleRoot(name), 'src'));
+    // Bundle contributions can be implemented by an explicitly inserted workspace package.
+    const patch = bundleManifest(name).dsh?.bundle?.patch;
+    if (patch) {
+        const rows = parseYaml(readFileSync(resolve(bundleRoot(name), patch), 'utf8'));
+        const visitInserted = entries => {
+            for (const entry of entries) {
+                for (const inserted of entry.insert ?? []) {
+                    if (packagePaths.has(inserted.name)) visit(resolve(bundleRoot(inserted.name), 'src'));
+                }
+                if (entry.group) visitInserted(entry.group);
+            }
+        };
+        visitInserted(rows);
+    }
     return files.join('\n');
 }
 function inventory(face) {

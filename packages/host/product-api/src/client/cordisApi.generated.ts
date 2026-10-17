@@ -1124,8 +1124,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'eleckoiWebSearch',
-    summary: '管理联网搜索方式、Tavily 配置和官方 Credentials 中的密钥。',
-    description: '管理联网搜索方式、Tavily 配置和官方 Credentials 中的密钥。',
+    summary: '管理搜索、网页抓取和官方 Credentials 中的密钥。',
+    description: '管理搜索、网页抓取和官方 Credentials 中的密钥。',
     methods: [
       {
         signature: 'getSnapshot(): WebSearchSnapshot',
@@ -1146,27 +1146,27 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'update(patch: { mode?: WebSearchMode; maxResults?: number }): Promise<WebSearchSnapshot>',
-        description: '修改搜索方式和返回条数，条数必须在 1 至 8 之间。',
+        signature: 'update(patch: WebSearchSettingsPatch): Promise<WebSearchSnapshot>',
+        description: '修改搜索与抓取方式；DeepSeek 条数为官方 1–50，Tavily 沿用现有配置。',
         parameters: [{ name: 'patch', description: '要修改的配置字段。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'saveAndTest(apiKey: string): Promise<{ settings: WebSearchSnapshot; connection: TavilyConnection }>',
+        signature: 'saveAndTest(apiKey: string, provider?: WebCredentialProvider): Promise<{ settings: WebSearchSnapshot; connection: WebConnection }>',
         description: '测试密钥，通过后保存至官方 Credentials 并刷新页面状态。',
-        parameters: [{ name: 'apiKey', description: '待测试或保存的密钥。' }],
+        parameters: [{ name: 'apiKey', description: '待测试或保存的密钥。' }, { name: 'provider', description: '密钥所属的搜索提供商，默认 Tavily。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'test(apiKey?: string): Promise<{ connection: TavilyConnection }>',
+        signature: 'test(apiKey?: string, provider?: WebCredentialProvider): Promise<{ connection: WebConnection }>',
         description: '测试临时密钥；未传密钥时测试当前已保存密钥。',
-        parameters: [{ name: 'apiKey', description: '待测试或保存的密钥。' }],
+        parameters: [{ name: 'apiKey', description: '待测试或保存的密钥。' }, { name: 'provider', description: '密钥所属的搜索提供商，默认 Tavily。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
-        signature: 'removeKey(): Promise<WebSearchSnapshot>',
+        signature: 'removeKey(provider?: WebCredentialProvider): Promise<WebSearchSnapshot>',
         description: '移除已保存的搜索密钥。',
-        parameters: [],
+        parameters: [{ name: 'provider', description: '密钥所属的搜索提供商，默认 Tavily。' }],
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
     ],
@@ -1292,6 +1292,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreatorStudioSnapshot {\n    status: \'loading\' | \'ready\' | \'error\';\n    collection: CreatorProjectCollection;\n    error: string;\n}',
   },
   {
+    name: 'DeepSeekWebSnapshot',
+    declaration: 'export interface DeepSeekWebSnapshot {\n    available: boolean;\n    count: number;\n    needContent: boolean;\n    localization: string;\n    apiKeyRef: string;\n    apiKeyConfigured: boolean;\n    apiKeyWritable: boolean;\n    revision?: number;\n}',
+  },
+  {
     name: 'EditorLibraryVersionModel',
     declaration: 'export interface EditorLibraryVersionModel<T> {\n    subscribe(listener: () => void): () => void;\n    read(scope: \'global\' | \'character\' | \'preset\', ownerId: string): Promise<EditorLibraryVersions>;\n    save(documents: T[], versions: EditorLibraryVersions[]): Promise<{\n        documents: T[];\n        versions: EditorLibraryVersions[];\n    }>;\n}',
   },
@@ -1336,8 +1340,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PresetDetailSnapshot {\n    status: \'idle\' | \'ready\' | \'error\';\n    preset: AgentPreset | null;\n    error: string;\n}',
   },
   {
+    name: 'WebConnection',
+    declaration: 'export type WebConnection = TavilyConnection | DeepSeekWebConnection;',
+  },
+  {
+    name: 'WebCredentialProvider',
+    declaration: 'export type WebCredentialProvider = \'tavily\' | \'deepseek_api\';',
+  },
+  {
+    name: 'WebSearchSettingsPatch',
+    declaration: 'export interface WebSearchSettingsPatch {\n    mode?: WebSearchMode;\n    fetchMode?: WebFetchMode;\n    maxResults?: number;\n    deepseekCount?: number;\n    needContent?: boolean;\n    localization?: string;\n    deepseekKeyRef?: string;\n}',
+  },
+  {
     name: 'WebSearchSnapshot',
-    declaration: 'export interface WebSearchSnapshot {\n    status: \'loading\' | \'ready\' | \'error\';\n    mode: WebSearchMode;\n    maxResults: number;\n    apiKeyConfigured: boolean;\n    apiKeyRef: string;\n    apiKeyWritable: boolean;\n    writable: boolean;\n    tavilyAvailable: boolean;\n    revision?: number;\n    error: string;\n}',
+    declaration: 'export interface WebSearchSnapshot {\n    status: \'loading\' | \'ready\' | \'error\';\n    mode: WebSearchMode;\n    fetchMode: WebFetchMode;\n    deepseek: DeepSeekWebSnapshot;\n    maxResults: number;\n    apiKeyConfigured: boolean;\n    apiKeyRef: string;\n    apiKeyWritable: boolean;\n    writable: boolean;\n    tavilyAvailable: boolean;\n    revision?: number;\n    error: string;\n}',
   },
 ]
 

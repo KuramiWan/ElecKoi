@@ -34,7 +34,7 @@
         "id": "eleckoiWebSearch",
         "kind": "service",
         "title": "联网搜索设置服务",
-        "description": "读取并维护搜索提供商、Tavily 设置和凭据状态。",
+        "description": "分别选择搜索与网页抓取，维护 Tavily、DeepSeek Search 与 Fetch 的配置和独立凭据。",
         "mode": "call",
         "scope": "client",
         "relation": "provides",
@@ -47,11 +47,26 @@
           "test",
           "removeKey"
         ]
+      },
+      {
+        "id": "dsh.web.provider:deepseek-api",
+        "kind": "contribution",
+        "title": "DeepSeek 搜索与网页抓取",
+        "description": "通过官方 Credentials 调用独立 Search、Fetch API，保留完整结果并支持取消。",
+        "mode": "register",
+        "scope": "host",
+        "relation": "contributes",
+        "owner": "@deepseek-ai/dsh-web",
+        "members": [
+          "registerSearchProvider",
+          "registerFetchProvider"
+        ]
       }
     ]
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.4",
-    "@eleckoi/dsh-product-api": "workspace:*"
+    "@eleckoi/dsh-product-api": "workspace:*",
+    "@eleckoi/dsh-web-deepseek": "workspace:*"
   }
 }

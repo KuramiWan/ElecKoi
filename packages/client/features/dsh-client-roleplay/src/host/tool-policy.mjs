@@ -36,7 +36,7 @@ export function classify(declaration) {
     return `extension:${namespace}`
   }
   const toolName = declarationName(declaration)
-  if (toolName === 'eleckoi_web_search' || toolName === 'eleckoi_native_web_search_bridge') return 'builtin:web'
+  if (toolName === 'web_search' || toolName === 'web_fetch' || toolName === 'eleckoi_web_search' || toolName === 'eleckoi_native_web_search_bridge') return 'builtin:web'
   if (SETTING_LIBRARY_TOOLS.has(toolName)) return 'builtin:setting-library'
   if (VARIABLE_TOOLS.has(toolName)) return 'builtin:variables'
   if (CREATOR_TOOLS.has(toolName)) return 'builtin:creator'

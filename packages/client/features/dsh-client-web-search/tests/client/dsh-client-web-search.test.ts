@@ -13,13 +13,16 @@ function harness() {
   const remote = {
     eleckoiWebSearch: {
       selection: vi.fn(() => ok('tavily')),
+      fetchSelection: vi.fn(() => ok('http')),
+      selectFetch: vi.fn(() => ok('deepseek_api')),
+      testDeepSeek: vi.fn(() => ok({ ok: true, provider: 'deepseek_api', search: true, fetch: true })),
       select: vi.fn(() => ok('provider_native')),
       testTavily: vi.fn(() => ok({ ok: true, used: 0, limit: 100, plan: 'Test' }))
     },
     settings: {
       describe: vi.fn(() => ok({ writable: true, namespaces: [{
         ns: 'web-search-tavily', revision: 4, value: { apiKeyEnv: 'CUSTOM_SEARCH_KEY', maxResults: 8 }
-      }] })),
+      }, { ns: 'eleckoi-web-deepseek', revision: 7, value: { apiKeyEnv: 'DEEPSEEK_WEB_API_KEY', count: 10, needContent: false } }] })),
       mutate: vi.fn(() => ok(undefined))
     },
     credentials: {
@@ -38,12 +41,29 @@ function harness() {
 }
 
 describe('DSH web search Client model', () => {
+  it('keeps Search, Fetch and their credentials independent and saves official count/body settings', async () => {
+    const { remote, model, cleanup } = harness()
+    try {
+      await model.refresh()
+      await model.update({ mode: 'deepseek_api', fetchMode: 'deepseek_api', deepseekCount: 50, needContent: true })
+      expect(remote.eleckoiWebSearch.select).toHaveBeenCalledWith('deepseek_api')
+      expect(remote.eleckoiWebSearch.selectFetch).toHaveBeenCalledWith('deepseek_api')
+      expect(remote.settings.mutate).toHaveBeenCalledWith('eleckoi-web-deepseek', [
+        { op: 'set', path: ['count'], value: 50 }, { op: 'set', path: ['needContent'], value: true }
+      ], 7)
+      await model.saveAndTest('synthetic-deepseek', 'deepseek_api')
+      expect(remote.eleckoiWebSearch.testDeepSeek).toHaveBeenCalledWith('synthetic-deepseek')
+      expect(remote.credentials.set).toHaveBeenCalledWith('DEEPSEEK_WEB_API_KEY', 'synthetic-deepseek')
+      await model.removeKey('deepseek_api')
+      expect(remote.credentials.unset).toHaveBeenCalledWith('DEEPSEEK_WEB_API_KEY')
+    } finally { cleanup() }
+  })
   it('uses the configured credential reference and revision without reading credential contents', async () => {
     const { remote, model, cleanup } = harness()
     try {
       await model.refresh()
       expect(model.getSnapshot()).toMatchObject({ mode: 'tavily', maxResults: 8, apiKeyConfigured: true })
-      expect(remote.credentials.describe).toHaveBeenCalledWith(['CUSTOM_SEARCH_KEY'])
+      expect(remote.credentials.describe).toHaveBeenCalledWith(['CUSTOM_SEARCH_KEY', 'DEEPSEEK_WEB_API_KEY'])
       await model.saveAndTest('synthetic-key')
       expect(remote.credentials.set).toHaveBeenCalledWith('CUSTOM_SEARCH_KEY', 'synthetic-key')
       await model.update({ maxResults: 3 })

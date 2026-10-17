@@ -1,8 +1,8 @@
-import LocalSpillStore from '@deepseek-ai/dsh-spill-local'
+import LocalSpillStore, { sessionDir } from '@deepseek-ai/dsh-spill-local'
 import { canReadResult, resultDomain, RESULT_READERS } from './tool-result-access.mjs'
 import { createReadStream } from 'node:fs'
-import { lstat, open, readFile, realpath, writeFile } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { lstat, open, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 
 const ownershipSuffix = '.owner.json'
 const defaultPageBytes = 32_768
@@ -17,6 +17,29 @@ export default class ToolResultStore extends LocalSpillStore {
     await writeFile(`${ref.locator}${ownershipSuffix}`, JSON.stringify({ version: 1, sessionId: input.owner.sessionId, source: input.source }), { flag: 'wx', mode: 0o600 })
     const domain = resultDomain(input.source?.toolName)
     return domain ? { ...ref, retrievalHint: `Use ${RESULT_READERS[domain]} with ${JSON.stringify({ result: { file_path: ref.locator, offset: 0 } })}. Continue result.offset with next_offset until null; add result.query for literal search. Pass only result; do not repeat the original operation.` } : ref
+  }
+
+  /** Remove complete artifacts and ownership records for deleted Sessions. */
+  async removeSessionResults(sessionIds) {
+    let root
+    try { root = await realpath(this.root) }
+    catch (error) { if (error?.code === 'ENOENT') return; throw error }
+    const failures = []
+    for (const id of new Set(sessionIds)) {
+      try {
+        if (typeof id !== 'string' || !id) throw new Error('清理工具结果缺少有效会话标识。')
+        const directory = resolve(sessionDir(root, id))
+        if (dirname(directory) !== root) throw new Error('工具结果目录超出存储范围，未删除文件。')
+        const info = await lstat(directory)
+        if (!info.isDirectory() || info.isSymbolicLink() || await realpath(directory) !== directory) {
+          throw new Error(`工具结果目录不是存储内的真实目录，未删除：${directory}`)
+        }
+        await rm(directory, { recursive: true, force: true })
+      } catch (error) {
+        if (error?.code !== 'ENOENT') failures.push(new Error(`会话 ${id}：${String(error)}`, { cause: error }))
+      }
+    }
+    if (failures.length) throw new AggregateError(failures, failures.map(error => error.message).join('\n'))
   }
 
   async readResult(args, exec, domain) {

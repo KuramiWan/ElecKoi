@@ -25,11 +25,11 @@
   config:
     search: true
     fetch: true
-    searchMaxResults: __ELECKOI_WEB_SEARCH_MAX_RESULTS__
+    searchMaxResults: 0
     searchMaxQueries: 3
     searchTimeoutMs: 35000
     fetchTimeoutMs: 30000
-    fetchMaxOutputChars: 120000
+    fetchMaxOutputChars: 0
 # ELECKOI:web:END
 
 # ELECKOI:workspace:BEGIN

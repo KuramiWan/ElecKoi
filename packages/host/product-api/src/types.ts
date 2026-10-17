@@ -349,7 +349,15 @@ export interface AuthorConversationState {
   settingLibrary: ConversationRuntimeSettingLibrary | null
 }
 
-export type WebSearchMode = 'provider_native' | 'tavily'
+export type WebSearchMode = 'provider_native' | 'tavily' | 'deepseek_api'
+export type WebFetchMode = 'http' | 'deepseek_api'
+
+export interface DeepSeekWebConnection {
+  ok: true
+  provider: 'deepseek_api'
+  search: true
+  fetch: true
+}
 
 export interface TavilyConnection {
   ok: true

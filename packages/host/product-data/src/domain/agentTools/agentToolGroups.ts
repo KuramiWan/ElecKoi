@@ -30,8 +30,8 @@ export const AGENT_TOOL_GROUPS: ReadonlyArray<Omit<AgentToolGroup, 'enabled' | '
     'shell_command', 'bash', 'pwsh', 'read', 'edit', 'write', 'exec_command', 'write_stdin', 'apply_patch',
     'request_permissions'
   ]),
-  group('builtin:web', '联网搜索', '使用模型原生搜索或 Tavily 外接搜索获取最新信息', [
-    'web_search'
+  group('builtin:web', '联网搜索', '使用模型原生、Tavily 或 DeepSeek Search 搜索，并通过 HTTP 或 DeepSeek Fetch 读取网页正文', [
+    'web_search', 'web_fetch'
   ]),
   group('builtin:roleplay-workflow', '角色扮演计划', '维护角色扮演专用任务计划', [
     'update_roleplay_plan'

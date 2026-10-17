@@ -3,6 +3,13 @@
     searchProvider: deepseek-official
     fetchProvider: http
 
+- id: tool-web
+  config:
+    searchMaxResults: 0
+    fetchMaxOutputChars: 0
+
 - insert:
+    - id: eleckoi-web-deepseek
+      name: '@eleckoi/dsh-web-deepseek'
     - id: eleckoi-client-web-search
       name: '@eleckoi/dsh-client-web-search'

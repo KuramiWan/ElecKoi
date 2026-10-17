@@ -1290,7 +1290,7 @@ Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-a
 
 ### `ctx.eleckoiWebSearchApi` — `ElecKoiWebSearchApi`
 
-管理联网搜索方式和 Tavily 连接测试，通过官方 Typert Remote 公开跨端调用。
+管理搜索、网页抓取和连接测试，通过官方 Typert Remote 公开跨端调用。
 
 ```ts cordis-catalog
 /**
@@ -1313,9 +1313,30 @@ Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-a
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
 @Remote async testTavily(apiKey?: string, signal?: AbortSignal): Promise<TavilyConnection>
+
+/**
+ * 读取网页抓取方式。
+ * @returns 当前网页抓取提供商。
+ */
+@Remote fetchSelection(): WebFetchMode
+
+/**
+ * 保存网页抓取方式，不改变搜索方式。
+ * @param mode - 网页抓取方式。
+ * @returns 已保存的网页抓取提供商。
+ */
+@Remote async selectFetch(mode: WebFetchMode): Promise<WebFetchMode>
+
+/**
+ * 测试 Search 和 Fetch；产生两次官方 API 调用，不保存临时密钥。
+ * @param apiKey - 临时测试密钥；省略时读取已配置的官方凭据。
+ * @param signal - 取消测试的信号。
+ * @returns Search 和 Fetch 均成功时的连接状态，不包含密钥。
+ */
+@Remote async testDeepSeek(apiKey?: string, signal?: AbortSignal): Promise<DeepSeekWebConnection>
 ```
 
-Types: [TavilyConnection](types-host.md#tavilyconnection) · [WebSearchMode](types-host.md#websearchmode)
+Types: [DeepSeekWebConnection](types-host.md#deepseekwebconnection) · [TavilyConnection](types-host.md#tavilyconnection) · [WebFetchMode](types-host.md#webfetchmode) · [WebSearchMode](types-host.md#websearchmode)
 
 Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 <!-- END GENERATED cordis-surface -->

@@ -19,6 +19,8 @@ export const inject = ['eleckoiSessionHandles', 'sessionPersistence', 'sessionPr
 export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageCleanupContext & {
   eleckoiSessionHandles: { withClosed<T>(sessionId: string, action: () => T | Promise<T>): Promise<T> }
   sessionPersistence: { open(sessionId: SessionId, access: 'write'): Promise<{ close(): Promise<void> }> }
+  get(key: 'spillStore'): { removeSessionResults?(sessionIds: string[]): Promise<void> } | undefined
+  logger: { error(message: string): void }
   provide(key: string, value: unknown): void
 }): void {
   const sessionRoot = process.env.DSH_SESSION_ROOT
@@ -109,8 +111,19 @@ export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageClean
     async deleteSession(sessionId: string): Promise<void> {
       await ctx.eleckoiSessionHandles.withClosed(sessionId, async () => {
         const images = generatedImageReferences(readDshSessionLog(sessionRoot, sessionId)?.events || [])
-        removeDshSessionTree(sessionRoot, sessionId)
-        await deleteRemovedGeneratedImages(ctx, images, sessionId)
+        const deletedSessionIds = removeDshSessionTree(sessionRoot, sessionId)
+        try {
+          const store = ctx.get('spillStore')
+          if (!store?.removeSessionResults) throw new Error('当前 Host 未提供工具结果删除服务。')
+          await store.removeSessionResults(deletedSessionIds)
+        } catch (error) {
+          ctx.logger.error(`会话 ${sessionId} 已删除，但工具结果清理失败；继续完成删除，残留文件由过期清理回收。${String(error)}`)
+        }
+        try {
+          await deleteRemovedGeneratedImages(ctx, images, sessionId)
+        } catch (error) {
+          ctx.logger.error(`会话 ${sessionId} 已删除，但生成图片清理失败；继续完成删除。${String(error)}`)
+        }
       })
     },
     async discardGeneratedImages(images: NonNullable<GeneratedImageFrame['attachment']>[]): Promise<void> {

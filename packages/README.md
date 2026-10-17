@@ -9,6 +9,7 @@
 | `host/product-data/` | 产品 SQLite、版本化迁移、媒体与领域 Repository。 |
 | `host/runtime/` | 正式 DSH Session 操作与共享会话处理。 |
 | `host/web-search-tavily/` | Tavily 搜索服务插件。 |
+| `host/web-deepseek/` | DeepSeek 独立 Search、Fetch API 提供器，由联网设置 bundle 装配。 |
 | `shared/` | 公共合同、数据校验及纯基础函数；不承担数据库和 AI 运行。 |
 | `sdk/` | 作者扩展 SDK。 |
 | `compatibility/` | 当前受支持的 MVU 变量格式转换。HTML 显示资源位于 `client/features/`。 |

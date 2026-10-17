@@ -90,10 +90,13 @@ import type {
   ScriptWorkspace,
   TavilyConnection,
   WebSearchMode,
+  WebFetchMode,
+  DeepSeekWebConnection,
   VariableConfig,
   VariableViewerTimeline
 } from './types.js'
 import { testTavilyConnection } from './tavily.js'
+import { DEEPSEEK_API_PROVIDER, DEEPSEEK_WEB_KEY_REF, DEEPSEEK_WEB_NAMESPACE, testDeepSeekConnection } from '@eleckoi/dsh-web-deepseek/api'
 import { ElecKoiVariableProcessing } from './variable-processing.js'
 import { ElecKoiAuthorVariablesApi } from './author-variables.js'
 import { ElecKoiAuthorScriptsApi, eleckoiScriptAssetsPlugin } from './author-scripts.js'
@@ -129,6 +132,8 @@ export type {
   AuthorConversationState,
   TavilyConnection,
   WebSearchMode,
+  WebFetchMode,
+  DeepSeekWebConnection,
   CreateCreatorProjectInput,
   CharacterCollection,
   CharacterExportFormat,
@@ -1424,7 +1429,7 @@ export class ElecKoiModelsApi extends TypertRemoteService {
   }
 }
 
-/** 管理联网搜索方式和 Tavily 连接测试，通过官方 Typert Remote 公开跨端调用。 */
+/** 管理搜索、网页抓取和连接测试，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiWebSearchApi extends TypertRemoteService {
   static inject = ['typert', 'configEditor', 'settings', 'credentials']
 
@@ -1444,6 +1449,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     const provider = this.webConfiguration().searchProvider
     if (provider === TAVILY_WEB_PROVIDER) return 'tavily'
     if (provider === DEEPSEEK_WEB_PROVIDER) return 'provider_native'
+    if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
     throw new Error('当前搜索提供器未由 ElecKoi 设置页面管理。')
   }
 
@@ -1454,12 +1460,13 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
    */
   @Remote
   async select(mode: WebSearchMode): Promise<WebSearchMode> {
-    if (mode !== 'provider_native' && mode !== 'tavily') throw new Error('不支持的联网搜索方式。')
+    if (mode !== 'provider_native' && mode !== 'tavily' && mode !== 'deepseek_api') throw new Error('不支持的联网搜索方式。')
     if (mode === 'tavily' && !this.ownerContext.settings.describe().some(item => item.ns === 'web-search-tavily')) {
       throw new Error('Tavily 搜索插件当前未启用。')
     }
+    if (mode === 'deepseek_api') this.requireDeepSeek()
     const row = this.webRow()
-    const provider = mode === 'tavily' ? TAVILY_WEB_PROVIDER : DEEPSEEK_WEB_PROVIDER
+    const provider = mode === 'deepseek_api' ? DEEPSEEK_API_PROVIDER : mode === 'tavily' ? TAVILY_WEB_PROVIDER : DEEPSEEK_WEB_PROVIDER
     await this.ownerContext.configEditor.edit(row, current => ({ ...current, searchProvider: provider }))
     return mode
   }
@@ -1480,6 +1487,51 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
       credentialRef(ref)
     ))?.value?.trim() || ''
     return testTavilyConnection(candidate, signal)
+  }
+
+  /**
+   * 读取网页抓取方式。
+   * @returns 当前网页抓取提供商。
+   */
+  @Remote
+  fetchSelection(): WebFetchMode {
+    const provider = this.webConfiguration().fetchProvider
+    if (provider === 'http') return 'http'
+    if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
+    throw new Error('当前抓取提供器未由 ElecKoi 设置页面管理。')
+  }
+
+  /**
+   * 保存网页抓取方式，不改变搜索方式。
+   * @param mode - 网页抓取方式。
+   * @returns 已保存的网页抓取提供商。
+   */
+  @Remote
+  async selectFetch(mode: WebFetchMode): Promise<WebFetchMode> {
+    if (mode !== 'http' && mode !== 'deepseek_api') throw new Error('不支持的网页抓取方式。')
+    if (mode === 'deepseek_api') this.requireDeepSeek()
+    await this.ownerContext.configEditor.edit(this.webRow(), current => ({ ...current, fetchProvider: mode === 'http' ? 'http' : DEEPSEEK_API_PROVIDER }))
+    return mode
+  }
+
+  /**
+   * 测试 Search 和 Fetch；产生两次官方 API 调用，不保存临时密钥。
+   * @param apiKey - 临时测试密钥；省略时读取已配置的官方凭据。
+   * @param signal - 取消测试的信号。
+   * @returns Search 和 Fetch 均成功时的连接状态，不包含密钥。
+   */
+  @Remote
+  async testDeepSeek(apiKey?: string, signal?: AbortSignal): Promise<DeepSeekWebConnection> {
+    const config = this.requireDeepSeek().value as Record<string, unknown> | undefined
+    const ref = typeof config?.apiKeyEnv === 'string' ? config.apiKeyEnv : DEEPSEEK_WEB_KEY_REF
+    const candidate = apiKey?.trim() || (await this.ownerContext.credentials.resolve(credentialRef(ref)))?.value?.trim() || ''
+    return testDeepSeekConnection(candidate, signal)
+  }
+
+  private requireDeepSeek() {
+    const namespace = this.ownerContext.settings.describe().find(item => item.ns === DEEPSEEK_WEB_NAMESPACE)
+    if (!namespace) throw new Error('DeepSeek 联网 API 插件当前未启用。')
+    return namespace
   }
 
   private webRow(): ReturnType<Context['configEditor']['entries']>[number] {

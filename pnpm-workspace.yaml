@@ -22,6 +22,10 @@ overrides:
   '@earendil-works/pi-ai': 0.87.1
 
 patchedDependencies:
+  # RETIRE WHEN: the locked upstream accepts provider-owned result counts, complete
+  # fetch output and explicitly unavailable origin status for extraction APIs.
+  '@deepseek-ai/dsh-web@0.2.0-rc.2': patches/@deepseek-ai__dsh-web@0.2.0-rc.2.patch
+  '@deepseek-ai/dsh-tool-web@0.2.0-rc.2': patches/@deepseek-ai__dsh-tool-web@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-agent-loop@0.2.0-rc.2': patches/@deepseek-ai__dsh-agent-loop@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-api-session-controller@0.2.0-rc.2': patches/@deepseek-ai__dsh-api-session-controller@0.2.0-rc.2.patch
   '@deepseek-ai/dsh-client-ui-chat@0.2.0-rc.2': patches/@deepseek-ai__dsh-client-ui-chat@0.2.0-rc.2.patch

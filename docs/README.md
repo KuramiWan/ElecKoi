@@ -4,6 +4,8 @@
 
 ## 当前架构
 
+- [联网搜索与网页抓取](WEB_SEARCH.md)：配置 DeepSeek Search、Fetch、独立密钥及原有提供商。
+
 - [统一编辑器与完整配置版本](adr/0037-editor-collections-and-versions.md)：主界面多选、管理弹窗与版本数据合同。
 - [聊天运行状态存储](adr/0038-conversation-runtime-state.md)：变量和分支设定的历史边界、回退及单文件归档。
 
@@ -47,6 +49,7 @@
 
 - [测试与日常验证](TESTING.md)：测试分组、并发、目录归属及扩大验证的条件。
 
+- [v0.2.13 发布说明](releases/v0.2.13.md)
 - [v0.2.12 发布说明](releases/v0.2.12.md)
 - [v0.2.11 发布说明](releases/v0.2.11.md)
 - [v0.2.10 发布说明](releases/v0.2.10.md)

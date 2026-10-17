@@ -1009,8 +1009,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'eleckoiWebSearchApi',
-    summary: '管理联网搜索方式和 Tavily 连接测试，通过官方 Typert Remote 公开跨端调用。',
-    description: '管理联网搜索方式和 Tavily 连接测试，通过官方 Typert Remote 公开跨端调用。',
+    summary: '管理搜索、网页抓取和连接测试，通过官方 Typert Remote 公开跨端调用。',
+    description: '管理搜索、网页抓取和连接测试，通过官方 Typert Remote 公开跨端调用。',
     methods: [
       {
         signature: '@Remote selection(): WebSearchMode',
@@ -1029,6 +1029,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: '测试临时或已保存的密钥，不保存传入密钥。',
         parameters: [{ name: 'apiKey', description: '仅用于测试的密钥；省略时使用当前密钥。' }, { name: 'signal', description: '取消调用或结束订阅流的信号。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
+      },
+      {
+        signature: '@Remote fetchSelection(): WebFetchMode',
+        description: '读取网页抓取方式。',
+        parameters: [],
+        returns: '当前网页抓取提供商。',
+      },
+      {
+        signature: '@Remote async selectFetch(mode: WebFetchMode): Promise<WebFetchMode>',
+        description: '保存网页抓取方式，不改变搜索方式。',
+        parameters: [{ name: 'mode', description: '网页抓取方式。' }],
+        returns: '已保存的网页抓取提供商。',
+      },
+      {
+        signature: '@Remote async testDeepSeek(apiKey?: string, signal?: AbortSignal): Promise<DeepSeekWebConnection>',
+        description: '测试 Search 和 Fetch；产生两次官方 API 调用，不保存临时密钥。',
+        parameters: [{ name: 'apiKey', description: '临时测试密钥；省略时读取已配置的官方凭据。' }, { name: 'signal', description: '取消测试的信号。' }],
+        returns: 'Search 和 Fetch 均成功时的连接状态，不包含密钥。',
       },
     ],
   },
@@ -1251,6 +1269,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CreatorStudioSessionSummary',
     declaration: 'export interface CreatorStudioSessionSummary extends CreatorStudioSession {\n    title: string;\n    updatedAt: number;\n    pinned: boolean;\n    pinIndex: number;\n}',
+  },
+  {
+    name: 'DeepSeekWebConnection',
+    declaration: 'export interface DeepSeekWebConnection {\n    ok: true;\n    provider: \'deepseek_api\';\n    search: true;\n    fetch: true;\n}',
   },
   {
     name: 'DisplayPreferencesSnapshot',
@@ -1549,8 +1571,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface VariableViewerTimeline {\n    current: VariableStateDocument;\n    floors: VariableFloorSnapshot[];\n}',
   },
   {
+    name: 'WebFetchMode',
+    declaration: 'export type WebFetchMode = \'http\' | \'deepseek_api\';',
+  },
+  {
     name: 'WebSearchMode',
-    declaration: 'export type WebSearchMode = \'provider_native\' | \'tavily\';',
+    declaration: 'export type WebSearchMode = \'provider_native\' | \'tavily\' | \'deepseek_api\';',
   },
 ]
 

@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@eleckoi/author-sdk": "workspace:*",
+    "@eleckoi/dsh-web-deepseek": "workspace:*",
     "fflate": "0.8.3",
     "@eleckoi/dsh-client-roleplay": "workspace:*",
     "@deepseek-ai/cordis": "4.0.4",
@@ -438,14 +439,17 @@
         "id": "eleckoiWebSearchRemote",
         "kind": "remote",
         "title": "联网搜索配置",
-        "description": "通过 DSH Host 选择搜索提供商并验证 Tavily 连接。密钥由 DSH Credentials 独立管理。",
+        "description": "通过 DSH Host 分别选择搜索与网页抓取提供商，测试 Tavily 或 DeepSeek Search、Fetch；密钥由官方 Credentials 管理。",
         "mode": "call",
         "scope": "host",
         "relation": "provides",
         "members": [
           "selection",
           "select",
-          "testTavily"
+          "testTavily",
+          "fetchSelection",
+          "selectFetch",
+          "testDeepSeek"
         ],
         "owner": "eleckoiWebSearch"
       },

@@ -18,6 +18,9 @@ import { importVariableConfig } from "../../apps/web/src/modules/variables/model
 import { parseSettingLibraryFile } from "../../apps/web/src/modules/settingLibraries/model/settingLibraryTransfer.js";
 import { requestProjectionPlan, projectRequestMessages, sessionInstructions } from "../../packages/client/features/dsh-client-roleplay/src/host/conversation-context.mjs";
 import { normalizeReleaseNotes } from "../../apps/desktop/src/main/modules/updates/UpdateService";
+
+vi.mock('electron-updater', () => ({ default: { autoUpdater: {} } }));
+
 const directories = [];
 const databases = [];
 const stamp = "2026-10-14T00:00:00.000Z";

@@ -461,6 +461,23 @@ export interface CreatorStudioSnapshot {
 
 源码：[packages/client/features/dsh-client-creator-studio/src/client/types.ts:46](../../packages/client/features/dsh-client-creator-studio/src/client/types.ts#L46)
 
+## DeepSeekWebSnapshot
+
+```ts
+export interface DeepSeekWebSnapshot {
+    available: boolean;
+    count: number;
+    needContent: boolean;
+    localization: string;
+    apiKeyRef: string;
+    apiKeyConfigured: boolean;
+    apiKeyWritable: boolean;
+    revision?: number;
+}
+```
+
+源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:4](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L4)
+
 ## EditorLibraryVersionModel
 
 ```ts
@@ -591,12 +608,46 @@ export interface PresetDetailSnapshot {
 
 源码：[packages/client/features/dsh-client-presets/src/client/types.ts:5](../../packages/client/features/dsh-client-presets/src/client/types.ts#L5)
 
+## WebConnection
+
+```ts
+export type WebConnection = TavilyConnection | DeepSeekWebConnection;
+```
+
+源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:7](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L7)
+
+## WebCredentialProvider
+
+```ts
+export type WebCredentialProvider = 'tavily' | 'deepseek_api';
+```
+
+源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:6](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L6)
+
+## WebSearchSettingsPatch
+
+```ts
+export interface WebSearchSettingsPatch {
+    mode?: WebSearchMode;
+    fetchMode?: WebFetchMode;
+    maxResults?: number;
+    deepseekCount?: number;
+    needContent?: boolean;
+    localization?: string;
+    deepseekKeyRef?: string;
+}
+```
+
+源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:8](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L8)
+
 ## WebSearchSnapshot
 
 ```ts
 export interface WebSearchSnapshot {
     status: 'loading' | 'ready' | 'error';
     mode: WebSearchMode;
+    fetchMode: WebFetchMode;
+    deepseek: DeepSeekWebSnapshot;
     maxResults: number;
     apiKeyConfigured: boolean;
     apiKeyRef: string;
@@ -608,7 +659,7 @@ export interface WebSearchSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:4](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L4)
+源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:5](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L5)
 
 ## 官方和平台类型
 

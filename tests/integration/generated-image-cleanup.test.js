@@ -1,6 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { Context } from '@deepseek-ai/cordis';
 import { Session, SessionId, SessionStore } from '@deepseek-ai/dsh-session';
@@ -16,6 +17,7 @@ import { readDshSessionLog } from '../../packages/host/runtime/src/trajectory';
 import { illustrationProjection } from '../../packages/client/features/dsh-client-roleplay/src/host/illustration-projection.mjs';
 import { findGeneratedImage } from '../../packages/client/features/dsh-client-roleplay/src/host/generated-image-result.mjs';
 import { deleteRemovedGeneratedImages, generatedImageReferences } from '../../packages/host/runtime/src/generatedImageCleanup';
+import ToolResultStore from '../../packages/client/features/dsh-client-roleplay/src/host/tool-result-store.mjs';
 
 const cleanups = [];
 afterEach(async () => {
@@ -26,10 +28,10 @@ afterEach(async () => {
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 async function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'eleckoi-generated-cleanup-')), ctx = new Context(), sessions = join(root, 'sessions');
-  cleanups.push(() => {
+  cleanups.push(async () => {
     const child = relative(tmpdir(), root);
     if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected test cleanup path');
-    rmSync(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   });
   cleanups.push(() => ctx.fiber.dispose());
   for (const [key, value] of Object.entries({ DSH_SESSION_ROOT: sessions, ELECKOI_DATABASE_PATH: join(root, 'product.sqlite'), ELECKOI_MEDIA_ROOT: join(root, 'media'), ELECKOI_WORKSPACE_ROOT: join(root, 'workspace') })) vi.stubEnv(key, value);
@@ -38,6 +40,8 @@ async function fixture() {
   await ctx.plugin(LocalAttachmentStore, { dshHome: root });
   await ctx.plugin(SessionProjectionRegistry);
   await ctx.plugin(productDataPlugin);
+  ctx.provide('sessionQuery', {});
+  await ctx.plugin(ToolResultStore, { root: join(root, 'tool-results') });
   ctx.provide('eleckoiSessionHandles', { withClosed: async (_id, action) => action() });
   ctx.provide('sessionProjectionCache', { write: async () => {} });
   ctx.sessionProjections.register(illustrationProjection);
@@ -84,7 +88,11 @@ async function fixture() {
     await persist(session);
     return { id, session, input };
   };
-  return { root, sessions, ctx, save, persist, turn, create, api, owner };
+  const saveResult = (sessionId, toolName = 'eleckoi_read_setting_files') => ctx.spillStore.saveText({
+    owner: { sessionId }, source: { kind: 'tool', toolName, callId: `synthetic-${toolName}` },
+    suggestedName: 'synthetic-result.txt', content: `合成开头|${'合成续读正文𠮷'.repeat(10001)}|合成末尾`
+  });
+  return { root, sessions, ctx, save, persist, turn, create, api, owner, saveResult };
 }
 
 describe('generated image deletion in existing Host operations', { timeout: 30000 }, () => {
@@ -98,20 +106,70 @@ describe('generated image deletion in existing Host operations', { timeout: 3000
       sessions: { list: () => [chat.session] } }, new Map([[ref.attachmentId, ref]]));
     expect(existsSync(f.ctx.attachments.imageHostPath(ref))).toBe(false);
   });
-  it('deletes a chat and its generated file immediately', async () => {
-    const f = await fixture(), ref = await f.save(), chat = await f.create(ref);
+  it('deletes a chat and its generated file and complete tool results immediately', async () => {
+    const f = await fixture(), ref = await f.save(), chat = await f.create(ref), retained = await f.create(await f.save(2));
+    const removed = await Promise.all(['eleckoi_read_setting_files', 'eleckoi_read_variables', 'eleckoi_call_capability'].map(tool => f.saveResult(chat.id, tool)));
+    const kept = await f.saveResult(retained.id);
     await ElecKoiConversationsApi.prototype.delete.call(f.api, chat.id);
-    expect(f.ctx.eleckoiProductData.readConversationCatalog()).toHaveLength(0);
+    expect(f.ctx.eleckoiProductData.readConversationCatalog().map(item => item.id)).toEqual([retained.id]);
+    for (const result of removed) {
+      expect(existsSync(result.locator)).toBe(false);
+      expect(existsSync(`${result.locator}.owner.json`)).toBe(false);
+      expect(existsSync(dirname(result.locator))).toBe(false);
+    }
+    expect(readFileSync(kept.locator, 'utf8')).toContain('合成末尾');
+    expect(existsSync(`${kept.locator}.owner.json`)).toBe(true);
     expect(existsSync(f.ctx.attachments.imageHostPath(ref))).toBe(false);
   });
-  it('deletes a character and the generated files of its chats while leaving other chats intact', async () => {
+  it('deletes a character and the generated files and tool results of all its chats while leaving other chats intact', async () => {
     const f = await fixture(), first = await f.save(), second = await f.save(2), retained = await f.save(3);
     f.ctx.eleckoiProductData.createCharacter({ id: 'synthetic-card', name: '合成角色' });
-    await f.create(first, 'synthetic-card'); await f.create(second, 'synthetic-card'); await f.create(retained);
+    const chats = [await f.create(first, 'synthetic-card'), await f.create(second, 'synthetic-card')], other = await f.create(retained);
+    const results = await Promise.all(chats.map(chat => f.saveResult(chat.id))), kept = await f.saveResult(other.id);
     await ElecKoiCharactersApi.prototype.delete.call({ productData: f.ctx.eleckoiProductData, ownerContext: f.owner, publishChange() {} }, ['synthetic-card']);
+    for (const result of results) {
+      expect(existsSync(result.locator)).toBe(false);
+      expect(existsSync(`${result.locator}.owner.json`)).toBe(false);
+    }
+    expect(readFileSync(kept.locator, 'utf8')).toContain('合成末尾');
+    expect(f.ctx.eleckoiProductData.readConversationCatalog().map(item => item.id)).toEqual([other.id]);
     expect(existsSync(f.ctx.attachments.imageHostPath(first))).toBe(false);
     expect(existsSync(f.ctx.attachments.imageHostPath(second))).toBe(false);
     expect((await f.ctx.attachments.readImage(retained)).data.byteLength).toBeGreaterThan(0);
+  });
+  it.each(['chat', 'character'])('still deletes the %s and its log when result and generated-image cleanup fail', async kind => {
+    const f = await fixture();
+    f.ctx.eleckoiProductData.createCharacter({ id: 'synthetic-card', name: '合成角色' });
+    const chat = await f.create(await f.save(), 'synthetic-card'), result = await f.saveResult(chat.id);
+    const failure = new Error('合成文件占用');
+    vi.spyOn(f.ctx.spillStore, 'removeSessionResults').mockRejectedValue(failure);
+    vi.spyOn(f.ctx.attachments, 'imageHostPath').mockImplementation(() => { throw new Error('合成图片占用'); });
+    const warnings = [];
+    f.ctx.logger.exporter({ export: message => { if (message.type === 'error') warnings.push(message.args.join(' ')); } });
+    if (kind === 'chat') await ElecKoiConversationsApi.prototype.delete.call(f.api, chat.id);
+    else await ElecKoiCharactersApi.prototype.delete.call({ productData: f.ctx.eleckoiProductData, ownerContext: f.owner, publishChange() {} }, ['synthetic-card']);
+    expect(f.ctx.eleckoiProductData.readConversationCatalog()).toEqual([]);
+    expect(readDshSessionLog(f.sessions, chat.id)).toBeUndefined();
+    expect(existsSync(result.locator)).toBe(true);
+    expect(warnings).toEqual([expect.stringContaining('工具结果清理失败'), expect.stringContaining('生成图片清理失败')]);
+    expect(warnings[0]).toContain('合成文件占用');
+    expect(warnings[1]).toContain('合成图片占用');
+    if (kind === 'character') expect(f.ctx.eleckoiProductData.readCharacters().items).toEqual([]);
+  });
+  it('removes descendant results and also handles a result whose Session log is already absent', async () => {
+    const f = await fixture(), chat = await f.create(await f.save());
+    const leave = f.ctx.sessions.enter(chat.session);
+    const child = f.ctx.sessions.fork(chat.session, undefined, SessionId('synthetic-child'));
+    const grandchild = f.ctx.sessions.fork(child, undefined, SessionId('synthetic-grandchild'));
+    await f.persist(child); await f.persist(grandchild);
+    leave();
+    const results = await Promise.all([child.id, grandchild.id, 'synthetic-missing-log'].map(id => f.saveResult(id)));
+    await ElecKoiConversationsApi.prototype.delete.call(f.api, chat.id);
+    await f.ctx.eleckoiSessionEditor.deleteSession('synthetic-missing-log');
+    await f.ctx.eleckoiSessionEditor.deleteSession('synthetic-missing-log');
+    for (const result of results) expect(existsSync(dirname(result.locator))).toBe(false);
+    expect(readDshSessionLog(f.sessions, child.id)).toBeUndefined();
+    expect(readDshSessionLog(f.sessions, grandchild.id)).toBeUndefined();
   });
   it('removes the replaced reply file during regeneration, keeps earlier images and saves the new reply on the same Session', async () => {
     const f = await fixture(), retained = await f.save(), removed = await f.save(2), next = await f.save(3), chat = await f.create(retained);
