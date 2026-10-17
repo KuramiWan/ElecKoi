@@ -33,8 +33,10 @@
  * 详情里只有契约参数名 `issues`，不是拼好的用户可见句子：用户可见文案的解析点在渲染层。
  */
 
-/** 信封不成立时的契约码。必须与 `ELECKOI_FAILURE_CODES.contractInvalidResponse` 逐字相同（有用例守）。 */
-export const INVALID_RESPONSE_CODE = 'eleckoi/contract/invalid-response'
+import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
+
+/** 信封不成立时的契约码（从生成物派生，码表改了会自动跟上）。 */
+export const INVALID_RESPONSE_CODE = ELECKOI_FAILURE_CODES.contractInvalidResponse
 
 /** 信封不成立时记进 `details.issues` 的路径：调用方连 `result` 都没拿到。 */
 export const MISSING_RESULT_ISSUE_PATH = 'result'
@@ -42,8 +44,8 @@ export const MISSING_RESULT_ISSUE_PATH = 'result'
 /** 信封不成立时记进 `details.issues` 的路径：拿到了 `result`，但它的失败分支没有可用失败。 */
 export const MISSING_ERROR_ISSUE_PATH = 'result.error'
 
-/** 兜底码。必须与 `ELECKOI_FAILURE_CODES.internal` 逐字相同（有用例守）。 */
-export const INTERNAL_FAILURE_CODE = 'eleckoi/internal'
+/** 兜底码（从生成物派生）。 */
+export const INTERNAL_FAILURE_CODE = ELECKOI_FAILURE_CODES.internal
 
 /** 一条契约违例（与 `contracts/errors/details.ts` 的 `EleckoiFailureIssue` 同形）。 */
 export interface InvalidResponseIssue {

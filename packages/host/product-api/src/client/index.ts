@@ -17,6 +17,8 @@ export type { InvalidResponseFailure, InvalidResponseIssue } from './invalidResp
 export { failureOrInvalidResponse, unwrapOrFail } from './unwrapFailure.js'
 export { bestEffort, failureAlreadyPublished, rejectionIsAwaitedElsewhere } from './swallowedFailure.js'
 export { internalFailure, INTERNAL_FAILURE_CODE } from './invalidResponse.js'
+export { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
+export type { ClientFailureCode } from './errorCodes.generated.js'
 export type { InternalFailure } from './invalidResponse.js'
 export type { RemoteResultEnvelope } from './unwrapFailure.js'
 
