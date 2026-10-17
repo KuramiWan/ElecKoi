@@ -214,6 +214,11 @@ function contextBridge(f) {
     'eleckoi-conversation-context.json'), 'utf8'))
 }
 
+function settingBridge(f) {
+  return JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId,
+    'eleckoi-setting-library-state.json'), 'utf8'))
+}
+
 describe('old chat request preparation', { timeout: 30_000 }, () => {
   it('stores one native completed boundary across multiple assistant messages without using reply rows or retired files', async () => {
     const f = await fixture(false, { native: true, multipleSteps: true })
@@ -399,9 +404,7 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
   it('writes the visible conversation history into the setting library bridge', async () => {
     const f = await fixture(true, { finalReply: true })
     await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, '合成新输入')
-    const bridge = JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId,
-      'eleckoi-setting-library-state.json'), 'utf8'))
-    expect(bridge.history).toEqual([
+    expect(settingBridge(f).history).toEqual([
       { role: 'assistant', content: '合成开场白' },
       { role: 'user', content: '合成旧输入' },
       { role: 'assistant', content: 'Synthetic reply' },
@@ -419,8 +422,7 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
       .filter(event => event.type === 'assistant/message')).toHaveLength(0)
     expect(contextBridge(f)).toMatchObject({ historyMode: 'prefix', currentUserInput: '合成替换输入',
       history: [{ role: 'assistant', content: '合成开场白' }] })
-    expect(JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId,
-      'eleckoi-setting-library-state.json'), 'utf8')).history).toEqual([
+    expect(settingBridge(f).history).toEqual([
       { role: 'assistant', content: '合成开场白' },
       { role: 'user', content: '合成替换输入' }
     ])

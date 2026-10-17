@@ -86,7 +86,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       settingStateFile,
       runtime.conversationContext.currentPromptText ?? text,
       runtime.conversationContext,
-      settingLibraryHistory(ctx.sessions.get(runtime.runtimeSessionId), text)
+      visibleDialogueHistory(ctx.sessions.get(runtime.runtimeSessionId)?.deriveMessages?.() ?? [])
     )
     writeContextBridge(
       contextFile,
@@ -419,17 +419,10 @@ function writeContextBridge(path, currentUserInput, context) {
 
 /**
  * The setting tools match keywords and EJS chat conditions against this history.
- * Regeneration keeps the current input in the session surface, so drop it here:
- * the setting bridge appends the current input separately.
+ * Regeneration keeps the current input in the session surface; visibleDialogueHistory
+ * leaves that trailing input out, and the setting bridge appends the current input once.
  */
-export function settingLibraryHistory(session, currentInput = '') {
-  const history = visibleDialogueHistory(typeof session?.deriveMessages === 'function' ? session.deriveMessages() : [])
-  const input = String(currentInput ?? '')
-  while (history.length && history.at(-1).role === 'user' && history.at(-1).content === input) history.pop()
-  return history
-}
-
-function writeSettingBridge(path, currentUserInput, context, conversationHistory = []) {
+function writeSettingBridge(path, currentUserInput, context, conversationHistory) {
   writeAtomically(path, `${JSON.stringify({
     enabled: context.settingLibrary !== undefined,
     library: context.settingLibrary ?? null,
