@@ -16,6 +16,8 @@ import type {
 } from '@shared/contracts/variables/schemas'
 import { normalizeSettingLibrary } from '@product-data/domain/settingLibraries'
 import { normalizeVariableConfig } from '@product-data/domain/variables'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { variableValueTypeSchema } from '@shared/contracts/variables/schemas'
 
 type JsonObject = Record<string, unknown>
@@ -51,10 +53,10 @@ export function encodeVariableConfigSnapshot(config: VariableConfig): string {
 }
 
 export function decodeSettingLibrarySnapshot(json: string, characterId: string): SettingLibrary {
-  const root = parseObject(json, '设定库快照格式不正确')
-  if (root.format !== 'eleckoi.setting-library-snapshot') throw new Error('这不是 ElecKoi 设定库快照')
+  const root = parseObject(json, '设定库快照格式不正确', '设定库快照')
+  if (root.format !== 'eleckoi.setting-library-snapshot') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '这不是 ElecKoi 设定库快照', { what: '设定库快照的格式' })
   const versions = objectList(root.versions).map(settingVersion)
-  if (!versions.length) throw new Error('ElecKoi 角色卡里的设定库为空')
+  if (!versions.length) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'ElecKoi 角色卡里的设定库为空', { what: '角色卡里的设定库' })
   const activeVersionId = string(root.active_version_id)
   const active = versions.find((version) => version.id === activeVersionId) ?? versions[0]!
   return normalizeSettingLibrary(characterId, {
@@ -71,8 +73,8 @@ export function decodeSettingLibrarySnapshot(json: string, characterId: string):
 }
 
 export function decodeVariableConfigSnapshot(json: string, characterId: string): VariableConfig {
-  const root = parseObject(json, '变量配置文件格式不正确')
-  if (root.format !== 'eleckoi.variable-config') throw new Error('这不是 ElecKoi 变量配置文件')
+  const root = parseObject(json, '变量配置文件格式不正确', '变量配置文件')
+  if (root.format !== 'eleckoi.variable-config') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '这不是 ElecKoi 变量配置文件', { what: '变量配置文件的格式' })
   const supplied = objectList(root.versions)
   const versions = (supplied.length ? supplied : [root]).map((value, index) => variableVersion(value, index))
   const requested = string(root.active_version_id)
@@ -361,13 +363,13 @@ function parsedInitialState(json: string): JsonObject {
   }
 }
 
-function parseObject(json: string, message: string): JsonObject {
+function parseObject(json: string, message: string, what: string): JsonObject {
   try {
     const value: unknown = JSON.parse(json)
     const result = record(value)
-    if (!result) throw new Error(message)
+    if (!result) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what })
     return result
-  } catch (error) { throw new Error(message, { cause: error }) }
+  } catch { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what }) }
 }
 
 function enumValue<const T extends string, F extends T | null>(value: unknown, choices: readonly T[], fallback: F): T | F {
@@ -375,7 +377,7 @@ function enumValue<const T extends string, F extends T | null>(value: unknown, c
 }
 
 function requiredEnumValue<const T extends string>(value: unknown, choices: readonly T[], label: string): T {
-  if (typeof value !== 'string' || !choices.includes(value as T)) throw new Error(`${label}不受支持`)
+  if (typeof value !== 'string' || !choices.includes(value as T)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `${label}不受支持`, { what: label })
   return value as T
 }
 function record(value: unknown): JsonObject | undefined { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : undefined }

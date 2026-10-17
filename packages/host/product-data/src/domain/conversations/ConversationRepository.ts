@@ -17,6 +17,8 @@ import {
 import type { ConversationSeed } from './conversationSeed'
 import { seedConversationVariableStates } from './ConversationVariableStateStore'
 import { hideMvuDisplayMarkers } from '@eleckoi/compatibility-mvu'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const emptyMetadata = (): ConversationMetadata => ({ characterId: '', characterName: '', characterAvatar: '', characterPersona: {} })
 const toConversation = (row: typeof chatSessions.$inferSelect, preview: string): Conversation => ({ id: row.id, title: row.title, preview, createdAt: row.createdAt, updatedAt: row.updatedAt })
@@ -87,7 +89,7 @@ export class ConversationRepository {
 
   get(id: string, db: ElecKoiDatabase = this.store.db): Conversation {
     const row = db.select().from(chatSessions).where(eq(chatSessions.id, id)).get()
-    if (!row) throw new Error('找不到对应的聊天存档。')
+    if (!row) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到对应的聊天存档。', { what: '聊天存档' })
     return toConversation(row, this.preview(row))
   }
 
@@ -97,7 +99,7 @@ export class ConversationRepository {
     const row = db.select({
       characterId: chatSessions.characterId
     }).from(chatSessions).where(eq(chatSessions.id, id)).get()
-    if (!row) throw new Error('找不到对应的聊天存档。')
+    if (!row) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到对应的聊天存档。', { what: '聊天存档' })
     return row
   }
 
@@ -134,7 +136,7 @@ export class ConversationRepository {
 
   getMetadata(id: string, db: ElecKoiDatabase = this.store.db): ConversationMetadata {
     const session = db.select().from(chatSessions).where(eq(chatSessions.id, id)).get()
-    if (!session) throw new Error('找不到对应的聊天存档。')
+    if (!session) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到对应的聊天存档。', { what: '聊天存档' })
     const snapshot = db.select().from(chatSessionCharacterSnapshots).where(eq(chatSessionCharacterSnapshots.sessionId, id)).get()
     const profile = db.select().from(userProfile).where(eq(userProfile.id, 'default')).get()
     const characterPersona = parseJsonObject(snapshot?.personaJson ?? '{}')
@@ -179,7 +181,7 @@ export class ConversationRepository {
   upsertMetadata(id: string, metadata: ConversationMetadata, db?: ElecKoiDatabase): void {
     const operation = (database: ElecKoiDatabase) => {
       const previous = this.getMetadata(id, database)
-      if (metadata.characterId !== previous.characterId) throw new Error('不能更改已有存档所属角色。')
+      if (metadata.characterId !== previous.characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '不能更改已有存档所属角色。', { field: 'characterId' })
       const value = JSON.stringify(metadata.characterPersona)
       if (value === JSON.stringify(previous.characterPersona)) return
       database.insert(chatSessionCharacterSnapshots).values({ sessionId: id, personaJson: value })
@@ -199,7 +201,7 @@ export class ConversationRepository {
 
   rename(id: string, title: string): Conversation {
     this.get(id)
-    if (!title.trim()) throw new Error('聊天标题不能为空。')
+    if (!title.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '聊天标题不能为空。', { field: 'title' })
     this.store.db.update(chatSessions).set({ title, updatedAt: new Date().toISOString() }).where(eq(chatSessions.id, id)).run()
     return this.get(id)
   }
@@ -264,20 +266,20 @@ export class ConversationRepository {
     this.store.withWriteTx((database) => {
       const session = database.select({ id: chatSessions.id })
         .from(chatSessions).where(eq(chatSessions.id, conversationId)).get()
-      if (!session) throw new Error('找不到对应的聊天存档。')
+      if (!session) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到对应的聊天存档。', { what: '聊天存档' })
       const row = this.store.native.prepare('SELECT turnId AS ownerId,payloadJson FROM agent_openings WHERE conversationId=?')
         .get(conversationId) as { ownerId: string; payloadJson: string } | undefined
-      if (!row) throw new Error('当前对话没有开场白。')
+      if (!row) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '当前对话没有开场白。', { what: '开场白' })
       const payload = JSON.parse(row.payloadJson || '{}') as { options?: OpeningMessageOption[]; selectedId?: string }
       const option = payload.options?.find((candidate) => candidate.id === openingId)
-      if (!option) throw new Error('找不到这条开场白。')
+      if (!option) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这条开场白。', { what: '开场白' })
       const binding = database.select().from(agentConversations).where(eq(agentConversations.id, conversationId)).get()!
       const versionId = option.variableVersionId || binding.variableVersionId
       const characterId = this.getCharacterBinding(conversationId, database).characterId
       if (characterId && !this.store.native.prepare('SELECT 1 FROM variable_config_versions WHERE characterId=? AND versionId=?')
         .get(characterId, versionId) && !(versionId === 'variable-config-default'
           && !this.store.native.prepare('SELECT 1 FROM variable_configs WHERE characterId=?').get(characterId))) {
-        throw new Error('开场白绑定的变量版本不存在。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '开场白绑定的变量版本不存在。', { what: '变量版本' })
       }
       database.update(agentConversations).set({ variableVersionId: versionId })
         .where(eq(agentConversations.id, conversationId)).run()
@@ -292,14 +294,14 @@ export class ConversationRepository {
 
   updateOpening(conversationId: string, content: string): void {
     const nextContent = content.trim()
-    if (!nextContent) throw new Error('开场白不能为空。')
+    if (!nextContent) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '开场白不能为空。', { field: 'content' })
     this.store.withWriteTx((database) => {
       const session = database.select({ id: chatSessions.id })
         .from(chatSessions).where(eq(chatSessions.id, conversationId)).get()
-      if (!session) throw new Error('找不到对应的聊天存档。')
+      if (!session) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到对应的聊天存档。', { what: '聊天存档' })
       const row = this.store.native.prepare('SELECT turnId AS ownerId,payloadJson FROM agent_openings WHERE conversationId=?')
         .get(conversationId) as { ownerId: string; payloadJson: string } | undefined
-      if (!row) throw new Error('当前对话没有开场白。')
+      if (!row) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '当前对话没有开场白。', { what: '开场白' })
       let payload: { options?: OpeningMessageOption[]; selectedId?: string } = {}
       try { payload = JSON.parse(row.payloadJson || '{}') as typeof payload } catch { payload = {} }
       const options = Array.isArray(payload.options) ? payload.options.map((option) => ({ ...option })) : []
