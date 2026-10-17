@@ -13,6 +13,7 @@ import {
   isEleckoiFailureCode
 } from '../src/contracts/errors/codes'
 import { ELECKOI_BOUNDARIES } from '../src/contracts/errors/boundaries'
+import { DesktopError } from '../src/foundation/DesktopError'
 import { ELECKOI_FAILURE_DETAIL_PARAMS } from '../src/contracts/errors/details'
 
 const ALL_CODES = Object.values(ELECKOI_FAILURE_CODES)
@@ -115,5 +116,27 @@ describe('详情表与码表一一对应', () => {
     for (const [code, params] of Object.entries(ELECKOI_FAILURE_DETAIL_PARAMS)) {
       expect(new Set(params).size, code).toBe(params.length)
     }
+  })
+})
+
+describe('边界② 的载体形状', () => {
+  it('产品失败自带网关载体标记，码是字符串——这正是 remoteErrorOf 的判据', () => {
+    const failure = new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, '写不进去', { operation: 'write' })
+    // 判据抄自 @deepseek-ai/dsh-typert-protocol 的 remoteErrorOf：
+    // typeof value === 'object' && value !== null && value.isDSHRemoteError === true && typeof value.code === 'string'
+    expect(failure.isDSHRemoteError).toBe(true)
+    expect(typeof failure.code).toBe('string')
+  })
+
+  it('标记是自有属性，不是原型链上的 getter（结构化克隆与跨副本识别都靠它）', () => {
+    const failure = new DesktopError(ELECKOI_FAILURE_CODES.internal, '炸了')
+    expect(Object.hasOwn(failure, 'isDSHRemoteError')).toBe(true)
+    expect(Object.getOwnPropertyDescriptor(failure, 'isDSHRemoteError')?.get).toBeUndefined()
+  })
+
+  it('枚举自己的属性时带上标记与码（网关编码线上载荷时读的就是这些）', () => {
+    const failure = new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, '找不到这个预设。', { what: '预设' })
+    const plain = { ...failure }
+    expect(plain).toMatchObject({ isDSHRemoteError: true, code: ELECKOI_FAILURE_CODES.agentPresetNotFound, details: { what: '预设' } })
   })
 })

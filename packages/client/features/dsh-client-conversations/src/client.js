@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-conversations',
   factory(require) {
     const React = require('react')
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
     const EMPTY_ITEMS = Object.freeze([])
     const MessagesPage = React.lazy(() => import(new URL('eleckoi-page-messages.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.MessagesPage })))
@@ -934,8 +936,7 @@ window.__ModuleLoader__.load({
       }
 
       unwrap(result, fallback) {
-        if (!result?.ok) throw new Error(result?.error?.message || fallback)
-        return result.value
+        return unwrapOrFail(result, fallback)
       }
 
       async readSelection() {
@@ -1394,7 +1395,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               items: this.snapshot.items,
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -2091,7 +2092,7 @@ window.__ModuleLoader__.load({
         })
         if (session) {
           const result = await session.cancel()
-          if (!result?.ok) throw new Error(result?.error?.message || '停止生成失败。')
+          unwrapOrFail(result, '停止生成失败。')
         }
         return true
       }
@@ -2237,7 +2238,7 @@ window.__ModuleLoader__.load({
           content.push({ type: 'file', receiptId: file })
         }
         const accepted = await session.prompt(content, input.mode === 'steer' ? 'steer' : 'queue', input.signal, input.requestId)
-        if (!accepted?.ok) throw new Error(accepted?.error?.message || '生成请求失败。')
+        unwrapOrFail(accepted, '生成请求失败。')
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId)
         if (prepared.operationId) {
@@ -2463,7 +2464,7 @@ window.__ModuleLoader__.load({
             this.publishDetails({
               ...this.detailsSnapshot,
               status: 'error',
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -2578,7 +2579,7 @@ window.__ModuleLoader__.load({
             this.publishTimeline({
               ...this.timelineSnapshot,
               status: 'error',
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error

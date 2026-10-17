@@ -99,9 +99,11 @@ export const ELECKOI_BOUNDARIES = [
     id: 'host-remote-exit',
     ordinal: 2,
     title: '宿主 Remote 出口',
-    adapter: '@eleckoi/dsh-product-api 的 RemoteErrorDetailsMap 声明合并与 new RemoteError(...)（packages/host/product-api）',
-    carries: '官方 RemoteError{code,message,details}；网关把任何非 RemoteError 的抛出统一折成 '
-      + 'gateway/internal（dsh-api-gateway/lib/index.js:1425-1443），所以领域失败必须在这条边界上变成 RemoteError',
+    adapter: '产品失败自带网关载体标记（DesktopError.isDSHRemoteError），不需要出口处的翻译包装'
+      + '（参考实现在这里包了一层 RemoteError，见 notes/eh-rebuild-0.2.13-plan.md §八 第 1 条）',
+    carries: '官方 RemoteError{code,message,details} 的**线上形状**（结构标记 isDSHRemoteError）。'
+      + '网关把任何非载体抛出统一折成 gateway/internal 并把 details 变 {}（dsh-api-gateway/lib/index.js:1425-1446），'
+      + '所以码与详情要活下来，只能让产品失败自己就是合法载体',
     folds: [
       { when: '已带契约码的失败（DesktopError 或 RemoteError 形状）', code: null },
       {

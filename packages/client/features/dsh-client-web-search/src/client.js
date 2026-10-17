@@ -1,6 +1,8 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-web-search',
-  factory() {
+  factory(require) {
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'web-search-tavily'
     const TAVILY_API_KEY_REF = 'TAVILY_API_KEY'
     const DEEPSEEK_NAMESPACE = 'eleckoi-web-deepseek'
@@ -41,8 +43,7 @@ window.__ModuleLoader__.load({
       }
 
       unwrap(result, fallback) {
-        if (!result?.ok) throw new Error(result?.error?.message || fallback)
-        return result.value
+        return unwrapOrFail(result, fallback)
       }
 
       normalizeSettings(value) {
@@ -100,7 +101,7 @@ window.__ModuleLoader__.load({
             this.publish({
               ...this.snapshot,
               status: 'error',
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error

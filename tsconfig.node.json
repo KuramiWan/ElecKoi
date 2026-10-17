@@ -56,6 +56,8 @@
     "packages/host/product-api/src/inspectProvider.ts",
     "packages/host/product-api/src/cordisApi.generated.ts",
     "packages/host/product-api/src/client/inspect.ts",
+    "packages/host/product-api/src/client/invalidResponse.ts",
+    "packages/host/product-api/src/client/unwrapFailure.ts",
     "packages/host/product-api/src/client/cordisApi.generated.ts",
     "packages/host/product-api/src/client/remoteApi.generated.ts",
     "packages/client/features/dsh-client-author/src/generation.ts",

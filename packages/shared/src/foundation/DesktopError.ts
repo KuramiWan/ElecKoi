@@ -37,6 +37,27 @@ export type DesktopErrorCode = typeof DESKTOP_ERROR_CODES[keyof typeof DESKTOP_E
 export type AnyProductFailureCode = EleckoiFailureCode | DesktopErrorCode
 
 export class DesktopError extends Error {
+  /**
+   * 网关认得的**载体标记**（`@deepseek-ai/dsh-typert-protocol` 的 `remoteErrorOf` 只认
+   * `isDSHRemoteError === true && typeof code === 'string'`）。
+   *
+   * 为什么产品失败要自带这个标记：DSH 网关的折叠函数 `rpcFailure`
+   * （`@deepseek-ai/dsh-api-gateway/lib/index.js:1425-1446`）把**非**载体的一切抛出换成
+   * `{ code: 'gateway/internal', message, details: {} }`——码与详情不是被改写，是被丢掉。
+   * 而"在 Remote 出口处包一层"需要 `packages/host/product-api`（tsc 直出、不打包）在**运行时**
+   * import 契约包的 `foldFailure`，而契约包是 TS 源码、exports 指向 `src/*.ts`，Node/Electron
+   * 运行时解析不了。让失败自己就是合法载体，就消掉了这层翻译与那条运行期依赖：
+   * 领域里抛出来的码与详情**原样**过网关。
+   *
+   * 代价（故意接受，与 `contracts/errors/ipc.ts` 复用同一标记是同一个决定）：DSH 的代码看到这个
+   * 对象会把它当 `RemoteError`；本类的码不在协议那张封闭枚举里，类型上要由
+   * `RemoteErrorDetailsMap` 的声明合并兜住（今天没有 TS 代码构造/分派它，所以先不加声明合并）。
+   *
+   * ⚠️ 这个标记是**结构性**的：跨 bundle 副本、跨 realm 复制都还在；不要改成 getter，
+   * 也不要在序列化时丢掉它（结构化克隆保留自有属性）。
+   */
+  readonly isDSHRemoteError = true
+
   constructor(
     readonly code: AnyProductFailureCode,
     message: string,

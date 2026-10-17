@@ -1,6 +1,8 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-persona',
-  factory() {
+  factory(require) {
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
     class PersonaProfile {
       constructor(remote) {
         this.remote = remote
@@ -66,8 +68,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiPersona.read()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取用户资料失败。')
-          const profile = this.assertProfile(result.value)
+          const profile = this.assertProfile(unwrapOrFail(result, '读取用户资料失败。'))
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', profile, error: '' })
           }
@@ -77,7 +78,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               profile: this.snapshot.profile,
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -87,7 +88,7 @@ window.__ModuleLoader__.load({
       async save(profile) {
         if (this.disposed) throw new Error('ElecKoi 用户资料已关闭。')
         const result = await this.remote.eleckoiPersona.save(this.assertProfile(profile))
-        if (!result?.ok) throw new Error(result?.error?.message || '保存用户资料失败。')
+        unwrapOrFail(result, '保存用户资料失败。')
         const saved = this.assertProfile(result.value)
         this.adopt(saved)
         return saved

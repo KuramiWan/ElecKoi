@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
 import { describe, expect, it } from 'vitest'
+import { dshClientRequire } from '../../../../../../tests/helpers/dshClientPlugin'
 
 const pages = [
   ['conversations', 'messages'],
@@ -35,7 +36,7 @@ describe('ElecKoi DSH main pages', () => {
         lazy: (load: any) => ({ load }),
         createElement: (component: any, props: any, ...children: any[]) => ({ component, props, children })
       }
-      throw new Error(`Unexpected client module ${name}`)
+      return dshClientRequire(name)
     })
     plugin.apply({
       provide: () => {},

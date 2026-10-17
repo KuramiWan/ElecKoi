@@ -29,7 +29,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 interface Result {
   ok: boolean
   data?: Array<{ id: string }>
-  error?: { message: string }
+  error?: { isDSHRemoteError?: true; code?: string; message: string; details?: unknown }
 }
 
 type ConversationChange =
@@ -625,7 +625,7 @@ describe('DSH ElecKoi conversation client model', () => {
     catalog.remote.session = {}
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })
-    const errorResult = { ok: false, error: { message: 'Synthetic regeneration failure' } }
+    const errorResult = { ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'Synthetic regeneration failure' } }
     catalog.remote.eleckoiConversations.regenerateMessage = async () => {
       if (outcome === 'rewind-error') { await gate; return errorResult }
       removed = true
@@ -993,7 +993,7 @@ describe('DSH ElecKoi conversation client model', () => {
       const pending = catalog.delete('synthetic-chat'), outcome = pending.then(() => null, (error: Error) => error)
       expect(catalog.getDetailsSnapshot().id).toBe('synthetic-chat')
       expect(release).not.toHaveBeenCalled()
-      finish({ ok: false, error: { message: 'Synthetic deletion failed' } })
+      finish({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'Synthetic deletion failed' } })
       expect(await outcome).toMatchObject({ message: 'Synthetic deletion failed' })
       expect(catalog.getDetailsSnapshot()).toMatchObject({ id: 'synthetic-chat', status: 'ready' })
       expect(release).not.toHaveBeenCalled()
@@ -1480,7 +1480,7 @@ describe('DSH ElecKoi conversation client model', () => {
         details: async () => ({ ok: true, value: details }),
         regenerateMessage: async (_id: string, eventSeq: number) => {
           calls.push(eventSeq)
-          return { ok: false, error: { message: '合成准备失败' } }
+          return { ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: '合成准备失败' } }
         },
       } },
       sessions: { list: { getSnapshot: () => ({ byId: { 'runtime-1': {} } }) },
@@ -1516,7 +1516,7 @@ describe('DSH ElecKoi conversation client model', () => {
   it('keeps the last valid baseline when a later read fails', async () => {
     const responses: Result[] = [
       { ok: true, data: [{ id: 'saved' }] },
-      { ok: false, error: { message: 'read failed' } }
+      { ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'read failed' } }
     ]
     const mounted = mountCatalog(async () => responses.shift()!)
     await settle()
@@ -2192,7 +2192,7 @@ describe('DSH ElecKoi conversation client model', () => {
           detailRequests.push(input.conversationId!)
           return exists
             ? { ok: true, data: { conversation: { id: 'only-chat' }, messages: [] } }
-            : { ok: false, error: { message: '找不到对应的聊天存档。' } }
+            : { ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: '找不到对应的聊天存档。' } }
         }
         throw new Error(`Unexpected query: ${name}`)
       },

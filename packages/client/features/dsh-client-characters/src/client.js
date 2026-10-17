@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-characters',
   factory(require) {
     const React = require('react')
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
     const CharacterPage = React.lazy(() => import(new URL('eleckoi-page-character.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.CharacterPage })))
     class CharacterCatalog {
@@ -75,8 +77,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiCharacters.list()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取角色列表失败。')
-          const collection = this.assertCollection(result.value)
+          const collection = this.assertCollection(unwrapOrFail(result, '读取角色列表失败。'))
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', collection, error: '' })
           }
@@ -86,7 +87,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               collection: this.snapshot.collection,
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -96,8 +97,7 @@ window.__ModuleLoader__.load({
       async mutate(method, args, failure) {
         if (this.disposed) throw new Error('ElecKoi 角色列表已关闭。')
         const result = await this.remote.eleckoiCharacters[method](...args)
-        if (!result?.ok) throw new Error(result?.error?.message || failure)
-        const collection = this.assertCollection(result.value)
+        const collection = this.assertCollection(unwrapOrFail(result, failure))
         this.adopt(collection)
         return collection
       }
@@ -124,21 +124,19 @@ window.__ModuleLoader__.load({
 
       async prepareImport(source, files) {
         const result = await this.remote.eleckoiCharacters.prepareImport(files, source)
-        if (!result?.ok) throw new Error(result?.error?.message || '角色卡无法读取。')
-        return result.value
+        return unwrapOrFail(result, '角色卡无法读取。')
       }
 
       async commitImport(token) {
         const result = await this.remote.eleckoiCharacters.commitImport(token)
-        if (!result?.ok) throw new Error(result?.error?.message || '导入角色卡失败。')
-        const value = result.value
+        const value = unwrapOrFail(result, '导入角色卡失败。')
         this.adopt(value.collection)
         return value
       }
 
       async discardImport(token) {
         const result = await this.remote.eleckoiCharacters.discardImport(token)
-        if (!result?.ok) throw new Error(result?.error?.message || '无法清理角色卡导入。')
+        unwrapOrFail(result, '无法清理角色卡导入。')
       }
 
       async exportCharacters(characterIds, format) {
@@ -146,12 +144,10 @@ window.__ModuleLoader__.load({
         const failures = []
         for (const characterId of [...new Set(characterIds || [])]) {
           try {
-            const result = await this.remote.eleckoiCharacters.export(characterId, format)
-            if (!result?.ok) throw new Error(result?.error?.message || '导出失败。')
-            downloadExport(result.value)
-            written.push({ characterId, fileName: result.value.fileName })
+            const value = unwrapOrFail(await this.remote.eleckoiCharacters.export(characterId, format), '导出失败。')
+            written.push({ characterId, fileName: value.fileName })
           } catch (error) {
-            failures.push({ characterId, message: error instanceof Error ? error.message : '导出失败。' })
+            failures.push({ characterId, message: typeof error?.message === 'string' && error.message.trim() ? error.message : '导出失败。' })
           }
         }
         return { canceled: false, directory: '下载目录', written, failures }

@@ -284,7 +284,7 @@ window.__ModuleLoader__.load({
             navigation.actions.setView(kind === 'item' ? { kind: 'item', id } : { kind: 'package', name: id })
             event.detail.opened = true
           } catch (error) {
-            event.detail.error = error instanceof Error ? error.message : String(error)
+            event.detail.error = typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
           }
         }
         const add = event => {
@@ -295,7 +295,7 @@ window.__ModuleLoader__.load({
             face.openInstall()
             if (event.detail) event.detail.opened = true
           } catch (error) {
-            if (event.detail) event.detail.error = error instanceof Error ? error.message : String(error)
+            if (event.detail) event.detail.error = typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
           }
         }
         window.addEventListener('eleckoi:dsh-plugins:request', request)

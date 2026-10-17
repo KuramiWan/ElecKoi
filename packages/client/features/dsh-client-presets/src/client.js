@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-presets',
   factory(require) {
     const React = require('react')
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail } = require('@eleckoi/dsh-product-api')
     const PresetsPage = React.lazy(() => import(new URL('eleckoi-page-presets.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.PresetsPage })))
     class PresetCatalog {
@@ -21,7 +23,7 @@ window.__ModuleLoader__.load({
 
       async call(method, ...args) {
         const result = await this.remote[method](...args)
-        if (!result?.ok) throw new Error(result?.error?.message || 'Agent 预设操作失败。')
+        unwrapOrFail(result, 'Agent 预设操作失败。')
         return result.value
       }
 
@@ -85,7 +87,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (!this.disposed && generation === this.detailGenerations.get(id)) {
             this.publishDetail(id, { status: 'error', preset: this.getDetailSnapshot(id).preset,
-              error: error instanceof Error ? error.message : String(error) })
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error) })
           }
           throw error
         }
@@ -212,7 +214,7 @@ window.__ModuleLoader__.load({
             this.publish({
               status: 'error',
               catalog: this.snapshot.catalog,
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
