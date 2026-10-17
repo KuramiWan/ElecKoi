@@ -11,6 +11,8 @@ import { displayTemplateLibrarySchema, displayTemplateSchema, displayTemplateSco
 import { editorLibraryKindSchema, editorLibrarySaveRequestSchema } from '@shared/contracts/editorVersions/schemas'
 import { ruleAppliesToSurface, transformWithRegexRules, validateRegexRule } from '@shared/foundation/regex/RegexRuleProcessor'
 import { loadVariableSchema } from '../variables/index'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 export { creatorToolsets, creatorAuthoringInstructions } from './guides'
 
 const id = z.string().min(1)
@@ -34,24 +36,24 @@ type Defined<T> = { [K in keyof T]: Exclude<T[K], undefined> }
 const defined = <T extends object>(value: T): Defined<T> => Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as Defined<T>
 const find = <T extends { id: string }>(items: T[], key: string): T => {
   const matches = items.filter(item => item.id === key)
-  if (matches.length !== 1) throw new Error(`找不到唯一的条目：${key}`)
+  if (matches.length !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `找不到唯一的条目：${key}`, { what: '唯一匹配的条目' })
   return matches[0]!
 }
 const assertSettingFormat = (entry: { dynamicMode: string; contentMode: string; agentReadStrategy: string; triggerMode: string | null }) => {
   if (entry.dynamicMode === 'ejs_reference' && (entry.contentMode !== 'plain_text' || entry.agentReadStrategy !== 'normal' || entry.triggerMode !== 'agent_tool')) {
-    throw new Error('EJS 引用设定必须是选读、agent_tool 的纯文字条目；模板代码写在普通选读设定的 EJS 正文中。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'EJS 引用设定必须是选读、agent_tool 的纯文字条目；模板代码写在普通选读设定的 EJS 正文中。', { field: 'kind' })
   }
   if (entry.contentMode === 'ejs' && (entry.dynamicMode !== 'standard' || entry.agentReadStrategy === 'required' || entry.triggerMode !== 'agent_tool')) {
-    throw new Error('只有 agent_tool 下的选读普通设定可以使用 EJS 正文；必读和自动注入使用文字正文。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '只有 agent_tool 下的选读普通设定可以使用 EJS 正文；必读和自动注入使用文字正文。', { field: 'content' })
   }
 }
 const requireNativeSource = (content: string, enabled: boolean) => {
   if (!content.trim()) {
-    if (enabled) throw new Error('脚本源码为空，请填写启动函数后再启用。')
+    if (enabled) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '脚本源码为空，请填写启动函数后再启用。', { field: 'source' })
     return
   }
   const ast = parse(content, { sourceType: 'module' })
-  if (!ast.program.body.some(node => node.type === 'ExportDefaultDeclaration')) throw new Error('原生脚本必须通过 export default 导出启动函数。')
+  if (!ast.program.body.some(node => node.type === 'ExportDefaultDeclaration')) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '原生脚本必须通过 export default 导出启动函数。', { field: 'source' })
 }
 const scriptItems = (library: ScriptLibrary): ScriptTree[] => library.trees.flatMap(tree => tree.type === 'folder' ? [tree, ...tree.scripts] : [tree])
 const mapScript = (library: ScriptLibrary, scriptId: string, change: (item: z.output<typeof scriptSchema>) => z.output<typeof scriptSchema>): ScriptLibrary => ({
@@ -70,15 +72,15 @@ export interface CreatorCapability {
 export function creatorCapabilities(data: Context['eleckoiProductData']): CreatorCapability[] {
   const catalog: CreatorCapability[] = []
   const requireCharacterTarget = (characterId: string) => {
-    if (!characterId) throw new Error('请先在 AI 创作工作室菜单中选择角色，或通过 character.create 新建空角色。')
-    if (!data.readCharacters().items.some(item => item.id === characterId)) throw new Error('所选角色已不存在，请重新选择角色。')
+    if (!characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请先在 AI 创作工作室菜单中选择角色，或通过 character.create 新建空角色。', { what: '在 AI 创作工作室选择角色' })
+    if (!data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
     return characterId
   }
   function operation<T extends z.ZodType>(toolsetId: string, name: string, title: string, effect: 'read' | 'write', schema: T, execute: (characterId: string, input: z.output<T>) => unknown, target: CreatorCapability['target'] = 'selected-character') {
     catalog.push({ id: `${toolsetId}.${name}`, toolsetId, title, effect, target,
       inputSchema: z.toJSONSchema(schema, { unrepresentable: 'throw' }) as Record<string, unknown>,
       execute(characterId, input) {
-        if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new Error('所选角色已不存在，请重新选择角色。')
+        if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
         return execute(characterId, schema.parse(input))
       } })
   }
@@ -92,7 +94,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   operation('character', 'read', '读取角色资料', 'read', empty, characterId => find(data.readCharacters().items, characterId))
   operation('character', 'update', '修改角色名称、所属分组和基础资料', 'write', changes(z.object({ name: z.string().min(1), group: z.string().describe('角色所属分组名称；空字符串表示未分组。'), assistantName: z.string().min(1), profileAge: z.string(), profileSex: z.string(), profileHeight: z.string(), profileBirthday: z.string(), profileLike: z.string() })), (characterId, { assistantName, ...patch }) => {
     const current = find(data.readCharacters().items, characterId)
-    if (!current.persona) throw new Error('角色资料缺少正式身份配置。')
+    if (!current.persona) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '角色资料缺少正式身份配置。', { what: '角色资料的身份配置' })
     data.updateCharacter({ ...current, ...defined(patch), persona: { ...current.persona, ...(assistantName === undefined ? {} : { assistant_name: assistantName }) } })
     return find(data.readCharacters().items, characterId)
   })
@@ -112,10 +114,10 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   const settingUpdate = z.object({ id, changes: settingChanges }).strict()
   const updateSettings = (characterId: string, updates: z.output<typeof settingUpdate>[]) => {
     const library = data.readSettingLibrary(characterId)
-    if (new Set(updates.map(item => item.id)).size !== updates.length) throw new Error('同一批修改的设定编号不能重复。')
+    if (new Set(updates.map(item => item.id)).size !== updates.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '同一批修改的设定编号不能重复。', { field: 'entries' })
     for (const input of updates) {
       const entry = find(library.entries, input.id)
-      if (entry.kind === 'opening') throw new Error('开场白请在角色编辑页修改。')
+      if (entry.kind === 'opening') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '开场白请在角色编辑页修改。', { field: 'opening' })
       assertSettingFormat({ ...entry, ...defined(input.changes) })
     }
     return data.updateSettingLibraryEntries(characterId, updates.map(input => ({ id: input.id, changes: defined(input.changes) })))
@@ -126,7 +128,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   operation('settings', 'remove', '删除设定条目', 'write', entity, (characterId, input) => {
     const library = data.readSettingLibrary(characterId)
     const entry = find(library.entries, input.id)
-    if (entry.id === OPENING_ENTRY_ID || entry.kind === 'opening') throw new Error('不能删除固定开场白。')
+    if (entry.id === OPENING_ENTRY_ID || entry.kind === 'opening') throw new DesktopError(ELECKOI_FAILURE_CODES.safetyRefused, '不能删除固定开场白。', { guard: '固定开场白' })
     data.saveSettingLibrary(characterId, { ...library, entries: library.entries.filter(item => item.id !== input.id) })
     return { removedId: input.id }
   })
@@ -147,7 +149,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     const removed = new Set([input.id])
     for (let size = 0; size !== removed.size;) { size = removed.size; for (const group of library.groups) if (removed.has(group.parentId)) removed.add(group.id) }
     const entries = library.entries.filter(item => removed.has(item.groupId))
-    if (entries.some(item => item.kind === 'opening')) throw new Error('不能删除固定开场白。')
+    if (entries.some(item => item.kind === 'opening')) throw new DesktopError(ELECKOI_FAILURE_CODES.safetyRefused, '不能删除固定开场白。', { guard: '固定开场白' })
     data.saveSettingLibrary(characterId, { ...library, groups: library.groups.filter(item => !removed.has(item.id)),
       entries: library.entries.filter(item => !removed.has(item.groupId)), expandedGroupIds: library.expandedGroupIds.filter(id => !removed.has(id)) })
     return { removedGroupIds: [...removed], removedEntryIds: entries.map(item => item.id) }
@@ -155,8 +157,8 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   const assertVariableParent = (objects: z.output<typeof variableObjectConfigSchema>[], objectId: string, parentId: string) => {
     const visited = new Set([objectId])
     while (parentId) {
-      if (parentId === VARIABLE_INITIALIZATION_OBJECT_ID) throw new Error('运行配置不能作为变量组的父级。')
-      if (visited.has(parentId)) throw new Error('变量组不能形成循环。')
+      if (parentId === VARIABLE_INITIALIZATION_OBJECT_ID) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '运行配置不能作为变量组的父级。', { field: 'parentId' })
+      if (visited.has(parentId)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '变量组不能形成循环。', { field: 'parentId' })
       visited.add(parentId); parentId = find(objects, parentId).parentId
     }
   }
@@ -191,14 +193,14 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   operation('variables', 'update_object', '修改变量组名称、上级、启停或配置', 'write', z.object({ id, changes: changes(mutableObject) }).strict(), (characterId, input) => {
     const config = data.readVariableConfig(characterId), object = find(config.objects, input.id)
-    if (object.id === VARIABLE_INITIALIZATION_OBJECT_ID) throw new Error('变量运行配置请通过 update_schema 修改。')
+    if (object.id === VARIABLE_INITIALIZATION_OBJECT_ID) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '变量运行配置请通过 update_schema 修改。', { field: 'id' })
     const updated = { ...object, ...defined(input.changes) }
     assertVariableParent(config.objects, object.id, updated.parentId)
     return find(data.saveVariableConfig(characterId, { ...config, objects: config.objects.map(item => item.id === object.id ? updated : item) }).objects, object.id)
   })
   operation('variables', 'remove_object', '删除变量组及其子组和变量', 'write', entity, (characterId, input) => {
     const config = data.readVariableConfig(characterId), object = find(config.objects, input.id)
-    if (object.id === VARIABLE_INITIALIZATION_OBJECT_ID) throw new Error('不能删除固定变量运行配置。')
+    if (object.id === VARIABLE_INITIALIZATION_OBJECT_ID) throw new DesktopError(ELECKOI_FAILURE_CODES.safetyRefused, '不能删除固定变量运行配置。', { guard: '变量运行配置' })
     const removed = new Set([object.id])
     for (let size = 0; size !== removed.size;) { size = removed.size; for (const group of config.objects) if (removed.has(group.parentId)) removed.add(group.id) }
     const variables = config.variables.filter(item => removed.has(item.objectId))
@@ -216,7 +218,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   }).strict(), (characterId, input) => ({ state: loadVariableSchema(input.schemaCode).parse(input.state ?? JSON.parse(data.readVariableConfig(characterId).initialStateJson)) }))
   const readScripts = (characterId: string, expectedRevision?: number) => {
     const library = data.readScriptLibrary('character', characterId)
-    if (expectedRevision !== undefined && expectedRevision !== library.revision) throw new Error('脚本库已被修改，请重新读取后再保存。')
+    if (expectedRevision !== undefined && expectedRevision !== library.revision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本库已被修改，请重新读取后再保存。', { what: '脚本库' })
     return library
   }
   operation('scripts', 'list', '列出当前角色脚本库、文件夹和原生脚本', 'read', empty, characterId => {
@@ -237,7 +239,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     const script = scriptSchema.parse({ type: 'script', id: randomUUID(), name: input.name, content: input.content, info: input.info ?? '', data: input.data ?? {}, runtime: nativeRuntime.parse({ kind: 'eleckoi-module', apiVersion: 1 }) })
     if (input.folderId) {
       const folder = find(library.trees, input.folderId)
-      if (folder.type !== 'folder') throw new Error('所选目标不是脚本文件夹。')
+      if (folder.type !== 'folder') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '所选目标不是脚本文件夹。', { field: 'folderId' })
       library.trees = library.trees.map(tree => tree.id === folder.id ? { ...folder, scripts: [...folder.scripts, script] } : tree)
     } else library.trees = [...library.trees, script]
     const saved = data.saveScriptLibrary(library)
@@ -245,7 +247,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   operation('scripts', 'update', '修改原生脚本源码、设置或开关', 'write', z.object({ id, expectedRevision: revision, changes: changes(scriptFields) }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), item = find(scriptItems(library), input.id)
-    if (item.type !== 'script') throw new Error('所选项目不是脚本。')
+    if (item.type !== 'script') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '所选项目不是脚本。', { field: 'itemId' })
     nativeRuntime.parse(item.runtime)
     if (input.changes.content !== undefined || input.changes.enabled === true) requireNativeSource(input.changes.content ?? item.content, input.changes.enabled ?? item.enabled)
     const saved = data.saveScriptLibrary(mapScript(library, item.id, script => ({ ...script, ...defined(input.changes) })))
@@ -253,7 +255,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   operation('scripts', 'remove', '删除当前角色的单个脚本', 'write', z.object({ id, expectedRevision: revision }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), item = find(scriptItems(library), input.id)
-    if (item.type !== 'script') throw new Error('删除文件夹前请逐个处理其中脚本。')
+    if (item.type !== 'script') throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '删除文件夹前请逐个处理其中脚本。', { what: '先处理文件夹里的脚本' })
     const saved = data.saveScriptLibrary({ ...library, trees: library.trees.filter(tree => tree.id !== item.id).map(tree => tree.type === 'folder' ? { ...tree, scripts: tree.scripts.filter(script => script.id !== item.id) } : tree) })
     return { removedId: item.id, revision: saved.revision }
   })
@@ -266,20 +268,20 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     changes: changes(z.object({ name: z.string().min(1), enabled: z.boolean() })),
   }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), folder = find(library.trees, input.id)
-    if (folder.type !== 'folder') throw new Error('所选项目不是脚本文件夹。')
+    if (folder.type !== 'folder') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '所选项目不是脚本文件夹。', { field: 'folderId' })
     const saved = data.saveScriptLibrary({ ...library, trees: library.trees.map(tree => tree.id === folder.id ? { ...folder, ...defined(input.changes) } : tree) })
     return { revision: saved.revision, item: find(saved.trees, folder.id) }
   })
   operation('scripts', 'remove_folder', '删除空脚本文件夹', 'write', z.object({ id, expectedRevision: revision }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), folder = find(library.trees, input.id)
-    if (folder.type !== 'folder' || folder.scripts.length) throw new Error('只能删除空脚本文件夹，请先移动或删除其中脚本。')
+    if (folder.type !== 'folder' || folder.scripts.length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '只能删除空脚本文件夹，请先移动或删除其中脚本。', { what: '先移动或删除文件夹里的脚本' })
     const saved = data.saveScriptLibrary({ ...library, trees: library.trees.filter(tree => tree.id !== folder.id) })
     return { removedId: folder.id, revision: saved.revision }
   })
   operation('scripts', 'move', '把脚本移到指定文件夹或库根目录', 'write', z.object({ id, expectedRevision: revision, folderId: z.string().describe('目标文件夹编号；空字符串表示库根目录。') }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), item = find(scriptItems(library), input.id)
-    if (item.type !== 'script') throw new Error('只能移动脚本到库根目录或文件夹。')
-    if (input.folderId && find(library.trees, input.folderId).type !== 'folder') throw new Error('所选目标不是脚本文件夹。')
+    if (item.type !== 'script') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '只能移动脚本到库根目录或文件夹。', { field: 'itemId' })
+    if (input.folderId && find(library.trees, input.folderId).type !== 'folder') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '所选目标不是脚本文件夹。', { field: 'folderId' })
     const trees = library.trees.filter(tree => tree.id !== item.id).map(tree => tree.type === 'folder'
       ? { ...tree, scripts: [...tree.scripts.filter(script => script.id !== item.id), ...(tree.id === input.folderId ? [item] : [])] } : tree)
     if (!input.folderId) trees.push(item)
@@ -302,7 +304,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   const assertRegex = (rule: z.output<typeof regexRuleSchema>) => {
     const failure = validateRegexRule(rule)
-    if (failure) throw new Error(failure)
+    if (failure) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, failure, { field: 'rule' })
   }
   operation('regex', 'create', '新增角色正则规则', 'write', z.object({ expectedRevision: revision, rule: regexRuleSchema.omit({ id: true }).strict() }).strict(), (characterId, input) => {
     const collection = data.readRegexRules(characterId), rule = { ...defined(input.rule), id: randomUUID() }
@@ -349,13 +351,13 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
           : input.kind === 'scripts' ? scriptLibrarySchema.parse(parsed) : displayTemplateLibrarySchema.parse(parsed)
       })
       if (targets.some(target => target.scope === 'character') || input.versions.some(version => version.scope === 'character')) requireCharacterTarget(characterId)
-      for (const version of input.versions) if (version.scope === 'character' && version.ownerId !== characterId) throw new Error('配置版本不属于当前编辑角色。')
-      for (const target of targets) if (target.scope === 'character' && target.ownerId !== characterId) throw new Error('配置不属于当前编辑角色。')
+      for (const version of input.versions) if (version.scope === 'character' && version.ownerId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '配置版本不属于当前编辑角色。', { what: '其它角色的配置版本' })
+      for (const target of targets) if (target.scope === 'character' && target.ownerId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '配置不属于当前编辑角色。', { what: '其它角色的配置' })
       return data.saveEditorLibraries(input)
     }, 'explicit-scope')
   const readTemplates = (characterId: string, target: z.output<typeof templateTarget>, expected?: number) => {
     const library = data.readDisplayTemplates(target.scope, target.scope === 'global' ? '' : target.scope === 'preset' ? target.presetId! : requireCharacterTarget(characterId))
-    if (expected !== undefined && library.revision !== expected) throw new Error('显示模板已被修改，请重新读取后合并修改。')
+    if (expected !== undefined && library.revision !== expected) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '显示模板已被修改，请重新读取后合并修改。', { what: '显示模板' })
     return library
   }
   operation('displayTemplates', 'read', '读取共享全局、当前角色或明确预设的 EJS显示模板库', 'read', templateTarget,
@@ -383,7 +385,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   operation('displayTemplates', 'configure', '批量启停显示模板库及全部模板，或按明确编号排序', 'write', z.object({ target: templateTarget, expectedRevision: revision,
     enabled: z.boolean().optional(), orderedIds: z.array(id).optional() }).strict().refine(value => value.enabled !== undefined || value.orderedIds !== undefined, '修改不能为空。'), (characterId, input) => {
     const library = readTemplates(characterId, input.target, input.expectedRevision)
-    if (input.orderedIds && (input.orderedIds.length !== library.templates.length || new Set(input.orderedIds).size !== library.templates.length)) throw new Error('排序必须包含本库每个模板编号且只出现一次。')
+    if (input.orderedIds && (input.orderedIds.length !== library.templates.length || new Set(input.orderedIds).size !== library.templates.length)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '排序必须包含本库每个模板编号且只出现一次。', { field: 'orderedIds' })
     const ordered = input.orderedIds ? input.orderedIds.map(id => find(library.templates, id)) : library.templates
     const templates = input.enabled === undefined ? ordered : ordered.map(template => ({ ...template, enabled: input.enabled! }))
     return data.saveDisplayTemplates({ ...library, templates, ...(input.enabled === undefined ? {} : { enabled: input.enabled }) })
@@ -392,7 +394,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   operation('presetScripts', 'save', '按读取版本保存明确预设的原生脚本和设置', 'write', z.object({ presetId: id, expectedRevision: revision,
     enabled: z.boolean(), variables: z.record(z.string(), z.json()), trees: z.array(z.union([scriptSchema, scriptFolderSchema])) }).strict(), (_characterId, input) => {
     const library = data.readScriptLibrary('preset', input.presetId)
-    if (library.revision !== input.expectedRevision) throw new Error('预设脚本库已被修改，请重新读取后合并。')
+    if (library.revision !== input.expectedRevision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '预设脚本库已被修改，请重新读取后合并。', { what: '预设脚本库' })
     for (const item of input.trees.flatMap(tree => tree.type === 'folder' ? tree.scripts : [tree])) {
       nativeRuntime.parse(item.runtime)
       requireNativeSource(item.content, item.enabled)
