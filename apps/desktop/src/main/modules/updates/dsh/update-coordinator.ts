@@ -8,6 +8,8 @@ import { gt, valid } from 'semver'
 import type { DesktopUpdateState } from './ipc.js'
 import { DesktopUpdateHttpExecutor } from './update-http-executor.js'
 import { DesktopUpdatePreparationError } from './update-error.js'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const { autoUpdater } = electronUpdater
 
@@ -104,12 +106,24 @@ export class DesktopUpdateCoordinator {
     this.downloadOperation ??= Promise.resolve().then(async () => {
       await this.checkOperation
       this.assertLive()
-      if (this.candidate === undefined) throw new Error('desktop update: no checked update is available')
-      if (version !== this.candidate) throw new Error('desktop update: download confirmation is stale')
+      if (this.candidate === undefined) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, 'desktop update: no checked update is available', {
+          what: '检查更新'
+        })
+      }
+      if (version !== this.candidate) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, 'desktop update: download confirmation is stale', {
+          what: '下载确认的更新版本'
+        })
+      }
       this.setState({ phase: 'downloading', version, percent: 0 })
       try {
         await this.updater.downloadUpdate()
-        if (!this.downloaded) throw new Error('desktop update: platform preparation did not report readiness')
+        if (!this.downloaded) {
+          throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, 'desktop update: platform preparation did not report readiness', {
+            what: '下载就绪状态'
+          })
+        }
         this.downloadResult?.(true)
         return this.setState({ phase: 'ready', version })
       } catch (error) {
@@ -128,7 +142,11 @@ export class DesktopUpdateCoordinator {
    */
   async install(version: string): Promise<DesktopUpdateState> {
     this.assertLive()
-    if (!this.downloaded || this.downloadOperation !== undefined || version !== this.candidate) throw new Error('desktop update: confirmed target is not ready')
+    if (!this.downloaded || this.downloadOperation !== undefined || version !== this.candidate) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, 'desktop update: confirmed target is not ready', {
+        what: '下载更新'
+      })
+    }
     this.installOperation ??= Promise.resolve().then(async () => {
       this.setState({ phase: 'installing', version })
       try {
@@ -155,7 +173,11 @@ export class DesktopUpdateCoordinator {
   }
 
   private assertLive(): void {
-    if (this.disposed) throw new Error('desktop update: coordinator is disposed')
+    if (this.disposed) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'desktop update: coordinator is disposed', {
+        what: '更新协调器'
+      })
+    }
   }
 
   private setState(state: DesktopUpdateState): DesktopUpdateState {
@@ -182,11 +204,23 @@ export class DesktopUpdateCoordinator {
   private async doCheck(): Promise<DesktopUpdateState> {
     try {
       this.assertLive()
-      if (!this.enabled()) throw new Error('desktop update: this application has no packaged update source')
+      if (!this.enabled()) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, 'desktop update: this application has no packaged update source', {
+          what: '更新源', expected: '打包安装版本'
+        })
+      }
       const result = await this.updater.checkForUpdates()
-      if (result === null) throw new Error('desktop update: no check result was returned')
+      if (result === null) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'desktop update: no check result was returned', {
+          issues: [{ path: 'result', message: '更新检查没有返回结果' }]
+        })
+      }
       const version = result.updateInfo.version
-      if (valid(version) === null) throw new Error('desktop update: feed version is invalid')
+      if (valid(version) === null) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'desktop update: feed version is invalid', {
+          issues: [{ path: 'version', message: '更新源给出的版本号不合法' }]
+        })
+      }
       this.candidate = result.isUpdateAvailable && gt(version, this.currentVersion()) ? version : undefined
       return this.setState(this.candidate === undefined ? { phase: 'idle' } : { phase: 'available', version })
     } catch (error) {
