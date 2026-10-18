@@ -3,6 +3,7 @@ import type { VariableConfig, VariableConfigVersion } from '@shared/contracts/va
 import { variableConfigSchema } from '@shared/contracts/variables/schemas'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
+import { errorMessage } from '@shared/foundation/errorMessage'
 import { requireCharacter } from '@product-data/domain/personas'
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import {
@@ -136,7 +137,13 @@ export class VariableConfigRepository {
     const active = config.versions.find(version => version.id === config.activeVersionId)
     if (!active) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '变量备份的当前版本不存在。', { what: '变量备份的当前版本' })
     for (const version of config.versions) {
-      const state: unknown = JSON.parse(version.initialStateJson)
+      let state: unknown
+      try { state = JSON.parse(version.initialStateJson) }
+      catch (error) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid,
+          `变量备份“${version.id}”的初始状态不是合法 JSON：${errorMessage(error)}`,
+          { what: '变量备份的初始状态', path: 'initialStateJson' })
+      }
       if (!state || typeof state !== 'object' || Array.isArray(state)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `变量备份“${version.id}”的初始状态不是对象。`, { what: '变量备份的初始状态', path: 'initialStateJson' })
     }
     this.persist(db, config)

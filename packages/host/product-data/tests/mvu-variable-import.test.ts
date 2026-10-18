@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { decodeCharacterCard } from '../src/domain/characterTransfer/characterCardFormats'
 import { generatedInitialStateJson } from '../../../shared/src/foundation/variables/initialState'
+import { ELECKOI_FAILURE_CODES } from '../../../shared/src/contracts/errors/codes'
 import { assertMvuJson, extractMvuSchema, loadMvuSchema } from '../src/domain/characterTransfer/mvuSchema'
 
 const registrationModule = 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js'
@@ -32,6 +33,21 @@ describe('MVU variable import', () => {
     `)])!
     expect(schema.initialize({ status: { value: 2, nestedExtra: true }, topExtra: { value: 3 } }))
       .toEqual({ status: { value: 2 }, topExtra: { value: 3 } })
+  })
+
+  it('throws contract-coded failures from the generated MVU template instead of bare errors', () => {
+    const failureOf = (run: () => unknown): { code?: string; details?: Record<string, unknown> } => {
+      try { run() }
+      catch (error) { return error as { code?: string; details?: Record<string, unknown> } }
+      throw new Error('Expected the generated MVU template to fail')
+    }
+    expect(failureOf(() => loadMvuSchema([registeredScript('registerMvuSchema(() => ({}));')]))).toMatchObject({
+      code: ELECKOI_FAILURE_CODES.inputUnsupported, details: { what: 'MVU Schema 的注册结果' }
+    })
+    const generated = loadMvuSchema([registeredScript('registerMvuSchema(z.object({}).transform(() => []));')])!
+    expect(failureOf(() => generated.initialize({}))).toMatchObject({
+      code: ELECKOI_FAILURE_CODES.dataShapeInvalid, details: { what: 'MVU Schema 处理结果' }
+    })
   })
 
   it('keeps root fields from the input when a registered transform returns only derived fields', () => {
