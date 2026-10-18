@@ -424,7 +424,7 @@ export class NativeAuthorClient {
           }
           case 'events.list': return { items: AUTHOR_EVENT_NAMES }
           default: {
-            if (!['input.get', 'input.set', 'input.append', 'input.clear', 'input.send'].includes(method)) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `Native author method is not connected: ${method}`, { what: '原生作者接口' })
+            if (!['input.get', 'input.set', 'input.append', 'input.clear', 'input.send'].includes(method)) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `Native author method is not connected: ${method}`, { what: '原生作者接口' })
             if (['input.set', 'input.append'].includes(method) && typeof params.text !== 'string') throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Input text must be a string', { field: 'text' })
             const handler = this.ui.get(conversationId)?.[method]
             if (!handler) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, 'Current chat input is not mounted', { what: '当前聊天的输入区' })
@@ -434,7 +434,7 @@ export class NativeAuthorClient {
       },
       on: (event, listener) => {
         this.assertChat(conversationId)
-        if (!AUTHOR_EVENT_NAMES.some(name => name === event)) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `Native author event is not connected: ${event}`, { what: '原生作者事件' })
+        if (!AUTHOR_EVENT_NAMES.some(name => name === event)) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `Native author event is not connected: ${event}`, { what: '原生作者事件' })
         const key = JSON.stringify([conversationId, event]), listeners = this.events.get(key) || new Set()
         listeners.add(listener); this.events.set(key, listeners)
         return () => { listeners.delete(listener); if (!listeners.size) this.events.delete(key) }
