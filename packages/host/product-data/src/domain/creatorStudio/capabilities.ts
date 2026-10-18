@@ -73,14 +73,14 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   const catalog: CreatorCapability[] = []
   const requireCharacterTarget = (characterId: string) => {
     if (!characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请先在 AI 创作工作室菜单中选择角色，或通过 character.create 新建空角色。', { what: '在 AI 创作工作室选择角色' })
-    if (!data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
+    if (!data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
     return characterId
   }
   function operation<T extends z.ZodType>(toolsetId: string, name: string, title: string, effect: 'read' | 'write', schema: T, execute: (characterId: string, input: z.output<T>) => unknown, target: CreatorCapability['target'] = 'selected-character') {
     catalog.push({ id: `${toolsetId}.${name}`, toolsetId, title, effect, target,
       inputSchema: z.toJSONSchema(schema, { unrepresentable: 'throw' }) as Record<string, unknown>,
       execute(characterId, input) {
-        if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
+        if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
         return execute(characterId, schema.parse(input))
       } })
   }

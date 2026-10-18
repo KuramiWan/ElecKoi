@@ -896,7 +896,8 @@ window.__ModuleLoader__.load({
       }
 
       async readImage(conversationId, attachment) {
-        if (this.disposed || !attachment?.attachmentId) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '图片不可用。', { what: '图片附件' })
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 聊天服务已关闭，无法读取图片。', { what: 'DSH 聊天服务' })
+        if (!attachment?.attachmentId) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '图片不可用。', { what: '图片附件' })
         const runtimeSessionId = this.runtimeSessionId(conversationId)
           || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.runtimeSessionId : '')
         if (!runtimeSessionId) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前聊天缺少 DSH Session。', { what: '当前聊天的 DSH 会话' })

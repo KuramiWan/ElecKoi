@@ -469,7 +469,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     await this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
       const result = await this.ownerContext.eleckoiRoleplaySessions.regenerateImage(conversationId, batchId, frameId, signal)
       this.changeFeed.publish({ kind: 'generation', conversationId, error: result.error || '' })
-      if (result.error) throw productFailure(ELECKOI_FAILURE_CODES.internal, result.error)
+      if (result.error) throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, result.error, { what: '重新生成的图片' })
     })
   }
 
@@ -1463,7 +1463,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     if (provider === TAVILY_WEB_PROVIDER) return 'tavily'
     if (provider === DEEPSEEK_WEB_PROVIDER) return 'provider_native'
     if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
-    throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '当前搜索提供器未由 ElecKoi 设置页面管理。', { what: '当前搜索提供器' })
+    throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前搜索提供器未由 ElecKoi 设置页面管理。', { what: '当前搜索提供器' })
   }
 
   /**
@@ -1511,7 +1511,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     const provider = this.webConfiguration().fetchProvider
     if (provider === 'http') return 'http'
     if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
-    throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '当前抓取提供器未由 ElecKoi 设置页面管理。', { what: '当前抓取提供器' })
+    throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前抓取提供器未由 ElecKoi 设置页面管理。', { what: '当前抓取提供器' })
   }
 
   /**
