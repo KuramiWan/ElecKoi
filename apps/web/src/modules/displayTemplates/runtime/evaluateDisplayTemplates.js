@@ -1,4 +1,6 @@
 import ejs from 'ejs/ejs.min.js';
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { decorateRichDisplayReplacement } from '@shared/foundation/richMessage';
 
 const MAX_OUTPUT = 2_000_000;
@@ -16,10 +18,10 @@ export async function evaluateDisplayTemplates({ libraries, message, content, va
   for (const library of libraries) {
     if (!library.enabled) continue;
     const getvar = (path, options = {}) => {
-      if (snapshot.variables === null) throw new Error('这条消息缺少变量快照，不能用当前变量代替历史变量。');
-      if (typeof path !== 'string' || !path) throw new Error('getvar 需要明确的变量路径。');
+      if (snapshot.variables === null) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '这条消息缺少变量快照，不能用当前变量代替历史变量。', { what: '消息的变量快照' });
+      if (typeof path !== 'string' || !path) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'getvar 需要明确的变量路径。', { field: 'path' });
       const keys = path.split('.');
-      if (keys.some(key => ['__proto__', 'prototype', 'constructor'].includes(key))) throw new Error('变量路径包含不支持的字段。');
+      if (keys.some(key => ['__proto__', 'prototype', 'constructor'].includes(key))) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '变量路径包含不支持的字段。', { what: '变量路径' });
       let value = snapshot.variables;
       for (const key of keys) value = value && typeof value === 'object' && Object.hasOwn(value, key) ? value[key] : undefined;
       return value === undefined && Object.hasOwn(options, 'defaults') ? options.defaults : value;
@@ -28,7 +30,7 @@ export async function evaluateDisplayTemplates({ libraries, message, content, va
       const compile = ejs.compile(template.source, { client: true, async: true, compileDebug: true,
         filename: `${library.scope}/${library.ownerId}/${template.name}` });
       const output = await compile({ ...data, getvar });
-      if (output.length > MAX_OUTPUT) throw new Error('显示模板输出超过 200 万字符。');
+      if (output.length > MAX_OUTPUT) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '显示模板输出超过 200 万字符。', { field: 'size' });
       return output;
     }
     for (const template of library.templates) {
@@ -37,7 +39,7 @@ export async function evaluateDisplayTemplates({ libraries, message, content, va
         rawContent: snapshot.message.content, content: body, match: null, captures: [], groups: {}, index: null };
       try {
         if (template.position === 'replace') {
-          if (!template.pattern) throw new Error('替换模式需要匹配表达式。');
+          if (!template.pattern) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '替换模式需要匹配表达式。', { field: 'pattern' });
           const regex = new RegExp(template.pattern, template.flags);
           let replacementBody = '', cursor = 0;
           for (let match = regex.exec(body); match; match = regex.exec(body)) {
@@ -62,6 +64,6 @@ export async function evaluateDisplayTemplates({ libraries, message, content, va
     }
   }
   const output = [...before, body, ...after].filter(value => value !== '').join('\n');
-  if (output.length > MAX_OUTPUT) throw new Error('显示模板总输出超过 200 万字符。');
+  if (output.length > MAX_OUTPUT) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '显示模板总输出超过 200 万字符。', { field: 'size' });
   return { content: output, errors };
 }
