@@ -10,6 +10,7 @@ import { commitSessionPreset, inheritSessionSnapshot, readSessionSnapshot, remov
 import { applyDisabledPolicy } from './tool-policy.mjs'
 import { ACTIVE_RUNTIME_PRESET_ID, installRoleplaySessionRuntime } from './session-runtime.mjs'
 import { refreshSessionModelSnapshot } from './model-selection-migration.mjs'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 export const name = 'eleckoi-agent-preset-bridge'
 export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'llm', 'settings', 'sessionController', 'sessions', 'eleckoiConversationLifecycle']
@@ -18,8 +19,8 @@ export async function apply(ctx) {
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
   const presetRoot = process.env.ELECKOI_PRESET_ROOT
   const templatePath = process.env.ELECKOI_PRESET_TEMPLATE_PATH
-  if (!snapshotRoot) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
-  if (!presetRoot) throw new Error('ELECKOI_PRESET_ROOT is required')
+  if (!snapshotRoot) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ELECKOI_SESSION_SNAPSHOT_ROOT is required', { what: '配置必需的运行环境变量' })
+  if (!presetRoot) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ELECKOI_PRESET_ROOT is required', { what: '配置必需的运行环境变量' })
   let activeRegistration
   let registrationQueue = Promise.resolve()
   const legacyRegistrations = new Map()
@@ -41,12 +42,12 @@ export async function apply(ctx) {
   const disposeTracked = async (sessionId) => {
     const handle = sessionHandles.get(sessionId)
     if (!handle) {
-      if (ctx.agents.get(sessionId)) throw new Error(`DSH 会话 ${sessionId} 有未跟踪的写入句柄。`)
+      if (ctx.agents.get(sessionId)) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, `DSH 会话 ${sessionId} 有未跟踪的写入句柄。`, { what: 'DSH 会话的写入句柄' })
       return false
     }
     await handle.dispose()
     if (sessionHandles.get(sessionId) === handle) sessionHandles.delete(sessionId)
-    if (ctx.agents.get(sessionId)) throw new Error(`DSH 会话 ${sessionId} 的写入句柄未释放。`)
+    if (ctx.agents.get(sessionId)) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, `DSH 会话 ${sessionId} 的写入句柄未释放。`, { what: 'DSH 会话的写入句柄' })
     return true
   }
   ctx.provide('eleckoiSessionHandles', {
@@ -146,8 +147,8 @@ export async function apply(ctx) {
         if (requested === snapshot.mountedPresetId
           && requestedRevision === snapshot.mountedPresetRevision) return snapshot.mountedPresetId
         const agent = ctx.agents.get(sessionId)
-        if (!agent) throw new Error(`DSH 会话 ${sessionId} 尚未激活，不能切换预设。`)
-        if (agent.status !== 'idle') throw new Error(`DSH 会话 ${sessionId} 正在生成，不能切换预设。`)
+        if (!agent) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, `DSH 会话 ${sessionId} 尚未激活，不能切换预设。`, { what: '激活这个 DSH 会话' })
+        if (agent.status !== 'idle') throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, `DSH 会话 ${sessionId} 正在生成，不能切换预设。`, { what: '等这次生成结束再切换预设' })
         const current = await registerPreset(requested)
         try {
           await ctx.agentPresets.recompose(agent.ctx, requested)

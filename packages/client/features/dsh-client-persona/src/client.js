@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-persona',
   factory(require) {
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     class PersonaProfile {
       constructor(remote) {
         this.remote = remote
@@ -52,7 +52,7 @@ window.__ModuleLoader__.load({
           || typeof value.user_avatar !== 'string'
           || typeof value.user_square !== 'string'
           || typeof value.user_portrait !== 'string') {
-          throw new Error('用户资料返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '用户资料返回的数据格式不正确。', { what: '用户资料' })
         }
         return value
       }
@@ -64,7 +64,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('ElecKoi 用户资料已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 用户资料已关闭。', { what: 'ElecKoi 用户资料' })
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiPersona.read()
@@ -86,7 +86,7 @@ window.__ModuleLoader__.load({
       }
 
       async save(profile) {
-        if (this.disposed) throw new Error('ElecKoi 用户资料已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 用户资料已关闭。', { what: 'ElecKoi 用户资料' })
         const result = await this.remote.eleckoiPersona.save(this.assertProfile(profile))
         unwrapOrFail(result, '保存用户资料失败。')
         const saved = this.assertProfile(result.value)

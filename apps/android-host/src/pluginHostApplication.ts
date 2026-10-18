@@ -13,6 +13,8 @@ import type {} from '@eleckoi/dsh-product-api'
 import type { ParentHostMessage } from './hostSessionProtocol'
 import { installWebClientAssets } from './webClientAssets'
 import { installProductMediaAssets } from './productMediaAssets'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export interface PluginHostApplicationOptions {
   profileDirectory: string
@@ -33,7 +35,7 @@ export async function startPluginHostApplication(options: PluginHostApplicationO
   const profile = loadProfileDirectory('dsh', options.profileDirectory, ELECKOI_INSTALL_ANCHOR)
   reportSkippedBundles('dsh', profile)
   if (profile.skippedBundles.length > 0) {
-    throw new Error(`ElecKoi Host profile bundles failed to load: ${profile.skippedBundles.map(bundle => `${bundle.packageName}: ${bundle.reason}`).join('; ')}`)
+    throw new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, `ElecKoi Host profile bundles failed to load: ${profile.skippedBundles.map(bundle => `${bundle.packageName}: ${bundle.reason}`).join('; ')}`, { what: 'ElecKoi Host profile 插件包' })
   }
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
@@ -54,7 +56,7 @@ export async function startPluginHostApplication(options: PluginHostApplicationO
       args: {}
     }) as { architecture?: unknown; protocolVersion?: unknown }
     if (remoteStatus.architecture !== 'dsh-remote' || remoteStatus.protocolVersion !== 1) {
-      throw new Error('ElecKoi DSH Remote Host 协议未正确装载。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, 'ElecKoi DSH Remote Host 协议未正确装载。', { what: 'ElecKoi DSH Remote Host 协议' })
     }
     const requiredServices = [
       'eleckoiCharacterConfigurationApi', 'eleckoiCharactersApi', 'eleckoiPersonaApi',
@@ -63,7 +65,7 @@ export async function startPluginHostApplication(options: PluginHostApplicationO
     ] as const
     const missingServices = requiredServices.filter(name => ctx.get(name) === undefined)
     if (missingServices.length > 0) {
-      throw new Error(`ElecKoi Host 服务未正确装载：${missingServices.join(', ')}`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, `ElecKoi Host 服务未正确装载：${missingServices.join(', ')}`, { what: 'ElecKoi Host 服务' })
     }
     const sessionRoot = process.env.DSH_SESSION_ROOT
     if (sessionRoot) await recoverStartupSessions(ctx, sessionRoot)
@@ -128,20 +130,28 @@ function installUpdateTaskControl(
     }
   })
   return async (action) => {
-    if (stopped) throw new Error('DSH 插件宿主正在停止。')
+    if (stopped) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 插件宿主正在停止。', { what: 'DSH 插件宿主' })
+    }
     if (action === 'unlock') {
       locked = false
       lockGeneration++
     }
     const agents = ctx.get('agents')
     const jobs = ctx.get('jobs')
-    if (agents === undefined || jobs === undefined) throw new Error('DSH 任务服务不可用。')
+    if (agents === undefined || jobs === undefined) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 任务服务不可用。', { what: 'DSH 任务服务' })
+    }
     if (action === 'lock') {
       locked = true
       const generation = ++lockGeneration
       await Promise.all(pendingRequests)
-      if (stopped) throw new Error('DSH 插件宿主正在停止。')
-      if (generation !== lockGeneration) throw new Error('DSH 更新锁已被替换。')
+      if (stopped) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 插件宿主正在停止。', { what: 'DSH 插件宿主' })
+      }
+      if (generation !== lockGeneration) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, 'DSH 更新锁已被替换。', { what: 'DSH 更新锁' })
+      }
     }
     const liveAgents = agents.list()
     return liveAgents.some(agent => agent.status === 'running'

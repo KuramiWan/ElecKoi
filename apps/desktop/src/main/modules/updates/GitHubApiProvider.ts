@@ -3,6 +3,8 @@ import type { AppUpdater, ResolvedUpdateFileInfo, UpdateInfo } from 'electron-up
 import {
   Provider, getFileList, parseUpdateInfo, type ProviderRuntimeOptions
 } from 'electron-updater/out/providers/Provider'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const API = 'https://api.github.com/repos/eleckoi/ElecKoi'
 const REPOSITORY = 'https://github.com/eleckoi/ElecKoi'
@@ -43,30 +45,44 @@ export class GitHubApiProvider extends Provider<UpdateInfo> {
 
   resolveFiles(info: UpdateInfo): ResolvedUpdateFileInfo[] {
     const release = this.release
-    if (!release || release.tag_name !== `v${info.version}`) throw new Error('更新信息与发布版本不一致。')
+    if (!release || release.tag_name !== `v${info.version}`) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '更新信息与发布版本不一致。', { what: '更新版本' })
+    }
     const file = this.installer(info)
     return [{ url: this.assetUrl(release, file.url), info: file }]
   }
 
   async getBlockMapFiles(url: URL, oldVersion: string, newVersion: string): Promise<URL[]> {
     const release = this.release
-    if (!release || release.tag_name !== `v${newVersion}`) throw new Error('增量更新与发布版本不一致。')
+    if (!release || release.tag_name !== `v${newVersion}`) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '增量更新与发布版本不一致。', { what: '增量更新版本' })
+    }
     const matching = release.assets.filter(asset => asset.url === url.href)
     const asset = matching[0]
-    if (matching.length !== 1 || !asset) throw new Error('无法唯一确定增量更新的安装包。')
+    if (matching.length !== 1 || !asset) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, '无法唯一确定增量更新的安装包。', {
+        issues: [{ path: 'assets', message: '发布附件里必须恰好有一个匹配的安装包' }]
+      })
+    }
     const newMap = this.assetUrl(release, `${asset.name}.blockmap`)
     const oldRelease = await this.readRelease(`${API}/releases/tags/${encodeURIComponent(`v${oldVersion}`)}`)
     const oldInfo = await this.readUpdateInfo(oldRelease)
-    if (oldInfo.version !== oldVersion) throw new Error('旧版本增量更新信息不一致。')
+    if (oldInfo.version !== oldVersion) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '旧版本增量更新信息不一致。', { what: '旧版本更新信息' })
+    }
     return [this.assetUrl(oldRelease, `${this.installer(oldInfo).url}.blockmap`), newMap]
   }
 
   private async readRelease(url: string): Promise<Release> {
     const raw = await this.httpRequest(new URL(url), API_HEADERS)
-    if (raw === null) throw new Error('GitHub 更新发布响应为空。')
+    if (raw === null) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'GitHub 更新发布响应为空。', {
+        issues: [{ path: '', message: 'GitHub 更新发布响应为空' }]
+      })
+    }
     const release = releaseSchema.parse(JSON.parse(raw))
     if (release.html_url !== `${REPOSITORY}/releases/tag/${encodeURIComponent(release.tag_name)}`) {
-      throw new Error('更新发布不属于 ElecKoi 仓库。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '更新发布不属于 ElecKoi 仓库。', { what: '更新发布所属仓库' })
     }
     return release
   }
@@ -75,7 +91,9 @@ export class GitHubApiProvider extends Provider<UpdateInfo> {
     const url = this.assetUrl(release, 'latest.yml')
     const info = parseUpdateInfo(await this.httpRequest(url, ASSET_HEADERS), 'latest.yml', url)
     if (!info || typeof info.version !== 'string' || release.tag_name !== `v${info.version}`) {
-      throw new Error('更新描述与发布标签不一致。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, '更新描述与发布标签不一致。', {
+        issues: [{ path: 'version', message: '更新描述与发布标签不一致' }]
+      })
     }
     this.installer(info)
     return info
@@ -83,10 +101,16 @@ export class GitHubApiProvider extends Provider<UpdateInfo> {
 
   private installer(info: UpdateInfo): ReturnType<typeof getFileList>[number] {
     const files = getFileList(info)
-    if (files.length !== 1 || ('packages' in info && info.packages != null)) throw new Error('Windows 更新必须声明唯一的完整安装包。')
+    if (files.length !== 1 || ('packages' in info && info.packages != null)) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'Windows 更新必须声明唯一的完整安装包。', {
+        issues: [{ path: 'files', message: 'Windows 更新必须声明唯一的完整安装包' }]
+      })
+    }
     const file = files[0]
     if (!file || typeof file.url !== 'string' || !/^[^/\\]+\.exe$/i.test(file.url) || !file.sha512) {
-      throw new Error('Windows 更新安装包标识或校验和无效。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'Windows 更新安装包标识或校验和无效。', {
+        issues: [{ path: 'files', message: 'Windows 更新安装包标识或校验和无效' }]
+      })
     }
     return file
   }
@@ -94,10 +118,16 @@ export class GitHubApiProvider extends Provider<UpdateInfo> {
   private assetUrl(release: Release, name: string): URL {
     const matches = release.assets.filter(asset => asset.name === name)
     const asset = matches[0]
-    if (matches.length !== 1 || !asset) throw new Error(`发布必须包含唯一的更新附件：${name}`)
+    if (matches.length !== 1 || !asset) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, `发布必须包含唯一的更新附件：${name}`, {
+        issues: [{ path: 'assets', message: '发布必须包含唯一的更新附件' }]
+      })
+    }
     if (asset.state !== 'uploaded' || asset.url !== `${API}/releases/assets/${asset.id}`
       || asset.browser_download_url !== `${REPOSITORY}/releases/download/${encodeURIComponent(release.tag_name)}/${encodeURIComponent(name)}`) {
-      throw new Error(`更新附件的状态或地址无效：${name}`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, `更新附件的状态或地址无效：${name}`, {
+        issues: [{ path: 'assets', message: '更新附件的状态或地址无效' }]
+      })
     }
     return new URL(asset.url)
   }

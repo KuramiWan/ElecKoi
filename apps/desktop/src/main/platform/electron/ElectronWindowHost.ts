@@ -1,4 +1,6 @@
 import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export interface WindowBlueprint {
   singleton: boolean
@@ -16,13 +18,17 @@ export class ElectronWindowHost {
   private closing = false
 
   define(type: string, blueprint: WindowBlueprint): void {
-    if (this.blueprints.has(type)) throw new Error(`窗口类型已经注册：${type}`)
+    if (this.blueprints.has(type)) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `窗口类型已经注册：${type}`, { what: '窗口类型' })
+    }
     this.blueprints.set(type, blueprint)
   }
 
   async open(type: string, payload?: unknown): Promise<BrowserWindow> {
     const blueprint = this.blueprints.get(type)
-    if (blueprint === undefined) throw new Error(`窗口类型尚未注册：${type}`)
+    if (blueprint === undefined) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `窗口类型尚未注册：${type}`, { what: '窗口类型' })
+    }
     const instanceKey = blueprint.instanceKey?.(payload)?.trim()
     const scopedKey = instanceKey ? `${type}:${instanceKey}` : ''
     const existing = blueprint.singleton

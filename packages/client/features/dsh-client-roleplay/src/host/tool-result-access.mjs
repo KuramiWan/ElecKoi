@@ -1,3 +1,5 @@
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
+
 export const RESULT_READERS = Object.freeze({
   settings: 'eleckoi_read_setting_files',
   variables: 'eleckoi_read_variables',
@@ -32,9 +34,9 @@ export function canReadResult(domain, toolName) {
 
 export function readToolResult(ctx, args, exec, domain) {
   if (Object.keys(args).some(key => key !== 'result') || !args.result || typeof args.result !== 'object' || Array.isArray(args.result)) {
-    throw new Error('续读工具结果时只传 result，不同时传普通业务参数。')
+    throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '续读工具结果时只传 result，不同时传普通业务参数。', { field: 'result' })
   }
   const store = ctx.get('spillStore')
-  if (typeof store?.readResult !== 'function') throw new Error('当前 Host 未提供本工具组的结果续读服务。')
+  if (typeof store?.readResult !== 'function') throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Host 未提供本工具组的结果续读服务。', { what: '工具结果续读服务' })
   return store.readResult(args.result, exec, domain)
 }

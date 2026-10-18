@@ -14,7 +14,12 @@
     "rootDir": "./src",
     "skipLibCheck": true,
     "strict": true,
-    "target": "ES2022"
+    "target": "ES2022",
+    "paths": {
+      "@shared/*": [
+        "../../packages/shared/src/*"
+      ]
+    }
   },
   "exclude": [
     "node_modules",

@@ -4,6 +4,8 @@ import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { initProfile } from '@deepseek-ai/dsh-app-boot'
 import { ELECKOI_INSTALL_ANCHOR, registerAndroidMobileBundle, registerAndroidFrontendBundles } from './androidPluginBundles'
 import { ELECKOI_ANDROID_RECOVERY_BUNDLES } from './androidPluginRecovery'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const require = createRequire(ELECKOI_INSTALL_ANCHOR)
 
@@ -31,23 +33,31 @@ export interface PreparedPluginHost {
 
 /** Relative paths belong to the configuration file, independently of the launch directory. */
 export function loadNodeHostConfiguration(configPath: string): NodeHostConfiguration {
-  if (!isAbsolute(configPath)) throw new Error('Android Host configuration path must be absolute')
+  if (!isAbsolute(configPath)) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Android Host configuration path must be absolute', { field: 'configPath' })
+  }
   const value: unknown = JSON.parse(readFileSync(configPath, 'utf8'))
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Android Host configuration must be a JSON object')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Android Host configuration must be a JSON object', { what: 'Android Host 配置' })
   }
   const config = value as Record<string, unknown>
-  if (config.schemaVersion !== 1) throw new Error('Unsupported Android Host configuration schemaVersion')
+  if (config.schemaVersion !== 1) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, 'Unsupported Android Host configuration schemaVersion', { what: 'Android Host 配置', expected: 'schemaVersion 1' })
+  }
   const supported = new Set(['schemaVersion', 'runtimeDataRoot', 'homeRoot', 'workspaceRoot',
     'productDatabasePath', 'productMediaRoot', 'resourceRoot', 'clientDirectory',
     'presetTemplatePath', 'agentPatchPath', 'packageManagerEntryPath', 'nodeBinPath'])
   for (const key of Object.keys(config)) {
-    if (!supported.has(key)) throw new Error(`Unsupported Android Host configuration field: ${key}`)
+    if (!supported.has(key)) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Unsupported Android Host configuration field: ${key}`, { what: 'Android Host 配置项', expected: 'schemaVersion 1 声明的字段' })
+    }
   }
   const base = dirname(configPath)
   const path = (name: string, fallback?: string): string => {
     const raw = config[name] ?? fallback
-    if (typeof raw !== 'string' || raw.trim().length === 0) throw new Error(`Missing Host configuration path: ${name}`)
+    if (typeof raw !== 'string' || raw.trim().length === 0) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `Missing Host configuration path: ${name}`, { field: name })
+    }
     return resolve(base, raw)
   }
   const resourceRoot = path('resourceRoot')
@@ -64,13 +74,15 @@ export function loadNodeHostConfiguration(configPath: string): NodeHostConfigura
   }
   for (const file of [result.presetTemplatePath, result.agentPatchPath, result.packageManagerEntryPath,
     join(resourceRoot, 'runtime-manifest.json'), join(result.clientDirectory, 'dsh.html')]) {
-    if (!existsSync(file)) throw new Error(`Android Host resource is missing: ${file}`)
+    if (!existsSync(file)) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, `Android Host resource is missing: ${file}`, { operation: 'read', path: file })
+    }
   }
   const runtime = JSON.parse(readFileSync(join(resourceRoot, 'runtime-manifest.json'), 'utf8'))
   const installed = require('@deepseek-ai/dsh/package.json') as { version: string }
   if (runtime.schemaVersion !== 1 || runtime.upstream?.version !== installed.version
     || runtime.upstream?.commit !== 'c1b47e41fcd54d20a0f061df28683bfc29ee24e5') {
-    throw new Error('Android Host resources do not match the locked DSH installation')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, 'Android Host resources do not match the locked DSH installation', { what: 'Android Host 资源清单', expected: '与锁定的 DSH 安装一致' })
   }
   return result
 }
