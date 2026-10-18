@@ -14,9 +14,10 @@
  *    允许的形式是三个具名回调（`failureAlreadyPublished` / `rejectionIsAwaitedElsewhere` / `bestEffort`），
  *    或者任何**非空**的处理体（例如 `.catch(error => reportFailure(...))`）。
  *    见 `packages/shared/src/foundation/swallowedFailure.ts` 的语义表。
- * 4. **不许裸抛**（P5 期间是计数，`--strict` 才判失败）：领域 / 宿主 / 客户端插件层的 `throw new Error(`
+ * 4. **不许裸抛**：领域 / 宿主 / 客户端插件层的 `throw new Error(`
  *    必须改成带契约码的形式（`throw new DesktopError(ELECKOI_FAILURE_CODES.…, …)`）。
- *    这条是 P5 的进度尺：数字必须逐批下降，末期归零后去掉 `--strict` 变成绝对值。
+ *    本轮收口时已归零，所以它也是**绝对值**——P5 期间它曾是进度尺（`--strict` 才判失败），
+ *    现在不需要那个开关：`--progress-only` 只给未来做迁移的线路临时看数用，CI 不要带它。
  *
  * ## 只在代码位置上匹配
  *
@@ -50,9 +51,9 @@
  *   `Promise.reject(new Error(...))` 仍然看不见。
  *
  * 用法：
- *   node scripts/check-error-contract.mjs            # 规则 1–3 绝对值，规则 4 只报数
- *   node scripts/check-error-contract.mjs --strict   # 规则 4 也判失败（P5 收口后默认）
- *   node scripts/check-error-contract.mjs --json     # 机器可读摘要
+ *   node scripts/check-error-contract.mjs                     # 四条规则都是绝对值
+ *   node scripts/check-error-contract.mjs --progress-only     # 规则 4 只报数（迁移期临时用，CI 不用）
+ *   node scripts/check-error-contract.mjs --json              # 机器可读摘要
  */
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -359,7 +360,8 @@ export function isNamedDeclaration(line) {
 }
 
 function main() {
-  const strict = process.argv.includes('--strict')
+  // 规则 4 已是绝对值：默认判失败；`--progress-only` 只给迁移期的线路临时看数。
+  const strict = !process.argv.includes('--progress-only')
   const json = process.argv.includes('--json')
   const files = scanFiles()
   const { hits } = inspect(files)
@@ -389,7 +391,7 @@ function main() {
     console.log(`规则 1 禁止丢码：${(byRule.get('no-code-drop') ?? []).length} 处`)
     console.log(`规则 2 契约违例详情：${(byRule.get('contract-issues') ?? []).length} 处`)
     console.log(`规则 3 空 catch：${(byRule.get('empty-catch') ?? []).length} 处`)
-    console.log(`规则 4 裸抛（${strict ? '绝对值' : '进度，--strict 才判失败'}）：${bareThrows.length} 处`)
+    console.log(`规则 4 裸抛（${strict ? '绝对值' : '只报数（--progress-only）'}）：${bareThrows.length} 处`)
     for (const entry of failing) {
       console.log(`\n✗ 规则「${ruleTitle(entry.rule)}」命中 ${entry.hits.length} 处：`)
       for (const hit of entry.hits.slice(0, 40)) console.log(`  ${hit.file}:${hit.line}  ${hit.detail}`)
