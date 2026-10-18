@@ -1,4 +1,6 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect } from 'react';
 import { ChevronRightIcon, ImportIcon, XIcon } from '../../../ui/icons/index.jsx';
 
@@ -31,7 +33,7 @@ export function fileBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || '').split(',', 2)[1] || '');
-    reader.onerror = () => reject(new Error(`${file.name} 无法读取`));
+    reader.onerror = () => reject(new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, `${file.name} 无法读取`, { operation: 'read', path: file.name }));
     reader.readAsDataURL(file);
   });
 }

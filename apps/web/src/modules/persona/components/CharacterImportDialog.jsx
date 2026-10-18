@@ -145,7 +145,7 @@ function fileBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || "").split(",", 2)[1] || "");
-    reader.onerror = () => reject(new Error(`${file.name} 无法读取`));
+    reader.onerror = () => reject(new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, `${file.name} 无法读取`, { operation: "read", path: file.name }));
     reader.readAsDataURL(file);
   });
 }

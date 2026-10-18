@@ -13,7 +13,7 @@ function readBlob(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
+    reader.onerror = () => reject(reader.error || new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片读取失败", { what: "头像图片" }));
     reader.readAsDataURL(blob);
   });
 }
@@ -28,7 +28,7 @@ function loadImage(file) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("图片解码失败"));
+      reject(new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片解码失败", { what: "头像图片" }));
     };
     image.src = url;
   });

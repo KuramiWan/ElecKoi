@@ -42,7 +42,7 @@ function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("图片读取失败，请换一张图片试试。"));
+    image.onerror = () => reject(new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片读取失败，请换一张图片试试。", { what: "主题图片" }));
     image.src = src;
   });
 }
@@ -51,7 +51,7 @@ function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("图片读取失败，请换一张图片试试。"));
+    reader.onerror = () => reject(new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片读取失败，请换一张图片试试。", { what: "主题图片" }));
     reader.readAsDataURL(file);
   });
 }
