@@ -1,7 +1,7 @@
 import { displayTemplateLibrarySchema, type DisplayTemplateLibrary, type DisplayTemplateScope, type PortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import type { ElecKoiSqliteStore, ElecKoiDatabase } from '@product-data/storage/sqlite/SqliteDatabase'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
-import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export class DisplayTemplateRepository {
   constructor(private readonly store: ElecKoiSqliteStore, private readonly owners: Record<Exclude<DisplayTemplateScope, 'global'>, (db: ElecKoiDatabase, id: string) => boolean>) {}
@@ -19,7 +19,7 @@ export class DisplayTemplateRepository {
     const library = displayTemplateLibrarySchema.parse(input)
     return this.store.native.transaction(() => {
       const current = this.get(library.scope, library.ownerId)
-      if (current.revision !== library.revision) throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '显示模板已被修改，请重新读取后保存。')
+      if (current.revision !== library.revision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '显示模板已被修改，请重新读取后保存。', { what: '显示模板' })
       const next = { ...library, revision: current.revision + 1 }
       this.store.native.prepare('INSERT INTO display_template_libraries (scope, ownerId, characterId, presetId, enabled, revision, templatesJson) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(scope, ownerId) DO UPDATE SET enabled = excluded.enabled, revision = excluded.revision, templatesJson = excluded.templatesJson').run(
         next.scope, next.ownerId, next.scope === 'character' ? next.ownerId : null, next.scope === 'preset' ? next.ownerId : null,

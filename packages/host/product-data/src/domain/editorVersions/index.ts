@@ -4,7 +4,7 @@ import { join, sep } from 'node:path'
 import { z } from 'zod'
 import { editorLibraryAddressSchema, editorLibraryVersionsSchema, type EditorLibraryAddress, type EditorLibraryVersions } from '@shared/contracts/editorVersions/schemas'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
-import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 
 const archiveSchema = z.strictObject({ archive: z.string().regex(/^[a-f0-9]{64}$/) })
@@ -50,7 +50,7 @@ export class EditorLibraryVersionRepository {
     const value = editorLibraryVersionsSchema.parse(input)
     this.requireOwner(value)
     if ((this.row(value)?.revision ?? 0) !== value.revision) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '配置版本已在其他窗口更新，请重新读取后保存。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '配置版本已在其他窗口更新，请重新读取后保存。', { what: '配置版本' })
     }
     return value
   }
