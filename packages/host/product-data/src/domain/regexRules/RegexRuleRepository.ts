@@ -53,6 +53,7 @@ function parseStringList(raw: string, description: string): string[] {
     if (!Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${description}的形状不对。`, { what: description })
     return [...new Set(parsed.filter((value): value is string => typeof value === 'string' && value.length > 0))]
   } catch (error) {
+    if (error instanceof DesktopError) throw error
     throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `${description}已损坏。`, { what: description })
   }
 }

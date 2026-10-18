@@ -189,7 +189,7 @@ export function readDshSessionLog(
   try {
     const descriptor = sessionFormatCatalog.readHeader(headerValue)
     if (descriptor.status === 'malformed' || descriptor.status === 'unsupported') {
-      throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, 'Unsupported Session header', { what: '会话头的格式或版本' })
+      throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, 'Unsupported Session header', { what: '会话头的格式或版本', expected: '当前格式' })
     }
     const catalog = descriptor.status === 'migration-required'
       ? createSessionFormatCatalogWithChildren(collectHistoricalChildren(located, descriptor.header.id))
@@ -199,7 +199,9 @@ export function readDshSessionLog(
       recovery: 'recoverable',
       validation: 'transformed'
     })
-  } catch {
+  } catch (error) {
+    // `productFailure` 造的是普通对象，靠网关载体标记认；已带码的失败不再重包成"格式不对"。
+    if (typeof error === 'object' && error !== null && 'isDSHRemoteError' in error && error.isDSHRemoteError === true) throw error
     throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 轨迹日志缺少有效的会话头。', { what: 'DSH 轨迹日志的会话头' })
   }
   if (restore.header.id !== runtimeThreadId) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'DSH 轨迹日志缺少有效的会话头。', { what: 'DSH 轨迹日志的会话标识' })

@@ -178,7 +178,8 @@ export class CreatorProjectRepository {
       ) {
         throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, 'Project manifest does not match the index entry.', { what: '创作项目清单与索引记录' })
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof DesktopError) throw error
       throw new DesktopError(DESKTOP_ERROR_CODES.INTERNAL, '项目清单校验失败，为避免误删未执行操作。')
     }
     return rootPath
