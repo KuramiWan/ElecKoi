@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { RoleplayInputMenu } from "./RoleplayInputMenu.jsx";
 import { ChatModelPicker } from "./ChatModelPicker.jsx";
 import { ConversationWidthControls } from "./ConversationWidthControls.tsx";
@@ -153,13 +155,13 @@ export function ChatPanel({
       'input.send': async () => {
         const text = inputStateRef.current;
         if (!String(text || '').trim() && !inputImages.length && !inputFiles.length) return { submitted: false };
-        if (!onSend) throw new Error('当前对话没有发送入口。');
+        if (!onSend) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '当前对话没有发送入口。', { what: '对话发送入口' });
         return { submitted: await onSend({ preventDefault() {} }, text) !== false };
       },
       'presentation.current': () => ({ conversationId, title: currentTitle, messages, isGenerating: isSending, persona, chatDisplay }),
       'ui.showProcess': params => {
         const message = messages.find(value => value.id === params.id);
-        if (!message) throw new Error(`显示消息不存在：${params.id}`);
+        if (!message) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `显示消息不存在：${params.id}`, { what: '显示消息' });
         setProcessMessage(message); return null;
       }
     };

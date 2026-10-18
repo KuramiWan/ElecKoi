@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useRef, useState } from 'react';
 
 export function useChatInputFiles({ conversationId, conversations }) {
@@ -18,8 +20,8 @@ export function useChatInputFiles({ conversationId, conversations }) {
 
   async function addInputFiles(files) {
     if (!files?.length) return;
-    if (!conversations) throw new Error('DSH 聊天服务尚未就绪。');
-    if (!conversationId) throw new Error('请先打开一个聊天。');
+    if (!conversations) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 聊天服务尚未就绪。', { what: 'DSH 聊天服务' });
+    if (!conversationId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请先打开一个聊天。', { what: '打开一个聊天' });
     const generation = generationRef.current;
     pendingUploadsRef.current += 1;
     setFilesUploading(true);

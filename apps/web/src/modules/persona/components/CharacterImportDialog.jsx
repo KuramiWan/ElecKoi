@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretRight, CheckCircle, WarningCircle } from "../../../ui/icons/interfaceIcons.jsx";
@@ -51,9 +53,9 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
     setPreparing(true);
     setError("");
     try {
-      if (selected.length > 50) throw new Error("一次最多导入 50 张角色卡");
+      if (selected.length > 50) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, "一次最多导入 50 张角色卡", { field: "角色卡数量" });
       const oversized = selected.find((file) => file.size > 64 * 1024 * 1024);
-      if (oversized) throw new Error(`${oversized.name} 超过 64 MB`);
+      if (oversized) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `${oversized.name} 超过 64 MB`, { field: "角色卡文件大小" });
       const payloads = await Promise.all(selected.map(async (file) => ({
         displayName: file.name,
         mimeType: file.type,
