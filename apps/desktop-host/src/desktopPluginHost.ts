@@ -214,7 +214,7 @@ export class DshDesktopPluginHost {
   async updateTasks(action: 'inspect' | 'lock' | 'unlock'): Promise<boolean> {
     await (this.readyTask ?? this.start())
     const child = this.child
-    if (child === undefined || !child.connected) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 插件宿主未连接。', { what: 'DSH 插件宿主' })
+    if (child === undefined || !child.connected) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 插件宿主未连接。', { what: 'DSH 插件宿主' })
     const id = randomUUID()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
