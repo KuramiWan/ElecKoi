@@ -6,6 +6,7 @@ import { GroupAssignmentMenu } from '../../../ui/ui/GroupAssignmentMenu.jsx';
 import { ExportIcon, ImportIcon, PencilIcon, PlusIcon, TrashIcon } from '../../../ui/icons/index.jsx';
 import defaultPresetAvatar from '../../../assets/eleckoi-app-icon.png';
 import { isDefaultPreset, PresetPurposeSwitch } from './PresetPurposeSwitch.jsx';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const ALL_PRESETS = '全部预设';
 
@@ -108,7 +109,7 @@ export function PresetManager({ catalogModel, catalog, purpose, onPurposeChange,
       setPresetGroupMenu(null);
       await onRefresh(preset.id);
     } catch (cause) {
-      setError(cause?.message || '移动预设失败');
+      setError(resolveFailure(cause, { fallback: '移动预设失败' }).text);
     }
   }
 
@@ -119,7 +120,7 @@ export function PresetManager({ catalogModel, catalog, purpose, onPurposeChange,
       setGroupDraft('');
       setGroupDialogOpen(false);
       await onRefresh();
-    } catch (cause) { setError(cause?.message || '新建分组失败'); }
+    } catch (cause) { setError(resolveFailure(cause, { fallback: '新建分组失败' }).text); }
   }
 
   async function renameGroup() {
@@ -130,7 +131,7 @@ export function PresetManager({ catalogModel, catalog, purpose, onPurposeChange,
       setEditingGroupId('');
       setGroupDialogOpen(false);
       await onRefresh();
-    } catch (cause) { setError(cause?.message || '重命名失败'); }
+    } catch (cause) { setError(resolveFailure(cause, { fallback: '重命名失败' }).text); }
   }
 
   async function removeGroup(group = selectedGroupRecord) {
@@ -140,7 +141,7 @@ export function PresetManager({ catalogModel, catalog, purpose, onPurposeChange,
       onSelectGroup(ALL_PRESETS);
       setGroupMenu(null);
       await onRefresh();
-    } catch (cause) { setError(cause?.message || '删除分组失败'); }
+    } catch (cause) { setError(resolveFailure(cause, { fallback: '删除分组失败' }).text); }
   }
 
   function togglePreset(id) {
@@ -158,7 +159,7 @@ export function PresetManager({ catalogModel, catalog, purpose, onPurposeChange,
       for (const id of selectedIds) await catalogModel.delete(id);
       cancelDeleteMode();
       await onRefresh();
-    } catch (cause) { setError(cause?.message || '删除预设失败'); }
+    } catch (cause) { setError(resolveFailure(cause, { fallback: '删除预设失败' }).text); }
   }
 
   async function exportPreset(format) {

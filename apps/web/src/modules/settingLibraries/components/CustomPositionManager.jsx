@@ -26,6 +26,7 @@ import {
 } from '../model/customPositions.js';
 import '../styles/custom-positions.css';
 import { useEditorPresentation, useEditorSubpage } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const FIXED_POSITION_ICONS = {
   instructions: PushPin,
@@ -130,7 +131,7 @@ function PositionNameDialog({ draft, existing, onChange, onCancel, onSave }) {
   }}>
     <form className="setting-position-dialog" role="dialog" aria-modal="true" aria-labelledby="position-dialog-title" onSubmit={(event) => {
       event.preventDefault();
-      try { onSave(); } catch (cause) { setError(cause.message); inputRef.current?.focus(); }
+      try { onSave(); } catch (cause) { setError(resolveFailure(cause, { fallback: '保存位置失败' }).text); inputRef.current?.focus(); }
     }}>
       <h3 id="position-dialog-title">{existing ? '重命名位置' : '新建位置'}</h3>
       <label><span>名称</span><input ref={inputRef} value={draft.name} placeholder="例如：世界状态" aria-invalid={error ? true : undefined} onChange={(event) => { onChange({ ...draft, name: event.target.value }); setError(''); }} /></label>

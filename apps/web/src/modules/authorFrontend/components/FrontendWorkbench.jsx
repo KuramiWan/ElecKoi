@@ -5,6 +5,7 @@ import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorCo
 import { registerOverlayBack } from '../../../ui/hooks/overlayBack.js';
 import { FrontendWorkbenchPrompt } from './FrontendWorkbenchPrompt.jsx';
 import { AUTHOR_API_VERSION } from '@eleckoi/author-sdk';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const manifestPath = 'eleckoi.frontend.json';
 const textual = path => /\.(html?|css|[cm]?js|jsx|tsx?|json|svg|txt|md|xml|yaml|yml|csv|map)$/i.test(path);
@@ -53,7 +54,7 @@ export const FrontendWorkbench = forwardRef(function FrontendWorkbench({ workspa
   const run = async action => {
     if (busy) return; setBusy(true); setError(''); setNotice('');
     try { return await action(); }
-    catch (reason) { setError(reason.message || String(reason)); }
+    catch (reason) { setError(resolveFailure(reason, { fallback: '操作失败，请重试。' }).text); }
     finally { setBusy(false); }
   };
   const chooseFile = async (nextPath, nextProject = project) => {
@@ -65,7 +66,7 @@ export const FrontendWorkbench = forwardRef(function FrontendWorkbench({ workspa
       const result = nextPath === manifestPath ? { content: JSON.stringify(nextProject.manifest, null, 2) }
         : await request('frontends.readFile', { projectId: nextProject.id, path: nextPath });
       if (token === readVersion.current) { setText(result.content); setOriginal(result.content); }
-    } catch (reason) { if (token === readVersion.current) setError(`${nextPath}: ${reason.message}`); }
+    } catch (reason) { if (token === readVersion.current) setError(`${nextPath}: ${resolveFailure(reason, { fallback: '读取文件失败' }).text}`); }
     finally { if (token === readVersion.current) setFileLoading(false); }
   };
   const activateProject = next => {

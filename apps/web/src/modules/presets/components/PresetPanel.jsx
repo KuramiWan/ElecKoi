@@ -21,6 +21,7 @@ import { PresetToolsEditor } from './PresetToolsEditor.jsx';
 import { fileBase64, PresetImportDialog } from './PresetTransfer.jsx';
 import { openPresetManagerWindow } from '../window/openPresetManagerWindow.js';
 import { PresetPurposeSwitch, isDefaultPreset } from './PresetPurposeSwitch.jsx';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const PresetContext = createContext(null);
 const ALL_PRESETS = '全部预设';
@@ -100,7 +101,7 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
       setError('');
       return next;
     } catch (cause) {
-      setError(cause?.message || '读取预设失败');
+      setError(resolveFailure(cause, { fallback: '读取预设失败' }).text);
       return null;
     }
   }
@@ -229,7 +230,7 @@ export function PresetListPanel() {
       try {
         setCatalog(await catalogModel.setActive(preset.id));
         setError('');
-      } catch (cause) { setError(cause?.message || '启用预设失败'); }
+      } catch (cause) { setError(resolveFailure(cause, { fallback: '启用预设失败' }).text); }
     });
   }
 
@@ -238,7 +239,7 @@ export function PresetListPanel() {
       try {
         await catalogModel.delete(preset.id);
         await refresh();
-      } catch (cause) { setError(cause?.message || '删除预设失败'); }
+      } catch (cause) { setError(resolveFailure(cause, { fallback: '删除预设失败' }).text); }
     });
   }
 
@@ -379,7 +380,7 @@ export function PresetWorkspace({
       setTab(initialTab);
       if (requestedTabRef.current) requestedTabHandledRef.current?.();
       setProfileEditing(false);
-    }).catch((cause) => active && setError(cause?.message || '读取预设失败')).finally(() => active && setLoading(false));
+    }).catch((cause) => active && setError(resolveFailure(cause, { fallback: '读取预设失败' }).text)).finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [catalogModel, selectedPresetId]);
 
@@ -465,7 +466,7 @@ export function PresetWorkspace({
       if (compact) onNotify?.('success', '预设已保存');
       return true;
     } catch (cause) {
-      setError(cause?.message || '保存预设失败');
+      setError(resolveFailure(cause, { fallback: '保存预设失败' }).text);
       return false;
     } finally {
       savingRef.current = false;

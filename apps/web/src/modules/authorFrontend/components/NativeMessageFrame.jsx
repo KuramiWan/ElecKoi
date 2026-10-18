@@ -2,6 +2,7 @@ import { useContext, useLayoutEffect, useMemo, useRef, useState, useSyncExternal
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
 import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
 import { FrontendDiagnostics } from './FrontendDiagnostics.jsx';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const noSubscription = () => () => {};
 const noRuntime = () => null;
@@ -66,7 +67,7 @@ export function NativeMessageFrame({ message, document, rootIndex = 0, onSettled
     } catch (failure) {
       release.current?.(); release.current = null;
       complete?.(undefined, failure);
-      setError(failure.message || String(failure));
+      setError(resolveFailure(failure, { fallback: '原生作者页面加载失败' }).text);
     }
   };
   if (!runtime) return <div className="rich-message-error" role="alert">原生作者插件未启用</div>;

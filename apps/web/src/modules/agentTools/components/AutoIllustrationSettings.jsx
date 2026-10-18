@@ -6,6 +6,7 @@ import { DesktopIllustrationModelPicker } from './DesktopIllustrationModelPicker
 import { ModelIdentityIcon, ModelImageParametersSection } from '../../models/index.js';
 import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
 import { NOVELAI_IMAGE_PROVIDER, normalizeNovelAiImageSettings, novelAiImageSettingsError } from '@shared/contracts/agent/novelAiImageSettings';
+import { resolveFailure } from '../../../utils/failureText.js';
 import '../../../mobile/mobile-models.css';
 import './auto-illustration.css';
 
@@ -65,7 +66,7 @@ function IllustrationModelPicker({ configs, selectedId, status, catalogError, on
       }
       await onSelect(chosenId);
       onClose();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    } catch (cause) { setError(resolveFailure(cause, { fallback: '保存绘图设置失败' }).text); }
     finally { setSaving(false); }
   }
   function requestClose() {
@@ -90,7 +91,7 @@ function IllustrationModelPicker({ configs, selectedId, status, catalogError, on
           </section>
           {status === 'loading' ? <p className={mobile ? 'mobile-overlay-empty' : 'desktop-illustration-state'} role="status">正在读取模型</p> : catalogError ? <div role="alert"><p className="model-parameter-error">{catalogError}</p><button type="button" onClick={async () => {
             try { await onReload(); setError(''); }
-            catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+            catch (cause) { setError(resolveFailure(cause, { fallback: '重新读取模型失败' }).text); }
           }}>重新读取</button></div> : !drafts.length && <p className={mobile ? 'mobile-overlay-empty' : 'desktop-illustration-state'}>请先在模型设置中添加 NovelAI 配置</p>}
         </>}
     </>;

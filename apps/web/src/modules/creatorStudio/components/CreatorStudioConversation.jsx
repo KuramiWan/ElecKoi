@@ -4,6 +4,7 @@ import { DshNewChatIcon } from '../../../ui/icons/dshComposerIcons.jsx';
 import { RoleplayInputMenu, AgentToolsDialog } from '../../chat/index.js';
 import { ModelPicker } from '../../models/index.js';
 import { openPresetManagerWindow } from '../../presets/index.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 /** Desktop assembly of the shared Studio Session with native views and resident input. */
 export function CreatorStudioConversation({ model, editing = false, creating = false, models, presetCatalog, title, onCreate, onSelectCharacter, onError,
@@ -24,10 +25,10 @@ export function CreatorStudioConversation({ model, editing = false, creating = f
   const selectedModel = projectedModel?.next ?? projectedModel?.lastUsed ?? defaultModel;
   useEffect(() => {
     let active = true;
-    model.readDefaultModel().then(value => { if (active) setDefaultModel(value); }).catch(error => { if (active) onError(error.message); });
+    model.readDefaultModel().then(value => { if (active) setDefaultModel(value); }).catch(error => { if (active) onError(resolveFailure(error, { fallback: '读取默认模型失败' }).text); });
     return () => { active = false; };
   }, [model, onError]);
-  useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(error.message)); }, [model, session.running, onError]);
+  useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(resolveFailure(error, { fallback: '刷新模型失败' }).text)); }, [model, session.running, onError]);
   useLayoutEffect(() => {
     if (!body.current || !composer.current) return;
     const scroller = body.current, seat = composer.current;
@@ -35,13 +36,13 @@ export function CreatorStudioConversation({ model, editing = false, creating = f
     const observer = new ResizeObserver(update); observer.observe(seat); update();
     return () => { observer.disconnect(); scroller.style.removeProperty('--dsh-composer-height'); };
   }, []);
-  async function regenerate() { try { await model.regenerate(); } catch (error) { onError(error.message); } }
-  async function showMessages() { try { setMessages(await model.messages()); setSelectedMessage(null); setDeleteError(''); } catch (error) { onError(error.message); } }
+  async function regenerate() { try { await model.regenerate(); } catch (error) { onError(resolveFailure(error, { fallback: '重新生成失败' }).text); } }
+  async function showMessages() { try { setMessages(await model.messages()); setSelectedMessage(null); setDeleteError(''); } catch (error) { onError(resolveFailure(error, { fallback: '读取消息失败' }).text); } }
   async function removeMessages() {
     if (!selectedMessage) return;
     setDeleting(true); setDeleteError('');
     try { await model.deleteMessagesFrom(selectedMessage.eventSeq, selectedMessage.role); setMessages(null); }
-    catch (error) { setDeleteError(error.message); onError(error.message); }
+    catch (error) { const text = resolveFailure(error, { fallback: '删除消息失败' }).text; setDeleteError(text); onError(text); }
     finally { setDeleting(false); }
   }
   const menu = <RoleplayInputMenu purpose="creator" isSending={session.running} onCreateChat={onCreate} onSelectCharacter={onSelectCharacter}

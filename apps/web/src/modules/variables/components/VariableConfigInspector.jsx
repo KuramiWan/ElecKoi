@@ -4,6 +4,7 @@ import { generatedInitialStatePreviewJson, generatedObjectStateJson } from "../.
 import { VARIABLE_INITIALIZATION_OBJECT_ID } from "../../../../../../packages/shared/src/contracts/variables/schemas.ts";
 import { VariableEntryIcon, VariableGroupIcon } from "./VariableConfigTree.jsx";
 import { variablePointerPath } from "../model/variableConfigEditing.js";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 function Field({ label, children, wide = false, fill = false, hint = "" }) {
   return <label className={`variable-field${wide ? " is-wide" : ""}${fill ? " is-fill" : ""}`}><span>{label}</span>{children}{hint ? <small>{hint}</small> : null}</label>;
@@ -144,7 +145,7 @@ function ObjectEditor({ config, object, nameInputRef, onChange, onReplaceContent
       <Field label="变量组名称" wide><input ref={nameInputRef} value={object.name} onChange={(event) => update({ name: event.target.value })} /></Field>
       <Field label="说明" wide><textarea value={object.description} onChange={(event) => update({ description: event.target.value })} placeholder="这个变量组保存什么信息" /></Field>
       <Field label="更新规则" wide><textarea value={object.updateRule} onChange={(event) => update({ updateRule: event.target.value })} placeholder="何时、如何更新这个变量组" /></Field>
-      <div className="variable-object-json-heading"><div><strong>对象内容</strong><span>JSON</span></div><button type="button" onClick={() => { try { onReplaceContents(object.id, jsonText); setJsonError(""); } catch (error) { setJsonError(error?.message || "JSON 格式不正确"); } }}>应用结构</button></div>
+      <div className="variable-object-json-heading"><div><strong>对象内容</strong><span>JSON</span></div><button type="button" onClick={() => { try { onReplaceContents(object.id, jsonText); setJsonError(""); } catch (error) { setJsonError(resolveFailure(error, { fallback: "JSON 格式不正确" }).text); } }}>应用结构</button></div>
       <textarea className="variable-code-area is-object" value={jsonText} onChange={(event) => setJsonText(event.target.value)} spellCheck="false" />
       {jsonError ? <p className="variable-inline-error" role="alert">{jsonError}</p> : null}
     </div>

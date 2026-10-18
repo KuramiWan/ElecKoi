@@ -1,6 +1,7 @@
 import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
 import { DesktopError } from "@shared/foundation/DesktopError";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { resolveFailure } from "../../../utils/failureText.js";
 const updateService = android => android ? window.ElecKoiPlatform?.updates : window.dshDesktop?.updates;
 export function useAppUpdates() {
   const android = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === "android";
@@ -34,7 +35,7 @@ export function useAppUpdates() {
         setStatus(nextStatus);
         setError("");
       }).catch((cause) => {
-        if (active) setError(cause?.message || "无法读取版本信息。");
+        if (active) setError(resolveFailure(cause, { fallback: "无法读取版本信息。" }).text);
       });
     };
     if (android) window.addEventListener('eleckoi:platform-ready', attach);
@@ -53,7 +54,7 @@ export function useAppUpdates() {
       setStatus(nextStatus);
       return nextStatus;
     } catch (cause) {
-      setError(cause?.message || "更新服务暂时不可用。");
+      setError(resolveFailure(cause, { fallback: "更新服务暂时不可用。" }).text);
       throw cause;
     }
   }, []);
@@ -79,7 +80,7 @@ export function useAppUpdates() {
       if (!updates?.install) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "更新安装服务暂时不可用。", { what: "更新安装服务" });
       return await updates.install();
     } catch (cause) {
-      setError(cause?.message || "无法启动安装。");
+      setError(resolveFailure(cause, { fallback: "无法启动安装。" }).text);
       throw cause;
     }
   }, [android]);

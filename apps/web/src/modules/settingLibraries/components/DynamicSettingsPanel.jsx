@@ -29,6 +29,7 @@ import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import { useTouchReorder } from '../../../ui/tree/useTouchReorder.js';
 import { BranchSettingsSplitView } from "./BranchSettingsSplitView.jsx";
 import { DEFAULT_INSPECTOR_WIDTH } from "../../../ui/hooks/editorSidebarSizing.js";
+import { resolveFailure } from '../../../utils/failureText.js';
 
 function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -197,7 +198,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       setLoading(false);
     }).catch((cause) => {
       if (!active) return;
-      setError(cause?.message || "读取分支设定失败");
+      setError(resolveFailure(cause, { fallback: "读取分支设定失败" }).text);
       setLoading(false);
     });
     return () => { active = false; };
@@ -299,7 +300,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       setNotice("saved");
       return true;
     } catch (cause) {
-      setError(cause?.message || "保存分支设定失败");
+      setError(resolveFailure(cause, { fallback: "保存分支设定失败" }).text);
       return false;
     } finally {
       savingRef.current = false;
@@ -470,7 +471,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       await settingLibraries.resetConversation(characterId, selectedSessionId);
       await refreshItems();
     } catch (cause) {
-      setError(cause?.message || "清空分支设定失败");
+      setError(resolveFailure(cause, { fallback: "清空分支设定失败" }).text);
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -490,7 +491,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       setNameDialog(null);
       setNotice("saved");
     } catch (cause) {
-      setError(cause?.message || "保存设定版本失败");
+      setError(resolveFailure(cause, { fallback: "保存设定版本失败" }).text);
     } finally {
       savingRef.current = false;
       setSaving(false);

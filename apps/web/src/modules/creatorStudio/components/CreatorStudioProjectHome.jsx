@@ -25,6 +25,7 @@ import {
   CreatorStudioSkillsIcon,
 } from "./CreatorStudioNavigationIcons.jsx";
 import { failureAlreadyPublished } from "../../../utils/swallowedFailure.js";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 const CREATE_OPTIONS = [
   { id: "blank", title: "从零创作角色", description: "建立空白角色项目", Icon: FolderSimplePlus },
@@ -335,7 +336,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
       const directory = await projectCatalog.selectDirectory(request.signal);
       if (directory && !request.signal.aborted) setParentDirectory(directory);
     } catch (requestError) {
-      if (!request.signal.aborted) setError(requestError instanceof Error ? requestError.message : "无法选择保存位置。");
+      if (!request.signal.aborted) setError(resolveFailure(requestError, { fallback: "无法选择保存位置。" }).text);
     } finally {
       if (directoryRequestRef.current === request) directoryRequestRef.current = null;
     }
@@ -355,7 +356,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
       });
       onCreated(collection.items);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "项目创建失败。");
+      setError(resolveFailure(requestError, { fallback: "项目创建失败。" }).text);
     } finally {
       setBusy(false);
     }

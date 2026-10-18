@@ -5,6 +5,7 @@ import logoIcon from '../../../assets/eleckoi-app-icon.png';
 import { Avatar } from '../../../ui/ui/Avatar.jsx';
 import { DshSearchField } from '../../../ui/ui/DshSearchField.jsx';
 import { characterAvatar, characterGroup, characterName } from '../../../utils/characterDisplay.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 import { DshNewChatIcon, DshPanelLeftIcon, DshEllipsisIcon, DshEditIcon, DshTrashIcon } from '../../../ui/icons/dshComposerIcons.jsx';
 import { WindowControls } from '../../../app/windows/shell/components/TitleBar.jsx';
 import { CreatorStudioConversation } from './CreatorStudioConversation.jsx';
@@ -38,7 +39,7 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
   const perform = useCallback(async action => {
     setBusy(true); setError('');
     try { await action(); return true; }
-    catch (cause) { setError(String(cause?.message || cause)); return false; }
+    catch (cause) { setError(resolveFailure(cause, { fallback: '会话操作失败' }).text); return false; }
     finally { setBusy(false); }
   }, []);
   useEffect(() => {

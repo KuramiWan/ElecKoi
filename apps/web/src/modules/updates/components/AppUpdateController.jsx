@@ -1,6 +1,7 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 const VISIBLE_PHASES = new Set(["available", "downloading", "verifying", "ready", "installing", "error"]);
 
@@ -36,7 +37,7 @@ export function AppUpdateController({ updates }) {
       if (status?.failedOperation === 'check') await updates?.check?.();
       else await updates?.download?.();
     } catch (error) {
-      setActionError(error?.message || "下载更新失败，请稍后重试。");
+      setActionError(resolveFailure(error, { fallback: "下载更新失败，请稍后重试。" }).text);
     }
   }, [updates, status?.failedOperation]);
 
@@ -52,7 +53,7 @@ export function AppUpdateController({ updates }) {
         );
       }
     } catch (error) {
-      setActionError(error?.message || "无法启动安装，请稍后重试。");
+      setActionError(resolveFailure(error, { fallback: "无法启动安装，请稍后重试。" }).text);
     }
   }, [updates]);
 

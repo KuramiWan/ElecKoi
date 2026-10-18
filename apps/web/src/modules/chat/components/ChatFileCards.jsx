@@ -1,5 +1,6 @@
 import { FileText, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { useState } from 'react';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 function sizeLabel(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -16,7 +17,7 @@ export function ChatFileCards({ files = [], onRemove, onOpen, compact = false })
       return <Tag className="chat-file-card" key={file.id || `${file.attachmentId}:${file.name}`} title={file.name}
         {...(onOpen ? { type: 'button', onClick: () => {
           setError('');
-          Promise.resolve(onOpen(file)).catch((cause) => setError(cause?.message || '打开文件失败'));
+          Promise.resolve(onOpen(file)).catch((cause) => setError(resolveFailure(cause, { fallback: '打开文件失败' }).text));
         } } : {})}>
       <FileText size={23} weight="regular" aria-hidden="true" />
       <span className="chat-file-card-label"><span className="chat-file-card-name">{file.name}</span><small>{sizeLabel(file.bytes)}</small></span>

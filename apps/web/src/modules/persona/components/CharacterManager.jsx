@@ -7,6 +7,7 @@ import { AddGroupDialog } from "./AddGroupDialog.jsx";
 import { CharacterCard } from "./CharacterCard.jsx";
 import { CharacterImportDialog } from "./CharacterImportDialog.jsx";
 import { ALL_CHARACTERS, characterGroup, characterName } from "./characterUtils.js";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 const CHARACTER_ARTWORK_RATIOS = [0.76, 0.68, 0.84, 0.72];
 const MAX_EXPORT_SELECTION = 50;
@@ -149,7 +150,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       await onSaveGroups(groups, [{ characterId: character.id, group }]);
       setCardGroupMenu(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "移动角色卡失败，请重试。");
+      setError(resolveFailure(cause, { fallback: "移动角色卡失败，请重试。" }).text);
     }
   }
 
@@ -174,7 +175,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       setGroupDialog(null);
       setGroupDraft("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "保存分组失败，请重试。");
+      setError(resolveFailure(cause, { fallback: "保存分组失败，请重试。" }).text);
     }
   }
 
@@ -190,7 +191,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       await onSaveGroups(remaining, assignments);
       setSelectedGroup(ALL_CHARACTERS);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除分组失败，请重试。");
+      setError(resolveFailure(cause, { fallback: "删除分组失败，请重试。" }).text);
     }
   }
 
@@ -270,7 +271,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       // 成功后保留勾选与模式：用户可以直接换成另一种格式再导一次。
       setExportNotice(`已导出 ${written.length} 张 · ${exportFormat.toUpperCase()} → ${result?.directory || ""}`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "导出失败，请重试。");
+      setError(resolveFailure(cause, { fallback: "导出失败，请重试。" }).text);
     } finally {
       setExporting(false);
     }
@@ -283,7 +284,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       await onDeleteCharacters(selectedIds);
       cancelDeleteMode();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除失败，请重试。");
+      setError(resolveFailure(cause, { fallback: "删除失败，请重试。" }).text);
     }
   }
 
