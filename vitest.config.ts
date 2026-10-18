@@ -34,6 +34,10 @@ export default defineConfig({
         include: suite.include,
         exclude: [...configDefaults.exclude, 'build/**', ...(suite.exclude ?? [])],
         environment: 'node',
+        // Windows CI intermittently reports EBUSY while spawning the freshly
+        // installed Electron image; these browser probes are smoke tests, so
+        // re-run the whole test instead of failing on the launch lock.
+        ...(name === 'browser' ? { retry: 2 } : {}),
         server: { deps: { inline: ['@deepseek-ai/dsh-client-ui-primitives'] } }
       }
     }))

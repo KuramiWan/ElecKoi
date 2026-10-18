@@ -47,6 +47,10 @@ app.whenReady().then(async () => {
     await win.loadURL(pathToFileURL(htmlPath).href + '?motion');
     await waitFor('Boolean(window.captionMotion && document.querySelector(".side-panel-collapse-button"))');
     await frames();
+    // The runner's OS may report reduced motion; pin no-preference for the default
+    // path, then emulate reduce explicitly for the reduced-motion case below.
+    await win.webContents.debugger.attach('1.3');
+    await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{name:'prefers-reduced-motion',value:'no-preference'}] });
     const report = { initial: await measure() };
     await evaluate('document.querySelector(".side-panel-collapse-button").click()');
     report.collapseMid = await seek(150);
@@ -87,7 +91,6 @@ app.whenReady().then(async () => {
     await frames();
     report.instant = await measure();
     await waitFor('!document.querySelector(".main-window-shell").hasAttribute("data-columns-animating")');
-    await win.webContents.debugger.attach('1.3');
     await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{name:'prefers-reduced-motion',value:'reduce'}] });
     await evaluate('window.captionMotion.setInstant(false); document.querySelector(".side-panel-collapse-button").click()');
     await frames();
