@@ -1,3 +1,6 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
+
 export const REGEX_SCOPES = [
   { id: "Global", label: "全局正则", key: "globalRules", enabledKey: 'globalEnabled' },
   { id: "AgentPreset", label: "预设正则", key: "agentPresetRules", enabledKey: 'agentPresetEnabled' },
@@ -27,10 +30,10 @@ export function withScopeRules(collection, scope, rules) {
 
 export function replaceRegexScopeVersion(collection, scope, rules) {
   const metadata = REGEX_SCOPES.find(item => item.id === scope);
-  if (!metadata) throw new Error('正则版本作用域无效。');
+  if (!metadata) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '正则版本作用域无效。', { field: 'scope' });
   const next = withScopeRules(collection, scope, rules);
   const allIds = REGEX_SCOPES.flatMap(item => rulesForScope(next, item.id).map(rule => rule.id));
-  if (new Set(allIds).size !== allIds.length) throw new Error('正则版本包含与其他作用域重复的规则编号。');
+  if (new Set(allIds).size !== allIds.length) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '正则版本包含与其他作用域重复的规则编号。', { what: '规则编号' });
   const allowed = new Set(rules.map(rule => rule.id)), enabled = rules.filter(rule => rule.enabled).map(rule => rule.id);
   const memberKey = scope === 'Global' ? 'globalEnabledIds' : scope === 'AgentPreset' ? 'agentPresetEnabledIds' : 'characterEnabledIds';
   return { ...next, versions: next.versions.map(version => ({ ...version,
@@ -47,7 +50,7 @@ export function findRegexRule(collection, ruleId) {
 
 export function setRegexScopeEnabled(collection, scope, enabled) {
   const metadata = REGEX_SCOPES.find(item => item.id === scope);
-  if (!metadata) throw new Error('正则作用域无效。');
+  if (!metadata) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '正则作用域无效。', { field: 'scope' });
   const rules = rulesForScope(collection, scope).map(rule => ({ ...rule, enabled }));
   return { ...replaceRegexScopeVersion(collection, scope, rules), [metadata.enabledKey]: enabled };
 }
