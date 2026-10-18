@@ -10,12 +10,14 @@ import {
   type SettingLibraryGroup,
   type SettingLibraryPromptPosition
 } from '@shared/contracts/settingLibrary/schemas'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 type JsonObject = Record<string, unknown>
 
 function object(value: string): JsonObject {
   const parsed: unknown = JSON.parse(value)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('设定库数据格式不正确。')
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库数据格式不正确。', { what: '设定库数据' })
   return parsed as JsonObject
 }
 
@@ -144,9 +146,9 @@ export function writeGroup(group: SettingLibraryGroup): string {
 
 export function readPromptPositions(payloadJson: string): SettingLibraryPromptPosition[] {
   const parsed: unknown = JSON.parse(payloadJson)
-  if (!Array.isArray(parsed)) throw new Error('设定库提示词位置格式不正确。')
+  if (!Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库提示词位置格式不正确。', { what: '设定库提示词位置', path: 'promptPositions' })
   return parsed.map((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('设定库提示词位置格式不正确。')
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库提示词位置格式不正确。', { what: '设定库提示词位置', path: 'promptPositions' })
     const value = item as JsonObject
     return settingLibraryPromptPositionSchema.parse({
       id: string(value.id), name: string(value.name),

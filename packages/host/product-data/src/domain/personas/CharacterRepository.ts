@@ -4,6 +4,8 @@ import { isRecord, parseJsonArray } from '@shared/foundation/json'
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import { characterMeta, characters, characterTextContents, userProfile } from '@product-data/storage/sqlite/schema/common'
 import type { LocalMediaStore, PreparedLocalMedia } from '@product-data/storage/media/LocalMediaStore'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const string = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback
 const number = (value: unknown, fallback = 0): number => typeof value === 'number' && Number.isFinite(value) ? value : fallback
@@ -76,9 +78,9 @@ export class CharacterRepository {
   }
 
   createInTransaction(character: CharacterRecord, database: ElecKoiDatabase): void {
-    if (!character.id.trim()) throw new Error('角色编号不能为空。')
+    if (!character.id.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色编号不能为空。', { field: 'id' })
     if (database.select({ id: characters.id }).from(characters).where(eq(characters.id, character.id)).get()) {
-      throw new Error('角色编号已经存在。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '角色编号已经存在。', { what: '角色编号' })
     }
     const state = database.select().from(characterMeta).where(eq(characterMeta.id, 'default')).get()
     const existing = database.select({ id: characters.id }).from(characters).all()
@@ -102,7 +104,7 @@ export class CharacterRepository {
     try {
       this.store.withWriteTx((database) => {
         const previous = database.select().from(characters).where(eq(characters.id, character.id)).get()
-        if (!previous) throw new Error('找不到对应的角色卡。')
+        if (!previous) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '找不到对应的角色卡。', { what: '角色卡' })
         this.saveCard(character, previous.orderIndex, database)
         const state = database.select().from(characterMeta).where(eq(characterMeta.id, 'default')).get()
         const group = normalizedGroup(string(character.group, string(character.groupName, previous.groupName)))
@@ -125,9 +127,9 @@ export class CharacterRepository {
     this.store.withWriteTx((database) => {
       for (const assignment of assignments) {
         const group = normalizedGroup(assignment.group)
-        if (group && !allowed.has(group)) throw new Error('角色所属分组必须存在。')
+        if (group && !allowed.has(group)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '角色所属分组必须存在。', { what: '角色所属分组' })
         const previous = database.select({ groupName: characters.groupName }).from(characters).where(eq(characters.id, assignment.characterId)).get()
-        if (!previous) throw new Error('找不到对应的角色卡。')
+        if (!previous) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '找不到对应的角色卡。', { what: '角色卡' })
         if (previous.groupName !== group) database.update(characters).set({ groupName: group }).where(eq(characters.id, assignment.characterId)).run()
       }
       const state = database.select().from(characterMeta).where(eq(characterMeta.id, 'default')).get()
@@ -156,7 +158,7 @@ export class CharacterRepository {
 
   replaceAll(collection: CharacterCollection, db?: ElecKoiDatabase): CharacterCollection {
     const ids = new Set(collection.items.map((item) => item.id))
-    if (ids.size !== collection.items.length || collection.items.some((item) => !item.id.trim())) throw new Error('角色编号不能为空或重复。')
+    if (ids.size !== collection.items.length || collection.items.some((item) => !item.id.trim())) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色编号不能为空或重复。', { field: 'items' })
     const persist = (database: ElecKoiDatabase) => {
       const existing = database.select().from(characters).all()
       for (const row of existing) {

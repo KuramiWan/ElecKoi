@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { join, sep } from 'node:path'
 import { z } from 'zod'
 import { editorLibraryAddressSchema, editorLibraryVersionsSchema, type EditorLibraryAddress, type EditorLibraryVersions } from '@shared/contracts/editorVersions/schemas'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
 import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 
@@ -36,7 +37,7 @@ export class EditorLibraryVersionRepository {
       versions: [{ id: 'default', name: '默认版本', content: currentContent }] })
     const stored = JSON.parse(row.stateJson) as EditorLibraryVersions
     if (stored.kind !== address.kind || stored.scope !== address.scope || stored.ownerId !== address.ownerId || stored.revision !== row.revision) {
-      throw new Error('配置版本归属或修改版本与存储记录不一致。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '配置版本归属或修改版本与存储记录不一致。', { what: '配置版本归属或修改版本' })
     }
     const versions = stored.versions.map(version => ({ ...version, content: address.kind === 'scripts'
       ? this.readArchive(archiveSchema.parse(JSON.parse(version.content)).archive) : version.content }))
@@ -80,18 +81,18 @@ export class EditorLibraryVersionRepository {
 
   private readArchive(hash: string): string {
     const path = this.archivePath(hash)
-    if (lstatSync(this.root).isSymbolicLink() || lstatSync(path).isSymbolicLink()) throw new Error('脚本版本归档不能使用链接目录或文件。')
+    if (lstatSync(this.root).isSymbolicLink() || lstatSync(path).isSymbolicLink()) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '脚本版本归档不能使用链接目录或文件。', { what: '脚本版本归档的链接目录或文件' })
     const root = realpathSync(this.root), actual = realpathSync(path)
-    if (!actual.startsWith(root + sep)) throw new Error('脚本版本归档文件超出所属目录。')
+    if (!actual.startsWith(root + sep)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '脚本版本归档文件超出所属目录。', { what: '脚本版本归档文件超出所属目录' })
     const bytes = readFileSync(path)
-    if (createHash('sha256').update(bytes).digest('hex') !== hash) throw new Error('脚本版本归档内容已损坏。')
+    if (createHash('sha256').update(bytes).digest('hex') !== hash) throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '脚本版本归档内容已损坏。', { what: '脚本版本归档内容' })
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
   }
 
   private writeArchive(content: string): string {
     const hash = createHash('sha256').update(content).digest('hex'), path = this.archivePath(hash)
     mkdirSync(this.root, { recursive: true })
-    if (existsSync(path)) { if (this.readArchive(hash) !== content) throw new Error('脚本版本归档摘要冲突。'); return hash }
+    if (existsSync(path)) { if (this.readArchive(hash) !== content) throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '脚本版本归档摘要冲突。', { what: '脚本版本归档摘要' }); return hash }
     writeFileSync(path, content, { encoding: 'utf8', flag: 'wx' })
     return hash
   }
@@ -104,9 +105,9 @@ export class EditorLibraryVersionRepository {
       const state = JSON.parse(row.stateJson) as EditorLibraryVersions
       for (const version of state.versions) referenced.add(archiveSchema.parse(JSON.parse(version.content)).archive)
     }
-    if (lstatSync(this.root).isSymbolicLink()) throw new Error('脚本版本归档目录不能是链接目录。')
+    if (lstatSync(this.root).isSymbolicLink()) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '脚本版本归档目录不能是链接目录。', { what: '脚本版本归档目录的符号链接' })
     for (const entry of readdirSync(this.root, { withFileTypes: true })) {
-      if (!entry.isFile() || entry.isSymbolicLink() || !/^[a-f0-9]{64}\.json$/.test(entry.name)) throw new Error('脚本版本归档目录包含未知条目，未清理文件。')
+      if (!entry.isFile() || entry.isSymbolicLink() || !/^[a-f0-9]{64}\.json$/.test(entry.name)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '脚本版本归档目录包含未知条目，未清理文件。', { what: '脚本版本归档目录', path: entry.name })
       if (!referenced.has(entry.name.slice(0, -5))) rmSync(this.archivePath(entry.name.slice(0, -5)))
     }
   }
