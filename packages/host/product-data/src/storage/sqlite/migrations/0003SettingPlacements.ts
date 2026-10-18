@@ -229,7 +229,7 @@ function migratePromptPositions(
 function json(raw: string, label: string): unknown {
   try {
     return JSON.parse(raw) as unknown
-  } catch (error) {
+  } catch {
     throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `数据库 JSON 已损坏：${label}。`, { what: '数据库 JSON' })
   }
 }
