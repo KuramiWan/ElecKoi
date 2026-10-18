@@ -1,4 +1,6 @@
 import type { TavilyConnection } from './types.js'
+import { productFailure } from './productFailure.js'
+import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
 
 const BASE_URL = 'https://api.tavily.com'
 const RESPONSE_LIMIT = 2 * 1024 * 1024
@@ -11,8 +13,8 @@ export async function testTavilyConnection(apiKey: string, signal?: AbortSignal)
   try {
     return await testUsage(key, requestSignal)
   } catch (error) {
-    if (signal?.aborted) throw new Error('Tavily 连接测试已取消。')
-    if (timeout.aborted) throw new Error('Tavily 连接测试超时，请检查网络连接。')
+    if (signal?.aborted) throw productFailure(ELECKOI_FAILURE_CODES.internal, 'Tavily 连接测试已取消。')
+    if (timeout.aborted) throw productFailure(ELECKOI_FAILURE_CODES.timeoutExpired, 'Tavily 连接测试超时，请检查网络连接。', { what: 'Tavily 连接测试' })
     throw error
   }
 }
@@ -32,18 +34,26 @@ async function testUsage(key: string, signal: AbortSignal): Promise<TavilyConnec
       signal
     })
   } catch (error) {
-    if (signal?.aborted === true || isAbortError(error)) throw new Error('Tavily 连接测试已取消。', { cause: error })
-    throw new Error('Tavily 连接测试失败，请检查网络连接。', { cause: error })
+    if (signal?.aborted === true || isAbortError(error)) throw productFailure(ELECKOI_FAILURE_CODES.internal, 'Tavily 连接测试已取消。')
+    throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, 'Tavily 连接测试失败，请检查网络连接。', { operation: 'request', what: 'Tavily 连接测试' })
   }
   const body = await readBoundedBody(response, response.ok ? RESPONSE_LIMIT : ERROR_LIMIT)
-  if (!response.ok) throw new Error(publicHttpError(response.status, body, key))
+  if (!response.ok) {
+    const message = publicHttpError(response.status, body, key)
+    if (response.status === 401) {
+      throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, message, { field: 'apiKey', what: 'Tavily API Key' })
+    }
+    throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, message, { operation: 'request', what: 'Tavily 连接测试' })
+  }
   let payload: Record<string, unknown>
   try {
     const parsed: unknown = JSON.parse(body)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not an object')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw productFailure(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'not an object', { issues: [{ path: 'response', message: 'not an object' }] })
+    }
     payload = parsed as Record<string, unknown>
-  } catch (error) {
-    throw new Error('Tavily 连接测试返回了无效 JSON。', { cause: error })
+  } catch {
+    throw productFailure(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'Tavily 连接测试返回了无效 JSON。', { issues: [{ path: 'response', message: 'Tavily 连接测试返回了无效 JSON。' }] })
   }
   const keyUsage = objectValue(payload.key)
   const account = objectValue(payload.account)
@@ -57,14 +67,16 @@ async function testUsage(key: string, signal: AbortSignal): Promise<TavilyConnec
 
 function validateApiKey(value: string): string {
   const normalized = value.trim()
-  if (!normalized) throw new Error('请先填写 Tavily API Key。')
-  if (normalized.length > 2_048) throw new Error('Tavily API Key 长度无效。')
+  if (!normalized) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, '请先填写 Tavily API Key。', { field: 'apiKey', what: 'Tavily API Key' })
+  if (normalized.length > 2_048) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'Tavily API Key 长度无效。', { field: 'apiKey', what: 'Tavily API Key' })
   return normalized
 }
 
 async function readBoundedBody(response: Response, limit: number): Promise<string> {
   const declared = Number(response.headers.get('content-length') || 0)
-  if (Number.isFinite(declared) && declared > limit) throw new Error('Tavily 响应超过安全上限。')
+  if (Number.isFinite(declared) && declared > limit) {
+    throw productFailure(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'Tavily 响应超过安全上限。', { issues: [{ path: 'response.content-length', message: 'Tavily 响应超过安全上限。' }] })
+  }
   if (!response.body) return ''
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -76,7 +88,7 @@ async function readBoundedBody(response: Response, limit: number): Promise<strin
     bytes += part.value.byteLength
     if (bytes > limit) {
       await reader.cancel()
-      throw new Error('Tavily 响应超过安全上限。')
+      throw productFailure(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'Tavily 响应超过安全上限。', { issues: [{ path: 'response.body', message: 'Tavily 响应超过安全上限。' }] })
     }
     body += decoder.decode(part.value, { stream: true })
   }
