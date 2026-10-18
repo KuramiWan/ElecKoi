@@ -1,7 +1,7 @@
 /**
  * 边界翻译规则表——①–⑥ 每条边界把哪些失败折成什么码。
  *
- * 判据来源：ADR 0002 决定 2（边界闭集 ①–⑥）/ spec 决定 4；兜底规则见 ADR 决定 7。
+ * 判据来源：ADR 0040 决定 2（边界闭集 ①–⑥，每条边界只声明不算完成）；兜底规则见 ADR 0040 决定 7。
  * 这张表是规格的**机器可读副本**，不是散文：改规则先改 ADR，再改这里。
  *
  * 闭集的其余四项在这份文件里体现为形状而不是条目：
@@ -20,7 +20,7 @@
  * - **fallback**：没在上面命中的失败，一律折成兜底码 `eleckoi/internal`，
  *   并在 `details.what` 里记下原码或短诊断种类——**不许猜**成某个域码；
  * - **adapter**：这条边界上那层薄适配器的落点（只做翻译，不做第二套信封；
- *   ADR 0017 第 7 条与 ADR 0002 决定 1 都明令不得重建业务通道）。
+ *   ADR 0017 第 7 条与 ADR 0040 决定 1 都明令不得重建业务通道）。
  */
 
 import { ELECKOI_FAILURE_CODES, type EleckoiFailureCode } from './codes.js'
@@ -45,7 +45,7 @@ export interface EleckoiBoundaryFold {
 /** 一条边界。 */
 export interface EleckoiBoundary {
   readonly id: EleckoiBoundaryId
-  /** ADR 0002 决定 2 / spec 决定 4 的闭集编号 ①–⑥。 */
+  /** ADR 0040 决定 2 的闭集编号 ①–⑥。 */
   readonly ordinal: 1 | 2 | 3 | 4 | 5 | 6
   /** 边界名（中文，用于文档与失败信息）。 */
   readonly title: string
@@ -99,8 +99,7 @@ export const ELECKOI_BOUNDARIES = [
     id: 'host-remote-exit',
     ordinal: 2,
     title: '宿主 Remote 出口',
-    adapter: '产品失败自带网关载体标记（DesktopError.isDSHRemoteError），不需要出口处的翻译包装'
-      + '（参考实现在这里包了一层 RemoteError，见 notes/eh-rebuild-0.2.13-plan.md §八 第 1 条）',
+    adapter: '产品失败自带网关载体标记（DesktopError.isDSHRemoteError），不需要出口处的翻译包装',
     carries: '官方 RemoteError{code,message,details} 的**线上形状**（结构标记 isDSHRemoteError）。'
       + '网关把任何非载体抛出统一折成 gateway/internal 并把 details 变 {}（dsh-api-gateway/lib/index.js:1425-1446），'
       + '所以码与详情要活下来，只能让产品失败自己就是合法载体',
@@ -126,7 +125,7 @@ export const ELECKOI_BOUNDARIES = [
     title: '宿主 ↔ DSH 子进程协议',
     adapter: 'apps/desktop-host/src/hostSessionProtocol.ts 与 desktopPluginHost{,Child}.ts（EH-6）',
     carries: 'fatal 帧从 { message } 扩为 { code?, message, details?, stack? }'
-      + '（ADR 决定 10 / spec 决定 9）；诊断用 stack 承载，不把整段日志塞进消息。'
+      + '（ADR 0040 决定 10）；诊断用 stack 承载，不把整段日志塞进消息。'
       + '`logPath` **不是**子进程帧字段：宿主收到 fatal 帧后自己记录本机日志路径（子进程不填），'
       + '这个指针落在边界⑤ 的宿主失败通知上（宿主日志落盘属于 P6，接上之前该字段不出现）。'
       + '帧是增量扩展，接收端按可选字段解析，所以**不升 protocolVersion**（帧上也没有版本字段）',
@@ -173,7 +172,7 @@ export const ELECKOI_BOUNDARIES = [
     title: '渲染层（apps/web 与 14 个 dsh-client-*）',
     adapter: 'packages/client/features/*/src/client.js 的 unwrap（throw result.error）与 apps/web 的失败面',
     carries: '官方 RemoteResult 的 ok:false 分支重建出 RemoteError 实例；这条边界不得再拆信封'
-      + '（只留 message）——用户可见文案的解析点就在这里（ADR 决定 4）',
+      + '（只留 message）——用户可见文案的解析点就在这里（ADR 0040 决定 4）',
     folds: [
       { when: 'RemoteError 形状（isDSHRemoteError === true 且有 string code）', code: null },
       { when: '结构上不带码的失败', code: ELECKOI_FAILURE_CODES.internal },

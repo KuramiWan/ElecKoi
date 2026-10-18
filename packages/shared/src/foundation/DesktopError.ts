@@ -13,7 +13,7 @@
  * 为什么是同一个类而不是第二套类型：`foundation/failure.ts` 的 `foldFailure` 按
  * **`name === 'DesktopError'` 这个形状**识别产品失败（跨 bundle、跨 realm 副本时 `instanceof`
  * 必为假），再拿 `code` 决定走哪张表。多一个类就得多认一套标记 = 第二套失败方言，
- * 这是 ADR 0002 决定 1 明令禁止的。
+ * 这是 ADR 0040 决定 1 明令禁止的。
  *
  * `message` 是**开发者诊断**，不是用户可见句子：用户可见文案只有一个解析点，在渲染层
  * （`apps/web/src/utils/failureText.js` 的按码映射）。

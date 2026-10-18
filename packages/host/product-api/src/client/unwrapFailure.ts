@@ -1,7 +1,7 @@
 /**
  * 边界⑥ 的**信封拆解**：`ok` 成立就给值，不成立就抛失败。
  *
- * 判据来源：`contracts/errors/boundaries.ts` 的 `renderer` 行；ADR 0002 决定 8
+ * 判据来源：`contracts/errors/boundaries.ts` 的 `renderer` 行；ADR 0040 决定 8
  * （`throw result.error` 保留官方失败实例）；参考实现
  * `packages/dsh-product-api/src/client/unwrapFailure.ts`（v0.2.8 布局）。
  *

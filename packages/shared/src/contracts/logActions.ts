@@ -1,8 +1,8 @@
 /**
  * 日志动作语义键——主进程与渲染层共用的一张表。
  *
- * 判据来源：`spec-error-handling-remainder.md` WP14 的验收「抽一行日志能读出在做什么」、
- * `notes/eh-rebuild-0.2.13-plan.md` D6「一行自解释 + 动作语义键 + 会话首尾」。
+ * 设计判据：一行日志要能读出「谁、在做什么、结果如何」——动作用语义键（不是函数名、不是
+ * 随机 id），失败复用契约码与参数化详情（见 `foundation/describeFailure.ts` 与 `foundation/actionLog.ts`）。
  *
  * 两条设计约束：
  *

@@ -1,20 +1,20 @@
 /**
  * ElecKoi 失败码表——错误契约的规范形态。
  *
- * 判据来源：ADR 0002 决定 14 给了首批 13 条码；2026-10-17 的清点
- * （`notes/eh-cn-throws-inventory.tsv`，0.2.13 上 903 处中文抛出 / 97 文件）证明 13 条只盖得住约
+ * 判据来源：ADR 0040 决定 14 给了首批 13 条码；2026-10-17 的清点
+ * （0.2.13 上 903 处中文抛出 / 97 文件）证明 13 条只盖得住约
  * 六成，剩下的会全部折成兜底码、等于没有语义。所以这张表按**真实的失败词表**扩到 29 条；
  * 扩表是内部枚举的自由（码表不对外承诺），改名才需要一次全局替换。
  *
  * **语言中立**：本文件只声明「码字符串 + 每个字符串的含义」，任何语言都能照抄。
  * 除本文件与同目录的 `details.ts` / `boundaries.ts` 之外，别处不得再定义失败码字符串——
- * 契约只有一套真相（ADR 0002 决定 1：不新造第二套类型）。
+ * 契约只有一套真相（ADR 0040 决定 1：不新造第二套类型）。
  *
  * 形态 `eleckoi/<域>/<原因>`（全小写、ASCII、连字符分词）。唯一例外是兜底码
  * {@link ELECKOI_FALLBACK_FAILURE_CODE}，它只有两段。
  *
- * 落点说明：ADR 0002 决定 7 要求「纯枚举住 `product-shared`，不住 `dsh-product-api`」；
- * spec 决定 1 把这个子目录钉在 `packages/shared/src/contracts/errors/`
+ * 落点说明：ADR 0040 决定 7 要求「纯枚举住 `product-shared`，不住 `dsh-product-api`」；
+ * 同一决定把这个子目录钉在 `packages/shared/src/contracts/errors/`
  * （v0.2.10 起 `product-shared` 的目录在 `packages/shared`，包名不变）。
  *
  * **一条码该不该存在**：只有当「用户该看到的说法」或「程序该走的分支」因为语义不同而不同时，
@@ -142,7 +142,7 @@ export const ELECKOI_FAILURE_CODE_LIST = [
 ] as const
 
 /**
- * 兜底码。ADR 0002 决定 7 说「通用码只做兜底」，所以它是唯一只有两段的码：
+ * 兜底码。ADR 0040 决定 7 说「通用码只做兜底」，所以它是唯一只有两段的码：
  * 任何边界遇到无法判别的失败都折成它（`details.what` 记原码做诊断）。
  */
 export const ELECKOI_FALLBACK_FAILURE_CODE = ELECKOI_FAILURE_CODES.internal

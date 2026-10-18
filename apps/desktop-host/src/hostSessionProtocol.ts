@@ -13,7 +13,7 @@
  * - `stack`：子进程侧的调用栈。诊断以子进程为准，父进程只是搬运。
  *
  * `logPath` **不在帧上**：子进程不填它。宿主收到 fatal 帧后自己记录本机日志路径
- * （ADR 决定 10 的「诊断用指针」落在边界⑤ 的宿主失败通知上，见 `contracts/errors/ipc.ts` 的
+ * （ADR 0040 决定 10 的「诊断用指针」落在边界⑤ 的宿主失败通知上，见 `contracts/errors/ipc.ts` 的
  * `DesktopHostFailureNotice`；宿主日志落盘属于 P6，接上之前该字段不出现）。
  *
  * 字段都是**可选**的：老版本子进程只发 `message` 也仍然合法（`isChildFatalFrame` 不要求它们），

@@ -1,7 +1,7 @@
 /**
  * 边界⑤（主进程 ↔ 渲染层）的失败**线上形状**。
  *
- * 判据来源：ADR 0002 决定 2（边界闭集 ⑤）、`contracts/errors/boundaries.ts` 的 ⑤ 行
+ * 判据来源：ADR 0040 决定 2（边界闭集 ⑤）、`contracts/errors/boundaries.ts` 的 ⑤ 行
  * （「结构化克隆的失败对象」）、票 EH-5 第 2 节。
  *
  * **为什么失败要以「返回的对象」过边界，而不是「抛出的 Error」**：`ipcMain.handle` 的 handler 抛出时
@@ -31,7 +31,7 @@ export interface DesktopIpcFailure {
   /** 结构标记；与官方 `RemoteError` 同一个（跨 realm / bundle 的识别从不靠 instanceof）。 */
   readonly isDSHRemoteError: true
   readonly code: EleckoiFailureCode
-  /** 开发者诊断文案；用户可见文案的解析点在渲染层（ADR 决定 4/8）。 */
+  /** 开发者诊断文案；用户可见文案的解析点在渲染层（ADR 0040 决定 4/8）。 */
   readonly message: string
   /** 参数化详情，顶层是扁平 JSON 对象。 */
   readonly details: EleckoiFailureDetails
@@ -41,9 +41,9 @@ export interface DesktopIpcFailure {
  * 边界⑤ 的**宿主失败通知**载荷（主进程 → 渲染层的 `dsh-desktop:host-failure` 推送）。
  *
  * 这条通道送的是**失败对象**，不是拼好的用户可见句子：用户可见文案只有一个解析点
- * （渲染层，ADR 决定 4/8）。形状就是 {@link DesktopIpcFailure}，再加两个**诊断指针**：
+ * （渲染层，ADR 0040 决定 4/8）。形状就是 {@link DesktopIpcFailure}，再加两个**诊断指针**：
  * 子进程给的 `stack`，和宿主收到 fatal 帧后自己记录的本机 `logPath`
- * （ADR 决定 10：诊断用指针承载，不把整段日志塞进消息）。
+ * （ADR 0040 决定 10：诊断用指针承载，不把整段日志塞进消息）。
  *
  * 指针是**可选**的，而且拿不到时整个属性都不出现：`undefined` 不是可结构化克隆的值，
  * 放进去会在跨 world 复制时被丢掉或报错。

@@ -1,7 +1,7 @@
 /**
  * 用户可见文案的**唯一解析点**（渲染层）。
  *
- * 判据来源：`contracts/errors/boundaries.ts` 第 6 条边界的 `carries`；ADR 0002 决定 4/8
+ * 判据来源：`contracts/errors/boundaries.ts` 第 6 条边界的 `carries`；ADR 0040 决定 4/8
  * （契约只给码 + 参数化详情 + 开发者诊断文案；**用户可见文案只有一个解析点，在渲染层**，
  * 宿主侧永不拼用户可见句子）。
  *
