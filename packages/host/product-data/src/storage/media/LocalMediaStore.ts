@@ -9,6 +9,8 @@ import {
   writeFileSync
 } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { LOCAL_MEDIA_SCHEME } from '@shared/foundation/mediaReference'
 
 const REFERENCE_PREFIX = `${LOCAL_MEDIA_SCHEME}://asset/v1/`
