@@ -5,6 +5,7 @@ import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { interruptedTurnClosers } from '@deepseek-ai/dsh-session'
 import { readDshSessionLog } from './trajectory'
 import { HISTORY_RESTORED_EVENT, historyRestoredSchema } from '@eleckoi/dsh-client-roleplay/host/history-stats-projection.mjs'
+import { ELECKOI_FAILURE_CODES, productFailure } from '@eleckoi/dsh-product-api'
 
 export class DshSessionRewindUnavailableError extends Error {}
 
@@ -15,7 +16,7 @@ export class DshSessionRewindUnavailableError extends Error {}
 export function rewindDshSession(
   sessionRoot: string, sessionId: string, fromTurn: number, fromEventSeq?: number, retainInput = false
 ): number {
-  if (!Number.isSafeInteger(fromTurn) || fromTurn < 1) throw new Error('DSH 回退轮次必须是正整数。')
+  if (!Number.isSafeInteger(fromTurn) || fromTurn < 1) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'DSH 回退轮次必须是正整数。', { field: '回退轮次' })
   const log = readDshSessionLog(sessionRoot, sessionId)
   if (log === undefined) throw new DshSessionRewindUnavailableError('找不到要回退的 DSH 会话。')
   if (log.header.isSeeded || log.inheritedEventCount !== 0) {
@@ -31,7 +32,7 @@ export function rewindDshSession(
     const lastStarted = log.events.reduce((last, event) => event.type === 'turn/start'
       && isRecord(event.data) && typeof event.data.turn === 'number'
       && Number.isSafeInteger(event.data.turn) ? Math.max(last, event.data.turn) : last, 0)
-    if (fromTurn !== lastStarted + 1) throw new Error(`DSH 会话没有第 ${fromTurn} 轮。`)
+    if (fromTurn !== lastStarted + 1) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `DSH 会话没有第 ${fromTurn} 轮。`, { what: '要回退的轮次' })
   }
   // DSH queues a user prompt before turn/start. Keeping those interstitial
   // inbox events would replay the discarded prompt after regeneration.
@@ -46,7 +47,7 @@ export function rewindDshSession(
     }
   }
   if (fromTurn > 1 && previousTurnEnd < 0) {
-    throw new Error(`DSH 会话第 ${fromTurn - 1} 轮尚未结束，不能回退。`)
+    throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, `DSH 会话第 ${fromTurn - 1} 轮尚未结束，不能回退。`, { what: '等上一轮结束' })
   }
   let cut = previousTurnEnd + 1
   let closePrefixStep = false
@@ -59,7 +60,7 @@ export function rewindDshSession(
     }
     if (fromEventSeq !== undefined) {
       const targetIndex = log.events.findIndex(event => event.seq === fromEventSeq)
-      if (targetIndex < 0) throw new Error('找不到要回退的 DSH 消息。')
+      if (targetIndex < 0) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到要回退的 DSH 消息。', { what: '要回退的 DSH 消息' })
       if (targetIndex < firstTurnIndex) cut = targetIndex
       else {
         const firstStep = log.events.findIndex(event => event.type === 'step/start'
@@ -84,7 +85,7 @@ export function rewindDshSession(
     const input = log.events[inputIndex]
     if (!input || input.type !== 'user/message' || input.surfaceOp !== 'append'
       || !isRecord(input.data) || !isRecord(input.data.source) || input.data.source.kind !== 'user') {
-      throw new Error('找不到要保留的明确用户事件。')
+      throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到要保留的明确用户事件。', { what: '要保留的用户消息' })
     }
     cut = inputIndex + 1
     closePrefixStep = false
@@ -97,11 +98,11 @@ export function rewindDshSession(
       && isRecord(event.data) && event.data.turn === 1 && event.data.step === 1)
     const turnEnd = log.events.find(event => event.type === 'turn/end'
       && isRecord(event.data) && event.data.turn === 1)
-    if (!stepEnd || !turnEnd) throw new Error('旧聊天历史所在的首轮尚未结束，不能安全回退。')
+    if (!stepEnd || !turnEnd) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '旧聊天历史所在的首轮尚未结束，不能安全回退。', { what: '等旧聊天历史所在的首轮结束' })
     retained.push({ ...stepEnd, seq: cut }, { ...turnEnd, seq: cut + 1 })
   }
   if (retained.at(-1)?.type === 'turn/start' || retained.at(-1)?.type === 'step/start') {
-    throw new Error('DSH 会话上一轮尚未结束，不能回退。')
+    throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'DSH 会话上一轮尚未结束，不能回退。', { what: '等上一轮结束' })
   }
   const rows = [
     sessionFormatCatalog.encodeCurrentHeader(log.header, log.inheritedEventCount),
@@ -122,7 +123,7 @@ export function rewindDshSession(
     if (current.dev !== revision.dev || current.ino !== revision.ino
       || current.size !== revision.size || current.mtimeNs !== revision.mtimeNs
       || current.ctimeNs !== revision.ctimeNs) {
-      throw new Error('DSH 会话日志在回退准备期间发生变化。')
+      throw productFailure(ELECKOI_FAILURE_CODES.conflictStaleRevision, 'DSH 会话日志在回退准备期间发生变化。', { what: 'DSH 会话日志' })
     }
     copyFileSync(log.path, backup)
     renameSync(temporary, log.path)
@@ -130,13 +131,13 @@ export function rewindDshSession(
     const restored = readDshSessionLog(sessionRoot, sessionId)
     if (restored === undefined || restored.events.length !== retained.length
       || restored.header.id !== sessionId) {
-      throw new Error('回退后的 DSH 会话验证失败。')
+      throw productFailure(ELECKOI_FAILURE_CODES.internal, '回退后的 DSH 会话验证失败。', { what: '回退后的 DSH 会话校验' })
     }
   } catch (error) {
     if (replaced && existsSync(backup)) {
-      try { renameSync(backup, log.path) } catch (restoreError) {
+      try { renameSync(backup, log.path) } catch {
         retainBackup = true
-        throw new Error(`DSH 会话回退失败，原始日志保存在 ${backup}。`, { cause: restoreError })
+        throw productFailure(ELECKOI_FAILURE_CODES.ioFailed, `DSH 会话回退失败，原始日志保存在 ${backup}。`, { operation: 'write', path: log.path })
       }
     }
     throw error
@@ -155,7 +156,7 @@ function verifyEncodedLog(source: string, sessionId: string, eventCount: number)
   for (const line of lines.slice(1)) restore.decodeRow(JSON.parse(line))
   const result = restore.finish()
   if (result.header.id !== sessionId || result.events.length !== eventCount) {
-    throw new Error('DSH 回退生成了无效的会话日志。')
+    throw productFailure(ELECKOI_FAILURE_CODES.internal, 'DSH 回退生成了无效的会话日志。', { what: '回退生成的会话日志' })
   }
 }
 
