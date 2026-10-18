@@ -2,7 +2,7 @@
 
 ## 状态
 
-已实施，2026-10-18。契约代码在 `packages/shared/src/contracts/errors/` 与 `packages/shared/src/foundation/`；闸是 `scripts/check-error-contract.mjs`；规则 4 已归零，四条规则都是绝对值。接口细节、码表与参数表读[错误契约文档](../error-contract.md)。
+已实施，2026-10-18。契约代码在 `packages/shared/src/contracts/errors/` 与 `packages/shared/src/foundation/`；闸是 `scripts/check-error-contract.mjs`；规则 4 已归零，四条规则都是绝对值。接口细节、码表与参数表读[错误契约文档](../error-contract.md)；维护者与贡献者的写法要求读[错误处理协作声明](../error-handling.md)。
 
 ## 背景
 
