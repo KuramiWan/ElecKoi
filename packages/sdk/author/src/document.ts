@@ -1,4 +1,5 @@
 import type { ElecKoiAuthorApi } from './contracts'
+import { AuthorApiError } from './errors'
 import { AUTHOR_API_VERSION } from './version'
 import { installRichDocumentMeasurement } from './rich-document'
 
@@ -72,7 +73,7 @@ export function buildAuthorDocumentSource(source: string, channel: string, rich 
 } = {}): string {
   const document = new DOMParser().parseFromString(source, 'text/html')
   const selected = declaration(document)
-  if (selected.kind !== 'native') throw new Error(selected.kind === 'unsupported' ? selected.error : '页面没有声明原生作者 SDK 版本')
+  if (selected.kind !== 'native') throw new AuthorApiError('UNSUPPORTED_VERSION', selected.kind === 'unsupported' ? selected.error : '页面没有声明原生作者 SDK 版本')
   const script = document.createElement('script')
   const literal = (value: unknown) => JSON.stringify(value).replaceAll('<', '\\u003c')
   script.textContent = `(${bootstrap.toString()})(${literal(channel)},${JSON.stringify(rich)},${literal(options.context ?? null)},${installRichDocumentMeasurement.toString()},${JSON.stringify(options.runtimeDiagnostics ?? rich)});`

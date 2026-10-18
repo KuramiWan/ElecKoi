@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const TOOL_CONFIGURATION_KIND = 'tool_configuration'
 const CURRENT_TOOL_CONFIGURATION_VERSION = 5
@@ -13,10 +15,10 @@ function migrateContent(content: string, identity: string): string {
   try {
     value = JSON.parse(content)
   } catch {
-    throw new Error(`预设工具配置无法解析：${identity}。`)
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `预设工具配置无法解析：${identity}。`, { what: '预设工具配置' })
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`预设工具配置格式无效：${identity}。`)
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `预设工具配置格式无效：${identity}。`, { what: '预设工具配置' })
   }
   const configuration = value as Record<string, unknown>
   delete configuration.subagentModelSelection
