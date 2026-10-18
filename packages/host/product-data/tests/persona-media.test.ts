@@ -134,5 +134,6 @@ describe('persona media persistence and cleanup', () => {
     expect(serialized).not.toContain(Buffer.from('old-user').toString('base64'))
     expect(serialized).not.toContain(Buffer.from('old-avatar').toString('base64'))
     expect(serialized).not.toContain(Buffer.from('old-portrait').toString('base64'))
-  })
+    // Windows CI 上偶发超过默认 5s（图片外置 + 杀软扫描）；放宽超时，断言不变。
+  }, 30_000)
 })

@@ -73,4 +73,5 @@ it('reuses the native speaker when replacing a chat opening', () => {
     expect(database.native.prepare('SELECT id FROM conversation_speakers WHERE conversationId=?').all(id)).toEqual(before);
     expect(database.native.pragma('foreign_key_check')).toEqual([]);
   } finally { database.close(); }
-});
+  // Windows CI 上偶发超过默认 5s（建库 + 迁移 + 杀软扫描）；放宽超时，断言不变。
+}, 30_000);
