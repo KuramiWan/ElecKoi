@@ -2,6 +2,7 @@ import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
 import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useRef, useState } from 'react';
 import { decodeEditorVersionContent, editorLibraryVersionsSchema } from '@shared/contracts/editorVersions/schemas';
+import { resolveFailure } from '../../utils/failureText.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -47,7 +48,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
         refs.current.drafts = next; refs.current.baselines = next;
         setDrafts(next); setBaselines(next); setError('');
       }
-    }).catch(cause => { if (generation === refs.current.generation) setError(cause.message); });
+    }).catch(cause => { if (generation === refs.current.generation) setError(resolveFailure(cause, { fallback: '读取配置版本失败' }).text); });
   }
   useEffect(() => {
     ++refs.current.generation;

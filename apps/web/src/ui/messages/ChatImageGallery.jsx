@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SystemBarOverlay } from "../ui/SystemBarOverlay.jsx";
 import { registerOverlayBack } from "../hooks/overlayBack.js";
+import { resolveFailure } from "../../utils/failureText.js";
 import "./chat-image-actions.css";
 
 export function agentMessageImageSize(width, height) {
@@ -50,7 +51,7 @@ function ChatImage({ image, conversationId, compact, agentVariant, onRemove, loa
   const regenerate = async () => {
     if (!canRegenerate) return;
     stopPress(); longPressed.current = false; setOverlay(""); setError(""); setBusy(true);
-    try { await onRegenerateImage(image); } catch (failure) { setError(failure.message || "图片重新生成失败。"); }
+    try { await onRegenerateImage(image); } catch (failure) { setError(resolveFailure(failure, { fallback: "图片重新生成失败。" }).text); }
     finally { setBusy(false); }
   };
   const download = () => {
