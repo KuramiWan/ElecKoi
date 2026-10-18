@@ -4,7 +4,19 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { apply as applySettingLibraryTools } from "../../../../../../apps/desktop/resources/dsh/setting-library-tools.mjs";
 import { requiredSettingCache } from "../../../../../../apps/desktop/resources/dsh/required-setting-cache.mjs";
+import {
+  ELECKOI_FAILURE_CODES as PLUGIN_FAILURE_CODES,
+  RUNTIME_PLUGIN_FAILURE_EVENT,
+} from "../../../../../../apps/desktop/resources/dsh/runtime-plugin-failure.mjs";
+import { ELECKOI_FAILURE_CODES as CONTRACT_FAILURE_CODES } from "../../../../../shared/src/contracts/errors/codes.ts";
 import { settingLibraryEntrySchema } from "../../../../../shared/src/contracts/settingLibrary/schemas.ts";
+
+const FAILURE_LINE_PREFIX = `${RUNTIME_PLUGIN_FAILURE_EVENT} `;
+
+function failureRecord(line) {
+  expect(line.startsWith(FAILURE_LINE_PREFIX)).toBe(true);
+  return JSON.parse(line.slice(FAILURE_LINE_PREFIX.length));
+}
 
 const directories = [];
 
@@ -13,7 +25,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false, configured = true, commit } = {}) {
+async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false, configured = true, commit, logger } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-setting-library-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
@@ -57,6 +69,7 @@ async function tools({ extraEntries = [], history = [], variableState = {}, live
     tools: { register: (definition) => { registered.push(definition); return () => undefined; } },
     eleckoiProductData: { commitConversationRuntime },
     eleckoiCharacterConfigurationChanges: { publish },
+    ...(logger ? { logger } : {}),
   });
   const execution = { agent: { session: { id: sessionId } } };
   return {
@@ -649,5 +662,58 @@ describe("DSH character setting-library tools", () => {
       .resolves.toMatchObject({ status: "change_rejected", state_unchanged: true });
     await expect(patch.execute({ operation: "move_file", path: "世界/总览", destination: "世界/城市" }))
       .resolves.toMatchObject({ status: "change_rejected", state_unchanged: true });
+  });
+
+  it("keeps the runtime-plugin failure code table verbatim equal to the contract table", () => {
+    expect(PLUGIN_FAILURE_CODES).toEqual(CONTRACT_FAILURE_CODES);
+    expect(Object.keys(PLUGIN_FAILURE_CODES)).toEqual(Object.keys(CONTRACT_FAILURE_CODES));
+    expect(RUNTIME_PLUGIN_FAILURE_EVENT).toBe("eleckoi/runtime-plugin-failure");
+  });
+
+  it("logs one searchable coded line at the failure exit and still throws", async () => {
+    const lines = [];
+    const runtime = await tools({
+      logger: { warn: (line) => lines.push(line) },
+      extraEntries: [
+        entry({ id: "ambiguous-colon", title: "Synthetic:a", content: "A" }),
+        entry({ id: "ambiguous-underscore", title: "Synthetic_a", content: "B" }),
+      ],
+    });
+
+    const rejection = await runtime.byName.get("eleckoi_read_setting_files")
+      .execute({ paths: ["Synthetic_a"] }).then(() => undefined, (error) => error);
+
+    // 出口不是吞掉：失败仍然抛出，而且是 Error（cordis 会把非 Error 的抛出包成 [object Object]）。
+    expect(rejection).toBeInstanceOf(Error);
+    expect(rejection.message).toContain("路径不唯一");
+    expect(rejection.code).toBe(CONTRACT_FAILURE_CODES.lookupDuplicate);
+    expect(rejection.details).toEqual({ what: "设定路径", path: "Synthetic_a" });
+    expect(lines).toHaveLength(1);
+    expect(failureRecord(lines[0])).toMatchObject({
+      plugin: "eleckoi-setting-library-tools",
+      operation: "eleckoi_read_setting_files",
+      code: "eleckoi/lookup/duplicate",
+      message: "设定路径不唯一：Synthetic_a。请修改冲突的条目或文件夹名称。",
+      details: { what: "设定路径", path: "Synthetic_a" },
+    });
+    expect(typeof failureRecord(lines[0]).stack).toBe("string");
+  });
+
+  it("keeps the contract code on a rejected patch and logs the file operation name", async () => {
+    const lines = [];
+    const runtime = await tools({ logger: { warn: (line) => lines.push(line) } });
+
+    await expect(runtime.byName.get("eleckoi_apply_setting_patch")
+      .execute({ operation: "edit_file", path: "世界/总览", old_string: "不存在", new_string: "改写" }))
+      .resolves.toMatchObject({ status: "change_rejected", state_unchanged: true, message: "正文中找不到 old_string。" });
+
+    expect(lines).toHaveLength(1);
+    expect(failureRecord(lines[0])).toMatchObject({
+      plugin: "eleckoi-setting-library-tools",
+      operation: "edit_file",
+      code: "eleckoi/lookup/not-found",
+      message: "正文中找不到 old_string。",
+      details: { what: "要替换的原文片段" },
+    });
   });
 });

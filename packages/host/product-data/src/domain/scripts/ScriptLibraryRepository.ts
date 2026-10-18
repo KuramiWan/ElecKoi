@@ -6,6 +6,7 @@ import { scriptLibraries } from '@product-data/storage/sqlite/schema/common'
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
+import { errorMessage } from '@shared/foundation/errorMessage'
 import { ScriptSourceFiles, sourceHash } from './ScriptSourceFiles'
 import { decodeScriptFiles, type PortableScriptLibrary } from './scriptLibraryImport'
 
@@ -14,6 +15,11 @@ const storedScript = z.strictObject({ type: z.literal('script'), metadata, sourc
 const storedFolder = z.strictObject({ type: z.literal('folder'), metadata, scripts: z.array(storedScript) })
 const sourceIndex = z.strictObject({ version: z.literal(1), items: z.array(z.discriminatedUnion('type', [storedScript, storedFolder])) })
 type SourceIndex = z.infer<typeof sourceIndex>
+/** 已落盘的脚本库载荷：解析不出来就是存储损坏，原异常诊断留在 message 里。 */
+function parseStoredJson(raw: string, what: string): unknown {
+  try { return JSON.parse(raw) }
+  catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `${what}已损坏：${errorMessage(error)}`, { what }) }
+}
 export interface ScriptLibraryOwners {
   character(db: ElecKoiDatabase, ownerId: string): boolean
   preset(db: ElecKoiDatabase, ownerId: string): boolean
@@ -37,7 +43,7 @@ export class ScriptLibraryRepository {
     this.requireOwner(empty, this.store.db)
     const directory = this.directory(scope, ownerId)
     const row = this.store.db.select().from(scriptLibraries).where(and(eq(scriptLibraries.scope, scope), eq(scriptLibraries.ownerId, ownerId))).get()
-    const index = row ? sourceIndex.parse(JSON.parse(row.treesJson)) : { version: 1, items: [] } as SourceIndex
+    const index = row ? sourceIndex.parse(parseStoredJson(row.treesJson, '脚本库树')) : { version: 1, items: [] } as SourceIndex
     const entries = index.items.flatMap(item => item.type === 'folder' ? item.scripts : [item]).map(item => {
       if (!item.sourceFile.startsWith(`${directory}/`)) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '脚本源码登记的所属目录不匹配。', { what: '脚本源码登记的所属目录' })
       this.files.path(item.sourceFile)
@@ -69,7 +75,7 @@ export class ScriptLibraryRepository {
       eq(scriptLibraries.scope, scope), eq(scriptLibraries.ownerId, ownerId),
     )).get()
     if (!row) return empty
-    const index = sourceIndex.parse(JSON.parse(row.treesJson))
+    const index = sourceIndex.parse(parseStoredJson(row.treesJson, '脚本库树'))
     let changed = false
     const read = (script: z.infer<typeof storedScript>) => {
       const content = this.files.read(script.sourceFile), hash = sourceHash(content)
@@ -80,7 +86,7 @@ export class ScriptLibraryRepository {
       ? { ...item.metadata, scripts: item.scripts.map(read) } : read(item))
     const library = scriptLibrarySchema.parse({
       scope: row.scope, ownerId: row.ownerId, enabled: Boolean(row.enabled), revision: row.revision,
-      trees, variables: JSON.parse(row.variablesJson),
+      trees, variables: parseStoredJson(row.variablesJson, '变量配置'),
     })
     // External editors change the authoritative source, invalidating older UI drafts.
     if (changed) {
@@ -137,7 +143,7 @@ export class ScriptLibraryRepository {
       eq(scriptLibraries.scope, next.scope), eq(scriptLibraries.ownerId, next.ownerId),
     )).get() ?? null
     const index = this.index(next)
-    const oldFiles = before ? this.sources(sourceIndex.parse(JSON.parse(before.treesJson))) : []
+    const oldFiles = before ? this.sources(sourceIndex.parse(parseStoredJson(before.treesJson, '脚本库树'))) : []
     const nextFiles = new Set(this.sources(index))
     for (const path of oldFiles) if (!nextFiles.has(path)) this.files.stage(path, null)
     const row = {
