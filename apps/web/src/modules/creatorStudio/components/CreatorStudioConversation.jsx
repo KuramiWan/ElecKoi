@@ -4,6 +4,7 @@ import { DshNewChatIcon } from '../../../ui/icons/dshComposerIcons.jsx';
 import { RoleplayInputMenu, AgentToolsDialog } from '../../chat/index.js';
 import { ModelPicker } from '../../models/index.js';
 import { openPresetManagerWindow } from '../../presets/index.js';
+import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
 
 /** Desktop assembly of the shared Studio Session with native views and resident input. */
 export function CreatorStudioConversation({ model, editing = false, creating = false, models, presetCatalog, title, onCreate, onSelectCharacter, onError,
@@ -18,16 +19,16 @@ export function CreatorStudioConversation({ model, editing = false, creating = f
   const owner = { inspectCall, viewRequest, openView, completeViewRequest: actions.completeViewRequest };
   const configs = useSyncExternalStore(models.subscribe, models.getSnapshot);
   const [defaultModel, setDefaultModel] = useState(null), [tools, setTools] = useState(false);
-  const [messages, setMessages] = useState(null), [selectedMessage, setSelectedMessage] = useState(null), [deleting, setDeleting] = useState(false), [deleteError, setDeleteError] = useState('');
+  const [messages, setMessages] = useState(null), [selectedMessage, setSelectedMessage] = useState(null), [deleting, setDeleting] = useState(false), [deleteError, setDeleteError] = useState(null);
   const body = useRef(null), composer = useRef(null);
   const notify = useCallback((kind, text) => { if (kind === 'error') onError(text); }, [onError]);
   const selectedModel = projectedModel?.next ?? projectedModel?.lastUsed ?? defaultModel;
   useEffect(() => {
     let active = true;
-    model.readDefaultModel().then(value => { if (active) setDefaultModel(value); }).catch(error => { if (active) onError(error.message); });
+    model.readDefaultModel().then(value => { if (active) setDefaultModel(value); }).catch(error => { if (active) onError(error); });
     return () => { active = false; };
   }, [model, onError]);
-  useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(error.message)); }, [model, session.running, onError]);
+  useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(error)); }, [model, session.running, onError]);
   useLayoutEffect(() => {
     if (!body.current || !composer.current) return;
     const scroller = body.current, seat = composer.current;
@@ -35,13 +36,13 @@ export function CreatorStudioConversation({ model, editing = false, creating = f
     const observer = new ResizeObserver(update); observer.observe(seat); update();
     return () => { observer.disconnect(); scroller.style.removeProperty('--dsh-composer-height'); };
   }, []);
-  async function regenerate() { try { await model.regenerate(); } catch (error) { onError(error.message); } }
-  async function showMessages() { try { setMessages(await model.messages()); setSelectedMessage(null); setDeleteError(''); } catch (error) { onError(error.message); } }
+  async function regenerate() { try { await model.regenerate(); } catch (error) { onError(error); } }
+  async function showMessages() { try { setMessages(await model.messages()); setSelectedMessage(null); setDeleteError(null); } catch (error) { onError(error); } }
   async function removeMessages() {
     if (!selectedMessage) return;
-    setDeleting(true); setDeleteError('');
+    setDeleting(true); setDeleteError(null);
     try { await model.deleteMessagesFrom(selectedMessage.eventSeq, selectedMessage.role); setMessages(null); }
-    catch (error) { setDeleteError(error.message); onError(error.message); }
+    catch (error) { setDeleteError(error); onError(error); }
     finally { setDeleting(false); }
   }
   const menu = <RoleplayInputMenu purpose="creator" isSending={session.running} onCreateChat={onCreate} onSelectCharacter={onSelectCharacter}
@@ -74,7 +75,7 @@ export function CreatorStudioConversation({ model, editing = false, creating = f
     {tools && <AgentToolsDialog purpose="creator" presetCatalog={presetCatalog} onNotify={notify} onClose={() => setTools(false)} onManage={() => openPresetManagerWindow('creator')} />}
     <Modal open={!!messages} title="删除消息" closeLabel="关闭" onClose={() => !deleting && setMessages(null)} className="creator-simple-message-dialog"
       footer={<button type="button" disabled={!selectedMessage || deleting} onClick={removeMessages}>删除</button>}>
-      {deleteError && <p className="creator-simple-error" role="alert">{deleteError}</p>}
+      <FailureAlert failure={deleteError} className="creator-simple-error" />
       <div className="creator-simple-message-list">{messages?.filter(message => message.text.trim()).map(message => <label key={message.eventSeq}>
         <input type="radio" name="creator-message-delete" checked={selectedMessage?.eventSeq === message.eventSeq} onChange={() => setSelectedMessage(message)} /><span>{message.text}</span>
       </label>)}</div><p>删除选中的消息及之后的内容</p>

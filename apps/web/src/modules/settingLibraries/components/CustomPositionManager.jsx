@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
 import { IconPinFillRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import {
   ArrowLeft,
@@ -121,7 +122,7 @@ function SortablePositionRow({ row, index, total, selected, reducedMotion, onSel
 
 function PositionNameDialog({ draft, existing, onChange, onCancel, onSave }) {
   const inputRef = useRef(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
   return <div className="setting-position-dialog-backdrop" role="presentation" onKeyDown={(event) => {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onCancel(); }
@@ -130,11 +131,11 @@ function PositionNameDialog({ draft, existing, onChange, onCancel, onSave }) {
   }}>
     <form className="setting-position-dialog" role="dialog" aria-modal="true" aria-labelledby="position-dialog-title" onSubmit={(event) => {
       event.preventDefault();
-      try { onSave(); } catch (cause) { setError(cause.message); inputRef.current?.focus(); }
+      try { onSave(); } catch (cause) { setError(cause); inputRef.current?.focus(); }
     }}>
       <h3 id="position-dialog-title">{existing ? '重命名位置' : '新建位置'}</h3>
-      <label><span>名称</span><input ref={inputRef} value={draft.name} placeholder="例如：世界状态" aria-invalid={error ? true : undefined} onChange={(event) => { onChange({ ...draft, name: event.target.value }); setError(''); }} /></label>
-      {error ? <p role="alert">{error}</p> : null}
+      <label><span>名称</span><input ref={inputRef} value={draft.name} placeholder="例如：世界状态" aria-invalid={error ? true : undefined} onChange={(event) => { onChange({ ...draft, name: event.target.value }); setError(null); }} /></label>
+      <FailureAlert failure={error} />
       <footer><button type="button" className="setting-position-button" onClick={onCancel}>取消</button><button type="submit" className="setting-position-button is-primary">保存</button></footer>
     </form>
   </div>;

@@ -1,4 +1,5 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
+import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowSquareOut,
@@ -76,7 +77,7 @@ function ProjectDeleteConfirm({ project, busy, error, onCancel, onConfirm }) {
   return <div className="creator-studio-delete-confirm" role="dialog" aria-modal="false" aria-labelledby={`delete-project-${project.id}`} onClick={(event) => event.stopPropagation()}>
     <strong id={`delete-project-${project.id}`}>删除项目</strong>
     <p>“{project.name}”及其中的本地文件会被永久删除，此操作不可撤销。</p>
-    {error ? <p className="creator-studio-delete-error" role="alert">{error}</p> : null}
+    <FailureAlert failure={error} className="creator-studio-delete-error" />
     <div>
       <button type="button" onClick={onCancel} disabled={busy}>取消</button>
       <button className="is-danger" type="button" onClick={onConfirm} disabled={busy}>{busy ? "删除中…" : "确认删除"}</button>
@@ -312,7 +313,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
   const [name, setName] = useState("");
   const [parentDirectory, setParentDirectory] = useState("");
   const [sourceCharacterId, setSourceCharacterId] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const nameRef = useRef(null);
   const directoryRequestRef = useRef(null);
@@ -327,7 +328,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
   useEffect(() => () => directoryRequestRef.current?.abort(), []);
 
   const chooseDirectory = async () => {
-    setError("");
+    setError(null);
     directoryRequestRef.current?.abort();
     const request = new AbortController();
     directoryRequestRef.current = request;
@@ -335,7 +336,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
       const directory = await projectCatalog.selectDirectory(request.signal);
       if (directory && !request.signal.aborted) setParentDirectory(directory);
     } catch (requestError) {
-      if (!request.signal.aborted) setError(requestError instanceof Error ? requestError.message : "无法选择保存位置。");
+      if (!request.signal.aborted) setError(requestError ?? "无法选择保存位置。");
     } finally {
       if (directoryRequestRef.current === request) directoryRequestRef.current = null;
     }
@@ -343,7 +344,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
 
   const submit = async (event) => {
     event.preventDefault();
-    setError("");
+    setError(null);
     if (!name.trim()) { setError("请输入项目名称。"); nameRef.current?.focus(); return; }
     if (!parentDirectory) { setError("请选择项目保存位置。"); return; }
     if (mode === "existing" && !sourceCharacterId) { setError("请选择要修改的角色。"); return; }
@@ -355,7 +356,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
       });
       onCreated(collection.items);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "项目创建失败。");
+      setError(requestError ?? "项目创建失败。");
     } finally {
       setBusy(false);
     }
@@ -400,7 +401,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
           </div>
         </div>
 
-        {error ? <p className="creator-studio-form-error" role="alert">{error}</p> : null}
+        <FailureAlert failure={error} className="creator-studio-form-error" />
         <footer>
           <button type="button" onClick={onClose} disabled={busy}>取消</button>
           <button className="is-primary" type="submit" disabled={busy}>{busy ? "创建中…" : "创建项目"}</button>
@@ -433,7 +434,7 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
   const [currentPage, setCurrentPage] = useState(1);
   const [pendingDeletionId, setPendingDeletionId] = useState("");
   const [deletingProjectId, setDeletingProjectId] = useState("");
-  const [deleteError, setDeleteError] = useState("");
+  const [deleteError, setDeleteError] = useState(null);
 
   useEffect(() => {
     const updateCharacters = () => {
@@ -458,7 +459,7 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
     const handleKeyDown = (event) => {
       if (event.key === "Escape" && !deletingProjectId) {
         setPendingDeletionId("");
-        setDeleteError("");
+        setDeleteError(null);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -484,23 +485,23 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
 
   const requestDelete = (project) => {
     setPendingDeletionId(project.id);
-    setDeleteError("");
+    setDeleteError(null);
   };
 
   const cancelDelete = () => {
     if (deletingProjectId) return;
     setPendingDeletionId("");
-    setDeleteError("");
+    setDeleteError(null);
   };
 
   const confirmDelete = async (project) => {
     setDeletingProjectId(project.id);
-    setDeleteError("");
+    setDeleteError(null);
     try {
       await projectCatalog.delete(project.id);
       setPendingDeletionId("");
     } catch (requestError) {
-      setDeleteError(requestError instanceof Error ? requestError.message : "无法删除项目。");
+      setDeleteError(requestError ?? "无法删除项目。");
     } finally {
       setDeletingProjectId("");
     }

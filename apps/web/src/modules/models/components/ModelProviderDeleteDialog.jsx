@@ -1,8 +1,9 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 
-export function ModelProviderDeleteDialog({ target, deleting = false, error = "", onCancel, onConfirm }) {
+export function ModelProviderDeleteDialog({ target, deleting = false, error = null, onCancel, onConfirm }) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef(null);
@@ -69,7 +70,7 @@ export function ModelProviderDeleteDialog({ target, deleting = false, error = ""
         <p id={descriptionId}>
           {consequence}{target.hasUnsavedChanges ? " 未保存的修改也会丢失。" : ""}
         </p>
-        {error ? <span className="model-provider-delete-error" role="alert">{error}</span> : null}
+        <FailureAlert failure={error} className="model-provider-delete-error" />
         <div>
           <button ref={cancelRef} type="button" disabled={deleting} onClick={onCancel}>取消</button>
           <button type="button" className="danger" disabled={deleting} onClick={onConfirm}>

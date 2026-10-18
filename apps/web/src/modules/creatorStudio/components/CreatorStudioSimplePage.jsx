@@ -9,6 +9,7 @@ import { DshNewChatIcon, DshPanelLeftIcon, DshEllipsisIcon, DshEditIcon, DshTras
 import { WindowControls } from '../../../app/windows/shell/components/TitleBar.jsx';
 import { CreatorStudioConversation } from './CreatorStudioConversation.jsx';
 import { useRightbarLayout } from '../../../app/windows/shell/hooks/useRightbarLayout.js';
+import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
 import '../styles/creator-studio-simple.css';
 
 function conversationGroups(items) {
@@ -29,16 +30,16 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
   const shell = useRef(null);
   const collapseSidePanel = useCallback(() => setCollapsed(true), []);
   const rightbarLayout = useRightbarLayout({ model: rightbar, shellRef: shell, sidePanelCollapsed: collapsed, collapseSidePanel });
-  const [matches, setMatches] = useState(null), [searchError, setSearchError] = useState('');
+  const [matches, setMatches] = useState(null), [searchError, setSearchError] = useState(null);
   const [selecting, setSelecting] = useState(false), [selected, setSelected] = useState(new Set());
   const [picker, setPicker] = useState(false), [menuId, setMenuId] = useState('');
   const [renaming, setRenaming] = useState(null), [name, setName] = useState('');
-  const [deleting, setDeleting] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [deleting, setDeleting] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const initialized = useRef(false), mountVersion = useRef(0), menuRoot = useRef(null);
   const perform = useCallback(async action => {
-    setBusy(true); setError('');
+    setBusy(true); setError(null);
     try { await action(); return true; }
-    catch (cause) { setError(String(cause?.message || cause)); return false; }
+    catch (cause) { setError(cause); return false; }
     finally { setBusy(false); }
   }, []);
   useEffect(() => {
@@ -53,12 +54,12 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
     return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', close); };
   }, [menuId]);
   useEffect(() => {
-    setMatches(null); setSearchError('');
+    setMatches(null); setSearchError(null);
     if (!query.trim()) return;
     const abort = new AbortController();
     const timer = setTimeout(() => model.search(query.trim(), abort.signal).then(result => {
       if (!abort.signal.aborted) setMatches(result);
-    }).catch(cause => { if (!abort.signal.aborted) setSearchError(cause.message); }), 200);
+    }).catch(cause => { if (!abort.signal.aborted) setSearchError(cause); }), 200);
     return () => { clearTimeout(timer); abort.abort(); };
   }, [model, query]);
   const target = characters.collection.items.find(item => item.id === state.active?.characterId);
@@ -101,7 +102,7 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
           {target ? <Avatar as="span" src={characterAvatar(target)} name={characterName(target)} /> : <UserCircle size={20} />}<span>{target ? characterName(target) : '选择角色'}</span>
         </button>
         <DshSearchField value={query} onValueChange={setQuery} placeholder="搜索对话内容…" ariaLabel="搜索工作室对话" />
-        {searchError && <p className="creator-simple-error" role="alert">{searchError}</p>}
+        <FailureAlert failure={searchError} className="creator-simple-error" />
         <nav className="creator-simple-history">{groups.map(([label, items], index) => <section key={label}>
           <div className="creator-simple-group-heading"><h3>{label}</h3>{index === 0 && <button type="button" aria-label={selecting ? '退出对话管理' : '管理对话'} disabled={busy}
             onClick={() => { if (selecting) stopSelecting(); else { setSelecting(true); setMenuId(''); } }}>{selecting ? <X size={18} /> : <ListChecks size={18} />}</button>}</div>
@@ -126,7 +127,7 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
         </footer>}
       </aside>}
       <section className="creator-simple-content" aria-label="工作室对话">
-        {error || state.error ? <p className="creator-simple-error" role="alert">{error || state.error}</p> : null}
+        <FailureAlert failure={error || state.error} className="creator-simple-error" />
         {state.reference ? renderConversation({ reference: state.reference, component: CreatorStudioConversation,
           props: { model, models, presetCatalog, creating: busy, editing: state.editingSessionId === state.active?.sessionId, title: active?.title || '新对话',
             onCreate: create, onSelectCharacter: () => setPicker(true), onError: setError } }) : <div className="creator-simple-loading">
@@ -142,11 +143,11 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
       error={error || characters.error} onSelect={choose} onClose={() => setPicker(false)} />}
     <Modal open={!!renaming} title="重命名对话" closeLabel="关闭" onClose={() => !busy && setRenaming(null)} className="creator-simple-dialog"
       footer={<button type="button" disabled={busy || !name.trim()} onClick={() => void perform(() => model.rename(renaming.sessionId, name.trim())).then(success => success && setRenaming(null))}>保存</button>}>
-      {error && <p role="alert">{error}</p>}<input data-modal-autofocus aria-label="对话名称" value={name} onChange={event => setName(event.target.value)} />
+      <FailureAlert failure={error} /><input data-modal-autofocus aria-label="对话名称" value={name} onChange={event => setName(event.target.value)} />
     </Modal>
     <Modal open={!!deleting} title="删除对话" closeLabel="关闭" onClose={() => !busy && setDeleting(null)} className="creator-simple-dialog"
       footer={<button type="button" disabled={busy} onClick={remove}>删除</button>}>
-      {error && <p role="alert">{error}</p>}<p>{deleting?.length === 1 ? `删除“${deleting[0].title}”？` : `删除选中的 ${deleting?.length || 0} 个对话？`}</p>
+      <FailureAlert failure={error} /><p>{deleting?.length === 1 ? `删除“${deleting[0].title}”？` : `删除选中的 ${deleting?.length || 0} 个对话？`}</p>
     </Modal>
   </main>;
 }
@@ -157,7 +158,7 @@ export function CreatorStudioCharacterDialog({ collection, selectedId, busy, err
   return <Modal open title="选择角色" closeLabel="关闭" onClose={() => !busy && onClose()} className="creator-simple-character-dialog">
     <DshSearchField value={query} onValueChange={setQuery} placeholder="搜索角色…" ariaLabel="搜索角色" />
     {!!collection.groups.length && <div className="creator-simple-character-groups">{['', ...collection.groups].map(id => <button type="button" key={id} aria-pressed={group === id} onClick={() => setGroup(id)}>{id || '全部角色'}</button>)}</div>}
-    {error && <p className="creator-simple-error" role="alert">{error}</p>}
+    <FailureAlert failure={error} className="creator-simple-error" />
     <div className="creator-simple-character-list">
       <button type="button" disabled={busy} aria-pressed={!selectedId} onClick={() => onSelect('')}><UserCircle size={36} /><span>不选择角色</span>{!selectedId && <Check size={18} />}</button>
       {items.map(item => <button type="button" key={item.id} disabled={busy} aria-label={`选择角色 ${characterName(item)}`} aria-pressed={selectedId === item.id} onClick={() => onSelect(item.id)}>

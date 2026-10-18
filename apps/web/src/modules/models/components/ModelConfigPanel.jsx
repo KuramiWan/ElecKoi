@@ -44,7 +44,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   const [form, setForm] = useState(config);
   const [draftConfigs, setDraftConfigs] = useState([]);
   const draftBaselines = useRef(new Map());
-  const [deleteError, setDeleteError] = useState("");
+  const [deleteError, setDeleteError] = useState(null);
   const [collapsedGroups, setCollapsedGroups, collapseStateReady] = usePersistentCollapseState(
     LIST_COLLAPSE_AREAS.models,
     { general: false },
@@ -188,7 +188,8 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
   function updateField(key, value) {
     setConfirmDeleteConfig(false);
-    setDeleteTargetConfig(null);    if (["provider", "base_url", "api_key", "api_format", "custom_headers"].includes(key)) {
+    setDeleteTargetConfig(null);
+    if (["provider", "base_url", "api_key", "api_format", "custom_headers"].includes(key)) {
       setLocalModelOptions({ key: "", items: [] });
     }
     isDirtyRef.current = true;
@@ -204,7 +205,8 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
   }
 
   function updateActiveModelOption(patch) {
-    if (!(formRef.current?.model || "").trim()) return;    isDirtyRef.current = true;
+    if (!(formRef.current?.model || "").trim()) return;
+    isDirtyRef.current = true;
     setIsDirty(true);
     setForm((current) => {
       const modelId = current.model.trim();
@@ -232,7 +234,8 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
   function selectModel(modelId) {
     const id = String(modelId || "").trim();
-    if (!id) return;    const current = formRef.current;
+    if (!id) return;
+    const current = formRef.current;
     const exists = (current.model_options || []).some((item) => item.id === id);
     isDirtyRef.current = true;
     setIsDirty(true);
@@ -265,7 +268,8 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     const next = removeUserAddedModel(current, id, modelItems);
     if (next === current) return;
 
-    const visibleItems = modelItems.filter((item) => item.id !== id);    setLocalModelOptions({ key: modelOptionsKey(next), items: visibleItems });
+    const visibleItems = modelItems.filter((item) => item.id !== id);
+    setLocalModelOptions({ key: modelOptionsKey(next), items: visibleItems });
     isDirtyRef.current = true;
     setIsDirty(true);
     formRef.current = next;
@@ -336,8 +340,10 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     formRef.current = persisted;
     isDirtyRef.current = false;
     setForm(persisted);
-    setIsDirty(false);    setLocalModelOptions({ key: "", items: [] });
-    setModelMenuOpen(false);    setManualModelOpen(false);
+    setIsDirty(false);
+    setLocalModelOptions({ key: "", items: [] });
+    setModelMenuOpen(false);
+    setManualModelOpen(false);
     setManualModelName("");
     setDraftHeader({ name: "", value: "" });
   }
@@ -394,9 +400,11 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     if (!configId) return;
     const item = allConfigs.find((candidate) => candidate.id === configId);
     if (!item) return;
-    setModelMenuOpen(false);    setConfirmDeleteConfig(false);
+    setModelMenuOpen(false);
+    setConfirmDeleteConfig(false);
     setDeleteTargetConfig(null);
-    requestDraftReplacement(() => {      formRef.current = item;
+    requestDraftReplacement(() => {
+      formRef.current = item;
       setForm(item);
       setIsDirty(false);
       isDirtyRef.current = false;
@@ -422,7 +430,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
 
   function requestDelete(config = formRef.current, returnFocus = document.activeElement) {
     setDeleteTargetConfig({ ...config, label: config.name || config.id, hasUnsavedChanges: config.id === formRef.current.id && isDirtyRef.current, returnFocus });
-    setDeleteError('');
+    setDeleteError(null);
     setConfirmDeleteConfig(true);
   }
 
@@ -446,14 +454,15 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       setDeleteTargetConfig(null);
       showNotice('success', target.id === 'deepseek-official' ? '内置 DeepSeek 配置已清空' : '当前配置已删除');
     } catch (error) {
-      setDeleteError(error.message || '删除配置失败');
+      setDeleteError(error);
     } finally { setDeleting(false); }
   }
 
   async function fetchModels() {
     if (loadingModelsRef.current) return;
     loadingModelsRef.current = true;
-    setLoadingModels(true);    setModelMenuOpen(false);
+    setLoadingModels(true);
+    setModelMenuOpen(false);
     try {
       const fetchConfig = formRef.current;
       const fetchKey = modelOptionsKey(fetchConfig);
@@ -547,7 +556,8 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
       formRef.current = next;
       isDirtyRef.current = true;
       setForm(next);
-      setIsDirty(true);    },
+      setIsDirty(true);
+    },
     onCancel: cancelCurrentChanges,
     onSave: saveCurrentConfig,
     onFetchModels: fetchModels,

@@ -237,7 +237,10 @@ describe('Android branch setting bottom actions', () => {
     await act(async () => rejectRead(new Error('合成分支读取失败')));
     expect(container.querySelector('input[aria-label="搜索分支设定对话"]')).toBe(retrySearch);
     expect(retrySearch.value).toBe('保留查询');
-    expect(container.querySelector('[role=alert]').textContent).toBe('合成分支读取失败');
+    // 失败面同时给文案与码（状态里存的是失败本身）。
+    const readFailure = container.querySelector('[role=alert]');
+    expect(readFailure.textContent).toContain('合成分支读取失败');
+    expect(readFailure.textContent).toContain('eleckoi/internal');
     expect(container.textContent).not.toContain('还没有分支设定');
   });
   it('selects folders, creates within them and returns from editing without losing selection', async () => {

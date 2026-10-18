@@ -6,6 +6,7 @@ import { resolveChatWallpaper } from '../modules/appearance/index.js';
 import { characterAvatar, characterCover, characterName } from '../utils/characterDisplay.js';
 import { SidebarCharacterArtwork } from '../ui/ui/SidebarCharacterArtwork.jsx';
 import { MobileDialog, MobileHeader, MobileState, useMobileScroll } from './MobileChrome.jsx';
+import { FailureAlert } from '../ui/ui/FailureAlert.jsx';
 import { formatDate } from '../utils/format.js';
 import { MobileSwipeRow } from './MobileSwipeRow.jsx';
 import { MobileBackIcon } from './MobileIcons.jsx';
@@ -18,7 +19,7 @@ export function MobileMessagesPage() {
   const [menu, setMenu] = useState(null);
   const [hideEntry, setHideEntry] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const characters = useMemo(() => new Map(chat.characters.items.map(item => [item.id, item])), [chat.characters.items]);
   if (view.route.kind === 'conversation') {
     const wallpaper = resolveChatWallpaper({ character: chat.chatBackgroundCharacter, persona: chat.chatPersona,
@@ -28,16 +29,16 @@ export function MobileMessagesPage() {
     </MobileConversationPage>;
   }
   async function run(action) {
-    setBusy(true); setError('');
+    setBusy(true); setError(null);
     try { await action(); setMenu(null); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    catch (cause) { setError(cause); }
     finally { setBusy(false); }
   }
   return <div className="mobile-root-page">
     <MobileHeader title="消息" onSearch={view.openSearch} onAdd={() => setPicker(true)} addLabel="新建对话" />
     <MobileMessageList sessions={chat.filteredSessions} characters={characters} pinnedIds={chat.pinnedIds} artworkMode={view.appearance.sidebarCharacterArtwork} loading={view.routeBusy || busy} onOpen={view.selectConversation} onMenu={setMenu}
       onPin={item => run(() => chat.togglePinChat(item.id))} onHide={setHideEntry} />
-    {error && !menu && !hideEntry && <p className="mobile-inline-error" role="alert">{error}</p>}
+    {error && !menu && !hideEntry && <FailureAlert failure={error} className="mobile-inline-error" />}
     {picker && <MobileDialog title="选择角色" onClose={() => setPicker(false)}>
       <div className="mobile-picker-list">{chat.characters.items.map(item => <button type="button" key={item.id} disabled={view.routeBusy} onClick={async () => { setPicker(false); await view.openCharacterConversation(item.id); }}>
         <SidebarCharacterArtwork mode={view.appearance.sidebarCharacterArtwork} name={characterName(item)} cover={characterCover(item)} avatar={characterAvatar(item)} /><span>{characterName(item)}</span>
@@ -47,12 +48,12 @@ export function MobileMessagesPage() {
     {menu && <MobileDialog title={menu.character_name || '会话操作'} busy={busy} onClose={() => setMenu(null)}>
       <button type="button" disabled={busy} onClick={() => run(() => chat.togglePinChat(menu.id))}><PushPin size={22} />{chat.pinnedIds.includes(menu.id) ? '取消置顶' : '置顶会话'}</button>
       <button type="button" disabled={busy} onClick={() => { setHideEntry(menu); setMenu(null); }}><Trash size={22} />隐藏会话入口</button>
-      {error && <p role="alert">{error}</p>}
+      <FailureAlert failure={error} />
     </MobileDialog>}
     {hideEntry && <MobileDialog title="删除消息入口？" busy={busy} onClose={() => setHideEntry(null)}>
       <p>只会从消息列表隐藏这个入口；角色和聊天记录都会保留。</p>
       <button type="button" disabled={busy} onClick={() => run(async () => { await chat.hideChatEntry(hideEntry.id); setHideEntry(null); })}>删除入口</button>
-      {error && <p role="alert">{error}</p>}
+      <FailureAlert failure={error} />
     </MobileDialog>}
   </div>;
 }

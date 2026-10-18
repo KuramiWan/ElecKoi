@@ -7,6 +7,7 @@ import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
 import { applyChatHistoryPolicy, exportChatHistory, importChatHistory } from "../api/chatApi.js";
 import { MobileConversationOverlay, isMobilePresentation } from '../../../mobile/MobileConversationOverlay.jsx';
+import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
 
 const EMPTY_SNAPSHOT = Object.freeze({ status: "loading", ui: Object.freeze({}) });
 const EMPTY_SUBSCRIBE = () => () => {};
@@ -36,7 +37,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
   const [keyword, setKeyword] = useState("");
   const [saveMode, setSaveMode] = useState("all");
   const [confirmAction, setConfirmAction] = useState(null);
-  const [transferError, setTransferError] = useState("");
+  const [transferError, setTransferError] = useState(null);
   const [transferring, setTransferring] = useState(false);
   const importInput = useRef(null);
   const confirmRef = useRef(null);
@@ -106,7 +107,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
 
   async function exportHistory(item) {
     if (transferring) return;
-    setTransferError("");
+    setTransferError(null);
     setTransferring(true);
     try {
       const { json } = await exportChatHistory(item.id, { model: conversationModel });
@@ -119,7 +120,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {
-      setTransferError(error?.message || "导出聊天记录失败。");
+      setTransferError(error ?? "导出聊天记录失败。");
     } finally {
       setTransferring(false);
     }
@@ -129,7 +130,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || transferring) return;
-    setTransferError("");
+    setTransferError(null);
     if (!currentCharacterId) {
       setTransferError("请先选择角色，再导入聊天记录。");
       return;
@@ -141,7 +142,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
       await onLoadChat?.(conversationId);
       onClose?.();
     } catch (error) {
-      setTransferError(error?.message || "导入聊天记录失败。");
+      setTransferError(error ?? "导入聊天记录失败。");
     } finally {
       setTransferring(false);
     }
@@ -205,7 +206,7 @@ export function HistoryModal({ open, sessions, sessionId, chatCharacter, convers
           </div>
         </div>
 
-        {transferError ? <div className="history-transfer-error" role="alert">{transferError}</div> : null}
+        <FailureAlert failure={transferError} className="history-transfer-error" />
 
         <div className="history-list">
           {!filteredGroups.length ? (
