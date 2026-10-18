@@ -43,7 +43,7 @@ export const mainWindowPlugin = {
         configureMainWindow(appPaths, appLog, windows, window)
         window.webContents.on('render-process-gone', (_event, details) => {
           if (details.reason !== 'clean-exit') {
-            ctx.emit('eleckoi/desktop-fatal', new Error(`页面渲染进程退出：${details.reason} (${details.exitCode})`))
+            ctx.emit('eleckoi/desktop-fatal', new DesktopError(ELECKOI_FAILURE_CODES.internal, `页面渲染进程退出：${details.reason} (${details.exitCode})`, { what: '页面渲染进程' }))
           }
         })
       }
@@ -127,7 +127,7 @@ export const mainWindowPlugin = {
         throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 插件页面错误格式不正确。', { what: 'DSH 插件页面错误' })
       }
       appLog.error({ message }, 'DSH plugin client boot failed')
-      ctx.emit('eleckoi/desktop-fatal', new Error(message))
+      ctx.emit('eleckoi/desktop-fatal', new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, message, { what: 'DSH 插件页面启动' }))
     })
     const syncNativeTheme = (event: Electron.IpcMainEvent, source: unknown) => {
       const mainContents = mainWindow?.webContents
