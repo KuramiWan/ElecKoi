@@ -1,7 +1,7 @@
 /**
  * 渲染层动作日志（WP14）：一行一个动作阶段，经 console 交给主进程的 console-message 桥。
  *
- * 判据来源：`spec-error-handling-remainder.md` WP14「关键路径的日志带语义操作名」。
+ * 设计判据：关键路径的日志带语义操作名（动作语义键见 `packages/shared/src/contracts/logActions.ts`）。
  * 这里断言的是**外部行为**：console 上出现了几行、每行能不能解回动作键与阶段、失败行有没有码；
  * 不断言主进程那边怎么落盘（那是 `apps/desktop/tests/app-log.test.ts` 的事）。
  */

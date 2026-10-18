@@ -1,20 +1,21 @@
 /**
  * 每条失败码的**参数化详情**形状。
  *
- * 判据来源：ADR 0002 决定 14（每条码该带哪些参数）；spec 决定 6 给了最初的六个参数名
+ * 判据来源：ADR 0040 决定 14（每条码该带哪些参数与参数名闭集）；最初的六个参数名
  * （`field` / `issues` / `path` / `operation` / `guard` / `what`）；2026-10-17 扩表时新增
  * `expected` / `actual` 两个，用来表达「要求什么、实际是什么」（旧数据版本、数据库结构、允许的格式）。
  *
  * 两条硬约束，跨语言实现也要守：
  *
  * 1. **详情是给程序看的，不是拼好的句子。** 契约只放参数，用户可见文案只有一个解析点
- *    （渲染层，ADR 0002 决定 4）。宿主永不拼用户可见句子。
+ *    （渲染层，ADR 0040 决定 4）。宿主永不拼用户可见句子。
  * 2. **顶层必须是扁平 JSON 对象。** 线上只校验 `z.record(z.string(), z.unknown())`
  *    （`packages/host/dsh-client-connection`），且失败信封要被 `JSON.stringify` 过一遍。
  *    所以详情里不放 `undefined`、函数、`Date`、类实例、循环引用。
  *
- * **`what` 是名词短语，不是标识符。** 它会被用来拼用户可见句子（「找不到{what}。」），
- * 所以放「角色」「预设分组」这类词；具体的 id / 路径放开发者诊断 `message` 里，不进详情。
+ * **`what` 不是标识符。** 多数码写名词短语（会被拼进用户句，如「找不到{what}。」），
+ * `state/precondition` 例外，写用户该先做的**动作**（模板是「请先${what}。」）；
+ * 具体的 id / 路径放开发者诊断 `message` 里，不进详情。
  *
  * 参数名闭集：`field` / `issues` / `path` / `operation` / `guard` / `what` / `expected` / `actual`。
  * 不在这八个里的新参数属于契约变更——先改这份文件与 `codes.ts`，再动用例。
@@ -93,7 +94,7 @@ export interface EleckoiStateMismatchDetails {
   readonly what: string
 }
 
-/** 前置动作未完成的详情：`what` 是用户该先做的动作（名词短语，如 `打开一个聊天`）。 */
+/** 前置动作未完成的详情：`what` 是用户该先做的动作（会被拼成「请先${what}。」，如 `打开一个聊天`），不是名词短语。 */
 export interface EleckoiStatePreconditionDetails {
   readonly what: string
 }
@@ -179,7 +180,7 @@ export interface EleckoiIpcCallFailedDetails {
 
 /**
  * 码 → 详情形状。这是 `RemoteErrorDetailsMap` 声明合并的真相来源
- * （ADR 0002 决定 7：合并本身住 `packages/host/product-api/`，形状住这里）。
+ * （ADR 0040 决定 7：合并本身住 `packages/host/product-api/`，形状住这里）。
  *
  * 每条码都必须在这里有一行：漏了就是契约缺口，`error-contract.test` 会红。
  */

@@ -63,7 +63,8 @@ export type ProductFailureDetailKey = (typeof PRODUCT_FAILURE_DETAIL_KEYS)[numbe
 /**
  * 失败详情：扁平 JSON 对象，键只用闭集里的八个。
  *
- * `what` 是**名词短语**（会被拼进用户句「找不到{what}。」）；具体 id / 路径留给 `message`。
+ * `what` 不是标识符：多数码写名词短语（会被拼进用户句「找不到{what}。」），`state/precondition`
+ * 例外、写用户该先做的动作（「请先{what}。」）；具体 id / 路径留给 `message`。
  */
 export interface ProductFailureDetails {
   readonly field?: string

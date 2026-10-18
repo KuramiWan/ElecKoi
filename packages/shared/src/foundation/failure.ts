@@ -1,12 +1,12 @@
 /**
  * 失败折叠——每条边界共用的「未知错误 → 契约形态」兜底规则。
  *
- * 判据来源：ADR 0002 决定 1（每条边界一个薄适配器、统一的兜底折叠）、决定 2（⑦ 任何边界都能
- * 产出同一个可记录对象）、决定 13/14（legacy 6 码的防御映射）；spec 决定 1/5。
+ * 判据来源：ADR 0040 决定 1（每条边界一个薄适配器、统一的兜底折叠）、决定 2（⑦ 任何边界都能
+ * 产出同一个可记录对象）、决定 8（失败表达形态）、决定 13/14（legacy 6 码的防御映射）。
  *
  * 本文件是纯函数，**不 import** `node:` / `@deepseek-ai/` / `@eleckoi/`
  * （`scripts/check-architecture.mjs:95-106` 的 product-shared 闭集规则）。
- * 便利函数留在内部、不承诺兼容（ADR 决定 3）——但它是 ①–⑥ 六条边界共同的那一条规则，
+ * 便利函数留在内部、不承诺兼容（ADR 0040 决定 3）——但它是 ①–⑥ 六条边界共同的那一条规则，
  * 所以六条边界都从这一个出口折叠，不许各自实现一份。
  */
 
@@ -18,10 +18,10 @@ import {
 import type { EleckoiFailureDetails, EleckoiFailureIssue } from '../contracts/errors/details.js'
 import { DESKTOP_ERROR_CODES, type DesktopErrorCode } from './DesktopError.js'
 
-/** 任何边界都能产出的同一个可记录对象（ADR 决定 2 的 ⑦）。 */
+/** 任何边界都能产出的同一个可记录对象（ADR 0040 决定 2 的 ⑦）。 */
 export interface EleckoiFailure {
   readonly code: EleckoiFailureCode
-  /** 开发者诊断文案；用户可见文案只有一个解析点（渲染层，ADR 决定 4/9）。 */
+  /** 开发者诊断文案；用户可见文案只有一个解析点（渲染层，ADR 0040 决定 4/9）。 */
   readonly message: string
   /** 参数化详情，顶层是扁平 JSON 对象。 */
   readonly details: EleckoiFailureDetails
@@ -30,7 +30,7 @@ export interface EleckoiFailure {
 /**
  * legacy 6 码 → 契约码的**防御映射**。
  *
- * 判据来源：ADR 0002 决定 13/14。19 处 `throw new DesktopError` 的真实语义决定这张表，
+ * 判据来源：ADR 0040 决定 13/14。19 处 `throw new DesktopError` 的真实语义决定这张表，
  * 不是凭印象写的：
  *
  * - `INTERNAL` → 兜底码（语义就是兜底）；
@@ -61,7 +61,7 @@ const LEGACY_DESKTOP_ERROR_CODE_SET: ReadonlySet<string> = new Set(Object.values
 /**
  * 网关**载体码** → 契约码：合同违例的载体码折成 `contract/invalid-*`，`issues` 进详情。
  *
- * 判据来源：ADR 0002 决定 14（两条契约码的详情带 `issues`）、spec 决定 4（「每条边界只声明不实现，
+ * 判据来源：ADR 0040 决定 14（两条契约码的详情带 `issues`）、决定 2（「每条边界只声明不实现，
  * 不算完成」）与 `contracts/errors/boundaries.ts` 的 ② 表；票 EH-11 的 H 项。
  *
  * ⚠️ **票把这张表的来源写偏了一处。** 这些码**不都是** `dsh-api-gateway` 抛的，实测（2026-10-12，
@@ -150,7 +150,7 @@ export function foldFailure(error: unknown): EleckoiFailure {
  * 详情一律是契约规定的 `{ issues }`：载体自带 `issues`（`gateway/bad-request`，元素形状是 zod 的
  * `{ path, message, ... }`）就逐条投影成 `{ path, message }`（`path` 是数组时按点号连接）；载体只带
  * `{ endpoint, field? }`（网关门自己的那三个码）就用 `field` 或 `endpoint` 加 message 合成一条——
- * **不拼用户可见句子**，那是渲染层解析点的事（ADR 决定 4/8）。
+ * **不拼用户可见句子**，那是渲染层解析点的事（ADR 0040 决定 4/8）。
  *
  * @param code - 载体码（Remote 失败对象上的 `code`）。
  * @param message - 开发者诊断（原文案）。

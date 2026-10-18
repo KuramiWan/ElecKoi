@@ -1,7 +1,7 @@
 /**
  * 渲染层的动作日志：一行一个动作阶段，经 `console` 由主进程的 console-message 桥落盘。
  *
- * 判据来源：`spec-error-handling-remainder.md` WP14「关键路径的日志带语义操作名」。
+ * 设计判据：关键路径的日志带语义操作名（动作语义键见 `packages/shared/src/contracts/logActions.ts`）。
  *
  * 为什么走 `console` 而不是新开 IPC：WP13 已经用这条路把渲染层的未处理失败转进主进程日志
  * （`reportFailure` 只 `console.error`，`mainWindowPlugin` 的 console-message 桥转发），
