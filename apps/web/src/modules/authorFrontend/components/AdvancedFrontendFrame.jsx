@@ -23,7 +23,7 @@ export function AdvancedFrontendFrame(props) {
       if (declaration.kind === 'unsupported') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, declaration.error, { what: '原生作者 SDK 声明' });
       if (nativeOnly && declaration.kind !== 'native') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '页面缺少 eleckoi-author-api 原生 SDK 声明', { what: '页面里的原生作者 SDK 声明', path: entryFile });
       setLoaded({ identity, document: { content: result.content, declaration } });
-    }).catch(reason => { if (active) { const message = `${project.name} · ${entryFile}: ${reason.message || String(reason)}`; setLoaded({ identity, error: message }); report.current?.(message); } });
+    }).catch(reason => { if (active) { const message = `${project.name} · ${entryFile}: ${resolveFailure(reason, { fallback: '前端页面加载失败' }).text}`; setLoaded({ identity, error: message }); report.current?.(message); } });
     return () => { active = false; };
   }, [request, project.id, project.updatedAt, entryFile, revision, identity, nativeOnly]);
   if (loaded?.identity !== identity) return <div className="frontend-state" role="status">正在加载 HTML 前端…</div>;
