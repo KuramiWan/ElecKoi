@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, internalFailure, failureAlreadyPublished, rejectionIsAwaitedElsewhere, bestEffort } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, internalFailure, failureAlreadyPublished, rejectionIsAwaitedElsewhere, bestEffort, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     /**
      * 载体不是产品失败（例如 LLM 的 `LlmFailure`：`{ message, code, status }`）时的折法：
      * 折成兜底码，provider 的 message 当诊断（不写 `details.what`，所以它仍能给用户看），
@@ -239,7 +239,7 @@ window.__ModuleLoader__.load({
         if (node.kind === 'model-retry') {
           for (const attempt of node.data.attempts) {
             const status = { scheduled: 'running', started: 'complete', cancelled: 'cancelled' }[attempt.retryState]
-            if (!status) throw new Error(`未知模型重试状态：${attempt.retryState}`)
+            if (!status) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `未知模型重试状态：${attempt.retryState}`, { what: '模型重试状态' })
             const maximum = attempt.mode === 'normal' ? attempt.maxRetries : '∞'
             const title = { scheduled: '等待重试模型请求', started: '已重试模型请求', cancelled: '模型重试已取消' }[attempt.retryState]
             appendNode(turn, { id: `model-retry:${node.key}:${attempt.retry}`, kind: 'action', toolName: 'model_retry', status,
@@ -448,7 +448,7 @@ window.__ModuleLoader__.load({
           else resolve(value)
         }
         const timeout = setTimeout(() => {
-          finish(new Error('等待 DSH 会话完成超时。'))
+          finish(productFailure(ELECKOI_FAILURE_CODES.timeoutExpired, '等待 DSH 会话完成超时。', { what: 'DSH 会话完成' }))
         }, 10 * 60 * 1000)
         const check = () => {
           if (settled) return
@@ -896,10 +896,10 @@ window.__ModuleLoader__.load({
       }
 
       async readImage(conversationId, attachment) {
-        if (this.disposed || !attachment?.attachmentId) throw new Error('图片不可用。')
+        if (this.disposed || !attachment?.attachmentId) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '图片不可用。', { what: '图片附件' })
         const runtimeSessionId = this.runtimeSessionId(conversationId)
           || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.runtimeSessionId : '')
-        if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
+        if (!runtimeSessionId) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前聊天缺少 DSH Session。', { what: '当前聊天的 DSH 会话' })
         if (this.detailsSnapshot.id === conversationId) await this.bindOfficialSession(conversationId)
         if (attachment.batchId) {
           const cached = this.uiConversation.peekImageUrl(runtimeSessionId, attachment)
@@ -914,7 +914,7 @@ window.__ModuleLoader__.load({
       }
 
       async regenerateImage(conversationId, image) {
-        if (!image?.batchId || !Number.isSafeInteger(image.frameId)) throw new Error('图片缺少生图指令编号。')
+        if (!image?.batchId || !Number.isSafeInteger(image.frameId)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '图片缺少生图指令编号。', { what: '图片的生图指令编号' })
         let failure
         try {
           await this.mutateSession(conversationId, async () => this.unwrap(
@@ -983,7 +983,7 @@ window.__ModuleLoader__.load({
       }
 
       async readAuthorState(conversationId) {
-        if (!conversationId) throw new Error('请先打开一个聊天。')
+        if (!conversationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先打开一个聊天。', { what: '打开一个聊天' })
         return this.unwrap(
           await this.remote.eleckoiConversations.authorState(conversationId),
           '读取作者接口上下文失败。'
@@ -991,7 +991,7 @@ window.__ModuleLoader__.load({
       }
 
       async exportArchive(conversationId) {
-        if (!conversationId) throw new Error('请选择要导出的聊天记录。')
+        if (!conversationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请选择要导出的聊天记录。', { what: '选择要导出的聊天记录' })
         return this.unwrap(
           await this.remote.eleckoiConversations.exportArchive(conversationId),
           '导出聊天记录失败。'
@@ -999,7 +999,7 @@ window.__ModuleLoader__.load({
       }
 
       async importArchive(characterId, json) {
-        if (!characterId) throw new Error('请先选择角色，再导入聊天记录。')
+        if (!characterId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先选择角色，再导入聊天记录。', { what: '选择要导入聊天记录的角色' })
         return this.unwrap(
           await this.remote.eleckoiConversations.importArchive(characterId, json),
           '导入聊天记录失败。'
@@ -1007,7 +1007,7 @@ window.__ModuleLoader__.load({
       }
 
       async revealFile(conversationId, attachmentId, name) {
-        if (!conversationId) throw new Error('当前聊天不可用。')
+        if (!conversationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前聊天不可用。', { what: '打开一个聊天' })
         this.unwrap(
           await this.remote.eleckoiConversations.revealFile(conversationId, attachmentId, name),
           '无法在文件管理器中显示该文件。'
@@ -1015,19 +1015,19 @@ window.__ModuleLoader__.load({
       }
 
       async readTrajectory(conversationId) {
-        if (!conversationId) throw new Error('请先打开一个聊天。')
+        if (!conversationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先打开一个聊天。', { what: '打开一个聊天' })
         if (conversationId !== this.detailsSnapshot.id) await this.open(conversationId)
         await this.bindOfficialSession(conversationId)
         const binding = this.sessionReference?.binding
-        if (!binding) throw new Error('当前聊天的 DSH Session 尚未就绪。')
+        if (!binding) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前聊天的 DSH Session 尚未就绪。', { what: '当前聊天的 DSH 会话' })
         const target = this.uiConversation.binding(binding).target('trajectory')
         const snapshot = target.getSnapshot()
-        if (!snapshot) throw new Error('DSH 轨迹投影尚未就绪。')
+        if (!snapshot) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 轨迹投影尚未就绪。', { what: 'DSH 轨迹投影' })
         return snapshot
       }
 
       async replaceAuthorVariableState(conversationId, state) {
-        if (!conversationId) throw new Error('请先打开一个聊天。')
+        if (!conversationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先打开一个聊天。', { what: '打开一个聊天' })
         const stateJson = JSON.stringify(state)
         const saved = this.unwrap(
           await this.remote.eleckoiConversations.replaceVariableState(conversationId, stateJson),
@@ -1226,7 +1226,7 @@ window.__ModuleLoader__.load({
         const generation = ++this.displayProjectionGeneration
         const operation = projectDisplay.call(this.remote.eleckoiConversations, id, input).then((response) => {
           const results = this.unwrap(response, '生成消息显示内容失败。')
-          if (!Array.isArray(results)) throw new Error('消息显示投影返回的数据格式不正确。')
+          if (!Array.isArray(results)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '消息显示投影返回的数据格式不正确。', { what: '消息显示投影结果' })
           const current = this.detailsSnapshot
           if (this.disposed || generation !== this.displayProjectionGeneration
             || current.id !== id || current.status !== 'ready' || !current.details) return
@@ -1389,7 +1389,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('ElecKoi 会话目录已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 会话目录已关闭。', { what: 'ElecKoi 会话目录' })
         const generation = ++this.generation
         try {
           const items = this.unwrap(
@@ -1397,7 +1397,7 @@ window.__ModuleLoader__.load({
             '读取会话列表失败。'
           )
           if (!Array.isArray(items) || items.some(item => !item || typeof item.id !== 'string')) {
-            throw new Error('会话目录返回的数据格式不正确。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '会话目录返回的数据格式不正确。', { what: '会话目录' })
           }
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', items, error: '' })
@@ -1417,13 +1417,13 @@ window.__ModuleLoader__.load({
       }
 
       async create(input) {
-        if (this.disposed) throw new Error('DSH 聊天服务正在恢复，请稍后重试。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 聊天服务正在恢复，请稍后重试。', { what: 'DSH 聊天服务' })
         const value = this.unwrap(
           await this.remote.eleckoiConversations.create(input),
           '新建聊天失败。'
         )
         const conversationId = value?.conversation?.id
-        if (typeof conversationId !== 'string' || !conversationId) throw new Error('新建聊天返回的数据格式不正确。')
+        if (typeof conversationId !== 'string' || !conversationId) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '新建聊天返回的数据格式不正确。', { what: '新建聊天结果' })
         const details = this.assertDetails(value, conversationId)
         await Promise.all([this.refresh(), this.sessions.refresh()])
         return details
@@ -1441,7 +1441,7 @@ window.__ModuleLoader__.load({
       }
 
       async selectOpening(conversationId, openingId) {
-        if (!conversationId || !openingId) throw new Error('请选择要切换的开场白。')
+        if (!conversationId || !openingId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请选择要切换的开场白。', { what: '选择要切换的开场白' })
         const details = this.assertDetails(this.unwrap(
           await this.remote.eleckoiConversations.selectOpening(conversationId, openingId),
           '切换开场白失败。'
@@ -1452,7 +1452,7 @@ window.__ModuleLoader__.load({
       }
 
       async updateOpening(conversationId, content) {
-        if (!conversationId) throw new Error('请先打开一个聊天。')
+        if (!conversationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先打开一个聊天。', { what: '打开一个聊天' })
         const details = this.assertDetails(this.unwrap(
           await this.remote.eleckoiConversations.updateOpening(conversationId, content),
           '修改开场白失败。'
@@ -1463,7 +1463,7 @@ window.__ModuleLoader__.load({
       }
 
       async editMessage(conversationId, eventSeq, role, content) {
-        if (!this.sessions || !this.uiConversation) throw new Error('DSH 会话客户端尚未就绪。')
+        if (!this.sessions || !this.uiConversation) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 会话客户端尚未就绪。', { what: 'DSH 会话客户端' })
         await this.mutateSession(conversationId, async () => this.unwrap(
           await this.remote.eleckoiConversations.editMessage(conversationId, eventSeq, role, content),
           '修改消息失败。'
@@ -1485,7 +1485,7 @@ window.__ModuleLoader__.load({
       }
 
       async deleteMessagesFrom(conversationId, eventSeq, role) {
-        if (!this.sessions || !this.uiConversation) throw new Error('DSH 会话客户端尚未就绪。')
+        if (!this.sessions || !this.uiConversation) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 会话客户端尚未就绪。', { what: 'DSH 会话客户端' })
         this.detailInvalidationFences.add(conversationId)
         if (this.streamSnapshot.id === conversationId) {
           this.publishStream({
@@ -1753,7 +1753,7 @@ window.__ModuleLoader__.load({
       }
 
       async mutateSession(conversationId, operation) {
-        if (this.sessionMutations.has(conversationId)) throw new Error('当前聊天正在修改消息。')
+        if (this.sessionMutations.has(conversationId)) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前聊天正在修改消息。', { what: '等待当前消息修改完成' })
         await this.bindOfficialSession(conversationId)
         let finish
         const settled = new Promise(resolve => { finish = resolve })
@@ -1768,7 +1768,7 @@ window.__ModuleLoader__.load({
         const retired = session ? new Promise((resolve, reject) => {
           const check = () => { if (session.getSnapshot().removed) resolve() }
           stop = session.subscribe(check)
-          timeout = setTimeout(() => reject(new Error('等待 DSH 会话关闭通知超时。')), 15_000)
+          timeout = setTimeout(() => reject(productFailure(ELECKOI_FAILURE_CODES.timeoutExpired, '等待 DSH 会话关闭通知超时。', { what: 'DSH 会话关闭通知' })), 15_000)
           check()
         }) : Promise.resolve()
         // 同一个 promise 在下面 `await retired`；这里只消除重复的未处理拒绝。
@@ -2113,9 +2113,9 @@ window.__ModuleLoader__.load({
       }
 
       async send(input) {
-        if (this.disposed || !input?.conversationId || !input.requestId) throw new Error('无法开始这次回复。')
+        if (this.disposed || !input?.conversationId || !input.requestId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '无法开始这次回复。', { what: '打开一个聊天并重试' })
         if (!this.sessions || !this.uiConversation || !this.remote?.session) {
-          throw new Error('DSH 会话客户端尚未就绪。')
+          throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 会话客户端尚未就绪。', { what: 'DSH 会话客户端' })
         }
         return this.runRequest(input, request => this.runOfficialPrompt(input, request))
       }
@@ -2124,7 +2124,7 @@ window.__ModuleLoader__.load({
         const reference = this.sessionReference
         if (this.disposed || !conversationId || this.detailsSnapshot.id !== conversationId
           || !reference || reference.sessionId !== this.runtimeSessionId(conversationId)) {
-          throw new Error('当前聊天的官方输入框尚未就绪。')
+          throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前聊天的官方输入框尚未就绪。', { what: '当前聊天的官方输入框' })
         }
         return this.conversation.input.for(reference.binding.ctx)
       }
@@ -2134,7 +2134,7 @@ window.__ModuleLoader__.load({
       }
 
       writeInputDraft(conversationId, text) {
-        if (typeof text !== 'string') throw new Error('输入框内容必须是文本。')
+        if (typeof text !== 'string') throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '输入框内容必须是文本。', { field: 'text' })
         const input = this.requireInput(conversationId)
         input.setDraft(text)
         return input.state.getSnapshot().draft
@@ -2175,9 +2175,9 @@ window.__ModuleLoader__.load({
       }
 
       async regenerate(input) {
-        if (this.disposed || !input?.conversationId || !input.requestId) throw new Error('无法重新生成这次回复。')
+        if (this.disposed || !input?.conversationId || !input.requestId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '无法重新生成这次回复。', { what: '打开一个聊天并重试' })
         if (!this.sessions || !this.uiConversation || !this.remote?.session) {
-          throw new Error('DSH 会话客户端尚未就绪。')
+          throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 会话客户端尚未就绪。', { what: 'DSH 会话客户端' })
         }
         return this.runRequest(input, request => this.runOfficialRegeneration(input, request))
       }
@@ -2188,7 +2188,7 @@ window.__ModuleLoader__.load({
       }
 
       async runRequest(input, run) {
-        if (this.activeRequests.has(input.conversationId)) throw new Error('当前聊天正在生成。')
+        if (this.activeRequests.has(input.conversationId)) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前聊天正在生成。', { what: '等待当前回复生成完成' })
         const request = { requestId: input.requestId, cancelled: false, session: null }
         this.activeRequests.set(input.conversationId, request)
         this.cancelledStreamRuns.delete(this.streamState.runId)
@@ -2228,7 +2228,7 @@ window.__ModuleLoader__.load({
       async runOfficialPrompt(input, request) {
         const conversationId = input.conversationId
         const runtimeSessionId = this.runtimeSessionId(conversationId) || this.detailsSnapshot.runtimeSessionId
-        if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
+        if (!runtimeSessionId) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前聊天缺少 DSH Session。', { what: '当前聊天的 DSH 会话' })
         const prepared = await this.unwrap(
           await this.remote.eleckoiConversations.preparePrompt(conversationId, input.text || '', input.signal),
           '准备 DSH 会话失败。'
@@ -2237,7 +2237,7 @@ window.__ModuleLoader__.load({
           await this.bindOfficialSession(conversationId)
         }
         const session = this.sessionReference?.binding.session
-        if (!session) throw new Error('当前聊天的 DSH Session 尚未连接。')
+        if (!session) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前聊天的 DSH Session 尚未连接。', { what: '当前聊天的 DSH 会话' })
         request.session = session
         if (request.cancelled || input.signal?.aborted) {
           return { details: await this.refreshDetails(), cancelled: true }
@@ -2270,15 +2270,15 @@ window.__ModuleLoader__.load({
       }
 
       async uploadFile(conversationId, file, options = {}) {
-        if (this.disposed) throw new Error('ElecKoi 会话目录已关闭。')
-        if (!conversationId) throw new Error('请先打开一个聊天。')
-        if (!file || typeof file.name !== 'string') throw new Error('请选择有效文件。')
-        if (!this.fileUpload) throw new Error('DSH 文件上传服务尚未就绪。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 会话目录已关闭。', { what: 'ElecKoi 会话目录' })
+        if (!conversationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先打开一个聊天。', { what: '打开一个聊天' })
+        if (!file || typeof file.name !== 'string') throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '请选择有效文件。', { field: 'file' })
+        if (!this.fileUpload) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 文件上传服务尚未就绪。', { what: 'DSH 文件上传服务' })
         if (this.detailsSnapshot.id !== conversationId) await this.open(conversationId)
         const runtimeSessionId = this.runtimeSessionId(conversationId)
           || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.runtimeSessionId : '')
           || (this.detailsSnapshot.id === conversationId ? this.detailsSnapshot.details?.runtimeSessionId : '')
-        if (!runtimeSessionId) throw new Error('当前聊天缺少 DSH Session。')
+        if (!runtimeSessionId) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前聊天缺少 DSH Session。', { what: '当前聊天的 DSH 会话' })
         const uploaded = this.unwrap(
           await this.fileUpload.upload(
             runtimeSessionId,
@@ -2291,7 +2291,7 @@ window.__ModuleLoader__.load({
         )
         if (!uploaded || typeof uploaded.receiptId !== 'string'
           || !uploaded.file || typeof uploaded.file.attachmentId !== 'string') {
-          throw new Error('DSH 文件上传服务返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 文件上传服务返回的数据格式不正确。', { what: 'DSH 文件上传结果' })
         }
         return {
           id: uploaded.receiptId,
@@ -2303,7 +2303,7 @@ window.__ModuleLoader__.load({
       }
 
       async runOfficialRegeneration(input, request) {
-        if (!Number.isSafeInteger(input.eventSeq)) throw new Error('找不到这条输入对应的 DSH 消息。')
+        if (!Number.isSafeInteger(input.eventSeq)) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这条输入对应的 DSH 消息。', { what: '这条输入对应的 DSH 消息' })
         request.regenerationInput = { eventSeq: input.eventSeq, runtimeSessionId: this.runtimeSessionId(input.conversationId) }
         request.statsPending = this.statsSnapshot.id === input.conversationId && Boolean(this.statsSnapshot.stats)
         this.primeRewindRequest(input, request)
@@ -2340,7 +2340,7 @@ window.__ModuleLoader__.load({
         if (this.detailsSnapshot.id === input.conversationId) await this.refreshDetails()
         request.statsBaselineSteps = this.latestStatsSnapshot.stats?.sessionStats?.steps ?? 0
         const session = this.sessionReference?.binding.session
-        if (!session || prepared.prepared !== true) throw new Error('重新生成请求未完成 DSH Session 回退。')
+        if (!session || prepared.prepared !== true) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '重新生成请求未完成 DSH Session 回退。', { what: '重新生成的回退状态' })
         request.session = session
         const cancelled = request.cancelled || input.signal?.aborted === true
         const accepted = this.unwrap(
@@ -2351,8 +2351,8 @@ window.__ModuleLoader__.load({
           request.regenerationInput = undefined
           return { details: await this.refreshDetails(), cancelled: true }
         }
-        if (accepted.accepted !== true) throw new Error('重新生成请求未被 DSH Session 接受。')
-        if (!Number.isSafeInteger(accepted.turn) || accepted.turn < 1) throw new Error('重新生成请求缺少 DSH 执行轮次。')
+        if (accepted.accepted !== true) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '重新生成请求未被 DSH Session 接受。', { what: '重新生成请求的接受结果' })
+        if (!Number.isSafeInteger(accepted.turn) || accepted.turn < 1) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '重新生成请求缺少 DSH 执行轮次。', { what: '重新生成请求的执行轮次' })
         if (request.cancelled || input.signal?.aborted) this.unwrap(await session.cancel(), '停止生成失败。')
         const completed = await waitForOfficialSession(session, this.sessionReference.binding.eventSource, input.requestId, accepted.turn)
         if (prepared.operationId) {
@@ -2412,7 +2412,7 @@ window.__ModuleLoader__.load({
       assertDetails(value, id) {
         if (!value || value.conversation?.id !== id || !Array.isArray(value.messages)
           || value.messages.some(message => !message || typeof message.id !== 'string')) {
-          throw new Error('会话详情返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '会话详情返回的数据格式不正确。', { what: '会话详情' })
         }
         return value
       }
@@ -2436,7 +2436,7 @@ window.__ModuleLoader__.load({
 
       async refreshDetails() {
         const id = this.detailsSnapshot.id
-        if (this.disposed || !id) throw new Error('ElecKoi 当前会话不可用。')
+        if (this.disposed || !id) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ElecKoi 当前会话不可用。', { what: '打开一个聊天' })
         const generation = ++this.detailGeneration
         try {
           const details = this.assertDetails(this.unwrap(
@@ -2450,7 +2450,7 @@ window.__ModuleLoader__.load({
           if (this.disposed || this.detailsSnapshot.id !== id) return null
           const chat = this.sessionTarget?.getSnapshot()
           if (runtimeSessionId && this.sessions && this.uiConversation && !chat) {
-            throw new Error('DSH 聊天正文尚未加载。')
+            throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 聊天正文尚未加载。', { what: 'DSH 聊天正文' })
           }
           const hasMore = chat ? Boolean(this.sessionReference.binding.eventSource.getSnapshot().hasMore) : details.hasMore
           const session = this.sessionReference?.binding?.session
@@ -2512,7 +2512,7 @@ window.__ModuleLoader__.load({
           || page.messages.some(message => !message || typeof message.id !== 'string')
           || typeof page.hasMore !== 'boolean'
           || (page.beforeSequence !== null && !Number.isInteger(page.beforeSequence))) {
-          throw new Error('更早消息返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '更早消息返回的数据格式不正确。', { what: '更早消息' })
         }
         const latest = this.detailsSnapshot
         if (this.disposed || latest.id !== id || bindingGeneration !== this.sessionBindingGeneration
@@ -2543,7 +2543,7 @@ window.__ModuleLoader__.load({
       }
 
       async observeRequestPreviews(id, onChange, signal) {
-        if (this.disposed) throw new Error('DSH 聊天服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 聊天服务已关闭。', { what: 'DSH 聊天服务' })
         signal.throwIfAborted()
         const controller = new AbortController()
         const stream = this.remote.$stream({
@@ -2568,13 +2568,13 @@ window.__ModuleLoader__.load({
       }
 
       async readRequestPreview(id, requestId, signal) {
-        if (this.disposed) throw new Error('DSH 聊天服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 聊天服务已关闭。', { what: 'DSH 聊天服务' })
         return this.unwrap(await this.remote.eleckoiConversations.requestPreview(id, requestId, signal), '请求上下文预览读取失败。')
       }
 
       async refreshTimeline() {
         const id = this.timelineSnapshot.id
-        if (this.disposed || !id) throw new Error('ElecKoi 当前变量时间线不可用。')
+        if (this.disposed || !id) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ElecKoi 当前变量时间线不可用。', { what: '打开一个聊天' })
         const generation = ++this.timelineGeneration
         try {
           const timeline = this.unwrap(
@@ -2583,7 +2583,7 @@ window.__ModuleLoader__.load({
           )
           if (!timeline || !Array.isArray(timeline.floors)
             || timeline.floors.some(floor => !floor || typeof floor.id !== 'string')) {
-            throw new Error('变量时间线返回的数据格式不正确。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量时间线返回的数据格式不正确。', { what: '变量时间线' })
           }
           if (!this.disposed && generation === this.timelineGeneration && this.timelineSnapshot.id === id) {
             this.publishTimeline({ id, status: 'ready', timeline, error: '' })
