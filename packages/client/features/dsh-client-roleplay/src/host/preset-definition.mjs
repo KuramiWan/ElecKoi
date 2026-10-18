@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 const resolveRuntimeModule = createRequire(import.meta.url).resolve
 
@@ -31,12 +32,12 @@ export function readRuntimePresetDefinition(path, id, templatePath, requiredProd
   const source = readFileSync(path, 'utf8')
   const parsed = JSON.parse(source)
   if (parsed?.id !== id || !Array.isArray(parsed.plugins)) {
-    throw new Error(`ElecKoi Agent preset ${id} has an invalid composition`)
+    throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `ElecKoi Agent preset ${id} has an invalid composition`, { what: 'Agent 预设的组成' })
   }
   // Generated declarations retain their selected capabilities; required Host
   // file access is restored before mounting without changing Session history.
   for (const pluginId of requiredProductPlugins) {
-    if (!PRODUCT_PLUGIN_FILES.has(pluginId)) throw new Error(`未知的预设必需插件：${pluginId}`)
+    if (!PRODUCT_PLUGIN_FILES.has(pluginId)) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `未知的预设必需插件：${pluginId}`, { what: '预设必需插件' })
     if (!parsed.plugins.some(plugin => plugin?.id === pluginId)) {
       parsed.plugins.push({ id: pluginId, name: productSpecifier(pluginId) })
     }
@@ -53,7 +54,7 @@ function resolveRuntimePlugin(plugin, templatePath) {
   } else if (plugin.id === 'image-generation-tools' && name === productSpecifier(plugin.id)) {
     name = new URL('./image-generation-tools.mjs', import.meta.url).href
   } else if (productFile && name === productSpecifier(plugin.id)) {
-    if (!templatePath) throw new Error(`ElecKoi Agent preset ${plugin.id} is missing its runtime template path`)
+    if (!templatePath) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `ElecKoi Agent preset ${plugin.id} is missing its runtime template path`, { what: '预设的运行时模板路径' })
     name = pathToFileURL(join(dirname(templatePath), '..', productFile)).href
   }
   return {

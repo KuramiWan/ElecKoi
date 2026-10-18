@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { DEFAULT_VARIABLE_CONFIG_VERSION_ID, VARIABLE_INITIALIZATION_OBJECT_ID, variableValueTypeSchema } from "../../../../../../packages/shared/src/contracts/variables/schemas.ts";
 import { activateVariableVersion, createVariableId, syncActiveVersion, uniqueVariableName, withGeneratedInitialState } from "./variableConfigEditing.js";
 
@@ -120,9 +122,9 @@ function parseVersion(value, existingNames, requestedName = "") {
 
 export function importVariableConfig(config, sourceText) {
   let data;
-  try { data = JSON.parse(sourceText); } catch (error) { throw new Error("变量配置文件不是有效的 JSON。", { cause: error }); }
-  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("变量配置文件格式不正确。");
-  if (data.format && data.format !== "eleckoi.variable-config") throw new Error("这不是 ElecKoi 变量配置文件。");
+  try { data = JSON.parse(sourceText); } catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, "变量配置文件不是有效的 JSON。", { what: "变量配置文件" }); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, "变量配置文件格式不正确。", { what: "变量配置文件" });
+  if (data.format && data.format !== "eleckoi.variable-config") throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "这不是 ElecKoi 变量配置文件。", { what: "变量配置文件的格式", expected: "eleckoi.variable-config" });
   const synced = syncActiveVersion(config);
   const names = new Set(synced.versions.map((item) => item.name));
   const imported = parseVersion(data, names);
