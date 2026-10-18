@@ -10,8 +10,10 @@ import { installWindowsNativeFrame } from './windowsNativeFrame'
 import { DesktopBrowserGuests } from './desktopBrowserGuests'
 import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, isDshClientAsset, resolveElecKoiClientAssets, serveDshClientAsset, serveElecKoiClientAsset } from './dshClientDocument'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
+import { LOG_ACTIONS } from '@shared/contracts/logActions'
 import { foldFailure } from '@shared/foundation/failure'
 import { desktopHostFailureNoticeOf } from '@shared/foundation/ipcFailure'
+import { logAction, relayRendererActionLog } from '@main/platform/logging/logActions'
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
@@ -66,6 +68,8 @@ export const mainWindowPlugin = {
         installWindowsNativeFrame(window)
         window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
         window.webContents.on('console-message', ({ level, message }) => {
+          // 子窗口里的用户动作（导入 / 导出角色卡等）也走 console → 主进程日志这条路。
+          if (relayRendererActionLog(appLog, message)) return
           if (level === 'error') appLog.error({ message }, 'ElecKoi child window console error')
         })
         window.webContents.on('did-fail-load', (_event, code, description, url) => {
@@ -197,7 +201,24 @@ export const mainWindowPlugin = {
       )
       await browserGuests.release(event.sender, lease)
     })
-    const ready = await pluginHost.start()
+    /**
+     * 启动 DSH 插件宿主：开始 / 成功 / 失败各一行（失败行带契约码与详情），失败原样抛出。
+     *
+     * 插件宿主起不来是应用打不开的主要形态，日志里必须能一眼看出卡在这一步、码是什么。
+     */
+    async function runPluginHostStart(): Promise<Awaited<ReturnType<typeof pluginHost.start>>> {
+      logAction(appLog, LOG_ACTIONS.pluginHostStart, 'start')
+      try {
+        const started = await pluginHost.start()
+        logAction(appLog, LOG_ACTIONS.pluginHostStart, 'success')
+        return started
+      } catch (error) {
+        logAction(appLog, LOG_ACTIONS.pluginHostStart, 'failure', error)
+        throw error
+      }
+    }
+
+    const ready = await runPluginHostStart()
     pluginHostReady = { ...ready, cookie: await authenticateDshClientHost(ready.url) }
     await windows.open('main')
     return () => {
@@ -247,6 +268,11 @@ function configureMainWindow(appPaths: Context['appPaths'], appLog: Context['app
   installWindowsNativeFrame(window)
   window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
   window.webContents.on('console-message', (details) => {
+    // 渲染层动作行（WP14）：与 console 错误共用这个桥，不新开 IPC 通道。
+    // 作者卡的 srcDoc iframe 不是 DSH 应用渲染层，它的行一律不收（下面的错误分支同一条规矩）。
+    if (details.sourceId !== 'about:srcdoc'
+      && !(details.frame && details.frame !== window.webContents.mainFrame)
+      && relayRendererActionLog(appLog, details.message)) return
     if (details.level !== 'error') return
     // Rich character cards run in srcDoc iframes. Their compatibility API
     // errors are author-card diagnostics, not failures of the DSH application

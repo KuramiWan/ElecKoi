@@ -2,6 +2,7 @@ import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
 import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { emptyPersona } from "../../../utils/constants/defaults.js";
+import { LOG_ACTIONS, logAction } from "../../../utils/logAction.js";
 
 export function newCharacter(group = "") {
   const id = `character-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
@@ -189,7 +190,16 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
 
   async function importPreparedCharacters(token) {
     if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
-    const result = await characterCatalog.commitImport(token);
+    // 关键路径日志：导入角色卡（主窗口角色页这条路；角色卡管理器里另有一条同样的动作）。
+    logAction(LOG_ACTIONS.characterImport, "start");
+    let result;
+    try {
+      result = await characterCatalog.commitImport(token);
+    } catch (error) {
+      logAction(LOG_ACTIONS.characterImport, "failure", error);
+      throw error;
+    }
+    logAction(LOG_ACTIONS.characterImport, "success");
     applyCharacterCollection(result.collection);
     const selectedId = result.importedCharacterIds?.[0] || result.collection.active_character_id;
     setSelectedCharacter(selectedId);

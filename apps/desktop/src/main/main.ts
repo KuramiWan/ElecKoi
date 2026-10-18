@@ -45,6 +45,7 @@ const ownsPrimaryInstance = app.requestSingleInstanceLock()
 let shutdownStarted = false
 let shutdownComplete = false
 let sessionLog: Logger | undefined
+let sessionId: string | undefined
 
 if (!ownsPrimaryInstance) {
   app.quit()
@@ -67,20 +68,21 @@ async function startDesktop(): Promise<void> {
   }
 }
 
-/** 应用就绪：写会话开始标记（带日志文件路径）。 */
+/** 应用就绪：写会话开始标记（带语义键、配对标识与日志文件路径）。 */
 function logSessionStart(): void {
   const appLog = host.appLog
   const appPaths = host.appPaths
   if (appLog === undefined || appPaths === undefined) return
   sessionLog = appLog
-  logAppSessionStart(appLog, appLogFilePath(appPaths.userData))
+  sessionId = logAppSessionStart(appLog, appLogFilePath(appPaths.userData))
 }
 
-/** 正常退出：会话结束标记。崩溃 / 强杀时走不到这里，日志只剩 start。 */
+/** 正常退出：会话结束标记（同一个配对标识）。崩溃 / 强杀时走不到这里，日志只剩 start。 */
 function logSessionEnd(): void {
-  if (sessionLog === undefined) return
-  logAppSessionEnd(sessionLog)
+  if (sessionLog === undefined || sessionId === undefined) return
+  logAppSessionEnd(sessionLog, sessionId)
   sessionLog = undefined
+  sessionId = undefined
 }
 
 app.on('window-all-closed', () => app.quit())

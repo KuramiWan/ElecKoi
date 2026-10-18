@@ -1,12 +1,18 @@
+import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import pino, { type Logger } from 'pino'
+import { LOG_ACTIONS } from '@shared/contracts/logActions'
 import { appLogDirectory, appLogFileName, applyAppLogRotation, logDateStamp } from './logRotation'
 
-/** 会话开始标记：应用就绪时写一行（带日志文件路径）。 */
+/**
+ * 会话开始标记：应用就绪时写一行（带日志文件路径、语义键 `session.started` 与配对标识）。
+ * 语义键在结构化字段 `action` 里（`LOG_ACTIONS.sessionStarted`），渲染层 / 主进程的动作行
+ * 用的是同一套键（`@shared/contracts/logActions`）。
+ */
 export const APP_LOG_SESSION_START = 'ElecKoi Desktop 会话开始'
 
-/** 会话结束标记：正常退出时写一行；崩溃 / 强杀时没有这一行。 */
+/** 会话结束标记：正常退出时写一行（带同一个 `sessionId`）；崩溃 / 强杀时没有这一行。 */
 export const APP_LOG_SESSION_END = 'ElecKoi Desktop 会话结束'
 
 /**
@@ -44,20 +50,32 @@ export function createAppLog(userData: string, now: Date = new Date()): Logger {
 }
 
 /**
- * 会话开始：一行 `info`，带日志文件路径（维护者靠它找到这次运行的日志）。
+ * 会话开始：一行 `info`，带语义键 `session.started`、本次会话的配对标识与日志文件路径
+ * （维护者靠路径找到这次运行的日志）。
+ *
  * @param logger - 主进程日志。
  * @param logFile - 本次运行写到的日志文件。
+ * @param sessionId - 配对标识；缺省新生成一个。结束行必须带同一个值，两者才算成对。
+ * @returns 本次会话的配对标识（调用点要存起来交给 {@link logAppSessionEnd}）。
  */
-export function logAppSessionStart(logger: Pick<Logger, 'info'>, logFile: string): void {
-  logger.info({ logFile }, APP_LOG_SESSION_START)
+export function logAppSessionStart(
+  logger: Pick<Logger, 'info'>,
+  logFile: string,
+  sessionId: string = randomUUID()
+): string {
+  logger.info({ action: LOG_ACTIONS.sessionStarted, sessionId, logFile }, APP_LOG_SESSION_START)
+  return sessionId
 }
 
 /**
- * 会话结束：一行 `info`。崩溃 / 强杀时这一行不会出现，日志里就是"有 start 没 end"。
+ * 会话结束：一行 `info`，带语义键 `session.ended` 与开始时给出的配对标识。
+ * 崩溃 / 强杀时这一行不会出现，日志里就是"有 start 没 end"。
+ *
  * @param logger - 主进程日志。
+ * @param sessionId - {@link logAppSessionStart} 返回的配对标识。
  */
-export function logAppSessionEnd(logger: Pick<Logger, 'info'>): void {
-  logger.info(APP_LOG_SESSION_END)
+export function logAppSessionEnd(logger: Pick<Logger, 'info'>, sessionId: string): void {
+  logger.info({ action: LOG_ACTIONS.sessionEnded, sessionId }, APP_LOG_SESSION_END)
 }
 
 const bootstrapLogger = pino({ name: 'eleckoi-desktop-bootstrap' })

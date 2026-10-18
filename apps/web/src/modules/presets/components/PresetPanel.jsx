@@ -21,6 +21,7 @@ import { PresetToolsEditor } from './PresetToolsEditor.jsx';
 import { fileBase64, PresetImportDialog } from './PresetTransfer.jsx';
 import { openPresetManagerWindow } from '../window/openPresetManagerWindow.js';
 import { PresetPurposeSwitch, isDefaultPreset } from './PresetPurposeSwitch.jsx';
+import { LOG_ACTIONS, logAction } from '../../../utils/logAction.js';
 
 const PresetContext = createContext(null);
 const ALL_PRESETS = '全部预设';
@@ -455,6 +456,8 @@ export function PresetWorkspace({
     savingRef.current = true;
     setSaving(true);
     setError('');
+    // 关键路径日志：保存预设（预设正文的保存按钮；编辑器内的保存各自另有通道）。
+    logAction(LOG_ACTIONS.presetSave, 'start');
     try {
       const saved = await catalogModel.save(candidate, persisted?.regexRules || []);
       pendingLatestRef.current = null;
@@ -463,8 +466,10 @@ export function PresetWorkspace({
       setPersisted(saved);
       await refresh(saved.id);
       if (compact) onNotify?.('success', '预设已保存');
+      logAction(LOG_ACTIONS.presetSave, 'success');
       return true;
     } catch (cause) {
+      logAction(LOG_ACTIONS.presetSave, 'failure', cause);
       setError(cause?.message || '保存预设失败');
       return false;
     } finally {

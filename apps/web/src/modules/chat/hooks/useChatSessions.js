@@ -14,6 +14,7 @@ import {
   updateChatOpening,
 } from "../api/chatApi.js";
 import { useChatInputFiles } from './useChatInputFiles.js';
+import { LOG_ACTIONS, runLoggedAction } from '../../../utils/logAction.js';
 import {
   createEmptyChatCharacter,
   normalizeChatItemCharacter,
@@ -493,7 +494,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
     const shouldCreateReplacement = Boolean(targetCharacterId) && remainingSameCharacterSessions.length === 0;
 
-    await deleteChat(chatId, { model: conversations });
+    await runLoggedAction(LOG_ACTIONS.conversationDelete, () => deleteChat(chatId, { model: conversations }));
     unpinChat(chatId);
     forgetPreferredSession(targetCharacterId, chatId);
 
