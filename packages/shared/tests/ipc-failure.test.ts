@@ -11,7 +11,10 @@ import { foldFailure } from '../src/foundation/failure'
 import {
   desktopHostFailureNoticeOf,
   desktopIpcFailureOf,
-  hasDesktopIpcFailureMarker
+  hasDesktopIpcFailureMarker,
+  throwIfDesktopIpcFailure,
+  unwrapDesktopIpcResult,
+  wrapDesktopIpcHandler
 } from '../src/foundation/ipcFailure'
 
 describe('desktopIpcFailureOf', () => {
@@ -107,5 +110,119 @@ describe('边界⑤ 的完整一跳：折叠 → 线上载荷 → 再折叠', ()
     expect(folded.code).toBe(ELECKOI_FAILURE_CODES.pluginLoadFailed)
     expect(folded.details).toEqual({ what: 'DSH 插件宿主进程' })
     expect(hasDesktopIpcFailureMarker(wire)).toBe(true)
+  })
+})
+
+describe('wrapDesktopIpcHandler', () => {
+  it('handler 成功 → 载荷原样返回，没有被包装成失败', async () => {
+    const wrapped = wrapDesktopIpcHandler((_event: unknown, value: unknown) => value)
+    const payload = { ok: true, items: [1, 2] }
+    await expect(wrapped(undefined, payload)).resolves.toBe(payload)
+    expect(hasDesktopIpcFailureMarker(await wrapped(undefined, payload))).toBe(false)
+    await expect(wrapped(undefined, 'text')).resolves.toBe('text')
+  })
+
+  it('async handler 成功 → 载荷也原样返回（更新的四个通道就是 async）', async () => {
+    const wrapped = wrapDesktopIpcHandler(async () => ({ phase: 'idle' }))
+    await expect(wrapped(undefined)).resolves.toEqual({ phase: 'idle' })
+    expect(hasDesktopIpcFailureMarker(await wrapped(undefined))).toBe(false)
+  })
+
+  it('handler 抛 DesktopError → 返回带标记的对象，同一条码与 details', async () => {
+    const wrapped = wrapDesktopIpcHandler(() => {
+      throw new DesktopError(
+        ELECKOI_FAILURE_CODES.agentPresetNotFound,
+        '找不到这个预设：preset-1',
+        { what: '预设' }
+      )
+    })
+    const failure = await wrapped(undefined)
+    expect(hasDesktopIpcFailureMarker(failure)).toBe(true)
+    expect(failure).toMatchObject({
+      isDSHRemoteError: true,
+      code: ELECKOI_FAILURE_CODES.agentPresetNotFound,
+      message: '找不到这个预设：preset-1',
+      details: { what: '预设' }
+    })
+    // 渲染层那个唯一解析点认得出这条码（不是兜底）。
+    expect(foldFailure(failure).code).toBe(ELECKOI_FAILURE_CODES.agentPresetNotFound)
+  })
+
+  it('handler 抛裸 Error → 折成兜底码，message 不丢', async () => {
+    const wrapped = wrapDesktopIpcHandler(() => {
+      throw new Error('桌面窗口操作不受支持。')
+    })
+    expect(await wrapped(undefined)).toMatchObject({
+      isDSHRemoteError: true,
+      code: ELECKOI_FAILURE_CODES.internal,
+      message: '桌面窗口操作不受支持。',
+      details: {}
+    })
+  })
+
+  it('async handler 的拒绝同样折成线上对象（不是以 Error 跨进程）', async () => {
+    const wrapped = wrapDesktopIpcHandler(async () => {
+      throw new DesktopError(
+        ELECKOI_FAILURE_CODES.netOperationFailed,
+        '检查更新失败：网络不可用',
+        { operation: 'check', what: '更新' }
+      )
+    })
+    const failure = await wrapped(undefined)
+    expect(failure).toMatchObject({
+      isDSHRemoteError: true,
+      code: ELECKOI_FAILURE_CODES.netOperationFailed,
+      details: { operation: 'check', what: '更新' }
+    })
+  })
+
+  it('失败对象过 JSON 往返后形状不变（结构化克隆的判据）', async () => {
+    const wrapped = wrapDesktopIpcHandler(() => {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, '写不进去：/tmp/x', { operation: 'write', path: '/tmp/x' })
+    })
+    const failure = await wrapped(undefined)
+    expect(Object.getPrototypeOf(failure)).toBe(Object.prototype)
+    expect(JSON.parse(JSON.stringify(failure))).toEqual(failure)
+    expect(foldFailure(JSON.parse(JSON.stringify(failure))).code).toBe(ELECKOI_FAILURE_CODES.ioFailed)
+  })
+})
+
+describe('throwIfDesktopIpcFailure', () => {
+  it('带标记的对象被原样抛出去（渲染层拿到的就是它，能 foldFailure）', () => {
+    const failure = desktopIpcFailureOf(new DesktopError(
+      ELECKOI_FAILURE_CODES.agentPresetNotFound,
+      '找不到这个预设。',
+      { what: '预设' }
+    ))
+    let thrown: unknown
+    try {
+      throwIfDesktopIpcFailure(failure)
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(failure)
+    expect(foldFailure(thrown).code).toBe(ELECKOI_FAILURE_CODES.agentPresetNotFound)
+  })
+
+  it('普通载荷什么也不做（不把成功当失败）', () => {
+    for (const value of [null, undefined, 0, '', 'text', [], {}, { isDSHRemoteError: false }, { ok: true }]) {
+      expect(() => throwIfDesktopIpcFailure(value), String(value)).not.toThrow()
+    }
+  })
+})
+
+describe('unwrapDesktopIpcResult', () => {
+  it('拿到带标记的对象 → 拒绝它本身（码与详情随拒绝原因到渲染层）', async () => {
+    const failure = desktopIpcFailureOf(new DesktopError(
+      ELECKOI_FAILURE_CODES.securityDenied,
+      '拒绝打开这个工作区。',
+      { what: '工作区' }
+    ))
+    await expect(unwrapDesktopIpcResult(async () => failure)).rejects.toBe(failure)
+  })
+
+  it('拿到普通载荷 → 原样返回', async () => {
+    const payload = { phase: 'idle' }
+    await expect(unwrapDesktopIpcResult(async () => payload)).resolves.toBe(payload)
   })
 })
