@@ -94,7 +94,9 @@ describe("right sidebar shell layout", () => {
     expect(preloadSource).toContain("function createDesktopBrowserBridge()");
     expect(preloadSource).toContain("browser: createDesktopBrowserBridge()");
     expect(mainWindowPluginSource).toContain("webviewTag: !child");
-    expect(mainWindowPluginSource).toContain("ipcMain.handle(DESKTOP_SHELL_IPC.browserAcquire");
-    expect(mainWindowPluginSource).toContain("ipcMain.handle(DESKTOP_SHELL_IPC.browserRelease");
+    // WP19 起主进程统一走 handleDesktopIpcCall 注册（把 handler 的抛出折成线上失败对象），
+    // 通道仍在 mainWindowPlugin 里注册；这里断言注册形状的凭据随之更新，行为断言不变。
+    expect(mainWindowPluginSource).toContain("handleDesktopIpcCall(DESKTOP_SHELL_IPC.browserAcquire");
+    expect(mainWindowPluginSource).toContain("handleDesktopIpcCall(DESKTOP_SHELL_IPC.browserRelease");
   });
 });
