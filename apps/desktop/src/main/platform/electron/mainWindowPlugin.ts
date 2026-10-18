@@ -179,7 +179,10 @@ export const mainWindowPlugin = {
         windows.all().map(window => window.webContents)
       )
       if (action !== 'minimize' && action !== 'maximize' && action !== 'close') {
-        throw new TypeError('桌面窗口操作不受支持。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '桌面窗口操作不受支持。', {
+          what: '桌面窗口操作',
+          expected: 'minimize、maximize、close'
+        })
       }
       const target = BrowserWindow.fromWebContents(event.sender)
       if (target === null || target.isDestroyed()) return

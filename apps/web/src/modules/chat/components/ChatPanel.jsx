@@ -114,11 +114,11 @@ export function ChatPanel({
   const [requestPreviewOpen, setRequestPreviewOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const loadImage = useCallback((id, image) => {
-    if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
+    if (!conversationModel) return Promise.reject(new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 图片服务尚未就绪。', { what: 'DSH 图片服务' }));
     return conversationModel.readImage(id, image);
   }, [conversationModel]);
   const regenerateImage = useCallback(image => {
-    if (!conversationModel) return Promise.reject(new Error('DSH 图片服务尚未就绪。'));
+    if (!conversationModel) return Promise.reject(new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 图片服务尚未就绪。', { what: 'DSH 图片服务' }));
     return conversationModel.regenerateImage(conversationId, image);
   }, [conversationModel, conversationId]);
   const openFile = useCallback((id, attachmentId, name) => {

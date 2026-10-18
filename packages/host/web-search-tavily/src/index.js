@@ -1,6 +1,7 @@
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { WebError } from '@deepseek-ai/dsh-web'
+import { FAILURE_CODES, webFailure } from './failure.js'
 
 export const name = 'eleckoi-web-search-tavily'
 export const inject = ['web']
@@ -25,7 +26,7 @@ export function apply(ctx, config) {
       const apiKeyRef = credentialRef(config.apiKeyEnv.get())
       const maxResults = config.maxResults.get()
       const apiKey = (await ctx.get('credentials')?.resolve(apiKeyRef))?.value?.trim() ?? ''
-      if (!apiKey) throw new WebError('Tavily API Key 尚未配置', 'WEB_PROVIDER_CREDENTIAL_MISSING')
+      if (!apiKey) throw webFailure(FAILURE_CODES.modelConfigInvalid, 'Tavily API Key 尚未配置', { field: 'Tavily API Key', what: '联网搜索密钥' })
       let response
       try {
         response = await fetch(`${BASE_URL}/search`, {
@@ -58,16 +59,16 @@ export function apply(ctx, config) {
         if (signal?.aborted || isAbortError(error)) {
           throw new WebError('Tavily search aborted', 'WEB_ABORTED', { cause: error })
         }
-        throw new WebError('Tavily 搜索请求失败，请检查网络连接。', 'WEB_PROVIDER_ERROR', { cause: error })
+        throw webFailure(FAILURE_CODES.netOperationFailed, 'Tavily 搜索请求失败，请检查网络连接。', { operation: 'request', what: 'Tavily 搜索接口' }, { cause: error })
       }
 
       const body = await readBoundedBody(response, response.ok ? RESPONSE_LIMIT : ERROR_LIMIT)
-      if (!response.ok) throw new WebError(httpError(response.status, body, apiKey), 'WEB_PROVIDER_ERROR')
+      if (!response.ok) throw httpFailure(response.status, body, apiKey)
       let payload
       try {
         payload = JSON.parse(body)
       } catch (error) {
-        throw new WebError('Tavily 返回了无效 JSON。', 'WEB_PROVIDER_ERROR', { cause: error })
+        throw webFailure(FAILURE_CODES.contractInvalidResponse, 'Tavily 返回了无效 JSON。', { issues: [{ path: '', message: '响应不是合法 JSON' }] }, { cause: error })
       }
       return {
         sources: Array.isArray(payload?.results) ? payload.results.map(normalizeResult).filter(Boolean) : [],
@@ -99,7 +100,7 @@ function safeUrl(value) {
 async function readBoundedBody(response, limit) {
   const declared = Number(response.headers.get('content-length') || 0)
   if (Number.isFinite(declared) && declared > limit) {
-    throw new WebError('Tavily 响应超过安全上限。', 'WEB_PROVIDER_ERROR')
+    throw webFailure(FAILURE_CODES.netOperationFailed, 'Tavily 响应超过安全上限。', { operation: 'request', what: 'Tavily 搜索响应' })
   }
   if (!response.body) return ''
   const reader = response.body.getReader()
@@ -112,15 +113,20 @@ async function readBoundedBody(response, limit) {
     bytes += part.value.byteLength
     if (bytes > limit) {
       await reader.cancel()
-      throw new WebError('Tavily 响应超过安全上限。', 'WEB_PROVIDER_ERROR')
+      throw webFailure(FAILURE_CODES.netOperationFailed, 'Tavily 响应超过安全上限。', { operation: 'request', what: 'Tavily 搜索响应' })
     }
     body += decoder.decode(part.value, { stream: true })
   }
   return body + decoder.decode()
 }
 
-function httpError(status, body, apiKey) {
-  if (status === 401) return 'Tavily API Key 无效。'
+function httpFailure(status, body, apiKey) {
+  // 401 是密钥配置问题，不是网络故障：按模型配置折码，用户句才说得出该改哪里。
+  if (status === 401) return webFailure(FAILURE_CODES.modelConfigInvalid, 'Tavily API Key 无效。', { field: 'Tavily API Key', what: '联网搜索密钥' })
+  return webFailure(FAILURE_CODES.netOperationFailed, publicHttpError(status, body, apiKey), { operation: 'request', what: 'Tavily 搜索接口' })
+}
+
+function publicHttpError(status, body, apiKey) {
   if (status === 429) return 'Tavily 请求过于频繁，请稍后重试。'
   if (status === 432 || status === 433) return 'Tavily 可用额度已耗尽。'
   const detail = String(body).split(apiKey).join('[REDACTED]').replace(/\s+/g, ' ').trim().slice(0, 600)

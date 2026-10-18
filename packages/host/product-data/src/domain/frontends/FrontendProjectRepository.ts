@@ -39,7 +39,7 @@ const FRONTEND_ACTIONS = ['workspace', 'importProject', 'select',
   'updateProject', 'replaceFiles', 'restoreDefault'] as const
 const object = (value: FrontendValue | undefined): Document => {
   if (value == null) return {}
-  if (typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Expected a frontend object')
+  if (typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Expected a frontend object', { what: '前端数据' })
   return value
 }
 const json = (value: unknown) => value as FrontendValue
@@ -69,13 +69,13 @@ export class FrontendProjectRepository {
   }
   private owner(p: Document): Owner {
     if (p.scope === 'application') return { scope: 'application', settingsScope: APPLICATION_SETTINGS, key: 'application' }
-    if (p.scope !== 'character') throw new TypeError(`Unknown frontend scope: ${String(p.scope)}`)
+    if (p.scope !== 'character') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Unknown frontend scope: ${String(p.scope)}`, { what: '前端作用域', expected: 'character、application' })
     const characterId = this.character(p)
     return { scope: 'character', characterId, settingsScope: SETTINGS, key: characterId }
   }
   private project(id: string): FrontendProject {
     // Project identifiers must remain within their resource directory.
-    if (!id || id === '.' || id === '..' || /[\\/:\0]/.test(id)) throw new TypeError(`Invalid frontend project id: ${id}`)
+    if (!id || id === '.' || id === '..' || /[\\/:\0]/.test(id)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `Invalid frontend project id: ${id}`, { field: 'projectId' })
     const value = this.index.get(PROJECTS, id)
     if (!value) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `Frontend project does not exist: ${id}`, { what: '前端项目' })
     return structuredClone(object(value)) as unknown as FrontendProject
@@ -94,7 +94,7 @@ export class FrontendProjectRepository {
     return project
   }
   private name(value: unknown) {
-    if (typeof value !== 'string') throw new TypeError('Frontend file path must be a string')
+    if (typeof value !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Frontend file path must be a string', { field: 'path' })
     const name = value.replaceAll('\\', '/')
     if (!name || name.startsWith('/') || name.includes(':') || name.includes('\0')
       || name.split('/').some(part => !part || part === '.' || part === '..')) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `Invalid frontend file path: ${name}`, { field: 'name' })
@@ -135,7 +135,7 @@ export class FrontendProjectRepository {
     return this.execute('exportProject', { ...owner, projectId }) as unknown as FrontendExport
   }
   setMessageRenderer(owner: FrontendOwner, enabled: boolean): FrontendWorkspace {
-    if (typeof enabled !== 'boolean') throw new TypeError('Message renderer enabled must be a boolean')
+    if (typeof enabled !== 'boolean') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Message renderer enabled must be a boolean', { field: 'enabled' })
     return this.execute('setMessageRenderer', { ...owner, enabled }) as unknown as FrontendWorkspace
   }
   updateProject(owner: FrontendOwner, projectId: string, patch: FrontendJson): FrontendWorkspace {
@@ -161,13 +161,13 @@ export class FrontendProjectRepository {
     return Object.fromEntries(project.files.map(name => [name, this.readAsset(project.id, name).body]))
   }
   private fileInputs(input: FrontendValue | undefined): Files {
-    if (!Array.isArray(input)) throw new TypeError('Frontend files must be an array')
+    if (!Array.isArray(input)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Frontend files must be an array', { field: 'files' })
     const files: Files = Object.create(null)
     for (const raw of input) {
       const file = object(raw), name = this.name(file.path ?? file.name)
       if (own(files, name)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `Duplicate frontend file: ${name}`, { what: '前端文件' })
-      if (file.encoding !== undefined && !['utf8', 'base64'].includes(String(file.encoding))) throw new TypeError(`Unknown file encoding: ${file.encoding}`)
-      if (typeof file.content !== 'string') throw new TypeError(`Frontend file content must be a string: ${name}`)
+      if (file.encoding !== undefined && !['utf8', 'base64'].includes(String(file.encoding))) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Unknown file encoding: ${file.encoding}`, { what: '前端文件编码', expected: 'utf8、base64' })
+      if (typeof file.content !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `Frontend file content must be a string: ${name}`, { field: 'content' })
       files[name] = Buffer.from(file.content, file.encoding === 'base64' ? 'base64' : 'utf8')
     }
     return files
@@ -200,19 +200,19 @@ export class FrontendProjectRepository {
   private manifest(raw: Document, scope: FrontendScope, files: ReadonlySet<string>, entryFile: string): FrontendManifest {
     if (raw.manifestVersion !== undefined && raw.manifestVersion !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Unsupported frontend manifest version: ${raw.manifestVersion}`, { what: '前端清单版本', expected: '1' })
     if (raw.scope !== undefined && raw.scope !== scope) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, `Frontend manifest scope ${raw.scope} does not match requested ${scope}`, { what: '前端清单的归属' })
-    if (raw.sdkVersion !== undefined && (typeof raw.sdkVersion !== 'string' || !raw.sdkVersion)) throw new TypeError('Frontend sdkVersion must be a nonempty string')
+    if (raw.sdkVersion !== undefined && (typeof raw.sdkVersion !== 'string' || !raw.sdkVersion)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Frontend sdkVersion must be a nonempty string', { what: '前端清单', path: 'sdkVersion' })
     const entry = this.name(entryFile)
     if (!files.has(entry) || !/\.html?$/i.test(entry)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `Frontend HTML entry does not exist: ${entry}`, { what: '前端 HTML 入口' })
     if (raw.globalStyles !== undefined && (!Array.isArray(raw.globalStyles) || raw.globalStyles.some(name => typeof name !== 'string' || !files.has(this.name(name))))) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Frontend globalStyles must reference existing project files', { what: '前端 globalStyles' })
     if (raw.bindings !== undefined) {
-      if (!Array.isArray(raw.bindings)) throw new TypeError('Frontend bindings must be an array')
+      if (!Array.isArray(raw.bindings)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Frontend bindings must be an array', { what: '前端清单', path: 'bindings' })
       for (const value of raw.bindings) {
         const binding = object(value)
         if (!['root', 'page', 'slot'].includes(String(binding.target))) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Unknown frontend binding target: ${binding.target}`, { what: '前端绑定目标' })
         const bindingEntry = this.name(binding.entryFile)
         if (!files.has(bindingEntry) || !/\.html?$/i.test(bindingEntry)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `Frontend binding entry does not exist: ${bindingEntry}`, { what: '前端绑定入口' })
-        if (binding.target === 'page' && (typeof binding.pageId !== 'string' || !binding.pageId)) throw new TypeError('Frontend page binding requires pageId')
-        if (binding.target === 'slot' && (typeof binding.slot !== 'string' || !binding.slot)) throw new TypeError('Frontend slot binding requires slot')
+        if (binding.target === 'page' && (typeof binding.pageId !== 'string' || !binding.pageId)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Frontend page binding requires pageId', { what: '前端清单', path: 'bindings.pageId' })
+        if (binding.target === 'slot' && (typeof binding.slot !== 'string' || !binding.slot)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Frontend slot binding requires slot', { what: '前端清单', path: 'bindings.slot' })
       }
     }
     if (raw.config !== undefined) object(raw.config)
@@ -270,7 +270,7 @@ export class FrontendProjectRepository {
   }
   private cleanupCommitted(path: string) {
     try { rmSync(path, { recursive: true }) }
-    catch (error) { throw Object.assign(new Error(`Frontend changes committed, but temporary directory cleanup failed: ${path}`), { code: 'FRONTEND_COMMITTED_CLEANUP_FAILED', cause: error }) }
+    catch { throw new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, `Frontend changes committed, but temporary directory cleanup failed: ${path}`, { operation: 'delete' }) }
   }
   private execute(method: string, p: Document): FrontendValue {
     if (!(FRONTEND_ACTIONS as readonly string[]).includes(method)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Unknown frontend method: ${method}`, { what: '前端方法' })
@@ -287,7 +287,7 @@ export class FrontendProjectRepository {
       store.atomic(() => this.settings(owner, patch))
     } else if (method === 'importProject') {
       let files: Files
-      if (p.files === undefined && typeof p.html !== 'string' && typeof p.data !== 'string') throw new TypeError('Frontend import requires files, HTML or encoded data')
+      if (p.files === undefined && typeof p.html !== 'string' && typeof p.data !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Frontend import requires files, HTML or encoded data', { field: 'files' })
       if (p.files !== undefined) files = this.fileInputs(p.files)
       else if (/\.zip$/i.test(String(p.filename || ''))) {
         files = this.unzipFiles(Buffer.from(String(p.data || ''), 'base64'))
@@ -306,7 +306,7 @@ export class FrontendProjectRepository {
     } else {
       const project = this.owned(String(p.projectId || ''), owner)
       if (method === 'readFile') {
-        if (p.encoding !== undefined && !['utf8', 'base64'].includes(String(p.encoding))) throw new TypeError(`Unknown file encoding: ${p.encoding}`)
+        if (p.encoding !== undefined && !['utf8', 'base64'].includes(String(p.encoding))) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Unknown file encoding: ${p.encoding}`, { what: '文件编码', expected: 'utf8、base64' })
         const name = this.name(p.path ?? project.entryFile), asset = this.readAsset(project.id, name)
         return { path: name, content: asset.body.toString(p.encoding === 'base64' ? 'base64' : 'utf8'), mimeType: asset.mimeType }
       }
@@ -343,7 +343,7 @@ export class FrontendProjectRepository {
           Object.assign(files, replacements)
           Object.keys(replacements).forEach(name => names.add(name))
           if (method === 'replaceFiles') {
-            if (p.deletePaths !== undefined && !Array.isArray(p.deletePaths)) throw new TypeError('deletePaths must be an array')
+            if (p.deletePaths !== undefined && !Array.isArray(p.deletePaths)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'deletePaths must be an array', { field: 'deletePaths' })
             for (const raw of (p.deletePaths || []) as FrontendValue[]) {
               const name = this.name(raw)
               if (own(replacements, name)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `Cannot replace and delete the same frontend file: ${name}`, { field: 'replacements' })
@@ -356,7 +356,7 @@ export class FrontendProjectRepository {
             else if (own(object(p.manifest), 'entryFile')) project.entryFile = this.name(object(p.manifest).entryFile)
           }
         }
-        if (typeof project.name !== 'string' || !project.name.trim()) throw new TypeError('Frontend project name must be nonempty')
+        if (typeof project.name !== 'string' || !project.name.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Frontend project name must be nonempty', { field: 'name' })
         project.files = [...names].sort()
         project.manifest = this.manifest(rawManifest, owner.scope, names, project.entryFile)
         project.updatedAt = new Date().toISOString()

@@ -87,7 +87,7 @@ export class NativeAuthorClient {
   getUiSnapshot = () => this.scriptUi.getSnapshot()
   subscribeUi = (listener: () => void) => this.scriptUi.subscribe(listener)
   invokeButton = (key: string): Promise<void> => this.snapshot.status !== 'ready'
-    ? Promise.reject(new Error('原生脚本尚未就绪')) : this.scriptUi.invokeButton(key)
+    ? Promise.reject(productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '原生脚本尚未就绪', { what: '等待原生脚本就绪' })) : this.scriptUi.invokeButton(key)
   dismissPanel = (key: string) => this.scriptUi.dismissPanel(key)
 
   mountScriptPanelDocument(target: Window, key: string): () => void {

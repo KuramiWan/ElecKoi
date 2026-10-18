@@ -29,14 +29,16 @@ export function createAuthorScriptFrame(view: AuthorBrowserWindow, entryUrl: str
           const result = (event as CustomEvent).detail
           finish()
           if (result.ok) resolve(result.program)
-          else reject(new Error(result.message))
+          // 作者脚本自己的 import 错误：码表里没有"脚本失败"的码，兜底码不写 what，
+          // 让脚本那句诊断原样到用户眼前。
+          else reject(productFailure(ELECKOI_FAILURE_CODES.internal, result.message))
         }
         const cancelled = () => { finish(); reject(signal.reason) }
         target.addEventListener(type, loaded)
         signal.addEventListener('abort', cancelled, { once: true })
         script.type = 'module'
         script.textContent = `import(${JSON.stringify(entry.href)}).then(module => dispatchEvent(new CustomEvent(${JSON.stringify(type)}, {detail:{ok:true,program:module.default}})), error => dispatchEvent(new CustomEvent(${JSON.stringify(type)}, {detail:{ok:false,message:error.message||String(error)}})));`
-        script.onerror = () => { finish(); reject(new Error('Author module could not be loaded')) }
+        script.onerror = () => { finish(); reject(productFailure(ELECKOI_FAILURE_CODES.internal, 'Author module could not be loaded')) }
         target.document.head.appendChild(script)
       })
     },

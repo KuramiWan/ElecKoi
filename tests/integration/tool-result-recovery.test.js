@@ -387,6 +387,14 @@ describe('Complete tool-result access', { timeout: 30_000 }, () => {
     await expect(f.read({ file_path: ref.locator })).rejects.toThrow('失效')
   })
 
+  it('reports a corrupted ownership record as storage/corrupt', async () => {
+    const f = await fixture(), ref = await f.save('合成内容')
+    writeFileSync(`${ref.locator}.owner.json`, '{"version":1')
+    const failure = await f.read({ file_path: ref.locator }).catch(error => error)
+    expect(failure).toMatchObject({ code: 'eleckoi/storage/corrupt', details: { what: '工具结果归属记录' } })
+    expect(failure.message).toContain('无法解析')
+  })
+
   it.each(['settings', 'variables'])('continues and searches through the existing %s reader and rejects mixed business arguments', async domain => {
     const f = await fixture(), reader = RESULT_READERS[domain], body = '合成关键词𠮷😀'.repeat(1_501)
     const ref = await f.ctx.spillStore.saveText({ owner: { sessionId: f.handle.agent.session.id },

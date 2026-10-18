@@ -37,7 +37,9 @@ export class DesktopUpdateHttpExecutor extends ElectronHttpExecutor {
       clearTimeout(timer)
       timer = setTimeout(() => {
         stop()
-        reject(Object.assign(new Error('Desktop update connection timed out'), { code: 'ETIMEDOUT' }))
+        reject(new DesktopError(ELECKOI_FAILURE_CODES.timeoutExpired, 'Desktop update connection timed out', {
+          what: '更新连接的空闲等待'
+        }))
         request.abort()
       }, this.idleTimeoutMs)
     }
