@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useRef, useState } from 'react';
 import { decodeEditorVersionContent, editorLibraryVersionsSchema } from '@shared/contracts/editorVersions/schemas';
 
@@ -22,7 +24,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
       const next = Object.fromEntries(values.map(value => {
         const parsed = normalize(value);
         if (parsed.kind !== kind || parsed.ownerId !== (parsed.scope === 'global' ? '' : ownerId)
-          || !['global', scope].includes(parsed.scope)) throw new Error('配置版本归属不匹配。');
+          || !['global', scope].includes(parsed.scope)) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '配置版本归属不匹配。', { what: '配置版本归属' });
         return [parsed.scope, parsed];
       }));
       if (Object.values(next).some(value => value.revision < (refs.current.baselines[value.scope]?.revision ?? 0))) return;
@@ -65,7 +67,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
   }
   function change(targetScope, operation) {
     const current = refs.current.drafts[targetScope];
-    if (!current) throw new Error('配置版本尚未载入。');
+    if (!current) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '配置版本尚未载入。', { what: '配置版本' });
     setError('');
     const next = operation(sync(current));
     adopt({ ...refs.current.drafts, [targetScope]: editorLibraryVersionsSchema.parse(next) });
@@ -73,7 +75,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
   }
   function select(targetScope, id) {
     const next = change(targetScope, current => {
-      if (!current.versions.some(version => version.id === id)) throw new Error('指定的配置版本不存在。');
+      if (!current.versions.some(version => version.id === id)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '指定的配置版本不存在。', { what: '配置版本' });
       return { ...current, activeVersionId: id };
     });
     callbacks.current.apply(targetScope, decodeEditorVersionContent(kind, next.versions.find(version => version.id === id).content));
@@ -106,7 +108,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
     callbacks.current.apply(targetScope, decodeEditorVersionContent(kind, next.versions.find(version => version.id === next.activeVersionId).content));
   }
   function prepare() {
-    if (!ready || error) throw new Error(error || '配置版本尚未载入。');
+    if (!ready || error) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, error || '配置版本尚未载入。', { what: '载入配置版本' });
     return Object.values(refs.current.drafts).map(sync).filter(value => !same(value, refs.current.baselines[value.scope]));
   }
   function acceptSaved(values) {
@@ -125,7 +127,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
   function importVersion(targetScope, json) {
     const document = JSON.parse(json);
     if (!document || document.format !== 'eleckoi.editor-library-version' || document.version !== 1 || document.kind !== kind
-      || typeof document.name !== 'string' || typeof document.content !== 'string') throw new Error('配置版本文件的格式或类型不匹配。');
+      || typeof document.name !== 'string' || typeof document.content !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '配置版本文件的格式或类型不匹配。', { what: '配置版本文件' });
     const content = decodeEditorVersionContent(kind, document.content);
     if ('enabled' in content) content.enabled = false;
     const names = new Set(refs.current.drafts[targetScope].versions.map(version => version.name));

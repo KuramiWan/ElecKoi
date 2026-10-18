@@ -5,6 +5,7 @@ import type { ElecKoiConversations } from '@eleckoi/dsh-client-conversations/cli
 import type { ElecKoiScriptLibraries } from '@eleckoi/dsh-client-character-configuration/client'
 import type { ElecKoiModels } from '@eleckoi/dsh-client-models/client'
 import type { NativeAuthorScriptCatalog, NativeAuthorRuleTask, NativeAuthorScriptIdentity } from '@eleckoi/dsh-product-api/types'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 import type {} from '@eleckoi/dsh-product-api/remote'
 import { createAuthorScriptFrame, type AuthorBrowserWindow } from './frame.js'
 import type { NativeAuthorRuntimeSnapshot, NativeAuthorChatHandlers, NativeAuthorProjectContext } from './client/types.js'
@@ -21,6 +22,17 @@ import { NativeScriptUi, type NativeScriptUiOwner } from './script-ui.js'
 // 本文件是独立 bundle 的源，运行时取不到那个包，所以就地定义（同名同义，空函数）。
 const failureAlreadyPublished = (): void => {}
 const rejectionIsAwaitedElsewhere = (): void => {}
+
+/**
+ * 抛出值的诊断文案。
+ *
+ * 带码失败是普通对象、不是 `Error` 实例（它要能过结构化克隆），所以不能只认
+ * `instanceof Error`——那样日志与 `snapshot.error` 会拿到 `"[object Object]"`。
+ */
+const failureMessage = (error: unknown): string => error instanceof Error
+  || (typeof error === 'object' && error !== null && typeof (error as { message?: unknown }).message === 'string')
+  ? (error as { message: string }).message
+  : String(error)
 
 export interface NativeAuthorRuntimeOptions {
   window: AuthorBrowserWindow
@@ -55,7 +67,7 @@ export class NativeAuthorClient {
   constructor(private readonly options: NativeAuthorRuntimeOptions) {
     this.scriptUi = new NativeScriptUi({ window: options.window, report: options.report, available: owner => {
       this.assertChat(owner.conversationId)
-      if (this.current?.catalog.version !== owner.version) throw new Error('原生脚本已被替换')
+      if (this.current?.catalog.version !== owner.version) throw productFailure(ELECKOI_FAILURE_CODES.conflictStaleRevision, '原生脚本已被替换', { what: '原生脚本' })
     } })
     this.audio = new NativeAudioRuntime({ createAudio: options.createAudio ?? (() => options.window.document.createElement('audio')),
       emit: event => this.emitAuthorEvent(event.name, event.payload), report: options.report })
@@ -98,8 +110,8 @@ export class NativeAuthorClient {
    * @returns 只撤回本次绑定的函数。
    */
   registerChatUi(conversationId: string, handlers: NativeAuthorChatHandlers): () => void {
-    if (this.closed) throw new Error('Native author runtime is closed')
-    if (this.ui.has(conversationId)) throw new Error('This chat already has an input owner')
+    if (this.closed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'Native author runtime is closed', { what: '原生作者运行环境' })
+    if (this.ui.has(conversationId)) throw productFailure(ELECKOI_FAILURE_CODES.lookupDuplicate, 'This chat already has an input owner', { what: '聊天输入区绑定' })
     this.ui.set(conversationId, handlers)
     return () => { if (this.ui.get(conversationId) === handlers) this.ui.delete(conversationId) }
   }
@@ -128,10 +140,10 @@ export class NativeAuthorClient {
    * @returns 撤回 SDK 与订阅的函数。
    */
   mountProjectDocument(target: Window, project: NativeAuthorProjectContext): () => void {
-    if (this.closed) throw new Error('Native author runtime is closed')
-    if (!project.projectId || !project.entryFile || !project.view) throw new Error('Author project identity is required')
-    if (project.scope !== 'application' && project.scope !== 'character') throw new Error('Author project scope is required')
-    if (project.scope === 'character' && !project.characterId) throw new Error('Author project character is required')
+    if (this.closed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'Native author runtime is closed', { what: '原生作者运行环境' })
+    if (!project.projectId || !project.entryFile || !project.view) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Author project identity is required', { field: 'project' })
+    if (project.scope !== 'application' && project.scope !== 'character') throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Author project scope is required', { field: 'scope' })
+    if (project.scope === 'character' && !project.characterId) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Author project character is required', { field: 'characterId' })
     const page = target as AuthorBrowserWindow, fixed = structuredClone(project)
     let active = true
     let close = () => {}
@@ -144,7 +156,7 @@ export class NativeAuthorClient {
       for (const call of calls) if (!call.contextCommitted && (call.conversationId !== selected.id || !this.isActive(selected))) call.abort.abort(new Error('Author project chat has changed'))
       if (fixed.scope === 'character' && !matches(selected)) close()
     })
-    const available = () => { if (!active || this.closed) throw new Error('Author project page is closed') }
+    const available = () => { if (!active || this.closed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'Author project page is closed', { what: '作者项目页面' }) }
     const context = () => {
       const selected = this.options.conversations.getDetailsSnapshot(), details = matches(selected) ? selected.details : null
       return { projectId: fixed.projectId, entryFile: fixed.entryFile, view: fixed.view, messageId: '',
@@ -165,7 +177,9 @@ export class NativeAuthorClient {
           if (!matches(selected)) return authorApiDefinitions.filter(item => ['app.getInfo', 'app.getCapabilities', 'context.current', 'events.list', 'audio.getSettings', 'audio.setSettings'].includes(item.method))
           return this.adapter(selected.id, '').request(method, params, options)
         }
-        if (!matches(selected)) throw new Error(fixed.scope === 'character' ? '请先打开这个角色的聊天，再调用聊天功能' : '请先选择一个聊天，再调用聊天功能')
+        if (!matches(selected)) throw fixed.scope === 'character'
+          ? productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先打开这个角色的聊天，再调用聊天功能', { what: '打开这个角色的聊天' })
+          : productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先选择一个聊天，再调用聊天功能', { what: '选择一个聊天' })
         const call = { conversationId: selected.id, abort: new AbortController(), contextCommitted: false }; calls.add(call)
         const cancel = () => call.abort.abort(options.signal.reason)
         options.signal.addEventListener('abort', cancel, { once: true })
@@ -182,7 +196,7 @@ export class NativeAuthorClient {
       },
       on: (event, listener) => {
         available()
-        if (!AUTHOR_EVENT_NAMES.some(name => name === event)) throw new Error(`Native project event is not connected: ${event}`)
+        if (!AUTHOR_EVENT_NAMES.some(name => name === event)) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `Native project event is not connected: ${event}`, { what: '作者项目事件类型' })
         const listeners = this.projectEvents.get(event) ?? new Set()
         listeners.add(listener); this.projectEvents.set(event, listeners)
         return () => { listeners.delete(listener); if (!listeners.size) this.projectEvents.delete(event) }
@@ -310,7 +324,7 @@ export class NativeAuthorClient {
       current.stream = this.options.remote.eleckoiAuthorScripts.connect(catalog.conversationId, catalog.version, current.abort.signal)
       const iterator = current.stream[Symbol.asyncIterator]()
       const first = await iterator.next()
-      if (first.done || first.value.kind !== 'ready' || first.value.version !== catalog.version) throw new Error('Native author stream did not acknowledge its catalog')
+      if (first.done || first.value.kind !== 'ready' || first.value.version !== catalog.version) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'Native author stream did not acknowledge its catalog', { what: '原生作者流的目录版本' })
       if (this.closed || revision !== this.revision) return
       this.publish({ ...this.snapshot, status: 'ready' })
       void this.consume(current, iterator).catch(error => {
@@ -324,7 +338,7 @@ export class NativeAuthorClient {
   private async consume(current: NonNullable<NativeAuthorClient['current']>, iterator: AsyncIterator<NativeAuthorRuleTask>): Promise<void> {
     while (!current.abort.signal.aborted) {
       const result = await iterator.next()
-      if (result.done) throw new Error('Native author rule stream ended')
+      if (result.done) throw productFailure(ELECKOI_FAILURE_CODES.internal, 'Native author rule stream ended', { what: '原生作者规则流提前结束' })
       const task = result.value
       if (task.kind === 'cancel') current.session.cancel(task.runId)
       else if (task.kind === 'process') {
@@ -339,10 +353,10 @@ export class NativeAuthorClient {
             const stateJson = await current.session.apply(task.runId, task.stage, task.stateJson, task.beforeJson)
             if (!current.abort.signal.aborted) await current.stream!.send({ id: task.id, ok: true, stateJson })
           } catch (error) {
-            if (!current.abort.signal.aborted) await current.stream!.send({ id: task.id, ok: false, message: error instanceof Error ? error.message : String(error) })
+            if (!current.abort.signal.aborted) await current.stream!.send({ id: task.id, ok: false, message: failureMessage(error) })
           }
         })().catch(error => { if (!current.abort.signal.aborted) this.fail(error) })
-      } else throw new Error('Duplicate native author stream acknowledgement')
+      } else throw productFailure(ELECKOI_FAILURE_CODES.internal, 'Duplicate native author stream acknowledgement', { what: '重复的原生作者流确认' })
     }
   }
 
@@ -364,9 +378,9 @@ export class NativeAuthorClient {
     return {
       request: async (method, params, options) => {
         this.assertChat(conversationId); options.signal.throwIfAborted()
-        if (params.conversationId !== undefined && params.conversationId !== conversationId) throw new Error('An author page cannot redirect its chat')
+        if (params.conversationId !== undefined && params.conversationId !== conversationId) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, 'An author page cannot redirect its chat', { what: '作者页面切换聊天', guard: '作者页面的聊天归属' })
         if (method === 'ui.openPanel' || method === 'ui.closePanel') {
-          if (!uiOwner) throw new Error('只有所属脚本可以打开或关闭作者面板')
+          if (!uiOwner) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, '只有所属脚本可以打开或关闭作者面板', { what: '作者面板开关', guard: '所属脚本' })
           return uiOwner.request(method, params)
         }
         if (method === 'variables.getState' && params.messageId !== undefined) return messages[method]!(params, options)
@@ -390,19 +404,19 @@ export class NativeAuthorClient {
           case 'openings.list': return { items: openings() }
           case 'openings.current': return openings().find(item => item.id === opening?.selectedOpeningId) || null
           case 'openings.select': {
-            if (typeof params.id !== 'string' || !params.id) throw new Error('Opening id is required')
+            if (typeof params.id !== 'string' || !params.id) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Opening id is required', { field: 'id' })
             await this.options.conversations.selectOpening(conversationId, params.id); return { selectedId: params.id }
           }
           case 'chat.send': {
-            if (typeof params.text !== 'string') throw new Error('Message text must be a string')
+            if (typeof params.text !== 'string') throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Message text must be a string', { field: 'text' })
             const images = params.attachments as Parameters<ElecKoiConversations['send']>[0]['images']
-            if (!Array.isArray(images) || images.some(image => !image || typeof image.data !== 'string' || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(image.mediaType))) throw new Error('Invalid message images')
-            if (!params.text.trim() && !images.length) throw new Error('A user message cannot be empty')
+            if (!Array.isArray(images) || images.some(image => !image || typeof image.data !== 'string' || !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(image.mediaType))) throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, 'Invalid message images', { what: '消息图片', field: 'attachments' })
+            if (!params.text.trim() && !images.length) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'A user message cannot be empty', { field: 'text' })
             const requestId = this.options.window.crypto.randomUUID()
             const result = await this.options.conversations.send({ conversationId, requestId, text: params.text, images, signal: options.signal })
-            if (result.cancelled) throw new Error('Message generation was cancelled')
+            if (result.cancelled) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'Message generation was cancelled', { what: '消息生成状态' })
             const inputs = result.details?.messages.filter(message => message.role === 'user' && message.requestId === requestId) || []
-            if (inputs.length !== 1 || !inputs[0]!.id || !result.details?.runtimeSessionId) throw new Error('Completed message request has no unique formal identity')
+            if (inputs.length !== 1 || !inputs[0]!.id || !result.details?.runtimeSessionId) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Completed message request has no unique formal identity', { what: '完成消息的正式标识' })
             return { accepted: true, conversationId, runId: result.details.runtimeSessionId, messageId: inputs[0]!.id }
           }
           case 'chat.stopGeneration': {
@@ -410,17 +424,17 @@ export class NativeAuthorClient {
           }
           case 'events.list': return { items: AUTHOR_EVENT_NAMES }
           default: {
-            if (!['input.get', 'input.set', 'input.append', 'input.clear', 'input.send'].includes(method)) throw new Error(`Native author method is not connected: ${method}`)
-            if (['input.set', 'input.append'].includes(method) && typeof params.text !== 'string') throw new Error('Input text must be a string')
+            if (!['input.get', 'input.set', 'input.append', 'input.clear', 'input.send'].includes(method)) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `Native author method is not connected: ${method}`, { what: '原生作者接口' })
+            if (['input.set', 'input.append'].includes(method) && typeof params.text !== 'string') throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Input text must be a string', { field: 'text' })
             const handler = this.ui.get(conversationId)?.[method]
-            if (!handler) throw new Error('Current chat input is not mounted')
+            if (!handler) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, 'Current chat input is not mounted', { what: '当前聊天的输入区' })
             return handler(params)
           }
         }
       },
       on: (event, listener) => {
         this.assertChat(conversationId)
-        if (!AUTHOR_EVENT_NAMES.some(name => name === event)) throw new Error(`Native author event is not connected: ${event}`)
+        if (!AUTHOR_EVENT_NAMES.some(name => name === event)) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `Native author event is not connected: ${event}`, { what: '原生作者事件' })
         const key = JSON.stringify([conversationId, event]), listeners = this.events.get(key) || new Set()
         listeners.add(listener); this.events.set(key, listeners)
         return () => { listeners.delete(listener); if (!listeners.size) this.events.delete(key) }
@@ -436,7 +450,7 @@ export class NativeAuthorClient {
         const { conversationId, reason, messageIds } = change
         this.emitAuthorEvent('messages.changed', { conversationId, reason, messageIds })
       }
-      if (!this.closed) throw new Error('Native author conversation changes stream ended')
+      if (!this.closed) throw productFailure(ELECKOI_FAILURE_CODES.internal, 'Native author conversation changes stream ended', { what: '聊天变更流提前结束' })
     } finally { await stream.dispose() }
   }
   private emitAuthorEvent<TName extends AuthorEventName>(event: TName, payload: AuthorEventMap[TName]): void {
@@ -448,7 +462,7 @@ export class NativeAuthorClient {
   }
   private assertChat(id: string): void {
     const selected = this.options.conversations.getDetailsSnapshot()
-    if (this.closed || selected.id !== id || !this.isActive(selected)) throw new Error('Author page chat is closed or no longer active')
+    if (this.closed || selected.id !== id || !this.isActive(selected)) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'Author page chat is closed or no longer active', { what: '作者页面所在的聊天' })
   }
   private isActive(selected: ReturnType<ElecKoiConversations['getDetailsSnapshot']>): boolean {
     return !!selected.id && !!selected.details && (selected.status === 'ready' || selected.status === 'loading')
@@ -459,7 +473,7 @@ export class NativeAuthorClient {
     this.scriptUi.close()
     this.current?.abort.abort(error)
     void this.current?.session.close().catch(cleanupError => this.options.report(cleanupError))
-    this.publish({ ...this.snapshot, status: 'error', error: error instanceof Error ? error.message : String(error) }); this.options.report(error)
+    this.publish({ ...this.snapshot, status: 'error', error: failureMessage(error) }); this.options.report(error)
   }
   private async stopCurrent(): Promise<void> {
     this.scriptUi.close()

@@ -4,6 +4,7 @@ import { extname } from 'node:path'
 import { Remote, RemoteError, TypertRemoteService, type RemoteStream } from '@deepseek-ai/dsh-typert-protocol'
 import { assertNativeAuthorScriptVersion, isNativeAuthorScript } from '@eleckoi/author-sdk'
 import { assertVariableJson } from '@eleckoi/dsh-product-data/variables'
+import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
 import type { NativeAuthorRuleReply, NativeAuthorRuleTask, NativeAuthorScriptCatalog, NativeAuthorScriptIdentity, NativeAuthorScriptSettings } from './types.js'
 import type { VariableRuleProvider } from './variable-processing.js'
 
@@ -274,7 +275,9 @@ export const eleckoiScriptAssetsPlugin = {
         response.end(request.method === 'HEAD' ? undefined : bytes)
       } catch (error) {
         const code = (error as { code?: string }).code
-        const status = error instanceof URIError ? 400 : code === 'CONFLICT' ? 409 : code === 'ENOENT' ? 404 : 500
+        // 冲突要同时认契约码（领域转换后的正解）与上游 legacy 码（本轮不清）。
+        const conflict = code === ELECKOI_FAILURE_CODES.conflictStaleRevision || code === 'CONFLICT'
+        const status = error instanceof URIError ? 400 : conflict ? 409 : code === 'ENOENT' ? 404 : 500
         response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
         response.end(request.method === 'HEAD' ? undefined : error instanceof Error ? error.message : String(error))
       }

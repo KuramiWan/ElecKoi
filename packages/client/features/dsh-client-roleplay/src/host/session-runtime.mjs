@@ -9,6 +9,7 @@ import { turnOutcomesProjection } from './turn-outcomes-projection.mjs'
 import { inputContinuationsProjection } from './input-continuations-projection.mjs'
 import { currentRequestSnapshot } from './model-selection-migration.mjs'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 import { projectRequestInput, requestProjectionSnapshot, sessionInstructions } from './conversation-context.mjs'
 import { capturedImageResult, prepareIllustration } from './generated-image-result.mjs'
 
@@ -131,9 +132,9 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       // Ordered updates replace the declared batch state, including cancellation.
       let current
       for (const event of inspection.events) if (event.type === 'eleckoi/illustration' && event.data.batchId === batchId) current = event.data
-      if (!current || current.status === 'generating') throw new Error('图片不在当前聊天记录中。')
+      if (!current || current.status === 'generating') throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '图片不在当前聊天记录中。', { what: '图片记录' })
       const frames = current.frames.filter(frame => frame.id === frameId && frame.attachment?.attachmentId === attachmentId)
-      if (frames.length !== 1) throw new Error('图片不在当前聊天记录中。')
+      if (frames.length !== 1) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '图片不在当前聊天记录中。', { what: '图片记录' })
       signal.throwIfAborted()
       const stored = await ctx.attachments.readImage(frames[0].attachment)
       return { mediaType: stored.ref.mediaType, data: Buffer.from(stored.data).toString('base64') }
@@ -144,7 +145,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       await requireIdleSession(ctx, runtime.runtimeSessionId)
       const state = prepareIllustration(ctx.settings, { disabledToolGroupIds: runtime.disabledToolGroupIds,
         toolModelConfigIds: runtime.agentPreset.toolModelConfigIds })
-      if (!state) throw new Error('当前预设没有启用配图配置。')
+      if (!state) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前预设没有启用配图配置。', { what: '在预设里启用配图' })
       return ctx.eleckoiSessionEditor.regenerateImage(runtime.runtimeSessionId, batchId, frameId, async previous => {
         const { seed, attachment, error, status, width, height, ...prompt } = previous
         let generated
@@ -157,7 +158,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       })
     },
     withGenerationOptions(conversationId, options, action) {
-      if (generationOptions.has(conversationId)) throw new Error('当前聊天已有 SDK 生成准备。')
+      if (generationOptions.has(conversationId)) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前聊天已有 SDK 生成准备。', { what: '结束上一次 SDK 生成' })
       generationOptions.set(conversationId, { ...options })
       return Promise.resolve().then(action).finally(() => generationOptions.delete(conversationId))
     },
@@ -184,7 +185,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         agentPreset: prepared.presetId
       })
       if (created.sessionId !== prepared.runtimeSessionId) {
-        throw new Error('DSH Session 标识与聊天记录不一致。')
+        throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'DSH Session 标识与聊天记录不一致。', { what: 'DSH Session 标识' })
       }
       return prepared.runtimeSessionId
     },
@@ -202,7 +203,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       const cutoff = generationOptions.get(conversationId)?.historyCutoffId
       if (cutoff) {
         const index = surface.findIndex(message => message.id === cutoff)
-        if (index < 0) throw new Error('预览的原始用户输入不在当前 Session 中。')
+        if (index < 0) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '预览的原始用户输入不在当前 Session 中。', { what: '预览的原始用户输入' })
         surface = surface.slice(0, index + 1)
       } else surface = [...surface, createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })]
       const conversationContext = runtime.conversationContext
@@ -215,7 +216,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     currentOperation(conversationId) {
       const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
       const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
-      if (!snapshot.operationId) throw new Error('当前聊天尚未准备生成。')
+      if (!snapshot.operationId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前聊天尚未准备生成。', { what: '准备生成' })
       return snapshot.operationId
     },
     async prepareRegeneration(conversationId, text) {
@@ -252,7 +253,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     prepareRestoreBeforeTurn(conversationId, sessionId, fromTurn, beforeMessageId) {
       const snapshot = readSessionSnapshot(snapshotRoot, sessionId)
       if (snapshot.conversationId !== conversationId) {
-        throw new Error('DSH Session 与当前聊天不匹配，不能回退运行状态。')
+        throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'DSH Session 与当前聊天不匹配，不能回退运行状态。', { what: 'DSH Session 与当前聊天' })
       }
       const state = ctx.eleckoiProductData.runtimeStateAt(conversationId, sessionId, fromTurn, 'before', beforeMessageId)
       ctx.eleckoiProductData.validateConversationRuntimeSnapshot(state)
@@ -284,7 +285,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       if (snapshot.inheritedFromSessionId || !snapshot.operationId) return
       const turn = Number(event.data?.turn)
       if (!Number.isSafeInteger(turn) || turn < 1) {
-        throw new Error('DSH 完成事件缺少有效轮次。')
+        throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 完成事件缺少有效轮次。', { what: 'DSH 完成事件的轮次' })
       }
       if (!ctx.eleckoiConversationLifecycle.matches(snapshot.conversationId, snapshot.operationId, turn)) return
       ctx.eleckoiConversationLifecycle.track(snapshot.conversationId, snapshot.operationId, async () => {
@@ -292,7 +293,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
           // 下一次准备先等待本次收尾，桥接文件仍属于当前轮次。
           const variableState = snapshot.variablesEnabled && event.data.reason.kind === 'completed'
             ? readVariableBridgeState(snapshot.variableStateFile) : undefined
-          if (!await ctx.sessions.flush(session)) throw new Error('DSH Session 没有持久保存服务。')
+          if (!await ctx.sessions.flush(session)) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH Session 没有持久保存服务。', { what: 'DSH Session 持久保存服务' })
           if (event.data.reason.kind === 'completed') {
             ctx.eleckoiProductData.completeConversationRuntime(snapshot.conversationId, session.id, turn,
               variableState, snapshot.generationVariableStateJson)
@@ -312,15 +313,15 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
             }
           }
         } catch (error) {
-          ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: String(error) })
+          ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: failureMessage(error) })
           throw error
         }
         ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: '' })
       })
     } catch (error) {
-      ctx.logger.error(`ElecKoi 会话运行状态提交失败：${String(error)}`)
+      ctx.logger.error(`ElecKoi 会话运行状态提交失败：${failureMessage(error)}`)
       if (snapshot?.operationId && !snapshot.inheritedFromSessionId) {
-        ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: String(error) })
+        ctx.eleckoiConversationChanges?.publish({ kind: 'generation', conversationId: snapshot.conversationId, error: failureMessage(error) })
       }
     }
   })
@@ -340,13 +341,13 @@ async function nextSessionTurn(ctx, sessionId) {
 async function requireIdleSession(ctx, sessionId) {
   const resolved = await ctx.sessionController.resolveAgent(sessionId)
   if ('error' in resolved) throw resolved.error
-  if (resolved.agent.status !== 'idle') throw new Error('当前聊天仍在生成，不能提交新的消息。')
+  if (resolved.agent.status !== 'idle') throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前聊天仍在生成，不能提交新的消息。', { what: '等当前回复生成完成' })
 }
 
 export function materializeAgentPreset(root, templatePath, preset, toolPolicy, mainModel, options = {}) {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(preset.id)) throw new Error('预设编号不能用于 DSH Agent Preset。')
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(preset.id)) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '预设编号不能用于 DSH Agent Preset。', { field: 'id' })
   const mountedPresetId = options.id ?? ACTIVE_RUNTIME_PRESET_ID
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(mountedPresetId)) throw new Error('DSH 预设编号不正确。')
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(mountedPresetId)) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'DSH 预设编号不正确。', { field: 'id' })
   const directory = join(root, mountedPresetId)
   mkdirSync(directory, { recursive: true })
   let composition = readFileSync(templatePath, 'utf8')
@@ -359,7 +360,7 @@ export function materializeAgentPreset(root, templatePath, preset, toolPolicy, m
     .replace('__ELECKOI_COMPACTION_RETENTION__', 'retainTokens: 0')
   composition = applyPresetToolPolicy(composition, new Set(toolPolicy.disabledGroupIds))
   const plugins = parseYaml(composition)
-  if (!Array.isArray(plugins)) throw new Error('DSH Agent 预设组合必须是插件列表。')
+  if (!Array.isArray(plugins)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH Agent 预设组合必须是插件列表。', { what: 'DSH Agent 预设组合' })
   plugins.push(...(options.plugins ?? []))
   const imageConfigId = preset.toolModelConfigIds?.['builtin:auto-illustration']
   if (imageConfigId && !toolPolicy.disabledGroupIds.includes('builtin:auto-illustration')) {
@@ -404,7 +405,7 @@ function removePresetSection(source, section) {
   const end = `# ELECKOI:${section}:END`
   const start = source.indexOf(begin)
   const finish = source.indexOf(end)
-  if (start < 0 || finish < start) throw new Error(`DSH 预设模板缺少工具段：${section}`)
+  if (start < 0 || finish < start) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `DSH 预设模板缺少工具段：${section}`, { what: 'DSH 预设模板里的工具段' })
   return `${source.slice(0, start)}${source.slice(finish + end.length).replace(/^\r?\n/, '')}`
 }
 
@@ -440,14 +441,14 @@ function writeSettingBridge(path, currentUserInput, context) {
 function readVariableBridgeState(path) {
   const bridge = parsedObject(readFileSync(path, 'utf8'), '变量运行时桥接文件')
   const state = bridge.state
-  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('变量运行时返回的状态必须是 JSON object。')
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量运行时返回的状态必须是 JSON object。', { what: '变量运行时状态' })
   return JSON.stringify(state, null, 2)
 }
 
 function parsedObject(raw, label) {
   let value
-  try { value = JSON.parse(raw) } catch (error) { throw new Error(`${label}不是合法 JSON。`, { cause: error }) }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label}必须是 JSON object。`)
+  try { value = JSON.parse(raw) } catch { throw productFailure(ELECKOI_FAILURE_CODES.storageCorrupt, `${label}不是合法 JSON。`, { what: label }) }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${label}必须是 JSON object。`, { what: label })
   return value
 }
 
@@ -471,8 +472,14 @@ function writeAtomically(path, content) {
 
 function requiredEnv(name) {
   const value = process.env[name]
-  if (!value) throw new Error(`${name} is required`)
+  if (!value) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, `${name} is required`, { what: '配置必需的运行环境变量' })
   return value
+}
+
+/** 抛出值的诊断文案：带码失败是普通对象（不是 Error 实例），仍要取它的 message。 */
+function failureMessage(error) {
+  return error instanceof Error || error !== null && typeof error === 'object' && typeof error.message === 'string'
+    ? error.message : String(error)
 }
 
 function safePathPart(value) {
