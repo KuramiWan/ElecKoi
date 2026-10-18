@@ -7,6 +7,7 @@ import { characterAvatar, characterCover, characterName } from '../utils/charact
 import { SidebarCharacterArtwork } from '../ui/ui/SidebarCharacterArtwork.jsx';
 import { MobileDialog, MobileHeader, MobileState, useMobileScroll } from './MobileChrome.jsx';
 import { formatDate } from '../utils/format.js';
+import { resolveFailure } from '../utils/failureText.js';
 import { MobileSwipeRow } from './MobileSwipeRow.jsx';
 import { MobileBackIcon } from './MobileIcons.jsx';
 import { MobileConversationPage } from './MobileConversationPage.jsx';
@@ -30,7 +31,7 @@ export function MobileMessagesPage() {
   async function run(action) {
     setBusy(true); setError('');
     try { await action(); setMenu(null); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    catch (cause) { setError(resolveFailure(cause, { fallback: '操作失败，请重试。' }).text); }
     finally { setBusy(false); }
   }
   return <div className="mobile-root-page">

@@ -3,6 +3,7 @@ import { Check, Plus, UserCircle, PushPin } from '@phosphor-icons/react';
 import { useMainPageView } from '../app/windows/MainPageContext.jsx';
 import { Avatar } from '../ui/ui/Avatar.jsx';
 import { characterAvatar, characterName } from '../utils/characterDisplay.js';
+import { resolveFailure } from '../utils/failureText.js';
 import { DshPanelLeftIcon, DshNewChatIcon, DshEllipsisIcon, DshEditIcon, DshTrashIcon, DshSearchIcon } from '../ui/icons/dshComposerIcons.jsx';
 import { MobileDialog, MobileHeader, MobileSearch, useMobileBack } from './MobileChrome.jsx';
 import { MobileCreatorStudioConversation } from './MobileCreatorStudioConversation.jsx';
@@ -23,7 +24,7 @@ export function MobileCreatorStudioPage() {
   async function perform(action) {
     setBusy(true); setError('');
     try { await action(); return true; }
-    catch (cause) { setError(String(cause?.message || cause)); return false; }
+    catch (cause) { setError(resolveFailure(cause, { fallback: '会话操作失败' }).text); return false; }
     finally { setBusy(false); }
   }
   useEffect(() => {
