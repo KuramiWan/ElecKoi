@@ -7,6 +7,7 @@ import { UpdateService } from './UpdateService'
 import { configureGitHubApiUpdates } from './GitHubApiProvider'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
 import { assertTrustedDshClientFrame } from '@main/platform/electron/validateSender'
+import { handleDesktopIpcCall } from '@main/platform/electron/desktopIpcHandler'
 
 export function attachUpdaterLogger(
   updater: Pick<AppUpdater, 'logger'>,
@@ -79,19 +80,19 @@ export const updatesPlugin = {
       event.senderFrame === event.sender.mainFrame,
       windows.all().map(window => window.webContents)
     )
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesStatus, (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesStatus, (event) => {
       assertSender(event)
       return updates.status()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesCheck, (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesCheck, (event) => {
       assertSender(event)
       return updates.check()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesDownload, (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesDownload, (event) => {
       assertSender(event)
       return updates.download()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesInstall, (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesInstall, (event) => {
       assertSender(event)
       return updates.install()
     })
