@@ -58,7 +58,8 @@ export interface DshDesktopProductApi {
      * 边界⑤ 的宿主失败通知：**送失败对象，不送拼好的用户句子**。
      *
      * 用户可见文案只有一个解析点在渲染层（`apps/web/src/utils/failureText.js`），
-     * 所以这里只搬 `{ code, message, details }`（外加子进程的 `stack` / `logPath` 诊断指针）。
+     * 所以这里只搬 `{ code, message, details }`（外加子进程的 `stack` 与宿主本机日志的
+     * `logPath` 诊断指针）。
      * 以前这里是一个裸字符串，渲染层只能原样显示——码与详情在跨进程那一刻就没了。
      */
     subscribeFailure(listener: (notice: DesktopHostFailureNotice) => void): () => void

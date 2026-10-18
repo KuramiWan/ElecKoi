@@ -40,7 +40,8 @@ export function pluginHostFailureOf(frame: ChildHostFatalFrame): DesktopError {
 /**
  * 判断一个值是不是形状合法的 fatal 帧。
  *
- * 只要求 `message` 是字符串；`code` / `stack` / `logPath` 是字符串或缺失，`details` 是扁平对象或缺失。
+ * 只要求 `message` 是字符串；`code` / `stack` 是字符串或缺失，`details` 是扁平对象或缺失。
+ * `logPath` 不是帧字段（宿主收到 fatal 帧后自己记录本机日志路径），帧上出现也按未知字段忽略。
  * **不校验码在不在码表里**：认不出的码由 {@link pluginHostFailureOf} 折兜底并把原码记进详情——
  * 绝不能让「码不认识」把一次失败变成静默成功。
  *
@@ -54,7 +55,6 @@ export function isChildFatalFrame(value: unknown): value is ChildHostFatalFrame 
   if (typeof frame.message !== 'string') return false
   if (frame.code !== undefined && typeof frame.code !== 'string') return false
   if (frame.stack !== undefined && typeof frame.stack !== 'string') return false
-  if (frame.logPath !== undefined && typeof frame.logPath !== 'string') return false
   if (frame.details === undefined) return true
   return typeof frame.details === 'object' && frame.details !== null && !Array.isArray(frame.details)
 }
