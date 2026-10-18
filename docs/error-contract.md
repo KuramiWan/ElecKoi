@@ -76,11 +76,11 @@
 
 顺序即跨语言实现、文档表格与逐条断言的**列举顺序**（先兜底，再按「谁的问题」分组），别各自重排。
 「语义键」是契约源码里那条常量的键（给代码读）；「详情参数」是该码会带的参数（必填 / 可选见
-[详情形状](../packages/shared/src/contracts/errors/details.ts)）；「用户句」是**没有详情参数时**渲染层给用户的说法。
+[详情形状](../packages/shared/src/contracts/errors/details.ts)）；「用户句」是**没有详情参数时**渲染层给用户的说法：29 条码各有一句固定说法，兜底码 `eleckoi/internal` 不设固定句（见 §5.1）。
 
 | 码 | 语义键 | 详情参数 | 默认通道 | 用户句（无参数时） |
 | --- | --- | --- | --- | --- |
-| `eleckoi/internal` | `internal` | `what` | 功能内（inline） | —（兜底码没有固定说法：有 `details.what` 时用调用方给的说法，否则用原始失败的 `message`） |
+| `eleckoi/internal` | `internal` | `what` | 功能内（inline） | —（无固定句：带 `details.what` → 通用句；不带 → 开发者诊断。见 §5.1） |
 | `eleckoi/contract/invalid-request` | `contractInvalidRequest` | `issues` | 功能内（inline） | 请求内容不符合要求，已拒绝。 |
 | `eleckoi/contract/invalid-response` | `contractInvalidResponse` | `issues` | 功能内（inline） | 服务返回的内容不符合要求，已拒绝。 |
 | `eleckoi/data/shape-invalid` | `dataShapeInvalid` | `what`、`path` | 功能内（inline） | 数据格式不符合要求。 |
@@ -111,7 +111,30 @@
 | `eleckoi/media/invalid` | `mediaInvalid` | `what`、`field` | 功能内（inline） | 图片或音频不符合要求。 |
 | `eleckoi/ipc/call-failed` | `ipcCallFailed` | `what`、`operation` | 功能内（inline） | 与后台服务通信失败，请重试。 |
 
-## 6. 真源与维护
+### 5.1 兜底码的文案策略
+
+`eleckoi/internal` 不设固定句，因为它承载两类完全不同的情形——给同一句都会说假话：
+
+- **带 `details.what`**：说明有一个不在码表里的码被折掉了。不猜它的语义，界面用调用方给的说法；
+  调用方没给时是通用句「操作失败，请重试。」。
+- **不带 `details.what`**：真正的裸失败（没有码语义），或者上游 provider 自己的说法（例如「余额不足」）。
+  这时候把开发者诊断 `message` 当用户说法——它是唯一能让用户知道发生了什么的东西，不能被通用句盖掉。
+
+## 6. 不并进契约码的两种方言
+
+码表只收**产品失败**的语义。仓库里还有两种失败方言，故意不并进来——理由是它们的码有别的消费者，
+不是这里登记了例外：
+
+- **`AuthorApiError`**（[errors.ts](../packages/sdk/author/src/errors.ts)）：**作者脚本 API 的方言**，带自己的码
+  （`INVALID_PARAMS` / `INVALID_CONTEXT` / `NOT_FOUND` …），面是脚本作者写 `catch` 用的**编程接口**，
+  不是产品失败。它有自己的稳定约定，并进契约码等于改所有作者脚本的 `catch` 分支；脚本失败到宿主边界时
+  由 [foldFailure](../packages/shared/src/foundation/failure.ts) 折成兜底码并保留 `message`。
+- **legacy `DESKTOP_ERROR_CODES.*` 六个码**（`INVALID_REQUEST` / `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` /
+  `RUNTIME_UNAVAILABLE` / `INTERNAL`，见 [DesktopError.ts](../packages/shared/src/foundation/DesktopError.ts)）：上游遗留形态，
+  规格把「清掉它们」列为 Out of Scope，所以保留为**防御映射**：边界万一还收到，有唯一对应的三个码折过去，
+  其余折兜底并把原码记进 `details.what`；**新代码不许再抛这六个码**。
+
+## 7. 真源与维护
 
 | 内容 | 真源 |
 | --- | --- |
