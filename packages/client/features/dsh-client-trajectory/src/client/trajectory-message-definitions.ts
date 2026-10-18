@@ -3,6 +3,8 @@ import type {
   ContextMessageNode, ConversationNodeDefinition, ConversationPreviousContext,
   SteeringMessageNode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type {} from '@deepseek-ai/dsh-agent/types'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 import { contextForm, contextProducer } from './trajectory-event-projection.ts'
@@ -122,7 +124,7 @@ const trajectoryInboxDefinition: ConversationNodeDefinition<InboxState> = {
   },
   start: (_context, match, reader) => {
     if (match.event.type !== 'agent/inbox/spliced') {
-      throw new Error('trajectory-inbox-next-step start requires agent/inbox/spliced')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'trajectory-inbox-next-step start requires agent/inbox/spliced', { what: '轨迹收件箱步骤的起始事件' })
     }
     return applySplice(
       reader.previous<InboxState>('trajectory-inbox-next-step'),
@@ -155,7 +157,7 @@ const trajectoryMessageDefinition: ConversationNodeDefinition<MessageNode> = {
       }
     }
     if (match.event.type !== 'user/message') {
-      throw new Error('trajectory-input-message start requires user/message')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'trajectory-input-message start requires user/message', { what: '轨迹输入消息的起始事件' })
     }
     const event = match.event
     if (event.data.source.kind !== 'user') {

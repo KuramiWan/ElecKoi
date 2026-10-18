@@ -12,6 +12,8 @@ import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, 
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
 import { foldFailure } from '@shared/foundation/failure'
 import { desktopHostFailureNoticeOf } from '@shared/foundation/ipcFailure'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
@@ -41,7 +43,7 @@ export const mainWindowPlugin = {
         configureMainWindow(appPaths, appLog, windows, window)
         window.webContents.on('render-process-gone', (_event, details) => {
           if (details.reason !== 'clean-exit') {
-            ctx.emit('eleckoi/desktop-fatal', new Error(`页面渲染进程退出：${details.reason} (${details.exitCode})`))
+            ctx.emit('eleckoi/desktop-fatal', new DesktopError(ELECKOI_FAILURE_CODES.internal, `页面渲染进程退出：${details.reason} (${details.exitCode})`, { what: '页面渲染进程' }))
           }
         })
       }
@@ -56,7 +58,7 @@ export const mainWindowPlugin = {
       load: async (window, payload) => {
         const url = (payload as { url?: unknown })?.url
         if (typeof url !== 'string' || (!isAppRendererUrl(url) && !isDshChildUrl(url))) {
-          throw new Error('拒绝打开非 ElecKoi 子窗口。')
+          throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '拒绝打开非 ElecKoi 子窗口。', { what: '非 ElecKoi 子窗口地址' })
         }
         await window.loadURL(url)
       },
@@ -103,7 +105,9 @@ export const mainWindowPlugin = {
         windows.all().map(window => window.webContents)
       )
       const ready = pluginHostReady
-      if (ready === undefined) throw new Error('DSH 插件宿主尚未启动。')
+      if (ready === undefined) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 插件宿主尚未启动。', { what: 'DSH 插件宿主' })
+      }
       return {
         injections: [
           ...ready.injections,
@@ -119,9 +123,11 @@ export const mainWindowPlugin = {
         event.senderFrame === event.sender.mainFrame,
         windows.all().map(window => window.webContents)
       )
-      if (typeof message !== 'string') throw new Error('DSH 插件页面错误格式不正确。')
+      if (typeof message !== 'string') {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 插件页面错误格式不正确。', { what: 'DSH 插件页面错误' })
+      }
       appLog.error({ message }, 'DSH plugin client boot failed')
-      ctx.emit('eleckoi/desktop-fatal', new Error(message))
+      ctx.emit('eleckoi/desktop-fatal', new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, message, { what: 'DSH 插件页面启动' }))
     })
     const syncNativeTheme = (event: Electron.IpcMainEvent, source: unknown) => {
       const mainContents = mainWindow?.webContents

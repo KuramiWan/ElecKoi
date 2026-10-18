@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const PresetsPage = React.lazy(() => import(new URL('eleckoi-page-presets.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.PresetsPage })))
     class PresetCatalog {
@@ -61,7 +61,7 @@ window.__ModuleLoader__.load({
 
       assertPreset(value, id) {
         if (!value || (id && value.id !== id) || !Array.isArray(value.regexRules)) {
-          throw new Error('预设详情返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设详情返回的数据格式不正确。', { what: '预设详情' })
         }
         return value
       }
@@ -69,13 +69,13 @@ window.__ModuleLoader__.load({
       adoptDetail(preset) {
         if (this.disposed) return
         const id = preset?.id
-        if (typeof id !== 'string' || !id) throw new Error('预设 ID 无效。')
+        if (typeof id !== 'string' || !id) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设 ID 无效。', { what: '预设 ID' })
         this.detailGenerations.set(id, (this.detailGenerations.get(id) || 0) + 1)
         this.publishDetail(id, { status: 'ready', preset: this.assertPreset(preset, id), error: '' })
       }
 
       async read(id) {
-        if (this.disposed) throw new Error('ElecKoi 预设目录已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 预设目录已关闭。', { what: 'ElecKoi 预设目录' })
         const generation = (this.detailGenerations.get(id) || 0) + 1
         this.detailGenerations.set(id, generation)
         try {
@@ -94,7 +94,7 @@ window.__ModuleLoader__.load({
       }
 
       async save(preset, expectedRegexRules) {
-        if (this.disposed) throw new Error('ElecKoi 预设目录已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 预设目录已关闭。', { what: 'ElecKoi 预设目录' })
         const saved = this.assertPreset(await this.call('save', preset, expectedRegexRules), preset.id)
         this.adoptDetail(saved)
         return saved
@@ -184,7 +184,7 @@ window.__ModuleLoader__.load({
           || value.groups.some(group => !group || typeof group.id !== 'string' || !['roleplay', 'creator'].includes(group.purpose))
           || !Array.isArray(value.presets)
           || value.presets.some(preset => !preset || typeof preset.id !== 'string' || !['roleplay', 'creator'].includes(preset.purpose))) {
-          throw new Error('预设目录返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设目录返回的数据格式不正确。', { what: '预设目录' })
         }
         return value
       }
@@ -201,7 +201,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('ElecKoi 预设目录已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 预设目录已关闭。', { what: 'ElecKoi 预设目录' })
         const generation = ++this.generation
         try {
           const catalog = this.assertCatalog(await this.call('catalog'))

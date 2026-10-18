@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const CharacterPage = React.lazy(() => import(new URL('eleckoi-page-character.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.CharacterPage })))
     class CharacterCatalog {
@@ -58,7 +58,7 @@ window.__ModuleLoader__.load({
         if (!value || typeof value.active_character_id !== 'string'
           || !Array.isArray(value.groups) || !value.groups.every(group => typeof group === 'string')
           || !Array.isArray(value.items) || value.items.some(item => !item || typeof item.id !== 'string')) {
-          throw new Error('角色列表返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '角色列表返回的数据格式不正确。', { what: '角色列表' })
         }
         const active = value.items.find(item => item.id === value.active_character_id) || value.items[0]
         return active?.id === value.active_character_id
@@ -73,7 +73,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('ElecKoi 角色列表已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 角色列表已关闭。', { what: 'ElecKoi 角色列表' })
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiCharacters.list()
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
       }
 
       async mutate(method, args, failure) {
-        if (this.disposed) throw new Error('ElecKoi 角色列表已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 角色列表已关闭。', { what: 'ElecKoi 角色列表' })
         const result = await this.remote.eleckoiCharacters[method](...args)
         const collection = this.assertCollection(unwrapOrFail(result, failure))
         this.adopt(collection)
