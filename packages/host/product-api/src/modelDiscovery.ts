@@ -5,19 +5,29 @@ import { CredentialProvider, credentialRef, type CredentialKey, type CredentialR
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
 import * as deepSeek from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import type { ModelDiscoveryInput, ModelDiscoveryResult } from './types.js'
+import { productFailure } from './productFailure.js'
+import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
+
+/**
+ * 目录读取用的凭据提供器只能读：写入 / 删除一律拒绝（同一句诊断，不重复长表达式）。
+ * @returns 带 `security/denied` 码的失败对象。
+ */
+function discoveryReadOnly() {
+  return productFailure(ELECKOI_FAILURE_CODES.securityDenied, '目录读取凭据不能持久化。', { what: '目录读取凭据', guard: '只读凭据提供器' })
+}
 
 /** Credentials for one directory read lifetime. No mutation reaches the durable store. */
 class DiscoveryCredentials extends CredentialProvider {
   constructor(ctx: Context, private readonly key: string, private readonly stored: CredentialProvider) { super(ctx) }
   async resolve(_ref: CredentialRef) { return this.key ? { value: this.key, source: 'discovery' } : undefined }
   async describe(_ref: CredentialRef) { return { configured: Boolean(this.key), writable: false, source: 'discovery' } }
-  async set(_ref: CredentialRef, _value: string): Promise<void> { throw new Error('目录读取凭据不能持久化。') }
-  async unset(_ref: CredentialRef): Promise<void> { throw new Error('目录读取凭据不能持久化。') }
+  async set(_ref: CredentialRef, _value: string): Promise<void> { throw discoveryReadOnly() }
+  async unset(_ref: CredentialRef): Promise<void> { throw discoveryReadOnly() }
   async readRecord(key: CredentialKey) { return this.stored.readRecord(key) }
   async describeRecord(key: CredentialKey) { return this.stored.describeRecord(key) }
   async listRecords() { return this.stored.listRecords() }
-  async modifyRecord(_key: CredentialKey, _mutate: (current: CredentialRecord | undefined) => Promise<CredentialRecord | undefined>): Promise<CredentialRecord | undefined> { throw new Error('目录读取凭据不能持久化。') }
-  async deleteRecord(_key: CredentialKey): Promise<void> { throw new Error('目录读取凭据不能持久化。') }
+  async modifyRecord(_key: CredentialKey, _mutate: (current: CredentialRecord | undefined) => Promise<CredentialRecord | undefined>): Promise<CredentialRecord | undefined> { throw discoveryReadOnly() }
+  async deleteRecord(_key: CredentialKey): Promise<void> { throw discoveryReadOnly() }
 }
 
 /** Read the credential owned by one saved model configuration on user request. */
@@ -33,11 +43,11 @@ export async function readModelApiKey(owner: Context, configId: string): Promise
     ? namespaces.find(row => row.ns === 'llm-deepseek')?.value as { apiKeyEnv?: string } | undefined
     : undefined
   const entry = entries?.[configId]
-  if (entry?.hidden || (!entry && !profile && !dedicated)) throw new Error('模型配置不存在。')
+  if (entry?.hidden || (!entry && !profile && !dedicated)) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '模型配置不存在。', { what: '模型配置' })
   const ref = entry?.credentialRef || profile?.apiKeyEnv || dedicated?.apiKeyEnv
     || (dedicated ? 'DEEPSEEK_API_KEY' : `${configId.toUpperCase().replace(/[^A-Z0-9_]/g, '_')}_API_KEY`)
   const credential = await owner.credentials.resolve(credentialRef(ref))
-  if (!credential) throw new Error('此模型配置没有已保存的 API Key。')
+  if (!credential) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '此模型配置没有已保存的 API Key。', { what: '此模型配置已保存的 API Key' })
   return credential.value
 }
 
@@ -56,7 +66,7 @@ async function draftKey(owner: Context, input: ModelDiscoveryInput): Promise<str
 
 /** Read the dedicated directory or discover a draft without persisting it. */
 export async function discoverDraftModels(owner: Context, input: ModelDiscoveryInput): Promise<ModelDiscoveryResult[]> {
-  if (input.builtinProvider && input.builtinProvider !== input.configId) throw new Error('内置提供商必须使用目录中的 Provider ID。')
+  if (input.builtinProvider && input.builtinProvider !== input.configId) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '内置提供商必须使用目录中的 Provider ID。', { field: 'configId' })
   const key = input.builtinProvider ? '' : await draftKey(owner, input)
   const ctx = new Context()
   const provider = 'eleckoi-discovery-probe'
@@ -65,7 +75,7 @@ export async function discoverDraftModels(owner: Context, input: ModelDiscoveryI
     await ctx.plugin(LlmRuntime)
     if (input.builtinProvider && input.builtinProvider !== 'deepseek-official') {
       const routes = owner.llm.listConfigurableProviders()
-      if (!routes.some(route => route.provider === input.builtinProvider && route.settingsNs === 'llm-pi-ai' && route.declared === false)) throw new Error('内置提供商不在当前 DSH 目录中。')
+      if (!routes.some(route => route.provider === input.builtinProvider && route.settingsNs === 'llm-pi-ai' && route.declared === false)) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '内置提供商不在当前 DSH 目录中。', { what: '当前 DSH 目录里的内置提供商' })
       await ctx.plugin(piAi, { providers: { [input.builtinProvider]: {} } })
       const models = await ctx.llm.listModels(input.builtinProvider)
       return await Promise.all(models.map(async model => {
