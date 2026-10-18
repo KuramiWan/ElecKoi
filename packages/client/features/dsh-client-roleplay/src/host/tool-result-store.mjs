@@ -37,7 +37,9 @@ export default class ToolResultStore extends LocalSpillStore {
         }
         await rm(directory, { recursive: true, force: true })
       } catch (error) {
-        if (error?.code !== 'ENOENT') failures.push(new Error(`会话 ${id}：${String(error)}`, { cause: error }))
+        // 失败对象可能是 productFailure 普通对象：`String(error)` 会变成 "[object Object]"，诊断就丢了。
+        const message = typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
+        if (error?.code !== 'ENOENT') failures.push(new Error(`会话 ${id}：${message}`, { cause: error }))
       }
     }
     if (failures.length) throw new AggregateError(failures, failures.map(error => error.message).join('\n'))
@@ -59,7 +61,13 @@ export default class ToolResultStore extends LocalSpillStore {
       if (!child || child === '..' || child.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(child)) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, '无权读取该工具结果。', { what: '工具结果', guard: '工具结果存储范围' })
       const [data, metadata] = await Promise.all([lstat(args.file_path), lstat(`${path}${ownershipSuffix}`)])
       if (!data.isFile() || data.isSymbolicLink() || !metadata.isFile() || metadata.isSymbolicLink()) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, '无权读取该工具结果。', { what: '工具结果', guard: '工具结果文件类型' })
-      ownership = JSON.parse(await readFile(`${path}${ownershipSuffix}`, 'utf8'))
+      const ownershipJson = await readFile(`${path}${ownershipSuffix}`, 'utf8')
+      try {
+        ownership = JSON.parse(ownershipJson)
+      } catch (error) {
+        // 归属记录是已经落盘的载荷：解析不出不是「找不到」，也不是内部不变式。
+        throw productFailure(ELECKOI_FAILURE_CODES.storageCorrupt, `工具结果归属记录已损坏，无法解析：${path}（${String(error)}）`, { what: '工具结果归属记录' })
+      }
     } catch (error) {
       if (error?.code === 'ENOENT') throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '工具结果文件已失效或没有有效的读取凭据，请重新查询源数据。', { what: '工具结果文件' })
       throw error
