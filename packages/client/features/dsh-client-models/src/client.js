@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'eleckoi-client-models'
     const protocols = { responses: 'openai-responses', chat_completions: 'openai-completions',
       anthropic_messages: 'anthropic-messages', google_gemini: 'google-generative-ai' }
@@ -42,14 +42,14 @@ window.__ModuleLoader__.load({
       }
 
       configsFromCatalog(catalog) {
-        if (!catalog || !Array.isArray(catalog.groups)) throw new Error('DSH 模型目录返回的数据格式不正确。')
+        if (!catalog || !Array.isArray(catalog.groups)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 模型目录返回的数据格式不正确。', { what: 'DSH 模型目录' })
         return catalog.groups.map(group => {
           if (!group || typeof group.id !== 'string' || typeof group.name !== 'string' || !Array.isArray(group.models)) {
-            throw new Error('DSH 模型目录返回的数据格式不正确。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 模型目录返回的数据格式不正确。', { what: 'DSH 模型目录' })
           }
           const modelOptions = group.models.map(model => {
             if (!model || typeof model.id !== 'string' || typeof model.name !== 'string') {
-              throw new Error('DSH 模型目录返回的数据格式不正确。')
+              throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 模型目录返回的数据格式不正确。', { what: 'DSH 模型目录' })
             }
             const reasoningEfforts = model.reasoning?.efforts?.length
               ? Object.fromEntries(model.reasoning.efforts.map(effort => [effort.id, effort.id === 'off' ? null : effort.id]))
@@ -102,7 +102,7 @@ window.__ModuleLoader__.load({
 
       async mutate(ns, ops) {
         const row = this.namespaces.get(ns)
-        if (!row) throw new Error(`DSH 设置命名空间 ${ns} 未加载。`)
+        if (!row) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, `DSH 设置命名空间 ${ns} 未加载。`, { what: 'DSH 设置命名空间' })
         const next = valueOf(await this.remote.settings.mutate(ns, ops, row.revision), '保存模型设置失败。')
         this.namespaces.set(ns, next)
       }
@@ -204,15 +204,15 @@ window.__ModuleLoader__.load({
 
       save(config) {
         return this.enqueue(async () => {
-          if (config.builtin && !this.providers.some(route => route.provider === config.id)) throw new Error('请选择当前 DSH 内置目录中的提供商。')
-          if (!config.id || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('模型配置编号不正确。')
+          if (config.builtin && !this.providers.some(route => route.provider === config.id)) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请选择当前 DSH 内置目录中的提供商。', { what: '选择当前 DSH 内置目录中的提供商' })
+          if (!config.id || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(config.id)) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, '模型配置编号不正确。', { field: 'id', what: '模型配置编号' })
           for (const model of config.model_options || []) {
-            if (model.inputModalities && (!model.inputModalities.length || model.inputModalities.some(input => !['text', 'image'].includes(input)))) throw new Error('请选择有效的模型输入能力。')
+            if (model.inputModalities && (!model.inputModalities.length || model.inputModalities.some(input => !['text', 'image'].includes(input)))) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请选择有效的模型输入能力。', { what: '选择有效的模型输入能力' })
           }
-          if (config.proxy_url?.trim()) throw new Error('当前 DSH 适配器不支持每个模型单独设置代理，请使用系统代理。')
+          if (config.proxy_url?.trim()) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '当前 DSH 适配器不支持每个模型单独设置代理，请使用系统代理。', { what: '每个模型单独的代理', expected: '使用系统代理' })
           if (config.provider === 'deepseek'
             && (config.id !== 'deepseek-official' || config.api_format !== 'deepseek_messages')) {
-            throw new Error('DeepSeek 官方 API 固定使用 DSH 的 Messages 专用适配器；其他协议请使用自定义模型提供商。')
+            throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, 'DeepSeek 官方 API 固定使用 DSH 的 Messages 专用适配器；其他协议请使用自定义模型提供商。', { what: 'DeepSeek 官方 API 的非 Messages 协议', expected: 'DSH 的 Messages 专用适配器' })
           }
           await this.settings()
           const previous = this.snapshot.configs.find(item => item.id === config.id)
@@ -234,8 +234,8 @@ window.__ModuleLoader__.load({
               || { ...config, api_key: '', credentialConfigured: false, clearConfiguration: undefined }
           }
           const ns = config.api_format === 'deepseek_messages' ? 'llm-deepseek' : 'llm-pi-ai'
-          if (ns === 'llm-deepseek' && config.id !== 'deepseek-official') throw new Error('DeepSeek Messages 使用内置 DeepSeek 专用配置；其他配置请选择对应的通用协议。')
-          if (ns === 'llm-deepseek' && Object.keys(config.custom_headers || {}).length) throw new Error('DeepSeek Messages 专用适配器不支持自定义请求头。')
+          if (ns === 'llm-deepseek' && config.id !== 'deepseek-official') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, 'DeepSeek Messages 使用内置 DeepSeek 专用配置；其他配置请选择对应的通用协议。', { what: 'DeepSeek Messages 的非官方提供商配置', expected: 'deepseek-official 专用配置' })
+          if (ns === 'llm-deepseek' && Object.keys(config.custom_headers || {}).length) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, 'DeepSeek Messages 专用适配器不支持自定义请求头。', { what: 'DeepSeek Messages 的自定义请求头' })
           const parameters = Object.fromEntries((config.model_options || []).map(model => [model.id, {
             ...(model.temperature == null ? {} : { temperature: model.temperature }),
             ...(model.topP == null ? {} : { topP: model.topP }),
@@ -258,7 +258,7 @@ window.__ModuleLoader__.load({
               const ops = [{ op: 'set', path: ['baseURL'], value: config.base_url }, { op: 'set', path: ['models'], value: models }]
               await this.mutate(ns, ops)
             } else {
-              if (!config.builtin && !protocols[config.api_format]) throw new Error('不支持的模型接口格式。')
+              if (!config.builtin && !protocols[config.api_format]) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的模型接口格式。', { what: '模型接口格式', expected: Object.keys(formats).join(' / ') })
               const storedProfile = this.namespaces.get(ns)?.value?.providers?.[config.id]
               const previousProfile = storedProfile
                 || this.namespaces.get(SETTINGS_NAMESPACE)?.value?.entries?.[config.id]?.draftProfile || {}
@@ -314,7 +314,7 @@ window.__ModuleLoader__.load({
         return this.enqueue(async () => {
           await this.settings()
           const config = this.snapshot.configs.find(item => item.id === id)
-          if (!config) throw new Error('模型配置不存在。')
+          if (!config) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '模型配置不存在。', { what: '模型配置' })
           if (!imageProvider(config.provider)) {
             if (config.settingsNs === 'llm-deepseek') {
               await this.mutate('llm-deepseek', [
@@ -336,7 +336,7 @@ window.__ModuleLoader__.load({
       async discover(config) {
         const saved = this.snapshot.configs.find(item => item.id === config.id)
         const unchangedEndpoint = saved && saved.base_url === config.base_url && saved.api_format === config.api_format
-        if (!config.builtin && config.api_format !== 'deepseek_messages' && !protocols[config.api_format]) throw new Error('该协议没有可读取的模型目录。')
+        if (!config.builtin && config.api_format !== 'deepseek_messages' && !protocols[config.api_format]) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '该协议没有可读取的模型目录。', { what: '该协议的模型目录', expected: Object.keys(formats).join(' / ') })
         const models = valueOf(await this.remote.eleckoiModels.discoverModels({
           configId: config.id, baseURL: config.base_url || '',
           ...(config.builtin ? { builtinProvider: config.id } : {}),
@@ -358,7 +358,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('ElecKoi 模型目录已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 模型目录已关闭。', { what: 'ElecKoi 模型目录' })
         const generation = ++this.generation
         try {
           const result = await this.remote.session.modelCatalog()

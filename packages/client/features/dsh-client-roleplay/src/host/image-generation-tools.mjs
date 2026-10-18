@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { capturedImageResult, IMAGE_EVENT, parseImagePrompts, prepareIllustration } from './generated-image-result.mjs'
 
@@ -25,7 +26,7 @@ export function apply(ctx, config) {
     const state = prepareIllustration(ctx.settings, snapshot)
     if (!state || submitted.has(session.id)) { yield* next(); return }
     const position = positions.get(session.id)
-    if (!position) throw new Error('自动配图缺少本轮正式步骤。')
+    if (!position) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '自动配图缺少本轮正式步骤。', { what: '本轮正式步骤' })
     const batchId = randomUUID()
     let text = '', frames, job, finished = false
     const publish = value => session.append(IMAGE_EVENT, { batchId, ...position, ...value }, { ignorable: true })
@@ -39,7 +40,7 @@ export function apply(ctx, config) {
             if (frames) {
               const min = state.settings.automaticImageCount ? state.settings.automaticImageMin : state.settings.fixedImageCount
               const max = state.settings.automaticImageCount ? state.settings.automaticImageMax : state.settings.fixedImageCount
-              if (frames.length < min || frames.length > max) throw new Error(`本轮分镜数量需要在 ${min} 到 ${max} 之间。`)
+              if (frames.length < min || frames.length > max) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `本轮分镜数量需要在 ${min} 到 ${max} 之间。`, { what: '本轮分镜数量', expected: `${min} 到 ${max}` })
               submitted.add(session.id)
               session.append(IMAGE_EVENT, { batchId, ...position, status: 'generating', frames: frames.map(frame => ({ id: frame.id, width: state.settings.width, height: state.settings.height, status: 'generating' })) }, { ignorable: true })
               job = { controller: new AbortController(), settled: false, output: null }

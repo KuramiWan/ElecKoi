@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { app } from 'electron'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export class AppPaths {
   readonly database: string
@@ -24,7 +26,10 @@ export class AppPaths {
       join(process.resourcesPath, ...segments)
     ]
     const match = candidates.find(existsSync)
-    if (match === undefined) throw new Error(`缺少应用资源：apps/desktop/resources/${segments.join('/')}`)
+    if (match === undefined) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound,
+        `缺少应用资源：apps/desktop/resources/${segments.join('/')}`, { what: '应用资源' })
+    }
     return match
   }
 }
