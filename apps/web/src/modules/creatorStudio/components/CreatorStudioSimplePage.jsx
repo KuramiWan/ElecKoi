@@ -59,7 +59,7 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
     const abort = new AbortController();
     const timer = setTimeout(() => model.search(query.trim(), abort.signal).then(result => {
       if (!abort.signal.aborted) setMatches(result);
-    }).catch(cause => { if (!abort.signal.aborted) setSearchError(cause.message); }), 200);
+    }).catch(cause => { if (!abort.signal.aborted) setSearchError(resolveFailure(cause, { fallback: '搜索会话失败' }).text); }), 200);
     return () => { clearTimeout(timer); abort.abort(); };
   }, [model, query]);
   const target = characters.collection.items.find(item => item.id === state.active?.characterId);

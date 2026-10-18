@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Copy, Play, Trash, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { REGEX_SCOPES, REGEX_TARGETS } from "../model/regexRulesEditing.js";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 function Switch({ checked, onChange, label }) {
   return (
@@ -33,7 +34,7 @@ export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLo
       setTestOutput(result.output);
       setTestError(result.validationMessage || "");
     } catch (error) {
-      setTestError(error?.message || "测试失败");
+      setTestError(resolveFailure(error, { fallback: "测试失败" }).text);
     } finally {
       setTesting(false);
     }

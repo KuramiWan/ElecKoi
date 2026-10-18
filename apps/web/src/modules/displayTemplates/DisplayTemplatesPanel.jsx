@@ -141,7 +141,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
       const result = await runDisplayTemplates({ libraries: [library], content: testText, variables,
         message: { id: 'preview', conversationId: '', role: 'assistant', status: 'complete', content: testText } }, { signal: controller.signal });
       if (!controller.signal.aborted) { setTestOutput(result.content); setTestError(result.errors.map(item => item.message).join('\n')); }
-    } catch (cause) { if (!controller.signal.aborted) setTestError(cause.message); }
+    } catch (cause) { if (!controller.signal.aborted) setTestError(resolveFailure(cause, { fallback: '测试显示模板失败' }).text); }
     finally { if (!controller.signal.aborted) setTesting(false); }
   }
   const labelFor = libraryScope => libraryScope === 'global' ? '全局显示模板' : libraryScope === 'preset' ? '预设显示模板' : '角色显示模板';

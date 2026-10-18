@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { buildSharedFrontendDocument } from '../model/sharedFrontendDocument.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 import { frontendAssetUrl } from '../model/applicationFrontendTargets.js';
 import { readAuthorDocumentDeclaration } from '@eleckoi/author-sdk';
 import { useNativeFrontendServices } from '../hooks/NativeFrontendContext.jsx';
@@ -64,7 +65,7 @@ function LegacyProjectFrame({ project, runtime, request, content, entryFile = pr
       currentDocument.current = null;
     };
     const fail = failure => {
-      const message = `${project.name} · ${entryFile}: ${failure.message || String(failure)}`;
+      const message = `${project.name} · ${entryFile}: ${resolveFailure(failure, { fallback: '前端页面加载失败' }).text}`;
       if (mounted) { setError(message); errorRef.current?.(message); }
     };
     setError(''); setSource('');

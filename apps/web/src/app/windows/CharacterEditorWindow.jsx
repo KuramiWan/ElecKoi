@@ -11,6 +11,7 @@ import {
 import logoIcon from "../../assets/eleckoi-app-icon.png";
 import { ElecKoiWordmark } from "../../ui/icons/ElecKoiWordmark.jsx";
 import { Browse, FileCode, FolderSimple } from '../../ui/icons/interfaceIcons.jsx';
+import { resolveFailure } from '../../utils/failureText.js';
 import {
   CharacterBasicInfoPanel,
 } from "../../modules/persona/index.js";
@@ -157,7 +158,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         setCharacter(found);
         setPersistedCharacter(found);
       })
-      .catch((error) => { if (active) setSaveError(error instanceof Error ? error.message : String(error)); })
+      .catch((error) => { if (active) setSaveError(resolveFailure(error, { fallback: "读取角色卡失败" }).text); })
       .finally(() => {
         if (active) setLoaded(true);
       });
@@ -213,7 +214,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       setBasicSaveNotice("saved");
       return true;
     } catch (error) {
-      setSaveError(error?.message || "保存失败");
+      setSaveError(resolveFailure(error, { fallback: "保存失败" }).text);
       return false;
     } finally {
       setSaving(false);

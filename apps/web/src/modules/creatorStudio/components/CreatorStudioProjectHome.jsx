@@ -501,7 +501,7 @@ export function CreatorStudioProjectHome({ sidebarCollapsed = false, characterCa
       await projectCatalog.delete(project.id);
       setPendingDeletionId("");
     } catch (requestError) {
-      setDeleteError(requestError instanceof Error ? requestError.message : "无法删除项目。");
+      setDeleteError(resolveFailure(requestError, { fallback: "无法删除项目。" }).text);
     } finally {
       setDeletingProjectId("");
     }

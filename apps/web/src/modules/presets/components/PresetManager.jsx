@@ -170,7 +170,7 @@ export function PresetManager({ catalogModel, catalog, purpose, onPurposeChange,
       await onExport(format);
       setExportOpen(false);
     } catch (cause) {
-      setExportError(cause?.message || '导出预设失败');
+      setExportError(resolveFailure(cause, { fallback: '导出预设失败' }).text);
     } finally {
       setExporting(false);
     }

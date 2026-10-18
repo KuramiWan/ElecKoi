@@ -218,7 +218,7 @@ export function PresetListPanel() {
         setSelectedGroup(ALL_PRESETS);
         await refresh(result.preset.id);
       } catch (cause) {
-        setImportError(cause?.message || '导入预设失败');
+        setImportError(resolveFailure(cause, { fallback: '导入预设失败' }).text);
       } finally {
         setImporting(false);
       }

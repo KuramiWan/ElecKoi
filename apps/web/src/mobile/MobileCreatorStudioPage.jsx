@@ -93,7 +93,7 @@ export function CreatorStudioSidebar({ model, state, target, busy, error, perfor
     setMatches(null); setSearchError('');
     const timer = setTimeout(() => model.search(query.trim(), abort.signal).then(result => {
       if (!abort.signal.aborted) setMatches(result);
-    }).catch(error => { if (!abort.signal.aborted) setSearchError(error.message); }), 200);
+    }).catch(error => { if (!abort.signal.aborted) setSearchError(resolveFailure(error, { fallback: '搜索会话失败' }).text); }), 200);
     return () => { clearTimeout(timer); abort.abort(); };
   }, [model, query]);
   useEffect(() => {
