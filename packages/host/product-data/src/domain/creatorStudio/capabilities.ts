@@ -255,7 +255,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   operation('scripts', 'remove', '删除当前角色的单个脚本', 'write', z.object({ id, expectedRevision: revision }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), item = find(scriptItems(library), input.id)
-    if (item.type !== 'script') throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '删除文件夹前请逐个处理其中脚本。', { what: '先处理文件夹里的脚本' })
+    if (item.type !== 'script') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '删除文件夹前请逐个处理其中脚本。', { field: 'id' })
     const saved = data.saveScriptLibrary({ ...library, trees: library.trees.filter(tree => tree.id !== item.id).map(tree => tree.type === 'folder' ? { ...tree, scripts: tree.scripts.filter(script => script.id !== item.id) } : tree) })
     return { removedId: item.id, revision: saved.revision }
   })
@@ -274,7 +274,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   operation('scripts', 'remove_folder', '删除空脚本文件夹', 'write', z.object({ id, expectedRevision: revision }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), folder = find(library.trees, input.id)
-    if (folder.type !== 'folder' || folder.scripts.length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '只能删除空脚本文件夹，请先移动或删除其中脚本。', { what: '先移动或删除文件夹里的脚本' })
+    if (folder.type !== 'folder' || folder.scripts.length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '只能删除空脚本文件夹，请先移动或删除其中脚本。', { what: '移动或删除文件夹里的脚本' })
     const saved = data.saveScriptLibrary({ ...library, trees: library.trees.filter(tree => tree.id !== folder.id) })
     return { removedId: folder.id, revision: saved.revision }
   })
