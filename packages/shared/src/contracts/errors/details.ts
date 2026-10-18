@@ -13,8 +13,9 @@
  *    （`packages/host/dsh-client-connection`），且失败信封要被 `JSON.stringify` 过一遍。
  *    所以详情里不放 `undefined`、函数、`Date`、类实例、循环引用。
  *
- * **`what` 是名词短语，不是标识符。** 它会被用来拼用户可见句子（「找不到{what}。」），
- * 所以放「角色」「预设分组」这类词；具体的 id / 路径放开发者诊断 `message` 里，不进详情。
+ * **`what` 不是标识符。** 多数码写名词短语（会被拼进用户句，如「找不到{what}。」），
+ * `state/precondition` 例外，写用户该先做的**动作**（模板是「请先${what}。」）；
+ * 具体的 id / 路径放开发者诊断 `message` 里，不进详情。
  *
  * 参数名闭集：`field` / `issues` / `path` / `operation` / `guard` / `what` / `expected` / `actual`。
  * 不在这八个里的新参数属于契约变更——先改这份文件与 `codes.ts`，再动用例。
@@ -93,7 +94,7 @@ export interface EleckoiStateMismatchDetails {
   readonly what: string
 }
 
-/** 前置动作未完成的详情：`what` 是用户该先做的动作（名词短语，如 `打开一个聊天`）。 */
+/** 前置动作未完成的详情：`what` 是用户该先做的动作（会被拼成「请先${what}。」，如 `打开一个聊天`），不是名词短语。 */
 export interface EleckoiStatePreconditionDetails {
   readonly what: string
 }

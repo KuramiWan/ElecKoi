@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 从契约源生成对外可读的失败契约文档 `docs/error-contract.md`。
+ * 从契约源生成内部可读的失败契约文档 `docs/error-contract.md`。
  *
  * 生成的产物逐码一行：码字符串 / 语义键 / 该码的详情参数 / 默认呈现通道 / 无参数时的用户句；
  * 外加解释四条契约规则、详情参数闭集与「通道只能上调」的三节。产物头部写明是生成物，
@@ -57,7 +57,7 @@ const links = {
 }
 
 /**
- * 参数名 → 一句对外可读的解释。键集合由下面的断言与 `details.ts` 的联合声明对齐：
+ * 参数名 → 一句可读的解释。键集合由下面的断言与 `details.ts` 的联合声明对齐：
  * 契约新增参数时必须在这里补一句，否则生成器报错（文档不许漏参数）。
  */
 const PARAM_DESCRIPTIONS = {
@@ -66,7 +66,8 @@ const PARAM_DESCRIPTIONS = {
   path: '涉及的文件系统路径（操作对象、被占用的目录）。',
   operation: '动作名（`read` / `write` / `delete` / `spawn` / `request` …）。',
   guard: '拒绝执行的那道护栏名（如 `untrusted-sender`）。',
-  what: '涉及的**东西**（名词短语，会被拼进用户句，如「角色」「预设分组」）；不是 id。',
+  what: '涉及的**东西**（会被拼进用户句，如「角色」「预设分组」）；多数码写名词短语，'
+    + '`eleckoi/state/precondition` 例外、写用户该先做的**动作**；不是 id。',
   expected: '当前版本或支持范围要求的形态（如 `schema v3`）。',
   actual: '实际观察到的形态。'
 }
@@ -187,11 +188,20 @@ assert.equal(
 assert.ok(!FIXED_TEXT_CODES.includes(ELECKOI_FALLBACK_FAILURE_CODE), '兜底码不该有固定说法')
 
 
+/** 个别码的详情参数需要一句例外说明（写进 §5 的「详情参数」列）。 */
+const PARAM_CELL_NOTES = {
+  [ELECKOI_FAILURE_CODES.statePrecondition]: '（写用户该先做的**动作**，不是名词短语）'
+}
+for (const code of Object.keys(PARAM_CELL_NOTES)) {
+  assert.ok(CODES.includes(code), `PARAM_CELL_NOTES 里有不在码表里的码 ${code}`)
+}
+
 const rows = CODES.map((code) => {
   const key = KEY_BY_CODE.get(code)
   assert.ok(key !== undefined, `码 ${code} 不在 ELECKOI_FAILURE_CODES 里`)
   const params = ELECKOI_FAILURE_DETAIL_PARAMS[code].map((param) => `\`${param}\``).join('、')
-  return `| \`${code}\` | \`${key}\` | ${params} | ${channelOf(code)} | ${escapeCell(userTextOf(code))} |`
+  const note = PARAM_CELL_NOTES[code] ?? ''
+  return `| \`${code}\` | \`${key}\` | ${params}${note} | ${channelOf(code)} | ${escapeCell(userTextOf(code))} |`
 })
 
 const paramRows = CLOSED_PARAMS.map((param) => {
@@ -206,12 +216,13 @@ const lines = [
   '',
   '# ElecKoi 失败契约',
   '',
-  '这份文档把 ElecKoi 的失败码、每条码的参数化详情、用户文案通道与四条契约规则写成对外可读的一页。',
+  '这份文档把 ElecKoi 的失败码、每条码的参数化详情、用户文案通道与四条契约规则写成内部可读的一页。',
   '它从契约源码生成（真源见文末），所以不会与实现漂移：手改产物会被 `pnpm check:error-contract-doc`',
   '拒绝，`pnpm build` 也跑这一步。',
   '',
-  '适合三类读者：非 TypeScript 实现者（照抄码字符串与参数名）、第三方插件作者（按 `code` 判断失败种类）、',
-  '维护者（哪条码带哪些参数、默认走哪个通道、用户看到的无参数说法是什么）。',
+  '这份文档是**内部契约**，读者是本仓库的维护者与客户端 bundle 的维护者：前者看哪条码带哪些参数、',
+  '默认走哪个通道、用户看到的无参数说法是什么；后者看按 `code` 分支时对应哪条码。码表是内部枚举，',
+  '加码自由、改名要一次全局替换；**第三方插件按 `code` 分支不是承诺过的接口**（对外表态要单独决定）。',
   '',
   '## 1. 失败对象与码的形态',
   '',
@@ -230,7 +241,7 @@ const lines = [
   '- `details`：参数化详情，只放参数（见 §3），不许放拼好的句子。',
   '',
   '**用户可见文案只有一个解析点**（渲染层 `apps/web/src/utils/failureTexts.js`）：宿主、插件与领域层',
-  '永不拼用户可见句子；非 TypeScript 实现自己写文案，契约只保证 `code` + `details` 足以说出正确的话。',
+  '永不拼用户可见句子；任何按 `code` 写文案的地方都只能依赖 `code` + `details`，不解析 `message`。',
   '',
   '## 2. 四条契约规则',
   '',
@@ -245,14 +256,18 @@ const lines = [
   '   `.catch(rejectionIsAwaitedElsewhere)`、`.catch(bestEffort)` 之一，或者写一个非空处理体；',
   '   `catch {}` 与只含注释的 `catch {}` 都算裸吞。',
   '4. **不许裸抛**：领域、宿主与客户端插件层的 `throw new Error(` 必须改成带契约码的构造',
-  '   （`DesktopError` / `productFailure`）。规则 1–3 是绝对值（命中即失败）；规则 4 是收口进度尺，',
-  '   数字必须归零，归零后闸按绝对值判失败（`--strict`）。',
+  '   （`DesktopError` / `productFailure`）。四条规则都是绝对值（命中即失败）；规则 4 在裸抛',
+  '   归零后也按绝对值判失败，`--progress-only` 只给未来的迁移线路临时看数（CI 与门禁不带它）。',
   '',
   '## 3. 详情参数（闭集）',
   '',
   '详情只放参数，不放拼好的句子。参数名是**闭集**：不在这 ' + CLOSED_PARAMS.length + ' 个里的新参数属于契约变更。',
   '最初六个（`field` / `issues` / `path` / `operation` / `guard` / `what`）之外，扩表时新增了',
   '`expected` / `actual`，用来表达「要求什么、实际是什么」。',
+  '',
+  '`what` 的写法按码分两种：多数码是**名词短语**（模板如「找不到{what}。」）；',
+  '`eleckoi/state/precondition` 例外，写用户该先做的**动作**（模板是「请先${what}。」），',
+  '写成名词短语会变病句（「请先一个打开的聊天。」）。',
   '',
   '| 参数 | 含义 | 要求这个参数的码 |',
   '| --- | --- | --- |',
@@ -272,7 +287,7 @@ const lines = [
   '',
   `## 5. 码表（${CODES.length} 条，逐码一行）`,
   '',
-  '顺序即跨语言实现、文档表格与逐条断言的**列举顺序**（先兜底，再按「谁的问题」分组），别各自重排。',
+  '顺序即文档表格与逐条断言的**列举顺序**（先兜底，再按「谁的问题」分组），别各自重排。',
   '「语义键」是契约源码里那条常量的键（给代码读）；「详情参数」是该码会带的参数（必填 / 可选见',
   `[详情形状](${links.details})）；「用户句」是**没有详情参数时**渲染层给用户的说法：` +
     `${FIXED_TEXT_CODES.length} 条码各有一句固定说法，兜底码 \`eleckoi/internal\` 不设固定句（见 §5.1）。`,
@@ -301,7 +316,7 @@ const lines = [
   `  由 [foldFailure](${links.foldFailure}) 折成兜底码并保留 \`message\`。`,
   '- **legacy `DESKTOP_ERROR_CODES.*` 六个码**（`INVALID_REQUEST` / `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` /',
   `  \`RUNTIME_UNAVAILABLE\` / \`INTERNAL\`，见 [DesktopError.ts](${links.legacyCodes})）：上游遗留形态，`,
-  '  规格把「清掉它们」列为 Out of Scope，所以保留为**防御映射**：边界万一还收到，有唯一对应的三个码折过去，',
+  '  本轮把「清掉它们」列为不做，所以保留为**防御映射**：边界万一还收到，有唯一对应的三个码折过去，',
   '  其余折兜底并把原码记进 `details.what`；**新代码不许再抛这六个码**。',
   '',
   '## 7. 真源与维护',

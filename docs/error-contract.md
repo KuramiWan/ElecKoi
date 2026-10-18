@@ -2,12 +2,13 @@
 
 # ElecKoi 失败契约
 
-这份文档把 ElecKoi 的失败码、每条码的参数化详情、用户文案通道与四条契约规则写成对外可读的一页。
+这份文档把 ElecKoi 的失败码、每条码的参数化详情、用户文案通道与四条契约规则写成内部可读的一页。
 它从契约源码生成（真源见文末），所以不会与实现漂移：手改产物会被 `pnpm check:error-contract-doc`
 拒绝，`pnpm build` 也跑这一步。
 
-适合三类读者：非 TypeScript 实现者（照抄码字符串与参数名）、第三方插件作者（按 `code` 判断失败种类）、
-维护者（哪条码带哪些参数、默认走哪个通道、用户看到的无参数说法是什么）。
+这份文档是**内部契约**，读者是本仓库的维护者与客户端 bundle 的维护者：前者看哪条码带哪些参数、
+默认走哪个通道、用户看到的无参数说法是什么；后者看按 `code` 分支时对应哪条码。码表是内部枚举，
+加码自由、改名要一次全局替换；**第三方插件按 `code` 分支不是承诺过的接口**（对外表态要单独决定）。
 
 ## 1. 失败对象与码的形态
 
@@ -25,7 +26,7 @@
 - `details`：参数化详情，只放参数（见 §3），不许放拼好的句子。
 
 **用户可见文案只有一个解析点**（渲染层 `apps/web/src/utils/failureTexts.js`）：宿主、插件与领域层
-永不拼用户可见句子；非 TypeScript 实现自己写文案，契约只保证 `code` + `details` 足以说出正确的话。
+永不拼用户可见句子；任何按 `code` 写文案的地方都只能依赖 `code` + `details`，不解析 `message`。
 
 ## 2. 四条契约规则
 
@@ -40,14 +41,18 @@
    `.catch(rejectionIsAwaitedElsewhere)`、`.catch(bestEffort)` 之一，或者写一个非空处理体；
    `catch {}` 与只含注释的 `catch {}` 都算裸吞。
 4. **不许裸抛**：领域、宿主与客户端插件层的 `throw new Error(` 必须改成带契约码的构造
-   （`DesktopError` / `productFailure`）。规则 1–3 是绝对值（命中即失败）；规则 4 是收口进度尺，
-   数字必须归零，归零后闸按绝对值判失败（`--strict`）。
+   （`DesktopError` / `productFailure`）。四条规则都是绝对值（命中即失败）；规则 4 在裸抛
+   归零后也按绝对值判失败，`--progress-only` 只给未来的迁移线路临时看数（CI 与门禁不带它）。
 
 ## 3. 详情参数（闭集）
 
 详情只放参数，不放拼好的句子。参数名是**闭集**：不在这 8 个里的新参数属于契约变更。
 最初六个（`field` / `issues` / `path` / `operation` / `guard` / `what`）之外，扩表时新增了
 `expected` / `actual`，用来表达「要求什么、实际是什么」。
+
+`what` 的写法按码分两种：多数码是**名词短语**（模板如「找不到{what}。」）；
+`eleckoi/state/precondition` 例外，写用户该先做的**动作**（模板是「请先${what}。」），
+写成名词短语会变病句（「请先一个打开的聊天。」）。
 
 | 参数 | 含义 | 要求这个参数的码 |
 | --- | --- | --- |
@@ -56,7 +61,7 @@
 | `path` | 涉及的文件系统路径（操作对象、被占用的目录）。 | `eleckoi/data/shape-invalid`、`eleckoi/lookup/duplicate`、`eleckoi/creator-project/name-taken`、`eleckoi/plugin/load-failed`、`eleckoi/io/failed` |
 | `operation` | 动作名（`read` / `write` / `delete` / `spawn` / `request` …）。 | `eleckoi/io/failed`、`eleckoi/net/operation-failed`、`eleckoi/ipc/call-failed` |
 | `guard` | 拒绝执行的那道护栏名（如 `untrusted-sender`）。 | `eleckoi/safety/refused`、`eleckoi/security/denied`、`eleckoi/sender/untrusted` |
-| `what` | 涉及的**东西**（名词短语，会被拼进用户句，如「角色」「预设分组」）；不是 id。 | `eleckoi/internal`、`eleckoi/data/shape-invalid`、`eleckoi/data/legacy-mismatch`、`eleckoi/input/unsupported`、`eleckoi/lookup/not-found`、`eleckoi/lookup/duplicate`、`eleckoi/character/not-found`、`eleckoi/creator-project/not-found`、`eleckoi/agent-preset/not-found`、`eleckoi/conflict/stale-revision`、`eleckoi/state/mismatch`、`eleckoi/state/precondition`、`eleckoi/security/denied`、`eleckoi/sender/untrusted`、`eleckoi/lifecycle/not-ready`、`eleckoi/lifecycle/disposed`、`eleckoi/plugin/load-failed`、`eleckoi/net/operation-failed`、`eleckoi/timeout/expired`、`eleckoi/storage/corrupt`、`eleckoi/db/schema-mismatch`、`eleckoi/model/config-invalid`、`eleckoi/media/invalid`、`eleckoi/ipc/call-failed` |
+| `what` | 涉及的**东西**（会被拼进用户句，如「角色」「预设分组」）；多数码写名词短语，`eleckoi/state/precondition` 例外、写用户该先做的**动作**；不是 id。 | `eleckoi/internal`、`eleckoi/data/shape-invalid`、`eleckoi/data/legacy-mismatch`、`eleckoi/input/unsupported`、`eleckoi/lookup/not-found`、`eleckoi/lookup/duplicate`、`eleckoi/character/not-found`、`eleckoi/creator-project/not-found`、`eleckoi/agent-preset/not-found`、`eleckoi/conflict/stale-revision`、`eleckoi/state/mismatch`、`eleckoi/state/precondition`、`eleckoi/security/denied`、`eleckoi/sender/untrusted`、`eleckoi/lifecycle/not-ready`、`eleckoi/lifecycle/disposed`、`eleckoi/plugin/load-failed`、`eleckoi/net/operation-failed`、`eleckoi/timeout/expired`、`eleckoi/storage/corrupt`、`eleckoi/db/schema-mismatch`、`eleckoi/model/config-invalid`、`eleckoi/media/invalid`、`eleckoi/ipc/call-failed` |
 | `expected` | 当前版本或支持范围要求的形态（如 `schema v3`）。 | `eleckoi/data/legacy-mismatch`、`eleckoi/input/unsupported`、`eleckoi/db/schema-mismatch` |
 | `actual` | 实际观察到的形态。 | —（当前没有码要求） |
 
@@ -74,7 +79,7 @@
 
 ## 5. 码表（30 条，逐码一行）
 
-顺序即跨语言实现、文档表格与逐条断言的**列举顺序**（先兜底，再按「谁的问题」分组），别各自重排。
+顺序即文档表格与逐条断言的**列举顺序**（先兜底，再按「谁的问题」分组），别各自重排。
 「语义键」是契约源码里那条常量的键（给代码读）；「详情参数」是该码会带的参数（必填 / 可选见
 [详情形状](../packages/shared/src/contracts/errors/details.ts)）；「用户句」是**没有详情参数时**渲染层给用户的说法：29 条码各有一句固定说法，兜底码 `eleckoi/internal` 不设固定句（见 §5.1）。
 
@@ -95,7 +100,7 @@
 | `eleckoi/creator-project/name-taken` | `creatorProjectNameTaken` | `path` | 功能内（inline） | 保存位置已存在同名目录。 |
 | `eleckoi/conflict/stale-revision` | `conflictStaleRevision` | `what` | 功能内（inline） | 内容已在别处被修改，请刷新后重试。 |
 | `eleckoi/state/mismatch` | `stateMismatch` | `what` | 功能内（inline） | 内容状态对不上，请刷新后重试。 |
-| `eleckoi/state/precondition` | `statePrecondition` | `what` | 功能内（inline） | 请先完成前置操作。 |
+| `eleckoi/state/precondition` | `statePrecondition` | `what`（写用户该先做的**动作**，不是名词短语） | 功能内（inline） | 请先完成前置操作。 |
 | `eleckoi/safety/refused` | `safetyRefused` | `guard` | 功能内（inline） | 操作被拒绝。 |
 | `eleckoi/security/denied` | `securityDenied` | `what`、`guard` | 功能内（inline） | 没有权限执行这个操作。 |
 | `eleckoi/sender/untrusted` | `senderUntrusted` | `what`、`guard` | 应用级（app） | 该操作被拒绝：调用来源不可信。 |
@@ -131,7 +136,7 @@
   由 [foldFailure](../packages/shared/src/foundation/failure.ts) 折成兜底码并保留 `message`。
 - **legacy `DESKTOP_ERROR_CODES.*` 六个码**（`INVALID_REQUEST` / `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` /
   `RUNTIME_UNAVAILABLE` / `INTERNAL`，见 [DesktopError.ts](../packages/shared/src/foundation/DesktopError.ts)）：上游遗留形态，
-  规格把「清掉它们」列为 Out of Scope，所以保留为**防御映射**：边界万一还收到，有唯一对应的三个码折过去，
+  本轮把「清掉它们」列为不做，所以保留为**防御映射**：边界万一还收到，有唯一对应的三个码折过去，
   其余折兜底并把原码记进 `details.what`；**新代码不许再抛这六个码**。
 
 ## 7. 真源与维护

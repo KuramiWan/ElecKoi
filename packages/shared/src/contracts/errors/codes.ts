@@ -61,7 +61,7 @@ export const ELECKOI_FAILURE_CODES = {
   conflictStaleRevision: 'eleckoi/conflict/stale-revision',
   /** 两个身份、归属或状态对不上（不是并发问题）。详情带 `what`。 */
   stateMismatch: 'eleckoi/state/mismatch',
-  /** 用户需要先完成一个前置动作。详情带 `what`（该做什么，名词短语）。 */
+  /** 用户需要先完成一个前置动作。详情带 `what`（该做什么的动作，如 `打开一个聊天`）。 */
   statePrecondition: 'eleckoi/state/precondition',
 
   // ---- 权限与护栏 ----
