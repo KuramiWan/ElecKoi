@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
+import { errorMessage } from '@shared/foundation/errorMessage'
 import { FrontendIndex } from './FrontendIndex'
 import type { FrontendJson } from './types'
 
@@ -80,7 +81,7 @@ export class FrontendCharacterDeletion {
       this.requireDirectory(directory)
       const path = join(directory, 'journal.json')
       if (!existsSync(path)) { this.cleanup(directory); continue }
-      const journal = journalSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
+      const journal = this.readJournal(path)
       if (new Set(journal.characters.map(owner => owner.id)).size !== journal.characters.length
         || new Set(journal.projects.map(project => project.id)).size !== journal.projects.length) {
         throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'Frontend deletion record contains duplicate identities', { what: '前端删除记录的标识' })
@@ -93,6 +94,16 @@ export class FrontendCharacterDeletion {
       }
       this.settle(directory, journal)
     }
+  }
+
+  private readJournal(path: string): Journal {
+    let parsed: unknown
+    try { parsed = JSON.parse(readFileSync(path, 'utf8')) }
+    catch (error) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt,
+        `Frontend deletion recovery journal is corrupt: ${errorMessage(error)}`, { what: '恢复日志' })
+    }
+    return journalSchema.parse(parsed)
   }
 
   private settle(directory: string, journal: Journal): void {
