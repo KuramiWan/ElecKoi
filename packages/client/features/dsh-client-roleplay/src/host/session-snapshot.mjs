@@ -1,17 +1,18 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 export function readSessionSnapshot(root, sessionId) {
-  if (!root) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
+  if (!root) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ELECKOI_SESSION_SNAPSHOT_ROOT is required', { what: '配置必需的运行环境变量' })
   const value = JSON.parse(readFileSync(snapshotPath(root, sessionId), 'utf8'))
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`Invalid ElecKoi Session snapshot: ${sessionId}`)
+    throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `Invalid ElecKoi Session snapshot: ${sessionId}`, { what: '会话快照' })
   }
   return value
 }
 
 export function writeSessionSnapshot(root, sessionId, value) {
-  if (!root) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
+  if (!root) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ELECKOI_SESSION_SNAPSHOT_ROOT is required', { what: '配置必需的运行环境变量' })
   mkdirSync(root, { recursive: true })
   const path = snapshotPath(root, sessionId)
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
@@ -70,7 +71,7 @@ export function removeSessionSnapshot(root, sessionId) {
 }
 
 export function snapshotPath(root, sessionId) {
-  if (!root) throw new Error('ELECKOI_SESSION_SNAPSHOT_ROOT is required')
+  if (!root) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ELECKOI_SESSION_SNAPSHOT_ROOT is required', { what: '配置必需的运行环境变量' })
   const safeId = String(sessionId || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 160) || 'default'
   return join(root, `${safeId}.json`)
 }
