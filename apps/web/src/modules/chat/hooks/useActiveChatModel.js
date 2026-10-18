@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { normalizeModelSelection, resolveModelConfig } from "../model/chatModelSelection.js";
 
@@ -32,7 +34,7 @@ export function useActiveChatModel({ conversations, conversationId, modelConfigs
   );
 
   async function selectChatModel(nextSelection) {
-    if (!conversations) throw new Error("DSH 聊天服务尚未就绪。");
+    if (!conversations) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪。", { what: "DSH 聊天服务" });
     const generation = ++generationRef.current;
     const previous = modelSelection;
     const next = normalizeModelSelection(nextSelection);

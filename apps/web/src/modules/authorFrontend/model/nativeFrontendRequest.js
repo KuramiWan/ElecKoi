@@ -1,6 +1,9 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
+
 /** UI commands map only to the generated native project service. */
 export async function requestNativeFrontend(service, owner, method, params = {}) {
-  if (!service) throw new Error('原生前端插件未启用');
+  if (!service) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '原生前端插件未启用', { what: '原生前端插件' });
   const remote = service.projects;
   const result = await invoke();
   // 直接抛失败对象：码与详情逐字保留；折叠按结构标记识别，不需要 Error 实例。
@@ -26,7 +29,7 @@ export async function requestNativeFrontend(service, owner, method, params = {})
       ...(params.entryFile !== undefined ? { entryFile: params.entryFile } : {}), ...(params.manifest !== undefined ? { manifest: params.manifest } : {}),
     });
     case 'frontends.restoreDefault': return remote.restoreDefault(owner);
-    default: throw new Error(`未知的原生前端操作：${method}`);
+    default: throw new DesktopError(ELECKOI_FAILURE_CODES.internal, `未知的原生前端操作：${method}`, { what: '原生前端操作' });
   }
   }
 }

@@ -36,10 +36,9 @@ function invalid(message) { throw new WebError(`DeepSeek ${message}`, 'WEB_PROVI
 
 export function validateFetchUrl(value) {
   if (typeof value !== 'string' || Array.from(value).length > 8192) invalid('抓取 URL 必须是长度不超过 8192 的 HTTP(S) 地址。')
-  try {
-    const url = new URL(value)
-    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) throw new Error()
-  } catch { invalid('抓取 URL 必须是无嵌入凭据的 HTTP(S) 地址。') }
+  let url
+  try { url = new URL(value) } catch { invalid('抓取 URL 必须是无嵌入凭据的 HTTP(S) 地址。') }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) invalid('抓取 URL 必须是无嵌入凭据的 HTTP(S) 地址。')
   return value
 }
 

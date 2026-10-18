@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { createContext, useContext } from "react";
 
 const MarkdownComponentContext = createContext(null);
@@ -20,7 +22,7 @@ export function OfficialMarkdownProvider({ component, children }) {
 
 export function OfficialMarkdown({ content, streaming = false }) {
   const MarkdownText = useContext(MarkdownComponentContext);
-  if (!MarkdownText) throw new Error("DSH 官方文字渲染组件未接入。");
+  if (!MarkdownText) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 官方文字渲染组件未接入。", { what: "DSH 官方文字渲染组件" });
   return <div className="eleckoi-dsh-markdown">
     <MarkdownText text={content || ""} streaming={streaming} labels={markdownLabels} />
   </div>;

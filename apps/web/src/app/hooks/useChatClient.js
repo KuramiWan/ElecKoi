@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChatSessions } from "../../modules/chat/index.js";
 import { getModelMeta, useModelRuntime } from "../../modules/models/index.js";
@@ -137,9 +139,9 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
 
   async function updateChatBackground(patch) {
     const characterId = chatSessions.chatCharacter?.character_id;
-    if (!characterId) throw new Error("请先选择一个角色。");
+    if (!characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, "请先选择一个角色。", { what: "选择一个角色" });
     const currentCharacter = characters.items.find((item) => item.id === characterId);
-    if (!currentCharacter) throw new Error("没有找到当前角色卡。");
+    if (!currentCharacter) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, "没有找到当前角色卡。", { what: "角色卡" });
     const saved = await updateCharacter({ ...currentCharacter, ...patch }, true, { skipApply: true });
     setStatus("聊天背景已保存");
     return saved.items.find((item) => item.id === characterId) || currentCharacter;

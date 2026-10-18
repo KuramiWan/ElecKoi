@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useRef, useState } from "react";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { Avatar } from "./Avatar.jsx";
@@ -54,14 +56,14 @@ async function centerCrop(file, outputWidth, outputHeight) {
   canvas.width = outputWidth;
   canvas.height = outputHeight;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("当前设备无法处理图片");
+  if (!context) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "当前设备无法处理图片", { what: "设备上的图片处理能力" });
   context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
   return canvas.toDataURL("image/png", 0.95);
 }
 
 async function sourceToFile(source, name) {
   const response = await fetch(assetFetchSrc(source));
-  if (!response.ok) throw new Error("头像图片读取失败");
+  if (!response.ok) throw new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, "头像图片读取失败", { operation: "read" });
   const blob = await response.blob();
   return new File([blob], name, { type: blob.type || "image/png" });
 }
@@ -154,7 +156,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onCha
     setError("");
     try {
       const cropped = await readBlob(croppedFile);
-      if (!cropped) throw new Error("图片处理失败");
+      if (!cropped) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片处理失败", { what: "裁剪后的图片" });
       const nextAvatars = cropRequest?.kind === "portrait"
         ? { ...avatars, portrait: cropped }
         : { ...avatars, circle: cropped, square: cropped };

@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   addableProviderItems,
@@ -355,7 +357,7 @@ export const ModelConfigPanel = forwardRef(function ModelConfigPanel({
     setSaving(true);
     try {
       const saved = await onSave(snapshot);
-      if (!saved) throw new Error("模型配置保存后未返回有效配置。");
+      if (!saved) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, "模型配置保存后未返回有效配置。", { what: "保存后的模型配置" });
       if (snapshot.draftKey) {
         setDraftConfigs(items => items.filter(item => item.draftKey !== snapshot.draftKey));
         draftBaselines.current.delete(snapshot.draftKey);

@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { installRichDocumentMeasurement } from '@eleckoi/author-sdk';
 
 const literal = value => JSON.stringify(value).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
@@ -11,7 +13,7 @@ export function injectFrontendHead(source, head) {
 
 /** Imported HTML gets presentation libraries, but no external author SDK. */
 export function buildSharedFrontendDocument(source, runtime, { channel, baseUrl, rich = false, context, globalStyles = [], autoHeight = false } = {}) {
-  if (!runtime?.assetsBaseUrl || !runtime.sdk) throw new Error('HTML 显示资源尚未就绪');
+  if (!runtime?.assetsBaseUrl || !runtime.sdk) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'HTML 显示资源尚未就绪', { what: 'HTML 显示资源' });
   const sdk = runtime.sdk, libraries = runtime.assetsBaseUrl + 'libraries/';
   // Matching the embedding scheme keeps the rich document canvas transparent.
   const head = `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">`

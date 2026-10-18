@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Copy, NotePencil, Plus, Power, Trash } from "../../../ui/icons/interfaceIcons.jsx";
 import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
@@ -144,7 +146,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       setSaving(true);
       setError("");
       try {
-        if (pendingLatestRef.current) throw new Error('正则配置已更新，请放弃本页修改后载入最新内容。');
+        if (pendingLatestRef.current) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已更新，请放弃本页修改后载入最新内容。', { what: '正则配置' });
         const result = await editor.versions.save([collectionRef.current], libraryVersions.prepare());
         const saved = result.documents[0];
         collectionRef.current = saved;

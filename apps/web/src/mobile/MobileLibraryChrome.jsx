@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { SystemBarOverlay } from '../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -77,7 +79,7 @@ export function MobileConfirm({ title, children, confirmText = '删除', destruc
 export function MobileNameDialog({ title, initialName = '', onClose, onSave }) {
   const [name, setName] = useState(initialName);
   const { busy, error, run } = useMobileOperation();
-  return <MobileConfirm title={title} onClose={onClose} busy={busy} error={error} confirmText="保存" destructive={false} onConfirm={() => run(async () => { if (!name.trim()) throw new Error('请输入名称'); await onSave(name.trim()); onClose(); })}>
+  return <MobileConfirm title={title} onClose={onClose} busy={busy} error={error} confirmText="保存" destructive={false} onConfirm={() => run(async () => { if (!name.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '请输入名称', { field: '名称' }); await onSave(name.trim()); onClose(); })}>
     <input className="mobile-library-name" aria-label="名称" value={name} disabled={busy} onChange={event => setName(event.target.value)} />
   </MobileConfirm>;
 }

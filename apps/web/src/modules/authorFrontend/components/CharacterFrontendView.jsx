@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useState } from 'react';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { useFrontendWorkspace } from '../hooks/useFrontendWorkspace.js';
@@ -14,7 +16,7 @@ export function CharacterFrontendView({ characterId, conversationId, fallback })
   const project = workspace.projects.find(item => item.id === workspace.selectedProjectId);
   let entryFile, failure = error;
   if (!failure) {
-    try { if (!project) throw new Error('已选择的角色前端项目不存在'); entryFile = characterFrontendEntry(project, characterId); }
+    try { if (!project) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '已选择的角色前端项目不存在', { what: '角色前端项目' }); entryFile = characterFrontendEntry(project, characterId); }
     catch (reason) { failure = resolveFailure(reason, { fallback: '角色前端项目加载失败' }).text; }
   }
   const restore = async () => {

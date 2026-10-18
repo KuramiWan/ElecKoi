@@ -11,8 +11,11 @@ export const displayTemplateSchema = z.strictObject({
   source: z.string().max(512_000),
 }).superRefine((template, context) => {
   if (template.position !== 'replace') return
+  if (!template.pattern) {
+    context.addIssue({ code: 'custom', path: ['pattern'], message: '替换模式需要匹配表达式。' })
+    return
+  }
   try {
-    if (!template.pattern) throw new Error('替换模式需要匹配表达式。')
     new RegExp(template.pattern, template.flags)
   } catch (error) {
     context.addIssue({ code: 'custom', path: ['pattern'], message: error instanceof Error ? error.message : '匹配表达式无效。' })

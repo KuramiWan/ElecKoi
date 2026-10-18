@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import {
   createChat as createChatSession,
   getChat,
@@ -49,7 +51,7 @@ export async function runChatMessageSend(options) {
     const encodedImages = await Promise.all(draftImages.map(encodeImageDraft));
     throwIfAborted(controller.signal);
     if (!targetSessionId) {
-      if (!chatCharacter.character_id) throw new Error("请先从角色设定中双击角色进入聊天");
+      if (!chatCharacter.character_id) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, "请先从角色设定中双击角色进入聊天", { what: "从角色设定中进入聊天" });
       const characterName = chatCharacter.assistant_name || chatCharacter.character_name || "新对话";
       const created = await createChatSession(characterName, chatCharacter, { model: conversationModel });
       throwIfAborted(controller.signal);
