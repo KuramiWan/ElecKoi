@@ -12,6 +12,7 @@ import { importDshTranscript, type TranscriptMessage } from './sessionTranscript
 import { readDshSessionLog, removeDshSessionTree, readDshTrajectory, type DshTrajectoryReadOptions } from './trajectory'
 import { refreshSessionProjections, type SessionProjectionRefreshContext } from './sessionProjectionRefresh'
 import { generatedImageReferences, deleteRemovedGeneratedImages, type GeneratedImageCleanupContext } from './generatedImageCleanup'
+import { ELECKOI_FAILURE_CODES, productFailure } from '@eleckoi/dsh-product-api'
 
 export const name = 'eleckoi-session-edit'
 export const inject = ['eleckoiSessionHandles', 'sessionPersistence', 'sessionProjections', 'sessionProjectionCache', 'attachments', 'sessions', 'eleckoiProductData']
@@ -24,7 +25,7 @@ export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageClean
   provide(key: string, value: unknown): void
 }): void {
   const sessionRoot = process.env.DSH_SESSION_ROOT
-  if (!sessionRoot) throw new Error('DSH_SESSION_ROOT is required')
+  if (!sessionRoot) throw productFailure(ELECKOI_FAILURE_CODES.internal, 'DSH_SESSION_ROOT is required', { what: 'DSH 会话目录配置' })
   const transactions = new Set<string>()
   ctx.provide('eleckoiSessionEditor', {
     readTrajectory(sessionId: string, options?: DshTrajectoryReadOptions) {
@@ -35,7 +36,7 @@ export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageClean
         const probe = await ctx.sessionPersistence.open(SessionId(sessionId), 'write')
         await probe.close()
         const log = readDshSessionLog(sessionRoot, sessionId)
-        if (!log) throw new Error('当前聊天对应的 DSH 会话日志无法读取。')
+        if (!log) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '当前聊天对应的 DSH 会话日志无法读取。', { what: '当前聊天的 DSH 会话日志' })
         const lease = await SessionWriteLease.acquire(dirname(log.path), SessionId(sessionId))
         try {
           const result = importDshTranscript(sessionRoot, sessionId, messages)
@@ -49,7 +50,7 @@ export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageClean
         const probe = await ctx.sessionPersistence.open(sessionId as SessionId, 'write')
         await probe.close()
         const log = readDshSessionLog(sessionRoot, sessionId)
-        if (!log) throw new Error('当前聊天对应的 DSH 会话日志无法读取。')
+        if (!log) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '当前聊天对应的 DSH 会话日志无法读取。', { what: '当前聊天的 DSH 会话日志' })
         const lease = await SessionWriteLease.acquire(dirname(log.path), SessionId(sessionId))
         try {
           editDshSessionMessage(sessionRoot, sessionId, eventSeq, role, content)
@@ -81,7 +82,7 @@ export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageClean
         const probe = await ctx.sessionPersistence.open(SessionId(sessionId), 'write')
         await probe.close()
         const log = readDshSessionLog(sessionRoot, sessionId)
-        if (!log) throw new Error('当前聊天对应的 DSH 会话日志无法读取。')
+        if (!log) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '当前聊天对应的 DSH 会话日志无法读取。', { what: '当前聊天的 DSH 会话日志' })
         const lease = await SessionWriteLease.acquire(dirname(log.path), SessionId(sessionId))
         try { return { path: log.path, content: readFileSync(log.path), images: generatedImageReferences(log.events) } }
         finally { await lease.release() }
@@ -114,7 +115,7 @@ export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageClean
         const deletedSessionIds = removeDshSessionTree(sessionRoot, sessionId)
         try {
           const store = ctx.get('spillStore')
-          if (!store?.removeSessionResults) throw new Error('当前 Host 未提供工具结果删除服务。')
+          if (!store?.removeSessionResults) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Host 未提供工具结果删除服务。', { what: '工具结果删除服务' })
           await store.removeSessionResults(deletedSessionIds)
         } catch (error) {
           ctx.logger.error(`会话 ${sessionId} 已删除，但工具结果清理失败；继续完成删除，残留文件由过期清理回收。${String(error)}`)
@@ -139,7 +140,7 @@ export function apply(ctx: SessionProjectionRefreshContext & GeneratedImageClean
         let next: GeneratedImageFrame | undefined
         try {
           next = await generate(structuredClone(selected.frame))
-          if (next.id !== frameId) throw new Error('生图结果的分镜编号与选中图片不一致。')
+          if (next.id !== frameId) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '生图结果的分镜编号与选中图片不一致。', { what: '生图结果的分镜编号' })
           const { prompt, negative_prompt, after_paragraph, ...outcome } = next
           const frames = selected.event.data.frames.map((frame: GeneratedImageFrame) => frame.id === frameId ? outcome : frame)
           const ready = frames.filter((frame: GeneratedImageFrame) => frame.status === 'ready').length
