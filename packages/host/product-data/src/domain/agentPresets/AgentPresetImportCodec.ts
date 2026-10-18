@@ -5,6 +5,8 @@ import { decodeRegexDocuments } from '@shared/foundation/regexRuleTransfer'
 import { normalizeAgentPresetPrompts } from '@shared/contracts/presets/builtIns'
 import { agentPresetPurposeSchema } from '@shared/contracts/presets/schemas'
 import { defaultRoleplayPlanSettings, roleplayPlanSettingsSchema } from '@shared/contracts/presets/roleplayPlan'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { decodePortableScriptLibrary, type PortableScriptLibrary } from '@product-data/domain/scripts'
 import { decodePortableDisplayTemplates, type PortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import type {
@@ -93,7 +95,7 @@ export function decodeAgentPresetImport(
   agentPresetPurposeSchema.parse(purpose)
   const bytes = decodeInput(document.base64)
   if (source === 'sillytavern') {
-    if (isPng(bytes)) throw new Error('酒馆预设请选择 JSON 文件。')
+    if (isPng(bytes)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '酒馆预设请选择 JSON 文件。', { what: '酒馆预设的文件格式', expected: 'JSON' })
     return decodeSillyTavern(document, parseRoot(new TextDecoder().decode(bytes), '酒馆预设'), purpose)
   }
   return decodeElecKoi(document, bytes, purpose)
@@ -165,19 +167,19 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array, p
   if (isPng(bytes)) {
     const chunks = readPngText(bytes)
     const encoded = chunks.get(ELECKOI_PNG_PRESET_KEY)
-    if (!encoded) throw new Error('图片里没有 ElecKoi 预设数据。')
+    if (!encoded) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '图片里没有 ElecKoi 预设数据。', { what: '图片里的 ElecKoi 预设数据' })
     json = Buffer.from(encoded, 'base64').toString('utf8')
   } else {
     json = new TextDecoder().decode(bytes)
   }
   const root = parseRoot(json, 'ElecKoi 预设')
   if (root.format !== ELECKOI_FORMAT || ![1, ELECKOI_FORMAT_VERSION].includes(integerValue(root.version, -1))) {
-    throw new Error('这不是当前版本的 ElecKoi 预设文件。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '这不是当前版本的 ElecKoi 预设文件。', { what: 'ElecKoi 预设文件版本', expected: String(ELECKOI_FORMAT_VERSION) })
   }
   const value = objectValue(root.preset)
-  if (!value) throw new Error('ElecKoi 预设缺少 preset 数据。')
+  if (!value) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'ElecKoi 预设缺少 preset 数据。', { what: 'ElecKoi 预设的 preset 数据', path: 'preset' })
   if (root.version === 2 && agentPresetPurposeSchema.parse(value.purpose) !== purpose) {
-    throw new Error('预设文件用途与当前分类不同，请切换到对应的预设分类后导入。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '预设文件用途与当前分类不同，请切换到对应的预设分类后导入。', { what: '预设文件的用途' })
   }
   const timestamp = new Date().toISOString()
   const familyValue = stringValue(value.model_family) as AgentPreset['modelFamily']
@@ -246,11 +248,11 @@ function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject
     const identifier = stringValue(prompt.identifier).trim()
     if (identifier) definitions.set(identifier, prompt)
   }
-  if (!definitions.size) throw new Error('酒馆预设没有 prompts 条目。')
+  if (!definitions.size) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '酒馆预设没有 prompts 条目。', { what: '酒馆预设的 prompts 条目', path: 'prompts' })
   const promptOrder = objectList(root.prompt_order)
     .find((item) => String(item.character_id) === SILLY_TAVERN_GLOBAL_PROMPT_ORDER_ID)
   if (!promptOrder || !Array.isArray(promptOrder.order)) {
-    throw new Error('找不到酒馆预设外层条目顺序（100001）。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到酒馆预设外层条目顺序（100001）。', { what: '酒馆预设外层条目顺序' })
   }
   const timestamp = new Date().toISOString()
   const usedTitles = new Set<string>()
@@ -274,7 +276,7 @@ function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject
       order: orderIndex + 1, viewOrder: orderIndex + 1, groupViewOrder: 1, treeViewOrder: orderIndex + 1
     })
   })
-  if (!entries.length) throw new Error('酒馆预设外层列表没有可导入的提示词。')
+  if (!entries.length) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '酒馆预设外层列表没有可导入的提示词。', { what: '酒馆预设外层列表的可导入提示词', path: 'prompt_order.order' })
   const extensionScripts = objectValue(root.extensions)?.regex_scripts
   const rawScripts = Array.isArray(extensionScripts)
     ? extensionScripts
@@ -291,7 +293,7 @@ function decodeSillyTavern(document: AgentPresetImportDocument, root: JsonObject
     displayName: document.displayName,
     json: JSON.stringify({ regex_scripts: supportedScripts })
   }], 'AgentPreset')
-  if (decodedRegex.failedFileNames.length) throw new Error('预设正则包含不支持的应用目标或无效格式，未导入。')
+  if (decodedRegex.failedFileNames.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '预设正则包含不支持的应用目标或无效格式，未导入。', { what: '预设正则的应用目标或格式' })
   const regexRules = decodedRegex.rules.map(({ rule }) => rule)
   return {
     source: 'sillytavern', skippedUnsupportedEntries, skippedDepthRegexCount, versions: [],
@@ -355,7 +357,7 @@ function contentFromPortable(
     displayName,
     json: JSON.stringify({ rules: Array.isArray(value.regex_rules) ? value.regex_rules : [] })
   }], 'AgentPreset')
-  if (decodedRegex.failedFileNames.length) throw new Error('预设正则包含不支持的应用目标或无效格式，未导入。')
+  if (decodedRegex.failedFileNames.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '预设正则包含不支持的应用目标或无效格式，未导入。', { what: '预设正则的应用目标或格式' })
   const regexRules = decodedRegex.rules.map(({ rule }) => rule)
   const roleplayPlan = roleplayPlanSettingsSchema.safeParse(value.roleplay_plan)
   const toolConfiguration = objectValue(value.tool_configuration)
@@ -402,7 +404,7 @@ function timelineFromPortable(value: unknown): AgentPreset['profile']['timeline'
 
 function entryFromPortable(value: JsonObject, index: number, timestamp: string): SettingLibraryEntry {
   const kind = stringValue(value.kind) as SettingLibraryEntry['kind']
-  if (!entryKinds.has(kind)) throw new Error(`ElecKoi 预设包含不支持的设定类型：${kind || '空值'}。`)
+  if (!entryKinds.has(kind)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `ElecKoi 预设包含不支持的设定类型：${kind || '空值'}。`, { what: '预设条目的设定类型', expected: 'normal / opening / history_compaction / hidden_tool_timeline' })
   const strategy = stringValue(value.agent_read_strategy) as SettingLibraryEntry['agentReadStrategy']
   const dynamic = stringValue(value.dynamic_mode) as SettingLibraryEntry['dynamicMode']
   const contentMode = stringValue(value.content_mode) as SettingLibraryEntry['contentMode']
@@ -496,7 +498,7 @@ function decodeInput(base64: string): Uint8Array {
   const normalized = base64.trim().replace(/\s+/g, '')
   const bytes = Buffer.from(normalized, 'base64')
   if (!bytes.length || bytes.length > MAX_INPUT_BYTES || bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) {
-    throw new Error('预设文件数据无效或超过 64 MB。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '预设文件数据无效或超过 64 MB。', { field: 'data' })
   }
   return bytes
 }
@@ -505,23 +507,23 @@ function validateEmbeddedAvatar(base64: string): void {
   const normalized = base64.replace(/\s+/g, '')
   const bytes = Buffer.from(normalized, 'base64')
   if (!bytes.length || bytes.length > MAX_AVATAR_BYTES || bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) {
-    throw new Error('预设卡作者头像已损坏或超过 8 MB。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '预设卡作者头像已损坏或超过 8 MB。', { what: '预设卡作者头像', field: 'author_avatar' })
   }
 }
 
 function validateAvatarMediaType(value: string): string {
   const normalized = value.trim().toLocaleLowerCase()
-  if (!avatarMediaTypes.has(normalized)) throw new Error('预设卡作者头像格式不受支持。')
+  if (!avatarMediaTypes.has(normalized)) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '预设卡作者头像格式不受支持。', { what: '预设卡作者头像的格式', field: 'media_type' })
   return normalized
 }
 
 function parseRoot(json: string, label: string): JsonObject {
   try {
     const root = objectValue(JSON.parse(json))
-    if (!root) throw new Error()
+    if (!root) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${label} JSON 已损坏。`, { what: `${label} JSON`, path: '' })
     return root
-  } catch (error) {
-    throw new Error(`${label} JSON 已损坏。`, { cause: error })
+  } catch {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${label} JSON 已损坏。`, { what: `${label} JSON`, path: '' })
   }
 }
 

@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   createChat as createChatSession,
@@ -249,7 +251,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   }, [chatBusy, conversations, detailsSnapshot.details, sessionId]);
 
   async function readSessions() {
-    if (!conversations) throw new Error("DSH 聊天服务尚未就绪");
+    if (!conversations) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
     return { items: mapConversations(await conversations.refresh()) };
   }
 
@@ -574,7 +576,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     if (!sessionId || !messageId || chatBusy) return false;
     try {
       const message = messages.find((item) => item.id === messageId);
-      if (!message || !Number.isSafeInteger(message.sessionEventSeq)) throw new Error("找不到对应的 DSH 消息");
+      if (!message || !Number.isSafeInteger(message.sessionEventSeq)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, "找不到对应的 DSH 消息", { what: "聊天消息" });
       const result = await deleteChatMessagesFrom(sessionId, message, { model: conversations });
       replaceChatMessages(result.chat, "auto");
       setChatCharacter(normalizeLatestChatCharacter(result.chat));
@@ -590,7 +592,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   async function editMessage(message, replacementMessage) {
     if (!sessionId || !message?.id || chatBusy) return false;
     try {
-      if (!Number.isSafeInteger(message.sessionEventSeq)) throw new Error("找不到对应的 DSH 消息");
+      if (!Number.isSafeInteger(message.sessionEventSeq)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, "找不到对应的 DSH 消息", { what: "聊天消息" });
       const result = await editChatMessage(sessionId, message, replacementMessage, { model: conversations });
       replaceChatMessages(result.chat, "auto");
       conversations?.invalidateDetails(sessionId);
