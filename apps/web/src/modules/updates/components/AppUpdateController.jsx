@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -44,7 +46,7 @@ export function AppUpdateController({ updates }) {
     setActionError("");
     try {
       const result = await updates?.install?.();
-      if (!result) throw new Error("更新服务暂时不可用。");
+      if (!result) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "更新服务暂时不可用。", { what: "更新服务" });
       if (!result.accepted) {
         setActionError(result.reason === "agent_running"
           ? "当前仍有回复正在生成，请停止生成后再重启更新。"

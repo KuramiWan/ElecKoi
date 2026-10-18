@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import {
   DEFAULT_VARIABLE_CONFIG_VERSION_ID,
   VARIABLE_INITIALIZATION_OBJECT_ID,
@@ -246,7 +248,7 @@ function valueDraft(config, title, objectId, value, treeViewOrder, preserved) {
 
 export function replaceObjectContentsFromJson(config, objectId, sourceText) {
   const parsed = JSON.parse(sourceText);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("对象内容必须是 JSON 对象。");
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, "对象内容必须是 JSON 对象。", { what: "对象内容" });
   const removedObjects = new Set();
   for (const child of config.objects.filter((item) => item.parentId === objectId)) for (const id of descendantsOf(config, child.id)) removedObjects.add(id);
   const oldVariables = config.variables.filter((item) => item.objectId === objectId || removedObjects.has(item.objectId));
