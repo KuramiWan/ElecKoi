@@ -8,6 +8,7 @@ import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { MainPageContext } from "./MainPageContext.jsx";
+import { subscribeAppFailure } from "../../utils/appFailureOutlet.js";
 import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const CHAT_WINDOW_STYLE = {
@@ -28,6 +29,11 @@ export function ChatWindow({ conversations, characters, characterConfiguration, 
       document.title = `${chat.currentTitle} - ElecKoi`;
     }
   }, [chat.currentTitle]);
+
+  // 应用级失败不留在角落：功能内失败面把这类失败送到窗口级错误对话框（码与详情仍然可见）。
+  useEffect(() => subscribeAppFailure((resolved) => {
+    chat.notify("error", resolved.text, resolved);
+  }), [chat.notify]);
 
   const chatWallpaper = resolveChatWallpaper({
     character: chat.chatBackgroundCharacter,
