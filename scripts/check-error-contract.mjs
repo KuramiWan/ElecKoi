@@ -18,6 +18,16 @@
  *    必须改成带契约码的形式（`throw new DesktopError(ELECKOI_FAILURE_CODES.…, …)`）。
  *    这条是 P5 的进度尺：数字必须逐批下降，末期归零后去掉 `--strict` 变成绝对值。
  *
+ * ## 只在代码位置上匹配
+ *
+ * 四条规则都只看**代码位置**：同样一段文本出现在字符串字面量、模板字符串或注释里不算。
+ * 判定在 {@link codePositions} 的引号状态机里做——规则 4 的语义是「我们的代码抛裸 `Error`」，
+ * 而不是「仓库里恰好有一行含这个文本」。反例（曾经误计）：`guides.ts` 把作者脚本示例写成
+ * 模板字符串，示例里 `throw new Error(` 是**示例脚本**的合法写法，不该让闸变红。
+ *
+ * 判定粒度是**匹配起点**：正则命中从代码字符开始才算命中。这样规则 2 的字面量分支
+ * （`code: 'eleckoi/contract/invalid-request'`，值本身是字符串）仍然有效，而整段落在字符串里的命中无效。
+ *
  * ## 不扫什么
  *
  * - `**\/assets/**`：随包分发的第三方浏览器库（lodash / pixi / pdf worker …），不是我们的代码；
@@ -30,6 +40,15 @@
  * 以及 review 兜底。不要为了"抓得更全"把规则 1 的正则放宽成 `if (!x.ok) throw`：
  * `if (!response.ok) throw` 是**HTTP** 的 `ok`，那张网会把正常代码也判红。
  *
+ * 引号状态机的边界（都不影响今天的判定，但换写法时要知道）：
+ *
+ * - **不认正则字面量**：`/["']/` 里的引号会被当成字符串起点。误判最多影响一行——
+ *   单/双引号字符串遇到未转义换行就复位成代码（那本来不是合法 JS 的多行字符串）；
+ *   模板字符串可以跨行，但那是合法的多行字符串。
+ * - **不认 JSX 文本**：`<p>don't</p>` 里的撇号同样被当成字符串起点，同样受"换行复位"限制。
+ * - 规则 4 只数 `throw new Error(` 这一种形状：`throw Error(...)`、字符串抛出、
+ *   `Promise.reject(new Error(...))` 仍然看不见。
+ *
  * 用法：
  *   node scripts/check-error-contract.mjs            # 规则 1–3 绝对值，规则 4 只报数
  *   node scripts/check-error-contract.mjs --strict   # 规则 4 也判失败（P5 收口后默认）
@@ -37,6 +56,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 /** 扫哪些目录（仓库相对路径前缀）。 */
 const SCAN_ROOTS = [
@@ -70,10 +91,10 @@ const CONTRACT_DECLARATION_DIRECTORY = 'packages/shared/src/contracts/errors/'
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs']
 
 /** 规则 1：把带码的失败压成一句话。 */
-const CODE_DROP = /new\s+Error\s*\([^)]*\.error\??\.message/
+const CODE_DROP = /new\s+Error\s*\([^)]*\.error\??\.message/g
 
 /** 规则 2：`code:` 位置上的契约违例码。 */
-const CONTRACT_INVALID_CODE = /\bcode\s*:\s*(?:ELECKOI_FAILURE_CODES\.(contractInvalid[A-Za-z_$]*)|(['"])(eleckoi\/contract\/invalid-[a-z-]+)\2)/
+const CONTRACT_INVALID_CODE = /\bcode\s*:\s*(?:ELECKOI_FAILURE_CODES\.(contractInvalid[A-Za-z_$]*)|(['"])(eleckoi\/contract\/invalid-[a-z-]+)\2)/g
 
 /** 规则 2 的形状判据：非空 issues 数组 + 元素带 path 与 message。 */
 const ISSUES_ARRAY = /issues\s*:\s*\[[^\]]*[^\]\s][^\]]*\]/
@@ -85,25 +106,167 @@ const CONTRACT_INVALID_LITERALS = new Set(['eleckoi/contract/invalid-request', '
 const CONTRACT_INVALID_PREFIX = 'eleckoi/contract/invalid'
 
 /** 规则 3a：`.catch(() => {})` 及同族的空箭头体。 */
-const EMPTY_PROMISE_CATCH = /\.catch\(\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{\s*\}\s*\)/
+const EMPTY_PROMISE_CATCH = /\.catch\(\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{\s*\}\s*\)/g
 
 /** 规则 3b：空的 / 只有注释的 `catch {}` / `catch (error) {}` 体。 */
-const EMPTY_CATCH_BLOCK = /catch\s*(?:\([^)]*\))?\s*\{\s*(?:\/\/[^\n]*|\/\*[^\n]*?\*\/\s*)*\}/
+const EMPTY_CATCH_BLOCK = /catch\s*(?:\([^)]*\))?\s*\{\s*(?:\/\/[^\n]*|\/\*[^\n]*?\*\/\s*)*\}/g
 
 /** 规则 4：裸抛。 */
-const BARE_THROW = /\bthrow\s+new\s+Error\s*\(/
+const BARE_THROW = /\bthrow\s+new\s+Error\s*\(/g
 
 /** 规则 3 允许的三个具名声明（`.catch(name)` 是唯一"不看处理体"就放行的形式）。 */
 const SWALLOW_DECLARATIONS = ['failureAlreadyPublished', 'rejectionIsAwaitedElsewhere', 'bestEffort']
 
+/** 代码位置掩码的取值：`CODE` = 代码字符，其余（0） = 字符串内容 / 注释 / 引号本身。 */
+const CODE = 1
+
 /**
- * 是不是纯注释行（规则只看代码行）。
- * @param {string} line - 一行源码。
- * @returns {boolean} 是注释行时为 true。
+ * 逐字符判「这个字符是不是代码位置」。
+ *
+ * 维护的状态：代码、单引号、双引号、模板字符串、行注释、块注释。转义符 `\` 跳过下一个字符
+ * （所以 `'it\'s'` 不会在 `\'` 处收尾）。模板字符串里的 `${…}` 切回代码状态并记录花括号深度，
+ * 所以插值里的 `throw` 是真代码、插值里的字符串仍被遮住。
+ *
+ * 单/双引号字符串遇到未转义换行就复位成代码：那本来不是合法的多行 JS 字符串，
+ * 复位把"认错的引号"（正则字面量、JSX 文本里的撇号）的影响限制在一行以内。
+ *
+ * `@returns {Uint8Array}` 与源码等长：`1` 是代码位置，`0` 不是。
+ * @param {string} text - 源码全文。
  */
-function isCommentLine(line) {
-  const trimmed = line.trim()
-  return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')
+export function codePositions(text) {
+  const positions = new Uint8Array(text.length)
+  /** 模板字符串插值的花括号深度（每层 `${` 一个元素）。 */
+  const interpolations = []
+  /** @type {'code' | 'single' | 'double' | 'template' | 'line-comment' | 'block-comment'} */
+  let mode = 'code'
+  /** 每行行首的插值层数：换个行就要回到这个层数（见下面的引号复位）。 */
+  let lineStartDepth = 0
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    const next = text[index + 1]
+    if (index === 0 || text[index - 1] === '\n') lineStartDepth = interpolations.length
+    if (mode === 'line-comment') {
+      if (char === '\n') mode = 'code'
+      continue
+    }
+    if (mode === 'block-comment') {
+      if (char === '*' && next === '/') {
+        mode = 'code'
+        index += 1
+      }
+      continue
+    }
+    if (mode === 'single' || mode === 'double') {
+      if (char === '\\') {
+        index += 1
+        continue
+      }
+      if (char === '\n') {
+        // 未转义的换行：这个引号多半不是字符串起点（正则字面量 / JSX 文本里的撇号）。
+        // 丢掉这一行造成的假状态：回到代码，并退回行首的插值层数，别让一行误判污染后面所有行。
+        mode = 'code'
+        interpolations.length = lineStartDepth
+        continue
+      }
+      if ((mode === 'single' && char === "'") || (mode === 'double' && char === '"')) mode = 'code'
+      continue
+    }
+    if (mode === 'template') {
+      if (char === '\\') {
+        index += 1
+        continue
+      }
+      if (char === '`') {
+        mode = 'code'
+        continue
+      }
+      if (char === '$' && next === '{') {
+        interpolations.push(0)
+        mode = 'code'
+        index += 1
+        continue
+      }
+      continue
+    }
+    // mode === 'code'
+    if (char === '/' && next === '/') {
+      mode = 'line-comment'
+      index += 1
+      continue
+    }
+    if (char === '/' && next === '*') {
+      mode = 'block-comment'
+      index += 1
+      continue
+    }
+    if (char === "'") {
+      mode = 'single'
+      continue
+    }
+    if (char === '"') {
+      mode = 'double'
+      continue
+    }
+    if (char === '`') {
+      mode = 'template'
+      continue
+    }
+    if (interpolations.length > 0) {
+      // 插值内部：`{` / `}` 只用来找配对的 `}`；深度归零后回到模板字符串。
+      const depth = interpolations[interpolations.length - 1]
+      if (char === '{') {
+        interpolations[interpolations.length - 1] = depth + 1
+        positions[index] = CODE
+        continue
+      }
+      if (char === '}') {
+        if (depth === 0) {
+          interpolations.pop()
+          mode = 'template'
+          continue
+        }
+        interpolations[interpolations.length - 1] = depth - 1
+        positions[index] = CODE
+        continue
+      }
+    }
+    positions[index] = CODE
+  }
+  return positions
+}
+
+/**
+ * 把源码切成行，并为每行切出对应的代码位置掩码（行号因此与源码一致）。
+ * @param {string} text - 源码全文。
+ * @returns {{ lines: string[], masks: Uint8Array[] }} 行与逐行掩码。
+ */
+function linesWithPositions(text) {
+  const positions = codePositions(text)
+  const lines = text.split('\n')
+  const masks = []
+  let offset = 0
+  for (const line of lines) {
+    masks.push(positions.subarray(offset, offset + line.length))
+    offset += line.length + 1
+  }
+  return { lines, masks }
+}
+
+/**
+ * 只在代码位置上找匹配：返回第一个**起点是代码字符**的匹配，没有就是 `null`。
+ *
+ * 用 `matchAll` 而不是 `.test`：一行里可能先出现字符串里的假命中，再出现真命中
+ * （例如 `if (!x.ok) throw new Error("…" + result.error.message)`）。
+ * @param {RegExp} pattern - 必须是带 `g` 标志的正则（沿用调用处的捕获组）。
+ * @param {string} line - 一行源码。
+ * @param {Uint8Array} positions - 这一行的代码位置掩码。
+ * @returns {RegExpMatchArray | null} 匹配或 `null`。
+ */
+function matchInCode(pattern, line, positions) {
+  for (const match of line.matchAll(pattern)) {
+    if (positions[match.index] === CODE) return match
+  }
+  return null
 }
 
 /**
@@ -120,7 +283,53 @@ function scanFiles() {
 }
 
 /**
- * 逐行跑规则 1/3/4（这三条只看单行），规则 2 看整个文件。
+ * 扫**一段源码**，返回四条规则的命中。是 `inspect` 的单文件版本，也是用例直接调的入口。
+ * @param {string} text - 源码全文。
+ * @param {string} file - 报告里用的文件名（`<source>` 用于样本；只影响规则 2 的契约目录豁免）。
+ * @returns {Array<{rule: string, file: string, line: number, detail: string}>} 命中列表。
+ */
+export function inspectSource(text, file = '<source>') {
+  const { lines, masks } = linesWithPositions(text)
+  const hasIssuesArray = ISSUES_ARRAY.test(text)
+  const hasIssueItem = ISSUE_ITEM.test(text)
+  const contractDeclaration = file.startsWith(CONTRACT_DECLARATION_DIRECTORY)
+  const hits = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const positions = masks[index]
+    const lineNumber = index + 1
+    if (matchInCode(CODE_DROP, line, positions) !== null) {
+      hits.push({ rule: 'no-code-drop', file, line: lineNumber, detail: line.trim() })
+    }
+    if (matchInCode(EMPTY_PROMISE_CATCH, line, positions) !== null) {
+      hits.push({ rule: 'empty-catch', file, line: lineNumber, detail: line.trim() })
+    }
+    if (matchInCode(EMPTY_CATCH_BLOCK, line, positions) !== null) {
+      hits.push({ rule: 'empty-catch', file, line: lineNumber, detail: line.trim() })
+    }
+    if (matchInCode(BARE_THROW, line, positions) !== null) {
+      hits.push({ rule: 'bare-throw', file, line: lineNumber, detail: line.trim() })
+    }
+    if (contractDeclaration) continue
+    const contract = matchInCode(CONTRACT_INVALID_CODE, line, positions)
+    if (contract !== null) {
+      const symbol = contract[1]
+      const literal = contract[3]
+      const registered = symbol !== undefined
+        ? CONTRACT_INVALID_SYMBOLS.has(symbol)
+        : CONTRACT_INVALID_LITERALS.has(literal)
+      if (!registered) {
+        hits.push({ rule: 'contract-issues', file, line: lineNumber, detail: `未登记的契约违例码：${symbol ?? literal}` })
+      } else if (!hasIssuesArray || !hasIssueItem) {
+        hits.push({ rule: 'contract-issues', file, line: lineNumber, detail: '契约违例的详情必须是带 path 与 message 的非空 issues 数组' })
+      }
+    }
+  }
+  return hits
+}
+
+/**
+ * 逐文件跑 {@link inspectSource}。
  * @param {string[]} files - 仓库相对路径列表。
  * @returns {{ hits: Array<{rule: string, file: string, line: number, detail: string}>, files: number }} 命中与文件数。
  */
@@ -133,30 +342,7 @@ function inspect(files) {
     } catch {
       continue
     }
-    const lines = text.split('\n')
-    const hasIssuesArray = ISSUES_ARRAY.test(text)
-    const hasIssueItem = ISSUE_ITEM.test(text)
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index]
-      if (isCommentLine(line)) continue
-      if (CODE_DROP.test(line)) hits.push({ rule: 'no-code-drop', file, line: index + 1, detail: line.trim() })
-      if (EMPTY_PROMISE_CATCH.test(line)) hits.push({ rule: 'empty-catch', file, line: index + 1, detail: line.trim() })
-      if (EMPTY_CATCH_BLOCK.test(line)) hits.push({ rule: 'empty-catch', file, line: index + 1, detail: line.trim() })
-      if (BARE_THROW.test(line)) hits.push({ rule: 'bare-throw', file, line: index + 1, detail: line.trim() })
-      const contract = file.startsWith(CONTRACT_DECLARATION_DIRECTORY) ? null : CONTRACT_INVALID_CODE.exec(line)
-      if (contract !== null) {
-        const symbol = contract[1]
-        const literal = contract[3]
-        const registered = symbol !== undefined
-          ? CONTRACT_INVALID_SYMBOLS.has(symbol)
-          : CONTRACT_INVALID_LITERALS.has(literal)
-        if (!registered) {
-          hits.push({ rule: 'contract-issues', file, line: index + 1, detail: `未登记的契约违例码：${symbol ?? literal}` })
-        } else if (!hasIssuesArray || !hasIssueItem) {
-          hits.push({ rule: 'contract-issues', file, line: index + 1, detail: '契约违例的详情必须是带 path 与 message 的非空 issues 数组' })
-        }
-      }
-    }
+    hits.push(...inspectSource(text, file))
   }
   return { hits, files: files.length }
 }
@@ -199,7 +385,7 @@ function main() {
       failures: failing.map((entry) => ({ rule: entry.rule, count: entry.hits.length }))
     }, null, 2))
   } else {
-    console.log(`扫了 ${files.length} 个源文件。`)
+    console.log(`扫了 ${files.length} 个源文件（规则只看代码位置：字符串与注释里的同样文本不计）。`)
     console.log(`规则 1 禁止丢码：${(byRule.get('no-code-drop') ?? []).length} 处`)
     console.log(`规则 2 契约违例详情：${(byRule.get('contract-issues') ?? []).length} 处`)
     console.log(`规则 3 空 catch：${(byRule.get('empty-catch') ?? []).length} 处`)
@@ -230,4 +416,5 @@ function ruleTitle(id) {
   return '不许裸抛（领域 / 宿主 / 客户端插件层）'
 }
 
-main()
+// 被 `scripts/tests/**` import 时只拿函数，不要顺手跑一遍全仓扫描。
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
