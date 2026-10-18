@@ -13,7 +13,7 @@ it('stops shared and native document timers outside the running floors across de
   const directory = await mkdtemp(resolve(tmpdir(), 'eleckoi-rich-limit-'));
   try {
     await build({ entryPoints: ['apps/web/tests/browser/rich-message-limit.fixture.jsx'], outfile: resolve(directory, 'fixture.js'),
-      bundle: true, format: 'iife', loader: { '.png': 'file', '.woff2': 'file', '.woff': 'file', '.ttf': 'file' }, logLevel: 'silent' });
+      bundle: true, format: 'iife', alias: { '@shared': resolve('packages/shared/src') }, loader: { '.png': 'file', '.woff2': 'file', '.woff': 'file', '.ttf': 'file' }, logLevel: 'silent' });
     for (const file of [...BROWSER_LIBRARY_SCRIPTS, ...BROWSER_LIBRARY_STYLES]) {
       const destination = resolve(directory, 'libraries', file);
       await mkdir(dirname(destination), { recursive: true });
