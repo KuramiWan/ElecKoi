@@ -81,7 +81,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
     if (busyRef.current || Object.keys(draftRef.current).length !== 2) return false;
     busyRef.current = true; setSaving(true);
     try {
-      if (Object.keys(pendingRef.current).length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '显示模板存在其他修改，请退出并放弃未保存修改后重新载入。', { what: '放弃未保存的修改并重新载入显示模板' });
+      if (Object.keys(pendingRef.current).length) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '显示模板存在其他修改，请退出并放弃未保存修改后重新载入。', { what: '显示模板' });
       const versionDrafts = versions.prepare();
       const values = Object.values(draftRef.current).map(library => displayTemplateLibrarySchema.parse(library))
         .filter(library => versionDrafts.some(version => version.scope === library.scope));

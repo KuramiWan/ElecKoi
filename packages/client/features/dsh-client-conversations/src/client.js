@@ -1417,7 +1417,7 @@ window.__ModuleLoader__.load({
       }
 
       async create(input) {
-        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 聊天服务正在恢复，请稍后重试。', { what: 'DSH 聊天服务' })
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 聊天服务正在恢复，请稍后重试。', { what: 'DSH 聊天服务' })
         const value = this.unwrap(
           await this.remote.eleckoiConversations.create(input),
           '新建聊天失败。'

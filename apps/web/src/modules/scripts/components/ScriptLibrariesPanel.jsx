@@ -240,7 +240,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     const task = (async () => {
       savingRef.current = true; setSaving(true); setNotice('');
       try {
-        if (Object.keys(pendingRef.current).length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '脚本配置已更新，请放弃本页修改后载入最新内容。', { what: '放弃本页修改并重新载入脚本配置' });
+        if (Object.keys(pendingRef.current).length) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本配置已更新，请放弃本页修改后载入最新内容。', { what: '脚本配置' });
         if (Object.keys(draftsRef.current).length !== 2) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '脚本库尚未完整载入。', { what: '脚本库' });
         const versionDrafts = versions.prepare();
         const values = Object.values(draftsRef.current).map(library => materializeScriptBuffers(library, buffersRef.current))
