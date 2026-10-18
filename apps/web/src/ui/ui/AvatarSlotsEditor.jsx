@@ -62,7 +62,7 @@ async function centerCrop(file, outputWidth, outputHeight) {
 
 async function sourceToFile(source, name) {
   const response = await fetch(assetFetchSrc(source));
-  if (!response.ok) throw new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, "头像图片读取失败", { operation: "read", path: source });
+  if (!response.ok) throw new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, "头像图片读取失败", { operation: "read" });
   const blob = await response.blob();
   return new File([blob], name, { type: blob.type || "image/png" });
 }
