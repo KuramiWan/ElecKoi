@@ -44,6 +44,56 @@ export function hasDesktopIpcFailureMarker(value: unknown): boolean {
 }
 
 /**
+ * 主进程侧：把 `ipcMain.handle` 的 handler 包成「失败以返回的对象过边界」。
+ *
+ * 成功原样返回载荷；**抛出**（含 async handler 返回的 promise 拒绝——更新的四个通道就是这种）就返回
+ * {@link desktopIpcFailureOf} 折出来的线上对象。9 个注册点共用这一条规则，不在每个 handler 里各写
+ * 一遍 try/catch。
+ *
+ * 做成接收 handler 的纯函数是为了能单测（`packages/shared/tests`）：折叠规则不依赖 Electron，
+ * 主进程侧只剩两行接线（`apps/desktop/src/main/platform/electron/desktopIpcHandler.ts`）。
+ *
+ * @param handler - 原样的 `ipcMain.handle` 监听器。
+ * @returns 同签名的监听器；失败时不是拒绝，而是**解析**成线上失败对象。
+ */
+export function wrapDesktopIpcHandler<Event, Arguments extends unknown[], Result>(
+  handler: (event: Event, ...args: Arguments) => Result | PromiseLike<Result>
+): (event: Event, ...args: Arguments) => Promise<Result | DesktopIpcFailure> {
+  return async (event, ...args) => {
+    try {
+      return await handler(event, ...args) as Result
+    } catch (error) {
+      return desktopIpcFailureOf(error)
+    }
+  }
+}
+
+/**
+ * preload 侧：带失败标记就把它**抛出去**，否则什么也不做。
+ *
+ * 抛的就是线上对象本身，不重新包成 `Error`：渲染层的 `foldFailure` 认 `isDSHRemoteError` 标记，
+ * 码与详情原样到场；换回 `Error` 反而过不了 contextBridge（`Error` 的自定义属性会丢，见
+ * `contracts/errors/ipc.ts` 文件头）。
+ *
+ * @param value - preload 那次 `invoke` 拿到的原样返回值。
+ */
+export function throwIfDesktopIpcFailure(value: unknown): void {
+  if (hasDesktopIpcFailureMarker(value)) throw value
+}
+
+/**
+ * preload 侧：把一次 `invoke`（或任何返回线上值的回调）解包成「失败时抛、成功时原样返回」。
+ *
+ * @param invoke - 真正跨边界的那次调用（传回调是为了让本函数保持纯函数、能被单测）。
+ * @returns 成功载荷。
+ */
+export async function unwrapDesktopIpcResult<Result>(invoke: () => Promise<Result>): Promise<Result> {
+  const value = await invoke()
+  throwIfDesktopIpcFailure(value)
+  return value
+}
+
+/**
  * 主进程侧**已经折过**的失败对象（`DshPluginHostFailure` 的结构形状）。
  *
  * 不用现成的 {@link desktopIpcFailureOf}：那条路会再折一次，而这个对象的 `name` 既不是

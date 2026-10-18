@@ -11,6 +11,7 @@ import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 import { assertTrustedDshClientFrame } from '@main/platform/electron/validateSender'
 import { logAction } from '@main/platform/logging/logActions'
+import { handleDesktopIpcCall } from '@main/platform/electron/desktopIpcHandler'
 
 export function attachUpdaterLogger(
   updater: Pick<AppUpdater, 'logger'>,
@@ -83,11 +84,11 @@ export const updatesPlugin = {
       event.senderFrame === event.sender.mainFrame,
       windows.all().map(window => window.webContents)
     )
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesStatus, (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesStatus, (event) => {
       assertSender(event)
       return updates.status()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesCheck, async (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesCheck, async (event) => {
       assertSender(event)
       // 检查更新是用户按的按钮、失败时最想看日志的动作之一：开始 / 成功 / 失败各一行。
       // `UpdateService.check` 把"检查失败"折进 status（不抛），所以两种失败形态都要记。
@@ -109,11 +110,11 @@ export const updatesPlugin = {
         throw error
       }
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesDownload, (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesDownload, (event) => {
       assertSender(event)
       return updates.download()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.updatesInstall, (event) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.updatesInstall, (event) => {
       assertSender(event)
       return updates.install()
     })

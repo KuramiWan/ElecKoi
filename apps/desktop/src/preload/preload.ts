@@ -1,8 +1,19 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { DESKTOP_SHELL_IPC, type DesktopBrowserBridge, type DesktopBrowserLeaseId, type DshDesktopProductApi } from '@shared/contracts/desktopShell'
+import { DESKTOP_SHELL_IPC, type DesktopBrowserBridge, type DesktopBrowserLeaseId, type DesktopBrowserReservation, type DshDesktopProductApi } from '@shared/contracts/desktopShell'
 import type { DesktopHostFailureNotice } from '@shared/contracts/errors/ipc'
 import type { UpdateInstallResult, UpdateStatus } from '@shared/contracts/updates/schemas'
-import { hasDesktopIpcFailureMarker } from '@shared/foundation/ipcFailure'
+import { hasDesktopIpcFailureMarker, unwrapDesktopIpcResult } from '@shared/foundation/ipcFailure'
+
+/**
+ * 边界⑤ preload 侧的**薄适配器**：调一次请求/响应通道。
+ *
+ * 主进程侧（`apps/desktop/src/main/platform/electron/desktopIpcHandler.ts`）把 handler 的抛出折成
+ * 线上失败对象**返回**；这里把它变回**拒绝**——渲染层的 `foldFailure` 认 `isDSHRemoteError` 标记，
+ * 所以码与详情原样到场，不需要第二套失败方言，也不在这里拼用户可见句子（唯一解析点在渲染层）。
+ */
+function invokeOrFail<Result>(channel: string, ...args: unknown[]): Promise<Result> {
+  return unwrapDesktopIpcResult(() => ipcRenderer.invoke(channel, ...args))
+}
 
 function createDesktopBrowserBridge(): DesktopBrowserBridge {
   const listeners = new Map<DesktopBrowserLeaseId, Set<(url: string) => void>>()
@@ -20,8 +31,8 @@ function createDesktopBrowserBridge(): DesktopBrowserBridge {
     }
   })
   return {
-    acquire: (workspace) => ipcRenderer.invoke(DESKTOP_SHELL_IPC.browserAcquire, workspace) as ReturnType<DesktopBrowserBridge['acquire']>,
-    release: (lease) => ipcRenderer.invoke(DESKTOP_SHELL_IPC.browserRelease, lease) as Promise<void>,
+    acquire: (workspace) => invokeOrFail<DesktopBrowserReservation>(DESKTOP_SHELL_IPC.browserAcquire, workspace),
+    release: (lease) => invokeOrFail<void>(DESKTOP_SHELL_IPC.browserRelease, lease),
     onOpenRequested(lease, listener) {
       let callbacks = listeners.get(lease)
       if (callbacks === undefined) {
@@ -42,10 +53,10 @@ function createDesktopProductApi(): DshDesktopProductApi {
     protocolVersion: 1,
     browser: createDesktopBrowserBridge(),
     updates: {
-      status: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesStatus) as Promise<UpdateStatus>,
-      check: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesCheck) as Promise<UpdateStatus>,
-      download: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesDownload) as Promise<UpdateStatus>,
-      install: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.updatesInstall) as Promise<UpdateInstallResult>,
+      status: () => invokeOrFail<UpdateStatus>(DESKTOP_SHELL_IPC.updatesStatus),
+      check: () => invokeOrFail<UpdateStatus>(DESKTOP_SHELL_IPC.updatesCheck),
+      download: () => invokeOrFail<UpdateStatus>(DESKTOP_SHELL_IPC.updatesDownload),
+      install: () => invokeOrFail<UpdateInstallResult>(DESKTOP_SHELL_IPC.updatesInstall),
       subscribe(listener) {
         const handle = (_event: Electron.IpcRendererEvent, status: Parameters<typeof listener>[0]): void => listener(status)
         ipcRenderer.on(DESKTOP_SHELL_IPC.updatesChanged, handle)
@@ -53,9 +64,9 @@ function createDesktopProductApi(): DshDesktopProductApi {
       }
     },
     windowControls: {
-      minimize: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.windowControl, 'minimize') as Promise<void>,
-      maximizeToggle: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.windowControl, 'maximize') as Promise<void>,
-      close: () => ipcRenderer.invoke(DESKTOP_SHELL_IPC.windowControl, 'close') as Promise<void>
+      minimize: () => invokeOrFail<void>(DESKTOP_SHELL_IPC.windowControl, 'minimize'),
+      maximizeToggle: () => invokeOrFail<void>(DESKTOP_SHELL_IPC.windowControl, 'maximize'),
+      close: () => invokeOrFail<void>(DESKTOP_SHELL_IPC.windowControl, 'close')
     },
     host: {
       subscribeFailure(listener) {
@@ -102,10 +113,10 @@ if (documentLocation?.protocol === 'dsh-app:' && documentLocation.hostname === '
     hint?.after(detail)
   }
   contextBridge.exposeInMainWorld('dshDesktopBoot', {
-    ready: () => ipcRenderer.invoke('eleckoi:dsh-client-boot') as Promise<unknown>,
+    ready: () => invokeOrFail<unknown>('eleckoi:dsh-client-boot'),
     failed: (message: string) => {
       showBootFailure(message)
-      return ipcRenderer.invoke('eleckoi:dsh-client-boot-failed', message) as Promise<void>
+      return invokeOrFail<void>('eleckoi:dsh-client-boot-failed', message)
     }
   })
 

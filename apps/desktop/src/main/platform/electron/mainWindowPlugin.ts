@@ -16,6 +16,7 @@ import { desktopHostFailureNoticeOf } from '@shared/foundation/ipcFailure'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 import { logAction, relayRendererActionLog } from '@main/platform/logging/logActions'
+import { handleDesktopIpcCall } from './desktopIpcHandler'
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
@@ -101,7 +102,7 @@ export const mainWindowPlugin = {
         return new Response(null, { status: 502 })
       }
     })
-    ipcMain.handle('eleckoi:dsh-client-boot', (event) => {
+    handleDesktopIpcCall('eleckoi:dsh-client-boot', (event) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -120,7 +121,7 @@ export const mainWindowPlugin = {
         streamBaseUrl: new URL(ready.url).origin
       }
     })
-    ipcMain.handle('eleckoi:dsh-client-boot-failed', (event, message: unknown) => {
+    handleDesktopIpcCall('eleckoi:dsh-client-boot-failed', (event, message: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -170,7 +171,7 @@ export const mainWindowPlugin = {
       }
     })
 
-    ipcMain.handle(DESKTOP_SHELL_IPC.windowControl, (event, action: unknown) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.windowControl, (event, action: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -189,7 +190,7 @@ export const mainWindowPlugin = {
       }
       if (action === 'close') target.close()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.browserAcquire, (event, workspace: unknown) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.browserAcquire, (event, workspace: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -198,7 +199,7 @@ export const mainWindowPlugin = {
       )
       return browserGuests.acquire(event.sender, workspace)
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.browserRelease, async (event, lease: unknown) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.browserRelease, async (event, lease: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
