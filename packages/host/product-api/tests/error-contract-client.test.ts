@@ -57,26 +57,30 @@ describe('unwrapOrFail', () => {
   })
 
   it('信封整体缺失时抛 contract/invalid-response，path 是 result', () => {
+    let thrown: unknown
     try {
       unwrapOrFail(null, '没拿到结果')
     } catch (caught) {
-      expect(caught).toMatchObject({
-        isDSHRemoteError: true,
-        code: ELECKOI_FAILURE_CODES.contractInvalidResponse,
-        details: { issues: [{ path: MISSING_RESULT_ISSUE_PATH }] }
-      })
+      thrown = caught
     }
+    expect(thrown).toMatchObject({
+      isDSHRemoteError: true,
+      code: ELECKOI_FAILURE_CODES.contractInvalidResponse,
+      details: { issues: [{ path: MISSING_RESULT_ISSUE_PATH }] }
+    })
   })
 
   it('失败分支没有可用码时折成 contract/invalid-response，path 是 result.error', () => {
+    let thrown: unknown
     try {
       unwrapOrFail({ ok: false, error: '只是一句话' }, '失败分支不是对象')
     } catch (caught) {
-      expect(caught).toMatchObject({
-        code: ELECKOI_FAILURE_CODES.contractInvalidResponse,
-        details: { issues: [{ path: MISSING_ERROR_ISSUE_PATH }] }
-      })
+      thrown = caught
     }
+    expect(thrown).toMatchObject({
+      code: ELECKOI_FAILURE_CODES.contractInvalidResponse,
+      details: { issues: [{ path: MISSING_ERROR_ISSUE_PATH }] }
+    })
   })
 
   it('码的真值判据与旧写法等价：空串 / 0 / null 都算没有码', () => {

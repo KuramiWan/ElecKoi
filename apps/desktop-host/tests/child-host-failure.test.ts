@@ -89,7 +89,13 @@ describe('pluginHostFailureOf', () => {
       message: '启动超时',
       details: { what: 'DSH 插件宿主启动' }
     })
-    const plain = { isDSHRemoteError: true, code: failure.code, message: failure.message, details: failure.details }
-    expect(JSON.parse(JSON.stringify(plain))).toEqual(plain)
+    // 对失败对象本人做往返：手工拼一个 plain 再跟它自己比等于恒真。
+    // 注意本函数的返回类型是 DesktopError（实例），"普通对象"的判据只对跨 IPC 后的线上形状成立，
+    // 所以这里断的是序列化结果——码、详情、载体标记都必须活过结构化克隆。
+    expect(JSON.parse(JSON.stringify(failure))).toMatchObject({
+      isDSHRemoteError: true,
+      code: ELECKOI_FAILURE_CODES.timeoutExpired,
+      details: { what: 'DSH 插件宿主启动' }
+    })
   })
 })
