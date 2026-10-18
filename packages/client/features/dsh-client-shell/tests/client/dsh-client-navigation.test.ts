@@ -159,6 +159,7 @@ describe('ElecKoi DSH client navigation', () => {
     const plugin = registration.factory((name: string) => {
       if (name === 'react') return React
       if (name === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
+      if (name === '@eleckoi/dsh-product-api') return dshClientRequire(name)
       throw new Error(`Unexpected module ${name}`)
     })
     let effectCount = 0
