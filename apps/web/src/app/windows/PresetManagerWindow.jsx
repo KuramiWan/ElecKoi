@@ -9,6 +9,7 @@ import {
 import { showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { bestEffort } from "../../utils/swallowedFailure.js";
+import { FailureAlert } from "../../ui/ui/FailureAlert.jsx";
 
 const ALL_PRESETS = "全部预设";
 
@@ -17,7 +18,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
   const [purpose, setPurpose] = useState(() => new URLSearchParams(window.location.search).get('purpose') === 'creator' ? 'creator' : 'roleplay');
   const [selectedGroup, setSelectedGroup] = useState(ALL_PRESETS);
   const [selectedPresetId, setSelectedPresetId] = useState("");
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState(null);
   const [importError, setImportError] = useState("");
   const [importing, setImporting] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -31,7 +32,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
       return next.presets.some((preset) => preset.id === requested && preset.purpose === purpose) ? requested : next.activePresetIds[purpose];
     });
     setSelectedGroup((current) => current === ALL_PRESETS || next.groups.some((group) => group.id === current) ? current : ALL_PRESETS);
-    setLoadError("");
+    setLoadError(null);
     return next;
   }, [purpose]);
 
@@ -39,7 +40,7 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
     try {
       return acceptCatalog(await presetCatalog.refresh(), preferredId);
     } catch (cause) {
-      setLoadError(cause instanceof Error ? cause.message : "读取预设失败。");
+      setLoadError(cause ?? "读取预设失败。");
       return null;
     }
   }, [acceptCatalog, presetCatalog]);
@@ -142,10 +143,8 @@ export function PresetManagerWindow({ presetCatalog, renderPresetManager }) {
       <TitleBar splitSurface />
       <section className="management-window-content">
         {!catalog && !loadError ? <p className="management-window-state">正在读取…</p> : loadError ? (
-          <div className="management-window-state is-error" role="alert">
-            <span>{loadError}</span>
-            <button type="button" onClick={() => void refresh()}>重试</button>
-          </div>
+          <FailureAlert failure={loadError}
+            className="management-window-state is-error" onRetry={() => void refresh()} />
         ) : (
           renderPresetManager?.(managerOwner, managerFallback) ?? managerFallback
         )}
