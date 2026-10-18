@@ -201,9 +201,9 @@ describe('native role chat project', () => {
   });
   it('reports unsupported binding semantics and does not run an undeclared page through a different SDK', async () => {
     state.selectedProjectId = 'synthetic-role-project'; state.projects[0].manifest.bindings = [{ target: 'page', pageId: 'synthetic-page', entryFile: 'pages/main.html' }];
-    await render(view()); expect(container.textContent).toContain('不能接管应用页面'); expect(service.projects.readFile).not.toHaveBeenCalled();
+    await render(view()); expect(container.textContent).toContain('不支持这个格式或版本：角色前端的挂载位置。'); expect(service.projects.readFile).not.toHaveBeenCalled();
     await act(() => { state.projects[0] = sample(); files.set('pages/main.html', '<html>Synthetic plain page</html>'); state.revision++; watchers.forEach(listener => listener(value())); });
-    expect(container.textContent).toContain('缺少 eleckoi-author-api'); expect(container.querySelector('iframe')).toBeNull(); expect(runtime.mountProjectDocument).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('数据格式不符合要求：页面里的原生作者 SDK 声明。'); expect(container.querySelector('iframe')).toBeNull(); expect(runtime.mountProjectDocument).not.toHaveBeenCalled();
   });
   it('does not infer an owner or an entry from project order, names, or available HTML files', () => {
     expect(() => characterFrontendEntry({ ...sample(), characterId: 'synthetic-other-character' }, characterId)).toThrow('不属于');
