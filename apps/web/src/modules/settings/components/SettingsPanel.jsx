@@ -26,6 +26,7 @@ import {
   resolveChatAvatarShape,
   resolveChatDisplayProfile,
 } from "../../appearance/index.js";
+import { LOG_ACTIONS, runLoggedAction } from "../../../utils/logAction.js";
 
 const pages = [
   { id: "profile", label: "用户资料", icon: ProfileIcon },
@@ -336,7 +337,8 @@ export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserPr
     try {
       const nextName = candidate.name?.trim() || "你";
       const nextAvatars = candidate.avatars || avatars;
-      const saved = await onUpdateUserProfile({ name: nextName, avatars: nextAvatars });
+      // 关键路径日志：设置页「保存」。保存失败以前只在页面上留一句话，日志里查不到。
+      const saved = await runLoggedAction(LOG_ACTIONS.settingsSave, () => onUpdateUserProfile({ name: nextName, avatars: nextAvatars }));
       setName(saved.user_name || "你");
       setAvatars(avatarSetFromPersona(saved, "user"));
       setMessage("已保存");

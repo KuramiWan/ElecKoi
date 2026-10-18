@@ -5,7 +5,13 @@ import App from "./app/windows/App.jsx";
 import { initRendererAssets } from "./app/services/assets.js";
 import { installResizePerformanceMode } from "./app/services/windowControls.js";
 import { initializeAppearanceMode } from "./modules/appearance/index.js";
+import { installUnhandledFailureReporting } from "./utils/failureText.js";
 import "./app/windows/styles/index.css";
+
+// 未处理拒绝的落点：`reportFailure` 只 console.error，由 Electron 的 console-message 桥
+// 转发进主进程日志（不需要新开 IPC 通道）。每个渲染层入口装一次；`bootstrap` 可被重挂，
+// 重复调用会叠加监听。
+installUnhandledFailureReporting();
 
 async function bootstrap() {
   installResizePerformanceMode();
