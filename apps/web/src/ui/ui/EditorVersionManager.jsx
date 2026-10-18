@@ -3,6 +3,7 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Copy, NotePencil, Plus, Trash } from '../icons/interfaceIcons.jsx';
 import { ExportIcon, ImportIcon } from '../icons/index.jsx';
 import { EditorManagementAction, EditorManagementModal } from './EditorCollectionControls.jsx';
+import { FailureAlert } from './FailureAlert.jsx';
 import { VersionNameDialog } from './VersionNameDialog.jsx';
 
 /** Version commands change the owner's draft; the surrounding editor performs the save. */
@@ -31,7 +32,7 @@ export function EditorVersionManager({ title, versions, activeVersionId, scopes,
       <EditorManagementAction label="重命名当前版本" Icon={NotePencil} disabled={busy || !current} onClick={() => setDialog('rename')} />
       <EditorManagementAction label="删除当前版本" Icon={Trash} danger disabled={busy || !current || deleteDisabled} onClick={() => setDialog('delete')} />
       {notice && <p className="editor-management-notice" role="status">{notice}</p>}
-      {error && <p className="editor-management-notice is-error" role="alert">{error}</p>}
+      <FailureAlert failure={error} className="editor-management-notice is-error" />
       {children}
     </EditorManagementModal>
     {['copy', 'create', 'rename'].includes(dialog) && <VersionNameDialog key={`${scope || ''}:${dialog}`}

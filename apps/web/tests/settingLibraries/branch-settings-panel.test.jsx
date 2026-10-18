@@ -131,7 +131,10 @@ describe('automatic chat branch settings', () => {
     try {
       await act(async () => root.render(<DynamicSettingsPanel characterId="synthetic-character" settingLibraries={model} />))
       await act(async () => notify('conversations', 'synthetic-character', { status: 'error', error: '读取失败' }))
-      expect(container.querySelector('[role="alert"]')?.textContent).toBe('读取失败')
+      // 失败面同时给文案与码：存储里只有一句话时码走兜底，但一定可见。
+      const alert = container.querySelector('[role="alert"]')
+      expect(alert?.textContent).toContain('读取失败')
+      expect(alert?.textContent).toContain('eleckoi/internal')
     } finally {
       await act(async () => root.unmount())
     }

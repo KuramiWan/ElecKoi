@@ -245,7 +245,9 @@ describe('Android independent conversation navigation', () => {
     fixture.chat.loadChat = vi.fn(async () => {});
     await mount(); await click('打开会话乙');
     expect(document.querySelector('[data-chat]')).toBeNull();
-    expect(document.querySelector('[role="alert"]').textContent).toBe('对话未能打开，请重试');
+    // 打开失败面同时给用户话与码：码不再是隐藏信息（状态里存的是失败本身，不是一句话）。
+    expect(document.querySelector('[role="alert"]').textContent).toContain('对话未能打开，请重试');
+    expect(document.querySelector('[role="alert"]').textContent).toContain('eleckoi/internal');
     await click('关闭');
     fixture.chat.isSending = true; await act(async () => root.render(<Harness />));
     await click('打开会话乙');

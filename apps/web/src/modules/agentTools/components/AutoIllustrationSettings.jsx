@@ -5,6 +5,8 @@ import { MobileConversationOverlay, MobileOverlayScroll, isMobilePresentation } 
 import { DesktopIllustrationModelPicker } from './DesktopIllustrationModelPicker.jsx';
 import { ModelIdentityIcon, ModelImageParametersSection } from '../../models/index.js';
 import { UnsavedChangesDialog } from '../../../ui/ui/UnsavedChangesDialog.jsx';
+import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
+import { failureMessage } from '../../../utils/failureText.js';
 import { NOVELAI_IMAGE_PROVIDER, normalizeNovelAiImageSettings, novelAiImageSettingsError } from '@shared/contracts/agent/novelAiImageSettings';
 import '../../../mobile/mobile-models.css';
 import './auto-illustration.css';
@@ -38,7 +40,7 @@ function IllustrationModelPicker({ configs, selectedId, status, catalogError, on
   const [changedIds, setChangedIds] = useState([]);
   const [tab, setTab] = useState('models');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const positions = useRef(new Map()).current;
   const selected = drafts.find(config => config.id === chosenId);
@@ -57,7 +59,7 @@ function IllustrationModelPicker({ configs, selectedId, status, catalogError, on
   }
   async function save() {
     if (saving || validation || unavailableSelection) return;
-    setSaving(true); setError('');
+    setSaving(true); setError(null);
     try {
       for (const id of changedIds) {
         const config = drafts.find(item => item.id === id);
@@ -65,21 +67,21 @@ function IllustrationModelPicker({ configs, selectedId, status, catalogError, on
       }
       await onSelect(chosenId);
       onClose();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    } catch (cause) { setError(cause); }
     finally { setSaving(false); }
   }
   function requestClose() {
     if (!saving && beforeClose()) onClose();
   }
-  const choice = (id, title, subtitle) => <button type="button" className={mobile ? 'mobile-model-follow' : 'desktop-illustration-choice'} aria-pressed={chosenId === id} disabled={saving} onClick={() => { setChosenId(id); setError(''); }}>
+  const choice = (id, title, subtitle) => <button type="button" className={mobile ? 'mobile-model-follow' : 'desktop-illustration-choice'} aria-pressed={chosenId === id} disabled={saving} onClick={() => { setChosenId(id); setError(null); }}>
     <span className={`chat-model-selection${chosenId === id ? ' selected' : ''}`} aria-hidden="true">{chosenId === id && <Check size={17} />}</span><span><strong>{title}</strong>{subtitle && <small>{subtitle}</small>}</span>
   </button>;
   const content = <>
-        {error && <p className="model-parameter-error" role="alert">{error}</p>}
+        <FailureAlert failure={error} className="model-parameter-error" />
         {tab === 'models' && validation && <p className="model-parameter-error" role="alert">{validation}</p>}
         {tab === 'parameters' && selected ? <div className="model-detail-form"><ModelImageParametersSection form={selected} validationMessage={validation} onChange={settings => {
           setDrafts(current => current.map(config => config.id === chosenId ? { ...config, image_settings: settings } : config));
-          setChangedIds(current => [...new Set([...current, chosenId])]); setError('');
+          setChangedIds(current => [...new Set([...current, chosenId])]); setError(null);
         }} /></div> : <>
           <div className={mobile ? 'mobile-choice-group' : 'desktop-illustration-unbound'}>{choice('', '不指定图片模型', '工具启用时不会生成图片')}</div>
           {chosenId && !selected && <p className="model-parameter-error" role="alert">绑定的图片模型配置已不可用，请重新选择。</p>}
@@ -88,10 +90,10 @@ function IllustrationModelPicker({ configs, selectedId, status, catalogError, on
               <button type="button" className={mobile ? 'illustration-config-parameters' : 'desktop-illustration-parameters'} title={`设置 ${config.name || '未命名配置'} 的参数`} aria-label={`设置 ${config.name || '未命名配置'} 的参数`} disabled={saving || !config.model?.trim()} onClick={() => { setChosenId(config.id); setTab('parameters'); }}>{mobile ? <CaretRight size={19} /> : <SlidersHorizontal size={18} />}</button>
             </div>)}</div>
           </section>
-          {status === 'loading' ? <p className={mobile ? 'mobile-overlay-empty' : 'desktop-illustration-state'} role="status">正在读取模型</p> : catalogError ? <div role="alert"><p className="model-parameter-error">{catalogError}</p><button type="button" onClick={async () => {
-            try { await onReload(); setError(''); }
-            catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-          }}>重新读取</button></div> : !drafts.length && <p className={mobile ? 'mobile-overlay-empty' : 'desktop-illustration-state'}>请先在模型设置中添加 NovelAI 配置</p>}
+          {status === 'loading' ? <p className={mobile ? 'mobile-overlay-empty' : 'desktop-illustration-state'} role="status">正在读取模型</p> : catalogError ? <FailureAlert failure={catalogError} className="model-parameter-error" onRetry={async () => {
+            try { await onReload(); setError(null); }
+            catch (cause) { setError(cause); }
+          }} /> : !drafts.length && <p className={mobile ? 'mobile-overlay-empty' : 'desktop-illustration-state'}>请先在模型设置中添加 NovelAI 配置</p>}
         </>}
     </>;
   return <>
@@ -105,7 +107,7 @@ function IllustrationModelPicker({ configs, selectedId, status, catalogError, on
       <MobileOverlayScroll key={tab} scrollKey={tab} positions={positions}>{content}</MobileOverlayScroll>
     </MobileConversationOverlay> : <DesktopIllustrationModelPicker subtitle={selected?.model} tab={tab} onTabChange={setTab} canEditParameters={Boolean(selected)}
       saving={saving} canSave={dirty && !validation && !unavailableSelection} leaveOpen={leaveOpen} onClose={requestClose} onSave={save}>{content}</DesktopIllustrationModelPicker>}
-    <UnsavedChangesDialog open={leaveOpen} title="保存绘图设置？" description="模型选择和参数尚未保存。" error={error || validation} saving={saving}
+    <UnsavedChangesDialog open={leaveOpen} title="保存绘图设置？" description="模型选择和参数尚未保存。" error={error ? failureMessage(error) : validation} saving={saving}
       onCancel={() => setLeaveOpen(false)} onDiscard={onClose} onSave={save} />
   </>;
 }

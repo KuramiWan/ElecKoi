@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SystemBarOverlay } from "../ui/SystemBarOverlay.jsx";
 import { registerOverlayBack } from "../hooks/overlayBack.js";
+import { FailureAlert } from "../ui/FailureAlert.jsx";
 import "./chat-image-actions.css";
 
 export function agentMessageImageSize(width, height) {
@@ -27,7 +28,7 @@ export function ChatImageGallery({ images = [], conversationId = "", compact = f
 function ChatImage({ image, conversationId, compact, agentVariant, onRemove, loadImage, onRegenerateImage }) {
   const [source, setSource] = useState(image.previewUrl || image.dataUrl || "");
   const [failed, setFailed] = useState(false), [naturalSize, setNaturalSize] = useState(null);
-  const [overlay, setOverlay] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [overlay, setOverlay] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const press = useRef(null), longPressed = useRef(false);
   const generating = busy || image.status === "generating";
   const canRegenerate = Boolean(image.batchId && onRegenerateImage && !generating);
@@ -49,8 +50,8 @@ function ChatImage({ image, conversationId, compact, agentVariant, onRemove, loa
   const stopPress = () => { clearTimeout(press.current?.timer); press.current = null; };
   const regenerate = async () => {
     if (!canRegenerate) return;
-    stopPress(); longPressed.current = false; setOverlay(""); setError(""); setBusy(true);
-    try { await onRegenerateImage(image); } catch (failure) { setError(failure.message || "图片重新生成失败。"); }
+    stopPress(); longPressed.current = false; setOverlay(""); setError(null); setBusy(true);
+    try { await onRegenerateImage(image); } catch (failure) { setError(failure ?? "图片重新生成失败。"); }
     finally { setBusy(false); }
   };
   const download = () => {
@@ -80,7 +81,7 @@ function ChatImage({ image, conversationId, compact, agentVariant, onRemove, loa
         </div> : <span aria-label={failed ? `${label}加载失败` : `${label}加载中`} />}
       {compact && onRemove ? <button type="button" onClick={() => onRemove(image.localId)} aria-label={`移除${label}`} title="移除图片"><X size={12} weight="bold" aria-hidden="true" /></button> : null}
     </figure>
-    {error ? <p className="chat-image-action-error" role="alert">{error}</p> : null}
+    <FailureAlert failure={error} className="chat-image-action-error" />
     {overlay ? <ImageOverlay kind={overlay} source={source} label={label} onClose={() => { longPressed.current = false; setOverlay(""); }}
       onDownload={source ? download : undefined} onRegenerate={canRegenerate ? regenerate : undefined} /> : null}
   </>;

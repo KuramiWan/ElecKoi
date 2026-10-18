@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { TextAlignLeft, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { RequestContextPanel, zh } from "@eleckoi/dsh-client-trajectory/client/request-context";
 import { MobileConversationOverlay, isMobilePresentation } from '../../../mobile/MobileConversationOverlay.jsx';
+import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
 
 const translate = (key, values = {}) => zh[key].replace(/\{(\w+)\}/g, (_, name) => String(values[name] ?? name));
 
@@ -15,15 +16,15 @@ export function RequestPreviewDialog({ conversationId, conversationModel, onClos
   const closeRef = useRef(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const [catalog, setCatalog] = useState({ requests: [], loading: true, error: "" });
+  const [catalog, setCatalog] = useState({ requests: [], loading: true, error: null });
   const [selectedId, setSelectedId] = useState("");
   const latestId = useRef("");
-  const [context, setContext] = useState({ id: "", items: null, error: "" });
+  const [context, setContext] = useState({ id: "", items: null, error: null });
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
-    setCatalog({ requests: [], loading: true, error: "" });
+    setCatalog({ requests: [], loading: true, error: null });
     setSelectedId("");
     latestId.current = "";
     if (!conversationModel) {
@@ -35,11 +36,11 @@ export function RequestPreviewDialog({ conversationId, conversationModel, onClos
       const previousLatest = latestId.current;
       const nextLatest = requests.at(-1)?.id || "";
       latestId.current = nextLatest;
-      setCatalog({ requests, loading: false, error: "" });
+      setCatalog({ requests, loading: false, error: null });
       setSelectedId(current => !current || current === previousLatest || !requests.some(request => request.id === current)
         ? nextLatest : current);
     }, controller.signal).catch(error => {
-      if (!controller.signal.aborted) setCatalog(current => ({ ...current, loading: false, error: error.message }));
+      if (!controller.signal.aborted) setCatalog(current => ({ ...current, loading: false, error }));
     });
     return () => controller.abort();
   }, [conversationId, conversationModel]);
@@ -47,12 +48,12 @@ export function RequestPreviewDialog({ conversationId, conversationModel, onClos
   useEffect(() => {
     const controller = new AbortController();
     if (mobile && !showDetails) return () => controller.abort();
-    setContext({ id: selectedId, items: null, error: "" });
+    setContext({ id: selectedId, items: null, error: null });
     if (selectedId && conversationModel) void conversationModel.readRequestPreview(conversationId, selectedId, controller.signal)
       .then(value => {
-        if (!controller.signal.aborted) setContext({ id: selectedId, items: value.items, error: "" });
+        if (!controller.signal.aborted) setContext({ id: selectedId, items: value.items, error: null });
       }, error => {
-        if (!controller.signal.aborted) setContext({ id: selectedId, items: null, error: error.message });
+        if (!controller.signal.aborted) setContext({ id: selectedId, items: null, error });
       });
     return () => controller.abort();
   }, [conversationId, conversationModel, selectedId, retry, mobile, showDetails]);
@@ -90,7 +91,7 @@ export function RequestPreviewDialog({ conversationId, conversationModel, onClos
   const body = <div className="request-preview-body" data-page-direction={showDetails ? 'forward' : 'back'}>
         <aside className="request-preview-catalog" aria-label="轮次与请求" hidden={mobile && showDetails}>
           {catalog.loading ? <p className="request-preview-empty" role="status">正在读取请求列表</p> : null}
-          {catalog.error ? <p className="request-preview-empty is-error" role="alert">{catalog.error}</p> : null}
+          <FailureAlert failure={catalog.error} className="request-preview-empty is-error" />
           {!catalog.loading && !catalog.error && groups.length === 0
             ? <p className="request-preview-empty">暂无请求</p> : null}
           {groups.map(group => <section className="request-preview-round" key={group.label}>
@@ -106,9 +107,8 @@ export function RequestPreviewDialog({ conversationId, conversationModel, onClos
           {!selectedId ? <p className="request-preview-empty">{catalog.loading ? "" : "本次运行尚未发起请求"}</p>
             : context.id !== selectedId || (!context.items && !context.error)
               ? <p className="request-preview-empty" role="status">正在读取请求上下文</p>
-              : context.error ? <div className="request-preview-empty is-error" role="alert">
-                <p>{context.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>重试</button>
-              </div> : <RequestContextPanel items={context.items} t={translate} />}
+              : context.error ? <FailureAlert failure={context.error} className="request-preview-empty is-error" onRetry={() => setRetry(value => value + 1)} />
+              : <RequestContextPanel items={context.items} t={translate} />}
         </main>
       </div>;
   if (mobile) return <MobileConversationOverlay kind="page" title="请求上下文预览" className="mobile-request-preview" onClose={onClose}
