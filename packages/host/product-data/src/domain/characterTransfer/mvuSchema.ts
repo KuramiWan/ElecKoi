@@ -106,13 +106,16 @@ export function extractMvuSchema(source: string, options: { recognizedModuleOnly
   const expression = source.slice(registrations[0]!.node.start!, registrations[0]!.node.end!)
   const dependencies = [...imports.values()].sort((a, b) => a.node.start! - b.node.start!)
     .map(path => source.slice(path.node.start!, path.node.end!)).join('\n')
-  return `${dependencies}\nconst Schema = ((registered) => {
+  return `${dependencies}
+// 这段脚本由变量规则运行时在 node:vm 沙箱里执行：fail 与 CODES 由运行时注入（与 z / lodash 相同），
+// 用来抛带契约码的失败；不要在这里 new Error，边界会把它折成兜底码。
+const Schema = ((registered) => {
   const original = typeof registered === 'function' ? registered() : registered;
-  if (!(original instanceof z.ZodType)) throw new Error('MVU Schema 注册没有返回当前支持的 Zod 结构。');
+  if (!(original instanceof z.ZodType)) fail(CODES.inputUnsupported, 'MVU Schema 注册没有返回当前支持的 Zod 结构。', { what: 'MVU Schema 的注册结果' });
   const rule = original instanceof z.ZodObject ? z.looseObject(original.shape) : original;
   let input;
   return z.preprocess(value => { input = value; return value; }, rule).transform(value => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('MVU Schema 处理结果必须是 JSON 对象。');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) fail(CODES.dataShapeInvalid, 'MVU Schema 处理结果必须是 JSON 对象。', { what: 'MVU Schema 处理结果' });
     return { ...input, ...value };
   });
 })((() => {\n${code}\nreturn (${expression});\n})());`

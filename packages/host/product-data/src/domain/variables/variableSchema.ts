@@ -2,7 +2,7 @@ import { createContext, Script } from 'node:vm'
 import { parse } from '@babel/parser'
 import lodash from 'lodash'
 import { z } from 'zod'
-import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { ELECKOI_FAILURE_CODES, type EleckoiFailureCode } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 
 export interface VariableSchemaRuntime {
@@ -77,16 +77,43 @@ export function assertVariableJson(value: unknown, objectPrototypes = new Set<un
   ancestors.delete(value)
 }
 
+/**
+ * 生成脚本（如 `mvuSchema` 的模板）经注入的 `fail` 抛出的契约失败。
+ *
+ * 它必须原样穿过 {@link VariableRuleError} 的诊断包装：码与详情是给边界和用户的，
+ * 包成普通诊断错误以后边界只能折成兜底码，用户看到的是一句通用说法。
+ */
+class GeneratedRuleFailure extends DesktopError {}
+
+/**
+ * 生成脚本里唯一可用的失败构造器，与 {@link ELECKOI_FAILURE_CODES} 一起注入沙箱
+ * （见 {@link createVariableSchema}）。生成代码对作者可见，所以名字保持短。
+ */
+function injectedRuleFailure(code: EleckoiFailureCode, message: string, details?: unknown): never {
+  throw new GeneratedRuleFailure(code, message, details)
+}
+
+/** 注入沙箱的运行时名字：`fail` 是生成脚本的失败出口，`CODES` 是码表。改名字要同步 `mvuSchema` 的模板。 */
+const GENERATED_SCRIPT_BINDINGS = {
+  CODES: Object.freeze({ ...ELECKOI_FAILURE_CODES }),
+  fail: injectedRuleFailure
+}
+
+/** 诊断包装；生成脚本的带码失败不包，否则码会在边界上丢掉。 */
+function ruleFailure(stage: VariableRuleStage, error: unknown): Error {
+  return error instanceof GeneratedRuleFailure ? error : new VariableRuleError(stage, error)
+}
+
 export function loadVariableSchema(source: string): VariableSchemaRuntime {
   try { return createVariableSchema(source) }
-  catch (error) { throw new VariableRuleError('schema', error) }
+  catch (error) { throw ruleFailure('schema', error) }
 }
 
 function createVariableSchema(source: string): VariableSchemaRuntime {
   const ast = parse(source, { sourceType: 'module' })
   const statements: string[] = []
   let result = 'Schema'
-  const bindings: Record<string, unknown> = { z, _: lodash }
+  const bindings: Record<string, unknown> = { z, _: lodash, ...GENERATED_SCRIPT_BINDINGS }
   for (const statement of ast.program.body) {
     if (statement.type === 'ImportDeclaration') {
       if (statement.source.value !== 'zod' && statement.source.value !== 'lodash') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `变量规则的外部依赖尚不支持：${statement.source.value}`, { what: '变量规则的外部依赖' })
@@ -123,7 +150,7 @@ function createVariableSchema(source: string): VariableSchemaRuntime {
       try {
         let parsed: unknown
         try { parsed = evaluate.runInContext(context, { timeout: 1000 }) }
-        catch (error) { throw new VariableRuleError(error instanceof z.ZodError ? 'validation' : 'execution', error) }
+        catch (error) { throw ruleFailure(error instanceof z.ZodError ? 'validation' : 'execution', error) }
         try {
           assertVariableJson(parsed, prototypes)
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量规则处理结果必须是 JSON 对象。', { what: '变量规则处理结果' })
