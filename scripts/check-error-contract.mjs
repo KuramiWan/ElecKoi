@@ -1,8 +1,12 @@
-#!/usr/bin/env node
 /**
  * 错误合约闸 `check:error-contract`。
  *
  * 判据来源：错误处理设计 §四「怎么算做对了」第 2、3 条 + §五「所以该改的不是代码，是声明方式」。
+ *
+ * **不写 shebang**：这个文件被 `scripts/tests/check-error-contract.test.mjs` 直接 import。
+ * Windows 检出会把行尾转成 CRLF，带 shebang 的模块在 vitest 里会报
+ * `SyntaxError: Invalid or unexpected token`（2026-10-18 实测，CRLF 版两份文件复现）。
+ * 仓库用 `node scripts/check-error-contract.mjs` 调用它，文件也不是可执行位，不需要 shebang。
  *
  * ## 四条规则
  *
