@@ -937,7 +937,7 @@ class ProductDataStore {
     this.requireStoryConversation(characterId, conversationId)
     const repository = this.databaseRepositories().settingLibraries
     if (!repository.conversationLibrary(characterId, conversationId)) {
-      throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '该聊天尚未产生分支设定。只有设定修改工具成功提交变更后才能编辑。', { what: '先成功提交一次设定修改' })
+      throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '该聊天尚未产生分支设定。只有设定修改工具成功提交变更后才能编辑。', { what: '成功提交一次设定修改' })
     }
     return repository.replaceConversationLibrary(characterId, conversationId, library)
   }

@@ -73,14 +73,14 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   const catalog: CreatorCapability[] = []
   const requireCharacterTarget = (characterId: string) => {
     if (!characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请先在 AI 创作工作室菜单中选择角色，或通过 character.create 新建空角色。', { what: '在 AI 创作工作室选择角色' })
-    if (!data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
+    if (!data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
     return characterId
   }
   function operation<T extends z.ZodType>(toolsetId: string, name: string, title: string, effect: 'read' | 'write', schema: T, execute: (characterId: string, input: z.output<T>) => unknown, target: CreatorCapability['target'] = 'selected-character') {
     catalog.push({ id: `${toolsetId}.${name}`, toolsetId, title, effect, target,
       inputSchema: z.toJSONSchema(schema, { unrepresentable: 'throw' }) as Record<string, unknown>,
       execute(characterId, input) {
-        if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
+        if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
         return execute(characterId, schema.parse(input))
       } })
   }
@@ -255,7 +255,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   operation('scripts', 'remove', '删除当前角色的单个脚本', 'write', z.object({ id, expectedRevision: revision }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), item = find(scriptItems(library), input.id)
-    if (item.type !== 'script') throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '删除文件夹前请逐个处理其中脚本。', { what: '先处理文件夹里的脚本' })
+    if (item.type !== 'script') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '删除文件夹前请逐个处理其中脚本。', { field: 'id' })
     const saved = data.saveScriptLibrary({ ...library, trees: library.trees.filter(tree => tree.id !== item.id).map(tree => tree.type === 'folder' ? { ...tree, scripts: tree.scripts.filter(script => script.id !== item.id) } : tree) })
     return { removedId: item.id, revision: saved.revision }
   })
@@ -274,7 +274,7 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   })
   operation('scripts', 'remove_folder', '删除空脚本文件夹', 'write', z.object({ id, expectedRevision: revision }).strict(), (characterId, input) => {
     const library = readScripts(characterId, input.expectedRevision), folder = find(library.trees, input.id)
-    if (folder.type !== 'folder' || folder.scripts.length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '只能删除空脚本文件夹，请先移动或删除其中脚本。', { what: '先移动或删除文件夹里的脚本' })
+    if (folder.type !== 'folder' || folder.scripts.length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '只能删除空脚本文件夹，请先移动或删除其中脚本。', { what: '移动或删除文件夹里的脚本' })
     const saved = data.saveScriptLibrary({ ...library, trees: library.trees.filter(tree => tree.id !== folder.id) })
     return { removedId: folder.id, revision: saved.revision }
   })

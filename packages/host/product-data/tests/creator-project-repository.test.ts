@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { CreatorProjectRepository } from '../src/domain/creatorStudio/CreatorProjectRepository'
+import { ELECKOI_FAILURE_CODES } from '../../../shared/src/contracts/errors/codes'
 
 let testRoot = ''
 
@@ -72,7 +73,13 @@ describe('CreatorProjectRepository', () => {
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>
     writeFileSync(manifestPath, JSON.stringify({ ...manifest, id: 'different-project' }), 'utf8')
 
-    expect(() => repository.delete(project.id)).toThrow('项目清单校验失败')
+    let failure: unknown
+    try { repository.delete(project.id) } catch (error) { failure = error }
+    // 清单与索引不符是本层最具体的失败（state/mismatch），不能被外层 catch 重包成通用 internal。
+    expect(failure).toMatchObject({
+      code: ELECKOI_FAILURE_CODES.stateMismatch,
+      details: { what: '创作项目清单与索引记录' }
+    })
     expect(existsSync(project.rootPath)).toBe(true)
   })
 })

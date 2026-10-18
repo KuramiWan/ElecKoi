@@ -11,6 +11,7 @@ import { AgentPresetRepository } from '../src/domain/agentPresets'
 import { MessageDisplayProjector } from '../src/domain/conversations/MessageDisplayProjector'
 import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
 import { regexRuleCollectionSchema, type RegexRule } from '../../../shared/src/contracts/regex/schemas'
+import { ELECKOI_FAILURE_CODES } from '../../../shared/src/contracts/errors/codes'
 // @ts-expect-error Renderer editing helpers do not publish TypeScript declarations.
 import { moveRegexRuleToScope } from '../../../../apps/web/src/modules/regex/model/regexRulesEditing.js'
 import {
@@ -272,6 +273,17 @@ describe('regex repository', () => {
       .toEqual(expect.objectContaining({ content: expect.stringContaining('preset') }))
     expect(() => repository.save('card-a', saved, empty.revision)).toThrow('其他窗口更新')
     expect(database.native.pragma('foreign_key_check')).toEqual([])
+  })
+
+  it('reports a malformed persisted target list as a shape error instead of storage corruption', () => {
+    const { database, repository } = harness()
+    const current = repository.get('card-a')
+    repository.save('card-a', { ...current, characterRules: [rule()] }, current.revision)
+    database.native.prepare('UPDATE character_regex_rules SET targetsJson = ?').run('"AiOutput"')
+    let failure: unknown
+    try { repository.get('card-a') } catch (error) { failure = error }
+    // 形状不对是最具体的说法；重包成 storage/corrupt 会把功能内失败升级成应用级告警。
+    expect(failure).toMatchObject({ code: ELECKOI_FAILURE_CODES.dataShapeInvalid, details: { what: '正则目标' } })
   })
 
   it('reads the active preset rules and rejects a stale page after the active preset changes', () => {

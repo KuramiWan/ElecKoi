@@ -241,7 +241,7 @@ export function encodePortableCharacterPayload(value: PortableCharacterPackage):
 export function decodePortablePackage(encoded: string): PortableCharacterPackage {
   let expanded: Buffer
   try { expanded = gunzipSync(Buffer.from(encoded, 'base64'), { maxOutputLength: MAX_EXPANDED_BYTES }) }
-  catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, 'ElecKoi 角色卡数据损坏', { what: 'ElecKoi 角色卡数据' }) }
+  catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'ElecKoi 角色卡数据损坏', { what: 'ElecKoi 角色卡数据' }) }
   const root = parseJsonObject(expanded.toString('utf8'), 'ElecKoi 角色卡数据损坏')
   return decodePortableRoot(root)
 }

@@ -380,7 +380,7 @@ export class SettingLibraryRepository {
   ): SettingLibrary {
     const base = this.get(characterId, db)
     const effective = this.runtimeContext(conversationId, { characterId }, db)
-    if (!effective) throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '无法读取这段对话的分支设定。', { what: '对话的分支设定' })
+    if (!effective) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '无法读取这段对话的分支设定。', { what: '选择一个角色' })
     return settingLibrarySchema.parse({
       ...base,
       entries: effective.entries,
