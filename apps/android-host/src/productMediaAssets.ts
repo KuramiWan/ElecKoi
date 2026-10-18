@@ -4,6 +4,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { resolveLocalMediaPath } from '@eleckoi/dsh-product-data/media'
 import type {} from '@eleckoi/dsh-product-api'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const mime: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
@@ -13,7 +15,9 @@ const mime: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg'
 /** Serve the original product's local media references through the official same-origin Host. */
 export function installProductMediaAssets(ctx: Context) {
   const root = process.env.ELECKOI_MEDIA_ROOT
-  if (!root) throw new Error('Product media root is required')
+  if (!root) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, 'Product media root is required', { what: '配置产品媒体目录' })
+  }
   ctx.effect(() => ctx.webServer.register({ kind: 'prefix', path: '/eleckoi/media', handler(request, response) {
     if (!['GET', 'HEAD'].includes(request.method ?? '')) { response.writeHead(405, { Allow: 'GET, HEAD' }); response.end(); return }
     if ('rejection' in ctx.connection.admit(request)) { response.writeHead(401); response.end(); return }
