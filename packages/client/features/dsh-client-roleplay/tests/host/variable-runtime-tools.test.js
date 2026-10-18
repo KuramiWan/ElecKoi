@@ -20,7 +20,7 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-async function tools({ extraCount = 0, mapMarkerCount = 0, configured = true } = {}) {
+async function tools({ extraCount = 0, mapMarkerCount = 0, configured = true, logger } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-variable-tools-"));
   directories.push(directory);
   const file = join(directory, "state.json");
@@ -63,7 +63,11 @@ async function tools({ extraCount = 0, mapMarkerCount = 0, configured = true } =
   process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
   const registered = [];
   const processing = new ElecKoiVariableProcessing(null);
-  applyVariableTools({ eleckoiVariableProcessing: processing, tools: { register: (definition) => { registered.push(definition); return () => undefined; } } });
+  applyVariableTools({
+    eleckoiVariableProcessing: processing,
+    tools: { register: (definition) => { registered.push(definition); return () => undefined; } },
+    ...(logger ? { logger } : {}),
+  });
   const execution = { agent: { session: { id: sessionId } } };
   return {
     file,
@@ -315,5 +319,32 @@ describe("DSH character variable tools", () => {
     await expect(patch.execute({ operations: [{ op: "delta", path: "/状态/好感度", value: 5 }] })).resolves.toMatchObject({ status: "ok" });
     expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态).toEqual({ 好感度: 15, 称呼: "熟人" });
     expect(trace).toEqual(["before", "after", "closed", "before", "after", "afterSchema", "closed"]);
+  });
+
+  it("logs one searchable coded line at the failure exit and still throws", async () => {
+    const lines = [];
+    const runtime = await tools({ logger: { warn: (line) => lines.push(line) } });
+
+    // 非法 JSON Pointer 转义在外面只会变成一条 patch_error 结果；带码失败要走边界④：日志 + 再抛。
+    const rejection = await runtime.byName.get("eleckoi_apply_variable_patch")
+      .execute({ operations: [{ op: "replace", path: "/状态/~2", value: 1 }] })
+      .then(() => undefined, (error) => error);
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect(rejection.message).toBe("path 包含无效的 JSON Pointer 转义");
+    expect(rejection.code).toBe("eleckoi/input/invalid");
+    expect(rejection.details).toEqual({ field: "path" });
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    const prefix = "eleckoi/runtime-plugin-failure ";
+    expect(line.startsWith(prefix)).toBe(true);
+    expect(JSON.parse(line.slice(prefix.length))).toMatchObject({
+      plugin: "eleckoi-variable-tools",
+      operation: "eleckoi_apply_variable_patch",
+      code: "eleckoi/input/invalid",
+      message: "path 包含无效的 JSON Pointer 转义",
+      details: { field: "path" },
+    });
+    expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态.好感度).toBe(10);
   });
 });
