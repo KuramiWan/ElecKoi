@@ -70,6 +70,13 @@ describe("参数化详情进句子", () => {
       .toBe("保存失败：/tmp/卡.json。");
   });
 
+  it("不支持的说法同时覆盖格式、版本与能力", () => {
+    expect(resolveFailure(failureOf(ELECKOI_FAILURE_CODES.inputUnsupported, { what: "文件夹嵌套" })).text)
+      .toBe("不支持这个格式、版本或能力：文件夹嵌套。");
+    expect(resolveFailure(failureOf(ELECKOI_FAILURE_CODES.inputUnsupported)).text)
+      .toBe("不支持这个格式、版本或能力。");
+  });
+
   it("详情缺失时仍给完整句子，不露出占位符", () => {
     const text = resolveFailure(failureOf(ELECKOI_FAILURE_CODES.conflictStaleRevision)).text;
     expect(text).toBe("内容已在别处被修改，请刷新后重试。");

@@ -20,9 +20,13 @@
  * 输入可以是任何抛出值：`RemoteError` 形状、`DesktopError`、裸 `Error`、字符串、`null`、
  * 普通对象。**永不抛**。
  */
-import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
 import { describeFailure } from "@shared/foundation/describeFailure";
 import { foldFailure } from "@shared/foundation/failure";
+import { APP_LEVEL_CODES, FAILURE_TEXTS, IO_OPERATION_TEXTS, detailString } from "./failureTexts.js";
+
+// 表与参数读取工具住 `failureTexts.js`（对外文档生成器直接读那一份）；这里原样再导出，
+// 既有调用点与用例的导入路径不变。
+export { APP_LEVEL_CODES, FAILURE_TEXTS, IO_OPERATION_TEXTS, detailString };
 
 /** 认不出语义时的通用说法（不是某个码的文案）。 */
 export const GENERIC_FAILURE_TEXT = "操作失败，请重试。";
@@ -32,128 +36,6 @@ export const RENDERER_FAILURE_LOG_MARKER = "eleckoi-renderer-failure";
 
 /** 两个呈现通道。`inline` = 功能内就地失败面；`app` = 应用级对话框 / 窗口级提示。 */
 export const FAILURE_CHANNELS = { inline: "inline", app: "app" };
-
-/**
- * 默认走**应用级**通道的码。
- *
- * 判据：这些失败不属于某一个窗口或面板，而是整个应用的状态（宿主进程、库、存储、
- * 调用来源），就地显示会让人以为只有某个功能坏了。其余一律默认功能内——
- * 目录读失败、保存冲突这类都该留在发生的那块界面里。
- *
- * 调用点可以**上调**（`upgradeTo: "app"`），不能下调，理由见 {@link resolveFailure}。
- */
-const APP_LEVEL_CODES = new Set([
-  ELECKOI_FAILURE_CODES.pluginLoadFailed,
-  ELECKOI_FAILURE_CODES.dbSchemaMismatch,
-  ELECKOI_FAILURE_CODES.storageCorrupt,
-  ELECKOI_FAILURE_CODES.senderUntrusted,
-  ELECKOI_FAILURE_CODES.lifecycleDisposed
-]);
-
-/** IO 动作 → 用户能懂的说法。其余取值走通用说法。 */
-const IO_OPERATION_TEXTS = {
-  read: "读取失败",
-  write: "保存失败",
-  delete: "删除失败",
-  spawn: "启动失败",
-};
-
-/**
- * 码 → 用户可见说法。键用 `ELECKOI_FAILURE_CODES` 的常量（**不是**重写的字面量：
- * 码字符串只有契约那一份真相）。兜底码不在表里，它走"开发者诊断"那条分支。
- *
- * 每条码都必须有一句（`apps/web/tests/ui/failure-text.test.js` 逐码断言）。
- * 写法要求：一句、主动、说"能不能再试"，不出现码、字段名、类名、堆栈。
- */
-const FAILURE_TEXTS = {
-  [ELECKOI_FAILURE_CODES.contractInvalidRequest]: () => "请求内容不符合要求，已拒绝。",
-  [ELECKOI_FAILURE_CODES.contractInvalidResponse]: () => "服务返回的内容不符合要求，已拒绝。",
-  [ELECKOI_FAILURE_CODES.dataShapeInvalid]: (details) => {
-    const what = detailString(details.what);
-    return what ? `数据格式不符合要求：${what}。` : "数据格式不符合要求。";
-  },
-  [ELECKOI_FAILURE_CODES.dataLegacyMismatch]: (details) => {
-    const what = detailString(details.what);
-    return what ? `这份数据来自旧版本，当前版本读不了：${what}。` : "这份数据来自旧版本，当前版本读不了。";
-  },
-  [ELECKOI_FAILURE_CODES.inputInvalid]: (details) => {
-    const field = detailString(details.field);
-    return field ? `输入不合法：${field}。` : "输入不合法。";
-  },
-  [ELECKOI_FAILURE_CODES.inputUnsupported]: (details) => {
-    const what = detailString(details.what);
-    return what ? `不支持这个格式或版本：${what}。` : "不支持这个格式或版本。";
-  },
-  [ELECKOI_FAILURE_CODES.lookupNotFound]: (details) => {
-    const what = detailString(details.what);
-    return what ? `找不到${what}。` : "找不到要操作的内容。";
-  },
-  [ELECKOI_FAILURE_CODES.lookupDuplicate]: (details) => {
-    const what = detailString(details.what);
-    return what ? `已存在同名的${what}。` : "已存在同名内容。";
-  },
-  [ELECKOI_FAILURE_CODES.characterNotFound]: () => "角色不存在或已被删除。",
-  [ELECKOI_FAILURE_CODES.creatorProjectNotFound]: () => "创作项目不存在或已被删除。",
-  [ELECKOI_FAILURE_CODES.agentPresetNotFound]: () => "Agent 预设不存在或已被删除。",
-  [ELECKOI_FAILURE_CODES.creatorProjectNameTaken]: (details) => {
-    const path = detailString(details.path);
-    return path ? `保存位置已存在同名目录：${path}。` : "保存位置已存在同名目录。";
-  },
-  [ELECKOI_FAILURE_CODES.conflictStaleRevision]: (details) => {
-    const what = detailString(details.what);
-    return what ? `${what}已在别处被修改，请刷新后重试。` : "内容已在别处被修改，请刷新后重试。";
-  },
-  [ELECKOI_FAILURE_CODES.stateMismatch]: (details) => {
-    const what = detailString(details.what);
-    return what ? `${what}对不上，请刷新后重试。` : "内容状态对不上，请刷新后重试。";
-  },
-  [ELECKOI_FAILURE_CODES.statePrecondition]: (details) => {
-    const what = detailString(details.what);
-    return what ? `请先${what}。` : "请先完成前置操作。";
-  },
-  [ELECKOI_FAILURE_CODES.safetyRefused]: (details) => {
-    const guard = detailString(details.guard);
-    return guard ? `操作被拒绝：${guard}。` : "操作被拒绝。";
-  },
-  [ELECKOI_FAILURE_CODES.securityDenied]: () => "没有权限执行这个操作。",
-  [ELECKOI_FAILURE_CODES.senderUntrusted]: () => "该操作被拒绝：调用来源不可信。",
-  [ELECKOI_FAILURE_CODES.lifecycleNotReady]: (details) => {
-    const what = detailString(details.what);
-    return what ? `${what}还没准备好，请稍后再试。` : "服务还没准备好，请稍后再试。";
-  },
-  [ELECKOI_FAILURE_CODES.lifecycleDisposed]: (details) => {
-    const what = detailString(details.what);
-    return what ? `${what}已关闭，请重新打开。` : "这个功能已关闭，请重新打开。";
-  },
-  [ELECKOI_FAILURE_CODES.pluginLoadFailed]: () => "插件服务没有启动起来，请重新打开插件中心。",
-  [ELECKOI_FAILURE_CODES.ioFailed]: (details) => {
-    const path = detailString(details.path);
-    const action = IO_OPERATION_TEXTS[detailString(details.operation)] || "读写失败";
-    return `${action}${path ? `：${path}` : ""}。`;
-  },
-  [ELECKOI_FAILURE_CODES.netOperationFailed]: (details) => {
-    const what = detailString(details.what);
-    return what ? `网络请求失败：${what}。` : "网络请求失败，请检查网络连接后重试。";
-  },
-  [ELECKOI_FAILURE_CODES.timeoutExpired]: (details) => {
-    const what = detailString(details.what);
-    return what ? `等待${what}超时，请重试。` : "操作超时，请重试。";
-  },
-  [ELECKOI_FAILURE_CODES.storageCorrupt]: (details) => {
-    const what = detailString(details.what);
-    return what ? `存储内容已损坏，读不出来：${what}。` : "存储内容已损坏，读不出来。";
-  },
-  [ELECKOI_FAILURE_CODES.dbSchemaMismatch]: () => "本地数据库结构不对，请重新安装或升级后再试。",
-  [ELECKOI_FAILURE_CODES.modelConfigInvalid]: (details) => {
-    const field = detailString(details.field);
-    return field ? `模型配置不合法：${field}。` : "模型配置不合法。";
-  },
-  [ELECKOI_FAILURE_CODES.mediaInvalid]: (details) => {
-    const what = detailString(details.what);
-    return what ? `图片或音频不符合要求：${what}。` : "图片或音频不符合要求。";
-  },
-  [ELECKOI_FAILURE_CODES.ipcCallFailed]: () => "与后台服务通信失败，请重试。",
-};
 
 /**
  * 把一个失败解析成界面与日志都能用的形状。
@@ -275,10 +157,6 @@ function developerMessage(failure) {
 function fallbackText(fallback) {
   const text = typeof fallback === "string" ? fallback.trim() : "";
   return text || GENERIC_FAILURE_TEXT;
-}
-
-function detailString(value) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function detailValueText(value) {
