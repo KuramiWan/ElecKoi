@@ -5,6 +5,7 @@ import { useChatClient } from '../app/hooks/useChatClient.js';
 import { useWindowAppearance } from '../app/hooks/useWindowAppearance.js';
 import { AppToast } from '../ui/ui/AppToast.jsx';
 import { FailureAlert } from '../ui/ui/FailureAlert.jsx';
+import { subscribeAppFailure } from '../utils/appFailureOutlet.js';
 import { ChatBackgroundModal, HistoryModal } from '../modules/chat/index.js';
 import { AppUpdateController, useAppUpdates } from '../modules/updates/index.js';
 import { MobileDialog, MobileHeader } from './MobileChrome.jsx';
@@ -56,6 +57,10 @@ export function MobileWindow(props) {
     resize(); window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, [props.rightbar]);
+  // 应用级失败不留在角落里：功能内失败面把这类失败送到窗口级错误对话框（码与详情仍然可见）。
+  useEffect(() => subscribeAppFailure(resolved => {
+    chat.notify('error', resolved.text, resolved);
+  }), [chat.notify]);
   const registerBackHandler = useCallback(handler => {
     backHandlers.current.push(handler);
     return () => { backHandlers.current = backHandlers.current.filter(item => item !== handler); };

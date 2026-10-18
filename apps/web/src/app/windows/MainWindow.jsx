@@ -4,6 +4,8 @@ import { resolveChatWallpaper } from "../../modules/appearance/index.js";
 import { useChatClient } from "../hooks/useChatClient.js";
 import { useWindowAppearance } from "../hooks/useWindowAppearance.js";
 import { AppToast } from "../../ui/ui/AppToast.jsx";
+import { FailureAlert } from "../../ui/ui/FailureAlert.jsx";
+import { subscribeAppFailure } from "../../utils/appFailureOutlet.js";
 import { resolveFailure } from "../../utils/failureText.js";
 import { SidebarContent } from "./shell/components/SidebarContent.jsx";
 import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
@@ -66,6 +68,12 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
       chat.notify("error", resolved.text, resolved);
     });
   }, [chat.notify]);
+
+  // 应用级失败（插件装载 / 库结构 / 存储 / 调用来源 / 生命周期）不留在界面的角落：
+  // 功能内失败面把这类失败送到这里，接窗口级错误对话框（码与详情在对话框里可见）。
+  useEffect(() => subscribeAppFailure((resolved) => {
+    chat.notify("error", resolved.text, resolved);
+  }), [chat.notify]);
 
   const changeActiveSection = useCallback((section) => {
     if (chat.activeSection === "model" && section !== "model" && modelNavigationGuardRef.current) {
@@ -216,7 +224,9 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
           key={chat.activeSection}
           fallback={(error) => renderWindowLayout({
             sidePanel: null,
-            mainPanel: <div className="chat-empty-guide" role="alert">页面加载失败：{error?.message || String(error)}</div>,
+            // 页面级失败也走唯一解析点：用户句按码给，码与参数化详情一起可见。
+            // 直接显示 `error.message` 会把开发者诊断丢给用户，还把码丢掉。
+            mainPanel: <FailureAlert failure={error} context="页面加载失败" className="chat-empty-guide" />,
           })}
         >
           <Suspense fallback={renderWindowLayout({ sidePanel: null, mainPanel: null })}>

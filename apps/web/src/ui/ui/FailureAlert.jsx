@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { hasAppFailureListener, reportAppFailure } from "../../utils/appFailureOutlet.js";
 import {
   FAILURE_CHANNELS,
   defaultChannelOf,
@@ -22,8 +23,13 @@ import {
  *
  * 通道默认由码给（`resolveFailure` 的 `channel`）。调用点只能**上调**到应用级
  * （`upgradeTo="app"`）——组件没有下调参数，把严重失败藏成一行小字在结构上做不到。
- * 上调不会改变呈现位置（这是就地失败面），只改 `data-failure-channel` 与 `is-app-level`
- * 样式，让"这个失败其实是应用级的"在界面上看得出来。
+ *
+ * **应用级失败不留在角落**：码表里有五条码默认走 `app` 通道（插件装载失败、库结构不符、
+ * 存储损坏、调用来源不可信、服务已关闭）。命中这些码时本组件**不就地渲染**，而是把
+ * `resolveFailure` 的结果交给 `appFailureOutlet` 的应用级出口（窗口级 `AppErrorDialog`，
+ * 码与详情在那里同样可见）。没有窗口订阅（单测 / SSR / 窗口还没挂载）时退回就地渲染——
+ * 宁可显示在角落，也不能让失败消失。上调只改严重度，不会把功能内失败误升级：
+ * 只有 `channel === "app"` 才走出口。
  *
  * `failure` 可以是任何抛出值（`resolveFailure` 能吃的都行），也可以**已经**是
  * `resolveFailure` 的结果——调用点把失败对象直接存进状态，渲染时交给这里即可。
@@ -40,7 +46,13 @@ import {
  */
 export function FailureAlert({ failure, context, onRetry, upgradeTo, className = "" }) {
   const resolved = resolveAlertFailure(failure, context, upgradeTo);
-  if (!resolved) return null;
+  // 应用级失败交给窗口级出口（对话框），本组件不渲染这一小块；没有出口时才就地渲染。
+  const escalated = resolved?.channel === FAILURE_CHANNELS.app && hasAppFailureListener();
+  useEffect(() => {
+    if (!escalated) return;
+    reportAppFailure(resolved);
+  }, [escalated, resolved?.code, resolved?.diagnostic]);
+  if (!resolved || escalated) return null;
   const details = failureDetailLines(resolved.details);
   const classes = ["failure-alert", resolved.channel === FAILURE_CHANNELS.app ? "is-app-level" : "", className]
     .filter(Boolean)

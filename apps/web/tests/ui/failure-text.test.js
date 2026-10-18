@@ -83,6 +83,46 @@ describe("参数化详情进句子", () => {
   });
 });
 
+/**
+ * 契约钉住的一类写法：`state/precondition` 的 `what` 是**动作短语**，不是名词短语。
+ *
+ * 这条码的模板是 `请先${what}。`（见 `failureTexts.js` 的 `statePrecondition`），
+ * `contracts/errors/details.ts` 也写明它的 `what` 是「用户该先做的动作」。所以
+ * 「`details.what` 写名词短语」这条规则只适用于把 `what` 当宾语拼的其它码；
+ * 在这条码上换名词短语会读成「请先一个打开的聊天。」这种病句。
+ *
+ * 这条用例把错误处理重建落地在这几处的动作短语逐条钉住（评审二曾把它们判成病句，
+ * 若以后有人按"一律名词短语"改回去，这里立刻红）：
+ *
+ * | what | 出现位置 |
+ * | --- | --- |
+ * | `打开一个聊天` | `useChatInputFiles.js:24`；`dsh-client-conversations/src/client.js:987/1011/1019/1031/1456/2275/2440/2578` |
+ * | `选择要导出的聊天记录` | `dsh-client-conversations/src/client.js:995` |
+ * | `选择要导入聊天记录的角色` | `dsh-client-conversations/src/client.js:1003` |
+ * | `选择要切换的开场白` | `dsh-client-conversations/src/client.js:1445` |
+ * | `等待当前消息修改完成` | `dsh-client-conversations/src/client.js:1757` |
+ * | `打开一个聊天并重试` | `dsh-client-conversations/src/client.js:2117/2179` |
+ * | `等待当前回复生成完成` | `dsh-client-conversations/src/client.js:2192` |
+ * | `配置必需的运行环境变量` | `dsh-client-roleplay/src/host/session-snapshot.mjs:6/15/74`、`agent-preset-bridge.mjs:22/23`、`session-runtime.mjs:475` |
+ */
+describe("前置动作的 what 是动作短语（契约钉住，不是病句）", () => {
+  const PRECONDITION_ACTIONS = [
+    "打开一个聊天",
+    "选择要导出的聊天记录",
+    "选择要导入聊天记录的角色",
+    "选择要切换的开场白",
+    "等待当前消息修改完成",
+    "打开一个聊天并重试",
+    "等待当前回复生成完成",
+    "配置必需的运行环境变量",
+  ];
+
+  it.each(PRECONDITION_ACTIONS)("「%s」拼成一句完整的「请先…」", (what) => {
+    expect(resolveFailure(failureOf(ELECKOI_FAILURE_CODES.statePrecondition, { what })).text)
+      .toBe(`请先${what}。`);
+  });
+});
+
 describe("认不出的码与裸失败", () => {
   it("未知码折兜底，但原码留在详情里，用户看到通用说法", () => {
     const resolved = resolveFailure({ isDSHRemoteError: true, code: "eleckoi/未来才有的码", message: "细节", details: {} });
