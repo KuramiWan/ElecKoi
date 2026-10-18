@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { SystemBarOverlay } from '../../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -53,7 +55,7 @@ export function CommunityDialog({ open, onClose, onNotify }) {
 
   async function copyGroupNumber(message = "群号已复制") {
     try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+      if (!navigator.clipboard?.writeText) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "Clipboard API unavailable", { what: "剪贴板接口" });
       await navigator.clipboard.writeText(ELECKOI_QQ_GROUP_NUMBER);
       onNotify?.("success", message);
       return true;

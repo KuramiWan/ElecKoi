@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { createRoot } from "react-dom/client";
 import App from "./app/windows/App.jsx";
 import { initRendererAssets } from "./app/services/assets.js";
@@ -12,7 +14,7 @@ async function bootstrap() {
     initializeAppearanceMode(),
   ]);
   const container = document.getElementById("eleckoi-root") || document.getElementById("root");
-  if (!container) throw new Error("ElecKoi 页面容器不存在");
+  if (!container) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, "ElecKoi 页面容器不存在", { what: "ElecKoi 页面容器" });
   globalThis.__ELECKOI_UNMOUNT__?.();
   const root = createRoot(container);
   globalThis.__ELECKOI_UNMOUNT__ = () => {
