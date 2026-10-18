@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import {
   DEFAULT_HIDDEN_TOOL_TIMELINE_CONTENT,
   HIDDEN_TOOL_TIMELINE_ENTRY_ID,
@@ -18,9 +20,9 @@ const legacyHiddenTimelineContent = previousHiddenTimelineContent
 
 function entryObject(raw: string, source: string): Entry {
   let parsed: unknown
-  try { parsed = JSON.parse(raw) } catch { throw new Error(`设定条目数据已损坏：${source}。`) }
+  try { parsed = JSON.parse(raw) } catch { throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `设定条目数据已损坏：${source}。`, { what: '设定条目数据' }) }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`设定条目格式无效：${source}。`)
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `设定条目格式无效：${source}。`, { what: '设定条目' })
   }
   return parsed as Entry
 }
@@ -73,14 +75,14 @@ function normalizeSnapshots(database: Database.Database): void {
   const update = database.prepare('UPDATE agent_setting_snapshots SET stateJson = ? WHERE rowid = ?')
   for (const row of rows) {
     let state: unknown
-    try { state = JSON.parse(row.stateJson) } catch { throw new Error(`设定快照数据已损坏：${row.rowid}。`) }
-    if (!Array.isArray(state)) throw new Error(`设定快照格式无效：${row.rowid}。`)
+    try { state = JSON.parse(row.stateJson) } catch { throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `设定快照数据已损坏：${row.rowid}。`, { what: '设定快照数据' }) }
+    if (!Array.isArray(state)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `设定快照格式无效：${row.rowid}。`, { what: '设定快照' })
     let changed = false
     const next = state.map((item, index) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return item
       const change = item as Entry
       if (change.targetType !== 'entry' || change.operation !== 'upsert') return item
-      if (typeof change.payloadJson !== 'string') throw new Error(`设定快照条目格式无效：${row.rowid}/${index}。`)
+      if (typeof change.payloadJson !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `设定快照条目格式无效：${row.rowid}/${index}。`, { what: '设定快照条目' })
       const payloadJson = normalizeEntry(change.payloadJson, 'camel', `agent_setting_snapshots/${row.rowid}/${index}`)
       if (payloadJson === change.payloadJson) return item
       changed = true
@@ -96,8 +98,8 @@ function normalizePromptPositionRows(database: Database.Database, table: string)
   const update = database.prepare(`UPDATE ${table} SET content = ? WHERE rowid = ?`)
   for (const row of rows) {
     let parsed: unknown
-    try { parsed = JSON.parse(row.content) } catch { throw new Error(`提示词位置数据已损坏：${table}/${row.rowid}。`) }
-    if (!Array.isArray(parsed)) throw new Error(`提示词位置格式无效：${table}/${row.rowid}。`)
+    try { parsed = JSON.parse(row.content) } catch { throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `提示词位置数据已损坏：${table}/${row.rowid}。`, { what: '提示词位置数据' }) }
+    if (!Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `提示词位置格式无效：${table}/${row.rowid}。`, { what: '提示词位置' })
     let changed = false
     const positions = parsed.map((item) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return item
