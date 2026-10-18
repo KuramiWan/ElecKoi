@@ -128,7 +128,7 @@ assert.ok(CODES.includes(ELECKOI_FALLBACK_FAILURE_CODE), '兜底码不在码表�
  * 参数名闭集从 `details.ts` 的联合类型声明读（运行期不存在这个类型）。
  * 类型被擦除后没有别的读法；读错时下面的断言会报出条数不符，而不是静默产出半张表。
  */
-const detailsSource = await readFile(DETAILS_PATH, 'utf8')
+const detailsSource = normalizeLineEndings(await readFile(DETAILS_PATH, 'utf8'))
 const paramUnion = /export type EleckoiFailureDetailParam =([\s\S]*?)\n\n/.exec(detailsSource)
 assert.ok(paramUnion !== null, 'details.ts 里找不到 EleckoiFailureDetailParam 的联合声明')
 const CLOSED_PARAMS = [...paramUnion[1].matchAll(/'([^']+)'/g)].map((match) => match[1])

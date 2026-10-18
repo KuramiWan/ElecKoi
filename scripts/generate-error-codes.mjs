@@ -19,6 +19,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { normalizeLineEndings } from './lib/normalize-line-endings.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sourcePath = resolve(root, 'packages/shared/src/contracts/errors/codes.ts')
@@ -57,7 +58,9 @@ const current = await readFile(outputPath, 'utf8').catch((error) => {
 })
 
 if (checkOnly) {
-  if (current !== content) {
+  // Windows 检出会把工作区文件转成 CRLF；产物内容以 LF 生成，比较时要把行尾折叠掉，
+  // 否则干净的检出在 Windows 上会被判成"过期"（2026-10-18 windows-latest CI 实测）。
+  if (current === null || normalizeLineEndings(current) !== normalizeLineEndings(content)) {
     console.error('客户端码表已过期，请运行 pnpm generate:error-codes：')
     console.error(`  ${outputPath.slice(root.length + 1)}`)
     process.exit(1)
