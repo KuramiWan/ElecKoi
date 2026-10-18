@@ -9,6 +9,7 @@ import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { REQUEST_CONTEXT_EVENT } from '@eleckoi/dsh-client-roleplay/host/request-context-record.mjs'
 import { HISTORY_RESTORED_EVENT } from '@eleckoi/dsh-client-roleplay/host/history-stats-projection.mjs'
 import type {} from '@eleckoi/dsh-client-roleplay/projections'
+import { ELECKOI_FAILURE_CODES, productFailure } from '@eleckoi/dsh-product-api'
 import { readDshSessionLog } from './trajectory'
 
 type Row = Record<string, string | number | null>
@@ -35,7 +36,7 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
     for (const row of rows.slice(1)) restore.decodeRow(row)
     const log = restore.finish()
     if (log.header.id !== id || log.header.version !== sessionFormatCatalog.currentVersion) {
-      throw new Error('旧聊天历史恢复的 Session 身份或版本不匹配。')
+      throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '旧聊天历史恢复的 Session 身份或版本不匹配。', { what: '旧聊天历史的会话标识与版本' })
     }
     const events = log.events as unknown as SessionEvent[]
     const envelopeIndex = events.findIndex(event => event.type === 'user/message'
@@ -52,7 +53,7 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
     const history = snapshot.history.map(item => {
       const entry = record(item)
       if ((entry.role !== 'user' && entry.role !== 'assistant') || typeof entry.content !== 'string') {
-        throw new Error('旧聊天历史快照格式不正确，原日志未修改。')
+        throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧聊天历史快照格式不正确，原日志未修改。', { what: '旧聊天历史快照' })
       }
       return { role: entry.role, content: entry.content }
     })
@@ -62,7 +63,7 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
     const active = tables.agent_branch_turns.filter(row => row.branchId === conversation.activeBranchId)
       .sort((left, right) => Number(left.sequence) - Number(right.sequence))
     const activeTurns = active.map(row => tables.agent_turns.find(turn => turn.id === row.turnId))
-    if (activeTurns.some(turn => !turn)) throw new Error('旧聊天活动消息账本不完整，原日志未修改。')
+    if (activeTurns.some(turn => !turn)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧聊天活动消息账本不完整，原日志未修改。', { what: '旧聊天活动消息账本' })
     if (activeTurns[0]?.kind === 'opening' && history[0]?.role === 'assistant') history.shift()
     let currentIndex = -1
     for (let index = 0; index < envelopeIndex; index++) if (directUser(events[index]!)) currentIndex = index
@@ -75,16 +76,16 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
     const missingCount = history.length - native.length
     if (!native.every((message, index) => message.role === history[missingCount + index]?.role
       && message.content === history[missingCount + index]?.content)) {
-      throw new Error('旧聊天历史与原生消息无法唯一对应，原日志未修改。')
+      throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '旧聊天历史与原生消息无法唯一对应，原日志未修改。', { what: '旧聊天历史与原生消息的对应关系' })
     }
     const missing = history.slice(0, missingCount)
     if (missing.some(item => item.role !== 'user')) {
-      throw new Error('旧聊天缺少可验证的历史回复，不能补造模型记录；原日志未修改。')
+      throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '旧聊天缺少可验证的历史回复，不能补造模型记录；原日志未修改。', { what: '可验证的历史回复' })
     }
     const known = new Set<string>(KNOWN_SESSION_EVENT_TYPES)
     if (events.some(event => !known.has(event.type) && String(event.type) !== REQUEST_CONTEXT_EVENT
       && String(event.type) !== HISTORY_RESTORED_EVENT)) {
-      throw new Error('旧聊天含有无法重定位的外部插件记录，原日志未修改。')
+      throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '旧聊天含有无法重定位的外部插件记录，原日志未修改。', { what: '旧聊天的外部插件记录' })
     }
     const firstTurn = events.slice(0, envelopeIndex).find(event => event.type === 'turn/start')
     const turnNumber = record(firstTurn?.data).turn
@@ -94,7 +95,7 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
     const historicalUsers = activeTurns.slice(0, ownerIndex).filter(turn => turn!.kind === 'user')
     if (ownerIndex < 0 || historicalUsers.length !== history.length
       || historicalUsers.slice(0, missingCount).some(turn => tables.agent_responses.some(row => row.turnId === turn!.id))) {
-      throw new Error('旧聊天未回复输入与活动账本无法唯一对应，原日志未修改。')
+      throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '旧聊天未回复输入与活动账本无法唯一对应，原日志未修改。', { what: '旧聊天未回复输入与活动账本的对应关系' })
     }
     const firstUserIndex = events.findIndex(directUser)
     const turnIndex = events.findIndex(event => event.type === 'turn/start')
@@ -109,7 +110,7 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
       const turn = historicalUsers[index]!
       const time = typeof turn!.createdAt === 'string' ? Date.parse(turn!.createdAt) : NaN
       if (typeof turn!.id !== 'string' || !turn!.id || !Number.isSafeInteger(time) || time < 0) {
-        throw new Error('旧聊天历史输入身份或时间不正确，原日志未修改。')
+        throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧聊天历史输入身份或时间不正确，原日志未修改。', { what: '旧聊天历史输入的身份或时间' })
       }
       const message = freezeMessage({ ...createUserMessage({
         content: [{ type: 'text', text: item.content }], source: { kind: 'user' }
@@ -125,7 +126,7 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
     ordered.forEach((event, index) => { if (originals.has(event)) relocated.set(event.seq, index) })
     const shift = (seq: number): number => {
       const target = relocated.get(seq)
-      if (target === undefined) throw new Error('旧聊天包含不能重定位的消息引用，原日志未修改。')
+      if (target === undefined) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧聊天包含不能重定位的消息引用，原日志未修改。', { what: '旧聊天中的消息引用' })
       return target
     }
     const recovered = ordered.map((event, index) => originals.has(event)
@@ -144,17 +145,17 @@ export async function recoverSessionHistory(root: string, id: string, archive: H
     let committed = false
     try {
       writeFileSync(temporary, serialized, { encoding: 'utf8', flag: 'wx' })
-      if (readFileSync(located.path, 'utf8') !== original) throw new Error('旧聊天日志在历史恢复期间发生变化。')
+      if (readFileSync(located.path, 'utf8') !== original) throw productFailure(ELECKOI_FAILURE_CODES.conflictStaleRevision, '旧聊天日志在历史恢复期间发生变化。', { what: '旧聊天日志' })
       copyFileSync(located.path, backup)
       renameSync(temporary, located.path)
       committed = true
       const reread = readDshSessionLog(root, id)
       if (readFileSync(located.path, 'utf8') !== serialized || reread?.events.length !== recovered.length
-        || reread?.header.id !== id) throw new Error('旧聊天历史恢复写入校验失败。')
+        || reread?.header.id !== id) throw productFailure(ELECKOI_FAILURE_CODES.internal, '旧聊天历史恢复写入校验失败。', { what: '旧聊天历史恢复的写入校验' })
     } catch (error) {
       if (committed) {
         try { renameSync(backup, located.path) }
-        catch (cause) { throw new Error(`历史恢复失败，原日志备份位于 ${backup}。`, { cause }) }
+        catch { throw productFailure(ELECKOI_FAILURE_CODES.ioFailed, `历史恢复失败，原日志备份位于 ${backup}。`, { operation: 'write', path: located.path }) }
       }
       throw error
     } finally { if (existsSync(temporary)) rmSync(temporary) }
@@ -175,7 +176,7 @@ function shiftEvent(event: SessionEvent, shift: (seq: number) => number, eventSe
   }
   if (String(shifted.type) === REQUEST_CONTEXT_EVENT) {
     const data = record(shifted.data)
-    if (!Number.isSafeInteger(data.requestSeq)) throw new Error('旧聊天请求记录序号不正确，原日志未修改。')
+    if (!Number.isSafeInteger(data.requestSeq)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧聊天请求记录序号不正确，原日志未修改。', { what: '旧聊天请求记录的序号' })
     data.requestSeq = shift(Number(data.requestSeq))
   }
   const data = record(shifted.data)
