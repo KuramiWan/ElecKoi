@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-display-preferences',
   factory(require) {
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'eleckoi-display-preferences'
 
     class DisplayPreferences {
@@ -54,7 +54,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('显示偏好服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示偏好服务已关闭。', { what: '显示偏好服务' })
         const generation = ++this.generation
         try {
           const snapshot = this.unwrap(
@@ -73,7 +73,7 @@ window.__ModuleLoader__.load({
 
       enqueue(method, resolveValue) {
         const operation = this.writeQueue.then(async () => {
-          if (this.disposed) throw new Error('显示偏好服务已关闭。')
+          if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示偏好服务已关闭。', { what: '显示偏好服务' })
           const value = resolveValue()
           const snapshot = this.unwrap(
             await this.remote.eleckoiDisplayPreferences[method](value, this.snapshot.revision),

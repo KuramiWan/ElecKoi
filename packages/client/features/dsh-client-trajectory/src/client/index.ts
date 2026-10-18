@@ -6,6 +6,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -88,7 +90,7 @@ export function apply(ctx: Context): void {
     inject: (sessionId: SessionId): TrajectoryViewInjected => {
       const session = ctx.sessions.binding(sessionId)?.session
       if (session === undefined) {
-        throw new Error(`ui-trajectory: session "${sessionId}" is unavailable`)
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, `ui-trajectory: session "${sessionId}" is unavailable`, { what: 'DSH 会话' })
       }
       const trajectory = ctx.uiConversation.binding(sessionId).target('trajectory')
       return {

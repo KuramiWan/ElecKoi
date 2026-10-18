@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-web-search',
   factory(require) {
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'web-search-tavily'
     const TAVILY_API_KEY_REF = 'TAVILY_API_KEY'
     const DEEPSEEK_NAMESPACE = 'eleckoi-web-deepseek'
@@ -56,7 +56,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('联网搜索设置已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '联网搜索设置已关闭。', { what: '联网搜索设置' })
         const generation = ++this.generation
         try {
           const [selectionResult, fetchSelectionResult, settingsResult] = await Promise.all([
@@ -109,21 +109,21 @@ window.__ModuleLoader__.load({
       }
 
       async update(patch) {
-        if (this.disposed) throw new Error('联网搜索设置已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '联网搜索设置已关闭。', { what: '联网搜索设置' })
         const nextMode = patch?.mode
         const nextMaxResults = patch?.maxResults
         const deepseekOperations = []
         if (patch.deepseekCount !== undefined) {
-          if (!Number.isInteger(patch.deepseekCount) || patch.deepseekCount < 1 || patch.deepseekCount > 50) throw new Error('DeepSeek 返回条数必须在 1 到 50 之间。')
+          if (!Number.isInteger(patch.deepseekCount) || patch.deepseekCount < 1 || patch.deepseekCount > 50) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'DeepSeek 返回条数必须在 1 到 50 之间。', { field: 'deepseekCount' })
           deepseekOperations.push({ op: 'set', path: ['count'], value: patch.deepseekCount })
         }
         if (patch.needContent !== undefined) {
-          if (typeof patch.needContent !== 'boolean') throw new Error('网页正文选项必须为布尔值。')
+          if (typeof patch.needContent !== 'boolean') throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '网页正文选项必须为布尔值。', { field: 'needContent' })
           deepseekOperations.push({ op: 'set', path: ['needContent'], value: patch.needContent })
         }
         if (patch.localization !== undefined) deepseekOperations.push({ op: 'set', path: ['localization'], value: patch.localization })
         if (patch.deepseekKeyRef !== undefined) {
-          if (typeof patch.deepseekKeyRef !== 'string' || !patch.deepseekKeyRef.trim()) throw new Error('请选择有效的凭据引用。')
+          if (typeof patch.deepseekKeyRef !== 'string' || !patch.deepseekKeyRef.trim()) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '请选择有效的凭据引用。', { field: 'deepseekKeyRef' })
           deepseekOperations.push({ op: 'set', path: ['apiKeyEnv'], value: patch.deepseekKeyRef.trim() })
         }
         if (deepseekOperations.length) this.unwrap(await this.remote.settings.mutate(DEEPSEEK_NAMESPACE, deepseekOperations, this.snapshot.deepseek.revision), '保存 DeepSeek 联网配置失败。')
@@ -133,7 +133,7 @@ window.__ModuleLoader__.load({
         }
         if (nextMaxResults !== undefined && nextMaxResults !== this.snapshot.maxResults) {
           if (!Number.isInteger(nextMaxResults) || nextMaxResults < 1 || nextMaxResults > 8) {
-            throw new Error('Tavily 返回结果数量必须在 1 到 8 之间。')
+            throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Tavily 返回结果数量必须在 1 到 8 之间。', { field: 'maxResults' })
           }
           this.unwrap(await this.remote.settings.mutate(SETTINGS_NAMESPACE, [{
             op: 'set', path: ['maxResults'], value: nextMaxResults
@@ -143,9 +143,9 @@ window.__ModuleLoader__.load({
       }
 
       async saveAndTest(apiKey, provider = 'tavily') {
-        if (provider !== 'tavily' && provider !== 'deepseek_api') throw new Error('不支持的密钥提供商。')
+        if (provider !== 'tavily' && provider !== 'deepseek_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的密钥提供商。', { what: '密钥提供商', expected: 'tavily 或 deepseek_api' })
         const value = String(apiKey || '').trim()
-        if (!value) throw new Error('请先填写 API Key。')
+        if (!value) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先填写 API Key。', { what: '填写 API Key' })
         const ref = provider === 'deepseek_api' ? this.snapshot.deepseek.apiKeyRef : this.snapshot.apiKeyRef
         const connection = this.unwrap(await this.remote.eleckoiWebSearch[provider === 'deepseek_api' ? 'testDeepSeek' : 'testTavily'](value), '联网连接测试失败。')
         this.unwrap(await this.remote.credentials.set(ref, value), '保存 API Key 失败。')
@@ -153,7 +153,7 @@ window.__ModuleLoader__.load({
       }
 
       async test(apiKey = '', provider = 'tavily') {
-        if (provider !== 'tavily' && provider !== 'deepseek_api') throw new Error('不支持的密钥提供商。')
+        if (provider !== 'tavily' && provider !== 'deepseek_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的密钥提供商。', { what: '密钥提供商', expected: 'tavily 或 deepseek_api' })
         const candidate = String(apiKey || '').trim()
         const connection = this.unwrap(
           await this.remote.eleckoiWebSearch[provider === 'deepseek_api' ? 'testDeepSeek' : 'testTavily'](candidate || undefined),
@@ -163,7 +163,7 @@ window.__ModuleLoader__.load({
       }
 
       async removeKey(provider = 'tavily') {
-        if (provider !== 'tavily' && provider !== 'deepseek_api') throw new Error('不支持的密钥提供商。')
+        if (provider !== 'tavily' && provider !== 'deepseek_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的密钥提供商。', { what: '密钥提供商', expected: 'tavily 或 deepseek_api' })
         this.unwrap(await this.remote.credentials.unset(provider === 'deepseek_api' ? this.snapshot.deepseek.apiKeyRef : this.snapshot.apiKeyRef), '移除 API Key 失败。')
         return this.refresh()
       }

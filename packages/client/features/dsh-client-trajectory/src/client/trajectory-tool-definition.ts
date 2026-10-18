@@ -3,6 +3,8 @@ import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition, StartedToolCall,
   ToolResultNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type {} from '@deepseek-ai/dsh-tools/types'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 
@@ -32,7 +34,7 @@ interface DispatchData {
 
 function rootCall(match: ConversationMatch): StartedToolCall {
   if (match.event.type !== 'tool/call') {
-    throw new Error('trajectory-tool-call start requires tool/call')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'trajectory-tool-call start requires tool/call', { what: '轨迹工具调用的起始事件' })
   }
   return {
     phase: 'start',
