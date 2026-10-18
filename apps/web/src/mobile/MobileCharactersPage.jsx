@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { Avatar } from '../ui/ui/Avatar.jsx';
@@ -51,7 +53,7 @@ export function MobileCharactersPage() {
         const result = await characters.exportCharacters(selectedIds, format);
         if (result.failures.length) {
           setSelectedIds(result.failures.map(item => item.characterId));
-          throw new Error(result.failures.map(item => item.message).join('\n'));
+          throw new DesktopError(ELECKOI_FAILURE_CODES.internal, result.failures.map(item => item.message).join('\n'), { what: '批量角色卡导出' });
         }
         chat.notify('info', `已导出 ${result.written.length} 张角色卡`);
       }

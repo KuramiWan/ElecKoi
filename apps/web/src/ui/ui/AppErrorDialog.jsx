@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import React, { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -153,5 +155,5 @@ async function writeClipboard(text) {
   textarea.select();
   const copied = document.execCommand("copy");
   textarea.remove();
-  if (!copied) throw new Error("Clipboard write failed");
+  if (!copied) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, "Clipboard write failed", { what: "剪贴板写入" });
 }

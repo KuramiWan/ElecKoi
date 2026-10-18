@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { buildSharedFrontendDocument } from '../model/sharedFrontendDocument.js';
 import { frontendAssetUrl } from '../model/applicationFrontendTargets.js';
@@ -17,8 +19,8 @@ export function AdvancedFrontendFrame(props) {
     request('frontends.readFile', { projectId: project.id, path: entryFile }).then(result => {
       if (!active) return;
       const declaration = readAuthorDocumentDeclaration(result.content);
-      if (declaration.kind === 'unsupported') throw new Error(declaration.error);
-      if (nativeOnly && declaration.kind !== 'native') throw new Error('页面缺少 eleckoi-author-api 原生 SDK 声明');
+      if (declaration.kind === 'unsupported') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, declaration.error, { what: '原生作者 SDK 声明' });
+      if (nativeOnly && declaration.kind !== 'native') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '页面缺少 eleckoi-author-api 原生 SDK 声明', { what: '页面里的原生作者 SDK 声明', path: entryFile });
       setLoaded({ identity, document: { content: result.content, declaration } });
     }).catch(reason => { if (active) { const message = `${project.name} · ${entryFile}: ${reason.message || String(reason)}`; setLoaded({ identity, error: message }); report.current?.(message); } });
     return () => { active = false; };

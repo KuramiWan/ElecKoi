@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useContext, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
 import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
@@ -59,7 +61,7 @@ export function NativeMessageFrame({ message, document, rootIndex = 0, onSettled
     let complete;
     try {
       complete = target.__ElecKoiCompleteDocument;
-      if (target.__ElecKoiDocumentChannel !== channel) throw new Error('原生作者页面已离开所属文档');
+      if (target.__ElecKoiDocumentChannel !== channel) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '原生作者页面已离开所属文档', { what: '作者页面的所属文档' });
       if (release.current) return;
       release.current = runtime.mountDocument(target, message.conversationId, message.id);
       complete(target.ElecKoi);

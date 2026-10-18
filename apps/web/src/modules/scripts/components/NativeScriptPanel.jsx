@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
@@ -35,7 +37,7 @@ export function NativeScriptPanel({ runtime, panel }) {
     let complete;
     try {
       complete = target.__ElecKoiCompleteDocument;
-      if (target.__ElecKoiDocumentChannel !== channel) throw new Error('作者面板已离开所属文档');
+      if (target.__ElecKoiDocumentChannel !== channel) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '作者面板已离开所属文档', { what: '作者面板的所属文档' });
       release.current = runtime.mountScriptPanelDocument(target, panel.key);
       target.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
       complete(target.ElecKoi);

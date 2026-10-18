@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { CharacterManagerIcon, ChevronRightIcon, ImportIcon, PlusIcon, TrashIcon } from '../../../ui/icons/index.jsx';
@@ -120,7 +122,7 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
 
 export function usePresets() {
   const value = useContext(PresetContext);
-  if (!value) throw new Error('PresetProvider is missing.');
+  if (!value) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'PresetProvider is missing.', { what: '预设 Provider' });
   return value;
 }
 
