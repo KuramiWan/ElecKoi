@@ -14,7 +14,7 @@ export default class ToolResultStore extends LocalSpillStore {
   async saveText(input) {
     const ref = await super.saveText(input)
     // One small ownership record per artifact; no request or result copies.
-    await writeFile(`${ref.locator}${ownershipSuffix}`, JSON.stringify({ version: 1, sessionId: input.owner.sessionId, source: input.source }), { flag: 'wx', mode: 0o600 })
+    await writeFile(`${ref.locator}${ownershipSuffix}`, JSON.stringify({ version: 1, sessionId: input.owner.sessionId, source: input.source, locator: ref.locator }), { flag: 'wx', mode: 0o600 })
     const domain = resultDomain(input.source?.toolName)
     return domain ? { ...ref, retrievalHint: `Use ${RESULT_READERS[domain]} with ${JSON.stringify({ result: { file_path: ref.locator, offset: 0 } })}. Continue result.offset with next_offset until null; add result.query for literal search. Pass only result; do not repeat the original operation.` } : ref
   }
@@ -92,12 +92,17 @@ export default class ToolResultStore extends LocalSpillStore {
     if (!session.header.isSeeded || !ownership.source || ownership.source.kind !== 'tool') return false
     // A fork can read an ancestor artifact only when its actual inherited
     // tool history contains that artifact, not merely because it knows a path.
+    // The inherited text embeds the path as JSON, and realpath can rewrite the
+    // locator, so accept every encoding the recorded artifact may appear in.
+    const forms = [path, ownership.locator].filter(value => typeof value === 'string' && value)
+      .flatMap(value => [value, value.replaceAll('\\', '/'), JSON.stringify(value).slice(1, -1)])
     const inherited = session.snapshotEvents(0, session.inheritedEventCount).some(event => {
       const callId = event.type === 'tool/result' ? event.data.message.source.callId
         : event.type === 'tool/ptc-dispatch' ? event.data.subCallId : undefined
       const content = event.type === 'tool/result' ? event.data.message.content
         : event.type === 'tool/ptc-dispatch' ? event.data.content : []
-      return callId === ownership.source.callId && content.some(block => block.type === 'text' && block.text.includes(path))
+      return callId === ownership.source.callId
+        && content.some(block => block.type === 'text' && forms.some(form => block.text.includes(form)))
     })
     if (!inherited) return false
     const visited = new Set([session.id])
