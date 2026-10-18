@@ -15,6 +15,7 @@ import {
   type CreatorProjectCollection,
   type CreatorProjectMode
 } from '@shared/contracts/creatorStudio/schemas'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
 
 const INDEX_VERSION = 1
@@ -175,7 +176,7 @@ export class CreatorProjectRepository {
         || typeof manifest.rootPath !== 'string'
         || resolve(manifest.rootPath) !== rootPath
       ) {
-        throw new Error('Project manifest does not match the index entry.')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, 'Project manifest does not match the index entry.', { what: '创作项目清单与索引记录' })
       }
     } catch {
       throw new DesktopError(DESKTOP_ERROR_CODES.INTERNAL, '项目清单校验失败，为避免误删未执行操作。')
