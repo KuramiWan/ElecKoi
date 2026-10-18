@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretRight, CheckCircle, WarningCircle } from "../../../ui/icons/interfaceIcons.jsx";
 import { ImportIcon, XIcon } from "../../../ui/icons/index.jsx";
 import { bestEffort } from "../../../utils/swallowedFailure.js";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 const SOURCES = [
   { id: "eleckoi", title: "本项目角色卡", detail: "导入 ElecKoi 导出的角色卡" },
@@ -65,7 +66,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
       setFiles(selected);
       setPreview(next);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "角色卡无法读取");
+      setError(resolveFailure(caught, { fallback: "角色卡无法读取" }).text);
     } finally {
       setPreparing(false);
     }
@@ -79,7 +80,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
       await onImported(preview.token);
       onClose();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "导入失败");
+      setError(resolveFailure(caught, { fallback: "导入失败" }).text);
     } finally {
       setImporting(false);
     }

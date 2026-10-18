@@ -9,6 +9,7 @@ import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import { EditorCollectionSurface, EditorCollectionToolbar, EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
 import { useEditorLibraryVersions } from '../../../ui/hooks/useEditorLibraryVersions.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 import {
   REGEX_SCOPES,
   createRegexRule,
@@ -120,7 +121,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
     });
     const cached = editor.getSnapshot();
     if (cached.status === "ready") acceptLatest(cached.value, true);
-    void editor.read().catch((cause) => active && setError(cause?.message || "读取正则配置失败"));
+    void editor.read().catch((cause) => active && setError(resolveFailure(cause, { fallback: "读取正则配置失败" }).text));
     return () => {
       active = false;
       stopListening();
@@ -158,7 +159,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
         setNotice("saved");
         return true;
       } catch (cause) {
-        setError(cause?.message || "保存正则配置失败");
+        setError(resolveFailure(cause, { fallback: "保存正则配置失败" }).text);
         return false;
       } finally {
         savingRef.current = false;

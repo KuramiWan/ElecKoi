@@ -4,6 +4,7 @@ import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RotateLeftIcon, RotateRightIcon, XIcon } from "../icons/index.jsx";
+import { resolveFailure } from "../../utils/failureText.js";
 
 const STAGE_WIDTH = 440;
 const STAGE_HEIGHT = 320;
@@ -226,7 +227,7 @@ export function AvatarCropModal({
       const croppedFile = new File([blob], `${fileBaseName(file)}-cropped.png`, { type: "image/png" });
       await onSave?.(croppedFile, file);
     } catch (nextError) {
-      setError(nextError?.message || "图片保存失败，请稍后重试。");
+      setError(resolveFailure(nextError, { fallback: "图片保存失败，请稍后重试。" }).text);
     } finally {
       savingRef.current = false;
       setSaving(false);

@@ -41,7 +41,7 @@ import {
   parseNodeKey,
   treeNodes,
 } from "../model/settingLibraryTree.js";
-import { reportFailure } from "../../../utils/failureText.js";
+import { reportFailure, resolveFailure } from "../../../utils/failureText.js";
 
 const CreateFolderIcon = SETTING_LIBRARY_CREATE_ICONS.group;
 const CreateEntryIcon = SETTING_LIBRARY_CREATE_ICONS.entry;
@@ -120,7 +120,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     const cached = settingLibraries.getSnapshot(characterId);
     if (cached.status === "ready") adopt(cached.value);
     void settingLibraries.read(characterId).catch((cause) => {
-      if (active) setError(cause?.message || "读取设定库失败");
+      if (active) setError(resolveFailure(cause, { fallback: "读取设定库失败" }).text);
     });
     return () => { active = false; stop(); };
   }, [characterId, settingLibraries]);
@@ -181,7 +181,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
         }
         return true;
       } catch (cause) {
-        setError(cause?.message || "保存设定库失败");
+        setError(resolveFailure(cause, { fallback: "保存设定库失败" }).text);
         return false;
       } finally {
         setSaving(false);

@@ -7,6 +7,7 @@ import { FrontendWorkbench } from './FrontendWorkbench.jsx';
 import { AdvancedFrontendFrame } from './AdvancedFrontendFrame.jsx';
 import workbenchStyles from '../styles/applicationFrontend.css?inline';
 import '../styles/characterFrontend.css';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const targets = [{ target: 'root', view: 'chat' }];
 
@@ -24,15 +25,15 @@ export const CharacterFrontendPanel = forwardRef(function CharacterFrontendPanel
   let previewEntry, previewError;
   if (preview) {
     try { previewEntry = characterFrontendEntry(preview, characterId); }
-    catch (reason) { previewError = reason.message; }
+    catch (reason) { previewError = resolveFailure(reason, { fallback: '预览前端项目失败' }).text; }
   }
   const startPreview = id => {
     try { characterFrontendEntry(workspace.projects.find(item => item.id === id), characterId); setError(''); setPreviewId(id); }
-    catch (reason) { setError(reason.message); }
+    catch (reason) { setError(resolveFailure(reason, { fallback: '预览前端项目失败' }).text); }
   };
   const restore = async () => {
     try { await request('frontends.restoreDefault'); setError(''); }
-    catch (reason) { setError(reason.message); }
+    catch (reason) { setError(resolveFailure(reason, { fallback: '恢复默认前端失败' }).text); }
   };
   return <div ref={host} className="character-frontend-editor">{seat && createPortal(<div className="af-host af-inline-host">
     {status === 'unavailable' ? <div className="af-empty" role="alert">原生前端插件未启用</div>

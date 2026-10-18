@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
 import { ArrowClockwise, X } from '../../../ui/icons/interfaceIcons.jsx';
+import { resolveFailure } from '../../../utils/failureText.js';
 import '../styles/native-script-ui.css';
 
 /** The modal owns DOM lifetime; the injected Client service owns the exact script identity. */
@@ -44,7 +45,7 @@ export function NativeScriptPanel({ runtime, panel }) {
     } catch (failure) {
       release.current?.(); release.current = null;
       complete?.(undefined, failure);
-      setError(failure.message || String(failure));
+      setError(resolveFailure(failure, { fallback: '作者面板加载失败' }).text);
     }
   };
   return createPortal(<dialog ref={dialog} className="native-script-dialog" aria-label={panel.title}

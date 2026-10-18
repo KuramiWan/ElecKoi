@@ -15,6 +15,7 @@ import {
 import {
   useDshDisplayPreferences,
 } from "../../modules/settings/index.js";
+import { resolveFailure } from "../../utils/failureText.js";
 
 const EMPTY_DISPLAY_PREFERENCES = Object.freeze({
   status: "loading",
@@ -82,7 +83,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
       if (!appearance) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 主题服务尚未就绪。", { what: "主题服务" });
       appearance.theme.setTheme(normalizeAppearanceMode(mode));
     } catch (error) {
-      notify("error", error?.message || "外观模式切换失败。");
+      notify("error", resolveFailure(error, { fallback: "外观模式切换失败。" }).text);
     }
   }
 
@@ -107,7 +108,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
         if (chatDisplayVersionRef.current !== version) return;
         chatDisplayDirtyRef.current = false;
         setChatDisplay(confirmedChatDisplayRef.current);
-        notify("error", error?.message || "聊天显示设置保存失败。");
+        notify("error", resolveFailure(error, { fallback: "聊天显示设置保存失败。" }).text);
       }
     }, 250);
   }
@@ -121,7 +122,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
       await displayPreferences.updateUi({ sidebar_character_artwork: nextMode });
     } catch (error) {
       setSidebarCharacterArtwork(previousMode);
-      notify("error", error?.message || "侧栏角色图设置保存失败。");
+      notify("error", resolveFailure(error, { fallback: "侧栏角色图设置保存失败。" }).text);
     }
   }
 

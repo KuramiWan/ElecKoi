@@ -5,6 +5,7 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { Avatar } from "./Avatar.jsx";
 import { AvatarCropModal } from "./AvatarCropModal.jsx";
 import { assetFetchSrc } from "../../app/services/assets.js";
+import { resolveFailure } from "../../utils/failureText.js";
 
 const PORTRAIT_OUTPUT_WIDTH = 900;
 const SQUARE_OUTPUT_WIDTH = 420;
@@ -125,7 +126,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onCha
       await updateAvatars(nextAvatars);
       setSourceFile(file);
     } catch (nextError) {
-      setError(nextError?.message || "图片处理失败，请稍后重试。");
+      setError(resolveFailure(nextError, { fallback: "图片处理失败，请稍后重试。" }).text);
     } finally {
       setReading(false);
     }
@@ -145,7 +146,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onCha
       const file = sourceFile || await sourceToFile(existing, kind === "portrait" ? "rectangle-avatar.png" : "square-avatar.png");
       setCropRequest({ kind, file });
     } catch (nextError) {
-      setError(nextError?.message || "头像图片读取失败");
+      setError(resolveFailure(nextError, { fallback: "头像图片读取失败" }).text);
     } finally {
       setPreparing(false);
     }
@@ -162,7 +163,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onCha
       await updateAvatars(nextAvatars);
       setCropRequest(null);
     } catch (nextError) {
-      setError(nextError?.message || "头像保存失败，请稍后重试。");
+      setError(resolveFailure(nextError, { fallback: "头像保存失败，请稍后重试。" }).text);
       throw nextError;
     }
   }

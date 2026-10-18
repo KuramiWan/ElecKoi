@@ -12,6 +12,7 @@ import { EditorCollectionSurface, EditorCollectionToolbar, EditorManagementModal
 import { EditorLibraryVersionManager } from '../../ui/ui/EditorLibraryVersionManager.jsx';
 import { useEditorLibraryVersions } from '../../ui/hooks/useEditorLibraryVersions.js';
 import { MarkdownTextareaField, SaveControl } from '../settingLibraries/index.js';
+import { resolveFailure } from '../../utils/failureText.js';
 import { displayTemplateLibrarySchema } from '@shared/contracts/displayTemplates/schemas';
 import { runDisplayTemplates } from './runtime/runDisplayTemplates.js';
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
@@ -68,7 +69,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
       if (snapshot.status === 'ready') accept(snapshot.value);
       if (snapshot.status === 'error') setError(snapshot.error);
     });
-    void Promise.all([displayTemplates.read('global', ''), displayTemplates.read(scope, ownerId)]).then(values => values.forEach(accept)).catch(cause => active && setError(cause.message));
+    void Promise.all([displayTemplates.read('global', ''), displayTemplates.read(scope, ownerId)]).then(values => values.forEach(accept)).catch(cause => active && setError(resolveFailure(cause, { fallback: '读取显示模板失败' }).text));
     return () => { active = false; stop(); testRef.current?.abort(); };
   }, [scope, ownerId, displayTemplates]);
   function change(update, libraryScope = selectedScope) {
@@ -90,7 +91,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
       const next = { ...draftRef.current, ...Object.fromEntries(result.documents.map(library => [library.scope, library])) };
       draftRef.current = next; baselineRef.current = next; setDrafts(next); setBaselines(next); versions.acceptSaved(result.versions);
       dirtyRef.current = false; setError(''); setNotice('saved'); return true;
-    } catch (cause) { setError(cause.message); return false; }
+    } catch (cause) { setError(resolveFailure(cause, { fallback: '保存显示模板失败' }).text); return false; }
     finally {
       busyRef.current = false; setSaving(false);
       const received = Object.values(receivedRef.current); receivedRef.current = {};
@@ -140,7 +141,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
       const result = await runDisplayTemplates({ libraries: [library], content: testText, variables,
         message: { id: 'preview', conversationId: '', role: 'assistant', status: 'complete', content: testText } }, { signal: controller.signal });
       if (!controller.signal.aborted) { setTestOutput(result.content); setTestError(result.errors.map(item => item.message).join('\n')); }
-    } catch (cause) { if (!controller.signal.aborted) setTestError(cause.message); }
+    } catch (cause) { if (!controller.signal.aborted) setTestError(resolveFailure(cause, { fallback: '测试显示模板失败' }).text); }
     finally { if (!controller.signal.aborted) setTesting(false); }
   }
   const labelFor = libraryScope => libraryScope === 'global' ? '全局显示模板' : libraryScope === 'preset' ? '预设显示模板' : '角色显示模板';

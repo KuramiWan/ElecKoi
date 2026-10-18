@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNativeFrontendServices } from './NativeFrontendContext.jsx';
 import { requestNativeFrontend } from '../model/nativeFrontendRequest.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 export function useNativeFrontendWorkspace(scope, characterId) {
   const { service, authorRuntime } = useNativeFrontendServices();
@@ -30,7 +31,7 @@ export function useNativeFrontendWorkspace(scope, characterId) {
     identity.current = { owner, service };
     setSnapshot({ owner, service, workspace: empty, error: '', loaded: false });
     if (!service || scope === 'character' && !characterId) return;
-    const fail = reason => { if (mounted && accepts()) setSnapshot(current => ({ ...current, error: reason.message || String(reason) })); };
+    const fail = reason => { if (mounted && accepts()) setSnapshot(current => ({ ...current, error: resolveFailure(reason, { fallback: '读取前端项目失败' }).text })); };
     const close = () => { mounted = false; if (accepts()) identity.current = null; };
     try { const stop = service.watch(owner, workspace => { if (mounted) publish(workspace); }, fail); return () => { close(); stop(); }; }
     catch (reason) { fail(reason); }

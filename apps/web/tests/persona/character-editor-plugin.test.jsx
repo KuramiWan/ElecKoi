@@ -107,8 +107,8 @@ describe('character editor client extension', () => {
       </DisplayPreferencesProvider>));
       await act(async () => node.querySelector('.character-editor-sidebar-toggle').click());
       expect(node.querySelector('.is-sidebar-collapsed')).toBeNull();
-      expect(document.querySelector('[role=alertdialog]').textContent).toContain('保存侧边栏状态失败：');
-      expect(document.querySelector('[role=alertdialog]').textContent).toContain('合成配置写入失败');
+      expect(document.querySelector('[role=alertdialog]').textContent).toContain('保存侧边栏状态失败');
+      expect(document.querySelector('[role=alertdialog]').textContent).not.toContain('合成配置写入失败');
       expect(stored.ui).toEqual({}); expect(saveCharacter).not.toHaveBeenCalled();
       await act(async () => document.querySelector('[role=alertdialog] button[aria-label="关闭错误详情"]').click());
       expect(document.querySelector('[role=alertdialog]')).toBeNull();
