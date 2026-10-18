@@ -3,7 +3,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
-    const { unwrapOrFail, failureAlreadyPublished } = require('@eleckoi/dsh-product-api')
+    const { unwrapOrFail, failureAlreadyPublished, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     /** Own one independent official Client Session reference for the Studio surface. */
     class CreatorStudioSessions {
       constructor(remote, sessions) {
@@ -33,7 +33,7 @@ window.__ModuleLoader__.load({
         return items
       }
       async acquire(create, value) {
-        if (this.disposed) throw new Error('AI 创作工作室服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'AI 创作工作室服务已关闭。', { what: 'AI 创作工作室服务' })
         const generation = ++this.generation
         this.publish({ status: 'loading', error: '' })
         let reference
@@ -83,16 +83,16 @@ window.__ModuleLoader__.load({
         return result.value
       }
       async selectModel(selection) {
-        if (!this.snapshot.active) throw new Error('工作室对话尚未打开。')
+        if (!this.snapshot.active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室对话尚未打开。', { what: '打开工作室对话' })
         const result = await this.remote.session.selectModel({ sessionId: this.snapshot.active.sessionId, ...selection })
         unwrapOrFail(result, '创作工作室操作失败。')
         return result.value.selected
       }
-      messages() { if (!this.snapshot.active) throw new Error('工作室对话尚未打开。'); return this.call('messages', this.snapshot.active.sessionId) }
+      messages() { if (!this.snapshot.active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室对话尚未打开。', { what: '打开工作室对话' }); return this.call('messages', this.snapshot.active.sessionId) }
       async mutateMessages(method, ...args) {
         const active = this.snapshot.active
-        if (!active) throw new Error('工作室对话尚未打开。')
-        if (this.messageMutation) throw new Error('请等待当前消息操作完成。')
+        if (!active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室对话尚未打开。', { what: '打开工作室对话' })
+        if (this.messageMutation) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请等待当前消息操作完成。', { what: '等待当前消息操作完成' })
         this.messageMutation = true
         this.publish({ editingSessionId: active.sessionId })
         const generation = this.generation
@@ -113,7 +113,7 @@ window.__ModuleLoader__.load({
       deleteMessagesFrom(eventSeq, role) { return this.mutateMessages('deleteMessagesFrom', eventSeq, role) }
       async selectCharacter(characterId) {
         const active = this.snapshot.active
-        if (!active) throw new Error('工作室会话尚未打开。')
+        if (!active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室会话尚未打开。', { what: '打开工作室对话' })
         const selected = await this.call('selectCharacter', active.sessionId, characterId)
         if (this.snapshot.active?.sessionId === selected.sessionId) this.publish({ active: selected })
         return selected
@@ -155,7 +155,7 @@ window.__ModuleLoader__.load({
         if (!value || !Array.isArray(value.items) || value.items.some(item => !item
           || typeof item.id !== 'string' || typeof item.name !== 'string'
           || typeof item.rootPath !== 'string' || typeof item.mode !== 'string')) {
-          throw new Error('创作项目返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '创作项目返回的数据格式不正确。', { what: '创作项目列表' })
         }
         return value
       }
@@ -189,7 +189,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiCreatorStudio.list()
@@ -211,7 +211,7 @@ window.__ModuleLoader__.load({
       }
 
       async create(input) {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const result = await this.remote.eleckoiCreatorStudio.create(input)
         unwrapOrFail(result, '项目创建失败。')
         const collection = this.assertCollection(result.value)
@@ -220,7 +220,7 @@ window.__ModuleLoader__.load({
       }
 
       async delete(projectId) {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const result = await this.remote.eleckoiCreatorStudio.delete(projectId)
         unwrapOrFail(result, '无法删除项目。')
         const collection = this.assertCollection(result.value)
@@ -229,7 +229,7 @@ window.__ModuleLoader__.load({
       }
 
       async selectDirectory(signal) {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const request = new AbortController()
         this.directoryRequests.add(request)
         try {
