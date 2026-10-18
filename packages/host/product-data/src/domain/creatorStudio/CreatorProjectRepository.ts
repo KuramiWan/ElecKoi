@@ -79,7 +79,7 @@ export class CreatorProjectRepository {
       throw new DesktopError(DESKTOP_ERROR_CODES.INVALID_REQUEST, '项目名称无法用于本地目录。')
     }
     if (existsSync(rootPath)) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, `保存位置已存在同名目录：${directoryName}`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.creatorProjectNameTaken, `保存位置已存在同名目录：${directoryName}`, { path: directoryName })
     }
 
     const now = new Date().toISOString()
@@ -120,13 +120,13 @@ export class CreatorProjectRepository {
     }
     const current = this.readIndex(), previous = current.items.find(item => item.id === project.id)
     if (previous && JSON.stringify(previous) !== JSON.stringify(project) && conflicts !== 'replace') {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, `创作项目编号冲突：${project.id}`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `创作项目编号冲突：${project.id}`, { what: '创作项目编号' })
     }
     const path = join(project.rootPath, MANIFEST_FILE), original = existsSync(path) ? readFileSync(path) : undefined
     if (original && !previous) {
       const manifest = JSON.parse(original.toString('utf8')) as Record<string, unknown>
       if (manifest.id !== project.id || manifest.kind !== 'eleckoi-character-project') {
-        throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '目标目录已包含其他创作项目。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '目标目录已包含其他创作项目。', { what: '创作项目', path: project.rootPath })
       }
     }
     try {

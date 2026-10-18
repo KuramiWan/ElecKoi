@@ -10,12 +10,15 @@
  * - `code`：契约码（`eleckoi/<域>/<原因>`）。子进程用 `foldFailure` 折出来，
  *   父进程原样搬到宿主失败通知上，**不重新猜语义**；
  * - `details`：契约的参数化详情（扁平 JSON，能过结构化克隆与 IPC）；
- * - `stack`：子进程侧的调用栈。诊断以子进程为准，父进程只是搬运；
- * - `logPath`：子进程日志文件指针（ADR 决定 10：诊断用指针，不把整段日志塞进消息）。
+ * - `stack`：子进程侧的调用栈。诊断以子进程为准，父进程只是搬运。
  *
- * 三样都是**可选**的：老版本子进程只发 `message` 也仍然合法（`isChildMessage` 不要求它们），
+ * `logPath` **不在帧上**：子进程不填它。宿主收到 fatal 帧后自己记录本机日志路径
+ * （ADR 决定 10 的「诊断用指针」落在边界⑤ 的宿主失败通知上，见 `contracts/errors/ipc.ts` 的
+ * `DesktopHostFailureNotice`；宿主日志落盘属于 P6，接上之前该字段不出现）。
+ *
+ * 字段都是**可选**的：老版本子进程只发 `message` 也仍然合法（`isChildFatalFrame` 不要求它们），
  * 只是那种帧会被父进程折成兜底码。反向也成立——父进程不认识的字段一律忽略，
- * 所以加字段不需要升协议版本号。
+ * 所以加字段不需要升协议版本号，帧上也没有版本字段。
  */
 
 /** 子进程 → 父进程。 */
@@ -31,8 +34,6 @@ export type ChildHostMessage =
       readonly details?: Readonly<Record<string, unknown>>
       /** 子进程侧的调用栈（诊断以子进程为准）。 */
       readonly stack?: string
-      /** 子进程日志文件指针。 */
-      readonly logPath?: string
     }
   | { type: 'shutdown-complete' }
   | { type: 'update-tasks-complete'; id: string; active: boolean; message?: string }

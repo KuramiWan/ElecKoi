@@ -41,8 +41,9 @@ export interface DesktopIpcFailure {
  * 边界⑤ 的**宿主失败通知**载荷（主进程 → 渲染层的 `dsh-desktop:host-failure` 推送）。
  *
  * 这条通道送的是**失败对象**，不是拼好的用户可见句子：用户可见文案只有一个解析点
- * （渲染层，ADR 决定 4/8）。形状就是 {@link DesktopIpcFailure}，再加 ③ 边界给的两个**诊断指针**
- * `stack` / `logPath`（ADR 决定 10：诊断用指针承载，不把整段日志塞进消息）。
+ * （渲染层，ADR 决定 4/8）。形状就是 {@link DesktopIpcFailure}，再加两个**诊断指针**：
+ * 子进程给的 `stack`，和宿主收到 fatal 帧后自己记录的本机 `logPath`
+ * （ADR 决定 10：诊断用指针承载，不把整段日志塞进消息）。
  *
  * 指针是**可选**的，而且拿不到时整个属性都不出现：`undefined` 不是可结构化克隆的值，
  * 放进去会在跨 world 复制时被丢掉或报错。
@@ -50,6 +51,6 @@ export interface DesktopIpcFailure {
 export interface DesktopHostFailureNotice extends DesktopIpcFailure {
   /** 子进程侧的 stack（有就用它，诊断以子进程为准）。 */
   readonly stack?: string
-  /** 子进程日志文件指针。 */
+  /** 宿主本机日志文件指针（宿主收到 fatal 帧后自己记录；子进程不填）。 */
   readonly logPath?: string
 }

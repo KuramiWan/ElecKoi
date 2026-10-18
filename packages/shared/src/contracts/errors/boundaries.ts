@@ -125,15 +125,18 @@ export const ELECKOI_BOUNDARIES = [
     ordinal: 3,
     title: '宿主 ↔ DSH 子进程协议',
     adapter: 'apps/desktop-host/src/hostSessionProtocol.ts 与 desktopPluginHost{,Child}.ts（EH-6）',
-    carries: 'fatal 帧从 { message } 扩为 { code?, message, stack?, logPath? }，protocolVersion 升到 2'
-      + '（ADR 决定 10 / spec 决定 9）；诊断用 logPath 指针加 stack 承载，不把整段日志塞进消息',
+    carries: 'fatal 帧从 { message } 扩为 { code?, message, details?, stack? }'
+      + '（ADR 决定 10 / spec 决定 9）；诊断用 stack 承载，不把整段日志塞进消息。'
+      + '`logPath` **不是**子进程帧字段：宿主收到 fatal 帧后自己记录本机日志路径（子进程不填），'
+      + '这个指针落在边界⑤ 的宿主失败通知上（宿主日志落盘属于 P6，接上之前该字段不出现）。'
+      + '帧是增量扩展，接收端按可选字段解析，所以**不升 protocolVersion**（帧上也没有版本字段）',
     folds: [
       { when: 'fatal 帧带契约码', code: null },
-      { when: 'fatal 帧未带码', code: ELECKOI_FAILURE_CODES.internal },
+      { when: 'fatal 帧不带码（子进程未产出可读诊断）', code: ELECKOI_FAILURE_CODES.internal },
       { when: '子进程意外退出', code: ELECKOI_FAILURE_CODES.pluginLoadFailed },
       { when: '启动 / 任务等待超过约定时间', code: ELECKOI_FAILURE_CODES.timeoutExpired },
       { when: '协议版本偏斜或握手失败', code: ELECKOI_FAILURE_CODES.internal },
-      { when: '子进程未产出可读诊断（logPath 缺失或读不到）', code: ELECKOI_FAILURE_CODES.internal }
+      { when: '子进程未产出可读诊断（没有 stack，且宿主本机日志读不到）', code: ELECKOI_FAILURE_CODES.internal }
     ],
     fallback: ELECKOI_FAILURE_CODES.internal
   },

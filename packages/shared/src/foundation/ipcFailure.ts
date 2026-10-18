@@ -55,7 +55,7 @@ export interface DesktopHostFailureNoticeSource {
   readonly details: EleckoiFailureDetails
   /** 子进程侧的 stack；拿不到就是 `undefined`（`Error` 的 `stack` 也是可选属性）。 */
   readonly stack?: string | undefined
-  /** 子进程日志文件指针；拿不到就是 `undefined`。 */
+  /** 宿主本机日志文件指针（宿主收到 fatal 帧后自己记录；子进程不填）；拿不到就是 `undefined`。 */
   readonly logPath?: string | undefined
 }
 
@@ -66,8 +66,8 @@ export interface DesktopHostFailureNoticeSource {
  * `details.what`），这里只把它搬到可结构化克隆的自有属性上；`message` 是开发者诊断。
  * 拼用户可见文案是渲染层唯一解析点的事（ADR 决定 4/8/9）。
  *
- * `stack` / `logPath` 是 ③ 边界给的诊断指针（ADR 决定 10），有就带上；`undefined` 不能出现在
- * 过边界的对象上，所以拿不到的属性整个不写。
+ * `stack` 来自子进程、`logPath` 是宿主收到 fatal 帧后自己记录的本机日志指针（ADR 决定 10），
+ * 有就带上；`undefined` 不能出现在过边界的对象上，所以拿不到的属性整个不写。
  *
  * @param failure - 子进程失败在宿主侧的那个可记录对象。
  * @returns 线上载荷（普通对象 + 官方失败标记）。

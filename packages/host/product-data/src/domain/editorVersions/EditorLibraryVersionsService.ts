@@ -6,7 +6,7 @@ import { scriptLibrarySchema } from '@shared/contracts/scripts/schemas'
 import { displayTemplateLibrarySchema } from '@shared/contracts/displayTemplates/schemas'
 import { regexRuleEditorCollectionSchema } from '@shared/contracts/regex/schemas'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
-import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { ScriptLibraryRepository } from '@product-data/domain/scripts'
 import { decodeScriptFiles } from '@product-data/domain/scripts'
 import type { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
@@ -25,7 +25,7 @@ export class EditorLibraryVersionsService {
       const before = this.scripts.workspace(address.scope, address.ownerId).version
       const portable = this.scripts.portable(address.scope, address.ownerId)
       const after = this.scripts.workspace(address.scope, address.ownerId).version
-      if (before !== after) throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '脚本资源在读取版本期间发生变化，请重新读取。')
+      if (before !== after) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本资源在读取版本期间发生变化，请重新读取。', { what: '脚本资源' })
       return { content: JSON.stringify({ ...portable, files: portable.files ?? [] }), resourceRevision: after }
     }
     if (address.kind === 'displayTemplates') {
@@ -75,7 +75,7 @@ export class EditorLibraryVersionsService {
         seen.add(key); this.versions.check(library)
         if (library.kind === 'scripts') {
           if (this.scripts.workspace(library.scope, library.ownerId).version !== library.resourceRevision) {
-            throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '脚本资源已在外部更新，未覆盖现有文件。')
+            throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本资源已在外部更新，未覆盖现有文件。', { what: '脚本资源' })
           }
           for (const version of library.versions) {
             const content = scriptVersionContentSchema.parse(JSON.parse(version.content))
@@ -89,7 +89,7 @@ export class EditorLibraryVersionsService {
       for (const document of parsed) {
         if (request.kind === 'scripts') {
           const library = scriptLibrarySchema.parse(document), current = this.scripts.get(library.scope, library.ownerId)
-          if (current.revision !== library.revision) throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '脚本配置已更新，请重新读取后保存。')
+          if (current.revision !== library.revision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本配置已更新，请重新读取后保存。', { what: '脚本配置' })
           const version = request.versions.find(item => item.scope === library.scope && item.ownerId === library.ownerId)
           if (version) {
             const active = scriptVersionContentSchema.parse(JSON.parse(version.versions.find(item => item.id === version.activeVersionId)!.content))
@@ -104,7 +104,7 @@ export class EditorLibraryVersionsService {
           result.push(JSON.stringify(saved))
         } else if (request.kind === 'displayTemplates') {
           const library = displayTemplateLibrarySchema.parse(document), current = this.templates.get(library.scope, library.ownerId)
-          if (current.revision !== library.revision) throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '显示模板已更新，请重新读取后保存。')
+          if (current.revision !== library.revision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '显示模板已更新，请重新读取后保存。', { what: '显示模板' })
           const version = request.versions.find(item => item.scope === library.scope && item.ownerId === library.ownerId)
           if (version) {
             const active = displayVersionContentSchema.parse(JSON.parse(version.versions.find(item => item.id === version.activeVersionId)!.content))
@@ -113,7 +113,7 @@ export class EditorLibraryVersionsService {
           result.push(JSON.stringify(isDeepStrictEqual(current, library) ? current : this.templates.save(library)))
         } else {
           const library = regexRuleEditorCollectionSchema.parse(document), current = this.regex.readEditor(library.target)
-          if (current.revision !== library.revision || current.ownerRevision !== library.ownerRevision) throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已更新，请重新读取后保存。')
+          if (current.revision !== library.revision || current.ownerRevision !== library.ownerRevision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已更新，请重新读取后保存。', { what: '正则配置' })
           for (const version of request.versions) {
             const active = regexVersionContentSchema.parse(JSON.parse(version.versions.find(item => item.id === version.activeVersionId)!.content))
             const rules = version.scope === 'global' ? library.globalRules : version.scope === 'preset' ? library.agentPresetRules : library.characterRules

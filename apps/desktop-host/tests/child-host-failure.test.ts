@@ -14,15 +14,19 @@ describe('isChildFatalFrame', () => {
     expect(isChildFatalFrame({ type: 'fatal', message: '炸了' })).toBe(true)
   })
 
-  it('带码、详情、栈、日志指针也是合法帧', () => {
+  it('带码、详情、栈也是合法帧', () => {
     expect(isChildFatalFrame({
       type: 'fatal',
       code: ELECKOI_FAILURE_CODES.ioFailed,
       message: '写不进去',
       details: { operation: 'write', path: '/tmp/x' },
-      stack: 'at foo',
-      logPath: '/tmp/log'
+      stack: 'at foo'
     })).toBe(true)
+  })
+
+  it('帧上的未知字段（含 logPath）按可选字段忽略', () => {
+    // logPath 不是帧字段：宿主收到 fatal 帧后自己记录本机日志路径（见 hostSessionProtocol.ts）。
+    expect(isChildFatalFrame({ type: 'fatal', message: 'x', logPath: [] })).toBe(true)
   })
 
   it('形状不对的一律不认', () => {
@@ -36,7 +40,6 @@ describe('isChildFatalFrame', () => {
       { type: 'fatal', message: 42 },
       { type: 'fatal', message: 'x', code: 7 },
       { type: 'fatal', message: 'x', stack: {} },
-      { type: 'fatal', message: 'x', logPath: [] },
       { type: 'fatal', message: 'x', details: [1, 2] },
       { type: 'fatal', message: 'x', details: 'text' }
     ]
