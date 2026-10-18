@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useRef, useState } from 'react';
 import { characterGroup, characterName } from '../utils/characterDisplay.js';
 import { MobileHeader, MobileSearch, useMobileBack } from './MobileChrome.jsx';
@@ -16,7 +18,7 @@ export function MobileCharacterGroups({ groups, characters, persona, onSave, onC
   const { busy, error, run } = useMobileOperation();
   useMobileBack(() => { if (!busy) { setMembership(null); setDeleting(false); } return true; }, Boolean(membership || deleting));
   async function saveName(value) {
-    if (groups.includes(value) && value !== editing) throw new Error('分组名称已存在');
+    if (groups.includes(value) && value !== editing) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '分组名称已存在', { what: '分组' });
     const next = editing ? groups.map(name => name === editing ? value : name) : [...groups, value];
     const assignments = editing ? characters.filter(item => characterGroup(item) === editing).map(item => ({ characterId: item.id, group: value })) : [];
     await onSave(next, assignments);
