@@ -107,7 +107,7 @@ export class LocalMediaStore {
   removeOwner(owner: string): void {
     const target = resolve(this.versionRoot(), this.ownerHash(owner))
     const root = `${resolve(this.versionRoot())}${sep}`
-    if (!target.startsWith(root)) throw new Error('本地媒体目录越界。')
+    if (!target.startsWith(root)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '本地媒体目录越界。', { what: '本地媒体目录' })
     rmSync(target, { recursive: true, force: true })
   }
 
@@ -143,12 +143,12 @@ export class LocalMediaStore {
   }
 
   private ownerHash(owner: string): string {
-    if (!owner.trim()) throw new Error('本地媒体必须有归属。')
+    if (!owner.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '本地媒体必须有归属。', { field: 'owner' })
     return createHash('sha256').update(owner).digest('hex')
   }
 
   private assertSlot(slot: string): void {
-    if (!SLOT_PATTERN.test(slot)) throw new Error('本地媒体槽位无效。')
+    if (!SLOT_PATTERN.test(slot)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '本地媒体槽位无效。', { field: 'slot' })
   }
 
   private versionRoot(): string {
@@ -162,20 +162,20 @@ export class LocalMediaStore {
 
 function decodeImageDataUrl(value: string): DecodedImage {
   const match = /^data:([^;,]+);base64,([a-z0-9+/=\r\n]+)$/i.exec(value)
-  if (!match) throw new Error('图片数据格式无效。')
+  if (!match) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '图片数据格式无效。', { what: '图片数据' })
   const mediaType = match[1]!.toLowerCase()
   const extension = IMAGE_TYPES.get(mediaType)
-  if (!extension) throw new Error('仅支持 PNG、JPEG、WebP 和 GIF 图片。')
+  if (!extension) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '仅支持 PNG、JPEG、WebP 和 GIF 图片。', { what: '图片格式', expected: 'PNG、JPEG、WebP 或 GIF' })
   const encoded = match[2]!.replace(/\s+/g, '')
   const bytes = Buffer.from(encoded, 'base64')
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
-    throw new Error('图片数据无效或超过 64 MB。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '图片数据无效或超过 64 MB。', { what: '图片数据' })
   }
   return { bytes, extension }
 }
 
 function decodeStoredImage(path: string): DecodedImage {
   const match = FILE_PATTERN.exec(path.split(/[\\/]/).at(-1) ?? '')
-  if (!match) throw new Error('本地媒体引用无效。')
+  if (!match) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '本地媒体引用无效。', { what: '本地媒体引用' })
   return { bytes: readFileSync(path), extension: match[2]! }
 }
