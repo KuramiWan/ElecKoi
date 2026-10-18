@@ -37,7 +37,7 @@ export default class ToolResultStore extends LocalSpillStore {
         }
         await rm(directory, { recursive: true, force: true })
       } catch (error) {
-        if (error?.code !== 'ENOENT') failures.push(new Error(`会话 ${id}：${String(error)}`, { cause: error }))
+        if (error?.code !== 'ENOENT') failures.push(new Error(`会话 ${id}：${failureMessage(error)}`, { cause: error }))
       }
     }
     if (failures.length) throw new AggregateError(failures, failures.map(error => error.message).join('\n'))
@@ -112,6 +112,12 @@ export default class ToolResultStore extends LocalSpillStore {
     }
     return false
   }
+}
+
+/** 抛出值的诊断文案：带码失败是普通对象（不是 Error 实例），仍要取它的 message。 */
+function failureMessage(error) {
+  return error instanceof Error || error !== null && typeof error === 'object' && typeof error.message === 'string'
+    ? error.message : String(error)
 }
 
 function integer(value, fallback, min, name) {
