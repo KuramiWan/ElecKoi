@@ -2,14 +2,14 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { materializeAgentPreset, readRuntimePresetDefinition, currentRequestSnapshot } from '@eleckoi/dsh-client-roleplay'
-import { requireSessionMessage, sessionMessageText, sessionMessageTurn } from '@eleckoi/dsh-product-api'
+import { requireSessionMessage, sessionMessageText, sessionMessageTurn, productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 import { CREATOR_STUDIO_EVENT, creatorStudioProjection, creatorStudioStateSchema, resolveCreatorStudioSelection } from './projection.mjs'
 
 /** Studio commands create ordinary DSH Sessions; the official Controller owns their Agent handles. */
 export async function installCreatorStudioRuntime(ctx) {
   const template = process.env.ELECKOI_PRESET_TEMPLATE_PATH, presets = process.env.ELECKOI_PRESET_ROOT
   const cwd = process.env.ELECKOI_WORKSPACE_ROOT
-  if (!template || !presets || !cwd) throw new Error('AI 创作工作室缺少 Host 运行目录。')
+  if (!template || !presets || !cwd) throw productFailure(ELECKOI_FAILURE_CODES.internal, 'AI 创作工作室缺少 Host 运行目录。', { what: 'AI 创作工作室的 Host 运行目录' })
   const root = join(presets, 'creator-studio')
   mkdirSync(root, { recursive: true })
   const registrations = new Map()
@@ -24,18 +24,18 @@ export async function installCreatorStudioRuntime(ctx) {
     if (directory.isDirectory()) await register(directory.name)
   }
   const requireCharacter = characterId => {
-    if (characterId && !ctx.eleckoiProductData.readCharacters().items.some(item => item.id === characterId)) throw new Error('找不到所选角色。')
+    if (characterId && !ctx.eleckoiProductData.readCharacters().items.some(item => item.id === characterId)) throw productFailure(ELECKOI_FAILURE_CODES.characterNotFound, '找不到所选角色。', { what: '角色' })
   }
   const readState = async sessionId => {
     const inspection = await ctx.sessionController.inspect(sessionId)
     const event = inspection.events.findLast(item => item.type === CREATOR_STUDIO_EVENT)
-    if (!event) throw new Error('这不是 AI 创作工作室会话。')
+    if (!event) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '这不是 AI 创作工作室会话。', { what: 'AI 创作工作室会话' })
     return { inspection, state: resolveCreatorStudioSelection(creatorStudioStateSchema.parse(event.data), ctx.eleckoiProductData.readCharacters().items) }
   }
   const reopenAfterMessageEdit = async (sessionId, inspection, state) => {
     await ctx.sessionController.create({ sessionId, cwd: inspection.meta.cwd, agentPreset: inspection.meta.agentPreset })
     const agent = ctx.agents.get(sessionId)
-    if (!agent) throw new Error('AI 创作工作室 Agent 未完成恢复。')
+    if (!agent) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'AI 创作工作室 Agent 未完成恢复。', { what: 'AI 创作工作室 Agent' })
     const events = agent.session.snapshotEvents()
     const current = events.findLast(event => event.type === CREATOR_STUDIO_EVENT)?.data
     if (current?.presetId !== state.presetId || current?.characterId !== state.characterId) {
@@ -68,10 +68,10 @@ export async function installCreatorStudioRuntime(ctx) {
       requireCharacter(characterId)
       const catalog = ctx.eleckoiProductData.readAgentPresetCatalog()
       const preset = ctx.eleckoiProductData.readAgentPreset(catalog.activePresetIds.creator)
-      if (preset.purpose !== 'creator') throw new Error('当前全局预设不是创作预设。')
+      if (preset.purpose !== 'creator') throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前全局预设不是创作预设。', { what: '把全局预设切换为创作预设' })
       const disabledGroupIds = preset.toolGroups.filter(group => !group.included || !group.enabled).map(group => group.id)
       for (const groupId of ['builtin:variables', 'builtin:setting-library', 'builtin:roleplay-workflow', 'builtin:auto-illustration']) {
-        if (!disabledGroupIds.includes(groupId)) throw new Error('创作预设中的角色对话工具不适用于 AI 创作工作室，请使用创作能力。')
+        if (!disabledGroupIds.includes(groupId)) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '创作预设中的角色对话工具不适用于 AI 创作工作室，请使用创作能力。', { what: '在创作预设中关闭角色对话工具' })
       }
       const model = await currentRequestSnapshot(ctx)
       const revision = createHash('sha256').update(JSON.stringify({ preset, model })).digest('hex')
@@ -82,7 +82,7 @@ export async function installCreatorStudioRuntime(ctx) {
       await register(id)
       const { sessionId } = await ctx.sessionController.create({ sessionId: `session-${randomUUID()}`, cwd, agentPreset: id })
       const agent = ctx.agents.get(sessionId)
-      if (!agent) throw new Error('AI 创作工作室 Agent 未完成创建。')
+      if (!agent) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'AI 创作工作室 Agent 未完成创建。', { what: 'AI 创作工作室 Agent' })
       agent.session.append(CREATOR_STUDIO_EVENT, { presetId: preset.id, characterId }, { ignorable: true })
       return { sessionId: String(sessionId), presetId: preset.id, characterId }
     },
@@ -119,23 +119,23 @@ export async function installCreatorStudioRuntime(ctx) {
       const { inspection, state } = await readState(sessionId)
       const target = requireSessionMessage(inspection, eventSeq, role)
       const turn = sessionMessageTurn(inspection.events, target.index)
-      if (ctx.agents.get(sessionId)?.status === 'running') throw new Error('请先停止生成再删除消息。')
+      if (ctx.agents.get(sessionId)?.status === 'running') throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先停止生成再删除消息。', { what: '停止生成' })
       await ctx.eleckoiSessionEditor.transaction(sessionId, async () => {
         const changed = await ctx.eleckoiSessionEditor.rewind(sessionId, turn, eventSeq, false)
-        if (changed === undefined) throw new Error('当前消息不能安全删除。')
+        if (changed === undefined) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前消息不能安全删除。', { what: '换一条可以安全删除的消息' })
         await reopenAfterMessageEdit(sessionId, inspection, state)
       })
     },
     async regenerate(sessionId) {
       const { inspection, state } = await readState(sessionId)
       const input = inspection.events.findLast(event => event.type === 'user/message' && event.surfaceOp === 'append' && event.data.source?.kind === 'user')
-      if (!input) throw new Error('没有可以重新生成的用户输入。')
-      if (ctx.agents.get(sessionId)?.status === 'running') throw new Error('请先停止生成再重新生成。')
+      if (!input) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '没有可以重新生成的用户输入。', { what: '可重新生成的用户输入' })
+      if (ctx.agents.get(sessionId)?.status === 'running') throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先停止生成再重新生成。', { what: '停止生成' })
       const target = requireSessionMessage(inspection, input.seq, 'user')
       const turn = sessionMessageTurn(inspection.events, target.index)
       await ctx.eleckoiSessionEditor.transaction(sessionId, async () => {
         const changed = await ctx.eleckoiSessionEditor.rewind(sessionId, turn, input.seq, false)
-        if (changed === undefined) throw new Error('当前消息不能安全重新生成。')
+        if (changed === undefined) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '当前消息不能安全重新生成。', { what: '换一条可以安全重新生成的消息' })
         await reopenAfterMessageEdit(sessionId, inspection, state)
         const resolved = await ctx.sessionController.resolveAgent(sessionId)
         if ('error' in resolved) throw resolved.error
@@ -146,7 +146,7 @@ export async function installCreatorStudioRuntime(ctx) {
       requireCharacter(characterId)
       const opened = await service.open(sessionId)
       const agent = ctx.agents.get(sessionId)
-      if (!agent || agent.status !== 'idle') throw new Error('正在生成，请先停止或等待完成后再选择角色。')
+      if (!agent || agent.status !== 'idle') throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '正在生成，请先停止或等待完成后再选择角色。', { what: '停止生成或等待生成完成' })
       const state = { presetId: opened.presetId, characterId }
       agent.session.append(CREATOR_STUDIO_EVENT, state, { ignorable: true })
       return { sessionId, ...state }
