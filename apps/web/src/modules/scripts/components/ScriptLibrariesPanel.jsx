@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowDown, ArrowUp, Copy, FileCode, FolderSimple, NotePencil, Plus, Power, Trash, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { DshTriangleRightIcon } from '../../../ui/icons/dshTreeIcons.jsx';
@@ -95,7 +97,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     editorDirty: () => dirtyRef.current,
     capture: (scope, original) => {
       const library = draftsRef.current[libraryKey(scope, scope === 'global' ? '' : ownerId)];
-      if (!library) throw new Error('脚本库尚未载入。');
+      if (!library) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '脚本库尚未载入。', { what: '脚本库' });
       const current = materializeScriptBuffers(library, buffersRef.current);
       return { enabled: current.enabled, trees: current.trees, variables: current.variables, files: original.files };
     },
@@ -200,7 +202,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     async function loadContext() {
       const currentGeneration = ++generation;
       try {
-        if (!ownerId) throw new Error('脚本编辑需要明确的归属编号。');
+        if (!ownerId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '脚本编辑需要明确的归属编号。', { what: '选择要编辑的角色或预设' });
         const values = await Promise.all([scriptLibraries.read('global', ''), scriptLibraries.read(ownerScope, ownerId)]);
         if (!active || currentGeneration !== generation) return;
         values.forEach(accept);
@@ -238,8 +240,8 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     const task = (async () => {
       savingRef.current = true; setSaving(true); setNotice('');
       try {
-        if (Object.keys(pendingRef.current).length) throw new Error('脚本配置已更新，请放弃本页修改后载入最新内容。');
-        if (Object.keys(draftsRef.current).length !== 2) throw new Error('脚本库尚未完整载入。');
+        if (Object.keys(pendingRef.current).length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '脚本配置已更新，请放弃本页修改后载入最新内容。', { what: '放弃本页修改并重新载入脚本配置' });
+        if (Object.keys(draftsRef.current).length !== 2) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '脚本库尚未完整载入。', { what: '脚本库' });
         const versionDrafts = versions.prepare();
         const values = Object.values(draftsRef.current).map(library => materializeScriptBuffers(library, buffersRef.current))
           .filter(library => versionDrafts.some(version => version.scope === library.scope));

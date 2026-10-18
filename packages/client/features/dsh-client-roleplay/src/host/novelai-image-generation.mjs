@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 const RESPONSE_LIMIT = 32 * 1024 * 1024
 const ERROR_LIMIT = 64 * 1024
@@ -21,11 +22,11 @@ export function createNovelAiImageGeneration(ctx) {
     try {
       await previous
       signal.throwIfAborted()
-      if (!entry.credentialRef) throw new Error('NovelAI 配置没有密钥引用，请重新保存模型配置。')
+      if (!entry.credentialRef) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'NovelAI 配置没有密钥引用，请重新保存模型配置。', { field: 'credentialRef', what: 'NovelAI 模型配置' })
       const key = (await ctx.credentials.resolve(credentialRef(entry.credentialRef)))?.value?.trim()
-      if (!key) throw new Error('NovelAI 配置尚未保存 API Key。')
+      if (!key) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'NovelAI 配置尚未保存 API Key。', { field: 'apiKey', what: 'NovelAI 模型配置' })
       const base = new URL(entry.base_url?.trim() || 'https://image.novelai.net')
-      if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw new Error('NovelAI API 地址不正确。')
+      if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'NovelAI API 地址不正确。', { field: 'base_url', what: 'NovelAI API 地址' })
       const pathname = base.pathname.replace(/\/+$/, '')
       base.pathname = pathname.endsWith('/ai/generate-image') ? pathname : `${pathname}/ai/generate-image`
       for (const frame of frames) {
@@ -37,12 +38,12 @@ export function createNovelAiImageGeneration(ctx) {
           const response = await fetch(base, { method: 'POST', redirect: 'error', signal: requestSignal,
             headers: { ...entry.custom_headers, Authorization: `Bearer ${key}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
           const body = await readBody(response, response.ok ? RESPONSE_LIMIT : ERROR_LIMIT)
-          if (!response.ok) throw new Error(`NovelAI 生图失败（HTTP ${response.status}）：${body.replaceAll(key, '[已隐藏]').slice(0, 600)}`)
+          if (!response.ok) throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, `NovelAI 生图失败（HTTP ${response.status}）：${body.replaceAll(key, '[已隐藏]').slice(0, 600)}`, { operation: 'request', what: 'NovelAI 生图接口' })
           let result
-          try { result = JSON.parse(body) } catch { throw new Error('NovelAI 返回的生图结果不是合法 JSON。') }
-          if (!Array.isArray(result.images) || result.images.length !== 1) throw new Error('NovelAI 没有返回本次请求的唯一图片。')
+          try { result = JSON.parse(body) } catch { throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, 'NovelAI 返回的生图结果不是合法 JSON。', { what: 'NovelAI 返回的生图结果' }) }
+          if (!Array.isArray(result.images) || result.images.length !== 1) throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, 'NovelAI 没有返回本次请求的唯一图片。', { what: 'NovelAI 返回的图片' })
           const encoded = result.images[0]?.image
-          if (typeof encoded !== 'string' || !encoded || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new Error('NovelAI 返回的图片编码不正确。')
+          if (typeof encoded !== 'string' || !encoded || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, 'NovelAI 返回的图片编码不正确。', { what: 'NovelAI 返回的图片编码' })
           signal.throwIfAborted()
           const attachment = await ctx.attachments.saveImage({ data: new Uint8Array(Buffer.from(encoded, 'base64')), mediaType: 'image/png', name: `分镜-${frame.id}.png` })
           saved.push({ id: frame.id, after_paragraph: frame.after_paragraph, seed, attachment })
@@ -50,7 +51,8 @@ export function createNovelAiImageGeneration(ctx) {
         } catch (error) {
           signal.throwIfAborted()
           const reason = String(error?.message || error).replaceAll(key, '[已隐藏]')
-          if (!saved.length) throw new Error(reason)
+          // 重抛原失败保住它的码；密钥只可能出现在上面那条 HTTP 诊断里，那里已就地隐藏。
+          if (!saved.length) throw error
           return { status: 'partial', frames: saved, error: `分镜 ${frame.id} 生成失败：${reason}` }
         }
       }
@@ -78,7 +80,7 @@ export function novelAiRequest(model, settings, frame, seed) {
 }
 
 async function readBody(response, limit) {
-  if (!response.body) throw new Error('NovelAI 返回了空响应。')
+  if (!response.body) throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, 'NovelAI 返回了空响应。', { operation: 'request', what: 'NovelAI 生图响应' })
   const chunks = [], reader = response.body.getReader()
   let size = 0
   try {
@@ -86,7 +88,7 @@ async function readBody(response, limit) {
       const { done, value } = await reader.read()
       if (done) break
       size += value.byteLength
-      if (size > limit) throw new Error('NovelAI 响应超过大小限制。')
+      if (size > limit) throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, 'NovelAI 响应超过大小限制。', { operation: 'request', what: 'NovelAI 生图响应' })
       chunks.push(value)
     }
     return Buffer.concat(chunks).toString('utf8')

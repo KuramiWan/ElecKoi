@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Browse, Copy, NotePencil, Play, Plus, Power, Trash, X } from '../../ui/icons/interfaceIcons.jsx';
 import { EditorContextMenu, useEditorContextMenu } from '../../ui/ui/EditorContextMenu.jsx';
@@ -34,7 +36,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
   const receivedRef = useRef({}), acceptRef = useRef(null), nameRef = useRef(null);
   const versions = useEditorLibraryVersions({ kind: 'displayTemplates', scope, ownerId, service: displayTemplates?.versions,
     editorDirty: () => dirtyRef.current,
-    capture: libraryScope => { const library = draftRef.current[libraryScope]; if (!library) throw new Error('显示模板库尚未载入。'); return { enabled: library.enabled, templates: library.templates }; },
+    capture: libraryScope => { const library = draftRef.current[libraryScope]; if (!library) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '显示模板库尚未载入。', { what: '显示模板库' }); return { enabled: library.enabled, templates: library.templates }; },
     apply: (libraryScope, content) => { change(current => ({ ...current, ...content }), libraryScope); setSelectedId(''); },
   });
   const dirty = !same(drafts, baselines) || versions.dirty;
@@ -79,7 +81,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
     if (busyRef.current || Object.keys(draftRef.current).length !== 2) return false;
     busyRef.current = true; setSaving(true);
     try {
-      if (Object.keys(pendingRef.current).length) throw new Error('显示模板存在其他修改，请退出并放弃未保存修改后重新载入。');
+      if (Object.keys(pendingRef.current).length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '显示模板存在其他修改，请退出并放弃未保存修改后重新载入。', { what: '放弃未保存的修改并重新载入显示模板' });
       const versionDrafts = versions.prepare();
       const values = Object.values(draftRef.current).map(library => displayTemplateLibrarySchema.parse(library))
         .filter(library => versionDrafts.some(version => version.scope === library.scope));
@@ -133,7 +135,7 @@ export const DisplayTemplatesPanel = forwardRef(function DisplayTemplatesPanel({
     testRef.current?.abort(); const controller = new AbortController(); testRef.current = controller; setTesting(true); setTestError(''); setTestOutput('');
     try {
       const variables = JSON.parse(testVariables);
-      if (!variables || typeof variables !== 'object' || Array.isArray(variables)) throw new Error('测试变量必须是 JSON 对象。');
+      if (!variables || typeof variables !== 'object' || Array.isArray(variables)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '测试变量必须是 JSON 对象。', { field: 'testVariables' });
       const library = displayTemplateLibrarySchema.parse({ ...draft, enabled: true, templates: [{ ...selected, enabled: true }] });
       const result = await runDisplayTemplates({ libraries: [library], content: testText, variables,
         message: { id: 'preview', conversationId: '', role: 'assistant', status: 'complete', content: testText } }, { signal: controller.signal });

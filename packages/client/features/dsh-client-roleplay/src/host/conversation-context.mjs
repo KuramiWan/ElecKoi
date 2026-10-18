@@ -6,6 +6,7 @@ import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
 import { INPUT_CONTINUATIONS_PROJECTION } from './input-continuations-projection.mjs'
 import { illustrationInstructions, prepareIllustration } from './generated-image-result.mjs'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 export const name = 'eleckoi-conversation-context'
 export const projectionPlugin = 'eleckoi-request-projection'
@@ -37,12 +38,12 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
         ? prompt : null
     }
     const messages = projectRequestInput(surface, projection, transform)
-    if (!executionStep) throw new Error('实际模型请求缺少 Session 步骤。')
+    if (!executionStep) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '实际模型请求缺少 Session 步骤。', { what: '实际模型请求的 Session 步骤' })
     const inputState = agentCtx.sessionProjections.stateOf(session, INPUT_CONTINUATIONS_PROJECTION)
-    if (!inputState) throw new Error('实际模型请求缺少正式用户输入投影。')
+    if (!inputState) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '实际模型请求缺少正式用户输入投影。', { what: '实际模型请求的用户输入投影' })
     const inputs = inputState.inputs
     const inputIndex = currentUser ? inputs.findIndex(input => input.messageId === currentUser.id) : -1
-    if (currentUser && inputIndex < 0) throw new Error('实际模型请求的用户输入不在 Session 投影中。')
+    if (currentUser && inputIndex < 0) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '实际模型请求的用户输入不在 Session 投影中。', { what: '这次请求的用户输入' })
     previews.capture(session, { ...options, messages }, projection.plan, {
       ...executionStep, round: currentUser ? inputIndex + 1 : null
     })
@@ -72,7 +73,7 @@ export function projectRequestReasoning(messages, rules = [], macros) {
       const text = transformReasoningPrompt(block.text, rules, macros)
       if (text === block.text) return block
       if (message.source.replayState !== undefined) {
-        throw new Error('推理文本携带模型回放数据，不能用提示词正则修改；请将该规则改为仅修改显示内容。')
+        throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '推理文本携带模型回放数据，不能用提示词正则修改；请将该规则改为仅修改显示内容。', { what: '把这条规则改成只修改显示内容' })
       }
       changed = true
       return { ...block, text }
@@ -545,9 +546,9 @@ export function worldbookSettingInjections(context, promptPositions = new Map())
     const cache = !native && entry.worldbookPosition === 'at_depth'
     const anchor = cache ? 'insert_point_1' : native ? custom?.anchor ?? native.position : anchors[entry.anchor]
     if (!['instructions', 'insert_point_1', 'insert_point_2', 'insert_point_3', 'insert_point_4', 'insert_point_5'].includes(anchor)) {
-      throw new Error(`世界书条目 ${entry.id} 缺少明确的请求位置。`)
+      throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `世界书条目 ${entry.id} 缺少明确的请求位置。`, { what: '世界书条目的请求位置' })
     }
-    if (!['system', 'user', 'assistant'].includes(entry.role)) throw new Error(`世界书条目 ${entry.id} 的消息角色无效。`)
+    if (!['system', 'user', 'assistant'].includes(entry.role)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `世界书条目 ${entry.id} 的消息角色无效。`, { what: '世界书条目的消息角色' })
     return {
       id: `worldbook:${entry.id}`, content: entry.content, role: entry.role, anchor,
       placementRank: cache ? 3 : custom?.side === 'before_setting_position' ? 0 : custom?.side === 'after_setting_position' ? 2 : 1,
