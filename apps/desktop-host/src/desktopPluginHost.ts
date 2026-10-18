@@ -14,7 +14,9 @@ const require = createRequire(import.meta.url)
 const runtimeRequire = createRequire(require.resolve('@eleckoi/desktop-host'))
 const TAVILY_BUNDLE = '@eleckoi/dsh-web-search-tavily'
 const webProfile = PROFILE_TEMPLATES.web
-if (webProfile === undefined) throw new Error('DSH web profile template is unavailable')
+if (webProfile === undefined) {
+  throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'DSH web profile template is unavailable', { what: 'DSH web profile 模板' })
+}
 export const ELECKOI_DESKTOP_RECOVERY_BUNDLES = Object.freeze([
   ...webProfile.bundles, ...ELECKOI_DESKTOP_BUNDLES, TAVILY_BUNDLE
 ])
@@ -83,16 +85,16 @@ export class DshDesktopPluginHost {
 
   constructor(private readonly options: DshDesktopPluginHostOptions) {
     if (typeof options.productDatabasePath !== 'string' || options.productDatabasePath.trim().length === 0) {
-      throw new Error('DSH 插件宿主必须提供产品数据库路径。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'DSH 插件宿主必须提供产品数据库路径。', { field: 'productDatabasePath' })
     }
     if (typeof options.productMediaRoot !== 'string' || options.productMediaRoot.trim().length === 0) {
-      throw new Error('DSH 插件宿主必须提供产品媒体目录。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'DSH 插件宿主必须提供产品媒体目录。', { field: 'productMediaRoot' })
     }
   }
 
   start(environment: DshDesktopPluginHostEnvironment = {}): Promise<DshDesktopPluginHostReady> {
     if (this.readyTask !== undefined) return this.readyTask
-    if (this.stopping) return Promise.reject(new Error('DSH 插件宿主正在停止。'))
+    if (this.stopping) return Promise.reject(new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 插件宿主正在停止。', { what: 'DSH 插件宿主' }))
     const home = join(this.options.runtimeDataRoot, 'home')
     const profile = join(home, 'profiles', 'desktop')
     initProfile(profile, ELECKOI_DESKTOP_RECOVERY_BUNDLES)
@@ -251,7 +253,7 @@ export class DshDesktopPluginHost {
     this.stopping = true
     const child = this.child
     this.readyTask = undefined
-    this.rejectControls(new Error('DSH 插件宿主正在停止。'))
+    this.rejectControls(new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 插件宿主正在停止。', { what: 'DSH 插件宿主' }))
     if (child === undefined || child.exitCode !== null || child.signalCode !== null) return
     const exited = new Promise<void>(resolve => child.once('exit', () => resolve()))
     if (child.connected) {
@@ -273,7 +275,9 @@ export class DshDesktopPluginHost {
         exited.then(() => true),
         new Promise<false>(resolve => setTimeout(() => resolve(false), 5_000))
       ])
-      if (!terminated) throw new Error('DSH 插件宿主未能停止，插件配置未修改。')
+      if (!terminated) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.timeoutExpired, 'DSH 插件宿主未能停止，插件配置未修改。', { what: 'DSH 插件宿主停止' })
+      }
     }
     if (this.child === child) this.child = undefined
   }

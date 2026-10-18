@@ -16,6 +16,7 @@ it('qualifies update recovery with real Electron HTTP, checksum and NSIS prepara
   try {
     await build({ entryPoints: [join(import.meta.dirname, 'fixtures/updater-network.ts')],
       outfile: entry, bundle: true, platform: 'node', format: 'cjs',
+      alias: { '@shared': join(project, 'packages/shared/src') },
       external: ['electron', 'electron-updater', 'electron-updater/*'], logLevel: 'silent' })
     const env = { ...process.env, ELECKOI_UPDATE_TEST_ROOT: directory }
     delete env.ELECTRON_RUN_AS_NODE
