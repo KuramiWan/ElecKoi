@@ -18,7 +18,7 @@
  */
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { normalizeLineEndings } from './lib/normalize-line-endings.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -26,7 +26,8 @@ const sourcePath = resolve(root, 'packages/shared/src/contracts/errors/codes.ts'
 const outputPath = resolve(root, 'packages/host/product-api/src/errorCodes.generated.ts')
 const checkOnly = process.argv.includes('--check')
 
-const { ELECKOI_FAILURE_CODES } = await import(sourcePath)
+// Windows 上裸绝对路径（D:\…）不是合法的 ESM URL；统一转成 file:// URL（2026-10-18 windows-latest 实测）。
+const { ELECKOI_FAILURE_CODES } = await import(pathToFileURL(sourcePath).href)
 
 const entries = Object.entries(ELECKOI_FAILURE_CODES)
 const width = Math.max(...entries.map(([name]) => name.length))
