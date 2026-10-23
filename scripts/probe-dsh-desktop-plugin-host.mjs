@@ -1,13 +1,21 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import Module, { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { initProfile, PROFILE_TEMPLATES, readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { DshDesktopPluginHost, ELECKOI_DESKTOP_BUNDLES } from '@eleckoi/desktop-host'
 import { readDshSessionLog } from '@eleckoi/dsh-runtime'
-import { importLibraryAsVersion, mergeSettingLibraryEntries, parseSettingLibraryFile, serializeSettingLibrary } from '../apps/web/src/modules/settingLibraries/model/settingLibraryTransfer.js'
 
 const require = createRequire(import.meta.url)
+// 设定库的 web 源用 @shared 别名（apps/web/vite.config.mjs），而本探针在 Electron 的 Node 里裸跑，
+// 没有别名解析器；所以先按同一别名用 esbuild 打包再加载，与 probe-local-media-crop.cjs 同一手法。
+const transferPath = resolve('apps/web/src/modules/settingLibraries/model/settingLibraryTransfer.js')
+const transferModule = new Module(transferPath)
+transferModule._compile(createRequire(require.resolve('vite'))('esbuild').buildSync({
+  entryPoints: [transferPath], bundle: true, write: false, platform: 'node', format: 'cjs',
+  alias: { '@shared': resolve('packages/shared/src') },
+}).outputFiles[0].text, transferPath)
+const { importLibraryAsVersion, mergeSettingLibraryEntries, parseSettingLibraryFile, serializeSettingLibrary } = transferModule.exports
 const Database = require('better-sqlite3')
 const root = mkdtempSync(join(tmpdir(), 'eleckoi-dsh-desktop-'))
 const profilePath = join(root, 'home', 'profiles', 'desktop')

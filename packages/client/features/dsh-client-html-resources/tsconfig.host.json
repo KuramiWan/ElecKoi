@@ -21,6 +21,7 @@
     "src/profile.ts",
     "src/runtime.js",
     "src/browser-libraries.js",
-    "src/browser-modules.js"
+    "src/browser-modules.js",
+    "src/client/types.ts"
   ]
 }

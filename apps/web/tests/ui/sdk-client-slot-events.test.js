@@ -17,7 +17,7 @@ const dependencies = {
   react: React, 'react-dom': ReactDom, 'react-dom/client': ReactDomClient,
   'react/jsx-runtime': Jsx, '@deepseek-ai/cordis': Cordis,
   '@deepseek-ai/dsh-client-ui-slots': Slots, '@deepseek-ai/dsh-client-store': Store,
-  '@deepseek-ai/dsh-client-ui-primitives': {},
+  '@deepseek-ai/dsh-client-ui-primitives': {}, '@eleckoi/dsh-product-api': {},
 };
 
 function load(file, react = React) {

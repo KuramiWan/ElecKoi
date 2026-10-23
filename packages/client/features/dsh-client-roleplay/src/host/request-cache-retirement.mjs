@@ -1,10 +1,11 @@
 import { checkpointRecord, projectionCacheDomainSpec } from '@deepseek-ai/dsh-session-projection-cache'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 /** Retire only the obsolete derived row, retaining every other official checkpoint. */
 export async function retireRequestContextCache(ctx) {
   const retired = ['eleckoiRequestContexts', 'eleckoiRequestInput']
   const domain = ctx.storageDomain.get(projectionCacheDomainSpec.name)
-  if (!domain) throw new Error('官方 Session 投影缓存域尚未打开。')
+  if (!domain) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '官方 Session 投影缓存域尚未打开。', { what: '官方 Session 投影缓存域' })
   const table = domain.table('sessions')
   for (const [id, record] of table.entries()) {
     if (!retired.some(key => Object.hasOwn(checkpointRecord.parse(record).rows, key))) continue

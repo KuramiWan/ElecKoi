@@ -2,6 +2,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {
   ConversationNodeDefinition, RequestPromptInspector, SystemPromptState, SystemPromptInspector,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 import type { TrajectoryRequestHeaderState } from './trajectory-contract.ts'
 
@@ -38,7 +40,7 @@ function trajectorySystemMessageDefinition(inspect: SystemPromptInspector): Conv
       ? { id: String(event.seq), role: 'start' }
       : null,
     start: (_context, match, reader) => {
-      if (match.event.type === 'assistant/live-chunk') throw new Error('system-message requires a durable event')
+      if (match.event.type === 'assistant/live-chunk') throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'system-message requires a durable event', { what: '系统提示的持久事件' })
       const prior = reader.previous<TrajectorySystemMessageState>('trajectory-system-message')?.state
       const state = inspect(prior, match.event)
       const node = state.effective
@@ -105,7 +107,7 @@ function trajectoryRequestHeaderDefinition(inspect: RequestPromptInspector): Con
       : null,
     start: (_context, match, reader) => {
       if (match.event.type !== 'request/header') {
-        throw new Error('trajectory-request-header start requires request/header')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'trajectory-request-header start requires request/header', { what: '轨迹请求头的起始事件' })
       }
       const header = reader.previous<TrajectoryRequestHeaderState>('trajectory-request-header')?.state
       const state = reader.previous<TrajectorySystemMessageState>('trajectory-system-message')?.state

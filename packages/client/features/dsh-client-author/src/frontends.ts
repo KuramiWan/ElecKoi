@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@eleckoi/dsh-product-api/remote'
 import type { FrontendOwner, FrontendWorkspace } from '@eleckoi/dsh-product-api/frontends'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 type Remote = Context['remote']['eleckoiAuthorFrontends']
 type Watch = { start(): void; close(): void }
@@ -18,7 +19,7 @@ export class NativeFrontendClient {
    * @returns 取消订阅函数。
    */
   watch(owner: FrontendOwner, listener: (workspace: FrontendWorkspace) => void, onError: (error: unknown) => void): () => void {
-    if (this.closed) throw new Error('Native frontend service is closed')
+    if (this.closed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'Native frontend service is closed', { what: '原生前端服务' })
     const fixedOwner = structuredClone(owner)
     let stopped = false, abort: AbortController | undefined
     const watch: Watch = {
@@ -34,10 +35,10 @@ export class NativeFrontendClient {
             while (current() && requested > accepted) {
               const result = await this.projects.workspace(fixedOwner)
               if (!current()) return
-              if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+              if (!result.ok) throw result.error
               const workspace = result.value
-              if (workspace.scope !== fixedOwner.scope || fixedOwner.scope === 'character' && workspace.characterId !== fixedOwner.characterId) throw new Error('Frontend workspace owner mismatch')
-              if (workspace.revision < accepted) throw new Error('Frontend workspace revision decreased')
+              if (workspace.scope !== fixedOwner.scope || fixedOwner.scope === 'character' && workspace.characterId !== fixedOwner.characterId) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'Frontend workspace owner mismatch', { what: '前端工作区的归属' })
+              if (workspace.revision < accepted) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'Frontend workspace revision decreased', { what: '前端工作区的修订号' })
               accepted = workspace.revision; listener(workspace)
             }
           })().catch(error => { failed = true; if (current()) onError(error) }).finally(() => {
@@ -52,7 +53,7 @@ export class NativeFrontendClient {
               if (!current()) return
               requested = Math.max(requested, change.revision); read()
             }
-            if (current()) throw new Error('Native frontend changes stream ended')
+            if (current()) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'Native frontend changes stream ended', { what: '原生前端变更流' })
           } catch (error) { if (current()) onError(error) }
           finally { await stream.dispose() }
         })().catch(error => { if (current()) onError(error) })

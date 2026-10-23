@@ -1,8 +1,11 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useState } from 'react';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { useFrontendWorkspace } from '../hooks/useFrontendWorkspace.js';
 import { characterFrontendEntry } from '../model/characterFrontend.js';
 import { AdvancedFrontendFrame } from './AdvancedFrontendFrame.jsx';
+import { resolveFailure } from '../../../utils/failureText.js';
 import '../styles/characterFrontend.css';
 
 export function CharacterFrontendView({ characterId, conversationId, fallback }) {
@@ -13,13 +16,13 @@ export function CharacterFrontendView({ characterId, conversationId, fallback })
   const project = workspace.projects.find(item => item.id === workspace.selectedProjectId);
   let entryFile, failure = error;
   if (!failure) {
-    try { if (!project) throw new Error('已选择的角色前端项目不存在'); entryFile = characterFrontendEntry(project, characterId); }
-    catch (reason) { failure = reason.message; }
+    try { if (!project) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '已选择的角色前端项目不存在', { what: '角色前端项目' }); entryFile = characterFrontendEntry(project, characterId); }
+    catch (reason) { failure = resolveFailure(reason, { fallback: '角色前端项目加载失败' }).text; }
   }
   const restore = async () => {
     setRestoring(true);
     try { await request('frontends.restoreDefault'); setRestoreError(''); }
-    catch (reason) { setRestoreError(reason.message); }
+    catch (reason) { setRestoreError(resolveFailure(reason, { fallback: '恢复默认对话界面失败' }).text); }
     finally { setRestoring(false); }
   };
   return <section className="character-frontend-project" aria-label="角色前端">

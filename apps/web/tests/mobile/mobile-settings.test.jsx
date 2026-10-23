@@ -126,7 +126,10 @@ describe('Android settings presentation with shared PC contracts', () => {
     expect(renderSection.mock.lastCall[0].id).toBe('extension-a');
     sections = sections.filter(item => item.id !== 'extension-a');
     renderSection.mockClear(); await rerender();
-    expect(container.querySelector('[role="alert"]').textContent).toContain('不可用');
+    // 设置分区消失后给的是带码的失败面：用户话由码表给（「请先返回设置列表。」），码本身可见。
+    const unavailable = container.querySelector('[role="alert"]');
+    expect(unavailable.textContent).toContain('请先返回设置列表');
+    expect(unavailable.textContent).toContain('eleckoi/state/precondition');
     expect(renderSection).not.toHaveBeenCalled();
     await click('返回'); expect(container.textContent).not.toContain('扩展甲');
     sections = [...sections, { id: 'extension-c', label: '扩展丙' }]; await rerender();

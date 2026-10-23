@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useRef, useState } from "react";
 import Avatar from "@douyinfe/semi-ui-19/lib/es/avatar";
 import Input from "@douyinfe/semi-ui-19/lib/es/input";
@@ -30,7 +32,7 @@ function LocalImageUpload({ className, label, crop, disabled = false, onSelect, 
     setSaving(true);
     try {
       const value = await readImage(croppedFile);
-      if (!value) throw new Error("Image data is empty");
+      if (!value) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "Image data is empty", { what: "裁剪后的头像图片" });
       await onSelect(value);
       setCropFile(null);
     } finally {

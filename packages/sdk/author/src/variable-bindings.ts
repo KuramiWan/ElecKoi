@@ -23,7 +23,8 @@ export type AuthorVariableBinding = (params: Record<string, unknown>, options: A
 
 function unwrap<T>(result: Result<T>): T {
   if (!result || typeof result.ok !== 'boolean') throw new TypeError('原生变量服务没有返回 Remote 结果。')
-  if (!result.ok) throw Object.assign(new Error(result.error.message), result.error)
+  // 直接抛失败对象：码与详情逐字保留；折叠按结构标记识别，不需要 Error 实例。
+  if (!result.ok) throw result.error
   return result.value
 }
 

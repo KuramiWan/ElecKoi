@@ -16,7 +16,8 @@ import {
   regexEditorTargetSchema,
   regexRuleEditorCollectionSchema
 } from '@shared/contracts/regex/schemas'
-import { DesktopError, DESKTOP_ERROR_CODES } from '@shared/foundation/DesktopError'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import {
   includeImportedRulesInActiveVersion,
   transformCollectionSurface
@@ -49,10 +50,11 @@ export interface AgentPresetRegexPort {
 function parseStringList(raw: string, description: string): string[] {
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error()
+    if (!Array.isArray(parsed)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${description}的形状不对。`, { what: description })
     return [...new Set(parsed.filter((value): value is string => typeof value === 'string' && value.length > 0))]
   } catch (error) {
-    throw new Error(`${description}已损坏。`, { cause: error })
+    if (error instanceof DesktopError) throw error
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `${description}已损坏。`, { what: description })
   }
 }
 
@@ -90,7 +92,7 @@ function normalizedRule(rule: RegexRule, order: number): RegexRule {
 }
 
 function normalizedCollection(characterId: string, input: RegexRuleCollection): RegexRuleCollection {
-  if (input.characterId !== characterId) throw new Error('正则配置与角色不匹配。')
+  if (input.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '正则配置与角色不匹配。', { what: '正则配置与角色' })
   const normalize = (rules: RegexRule[]) => rules.map(normalizedRule)
   const versions: RegexRuleVersion[] = input.versions.map((version) => ({
     ...version,
@@ -110,7 +112,7 @@ function normalizedCollection(characterId: string, input: RegexRuleCollection): 
     activeVersionId
   })
   const ids = collection.globalRules.concat(collection.agentPresetRules, collection.characterRules).map((rule) => rule.id)
-  if (new Set(ids).size !== ids.length) throw new Error('正则规则编号不能重复。')
+  if (new Set(ids).size !== ids.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '正则规则编号不能重复。', { field: 'ids' })
   return collection
 }
 
@@ -158,7 +160,7 @@ export class RegexRuleRepository {
 
   readScope(scope: 'global' | 'character' | 'preset', ownerId: string): RegexRule[] {
     if (scope === 'global') {
-      if (ownerId) throw new Error('全局正则使用空归属编号。')
+      if (ownerId) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '全局正则使用空归属编号。', { what: '全局正则的归属编号' })
       return this.store.db.select().from(globalRegexRules).orderBy(asc(globalRegexRules.sortIndex)).all().map(rowToRule)
     }
     const collection = this.readEditor({ scope, ownerId })
@@ -194,26 +196,26 @@ export class RegexRuleRepository {
     const hiddenKey = target.scope === 'character' ? 'agentPresetRules' : 'characterRules'
     const hiddenVersionKey = target.scope === 'character' ? 'agentPresetEnabledIds' : 'characterEnabledIds'
     if (parsed[hiddenKey].length || parsed.versions.some(version => version[hiddenVersionKey].length)) {
-      throw new Error('正则编辑器不能修改其他归属的配置。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '正则编辑器不能修改其他归属的配置。', { what: '其他归属的正则配置' })
     }
     const hiddenEnablement = target.scope === 'character' ? 'agentPresetEnabled' : 'characterEnabled'
-    if (parsed[hiddenEnablement] !== undefined) throw new Error('正则编辑器不能修改其他归属的整体启停。')
+    if (parsed[hiddenEnablement] !== undefined) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '正则编辑器不能修改其他归属的整体启停。', { what: '其他归属的整体启停' })
     const normalized = { ...parsed, globalRules: parsed.globalRules.map(normalizedRule),
       agentPresetRules: parsed.agentPresetRules.map(normalizedRule), characterRules: parsed.characterRules.map(normalizedRule) }
     const ids = normalized.globalRules.concat(normalized.agentPresetRules, normalized.characterRules).map(rule => rule.id)
-    if (new Set(ids).size !== ids.length) throw new Error('正则规则编号不能重复。')
-    if (new Set(normalized.versions.map(version => version.id)).size !== normalized.versions.length) throw new Error('正则预设编号不能重复。')
-    if (normalized.activeVersionId && !normalized.versions.some(version => version.id === normalized.activeVersionId)) throw new Error('指定的正则启用版本不存在。')
+    if (new Set(ids).size !== ids.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '正则规则编号不能重复。', { field: 'ids' })
+    if (new Set(normalized.versions.map(version => version.id)).size !== normalized.versions.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '正则预设编号不能重复。', { field: 'versions' })
+    if (normalized.activeVersionId && !normalized.versions.some(version => version.id === normalized.activeVersionId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '指定的正则启用版本不存在。', { what: '正则启用版本' })
     for (const version of normalized.versions) {
       for (const [ruleKey, memberKey] of [['globalRules', 'globalEnabledIds'], ['agentPresetRules', 'agentPresetEnabledIds'], ['characterRules', 'characterEnabledIds']] as const) {
         const allowed = new Set(normalized[ruleKey].map(rule => rule.id))
-        if (version[memberKey].some(id => !allowed.has(id))) throw new Error('正则预设包含不属于本编辑器的规则。')
+        if (version[memberKey].some(id => !allowed.has(id))) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '正则预设包含不属于本编辑器的规则。', { what: '其他编辑器的规则' })
       }
     }
     this.store.withWriteTx(db => {
       const current = this.readEditor(target, db)
       if (current.revision !== parsed.revision || current.ownerRevision !== parsed.ownerRevision) {
-        throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已在其他窗口更新，请放弃本页修改后载入最新内容。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已在其他窗口更新，请放弃本页修改后载入最新内容。', { what: '正则配置' })
       }
       const ownerKey = target.scope === 'preset' ? 'agentPresetRules' : 'characterRules'
       const memberKey = target.scope === 'preset' ? 'agentPresetEnabledIds' : 'characterEnabledIds'
@@ -250,13 +252,13 @@ export class RegexRuleRepository {
   importEditor(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]) {
     const current = this.readEditor(collection.target)
     if (current.revision !== collection.revision || current.ownerRevision !== collection.ownerRevision) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已更新，请载入最新内容后再导入。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已更新，请载入最新内容后再导入。', { what: '正则配置' })
     }
     const ownerScope = collection.target.scope === 'preset' ? 'AgentPreset' : 'Character'
-    if (fallbackScope !== 'Global' && fallbackScope !== ownerScope) throw new Error('导入归属不属于本编辑器。')
+    if (fallbackScope !== 'Global' && fallbackScope !== ownerScope) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '导入归属不属于本编辑器。', { what: '导入归属' })
     const decoded = decodeRegexDocuments(documents, fallbackScope)
-    if (decoded.rules.some(item => item.scope !== 'Global' && item.scope !== ownerScope)) throw new Error('文件包含其他归属的正则，请在对应编辑器中导入。')
-    if (!decoded.rules.length) throw new Error('所选文件中没有可导入的正则规则。')
+    if (decoded.rules.some(item => item.scope !== 'Global' && item.scope !== ownerScope)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '文件包含其他归属的正则，请在对应编辑器中导入。', { what: '其他归属的正则' })
+    if (!decoded.rules.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '所选文件中没有可导入的正则规则。', { field: 'file' })
     const merged = includeImportedRulesInActiveVersion({ ...current,
       globalRules: current.globalRules.concat(decoded.rules.filter(item => item.scope === 'Global').map(item => item.rule)),
       agentPresetRules: current.agentPresetRules.concat(decoded.rules.filter(item => item.scope === 'AgentPreset').map(item => item.rule)),
@@ -271,7 +273,7 @@ export class RegexRuleRepository {
       ...collection.globalRules.filter(rule => ids.has(rule.id)).map(rule => ({ scope: 'Global' as const, rule })),
       ...collection.agentPresetRules.filter(rule => ids.has(rule.id)).map(rule => ({ scope: 'AgentPreset' as const, rule })),
       ...collection.characterRules.filter(rule => ids.has(rule.id)).map(rule => ({ scope: 'Character' as const, rule })) ]
-    if (!selected.length || selected.length !== ids.size) throw new Error('请选择本编辑器中可导出的规则。')
+    if (!selected.length || selected.length !== ids.size) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请选择本编辑器中可导出的规则。', { what: '选择要导出的规则' })
     return { fileName: 'eleckoi-regex-rules.json', json: encodeRegexExport(selected) }
   }
 
@@ -321,7 +323,7 @@ export class RegexRuleRepository {
     const current = db.select().from(regexState).where(eq(regexState.singletonId, 1)).get()
     const revision = current?.revision ?? 0
     if (revision !== expectedRevision) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已在其他窗口更新，请重新打开后再保存。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已在其他窗口更新，请重新打开后再保存。', { what: '正则配置' })
     }
     const activePreset = this.agentPresetRegexes.readActiveRegexRules(db)
     if (
@@ -329,8 +331,9 @@ export class RegexRuleRepository {
       || activePreset.revision !== normalized.agentPresetRegexRevision
     ) {
       throw new DesktopError(
-        DESKTOP_ERROR_CODES.CONFLICT,
-        '当前 Agent 预设或其正则已在其他窗口更新，请重新打开后再保存。'
+        ELECKOI_FAILURE_CODES.conflictStaleRevision,
+        '当前 Agent 预设或其正则已在其他窗口更新，请重新打开后再保存。',
+        { what: 'Agent 预设正则' }
       )
     }
     this.persistShared(db, normalized)
@@ -365,11 +368,11 @@ export class RegexRuleRepository {
   ) {
     const current = this.get(characterId)
     if (current.revision !== expectedRevision) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '正则配置已在其他窗口更新，请重新打开后再导入。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已在其他窗口更新，请重新打开后再导入。', { what: '正则配置' })
     }
     const decoded = decodeRegexDocuments(documents, fallbackScope)
     if (decoded.rules.length === 0) {
-      throw new Error('所选文件中没有可导入的正则规则。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '所选文件中没有可导入的正则规则。', { field: 'file' })
     }
     const grouped = new Map<RegexRuleScope, RegexRule[]>([
       ['Global', [...current.globalRules]],
@@ -400,7 +403,7 @@ export class RegexRuleRepository {
       ...collection.agentPresetRules.filter((rule) => selectedIds.has(rule.id)).map((rule) => ({ scope: 'AgentPreset' as const, rule })),
       ...collection.characterRules.filter((rule) => selectedIds.has(rule.id)).map((rule) => ({ scope: 'Character' as const, rule }))
     ]
-    if (selected.length === 0) throw new Error('请先选择要导出的规则。')
+    if (selected.length === 0) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请先选择要导出的规则。', { what: '选择要导出的规则' })
     return { fileName: 'eleckoi-regex-rules.json', json: encodeRegexExport(selected) }
   }
 

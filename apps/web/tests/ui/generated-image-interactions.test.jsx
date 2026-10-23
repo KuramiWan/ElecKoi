@@ -44,7 +44,10 @@ describe('single generated image actions', () => {
     const retry = container.querySelector('.chat-image-retry');
     expect(retry.textContent).toBe('重新生成'); await click(retry);
     expect(regenerate).toHaveBeenCalledExactlyOnceWith(failed);
-    expect(container.querySelector('[role="alert"]').textContent).toBe('合成重画失败');
+    // 失败面同时给文案与码：状态里存的是失败本身（不是一句话）。
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert.textContent).toContain('合成重画失败');
+    expect(alert.textContent).toContain('eleckoi/internal');
   });
   it('cancels long press while scrolling', async () => {
     vi.useFakeTimers(); await render({ onRegenerateImage: async () => {} }); const target = container.querySelector('figure');

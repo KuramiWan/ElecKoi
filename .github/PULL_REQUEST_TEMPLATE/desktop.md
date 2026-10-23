@@ -13,6 +13,7 @@
 - [ ] 官方运行时装配隔离在 `@eleckoi/dsh-runtime`；Host/Client 插件使用同版本公开合同，上游包仍是同一个精确版本批次
 - [ ] 新业务进入 DSH Host/Client 插件；产品数据库与 Repository 由 `@eleckoi/dsh-product-data` 独占，跨模块依赖只使用对方 `index.ts` 公开面
 - [ ] 长生命周期资源已注册为 Host/Cordis Plugin，并能反向释放
+- [ ] 新增失败带契约码、用户可见文案只在渲染层产生（见 `docs/error-handling.md`，`pnpm check:error-contract`）
 
 ### Data and compatibility（数据与兼容）
 

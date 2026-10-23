@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { createId, SETTING_LIBRARY_PLACEMENT_ROWS, SETTING_LIBRARY_POSITION_OPTIONS } from './settingLibraryEditing.js';
 
 const ANCHOR_ORDER = new Map(SETTING_LIBRARY_POSITION_OPTIONS.map((option, index) => [option.value, index]));
@@ -48,8 +50,8 @@ export function createPositionDraft(positions, position = null, anchor = 'insert
 
 export function savePositionDraft(positions, entries, draft, selectedEntryId = '') {
   const name = draft.name.trim();
-  if (!name) throw new Error('填写位置名称');
-  if (!SETTING_LIBRARY_POSITION_OPTIONS.some((option) => option.value === draft.anchor)) throw new Error('选择有效的插入位置');
+  if (!name) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '填写位置名称', { field: '位置名称' });
+  if (!SETTING_LIBRARY_POSITION_OPTIONS.some((option) => option.value === draft.anchor)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '选择有效的插入位置', { field: '插入位置' });
   const position = { ...draft, name, updatedAt: new Date().toISOString() };
   const exists = positions.some((item) => item.id === draft.id);
   return {

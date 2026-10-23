@@ -5,6 +5,7 @@ import { initialConfigForProvider } from '../modules/models/model/modelConfigDra
 import { addableProviderItems, builtinProviderItems, configurationItems, modelProviderSections } from '../modules/models/model/modelProviderCatalog.js';
 import { MobileDialog, MobileHeader, MobileState, useMobileScroll } from './MobileChrome.jsx';
 import { MobileChevronRightIcon } from './MobileIcons.jsx';
+import { resolveFailure } from '../utils/failureText.js';
 import { MobileModelConfigDetail, MobileProviderLogo } from './MobileModelConfigDetail.jsx';
 import './mobile-models.css';
 
@@ -56,7 +57,7 @@ export function MobileModelsPage() {
         </button>)}
       </div></section>;
       })}
-      <MobileState error={snapshot.error} loading={snapshot.status === 'loading'} empty={!snapshot.configs.length && snapshot.status === 'ready' ? '暂无模型配置' : ''} onRetry={() => models.refresh().catch(error => chat.notify('error', error.message))} />
+      <MobileState error={snapshot.error} loading={snapshot.status === 'loading'} empty={!snapshot.configs.length && snapshot.status === 'ready' ? '暂无模型配置' : ''} onRetry={() => models.refresh().catch(error => chat.notify('error', resolveFailure(error, { fallback: '刷新模型配置失败' }).text))} />
     </div>
     {picker && <MobileDialog title="新建模型配置" onClose={() => setPicker(false)}><div className="mobile-picker-list mobile-model-create-list">
       {createProviders.filter(provider => provider.id === 'custom').map(provider => <button type="button" key={provider.id} onClick={() => create(provider.id)}><MobileProviderLogo provider={provider} /><span>{provider.label}</span><MobileChevronRightIcon /></button>)}

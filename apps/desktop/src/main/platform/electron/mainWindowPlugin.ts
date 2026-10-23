@@ -10,6 +10,13 @@ import { installWindowsNativeFrame } from './windowsNativeFrame'
 import { DesktopBrowserGuests } from './desktopBrowserGuests'
 import { authenticateDshClientHost, DSH_CLIENT_ORIGIN, forwardDshClientRequest, isDshClientAsset, resolveElecKoiClientAssets, serveDshClientAsset, serveElecKoiClientAsset } from './dshClientDocument'
 import { DESKTOP_SHELL_IPC } from '@shared/contracts/desktopShell'
+import { LOG_ACTIONS } from '@shared/contracts/logActions'
+import { foldFailure } from '@shared/foundation/failure'
+import { desktopHostFailureNoticeOf } from '@shared/foundation/ipcFailure'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
+import { logAction, relayRendererActionLog } from '@main/platform/logging/logActions'
+import { handleDesktopIpcCall } from './desktopIpcHandler'
 
 export const mainWindowPlugin = {
   name: 'eleckoi-main-window',
@@ -39,7 +46,7 @@ export const mainWindowPlugin = {
         configureMainWindow(appPaths, appLog, windows, window)
         window.webContents.on('render-process-gone', (_event, details) => {
           if (details.reason !== 'clean-exit') {
-            ctx.emit('eleckoi/desktop-fatal', new Error(`页面渲染进程退出：${details.reason} (${details.exitCode})`))
+            ctx.emit('eleckoi/desktop-fatal', new DesktopError(ELECKOI_FAILURE_CODES.internal, `页面渲染进程退出：${details.reason} (${details.exitCode})`, { what: '页面渲染进程' }))
           }
         })
       }
@@ -54,7 +61,7 @@ export const mainWindowPlugin = {
       load: async (window, payload) => {
         const url = (payload as { url?: unknown })?.url
         if (typeof url !== 'string' || (!isAppRendererUrl(url) && !isDshChildUrl(url))) {
-          throw new Error('拒绝打开非 ElecKoi 子窗口。')
+          throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '拒绝打开非 ElecKoi 子窗口。', { what: '非 ElecKoi 子窗口地址' })
         }
         await window.loadURL(url)
       },
@@ -64,6 +71,8 @@ export const mainWindowPlugin = {
         installWindowsNativeFrame(window)
         window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
         window.webContents.on('console-message', ({ level, message }) => {
+          // 子窗口里的用户动作（导入 / 导出角色卡等）也走 console → 主进程日志这条路。
+          if (relayRendererActionLog(appLog, message)) return
           if (level === 'error') appLog.error({ message }, 'ElecKoi child window console error')
         })
         window.webContents.on('did-fail-load', (_event, code, description, url) => {
@@ -93,7 +102,7 @@ export const mainWindowPlugin = {
         return new Response(null, { status: 502 })
       }
     })
-    ipcMain.handle('eleckoi:dsh-client-boot', (event) => {
+    handleDesktopIpcCall('eleckoi:dsh-client-boot', (event) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -101,7 +110,9 @@ export const mainWindowPlugin = {
         windows.all().map(window => window.webContents)
       )
       const ready = pluginHostReady
-      if (ready === undefined) throw new Error('DSH 插件宿主尚未启动。')
+      if (ready === undefined) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 插件宿主尚未启动。', { what: 'DSH 插件宿主' })
+      }
       return {
         injections: [
           ...ready.injections,
@@ -110,16 +121,18 @@ export const mainWindowPlugin = {
         streamBaseUrl: new URL(ready.url).origin
       }
     })
-    ipcMain.handle('eleckoi:dsh-client-boot-failed', (event, message: unknown) => {
+    handleDesktopIpcCall('eleckoi:dsh-client-boot-failed', (event, message: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
         event.senderFrame === event.sender.mainFrame,
         windows.all().map(window => window.webContents)
       )
-      if (typeof message !== 'string') throw new Error('DSH 插件页面错误格式不正确。')
+      if (typeof message !== 'string') {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 插件页面错误格式不正确。', { what: 'DSH 插件页面错误' })
+      }
       appLog.error({ message }, 'DSH plugin client boot failed')
-      ctx.emit('eleckoi/desktop-fatal', new Error(message))
+      ctx.emit('eleckoi/desktop-fatal', new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, message, { what: 'DSH 插件页面启动' }))
     })
     const syncNativeTheme = (event: Electron.IpcMainEvent, source: unknown) => {
       const mainContents = mainWindow?.webContents
@@ -142,15 +155,23 @@ export const mainWindowPlugin = {
     const focusMainWindow = () => { void windows.open('main') }
     app.on('activate', focusMainWindow)
     app.on('second-instance', focusMainWindow)
-    const detachPluginFailure = pluginHost.onFailure(() => {
+    const detachPluginFailure = pluginHost.onFailure(error => {
+      // 边界⑤：把边界③ 折好的失败对象原样交给渲染层（只加子进程的 stack 指针）。
+      // 以前这里送一句写死的中文，码与详情在跨进程那一刻就没了——用户只看到「插件服务意外退出」，
+      // 开发者连是哪个码都查不到。
+      const failure = foldFailure(error)
+      const notice = desktopHostFailureNoticeOf({
+        ...failure,
+        ...typeof error === 'object' && error !== null && typeof (error as { stack?: unknown }).stack === 'string'
+          ? { stack: (error as { stack: string }).stack }
+          : {}
+      })
       for (const window of windows.all()) {
-        if (!window.isDestroyed()) {
-          window.webContents.send(DESKTOP_SHELL_IPC.hostFailure, '插件服务意外退出，请重新打开插件中心。')
-        }
+        if (!window.isDestroyed()) window.webContents.send(DESKTOP_SHELL_IPC.hostFailure, notice)
       }
     })
 
-    ipcMain.handle(DESKTOP_SHELL_IPC.windowControl, (event, action: unknown) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.windowControl, (event, action: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -158,7 +179,10 @@ export const mainWindowPlugin = {
         windows.all().map(window => window.webContents)
       )
       if (action !== 'minimize' && action !== 'maximize' && action !== 'close') {
-        throw new TypeError('桌面窗口操作不受支持。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '桌面窗口操作不受支持。', {
+          what: '桌面窗口操作',
+          expected: 'minimize、maximize、close'
+        })
       }
       const target = BrowserWindow.fromWebContents(event.sender)
       if (target === null || target.isDestroyed()) return
@@ -169,7 +193,7 @@ export const mainWindowPlugin = {
       }
       if (action === 'close') target.close()
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.browserAcquire, (event, workspace: unknown) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.browserAcquire, (event, workspace: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -178,7 +202,7 @@ export const mainWindowPlugin = {
       )
       return browserGuests.acquire(event.sender, workspace)
     })
-    ipcMain.handle(DESKTOP_SHELL_IPC.browserRelease, async (event, lease: unknown) => {
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.browserRelease, async (event, lease: unknown) => {
       assertTrustedDshClientFrame(
         event.sender,
         event.senderFrame?.url ?? '',
@@ -187,7 +211,24 @@ export const mainWindowPlugin = {
       )
       await browserGuests.release(event.sender, lease)
     })
-    const ready = await pluginHost.start()
+    /**
+     * 启动 DSH 插件宿主：开始 / 成功 / 失败各一行（失败行带契约码与详情），失败原样抛出。
+     *
+     * 插件宿主起不来是应用打不开的主要形态，日志里必须能一眼看出卡在这一步、码是什么。
+     */
+    async function runPluginHostStart(): Promise<Awaited<ReturnType<typeof pluginHost.start>>> {
+      logAction(appLog, LOG_ACTIONS.pluginHostStart, 'start')
+      try {
+        const started = await pluginHost.start()
+        logAction(appLog, LOG_ACTIONS.pluginHostStart, 'success')
+        return started
+      } catch (error) {
+        logAction(appLog, LOG_ACTIONS.pluginHostStart, 'failure', error)
+        throw error
+      }
+    }
+
+    const ready = await runPluginHostStart()
     pluginHostReady = { ...ready, cookie: await authenticateDshClientHost(ready.url) }
     await windows.open('main')
     return () => {
@@ -237,6 +278,11 @@ function configureMainWindow(appPaths: Context['appPaths'], appLog: Context['app
   installWindowsNativeFrame(window)
   window.webContents.on('did-finish-load', () => installWindowsNativeFrame(window))
   window.webContents.on('console-message', (details) => {
+    // 渲染层动作行（WP14）：与 console 错误共用这个桥，不新开 IPC 通道。
+    // 作者卡的 srcDoc iframe 不是 DSH 应用渲染层，它的行一律不收（下面的错误分支同一条规矩）。
+    if (details.sourceId !== 'about:srcdoc'
+      && !(details.frame && details.frame !== window.webContents.mainFrame)
+      && relayRendererActionLog(appLog, details.message)) return
     if (details.level !== 'error') return
     // Rich character cards run in srcDoc iframes. Their compatibility API
     // errors are author-card diagnostics, not failures of the DSH application

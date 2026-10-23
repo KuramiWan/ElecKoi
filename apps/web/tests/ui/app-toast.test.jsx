@@ -32,4 +32,20 @@ describe('app notices', () => {
     expect(html).toContain('复制错误');
     expect(html).toContain('关闭');
   });
+
+  it('shows the failure code and parameter details when the notice carries a resolved failure', () => {
+    const failure = {
+      code: 'eleckoi/storage/corrupt',
+      details: { what: '创作项目索引' },
+      diagnostic: 'eleckoi-renderer-failure [eleckoi/storage/corrupt] 库坏了（what: 创作项目索引）',
+    };
+    const html = renderToStaticMarkup(<AppToast
+      notice={{ id: 3, type: 'error', message: '存储内容已损坏，读不出来：创作项目索引。', failure }}
+    />);
+
+    // 应用级失败升级到对话框后，码与参数化详情仍然可见（不是只剩一句人话）。
+    expect(html).toContain('错误码');
+    expect(html).toContain('eleckoi/storage/corrupt');
+    expect(html).toContain('<dt>what</dt><dd>创作项目索引</dd>');
+  });
 });

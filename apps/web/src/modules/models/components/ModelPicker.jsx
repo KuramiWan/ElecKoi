@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ModelIdentityIcon } from "./ModelIdentityIcon.jsx";
@@ -214,10 +216,10 @@ export function ModelPicker({
       for (const id of changedConfigIds) {
         const config = draftConfigs.find(config => config.id === id);
         if (config.model_options.some(option => modelParameterState({ ...config, model: option.id }).parameterError)) {
-          throw new Error("模型参数超出有效范围。");
+          throw new DesktopError(ELECKOI_FAILURE_CODES.modelConfigInvalid, "模型参数超出有效范围。", { field: "模型参数", what: "模型参数" });
         }
       }
-      if (changedConfigIds.length && !onSaveModelConfig) throw new Error("模型参数保存功能不可用。");
+      if (changedConfigIds.length && !onSaveModelConfig) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, "模型参数保存功能不可用。", { what: "模型参数保存入口" });
       for (const id of changedConfigIds) await onSaveModelConfig(draftConfigs.find(config => config.id === id));
       setChangedConfigIds([]);
       await onSelect?.(draftSelection);

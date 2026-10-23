@@ -3,6 +3,8 @@ import type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelec
 import type { EditorLibraryAddress, EditorLibraryVersions, EditorLibrarySaveRequest, EditorLibrarySaveResult } from './types.js'
 import { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
 import { parseChatImport } from './chatImport.js'
+import { productFailure } from './productFailure.js'
+import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
 import { registerHostApiInspect } from './hostInspect.js'
 import { randomUUID } from 'node:crypto'
 import { RemoteChangeFeed } from './remote-change-feed.js'
@@ -102,6 +104,10 @@ import { ElecKoiAuthorVariablesApi } from './author-variables.js'
 import { ElecKoiAuthorScriptsApi, eleckoiScriptAssetsPlugin } from './author-scripts.js'
 export { ElecKoiAuthorVariablesApi } from './author-variables.js'
 export { ElecKoiAuthorScriptsApi, eleckoiScriptAssetsPlugin } from './author-scripts.js'
+export { productFailure, PRODUCT_FAILURE_DETAIL_KEYS, FALLBACK_FAILURE_CODE } from './productFailure.js'
+export type { ProductFailure, ProductFailureDetails, ProductFailureIssue } from './productFailure.js'
+export { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
+export type { ClientFailureCode } from './errorCodes.generated.js'
 export type { NativeAuthorScriptCatalog, NativeAuthorRuleTask, NativeAuthorRuleReply, ScriptWorkspace } from './types.js'
 export { ElecKoiVariableProcessing } from './variable-processing.js'
 export type { VariableRuleProvider, VariableRuleRun, VariableRuleContext } from './variable-processing.js'
@@ -246,6 +252,9 @@ const TAVILY_WEB_PROVIDER = 'tavily'
 const TAVILY_API_KEY_REF = 'TAVILY_API_KEY'
 const DISPLAY_PREFERENCES_NAMESPACE = 'eleckoi-display-preferences'
 
+// 「确实不处理」的具名声明：语义见 packages/shared/src/foundation/swallowedFailure.ts。
+const bestEffort = (): void => {}
+
 
 export class ConversationChangeFeed extends RemoteChangeFeed<ConversationChange> {
   constructor() {
@@ -348,7 +357,7 @@ export class ElecKoiDisplayPreferencesApi extends TypertRemoteService {
   private snapshot(): DisplayPreferencesSnapshot {
     const descriptor = this.ownerContext.settings.describe()
       .find(item => item.ns === DISPLAY_PREFERENCES_NAMESPACE)
-    if (!descriptor) throw new Error('DSH 显示偏好配置尚未加载。')
+    if (!descriptor) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 显示偏好配置尚未加载。', { what: 'DSH 显示偏好配置' })
     const value = jsonObject(descriptor.value)
     return {
       ui: jsonObject(value.ui),
@@ -456,11 +465,11 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
    */
   @Remote
   async regenerateImage(conversationId: string, batchId: string, frameId: number, signal: AbortSignal): Promise<void> {
-    if (!batchId || !Number.isSafeInteger(frameId) || frameId < 1) throw new Error('图片重新生成参数不正确。')
+    if (!batchId || !Number.isSafeInteger(frameId) || frameId < 1) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '图片重新生成参数不正确。', { field: 'batchId/frameId' })
     await this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
       const result = await this.ownerContext.eleckoiRoleplaySessions.regenerateImage(conversationId, batchId, frameId, signal)
       this.changeFeed.publish({ kind: 'generation', conversationId, error: result.error || '' })
-      if (result.error) throw new Error(result.error)
+      if (result.error) throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, result.error, { what: '重新生成的图片' })
     })
   }
 
@@ -550,7 +559,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     conversationId: string,
     messages: ConversationMessageDisplayInput[]
   ): ConversationMessageDisplayResult[] {
-    if (!Array.isArray(messages) || messages.length > 200) throw new Error('待显示的消息数量无效。')
+    if (!Array.isArray(messages) || messages.length > 200) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的消息数量无效。', { what: '待显示的消息' })
     let totalLength = 0
     for (const message of messages) {
       if (!message || typeof message.id !== 'string' || !message.id
@@ -559,22 +568,22 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
         || typeof message.variableStateJson !== 'string'
         || !['complete', 'streaming', 'error', 'cancelled'].includes(message.status)
         || typeof message.createdAt !== 'string') {
-        throw new Error('待显示的消息格式无效。')
+        throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的消息格式无效。', { what: '待显示的消息' })
       }
       totalLength += message.content.length + message.variableStateJson.length
       if (message.reasoning !== undefined) {
-        if (message.role !== 'assistant' || !Array.isArray(message.reasoning)) throw new Error('待显示的推理格式无效。')
+        if (message.role !== 'assistant' || !Array.isArray(message.reasoning)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的推理格式无效。', { what: '待显示的推理' })
         const ids = new Set<string>()
         for (const item of message.reasoning) {
           if (!item || typeof item.id !== 'string' || !item.id || typeof item.text !== 'string' || ids.has(item.id)) {
-            throw new Error('待显示的推理格式无效。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的推理格式无效。', { what: '待显示的推理' })
           }
           ids.add(item.id)
           totalLength += item.text.length
         }
       }
     }
-    if (totalLength > 4 * 1024 * 1024) throw new Error('待显示的消息内容过大。')
+    if (totalLength > 4 * 1024 * 1024) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的消息内容过大。', { what: '待显示的消息内容' })
     return this.productData.projectConversationMessages(conversationId, messages)
   }
 
@@ -643,7 +652,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     for (const runtimeSessionId of runtimeSessionIds) {
       const liveAgent = this.ownerContext.agents.get(runtimeSessionId as SessionId)
       if (liveAgent !== undefined && liveAgent.status !== 'idle') {
-        throw new Error('请先等待当前回复结束，再导出聊天记录。')
+        throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先等待当前回复结束，再导出聊天记录。', { what: '等待当前回复结束' })
       }
       try {
         const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
@@ -652,13 +661,13 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
           inheritedEventCount: inspection.inheritedEventCount,
           events: [...inspection.events]
         })
-      } catch (error) {
-        if (requiredIds.has(runtimeSessionId)) throw new Error('聊天记录缺少对应的 DSH 会话日志，无法完整导出。', { cause: error })
+      } catch {
+        if (requiredIds.has(runtimeSessionId)) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '聊天记录缺少对应的 DSH 会话日志，无法完整导出。', { what: '聊天记录对应的 DSH 会话日志' })
       }
     }
     const archivedIds = new Set(sessionLogs.map((item) => item.header.id as string))
     if ([...requiredIds].some((id) => !archivedIds.has(id))) {
-      throw new Error('聊天记录缺少对应的 DSH 会话日志，无法完整导出。')
+      throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '聊天记录缺少对应的 DSH 会话日志，无法完整导出。', { what: '聊天记录对应的 DSH 会话日志' })
     }
     return JSON.stringify({
       format: 'eleckoi.desktop-chat-history',
@@ -677,13 +686,17 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
    */
   @Remote
   async importArchive(characterId: string, json: string): Promise<string> {
-    if (json.length > 100_000_000) throw new Error('聊天记录文件过大。')
+    if (json.length > 100_000_000) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '聊天记录文件过大。', { field: 'size' })
     const first = json.split(/\r?\n/).find(line => line.trim())
     let tavernHeader = false
     try {
       const header: unknown = first ? JSON.parse(first) : undefined
       tavernHeader = !!header && typeof header === 'object' && !Array.isArray(header) && Object.hasOwn(header, 'chat_metadata')
-    } catch { /* A multiline native archive is parsed below. */ }
+    } catch {
+      // A multiline native archive is parsed below.
+      // 探测酒馆头失败只说明首行不是 JSON 头，不属于要报告的失败。
+      bestEffort()
+    }
     if (tavernHeader) {
       const imported = parseChatImport(json)
       const details = await this.create({ metadata: { characterId } })
@@ -697,18 +710,18 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
       } catch (error) { await this.delete(details.conversation.id); throw error }
     }
     let value: unknown
-    try { value = JSON.parse(json) } catch { throw new Error('聊天记录不是有效的 JSON 文件。') }
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('聊天记录文件格式不正确。')
+    try { value = JSON.parse(json) } catch { throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天记录不是有效的 JSON 文件。', { what: '聊天记录文件' }) }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天记录文件格式不正确。', { what: '聊天记录文件' })
     const archive = value as Record<string, unknown>
     if (archive.format !== 'eleckoi.desktop-chat-history' || (archive.version !== 1 && archive.version !== 2)
-      || !Array.isArray(archive.sessionLogs)) throw new Error('不支持此聊天记录文件。')
+      || !Array.isArray(archive.sessionLogs)) throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持此聊天记录文件。', { what: '聊天记录文件的格式或版本' })
     const snapshot = this.productData.parseConversationArchive(archive.snapshot)
-    if (snapshot.characterId !== characterId) throw new Error('聊天记录与当前角色不匹配。')
+    if (snapshot.characterId !== characterId) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '聊天记录与当前角色不匹配。', { what: '聊天记录与角色' })
     const expectedIds = new Set(this.productData.conversationArchiveRuntimeSessionIds(snapshot))
     const logs = parseDshSessionArchives(archive.sessionLogs, expectedIds)
     const archivedIds = new Set(logs.map((item) => item.header.id as string))
     if (this.productData.requiredConversationArchiveRuntimeSessionIds(snapshot).some((id) => !archivedIds.has(id))) {
-      throw new Error('聊天记录缺少对应的 DSH 会话日志。')
+      throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天记录缺少对应的 DSH 会话日志。', { what: '聊天记录里的 DSH 会话日志' })
     }
     const conversationId = randomUUID()
     const ids = new Map([...expectedIds].map((id) => [id, id === snapshot.conversationId ? conversationId : randomUUID()]))
@@ -717,7 +730,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     try {
       for (const log of logs) {
         const id = ids.get(log.header.id as string)
-        if (!id) throw new Error('聊天记录缺少 DSH 会话映射。')
+        if (!id) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天记录缺少 DSH 会话映射。', { what: '聊天记录里的 DSH 会话映射' })
         const parentSession = log.header.parentSession
         const header = {
           ...log.header,
@@ -764,7 +777,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
     const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId, signal)
     if (!sessionContainsFile(inspection.events, attachmentId, name)) {
-      throw new Error('文件不在当前聊天记录中。')
+      throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '文件不在当前聊天记录中。', { what: '当前聊天记录中的文件' })
     }
     const path = storedFilePath(attachmentId, name)
     await this.ownerContext.sessionController.openWorkspacePath({ path, action: 'reveal' }, signal)
@@ -837,11 +850,11 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     }
     const source = this.productData.runtimeSessionId(conversationId), inspection = await this.ownerContext.sessionController.inspect(source as SessionId)
     const targetIndex = inspection.events.findIndex(event => Number(event.seq) === atSeq)
-    if (targetIndex < 0) throw new Error(`Branch event does not exist: ${atSeq}`)
+    if (targetIndex < 0) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `Branch event does not exist: ${atSeq}`, { what: '分支边界的聊天消息' })
     const sourceTurn = sessionMessageTurn(inspection.events, targetIndex), target = inspection.events[targetIndex]!
     if (!visibleSessionMessages(inspection.events).some(message => message.seq === atSeq)
       || (target.type === 'assistant/message' && !settledSessionReplyText(jsonRecord(target)).trim())) {
-      throw new Error('只能从正式显示的聊天消息创建分支，不能把中间工具步骤当成完整回复状态。')
+      throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '只能从正式显示的聊天消息创建分支，不能把中间工具步骤当成完整回复状态。', { what: '选择一条正式显示的聊天消息' })
     }
     const fork = await this.ownerContext.sessionController.fork({ sessionId: source as SessionId, atSeq })
     let id: string | undefined
@@ -856,7 +869,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
         .map(event => String(jsonRecord(event.data).id ?? '')))
       const stateHistory = snapshot.tables.conversation_state_snapshots
       const retainedReplies = snapshot.tables.agent_responses
-      if (!stateHistory || !retainedReplies) throw new Error('聊天归档缺少正式状态历史或消息关系。')
+      if (!stateHistory || !retainedReplies) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天归档缺少正式状态历史或消息关系。', { what: '聊天归档的状态历史或消息关系' })
       snapshot.tables.conversation_state_snapshots = stateHistory.filter(row => {
         if (row.runtimeSessionId !== source) return row.boundaryType === 'reply'
           ? retainedReplies.some(reply => reply.id === row.boundaryId) : inputs.has(String(row.boundaryId))
@@ -955,7 +968,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
       const fromTurn = sessionMessageTurn(inspection.events, target.index)
       const visible = visibleSessionMessages(inspection.events)
       const selectedVisibleIndex = visible.findIndex(item => item.seq === eventSeq)
-      if (selectedVisibleIndex < 0) throw new Error('找不到要删除的 DSH 消息。')
+      if (selectedVisibleIndex < 0) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到要删除的 DSH 消息。', { what: '要删除的 DSH 消息' })
       const retainedUser = role === 'assistant'
         ? directUserMessageBeforeTurn(inspection.events, target.index, fromTurn)
         : undefined
@@ -971,7 +984,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
           const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(
             runtimeSessionId, fromTurn, retainedSeq === undefined ? eventSeq : Number(retainedSeq), retainedSeq !== undefined
           )
-          if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
+          if (rewound === undefined) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前 DSH Session 不能安全回退。', { what: '当前 DSH 会话的回退状态' })
           const retained = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
           restoreRuntime.apply(retainedInputMessageIds(retained.events))
         })
@@ -1007,16 +1020,16 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     replacementMessage?: string
   ): Promise<{ runtimeSessionId: string; prepared: true; operationId: string }> {
     return this.ownerContext.eleckoiConversationLifecycle.exclusive(conversationId, async () => {
-      if (!requestId.trim()) throw new Error('重新生成请求缺少有效标识。')
+      if (!requestId.trim()) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '重新生成请求缺少有效标识。', { what: '重新生成请求标识' })
       const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
       await this.ownerContext.eleckoiRoleplaySessions.prepareSessionAccess(conversationId)
       const inspection = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
       const target = requireSessionMessage(inspection, eventSeq, 'user')
       const fromTurn = sessionMessageTurn(inspection.events, target.index)
       const inputMessageId = String(jsonRecord(target.event.data).id ?? '')
-      if (!inputMessageId) throw new Error('重新生成的用户事件缺少消息标识。')
+      if (!inputMessageId) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '重新生成的用户事件缺少消息标识。', { what: '用户事件的消息标识' })
       const promptText = replacementMessage ?? sessionMessageText(target.event)
-      if (replacementMessage !== undefined && !replacementMessage.trim()) throw new Error('重新生成的用户输入不能为空。')
+      if (replacementMessage !== undefined && !replacementMessage.trim()) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '重新生成的用户输入不能为空。', { field: 'replacementMessage' })
       const restoreRuntime = this.ownerContext.eleckoiRoleplaySessions.prepareRestoreBeforeTurn(
         conversationId,
         runtimeSessionId,
@@ -1030,7 +1043,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
             await this.ownerContext.eleckoiSessionEditor.editMessage(runtimeSessionId, eventSeq, 'user', replacementMessage)
           }
           const rewound = await this.ownerContext.eleckoiSessionEditor.rewind(runtimeSessionId, fromTurn, eventSeq, true)
-          if (rewound === undefined) throw new Error('当前 DSH Session 不能安全回退。')
+          if (rewound === undefined) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前 DSH Session 不能安全回退。', { what: '当前 DSH 会话的回退状态' })
           const retained = await this.ownerContext.sessionController.inspect(runtimeSessionId as SessionId)
           restoreRuntime.apply(retainedInputMessageIds(retained.events))
           await this.ownerContext.eleckoiRoleplaySessions.preparePrompt(conversationId, promptText)
@@ -1057,14 +1070,14 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
   @Remote
   async startRegeneration(conversationId: string, requestId: string, cancelled: boolean): Promise<{ accepted: boolean; turn?: number }> {
     const pending = this.pendingRegenerations.get(conversationId)
-    if (!pending || pending.requestId !== requestId) throw new Error('重新生成请求已失效。')
+    if (!pending || pending.requestId !== requestId) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '重新生成请求已失效。', { what: '重新生成请求' })
     this.pendingRegenerations.delete(conversationId)
     if (cancelled) return { accepted: false }
     const runtimeSessionId = this.productData.runtimeSessionId(conversationId)
     const resolved = await this.ownerContext.sessionController.resolveAgent(runtimeSessionId as SessionId)
     if ('error' in resolved) throw resolved.error
     const agent = resolved.agent as typeof resolved.agent & { continueFromInput?: (messageId: string) => number }
-    if (typeof agent.continueFromInput !== 'function') throw new Error('当前 DSH 运行时不支持复用已有用户事件。')
+    if (typeof agent.continueFromInput !== 'function') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '当前 DSH 运行时不支持复用已有用户事件。', { what: '当前 DSH 运行时的用户事件复用能力' })
     const turn = agent.continueFromInput(pending.inputMessageId)
     agent.session.append('eleckoi/input-continuation', {
       turn, inputMessageId: pending.inputMessageId, inputEventSeq: pending.inputEventSeq
@@ -1099,9 +1112,9 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     const inspection = await this.ownerContext.sessionController.inspect(sessionId)
     // Cold reads must also account for accepted input still waiting in the inbox.
     const projections = await this.ownerContext.sessionController.projections({ sessionId }, new AbortController().signal)
-    if (!projections) throw new Error('无法读取聊天状态，不能修改开场白。')
+    if (!projections) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '无法读取聊天状态，不能修改开场白。', { what: '聊天状态投影' })
     const inbox = projections.values.inbox
-    if (!inbox) throw new Error('无法读取输入队列，不能修改开场白。')
+    if (!inbox) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '无法读取输入队列，不能修改开场白。', { what: '输入队列投影' })
     const agent = this.ownerContext.agents.get(sessionId)
     // Recheck the attached writer after the asynchronous reads, then commit
     // synchronously so prompt admission cannot interleave with the mutation.
@@ -1110,7 +1123,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
       || agent?.status === 'running' || agent?.inbox.nextTurn.length || agent?.inbox.nextStep.length
       || inbox?.['next-turn'].length || inbox?.['next-step'].length
       || this.pendingRegenerations.has(conversationId)) {
-      throw new Error('对话开始后不能再切换或修改开场白。')
+      throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '对话开始后不能再切换或修改开场白。', { what: '在对话开始前修改开场白' })
     }
     const details = mutate()
     this.changeFeed.publish({ kind: 'messages', conversationId, reason: 'edited', messageIds: ['opening'] })
@@ -1128,7 +1141,7 @@ function parseDshSessionArchives(value: unknown[], expectedIds: ReadonlySet<stri
   const archivedIds = new Set<string>()
   return value.map((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new Error('聊天记录中的 DSH 会话数据无效。')
+      throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '聊天记录中的 DSH 会话数据无效。', { field: 'sessionLogs' })
     }
     const archive = item as Partial<DshSessionArchive>
     const id = archive.header?.id as string | undefined
@@ -1136,7 +1149,7 @@ function parseDshSessionArchives(value: unknown[], expectedIds: ReadonlySet<stri
       || !Array.isArray(archive.events)
       || !Number.isSafeInteger(archive.inheritedEventCount)
       || (archive.inheritedEventCount ?? -1) < 0) {
-      throw new Error('聊天记录中的 DSH 会话数据无效。')
+      throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '聊天记录中的 DSH 会话数据无效。', { field: 'sessionLogs' })
     }
     archivedIds.add(id)
     return archive as DshSessionArchive
@@ -1161,10 +1174,10 @@ function storedFilePath(attachmentId: string, name: string): string {
   const match = /^sha256:([a-f0-9]{64})$/.exec(attachmentId)
   if (!match?.[1] || !name || name !== name.trim() || name === '.' || name === '..'
     || /[/\\\u0000-\u001f\u007f<>:"|?*]/u.test(name)) {
-    throw new Error('文件附件引用无效。')
+    throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '文件附件引用无效。', { field: 'attachmentId' })
   }
   const home = process.env.DSH_HOME
-  if (!home) throw new Error('DSH 附件目录尚未就绪。')
+  if (!home) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 附件目录尚未就绪。', { what: 'DSH 附件目录' })
   return join(home, 'attachments', 'v1', 'files', match[1].slice(0, 2), match[1], name)
 }
 
@@ -1173,7 +1186,7 @@ export function requireSessionMessage(
   eventSeq: number,
   role: 'user' | 'assistant'
 ): { event: Record<string, unknown>; index: number } {
-  if (!Number.isSafeInteger(eventSeq) || eventSeq < 0) throw new Error('DSH 消息事件序号不正确。')
+  if (!Number.isSafeInteger(eventSeq) || eventSeq < 0) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'DSH 消息事件序号不正确。', { field: 'eventSeq' })
   const expectedType = role === 'user' ? 'user/message' : 'assistant/message'
   const index = inspection.events.findIndex((candidate) => {
     const event = jsonRecord(candidate)
@@ -1181,7 +1194,7 @@ export function requireSessionMessage(
     if (role !== 'user') return true
     return jsonRecord(jsonRecord(event.data).source).kind === 'user'
   })
-  if (index < 0) throw new Error('找不到要修改的 DSH 消息。')
+  if (index < 0) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到要修改的 DSH 消息。', { what: '要修改的 DSH 消息' })
   return { event: jsonRecord(inspection.events[index]), index }
 }
 
@@ -1240,7 +1253,7 @@ export function sessionMessageTurn(events: readonly unknown[], index: number): n
     }
     if (lastStartedTurn === lastEndedTurn) return lastStartedTurn + 1
   }
-  throw new Error('找不到这条消息所属的 DSH 轮次。')
+  throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这条消息所属的 DSH 轮次。', { what: '这条消息所属的 DSH 轮次' })
 }
 
 function directUserMessageBeforeTurn(
@@ -1450,7 +1463,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     if (provider === TAVILY_WEB_PROVIDER) return 'tavily'
     if (provider === DEEPSEEK_WEB_PROVIDER) return 'provider_native'
     if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
-    throw new Error('当前搜索提供器未由 ElecKoi 设置页面管理。')
+    throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前搜索提供器未由 ElecKoi 设置页面管理。', { what: '当前搜索提供器' })
   }
 
   /**
@@ -1460,9 +1473,9 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
    */
   @Remote
   async select(mode: WebSearchMode): Promise<WebSearchMode> {
-    if (mode !== 'provider_native' && mode !== 'tavily' && mode !== 'deepseek_api') throw new Error('不支持的联网搜索方式。')
+    if (mode !== 'provider_native' && mode !== 'tavily' && mode !== 'deepseek_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的联网搜索方式。', { what: '联网搜索方式', expected: 'provider_native、tavily、deepseek_api' })
     if (mode === 'tavily' && !this.ownerContext.settings.describe().some(item => item.ns === 'web-search-tavily')) {
-      throw new Error('Tavily 搜索插件当前未启用。')
+      throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'Tavily 搜索插件当前未启用。', { field: 'Tavily 搜索插件', what: '联网搜索插件配置' })
     }
     if (mode === 'deepseek_api') this.requireDeepSeek()
     const row = this.webRow()
@@ -1480,7 +1493,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
   @Remote
   async testTavily(apiKey?: string, signal?: AbortSignal): Promise<TavilyConnection> {
     const tavily = this.ownerContext.settings.describe().find(item => item.ns === 'web-search-tavily')
-    if (!tavily) throw new Error('Tavily 搜索插件当前未启用。')
+    if (!tavily) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'Tavily 搜索插件当前未启用。', { field: 'Tavily 搜索插件', what: '联网搜索插件配置' })
     const config = tavily.value as Record<string, unknown> | undefined
     const ref = typeof config?.apiKeyEnv === 'string' ? config.apiKeyEnv : TAVILY_API_KEY_REF
     const candidate = apiKey?.trim() || (await this.ownerContext.credentials.resolve(
@@ -1498,7 +1511,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
     const provider = this.webConfiguration().fetchProvider
     if (provider === 'http') return 'http'
     if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
-    throw new Error('当前抓取提供器未由 ElecKoi 设置页面管理。')
+    throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前抓取提供器未由 ElecKoi 设置页面管理。', { what: '当前抓取提供器' })
   }
 
   /**
@@ -1508,7 +1521,7 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
    */
   @Remote
   async selectFetch(mode: WebFetchMode): Promise<WebFetchMode> {
-    if (mode !== 'http' && mode !== 'deepseek_api') throw new Error('不支持的网页抓取方式。')
+    if (mode !== 'http' && mode !== 'deepseek_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的网页抓取方式。', { what: '网页抓取方式', expected: 'http、deepseek_api' })
     if (mode === 'deepseek_api') this.requireDeepSeek()
     await this.ownerContext.configEditor.edit(this.webRow(), current => ({ ...current, fetchProvider: mode === 'http' ? 'http' : DEEPSEEK_API_PROVIDER }))
     return mode
@@ -1530,13 +1543,13 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
 
   private requireDeepSeek() {
     const namespace = this.ownerContext.settings.describe().find(item => item.ns === DEEPSEEK_WEB_NAMESPACE)
-    if (!namespace) throw new Error('DeepSeek 联网 API 插件当前未启用。')
+    if (!namespace) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'DeepSeek 联网 API 插件当前未启用。', { field: 'DeepSeek 联网 API 插件', what: '联网搜索插件配置' })
     return namespace
   }
 
   private webRow(): ReturnType<Context['configEditor']['entries']>[number] {
     const row = this.ownerContext.configEditor.entries().find(entry => entry.options.id === WEB_ENTRY_ID)
-    if (!row) throw new Error('DSH 联网搜索配置当前不可用。')
+    if (!row) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 联网搜索配置当前不可用。', { what: 'DSH 联网搜索配置' })
     return row
   }
 

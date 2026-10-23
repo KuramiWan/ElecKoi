@@ -1,9 +1,12 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import {
   createChat as createChatSession,
   getChat,
   sendChatMessage,
 } from "../api/chatApi.js";
 import { encodeImageDraft } from "./useChatInputImages.js";
+import { LOG_ACTIONS, logAction } from "../../../utils/logAction.js";
 
 export async function runChatMessageSend(options) {
   const {
@@ -44,12 +47,16 @@ export async function runChatMessageSend(options) {
   setIsSending(true);
   setStatus(draftImages.length ? "正在处理图片..." : "正在回复...");
   let targetSessionId = sessionId;
+  // 关键路径日志：发送是用户最常做、失败时最想看日志的动作。开始一行在这里，
+  // 成功 / 失败在 finally 与 catch 里补（用户主动停止算成功——那是他要的结果）。
+  logAction(LOG_ACTIONS.messageSend, "start");
+  let sendFailed = false;
 
   try {
     const encodedImages = await Promise.all(draftImages.map(encodeImageDraft));
     throwIfAborted(controller.signal);
     if (!targetSessionId) {
-      if (!chatCharacter.character_id) throw new Error("请先从角色设定中双击角色进入聊天");
+      if (!chatCharacter.character_id) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, "请先从角色设定中双击角色进入聊天", { what: "从角色设定中进入聊天" });
       const characterName = chatCharacter.assistant_name || chatCharacter.character_name || "新对话";
       const created = await createChatSession(characterName, chatCharacter, { model: conversationModel });
       throwIfAborted(controller.signal);
@@ -110,6 +117,10 @@ export async function runChatMessageSend(options) {
     setStatus("回复完成");
     return { kind: "success" };
   } catch (error) {
+    if (!isAbortError(error)) {
+      sendFailed = true;
+      logAction(LOG_ACTIONS.messageSend, "failure", error);
+    }
     if (requestRef.current === activeRequest && !isAbortError(error)) {
       const message = getErrorMessage(error, "发送失败");
       setIsSending(false);
@@ -135,6 +146,7 @@ export async function runChatMessageSend(options) {
       ? { kind: "success" }
       : { kind: "error", text: getErrorMessage(error, "发送失败") };
   } finally {
+    if (!sendFailed) logAction(LOG_ACTIONS.messageSend, "success");
     if (requestRef.current === activeRequest) {
       requestRef.current = null;
       setIsSending(false);

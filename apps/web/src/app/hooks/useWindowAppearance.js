@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { chatDisplayPreferencesSchema, DEFAULT_CHAT_DISPLAY_PREFERENCES } from "@shared/contracts/settings/schemas";
 import {
@@ -13,6 +15,7 @@ import {
 import {
   useDshDisplayPreferences,
 } from "../../modules/settings/index.js";
+import { resolveFailure } from "../../utils/failureText.js";
 
 const EMPTY_DISPLAY_PREFERENCES = Object.freeze({
   status: "loading",
@@ -77,10 +80,10 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
 
   function changeAppearanceMode(mode) {
     try {
-      if (!appearance) throw new Error("DSH 主题服务尚未就绪。");
+      if (!appearance) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 主题服务尚未就绪。", { what: "主题服务" });
       appearance.theme.setTheme(normalizeAppearanceMode(mode));
     } catch (error) {
-      notify("error", error?.message || "外观模式切换失败。");
+      notify("error", resolveFailure(error, { fallback: "外观模式切换失败。" }).text);
     }
   }
 
@@ -93,7 +96,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     chatDisplaySaveTimerRef.current = window.setTimeout(async () => {
       chatDisplaySaveTimerRef.current = null;
       try {
-        if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+        if (!displayPreferences) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 显示偏好服务尚未就绪。", { what: "显示偏好服务" });
         const snapshot = await displayPreferences.setChatDisplay(nextDisplay);
         const parsed = chatDisplayPreferencesSchema.safeParse(snapshot.chatDisplay);
         const saved = parsed.success ? parsed.data : DEFAULT_CHAT_DISPLAY_PREFERENCES;
@@ -105,7 +108,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
         if (chatDisplayVersionRef.current !== version) return;
         chatDisplayDirtyRef.current = false;
         setChatDisplay(confirmedChatDisplayRef.current);
-        notify("error", error?.message || "聊天显示设置保存失败。");
+        notify("error", resolveFailure(error, { fallback: "聊天显示设置保存失败。" }).text);
       }
     }, 250);
   }
@@ -115,17 +118,17 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     const nextMode = normalizeSidebarCharacterArtwork(mode);
     setSidebarCharacterArtwork(nextMode);
     try {
-      if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+      if (!displayPreferences) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 显示偏好服务尚未就绪。", { what: "显示偏好服务" });
       await displayPreferences.updateUi({ sidebar_character_artwork: nextMode });
     } catch (error) {
       setSidebarCharacterArtwork(previousMode);
-      notify("error", error?.message || "侧栏角色图设置保存失败。");
+      notify("error", resolveFailure(error, { fallback: "侧栏角色图设置保存失败。" }).text);
     }
   }
 
   async function saveGlobalChatWallpaper(nextWallpaper) {
     const normalized = normalizeGlobalChatWallpaper(nextWallpaper);
-    if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+    if (!displayPreferences) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 显示偏好服务尚未就绪。", { what: "显示偏好服务" });
     const snapshot = await displayPreferences.updateUi({ global_chat_wallpaper: normalized });
     const saved = normalizeGlobalChatWallpaper(snapshot.ui.global_chat_wallpaper);
     setGlobalChatWallpaper(saved);
@@ -137,7 +140,7 @@ export function useWindowAppearance({ notify = () => {} } = {}) {
     const previous = newCharacterBackground;
     setNewCharacterBackground(normalized);
     try {
-      if (!displayPreferences) throw new Error("DSH 显示偏好服务尚未就绪。");
+      if (!displayPreferences) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 显示偏好服务尚未就绪。", { what: "显示偏好服务" });
       await displayPreferences.updateUi({ new_character_background: normalized });
       return normalized;
     } catch (error) {

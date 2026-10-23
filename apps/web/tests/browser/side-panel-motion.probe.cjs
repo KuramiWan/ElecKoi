@@ -47,6 +47,17 @@ app.whenReady().then(async () => {
     await win.loadURL(pathToFileURL(htmlPath).href + '?motion');
     await waitFor('Boolean(window.captionMotion && document.querySelector(".side-panel-collapse-button"))');
     await frames();
+    await win.webContents.debugger.attach('1.3');
+    // The runner's screen can be narrower than the window the test asks for (the
+    // hosted Windows runner is 1024px wide), and the layout min-widths then clamp
+    // the side panel. Emulate the viewport explicitly so the layout does not
+    // depend on the host screen.
+    const setViewport = (width, height) => win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+    await setViewport(1400, 600);
+    // The runner's OS may report reduced motion; pin no-preference for the default
+    // path, then emulate reduce explicitly for the reduced-motion case below.
+    await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{name:'prefers-reduced-motion',value:'no-preference'}] });
+    await frames();
     const report = { initial: await measure() };
     await evaluate('document.querySelector(".side-panel-collapse-button").click()');
     report.collapseMid = await seek(150);
@@ -61,10 +72,12 @@ app.whenReady().then(async () => {
     report.expandMid = await seek(150);
     report.reopened = await finish();
     win.setContentSize(960, 600);
+    await setViewport(960, 600);
     await waitFor('innerWidth < 970');
     await frames();
     report.resized = await measure();
     win.setContentSize(1400, 600);
+    await setViewport(1400, 600);
     await waitFor('innerWidth > 1390');
     await frames();
     await evaluate('document.querySelector(".side-panel-collapse-button").click()');
@@ -87,7 +100,6 @@ app.whenReady().then(async () => {
     await frames();
     report.instant = await measure();
     await waitFor('!document.querySelector(".main-window-shell").hasAttribute("data-columns-animating")');
-    await win.webContents.debugger.attach('1.3');
     await win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{name:'prefers-reduced-motion',value:'reduce'}] });
     await evaluate('window.captionMotion.setInstant(false); document.querySelector(".side-panel-collapse-button").click()');
     await frames();

@@ -19,7 +19,18 @@ it('keeps the five mobile actions at the bottom and shares desktop collection ma
     await writeFile(resolve(directory, 'theme.css'), browserThemeCss());
     await writeFile(htmlPath, '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="fixture.css"></head><body><div id="root"></div><script src="fixture.js"></script></body></html>');
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-    await promisify(execFile)(require('electron'), [resolve('apps/web/tests/browser/mobile-editor-layout.probe.cjs'), htmlPath, reportPath], { env, timeout: 45000, windowsHide: true });
+    // A freshly installed Electron image can stay locked for a moment on Windows
+    // CI (antivirus scan); retry the launch instead of failing the layout checks.
+    const launch = async (attempt = 0) => {
+      try {
+        return await promisify(execFile)(require('electron'), [resolve('apps/web/tests/browser/mobile-editor-layout.probe.cjs'), htmlPath, reportPath], { env, timeout: 45000, windowsHide: true });
+      } catch (error) {
+        if (attempt >= 2 || !['EBUSY', 'ETXTBSY', 'EPERM'].includes(error.code)) throw error;
+        await new Promise(done => setTimeout(done, 1000 * (attempt + 1)));
+        return launch(attempt + 1);
+      }
+    };
+    await launch();
     const { layouts: reports, merges, searches } = JSON.parse(await readFile(reportPath, 'utf8')); expect(reports).toHaveLength(80);
     expect(searches).toHaveLength(30);
     for (const report of searches) {

@@ -1,3 +1,4 @@
+import { reportFailure } from "../../../utils/failureText.js";
 export const authorConversationEventNames = [
   'messages.changed', 'agent.output.delta', 'agent.run.finished', 'agent.run.failed',
   'agent.state.changed', 'agent.process.updated', 'agent.generation.stats',
@@ -144,7 +145,7 @@ function createSubscription(model, conversationId) {
 
   let eventQueue = Promise.resolve();
   const emit = (name, payload) => {
-    eventQueue = eventQueue.catch(() => {}).then(async () => {
+    eventQueue = eventQueue.catch(error => reportFailure(error, "作者会话事件队列")).then(async () => {
       const event = { name, payload: await publicAuthorEvent(
         name,
         payload,
@@ -152,7 +153,7 @@ function createSubscription(model, conversationId) {
       ) };
       for (const listener of listeners) listener(event);
     });
-    void eventQueue.catch(() => {});
+    void eventQueue.catch(error => reportFailure(error, "作者会话事件队列"));
   };
 
   const onDetails = () => {

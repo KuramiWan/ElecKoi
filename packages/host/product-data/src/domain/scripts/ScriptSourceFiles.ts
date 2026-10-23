@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameS
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { scriptFilePathSchema } from '@shared/contracts/scripts/schemas'
 import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 
@@ -28,14 +30,14 @@ export class ScriptSourceFiles {
   private watchError: Error | undefined
   constructor(readonly root: string, private readonly store: ElecKoiSqliteStore,
     private readonly ownerExists: (scope: 'character' | 'preset', ownerId: string) => boolean) {
-    if (!isAbsolute(root)) throw new Error('脚本源码需要明确的本地目录。')
+    if (!isAbsolute(root)) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '脚本源码需要明确的本地目录。', { what: '脚本源码目录' })
     this.recover()
   }
 
   path(name: string): string {
     scriptFilePathSchema.parse(name)
     const path = resolve(this.root, name)
-    if (!path.startsWith(resolve(this.root) + sep)) throw new Error('脚本文件不能位于脚本目录之外。')
+    if (!path.startsWith(resolve(this.root) + sep)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '脚本文件不能位于脚本目录之外。', { what: '脚本目录之外的路径' })
     return path
   }
 
@@ -49,7 +51,7 @@ export class ScriptSourceFiles {
   bytes(directory: string, name: string): Uint8Array {
     const parent = this.directory(directory), path = this.path(`${directory}/${name}`)
     this.contained(path, parent)
-    if (!statSync(path).isFile()) throw new Error('脚本资源不是普通文件。')
+    if (!statSync(path).isFile()) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '脚本资源不是普通文件。', { what: '脚本资源' })
     return readFileSync(path)
   }
 
@@ -62,10 +64,10 @@ export class ScriptSourceFiles {
         const name = `${relative}/${entry.name}`, path = this.path(name)
         this.contained(path, parent)
         const stat = statSync(path)
-        if (entry.isSymbolicLink()) throw new Error(`脚本目录不支持链接文件：${name}`)
+        if (entry.isSymbolicLink()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `脚本目录不支持链接文件：${name}`, { what: '脚本目录里的链接文件' })
         if (stat.isDirectory()) visit(name)
         else if (stat.isFile()) files.add(name.slice(directory.length + 1))
-        else throw new Error(`脚本资源不是普通文件：${name}`)
+        else throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `脚本资源不是普通文件：${name}`, { what: '脚本资源' })
       }
     }
     if (existsSync(parent)) visit(directory)
@@ -101,7 +103,7 @@ export class ScriptSourceFiles {
 
   private contained(path: string, parent: string): void {
     const target = realpathSync(path), root = realpathSync(parent)
-    if (target !== root && !target.startsWith(root + sep)) throw new Error('脚本资源不能位于所属目录之外。')
+    if (target !== root && !target.startsWith(root + sep)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '脚本资源不能位于所属目录之外。', { what: '所属目录之外的路径' })
   }
 
   read(name: string): string {
@@ -112,7 +114,7 @@ export class ScriptSourceFiles {
     if (!this.active) this.recover()
     const staged = this.changes.get(name)
     if (staged) {
-      if (staged.content === null) throw new Error(`脚本文件已删除：${name}`)
+      if (staged.content === null) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `脚本文件已删除：${name}`, { what: '脚本文件' })
       return staged.content
     }
     const path = this.path(name)
@@ -121,7 +123,7 @@ export class ScriptSourceFiles {
   }
 
   stage(name: string, content: string | Uint8Array | null): void {
-    if (!this.active) throw new Error('脚本文件修改必须进入所属事务。')
+    if (!this.active) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '脚本文件修改必须进入所属事务。', { what: '脚本事务' })
     const previous = this.changes.get(name)
     const beforeHash = previous ? previous.beforeHash : this.hash(name)
     if (beforeHash === (content === null ? null : sourceHash(content))) { this.changes.delete(name); return }
@@ -136,7 +138,7 @@ export class ScriptSourceFiles {
   }
 
   markOwnerDeletion(scope: 'character' | 'preset', ownerId: string): void {
-    if (!this.active) throw new Error('脚本所属对象的删除必须进入所属事务。')
+    if (!this.active) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '脚本所属对象的删除必须进入所属事务。', { what: '脚本事务' })
     const key = JSON.stringify([scope, ownerId]), previous = this.owners.get(key)
     this.owners.set(key, { scope, ownerId, before: previous ? previous.before : this.ownerExists(scope, ownerId), after: false })
   }
@@ -191,7 +193,7 @@ export class ScriptSourceFiles {
     } catch (error) { this.cleanup(directory); throw error }
     this.pending = directory
     for (const [index, file] of journal.files.entries()) {
-      if (this.hash(file.path) !== file.beforeHash) throw new Error(`脚本文件已被外部修改，未覆盖：${file.path}`)
+      if (this.hash(file.path) !== file.beforeHash) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, `脚本文件已被外部修改，未覆盖：${file.path}`, { what: '脚本文件' })
       const target = this.path(file.path)
       mkdirSync(dirname(target), { recursive: true })
       if (file.beforeHash !== null) renameSync(target, join(directory, `${index}.old`))
@@ -210,12 +212,12 @@ export class ScriptSourceFiles {
       const backup = join(directory, `${index}.old`), target = this.path(file.path)
       if (existsSync(backup)) {
         const current = this.hash(file.path)
-        if (current !== null && current !== file.afterHash) throw new Error(`脚本回滚遇到外部修改，已保留原文件：${file.path}`)
+        if (current !== null && current !== file.afterHash) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, `脚本回滚遇到外部修改，已保留原文件：${file.path}`, { what: '脚本文件' })
         if (current !== null) rmSync(target)
         renameSync(backup, target)
       } else if (file.beforeHash === null && file.afterHash !== null && !existsSync(join(directory, `${index}.new`))) {
         const current = this.hash(file.path)
-        if (current !== null && current !== file.afterHash) throw new Error(`脚本回滚遇到外部修改，已保留文件：${file.path}`)
+        if (current !== null && current !== file.afterHash) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, `脚本回滚遇到外部修改，已保留文件：${file.path}`, { what: '脚本文件' })
         if (current !== null) rmSync(target)
       }
     }
@@ -223,7 +225,7 @@ export class ScriptSourceFiles {
   }
 
   private cleanup(directory: string): void {
-    if (!resolve(directory).startsWith(this.path('.transactions') + sep)) throw new Error('脚本事务目录无效。')
+    if (!resolve(directory).startsWith(this.path('.transactions') + sep)) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '脚本事务目录无效。', { what: '脚本事务目录' })
     rmSync(directory, { recursive: true, force: true })
   }
 
@@ -231,7 +233,7 @@ export class ScriptSourceFiles {
     const parent = this.path('.transactions')
     if (!existsSync(parent)) return
     for (const name of readdirSync(parent)) {
-      if (!/^[0-9a-f-]{36}$/.test(name)) throw new Error('脚本事务目录包含未知文件，未修改数据。')
+      if (!/^[0-9a-f-]{36}$/.test(name)) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '脚本事务目录包含未知文件，未修改数据。', { what: '脚本事务目录' })
       const directory = join(parent, name)
       if (!existsSync(join(directory, 'journal.json'))) { this.cleanup(directory); continue }
       const journal = this.journal(directory)
@@ -243,7 +245,7 @@ export class ScriptSourceFiles {
         && journal.owners.every((owner, index) => owners[index] === owner.after)) this.cleanup(directory)
       else if (journal.rows.every((row, index) => isDeepStrictEqual(current[index], row.before))
         && journal.owners.every((owner, index) => owners[index] === owner.before)) this.rollback(directory, journal)
-      else throw new Error('脚本事务与所属记录不匹配，已保留文件，请检查存储状态。')
+      else throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '脚本事务与所属记录不匹配，已保留文件，请检查存储状态。', { what: '脚本事务与所属记录' })
     }
   }
 }

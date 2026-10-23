@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { FIXED_ENTRY_IDS, PINNED_ENTRY_IDS, createId, uniqueName } from "./settingLibraryEditing.js";
 
 export const SETTING_LIBRARY_EXPORT_FORMAT = "eleckoi.workspace-setting-library";
@@ -237,7 +239,7 @@ function promptPositionFromJson(value, index) {
 
 function parseElecKoiExport(source) {
   if (source.format !== SETTING_LIBRARY_EXPORT_FORMAT || source.version !== SETTING_LIBRARY_EXPORT_VERSION) {
-    throw new Error("这不是当前版本的 ElecKoi 设定库文件。");
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, "这不是当前版本的 ElecKoi 设定库文件。", { what: "设定库文件", expected: "当前版本" });
   }
   return {
     id: createId("import"),
@@ -300,7 +302,7 @@ function hasDynamicGetwi(content) {
 function parseSillyTavernExport(source) {
   const book = source?.data?.character_book || source?.character_book || source;
   const rawEntries = worldBookEntries(book);
-  if (!rawEntries.length) throw new Error("这个文件里没有可导入的酒馆世界书条目。");
+  if (!rawEntries.length) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, "这个文件里没有可导入的酒馆世界书条目。", { what: "酒馆世界书条目", path: "entries" });
   const name = text(source.name) || text(source?.originalData?.name) || text(book?.name) || "酒馆世界书";
   const groupId = createId("tavern-world-book");
   const timestamp = new Date().toISOString();
@@ -385,12 +387,12 @@ export function parseSettingLibraryFile(json, expected = "auto") {
   try {
     source = JSON.parse(json);
   } catch (error) {
-    throw new Error("JSON 文件无法读取。", { cause: error });
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, "JSON 文件无法读取。", { what: "设定库文件" });
   }
-  if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("设定库文件格式不正确。");
+  if (!source || typeof source !== "object" || Array.isArray(source)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, "设定库文件格式不正确。", { what: "设定库文件" });
   const isSillyTavern = !source.format && Boolean(source.entries || source.character_book || source?.data?.character_book);
-  if (expected === "eleckoi" && isSillyTavern) throw new Error("请选择 ElecKoi 导出的设定库文件。");
-  if (expected === "sillytavern" && !isSillyTavern) throw new Error("请选择 SillyTavern 世界书 JSON。");
+  if (expected === "eleckoi" && isSillyTavern) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "请选择 ElecKoi 导出的设定库文件。", { what: "选中的设定库文件", expected: "ElecKoi 导出的设定库文件" });
+  if (expected === "sillytavern" && !isSillyTavern) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "请选择 SillyTavern 世界书 JSON。", { what: "选中的设定库文件", expected: "SillyTavern 世界书 JSON" });
   return isSillyTavern ? parseSillyTavernExport(source) : parseElecKoiExport(source);
 }
 

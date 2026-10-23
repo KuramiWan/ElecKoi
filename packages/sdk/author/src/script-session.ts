@@ -64,7 +64,7 @@ export class AuthorScriptSession {
         } catch (error) {
           if (!this.lifetime.signal.aborted) {
             this.failed.add(script.key)
-            this.options.status({ key: script.key, id: script.id, status: 'error', error: error instanceof Error ? error.message : String(error) })
+            this.options.status({ key: script.key, id: script.id, status: 'error', error: failureText(error) })
           }
           throw error
         }
@@ -133,7 +133,7 @@ export class AuthorScriptSession {
       try { frame.window.dispatchEvent(new frame.window.CustomEvent('pagehide')) }
       catch (error) {
         failures.push(error); this.failed.add(script.key)
-        this.options.status({ key: script.key, id: script.id, status: 'error', error: error instanceof Error ? error.message : String(error) })
+        this.options.status({ key: script.key, id: script.id, status: 'error', error: failureText(error) })
       }
     }
     this.closing = Promise.resolve().then(async () => {
@@ -143,12 +143,12 @@ export class AuthorScriptSession {
           if (!this.failed.has(script.key)) this.options.status({ key: script.key, id: script.id, status: 'stopped', error: '' })
         } catch (error) {
           failures.push(error)
-          this.options.status({ key: script.key, id: script.id, status: 'error', error: error instanceof Error ? error.message : String(error) })
+          this.options.status({ key: script.key, id: script.id, status: 'error', error: failureText(error) })
         } finally {
           try { frame.dispose() }
           catch (error) {
             failures.push(error)
-            this.options.status({ key: script.key, id: script.id, status: 'error', error: error instanceof Error ? error.message : String(error) })
+            this.options.status({ key: script.key, id: script.id, status: 'error', error: failureText(error) })
           }
         }
       }
@@ -156,6 +156,22 @@ export class AuthorScriptSession {
     })
     return this.closing
   }
+}
+
+/**
+ * 脚本启动 / 清理失败的文案：`Error` 取 `message`，**带码的普通对象**也取 `message`。
+ *
+ * 作者脚本的抛出跨包传递后可能不是 `Error` 实例（别的层抛的是 `{ code, message, details }` 普通对象），
+ * 直接 `String(error)` 会变成 `[object Object]`，状态栏就看不到失败原因了。
+ * 本包没有 `@shared` 别名，所以这个判定留在这里，不依赖契约包。
+ */
+function failureText(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return String(error)
 }
 
 function awaitStartup<T>(promise: Promise<T>, signal: AbortSignal, lateResult?: (value: T) => void): Promise<T> {

@@ -192,7 +192,7 @@ export function ConversationWidthControls({ container, phase }: ConversationWidt
     const resolved = resolveContentWidth(container.offsetWidth, width)
     preference.current = resolved
     preferenceResolved.current = true
-    void preferences?.updateUi({ [WIDTH_PREF_KEY]: resolved }).catch(() => {})
+    void preferences?.updateUi({ [WIDTH_PREF_KEY]: resolved }).catch(error => console.error("[eleckoi-client-failure] 保存聊天宽度", error))
   }, [container, preferences])
   const onEnd = useCallback((): void => {
     if (container !== null) publishWidths(container)

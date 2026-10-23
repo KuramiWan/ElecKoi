@@ -26,6 +26,7 @@ import { hasVariableSearchResults, variableTreeNodes } from "../model/variableCo
 import { VariableConfigInspector } from "./VariableConfigInspector.jsx";
 import { VariableConfigManager } from "./VariableConfigManager.jsx";
 import { VariableConfigTree, VariableEntryIcon, VariableGroupIcon, VariableTreeActionsContext, VARIABLE_INITIALIZATION_OBJECT_ID } from "./VariableConfigTree.jsx";
+import { reportFailure, resolveFailure } from "../../../utils/failureText.js";
 
 function isTextInput(target) {
   return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
@@ -99,7 +100,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     const cached = variables.getSnapshot(characterId);
     if (cached.status === "ready") adopt(cached.value);
     void variables.read(characterId).catch((cause) => {
-      if (active) setError(cause?.message || "读取变量配置失败");
+      if (active) setError(resolveFailure(cause, { fallback: "读取变量配置失败" }).text);
     });
     return () => { active = false; stop(); };
   }, [characterId, variables]);
@@ -132,7 +133,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
         setNotice("saved");
         return true;
       } catch (cause) {
-        setError(cause?.message || "保存变量配置失败");
+        setError(resolveFailure(cause, { fallback: "保存变量配置失败" }).text);
         return false;
       } finally {
         setSaving(false);
@@ -242,7 +243,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     persistedRef.current = applyViewState(persistedRef.current);
     setConfig((current) => applyViewState(current));
     setPersisted((current) => applyViewState(current));
-    void variables.saveViewState(characterId, next).catch(() => {});
+    void variables.saveViewState(characterId, next).catch(error => reportFailure(error, "保存变量面板视图状态"))
   }
 
   function openContextMenu(event, node) {

@@ -1,11 +1,13 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 import * as Cordis from '@deepseek-ai/cordis'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import { FrontendIndex, FrontendProjectRepository, type FrontendOwner } from '@eleckoi/dsh-product-data/frontends'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ELECKOI_FAILURE_CODES } from '../../../shared/src/contracts/errors/codes'
 
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => {
@@ -161,5 +163,17 @@ describe('character deletion owns native frontend resources', () => {
     expect(() => new FrontendProjectRepository(index, () => false)).toThrow('changed during character deletion')
     expect(readFileSync(index.path)).toEqual(changed)
     expect(readFileSync(join(f.journals, pending, 'projects', f.first, 'assets', 'data.bin'))).toEqual(Buffer.from([0, 128, 255]))
+  }, 30_000)
+
+  it('reports an unparseable pending deletion journal as contract-coded storage corruption', async () => {
+    const f = await fixture()
+    const pending = join(f.journals, randomUUID())
+    mkdirSync(pending, { recursive: true })
+    writeFileSync(join(pending, 'journal.json'), '{not json')
+    let failure: { code?: string; details?: Record<string, unknown> } | undefined
+    try { new FrontendProjectRepository(new FrontendIndex(f.repository.index.root), () => false) }
+    catch (error) { failure = error as typeof failure }
+    expect(failure).toMatchObject({ code: ELECKOI_FAILURE_CODES.storageCorrupt, details: { what: '恢复日志' } })
+    expect(readdirSync(f.journals)).toHaveLength(1)
   }, 30_000)
 })

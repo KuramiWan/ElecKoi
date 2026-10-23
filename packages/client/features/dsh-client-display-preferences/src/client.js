@@ -1,6 +1,8 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-display-preferences',
-  factory() {
+  factory(require) {
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail, failureAlreadyPublished, rejectionIsAwaitedElsewhere, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const SETTINGS_NAMESPACE = 'eleckoi-display-preferences'
 
     class DisplayPreferences {
@@ -29,8 +31,7 @@ window.__ModuleLoader__.load({
       }
 
       unwrap(result, fallback) {
-        if (!result?.ok) throw new Error(result?.error?.message || fallback)
-        return result.value
+        return unwrapOrFail(result, fallback)
       }
 
       normalizedObject(value) {
@@ -53,7 +54,7 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('显示偏好服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示偏好服务已关闭。', { what: '显示偏好服务' })
         const generation = ++this.generation
         try {
           const snapshot = this.unwrap(
@@ -64,7 +65,7 @@ window.__ModuleLoader__.load({
           return this.adopt(snapshot)
         } catch (error) {
           if (!this.disposed && generation === this.generation) {
-            this.publish({ ...this.snapshot, status: 'error', error: error instanceof Error ? error.message : String(error) })
+            this.publish({ ...this.snapshot, status: 'error', error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error) })
           }
           throw error
         }
@@ -72,7 +73,7 @@ window.__ModuleLoader__.load({
 
       enqueue(method, resolveValue) {
         const operation = this.writeQueue.then(async () => {
-          if (this.disposed) throw new Error('显示偏好服务已关闭。')
+          if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示偏好服务已关闭。', { what: '显示偏好服务' })
           const value = resolveValue()
           const snapshot = this.unwrap(
             await this.remote.eleckoiDisplayPreferences[method](value, this.snapshot.revision),
@@ -80,7 +81,8 @@ window.__ModuleLoader__.load({
           )
           return this.adopt(snapshot)
         })
-        this.writeQueue = operation.catch(() => {})
+        // `operation` 由调用方 await（`return operation`）；这里只为队列只留一条拒绝。
+        this.writeQueue = operation.catch(rejectionIsAwaitedElsewhere)
         return operation
       }
 
@@ -97,7 +99,7 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
       }
 
       dispose() {
@@ -113,7 +115,7 @@ window.__ModuleLoader__.load({
       ctx.provide('eleckoiDisplayPreferences', model)
       ctx.effect(() => {
         model.start()
-        const refresh = () => { void model.refresh().catch(() => {}) }
+        const refresh = () => { void model.refresh().catch(failureAlreadyPublished) }
         const stopReset = ctx.on('connection/reset', refresh)
         const stopSettings = ctx.remote.$on('settings/document-updated', ns => {
           if (ns === SETTINGS_NAMESPACE) refresh()

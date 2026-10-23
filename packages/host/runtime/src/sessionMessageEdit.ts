@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+import { ELECKOI_FAILURE_CODES, productFailure } from '@eleckoi/dsh-product-api'
 import { readDshSessionLog } from './trajectory'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
@@ -11,25 +12,25 @@ type MessageRole = 'user' | 'assistant'
 export function editDshSessionMessage(
   sessionRoot: string, sessionId: string, eventSeq: number, role: MessageRole, content: string
 ): void {
-  if (!Number.isSafeInteger(eventSeq) || eventSeq < 0 || !content.trim()) throw new Error('消息编辑参数不正确。')
+  if (!Number.isSafeInteger(eventSeq) || eventSeq < 0 || !content.trim()) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '消息编辑参数不正确。', { field: '消息编辑参数' })
   const log = readEditableDshSessionLog(sessionRoot, sessionId)
   const type = role === 'user' ? 'user/message' : 'assistant/message'
   const matches = log.events.filter((event) => event.seq === eventSeq && event.type === type
     && event.surfaceOp === 'append'
     && isRecord(event.data))
-  if (matches.length !== 1) throw new Error('找不到唯一对应的消息；原聊天记录未修改。')
+  if (matches.length !== 1) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到唯一对应的消息；原聊天记录未修改。', { what: '要编辑的消息' })
   const selected = matches[0]!
   const data = selected.data as Record<string, unknown>
   const message = (role === 'user' ? data : data.message) as Record<string, unknown>
   if (message.role !== role || !Array.isArray(message.content)) {
-    throw new Error('消息角色或内容与编辑目标不一致；原聊天记录未修改。')
+    throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '消息角色或内容与编辑目标不一致；原聊天记录未修改。', { what: '消息角色或内容' })
   }
   if (role === 'assistant') {
     const raw = message.content.filter(isRecord).filter(block => block.type === 'text').map(block => String(block.text || '')).join('')
     const bodyStart = raw.indexOf('<FINAL>')
     const bodyEnd = raw.lastIndexOf('</FINAL>')
     if (bodyStart >= 0 && raw.slice(0, bodyStart).includes('<ACTION_CALL name="generate_image">')) {
-      if (bodyEnd < bodyStart) throw new Error('原回复缺少完整的最终正文边界，未修改生图提示词。')
+      if (bodyEnd < bodyStart) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '原回复缺少完整的最终正文边界，未修改生图提示词。', { what: '原回复的最终正文边界' })
       content = `${raw.slice(0, bodyStart + '<FINAL>'.length)}\n${content}\n${raw.slice(bodyEnd)}`
     }
   }
@@ -50,13 +51,13 @@ export function editDshSessionMessage(
 
 export function readEditableDshSessionLog(sessionRoot: string, sessionId: string): NonNullable<ReturnType<typeof readDshSessionLog>> {
   const log = readDshSessionLog(sessionRoot, sessionId)
-  if (!log) throw new Error('找不到要编辑的 DSH 会话。')
+  if (!log) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到要编辑的 DSH 会话。', { what: '要编辑的 DSH 会话' })
   if (log.header.isSeeded || log.inheritedEventCount !== 0) {
-    throw new Error('不能直接修改继承了父会话事件的 DSH 子会话。')
+    throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '不能直接修改继承了父会话事件的 DSH 子会话。', { what: '在父会话上编辑' })
   }
   if (log.header.version !== sessionFormatCatalog.currentVersion
     || basename(log.path) !== `session.v${sessionFormatCatalog.currentVersion}.jsonl`) {
-    throw new Error('DSH 会话必须先迁移到当前格式，才能编辑消息。')
+    throw productFailure(ELECKOI_FAILURE_CODES.dataLegacyMismatch, 'DSH 会话必须先迁移到当前格式，才能编辑消息。', { what: 'DSH 会话的格式', expected: '当前格式' })
   }
   return log
 }
@@ -71,7 +72,7 @@ export function rewriteDshSessionEvents(sessionRoot: string, log: NonNullable<Re
   for (const row of rows.slice(1)) restore.decodeRow(row)
   const verified = restore.finish()
   if (verified.header.id !== sessionId || verified.events.length !== events.length) {
-    throw new Error('编辑后的 DSH 会话验证失败；原聊天记录未修改。')
+    throw productFailure(ELECKOI_FAILURE_CODES.internal, '编辑后的 DSH 会话验证失败；原聊天记录未修改。', { what: '编辑后的 DSH 会话校验' })
   }
 
   const revision = statSync(log.path, { bigint: true })
@@ -86,7 +87,7 @@ export function rewriteDshSessionEvents(sessionRoot: string, log: NonNullable<Re
     if (current.dev !== revision.dev || current.ino !== revision.ino
       || current.size !== revision.size || current.mtimeNs !== revision.mtimeNs
       || current.ctimeNs !== revision.ctimeNs) {
-      throw new Error('DSH 会话日志在编辑期间发生变化；原聊天记录未修改。')
+      throw productFailure(ELECKOI_FAILURE_CODES.conflictStaleRevision, 'DSH 会话日志在编辑期间发生变化；原聊天记录未修改。', { what: 'DSH 会话日志' })
     }
     copyFileSync(log.path, backup)
     renameSync(temporary, log.path)
@@ -94,13 +95,13 @@ export function rewriteDshSessionEvents(sessionRoot: string, log: NonNullable<Re
     const reread = readDshSessionLog(sessionRoot, sessionId)
     if (!reread || reread.events.length !== events.length
       || JSON.stringify(reread.events.map(event => sessionFormatCatalog.encodeCurrentEvent(event))) !== JSON.stringify(rows.slice(1))) {
-      throw new Error('编辑后的 DSH 会话无法读取。')
+      throw productFailure(ELECKOI_FAILURE_CODES.internal, '编辑后的 DSH 会话无法读取。', { what: '编辑后的 DSH 会话' })
     }
   } catch (error) {
     if (committed && existsSync(backup)) {
-      try { renameSync(backup, log.path) } catch (restoreError) {
+      try { renameSync(backup, log.path) } catch {
         retainBackup = true
-        throw new Error(`编辑失败，原始会话日志保存在 ${backup}。`, { cause: restoreError })
+        throw productFailure(ELECKOI_FAILURE_CODES.ioFailed, `编辑失败，原始会话日志保存在 ${backup}。`, { operation: 'write', path: log.path })
       }
     }
     throw error

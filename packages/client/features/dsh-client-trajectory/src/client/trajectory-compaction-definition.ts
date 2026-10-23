@@ -2,6 +2,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {
   ConversationMatch, ConversationNodeDefinition, RequestView,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type {} from '@deepseek-ai/dsh-compaction/types'
 import { trajectoryNode } from './trajectory-definition-common.ts'
 
@@ -90,7 +92,7 @@ const trajectoryCompactionDefinition: ConversationNodeDefinition<CompactionState
   },
   start: (_context, match) => {
     if (match.event.type !== 'compaction/start') {
-      throw new Error('trajectory-compaction start requires compaction/start')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'trajectory-compaction start requires compaction/start', { what: '轨迹压缩的起始事件' })
     }
     return { start: match }
   },
