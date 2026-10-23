@@ -97,7 +97,7 @@ describe('character editor client extension', () => {
     const character = { id: 'synthetic-character', name: '合成角色', persona: {} };
     const stored = { ui: {}, revision: 0, writable: true };
     const remote = { eleckoiDisplayPreferences: { read: async () => ({ ok: true, value: stored }),
-      updateUi: vi.fn().mockResolvedValue({ ok: false, error: { message: '合成配置写入失败' } }),
+      updateUi: vi.fn().mockResolvedValue({ ok: false, error: Object.assign(new Error('合成配置写入失败'), { isDSHRemoteError: true, code: 'gateway/internal', details: {} }) }),
     }, $on: () => () => {} };
     const client = preferenceClient(remote); await client.model.refresh();
     const node = document.createElement('div'); document.body.append(node); const root = createRoot(node);
@@ -107,8 +107,8 @@ describe('character editor client extension', () => {
       </DisplayPreferencesProvider>));
       await act(async () => node.querySelector('.character-editor-sidebar-toggle').click());
       expect(node.querySelector('.is-sidebar-collapsed')).toBeNull();
-      expect(document.querySelector('[role=alertdialog]').textContent).toContain('保存侧边栏状态失败：');
-      expect(document.querySelector('[role=alertdialog]').textContent).toContain('合成配置写入失败');
+      expect(document.querySelector('[role=alertdialog]').textContent).toContain('保存侧边栏状态失败');
+      expect(document.querySelector('[role=alertdialog]').textContent).not.toContain('合成配置写入失败');
       expect(stored.ui).toEqual({}); expect(saveCharacter).not.toHaveBeenCalled();
       await act(async () => document.querySelector('[role=alertdialog] button[aria-label="关闭错误详情"]').click());
       expect(document.querySelector('[role=alertdialog]')).toBeNull();

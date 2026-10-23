@@ -4,6 +4,7 @@ import { assistantStreamChunks } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { ELECKOI_FAILURE_CODES, productFailure } from '@eleckoi/dsh-product-api'
 
 /** Only this tool's declared result metadata establishes generated-image ownership. */
 export function generatedImageReferences(events: readonly SessionEvent[]): Map<string, ImageAttachmentRef> {
@@ -77,21 +78,21 @@ export async function deleteRemovedGeneratedImages(ctx: GeneratedImageCleanupCon
   for (const ref of ctx.eleckoiProductData.listInputImageReferences()) {
     if (!deletedSessionId || ctx.eleckoiProductData.runtimeSessionId(ref.conversationId) !== deletedSessionId) retained.add(ref.attachmentId)
   }
-  if (!ctx.attachments.root) throw new Error('生成图片清理需要本地附件存储。')
+  if (!ctx.attachments.root) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '生成图片清理需要本地附件存储。', { what: '配置本地附件存储' })
   const root = resolve(ctx.attachments.root)
   for (const [id, ref] of candidates) {
     if (retained.has(id)) continue
     const hash = id.slice('sha256:'.length), path = join(root, 'objects', hash.slice(0, 2), hash)
-    if (resolve(ctx.attachments.imageHostPath(ref)) !== path) throw new Error('生成图片对象路径不正确，未删除文件。')
+    if (resolve(ctx.attachments.imageHostPath(ref)) !== path) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, '生成图片对象路径不正确，未删除文件。', { what: '生成图片对象的存储路径', guard: '附件存储根目录' })
     try {
       const canonical = await realpath(root)
       for (const segments of [['objects'], ['objects', hash.slice(0, 2)]]) {
         const directory = join(root, ...segments)
         const info = await lstat(directory)
-        if (!info.isDirectory() || info.isSymbolicLink() || await realpath(directory) !== join(canonical, ...segments)) throw new Error('生成图片对象目录不正确，未删除文件。')
+        if (!info.isDirectory() || info.isSymbolicLink() || await realpath(directory) !== join(canonical, ...segments)) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, '生成图片对象目录不正确，未删除文件。', { what: '生成图片对象的存储目录', guard: '附件存储根目录' })
       }
       const info = await lstat(path)
-      if (!info.isFile() || info.isSymbolicLink()) throw new Error('生成图片对象不是本地文件，未删除。')
+      if (!info.isFile() || info.isSymbolicLink()) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, '生成图片对象不是本地文件，未删除。', { what: '生成图片对象', guard: '只删除本地普通文件' })
       await chmod(path, 0o600)
       await unlink(path)
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }

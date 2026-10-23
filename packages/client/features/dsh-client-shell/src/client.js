@@ -9,6 +9,8 @@ window.__ModuleLoader__.load({
       StateDot,
       Switch
     } = require('@deepseek-ai/dsh-client-ui-primitives')
+    // 带码失败的构造器只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const SettingsPage = React.lazy(() => import(new URL('eleckoi-page-settings.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.SettingsPage })))
     const CreatorStudioNavigationIcon = React.lazy(() => import(new URL('eleckoi-page-settings.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
@@ -284,7 +286,7 @@ window.__ModuleLoader__.load({
             navigation.actions.setView(kind === 'item' ? { kind: 'item', id } : { kind: 'package', name: id })
             event.detail.opened = true
           } catch (error) {
-            event.detail.error = error instanceof Error ? error.message : String(error)
+            event.detail.error = typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
           }
         }
         const add = event => {
@@ -295,7 +297,7 @@ window.__ModuleLoader__.load({
             face.openInstall()
             if (event.detail) event.detail.opened = true
           } catch (error) {
-            if (event.detail) event.detail.error = error instanceof Error ? error.message : String(error)
+            if (event.detail) event.detail.error = typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
           }
         }
         window.addEventListener('eleckoi:dsh-plugins:request', request)
@@ -498,7 +500,7 @@ window.__ModuleLoader__.load({
           },
           selectPanel: id => {
             if (id !== null && !ctx.slots.entriesOfSlot('main').some(entry => entry.options.key === id)) {
-              throw new Error(`layout.selectPanel: main panel "${id}" is not registered`)
+              throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `layout.selectPanel: main panel "${id}" is not registered`, { what: '主面板' })
             }
             const mobile = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === 'android'
             const panelId = mobile && (id === null || id === 'conversation' || id === 'creatorStudio') ? null : id === 'messages' ? null : id

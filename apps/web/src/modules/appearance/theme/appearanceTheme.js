@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import {
   Hct,
   MaterialDynamicColors,
@@ -40,7 +42,7 @@ function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("图片读取失败，请换一张图片试试。"));
+    image.onerror = () => reject(new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片读取失败，请换一张图片试试。", { what: "主题图片" }));
     image.src = src;
   });
 }
@@ -49,7 +51,7 @@ function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("图片读取失败，请换一张图片试试。"));
+    reader.onerror = () => reject(new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片读取失败，请换一张图片试试。", { what: "主题图片" }));
     reader.readAsDataURL(file);
   });
 }
@@ -173,7 +175,7 @@ function readImage(image, crop = null) {
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) throw new Error("当前环境无法读取图片颜色。");
+  if (!context) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "当前环境无法读取图片颜色。", { what: "设备上的图片取色能力" });
   if (crop) context.drawImage(image, crop.x, crop.y, crop.width, crop.height, 0, 0, width, height);
   else context.drawImage(image, 0, 0, width, height);
 
@@ -324,7 +326,7 @@ export async function createAppearanceThemeFromImageSource(dataUrl, source = {})
   const paletteReading = readImage(paletteImage);
   const crop = source.crop || centerCrop(displayImage, 45 / 77);
   const displayReading = readImage(displayImage, crop) || paletteReading;
-  if (!paletteReading || !displayReading) throw new Error("这张图片没有可用于取色的不透明像素。");
+  if (!paletteReading || !displayReading) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "这张图片没有可用于取色的不透明像素。", { what: "用于取色的图片" });
   const polarity = choosePolarity(displayReading);
   const seed = pickSeed(paletteReading);
   const generated = buildTheme(seed, polarity);

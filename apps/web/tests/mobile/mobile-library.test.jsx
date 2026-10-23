@@ -121,7 +121,7 @@ describe('Android character and preset library contracts', () => {
     await click('删除'); await click('删除', document.querySelector('.mobile-library-dialog'));
     expect(remove.mock.calls.map(([id]) => id)).toEqual(['preset-a', 'preset-b']);
     expect(document.querySelector('.mobile-selection-bar').textContent).toContain('1 项');
-    expect(document.querySelector('.mobile-library-dialog [role="alert"]').textContent).toContain('写入失败');
+    expect(document.querySelector('.mobile-library-dialog [role="alert"]').textContent).toContain('操作失败，请重试。');
     await click('删除', document.querySelector('.mobile-library-dialog'));
     expect(remove.mock.calls.map(([id]) => id)).toEqual(['preset-a', 'preset-b', 'preset-b']);
     expect(document.querySelector('.mobile-library-selection-header')).toBeNull();

@@ -16,6 +16,7 @@ import {
   syncActiveVersion,
 } from "../model/settingLibraryTransfer.js";
 import { PINNED_ENTRY_IDS } from "../model/settingLibraryEditing.js";
+import { resolveFailure } from '../../../utils/failureText.js';
 
 function versionLabel(version) {
   return version.name.trim() || "待命名";
@@ -173,7 +174,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
         { id: "__self__", name: `${character?.name || character?.persona?.assistant_name || "当前角色"} · 其他版本`, versions: ownVersions },
         ...others.filter(Boolean),
       ]);
-    }).catch((cause) => alive && onError(cause?.message || "读取导入来源失败")).finally(() => alive && setLoadingSources(false));
+    }).catch((cause) => alive && onError(resolveFailure(cause, { fallback: "读取导入来源失败" }).text)).finally(() => alive && setLoadingSources(false));
     return () => { alive = false; };
   }, [page, characterId, settingLibraries]);
 
@@ -206,7 +207,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
         openSource({ id: "__file__", name: parsed.name || file.name, versions: [parsed] });
       }
     } catch (cause) {
-      onError(cause?.message || "设定库文件读取失败");
+      onError(resolveFailure(cause, { fallback: "设定库文件读取失败" }).text);
     } finally {
       fileActionRef.current = null;
     }
@@ -232,7 +233,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
       await saveJsonFile(serializeSettingLibrary({ ...current, versions: [activeVersion] }), `${safeName}.json`);
       setNotice("设定库已导出");
     } catch (cause) {
-      if (cause?.name !== "AbortError") onError(cause?.message || "导出设定库失败");
+      if (cause?.name !== "AbortError") onError(resolveFailure(cause, { fallback: "导出设定库失败" }).text);
     }
   }
 

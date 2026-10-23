@@ -10,6 +10,7 @@ import { dirname, isAbsolute, join, relative } from 'node:path'
 import { assistantStreamFirstTokenTime, type AssistantStreamRecord } from '@deepseek-ai/dsh-llm'
 import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog, sessionFormatCatalog, SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format-catalog'
 import { historicalChildCatalogSource } from '@deepseek-ai/dsh-session-format-v3-to-v4'
+import { ELECKOI_FAILURE_CODES, productFailure } from '@eleckoi/dsh-product-api'
 import { finalReplyText } from '@shared/foundation/finalReply'
 
 const REQUEST_PROJECTION_PLUGIN = 'eleckoi-request-projection'
@@ -188,7 +189,7 @@ export function readDshSessionLog(
   try {
     const descriptor = sessionFormatCatalog.readHeader(headerValue)
     if (descriptor.status === 'malformed' || descriptor.status === 'unsupported') {
-      throw new Error('Unsupported Session header')
+      throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, 'Unsupported Session header', { what: '会话头的格式或版本', expected: '当前格式' })
     }
     const catalog = descriptor.status === 'migration-required'
       ? createSessionFormatCatalogWithChildren(collectHistoricalChildren(located, descriptor.header.id))
@@ -199,9 +200,11 @@ export function readDshSessionLog(
       validation: 'transformed'
     })
   } catch (error) {
-    throw new Error('DSH 轨迹日志缺少有效的会话头。', { cause: error })
+    // `productFailure` 造的是普通对象，靠网关载体标记认；已带码的失败不再重包成"格式不对"。
+    if (typeof error === 'object' && error !== null && 'isDSHRemoteError' in error && error.isDSHRemoteError === true) throw error
+    throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 轨迹日志缺少有效的会话头。', { what: 'DSH 轨迹日志的会话头' })
   }
-  if (restore.header.id !== runtimeThreadId) throw new Error('DSH 轨迹日志缺少有效的会话头。')
+  if (restore.header.id !== runtimeThreadId) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'DSH 轨迹日志缺少有效的会话头。', { what: 'DSH 轨迹日志的会话标识' })
   const finalLineIndex = source.endsWith('\n') || source.endsWith('\r') ? lines.length : lines.length - 1
 
   for (let index = 1; index < lines.length; index += 1) {
@@ -210,14 +213,14 @@ export function readDshSessionLog(
     let stored: unknown
     try {
       stored = JSON.parse(line)
-    } catch (error) {
+    } catch {
       if (index === finalLineIndex) break
-      throw new Error('DSH 轨迹日志包含损坏的记录。', { cause: error })
+      throw productFailure(ELECKOI_FAILURE_CODES.storageCorrupt, 'DSH 轨迹日志包含损坏的记录。', { what: 'DSH 轨迹日志的记录' })
     }
     try {
       restore.decodeRow(stored)
-    } catch (error) {
-      throw new Error('DSH 轨迹日志中的流式记录无法解码。', { cause: error })
+    } catch {
+      throw productFailure(ELECKOI_FAILURE_CODES.storageCorrupt, 'DSH 轨迹日志中的流式记录无法解码。', { what: 'DSH 轨迹日志中的流式记录' })
     }
   }
   try {
@@ -239,11 +242,11 @@ export function readDshSessionLog(
           legacy.decodeRow(stored)
         }
         return { path: located, ...legacy.finish() }
-      } catch (historicalError) {
-        throw new Error('DSH 历史会话日志无法解码。', { cause: historicalError })
+      } catch {
+        throw productFailure(ELECKOI_FAILURE_CODES.dataLegacyMismatch, 'DSH 历史会话日志无法解码。', { what: 'DSH 历史会话日志' })
       }
     }
-    throw new Error('DSH 轨迹日志中的流式记录无法解码。', { cause: error })
+    throw productFailure(ELECKOI_FAILURE_CODES.storageCorrupt, 'DSH 轨迹日志中的流式记录无法解码。', { what: 'DSH 轨迹日志中的流式记录' })
   }
 }
 
@@ -851,8 +854,8 @@ function sessionLogVersion(filename: string): number | undefined {
 function parseJsonLine(line: string | undefined, message: string): unknown {
   try {
     return JSON.parse(line ?? '')
-  } catch (error) {
-    throw new Error(message, { cause: error })
+  } catch {
+    throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, message, { what: '会话头' })
   }
 }
 

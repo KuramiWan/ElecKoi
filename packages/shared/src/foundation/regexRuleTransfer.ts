@@ -4,6 +4,8 @@ import type {
   RegexRuleScope,
   RegexRuleTarget
 } from '@shared/contracts/regex/schemas'
+import { ELECKOI_FAILURE_CODES } from '../contracts/errors/codes.js'
+import { DesktopError } from './DesktopError.js'
 
 export interface ScopedRegexRule {
   scope: RegexRuleScope
@@ -29,7 +31,7 @@ function booleanValue(value: unknown, fallback = false): boolean {
 
 function importedTargets(value: Record<string, unknown>): RegexRuleTarget[] {
   if (Array.isArray(value.targets) && value.targets.some(target => !targets.has(target as RegexRuleTarget))) {
-    throw new Error('正则包含不支持的应用目标。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '正则包含不支持的应用目标。', { what: '正则应用目标' })
   }
   const named = Array.isArray(value.targets)
     ? value.targets.filter((target): target is RegexRuleTarget => typeof target === 'string' && targets.has(target as RegexRuleTarget))
@@ -39,7 +41,7 @@ function importedTargets(value: Record<string, unknown>): RegexRuleTarget[] {
   const mapped: RegexRuleTarget[] = []
   if (placement.has(1)) mapped.push('UserInput')
   if (placement.has(2) || placement.size === 0) mapped.push('AiOutput')
-  if (placement.has(3)) throw new Error('不支持快捷命令正则。')
+  if (placement.has(3)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持快捷命令正则。', { what: '快捷命令正则' })
   if (placement.has(5)) mapped.push('SettingContent')
   if (placement.has(6)) mapped.push('Reasoning')
   return mapped
@@ -48,13 +50,13 @@ function importedTargets(value: Record<string, unknown>): RegexRuleTarget[] {
 function rootValues(source: string): unknown[] {
   const parsed: unknown = JSON.parse(source.trim())
   if (Array.isArray(parsed)) return parsed
-  if (!parsed || typeof parsed !== 'object') throw new Error('文件里没有正则规则。')
+  if (!parsed || typeof parsed !== 'object') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '文件里没有正则规则。', { what: '文件里的正则规则' })
   const root = parsed as Record<string, unknown>
   for (const key of ['rules', 'regex_scripts', 'regex']) {
     if (Array.isArray(root[key])) return root[key] as unknown[]
   }
   if ('pattern' in root || 'findRegex' in root) return [root]
-  throw new Error('文件里没有正则规则。')
+  throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '文件里没有正则规则。', { what: '文件里的正则规则' })
 }
 
 function decodeDocument(source: string, fallbackScope: RegexRuleScope): ScopedRegexRule[] {

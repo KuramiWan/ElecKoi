@@ -1,6 +1,8 @@
 /** Electron-native inactivity deadlines for updater checks, full downloads, and blockmap requests. */
 import { ElectronHttpExecutor } from 'electron-updater/out/electronHttpExecutor.js'
 import type { ClientRequest, IncomingMessage } from 'electron'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 /** Retains electron-updater transport and proxy handling while bounding silent connections. */
 export class DesktopUpdateHttpExecutor extends ElectronHttpExecutor {
@@ -11,7 +13,9 @@ export class DesktopUpdateHttpExecutor extends ElectronHttpExecutor {
   constructor(private readonly idleTimeoutMs: number, proxyLogin?: ConstructorParameters<typeof ElectronHttpExecutor>[0]) {
     super(proxyLogin)
     if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 1000 || idleTimeoutMs > 2_147_483_647) {
-      throw new Error('desktop update: HTTP idle timeout must be an integer from 1000 through 2147483647')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'desktop update: HTTP idle timeout must be an integer from 1000 through 2147483647', {
+        field: 'idleTimeoutMs'
+      })
     }
   }
 
@@ -33,7 +37,9 @@ export class DesktopUpdateHttpExecutor extends ElectronHttpExecutor {
       clearTimeout(timer)
       timer = setTimeout(() => {
         stop()
-        reject(Object.assign(new Error('Desktop update connection timed out'), { code: 'ETIMEDOUT' }))
+        reject(new DesktopError(ELECKOI_FAILURE_CODES.timeoutExpired, 'Desktop update connection timed out', {
+          what: '更新连接的空闲等待'
+        }))
         request.abort()
       }, this.idleTimeoutMs)
     }

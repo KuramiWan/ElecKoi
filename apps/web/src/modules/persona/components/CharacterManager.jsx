@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ExportIcon, ImportIcon, PencilIcon, PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
 import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
+import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 import { GroupAssignmentMenu } from "../../../ui/ui/GroupAssignmentMenu.jsx";
 import { openCharacterEditorWindow } from "../window/openCharacterEditorWindow.js";
 import { AddGroupDialog } from "./AddGroupDialog.jsx";
@@ -29,7 +30,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
   const [exportFormat, setExportFormat] = useState("");
   const [exportNotice, setExportNotice] = useState("");
   const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
 
   const groups = useMemo(() => {
     const names = [...new Set((characters.groups || []).map((group) => group.trim()).filter(Boolean))];
@@ -144,19 +145,19 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
   async function moveCharacterToGroup(group) {
     const character = cardGroupMenu?.character;
     if (!character || characterGroup(character) === group) return;
-    setError("");
+    setError(null);
     try {
       await onSaveGroups(groups, [{ characterId: character.id, group }]);
       setCardGroupMenu(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "移动角色卡失败，请重试。");
+      setError(cause ?? "移动角色卡失败，请重试。");
     }
   }
 
   async function saveGroup() {
     const name = groupDraft.trim();
     if (!name || name === ALL_CHARACTERS) return;
-    setError("");
+    setError(null);
     try {
       if (groupDialog?.mode === "rename") {
         if (name === groupDialog.group || groups.includes(name)) return;
@@ -174,13 +175,13 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       setGroupDialog(null);
       setGroupDraft("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "保存分组失败，请重试。");
+      setError(cause ?? "保存分组失败，请重试。");
     }
   }
 
   async function deleteGroup(group) {
     setGroupMenu(null);
-    setError("");
+    setError(null);
     try {
       const remaining = groups.filter((item) => item !== group);
       const targetGroup = remaining[0] || "";
@@ -190,7 +191,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       await onSaveGroups(remaining, assignments);
       setSelectedGroup(ALL_CHARACTERS);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除分组失败，请重试。");
+      setError(cause ?? "删除分组失败，请重试。");
     }
   }
 
@@ -203,7 +204,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       setError(`一次最多导出 ${MAX_EXPORT_SELECTION} 张。`);
       return;
     }
-    setError("");
+    setError(null);
     setSelectedIds([...selectedIds, characterId]);
   }
 
@@ -216,7 +217,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
   function startExport() {
     if (exporting) return;
     setExportFormat("png");
-    setError("");
+    setError(null);
     setExportNotice("");
     setSelectedIds([]);
   }
@@ -225,7 +226,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
     setExportFormat("");
     setSelectedIds([]);
     setExportNotice("");
-    setError("");
+    setError(null);
   }
 
   /** 选择期内换格式：勾选保持不变，"先选卡再决定导什么格式"不用重来。 */
@@ -252,7 +253,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       setError(`一次最多导出 ${MAX_EXPORT_SELECTION} 张。`);
       return;
     }
-    setError("");
+    setError(null);
     setExportNotice("");
     setExporting(true);
     try {
@@ -270,7 +271,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       // 成功后保留勾选与模式：用户可以直接换成另一种格式再导一次。
       setExportNotice(`已导出 ${written.length} 张 · ${exportFormat.toUpperCase()} → ${result?.directory || ""}`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "导出失败，请重试。");
+      setError(cause ?? "导出失败，请重试。");
     } finally {
       setExporting(false);
     }
@@ -278,12 +279,12 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
 
   async function confirmDelete() {
     if (!selectedIds.length) return;
-    setError("");
+    setError(null);
     try {
       await onDeleteCharacters(selectedIds);
       cancelDeleteMode();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除失败，请重试。");
+      setError(cause ?? "删除失败，请重试。");
     }
   }
 
@@ -402,7 +403,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
         </header>
 
         <div className="character-manager-scroll">
-          {error ? <p className="character-manager-error" role="alert">{error}</p> : null}
+          <FailureAlert failure={error} className="character-manager-error" />
           {visibleCharacters.length ? (
             <div className="character-manager-grid">
               {visibleCharacters.map((character, index) => (

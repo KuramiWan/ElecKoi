@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { EditorVersionManager } from '../../../ui/ui/EditorVersionManager.jsx';
 import { syncActiveVersion } from '../model/variableConfigEditing.js';
 import { createVariableVersion, deleteActiveVariableVersion, importVariableConfig, serializeVariableConfig, switchVariableVersion } from '../model/variableConfigTransfer.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 export function VariableConfigManager({ config, onChange, onClose, onError }) {
   const fileRef = useRef(null), [notice, setNotice] = useState('');
@@ -22,7 +23,7 @@ export function VariableConfigManager({ config, onChange, onClose, onError }) {
     <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={async event => {
       const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
       try { onChange(importVariableConfig(current, await file.text())); setNotice('已作为新版本导入，保存后生效。'); }
-      catch (cause) { onError(cause.message); }
+      catch (cause) { onError(resolveFailure(cause, { fallback: '导入变量配置失败' }).text); }
     }} />
   </EditorVersionManager>;
 }

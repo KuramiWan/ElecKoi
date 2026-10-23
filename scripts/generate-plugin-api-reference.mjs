@@ -138,8 +138,8 @@ export async function generatePluginApiReference(root, { check = false } = {}) {
     }
     artifacts.set(`docs/plugins/${typePage}`, typeLines.join('\n') + '\n')
     const runtimePath = original.face === 'host' ? 'src/cordisApi.generated.ts' : 'src/client/cordisApi.generated.ts'
-    artifacts.set(`packages/host/product-api/${runtimePath}`, projector.renderRuntimeApi(model)
-      .replace(/^\/\*\*[\s\S]*?\*\//, '/** 由 pnpm generate:plugin-docs 生成。公开服务的只读目录，与完整参考使用同一份源码分析结果。 */'))
+    artifacts.set(`packages/host/product-api/${runtimePath}`, codeRuntimeQueries(projector.renderRuntimeApi(model)
+      .replace(/^\/\*\*[\s\S]*?\*\//, '/** 由 pnpm generate:plugin-docs 生成。公开服务的只读目录，与完整参考使用同一份源码分析结果。 */'), original.face))
   }
 
   const host = selectedFaces.get('host')
@@ -185,6 +185,43 @@ function internal(member) {
   return member.tags?.some(tag => tag.name === 'internal') || /@internal\b/.test(member.jsDoc ?? '')
 }
 
+/**
+ * 把生成的运行时目录里两处裸抛改成带契约码的失败，并补上两条 import。
+ *
+ * 为什么改生成物：这两个 `throw` 跑在**我们自己的** Inspect provider 里
+ * （`hostInspect.ts` / `client/inspect.ts` 调 `queryServiceApi` / `queryEventApi`），
+ * 查不到 Service / Event 是产品失败的一类；裸抛会让 `check:error-contract` 的规则 4
+ * 永远留两条在库里。
+ *
+ * 为什么改在这份脚本里：真正的模板在锁定的 `@deepseek-ai/dsh-typert-generator` 里，
+ * 没有扩展点；而产物只由本脚本写出，`check:plugin-docs` 比对的就是改写后的产物，
+ * 所以「改生成脚本 → 重渲 → 提交产物」是自洽的。模板以后变了会在这里显式失败，
+ * 不会静默生成旧的裸抛。
+ *
+ * @param source - `renderRuntimeApi` 的产物（已替换文件头注释）。
+ * @param face - `host` 或 `client`，决定 import 的相对前缀。
+ * @returns 带两条 import、且两处查询失败带码的源码。
+ */
+export function codeRuntimeQueries(source, face) {
+  const prefix = face === 'client' ? '../' : './'
+  const replacements = [
+    ['if (service === undefined) throw new Error(`no catalogued Service named "${key}"`)',
+      'if (service === undefined) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `no catalogued Service named "${key}"`, { what: \'公开服务\' })'],
+    ['if (event === undefined) throw new Error(`no catalogued Event named "${name}"`)',
+      'if (event === undefined) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `no catalogued Event named "${name}"`, { what: \'公开事件\' })']
+  ]
+  let coded = source
+  for (const [bare, withCode] of replacements) {
+    if (!coded.includes(bare)) throw new Error(`运行时目录模板里没有找到要改写的裸抛：${bare}`)
+    coded = coded.replace(bare, withCode)
+  }
+  const imports = `import { productFailure } from '${prefix}productFailure.js'\n`
+    + `import { ELECKOI_FAILURE_CODES } from '${prefix}errorCodes.generated.js'\n\n`
+  const anchor = '/* jscpd:ignore-start */'
+  if (!coded.includes(anchor)) throw new Error('运行时目录模板里没有找到 import 插入位置')
+  return coded.replace(anchor, imports + anchor)
+}
+
 async function checkClientImplementation(root, row, members) {
   let plugin
   const services = new Map()
@@ -193,6 +230,17 @@ async function checkClientImplementation(root, row, members) {
   const document = { createElement: () => ({}), head: { appendChild: script => queueMicrotask(() => script.onload()) } }
   const window = { document, __ELECKOI_HTML_RESOURCES__: { baseUrl: assetsBaseUrl }, location: { href: assetsBaseUrl }, __ModuleLoader__: { load: entry => { plugin = entry.factory(name => {
     if (name === 'react') return react
+    // 边界⑥ 的信封拆解：探针只要求「插件能装配起来、把内部服务暴露出来」，不会走进失败分支，
+    // 所以这里给一个同形状的最小桩；真实实现与它的用例在 packages/host/product-api。
+    if (name === '@eleckoi/dsh-product-api') return {
+      unwrapOrFail: (result, what) => {
+        if (!result?.ok) throw new Error(what)
+        return result.value
+      },
+      failureAlreadyPublished: () => {},
+      rejectionIsAwaitedElsewhere: () => {},
+      bestEffort: () => {}
+    }
     throw new Error(`接口探针不支持执行依赖：${name}`)
   }) } } }
   const manifest = JSON.parse(await readFile(resolve(root, row.packageRoot, 'package.json'), 'utf8'))

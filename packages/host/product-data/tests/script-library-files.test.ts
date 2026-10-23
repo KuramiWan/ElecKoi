@@ -9,6 +9,7 @@ import { AgentPresetRepository } from '../src/domain/agentPresets'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import * as Cordis from '@deepseek-ai/cordis'
+import { ELECKOI_FAILURE_CODES } from '../../../shared/src/contracts/errors/codes'
 
 const fixtures: Array<{ database: SqliteDatabase; directory: string }> = []
 const contexts: Cordis.Context[] = []
@@ -286,5 +287,29 @@ describe('script source files', () => {
     rmSync(global)
     expect(() => f.scripts.get('global', '')).toThrow()
     expect(f.scripts.exists('global', '')).toBe(true)
+  }, 30000)
+
+  it('reports unparseable stored trees and variables as contract-coded storage corruption', () => {
+    const f = setup()
+    f.scripts.save({ ...f.scripts.get('global', ''), trees: [script], variables: { shared: 1 } })
+    const corrupt = (column: 'treesJson' | 'variablesJson', value: string) =>
+      f.database.native.prepare(`UPDATE script_libraries SET ${column}=? WHERE scope='global'`).run(value)
+    const failureOf = (run: () => unknown): { code?: string; details?: Record<string, unknown> } => {
+      try { run() }
+      catch (error) { return error as { code?: string; details?: Record<string, unknown> } }
+      throw new Error('Expected the stored script library payload to fail')
+    }
+    corrupt('treesJson', '{not json')
+    expect(failureOf(() => f.scripts.get('global', ''))).toMatchObject({
+      code: ELECKOI_FAILURE_CODES.storageCorrupt, details: { what: '脚本库树' }
+    })
+    expect(failureOf(() => f.scripts.workspace('global', ''))).toMatchObject({
+      code: ELECKOI_FAILURE_CODES.storageCorrupt, details: { what: '脚本库树' }
+    })
+    corrupt('treesJson', JSON.stringify({ version: 1, items: [] }))
+    corrupt('variablesJson', '{not json')
+    expect(failureOf(() => f.scripts.get('global', ''))).toMatchObject({
+      code: ELECKOI_FAILURE_CODES.storageCorrupt, details: { what: '变量配置' }
+    })
   }, 30000)
 })

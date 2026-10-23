@@ -4,6 +4,7 @@ import { X } from '@phosphor-icons/react';
 import { DshSearchIcon } from '../ui/icons/dshComposerIcons.jsx';
 import { MobileAddCircleIcon, MobileBackIcon, MobileSidebarIcon } from './MobileIcons.jsx';
 import { useMainPageView } from '../app/windows/MainPageContext.jsx';
+import { FailureAlert } from '../ui/ui/FailureAlert.jsx';
 
 export function MobileHeader({ title, back, onSearch, onAdd, addLabel = '新增', children }) {
   const view = useMainPageView();
@@ -69,7 +70,7 @@ export function useMobileScroll(key, enabled = true) {
 }
 
 export function MobileState({ error, loading, empty, onRetry }) {
-  if (error) return <div className="mobile-state" role="alert"><p>{error}</p>{onRetry && <button type="button" onClick={onRetry}>重试</button>}</div>;
+  if (error) return <FailureAlert failure={error} onRetry={onRetry} />;
   if (loading) return <p className="mobile-state" role="status">正在加载…</p>;
   return empty ? <p className="mobile-state">{empty}</p> : null;
 }

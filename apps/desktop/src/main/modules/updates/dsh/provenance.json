@@ -9,16 +9,19 @@
       "source": "apps/desktop/src/update-coordinator.ts",
       "sha256": "25af5dccba70f312fa2154fb9a006c9d4820a1e8f5b844b7723a2cfbd74007fe",
       "changes": [
-        "Relative TypeScript import suffixes use .js for the local compiler."
+        "Relative TypeScript import suffixes use .js for the local compiler.",
+        "Bare throws folded into contract-coded failures (ElecKoi error contract)."
       ],
-      "localSha256": "24b696f2a646c1a64df2dd0330bb5822ae165df2f640c8b00ed19d08c8f96d4c"
+      "localSha256": "0716b969c9cffdd696ba0506b0f6196deb2414f6d5184d74cd26f65973b18b64"
     },
     {
       "path": "update-http-executor.ts",
       "source": "apps/desktop/src/update-http-executor.ts",
       "sha256": "7230d88ece24770bb45ddac28ff6b9a0ed60f1b20a4361da44fc5265a1cc4eb8",
-      "changes": [],
-      "localSha256": "7230d88ece24770bb45ddac28ff6b9a0ed60f1b20a4361da44fc5265a1cc4eb8"
+      "changes": [
+        "Bare throws folded into contract-coded failures (ElecKoi error contract)."
+      ],
+      "localSha256": "3a5eb464230b1d53ea9eea85df1b445b3135314c6eedd87481fdfb7c217c7830"
     },
     {
       "path": "update-error.ts",

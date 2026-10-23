@@ -4,6 +4,8 @@ import { createApiInspectProvider } from '../inspectProvider.js'
 import { queryServiceApi } from './cordisApi.generated.js'
 import { queryServiceApi as queryHostServiceApi } from '../cordisApi.generated.js'
 import { REMOTE_API, REMOTE_DECLARATION } from './remoteApi.generated.js'
+import { productFailure } from '../productFailure.js'
+import { ELECKOI_FAILURE_CODES } from '../errorCodes.generated.js'
 
 /** 随 Client 生命周期把产品接口目录注册到官方 Inspect。 */
 export function registerClientApiInspect(ctx: Context) {
@@ -17,7 +19,7 @@ export function registerClientApiInspect(ctx: Context) {
         'ElecKoi.Remote', 'ElecKoi 官方 Host-for-Client Remote 调用声明。', 'namespace', namespace => {
           if (namespace === undefined) return { mode: 'catalog', namespaces: REMOTE_API }
           const entry = REMOTE_API.find(row => row.namespace === namespace)
-          if (!entry) throw new Error(`不存在公开的 Remote namespace：${namespace}`)
+          if (!entry) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `不存在公开的 Remote namespace：${namespace}`, { what: '公开 Remote 命名空间' })
           const host = queryHostServiceApi(entry.hostService) as { referencedTypes: object[] }
           return { mode: 'namespace', namespace, methods: entry.methods,
             declaration: REMOTE_DECLARATION, referencedTypes: host.referencedTypes,

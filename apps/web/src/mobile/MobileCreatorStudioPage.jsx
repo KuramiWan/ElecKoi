@@ -5,6 +5,7 @@ import { Avatar } from '../ui/ui/Avatar.jsx';
 import { characterAvatar, characterName } from '../utils/characterDisplay.js';
 import { DshPanelLeftIcon, DshNewChatIcon, DshEllipsisIcon, DshEditIcon, DshTrashIcon, DshSearchIcon } from '../ui/icons/dshComposerIcons.jsx';
 import { MobileDialog, MobileHeader, MobileSearch, useMobileBack } from './MobileChrome.jsx';
+import { FailureAlert } from '../ui/ui/FailureAlert.jsx';
 import { MobileCreatorStudioConversation } from './MobileCreatorStudioConversation.jsx';
 import './mobile-creator-studio.css';
 
@@ -16,14 +17,14 @@ export function MobileCreatorStudioPage() {
   const [drawer, setDrawer] = useState(false);
   const [picker, setPicker] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const initialized = useRef(false);
   const mountVersion = useRef(0);
   const target = characters.collection.items.find(item => item.id === state.active?.characterId);
   async function perform(action) {
-    setBusy(true); setError('');
+    setBusy(true); setError(null);
     try { await action(); return true; }
-    catch (cause) { setError(String(cause?.message || cause)); return false; }
+    catch (cause) { setError(cause); return false; }
     finally { setBusy(false); }
   }
   useEffect(() => {
@@ -50,7 +51,7 @@ export function MobileCreatorStudioPage() {
       <button type="button" aria-label="工作室侧边栏" aria-expanded={drawer} onClick={() => { setDrawer(true); void perform(() => model.refresh()); }}><DshPanelLeftIcon size={22} /></button>
       <button type="button" aria-label="新建工作室对话" disabled={busy} onClick={() => void create()}><DshNewChatIcon size={22} /></button>
     </MobileHeader>
-    {error || state.error ? <p className="creator-studio-error" role="alert">{error || state.error}</p> : null}
+    <FailureAlert failure={error || state.error} className="creator-studio-error" />
     <section className="creator-studio-conversation" aria-label="工作室对话">
       {state.reference ? view.renderCreatorStudioConversation({ reference: state.reference, component: MobileCreatorStudioConversation,
         props: { model, editing: state.editingSessionId === state.active?.sessionId, onCreate: create, onSelectCharacter: () => setPicker(true), onError: setError } }) :
@@ -78,7 +79,7 @@ function sessionGroups(items) {
 export function CreatorStudioSidebar({ model, state, target, busy, error, perform, onCreate, onSelectCharacter, onClose }) {
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState(null);
-  const [searchError, setSearchError] = useState('');
+  const [searchError, setSearchError] = useState(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [menuId, setMenuId] = useState('');
@@ -87,12 +88,12 @@ export function CreatorStudioSidebar({ model, state, target, busy, error, perfor
   const [deletingIds, setDeletingIds] = useState(null);
   const menuRoot = useRef(null);
   useEffect(() => {
-    if (!query.trim()) { setMatches(null); setSearchError(''); return; }
+    if (!query.trim()) { setMatches(null); setSearchError(null); return; }
     const abort = new AbortController();
-    setMatches(null); setSearchError('');
+    setMatches(null); setSearchError(null);
     const timer = setTimeout(() => model.search(query.trim(), abort.signal).then(result => {
       if (!abort.signal.aborted) setMatches(result);
-    }).catch(error => { if (!abort.signal.aborted) setSearchError(error.message); }), 200);
+    }).catch(error => { if (!abort.signal.aborted) setSearchError(error); }), 200);
     return () => { clearTimeout(timer); abort.abort(); };
   }, [model, query]);
   useEffect(() => {
@@ -133,7 +134,7 @@ export function CreatorStudioSidebar({ model, state, target, busy, error, perfor
           </button>
         </div>
       </>}
-      {error || searchError ? <p className="creator-studio-error" role="alert">{error || searchError}</p> : null}
+      <FailureAlert failure={error || searchError} className="creator-studio-error" />
       <nav className="creator-studio-session-list" aria-label="工作室对话列表">
         {groups.map(([label, items], groupIndex) => <section key={label}>
           <div className="creator-studio-group-heading"><h3>{label}</h3>
@@ -162,12 +163,12 @@ export function CreatorStudioSidebar({ model, state, target, busy, error, perfor
       </footer>}
     </MobileDialog>
     {renaming && <MobileDialog title="重命名对话" busy={busy} onClose={() => setRenaming(null)}>
-      {error && <p role="alert">{error}</p>}
+      <FailureAlert failure={error} />
       <input aria-label="对话名称" value={title} onChange={event => setTitle(event.target.value)} />
       <button type="button" disabled={busy || !title.trim()} onClick={() => void perform(() => model.rename(renaming.sessionId, title.trim())).then(success => success && setRenaming(null))}>保存</button>
     </MobileDialog>}
     {deletingIds && <MobileDialog title="删除对话" className="creator-studio-confirmation" busy={busy} onClose={() => setDeletingIds(null)}>
-      {error && <p role="alert">{error}</p>}
+      <FailureAlert failure={error} />
       <p>删除选中的{deletingIds.length}个对话？</p>
       <div className="confirmation-actions">
         <button type="button" disabled={busy} onClick={() => setDeletingIds(null)}>取消</button>
@@ -186,7 +187,7 @@ export function CreatorStudioCharacterPicker({ characters, selectedId, busy, err
     {characters.collection.groups.length > 0 && <div className="creator-studio-character-groups" role="group" aria-label="角色分组">
       {['', ...characters.collection.groups].map(id => <button type="button" key={id} aria-pressed={id === group} onClick={() => setGroup(id)}>{id || '全部角色'}</button>)}
     </div>}
-    {error || characters.error ? <p role="alert">{error || characters.error}</p> : null}
+    <FailureAlert failure={error || characters.error} />
     <div className="creator-studio-character-list" role="group" aria-label="角色">
       <button type="button" aria-pressed={!selectedId} disabled={busy} onClick={() => onSelect('')}><span>不选择角色</span>{!selectedId && <Check size={20} />}</button>
       {items.map(item => <button type="button" key={item.id} aria-pressed={item.id === selectedId} disabled={busy} onClick={() => onSelect(item.id)}>

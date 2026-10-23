@@ -1,6 +1,9 @@
 import { and, asc, eq, sql } from 'drizzle-orm'
 import type { VariableConfig, VariableConfigVersion } from '@shared/contracts/variables/schemas'
 import { variableConfigSchema } from '@shared/contracts/variables/schemas'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
+import { errorMessage } from '@shared/foundation/errorMessage'
 import { requireCharacter } from '@product-data/domain/personas'
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import {
@@ -41,14 +44,19 @@ function persistedContent(value: VariableConfig): string {
   return JSON.stringify(withoutTimes)
 }
 
+function expansionStateCorrupt(): DesktopError {
+  return new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '变量配置的展开状态已损坏。', { what: '变量配置的展开状态' })
+}
+
 function parseStringList(raw: string): string[] {
+  let value: unknown
   try {
-    const value: unknown = JSON.parse(raw)
-    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw new Error()
-    return [...new Set(value)]
-  } catch (error) {
-    throw new Error('变量配置的展开状态已损坏。', { cause: error })
+    value = JSON.parse(raw)
+  } catch {
+    throw expansionStateCorrupt()
   }
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw expansionStateCorrupt()
+  return [...new Set(value)]
 }
 
 export class VariableConfigRepository {
@@ -82,7 +90,7 @@ export class VariableConfigRepository {
         updatedAt: row.updatedAt
       }))
     const active = versions.find((item) => item.id === metadata.activeVersionId)
-    if (!active) throw new Error('当前变量配置版本不存在。')
+    if (!active) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '当前变量配置版本不存在。', { what: '当前变量配置版本' })
     return variableConfigSchema.parse(activeVariableConfig(characterId, active, versions))
   }
 
@@ -92,10 +100,10 @@ export class VariableConfigRepository {
 
   forConversation(conversationId: string, characterId: string): VariableConfig {
     const binding = readConversationVariableBinding(conversationId, this.store.db)
-    if (binding.characterId !== characterId) throw new Error('变量配置与聊天所属角色不匹配。')
+    if (binding.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '变量配置与聊天所属角色不匹配。', { what: '变量配置与聊天所属角色' })
     const config = this.get(characterId)
     const version = config.versions.find((item) => item.id === binding.versionId)
-    if (!version) throw new Error('聊天绑定的变量版本不存在，请恢复对应变量版本。')
+    if (!version) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '聊天绑定的变量版本不存在，请恢复对应变量版本。', { what: '聊天绑定的变量版本' })
     return activeVariableConfig(characterId, version, config.versions)
   }
 
@@ -107,15 +115,15 @@ export class VariableConfigRepository {
   }
 
   saveInTransaction(characterId: string, input: VariableConfig, db: ElecKoiDatabase): VariableConfig {
-    if (input.characterId !== characterId) throw new Error('变量配置与角色不匹配。')
+    if (input.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '变量配置与角色不匹配。', { what: '变量配置与角色' })
     const previous = this.get(characterId, db)
     const normalized = normalizeVariableConfig(characterId, variableConfigSchema.parse(input), previous)
     const retained = new Set(normalized.versions.map((version) => version.id))
     if (conversationVariableVersionIds(characterId, db).some((id) => id && !retained.has(id))) {
-      throw new Error('这个变量版本正在被聊天使用，不能删除。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '这个变量版本正在被聊天使用，不能删除。', { what: '解除聊天对该变量版本的使用' })
     }
     if (openingVariableVersionIds(characterId, db).some((id) => !retained.has(id))) {
-      throw new Error('这个变量版本已绑定开场白，请先解除绑定再删除。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '这个变量版本已绑定开场白，请先解除绑定再删除。', { what: '解除开场白对该变量版本的绑定' })
     }
     if (persistedContent(previous) !== persistedContent(normalized)) this.persist(db, normalized)
     return normalized
@@ -124,13 +132,19 @@ export class VariableConfigRepository {
   /** Imported snapshots contain the evaluated state, including populated dynamic dictionaries. */
   restoreInTransaction(characterId: string, input: VariableConfig, db: ElecKoiDatabase): VariableConfig {
     const config = variableConfigSchema.parse(input)
-    if (config.characterId !== characterId) throw new Error('变量备份与角色不匹配。')
+    if (config.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '变量备份与角色不匹配。', { what: '变量备份与角色' })
     requireCharacter(db, characterId)
     const active = config.versions.find(version => version.id === config.activeVersionId)
-    if (!active) throw new Error('变量备份的当前版本不存在。')
+    if (!active) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '变量备份的当前版本不存在。', { what: '变量备份的当前版本' })
     for (const version of config.versions) {
-      const state: unknown = JSON.parse(version.initialStateJson)
-      if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error(`变量备份“${version.id}”的初始状态不是对象。`)
+      let state: unknown
+      try { state = JSON.parse(version.initialStateJson) }
+      catch (error) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid,
+          `变量备份“${version.id}”的初始状态不是合法 JSON：${errorMessage(error)}`,
+          { what: '变量备份的初始状态', path: 'initialStateJson' })
+      }
+      if (!state || typeof state !== 'object' || Array.isArray(state)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `变量备份“${version.id}”的初始状态不是对象。`, { what: '变量备份的初始状态', path: 'initialStateJson' })
     }
     this.persist(db, config)
     return this.get(characterId, db)

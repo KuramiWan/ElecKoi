@@ -1,3 +1,6 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
+
 export function localDateLabel(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -28,7 +31,7 @@ export function visibleTimelineRecords(timeline, expanded, adding = false) {
 export function introductionDraftPatch(profile, draft) {
   if (draft.kind === 'usage') return { usageInstructions: draft.value };
   const item = { ...draft.value, title: draft.value.title.trim(), note: draft.value.note.trim() };
-  if (!item.title && !item.note) throw new Error('填写更新标题或内容后再保存');
+  if (!item.title && !item.note) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '填写更新标题或内容后再保存', { field: '更新标题或内容' });
   if (draft.isNew) {
     return { timeline: [item, ...profile.timeline] };
   }

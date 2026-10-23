@@ -6,6 +6,8 @@ import {
   HOST_CONTROL_PROTOCOL_VERSION, HOST_CONTROL_STDOUT_PREFIX, isParentHostMessage,
   type ChildHostMessage
 } from './hostSessionProtocol'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 type NodeHostMessage = ChildHostMessage | { type: 'control-error'; message: string; id?: string }
 
@@ -17,7 +19,7 @@ function send(message: NodeHostMessage): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   if (args[0] !== '--config' || (args.length !== 2 && !(args.length === 3 && args[2] === '--disable-user-plugins'))) {
-    throw new Error('Usage: node eleckoi-host.mjs --config /absolute/path/runtime-config.json [--disable-user-plugins]')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Usage: node eleckoi-host.mjs --config /absolute/path/runtime-config.json [--disable-user-plugins]', { field: 'argv' })
   }
   const config = loadNodeHostConfiguration(args[1]!)
   if (args[2] === '--disable-user-plugins') {

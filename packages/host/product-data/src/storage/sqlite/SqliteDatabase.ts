@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3'
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { installSchema } from './installSchema'
 import { recoverInterruptedState } from './recoverInterruptedState'
 import { schema, type DatabaseSchema } from './schema'
@@ -25,12 +27,12 @@ export class SqliteDatabase implements ElecKoiSqliteStore {
   constructor(private readonly path: string) {}
 
   get db(): ElecKoiDatabase {
-    if (this.drizzleDatabase === undefined) throw new Error('数据库尚未初始化。')
+    if (this.drizzleDatabase === undefined) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '数据库尚未初始化。', { what: '数据库' })
     return this.drizzleDatabase
   }
 
   get native(): Database.Database {
-    if (this.sqlite === undefined) throw new Error('数据库尚未初始化。')
+    if (this.sqlite === undefined) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '数据库尚未初始化。', { what: '数据库' })
     return this.sqlite
   }
 
@@ -67,7 +69,7 @@ export class SqliteDatabase implements ElecKoiSqliteStore {
 
   /** Consistent database-only snapshot, including WAL; this is not an Android v3 backup archive. */
   async backupTo(path: string): Promise<void> {
-    if (resolve(path) === resolve(this.path) || existsSync(path)) throw new Error('备份目标必须是新的文件。')
+    if (resolve(path) === resolve(this.path) || existsSync(path)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '备份目标必须是新的文件。', { what: '备份目标文件', path })
     const target = resolve(path)
     closeSync(openSync(target, 'wx'))
     try {

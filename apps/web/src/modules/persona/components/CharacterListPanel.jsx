@@ -25,7 +25,7 @@ export function CharacterListPanel({ characters, activeCharacterId, artworkMode,
   const [characterMenu, setCharacterMenu] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deletingCharacter, setDeletingCharacter] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
+  const [deleteError, setDeleteError] = useState(null);
   const characterMenuRef = useRef(null);
   const scrollRef = useSidebarListScroll();
   const [draggingGroup, setDraggingGroup] = useState("");
@@ -97,26 +97,26 @@ export function CharacterListPanel({ characters, activeCharacterId, artworkMode,
 
   function requestDeleteCharacter() {
     if (!characterMenu) return;
-    setDeleteError("");
+    setDeleteError(null);
     setPendingDelete({ character: characterMenu.character, returnFocus: characterMenu.returnFocus });
     setCharacterMenu(null);
   }
 
   function cancelDeleteCharacter() {
     if (deletingCharacter) return;
-    setDeleteError("");
+    setDeleteError(null);
     setPendingDelete(null);
   }
 
   async function confirmDeleteCharacter() {
     if (!pendingDelete || deletingCharacter) return;
     setDeletingCharacter(true);
-    setDeleteError("");
+    setDeleteError(null);
     try {
       await onDeleteCharacters([pendingDelete.character.id]);
       setPendingDelete(null);
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "删除失败，请重试。");
+      setDeleteError(error ?? "删除失败，请重试。");
     } finally {
       setDeletingCharacter(false);
     }

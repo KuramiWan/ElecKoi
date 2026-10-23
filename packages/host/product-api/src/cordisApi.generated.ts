@@ -1,5 +1,8 @@
 /** 由 pnpm generate:plugin-docs 生成。公开服务的只读目录，与完整参考使用同一份源码分析结果。 */
 
+import { productFailure } from './productFailure.js'
+import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
+
 /* jscpd:ignore-start */
 /** One named parameter in a Service method or Event listener. */
 export interface ApiParameter {
@@ -1623,7 +1626,7 @@ export function queryServiceApi(key?: string, services: readonly ServiceApiEntry
     }
   }
   const service = services.find(candidate => candidate.key === key)
-  if (service === undefined) throw new Error(`no catalogued Service named "${key}"`)
+  if (service === undefined) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `no catalogued Service named "${key}"`, { what: '公开服务' })
   return {
     mode: 'service',
     service: {
@@ -1658,7 +1661,7 @@ export function queryEventApi(name?: string, events: readonly EventApiEntry[] = 
     }
   }
   const event = events.find(candidate => candidate.name === name)
-  if (event === undefined) throw new Error(`no catalogued Event named "${name}"`)
+  if (event === undefined) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `no catalogued Event named "${name}"`, { what: '公开事件' })
   return {
     mode: 'event',
     event: {

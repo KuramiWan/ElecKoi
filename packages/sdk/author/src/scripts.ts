@@ -1,8 +1,13 @@
 import type { ElecKoiAuthorApi } from './contracts'
+import { contractFailure } from './errors'
 import type { AuthorVariableState } from './variables'
 
 export const AUTHOR_SCRIPT_RUNTIME = 'eleckoi-module'
 export const AUTHOR_SCRIPT_API_VERSION = 1
+
+/** 契约码 `eleckoi/input/unsupported` 的本地副本（本 SDK 没有运行期依赖；用例守住一致性）。 */
+export const UNSUPPORTED_NATIVE_SCRIPT_VERSION_CODE = 'eleckoi/input/unsupported'
+
 export type AuthorVariableRuleStage = 'before' | 'after' | 'afterSchema'
 
 export interface AuthorVariableRuleContext {
@@ -54,6 +59,10 @@ export function isNativeAuthorScript(script: Record<string, unknown>): boolean {
 export function assertNativeAuthorScriptVersion(script: Record<string, unknown>): void {
   if (!isNativeAuthorScript(script)
     || (script.runtime as Record<string, unknown>).apiVersion !== AUTHOR_SCRIPT_API_VERSION) {
-    throw new TypeError('不支持的 ElecKoi 原生脚本版本。')
+    // 这条失败会穿过产品 Remote 边界到用户眼前（脚本目录读取），所以给契约码而不是裸 TypeError。
+    throw contractFailure(UNSUPPORTED_NATIVE_SCRIPT_VERSION_CODE, '不支持的 ElecKoi 原生脚本版本。', {
+      what: '原生脚本版本',
+      expected: String(AUTHOR_SCRIPT_API_VERSION)
+    })
   }
 }

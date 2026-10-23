@@ -13,6 +13,9 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
+// 边界⑥ 的信封拆解（与 tests/helpers/dshClientPlugin.ts 同一份实现）。
+import { failureOrInvalidResponse, unwrapOrFail } from '../../../../packages/host/product-api/src/client/unwrapFailure.ts';
+import { internalFailure, INTERNAL_FAILURE_CODE, invalidResponseFailure } from '../../../../packages/host/product-api/src/client/invalidResponse.ts';
 function load(file, platform = 'android') {
   let registration;
   runInNewContext(readFileSync(file, 'utf8'), {
@@ -21,7 +24,8 @@ function load(file, platform = 'android') {
   });
   const dependencies = { react: React, 'react-dom': ReactDom, 'react-dom/client': ReactDomClient,
     'react/jsx-runtime': Jsx, '@deepseek-ai/cordis': Cordis, '@deepseek-ai/dsh-client-ui-slots': Slots,
-    '@deepseek-ai/dsh-client-store': Store, '@deepseek-ai/dsh-client-ui-primitives': {} };
+    '@deepseek-ai/dsh-client-store': Store, '@deepseek-ai/dsh-client-ui-primitives': {},
+    '@eleckoi/dsh-product-api': { unwrapOrFail, failureOrInvalidResponse, invalidResponseFailure, internalFailure, INTERNAL_FAILURE_CODE } };
   return registration.factory(name => {
     if (!(name in dependencies)) throw new Error(`Unknown test dependency ${name}`);
     return dependencies[name];

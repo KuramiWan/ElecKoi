@@ -4,6 +4,7 @@ import { editorVersionsFixture } from '../helpers/editorLibraryVersions.js';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { dshClientRequire } from '../../../../tests/helpers/dshClientPlugin';
 import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { MainPageContext } from '../../src/app/windows/MainPageContext.jsx';
@@ -33,7 +34,7 @@ const clientSource = readFileSync(resolve('packages/client/features/dsh-client-c
 function clientModels(records) {
   let registration; const services = {};
   runInNewContext(clientSource, { window: { __ModuleLoader__: { load: value => { registration = value; } } } });
-  registration.factory().apply({
+  registration.factory(dshClientRequire).apply({
     remote: { eleckoiCharacterConfiguration: {
       readSettingLibrary: records.settingLibraries.read, saveSettingLibrary: records.settingLibraries.save,
       readVariableConfig: records.variables.read, saveVariableConfig: records.variables.save,

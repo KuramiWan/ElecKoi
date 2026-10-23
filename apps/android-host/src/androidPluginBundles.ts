@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { readProfileManifest, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { HTML_RESOURCES_BUNDLE, replaceHtmlResourceBundles } from '@eleckoi/dsh-client-html-resources/profile'
 import bundles from './androidPluginBundleManifest.json'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export const ELECKOI_INSTALL_ANCHOR = createRequire(import.meta.url).resolve('@eleckoi/android-host/package.json')
 
@@ -32,7 +34,9 @@ export function registerAndroidFrontendBundles(profileDirectory: string): void {
     const marker = join(profileDirectory, upgrade.marker)
     if (existsSync(marker)) continue
     for (const name of upgrade.bundles) {
-      if (!ELECKOI_ANDROID_BUNDLES.includes(name)) throw new Error(`Android frontend bundle is not declared: ${name}`)
+      if (!ELECKOI_ANDROID_BUNDLES.includes(name)) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `Android frontend bundle is not declared: ${name}`, { what: 'Android 前端插件包声明' })
+      }
     }
     const manifest = readProfileManifest('dsh', profileDirectory)
     const selected = manifest.dsh?.profile?.bundles ?? []

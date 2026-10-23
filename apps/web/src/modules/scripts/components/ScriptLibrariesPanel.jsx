@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowDown, ArrowUp, Copy, FileCode, FolderSimple, NotePencil, Plus, Power, Trash, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { DshTriangleRightIcon } from '../../../ui/icons/dshTreeIcons.jsx';
@@ -13,6 +15,7 @@ import { EditorLibraryVersionManager } from '../../../ui/ui/EditorLibraryVersion
 import { useEditorLibraryVersions } from '../../../ui/hooks/useEditorLibraryVersions.js';
 import { isNativeAuthorScript } from '@eleckoi/author-sdk';
 import { createScriptItem, findScriptItem, itemBufferKey, libraryKey, materializeScriptBuffers, moveScriptItem, removeScriptItem, reorderScriptItem, setScriptLibraryEnabled, updateScriptItem } from '../model/scriptEditing.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const noopSubscribe = () => () => {};
 const emptyRuntime = { scriptStatuses: {}, error: '' };
@@ -95,7 +98,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     editorDirty: () => dirtyRef.current,
     capture: (scope, original) => {
       const library = draftsRef.current[libraryKey(scope, scope === 'global' ? '' : ownerId)];
-      if (!library) throw new Error('脚本库尚未载入。');
+      if (!library) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '脚本库尚未载入。', { what: '脚本库' });
       const current = materializeScriptBuffers(library, buffersRef.current);
       return { enabled: current.enabled, trees: current.trees, variables: current.variables, files: original.files };
     },
@@ -145,7 +148,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
       try {
         change(key, library => reorderScriptItem(library, dragged.id, dropTarget.parentId, dropTarget.index));
         if (dropTarget.parentId) setCollapsed(current => { const next = new Set(current); next.delete(JSON.stringify([key, dropTarget.parentId])); return next; });
-      } catch (cause) { setError(cause.message); }
+      } catch (cause) { setError(resolveFailure(cause, { fallback: '调整脚本顺序失败' }).text); }
     }
     setDragged(null); setDropTarget(null);
   }
@@ -200,11 +203,11 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     async function loadContext() {
       const currentGeneration = ++generation;
       try {
-        if (!ownerId) throw new Error('脚本编辑需要明确的归属编号。');
+        if (!ownerId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '脚本编辑需要明确的归属编号。', { what: '选择要编辑的角色或预设' });
         const values = await Promise.all([scriptLibraries.read('global', ''), scriptLibraries.read(ownerScope, ownerId)]);
         if (!active || currentGeneration !== generation) return;
         values.forEach(accept);
-      } catch (cause) { if (active && currentGeneration === generation) setError(cause?.message || '读取脚本库失败。'); }
+      } catch (cause) { if (active && currentGeneration === generation) setError(resolveFailure(cause, { fallback: '读取脚本库失败。' }).text); }
     }
     loadContextRef.current = loadContext;
     const stop = scriptLibraries.subscribe((scope, ownerId, snapshot) => {
@@ -238,8 +241,8 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     const task = (async () => {
       savingRef.current = true; setSaving(true); setNotice('');
       try {
-        if (Object.keys(pendingRef.current).length) throw new Error('脚本配置已更新，请放弃本页修改后载入最新内容。');
-        if (Object.keys(draftsRef.current).length !== 2) throw new Error('脚本库尚未完整载入。');
+        if (Object.keys(pendingRef.current).length) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本配置已更新，请放弃本页修改后载入最新内容。', { what: '脚本配置' });
+        if (Object.keys(draftsRef.current).length !== 2) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '脚本库尚未完整载入。', { what: '脚本库' });
         const versionDrafts = versions.prepare();
         const values = Object.values(draftsRef.current).map(library => materializeScriptBuffers(library, buffersRef.current))
           .filter(library => versionDrafts.some(version => version.scope === library.scope));
@@ -252,7 +255,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
         setDrafts(next); setBaselines(next); setBuffers({}); setError(''); setNotice('saved');
         versions.acceptSaved(result.versions);
         return true;
-      } catch (cause) { setError(cause?.message || '保存脚本库失败。'); return false; }
+      } catch (cause) { setError(resolveFailure(cause, { fallback: '保存脚本库失败。' }).text); return false; }
       finally {
         savingRef.current = false; setSaving(false);
         const received = Object.values(receivedRef.current); receivedRef.current = {};
@@ -287,7 +290,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     if (openingDirectory) return;
     setOpeningDirectory(group.scope);
     try { await scriptLibraries.openDirectory(group.scope, group.ownerId); }
-    catch (cause) { setError(cause?.message || '打开脚本目录失败。'); }
+    catch (cause) { setError(resolveFailure(cause, { fallback: '打开脚本目录失败。' }).text); }
     finally { setOpeningDirectory(''); }
   }
   const selectedLibrary = selection ? drafts[selection.key] : null;
@@ -313,7 +316,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
       if (item.type === 'folder') item.scripts = item.scripts.map(script => ({ ...script, id: crypto.randomUUID() }));
       change(target.key, value => ({ ...value, trees: [...value.trees, item] }));
       setSelection({ key: target.key, id: item.id });
-    } catch (cause) { setError(cause.message); }
+    } catch (cause) { setError(resolveFailure(cause, { fallback: '复制脚本失败' }).text); }
   }
   function batchTargets() {
     return scriptTargets.filter(target => multi.selected.has(target.selectionId)

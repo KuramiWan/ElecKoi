@@ -11,6 +11,7 @@ import {
 import logoIcon from "../../assets/eleckoi-app-icon.png";
 import { ElecKoiWordmark } from "../../ui/icons/ElecKoiWordmark.jsx";
 import { Browse, FileCode, FolderSimple } from '../../ui/icons/interfaceIcons.jsx';
+import { resolveFailure } from '../../utils/failureText.js';
 import {
   CharacterBasicInfoPanel,
 } from "../../modules/persona/index.js";
@@ -29,6 +30,7 @@ import { appWindow, showCurrentWindow } from "../services/windowControls.js";
 import { TitleBar } from "./shell/components/TitleBar.jsx";
 import { EditorPresentationContext, useEditorFeedbackHost } from '../../ui/ui/EditorPresentationContext.jsx';
 import { usePageFade } from '../../ui/hooks/usePageFade.js';
+import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const EDITOR_SECTIONS = [
   { id: "card", label: "基础资料", Icon: IdentificationCard },
@@ -156,12 +158,12 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         setCharacter(found);
         setPersistedCharacter(found);
       })
-      .catch((error) => { if (active) setSaveError(error instanceof Error ? error.message : String(error)); })
+      .catch((error) => { if (active) setSaveError(resolveFailure(error, { fallback: "读取角色卡失败" }).text); })
       .finally(() => {
         if (active) setLoaded(true);
       });
 
-    if (embeddedCharacterId === undefined) showCurrentWindow().catch(() => {});
+    if (embeddedCharacterId === undefined) showCurrentWindow().catch(bestEffort);
     return () => {
       active = false;
     };
@@ -212,7 +214,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       setBasicSaveNotice("saved");
       return true;
     } catch (error) {
-      setSaveError(error?.message || "保存失败");
+      setSaveError(resolveFailure(error, { fallback: "保存失败" }).text);
       return false;
     } finally {
       setSaving(false);

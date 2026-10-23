@@ -5,6 +5,8 @@ import type { Context, Plugin } from '@deepseek-ai/cordis'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { eq } from 'drizzle-orm'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import { PersonaRepository } from '@product-data/domain/personas/PersonaRepository'
 import { CharacterRepository } from '@product-data/domain/personas/CharacterRepository'
 import { CharacterTransferService } from '@product-data/domain/characterTransfer/CharacterTransferService'
@@ -255,8 +257,8 @@ class ProductDataStore {
       this.displayTemplates = new DisplayTemplateRepository(store, { character: characterExists, preset: agentPresetExists })
       this.regexRules = new RegexRuleRepository(store, presets)
       const versionRepository = new EditorLibraryVersionRepository(store, join(dirname(this.scripts.files.root), 'author-script-versions'), address => {
-        if (address.scope === 'character' && !characterExists(store.db, address.ownerId)) throw new Error('配置版本所属角色不存在。')
-        if (address.scope === 'preset' && !agentPresetExists(store.db, address.ownerId)) throw new Error('配置版本所属预设不存在。')
+        if (address.scope === 'character' && !characterExists(store.db, address.ownerId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '配置版本所属角色不存在。', { what: '角色' })
+        if (address.scope === 'preset' && !agentPresetExists(store.db, address.ownerId)) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, '配置版本所属预设不存在。', { what: '预设' })
       })
       this.editorVersions = new EditorLibraryVersionsService(versionRepository, this.scripts, this.displayTemplates, this.regexRules)
       this.transfers = new CharacterTransferService(
@@ -296,7 +298,7 @@ class ProductDataStore {
 
   frontendProjects(): FrontendProjectRepository {
     if (!this.frontends) {
-      if (!this.path || !isAbsolute(this.path)) throw new Error('Frontend projects require the product data directory')
+      if (!this.path || !isAbsolute(this.path)) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'Frontend projects require the product data directory', { what: '产品数据目录' })
       const index = new FrontendIndex(join(dirname(this.path), 'author-frontends'))
       this.frontends = new FrontendProjectRepository(index, id => characterExists(this.databaseRepositories().store.db, id))
     }
@@ -337,7 +339,7 @@ class ProductDataStore {
     this.databaseRepositories()
     const row = this.store!.db.select({ runtimeThreadId: agentConversations.runtimeThreadId })
       .from(agentConversations).where(eq(agentConversations.id, conversationId)).get()
-    if (!row?.runtimeThreadId) throw new Error('找不到聊天对应的 DSH Session。')
+    if (!row?.runtimeThreadId) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到聊天对应的 DSH Session。', { what: '聊天对应的 DSH Session' })
     return row.runtimeThreadId
   }
 
@@ -393,7 +395,7 @@ class ProductDataStore {
 
   recordRuntimeBeforeTurn(conversationId: string, runtimeSessionId: string, turn: number): void {
     this.databaseRepositories()
-    if (this.runtimeSessionId(conversationId) !== runtimeSessionId) throw new Error('生成前状态的 Session 与聊天归属不匹配。')
+    if (this.runtimeSessionId(conversationId) !== runtimeSessionId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '生成前状态的 Session 与聊天归属不匹配。', { what: 'Session 与聊天的归属' })
     this.store!.withWriteTx(() => this.conversationStates!.recordTurn(conversationId, runtimeSessionId, turn,
       'before', this.snapshotConversationRuntime(conversationId)))
   }
@@ -429,7 +431,7 @@ class ProductDataStore {
   completeConversationRuntime(conversationId: string, runtimeSessionId: string, turn: number,
     variableStateJson: string | undefined, expectedVariableStateJson: string | undefined): void {
     this.databaseRepositories()
-    if (this.runtimeSessionId(conversationId) !== runtimeSessionId) throw new Error('完成状态的 Session 与聊天归属不匹配。')
+    if (this.runtimeSessionId(conversationId) !== runtimeSessionId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '完成状态的 Session 与聊天归属不匹配。', { what: 'Session 与聊天的归属' })
     this.store!.withWriteTx(() => {
       this.commitConversationRuntime(conversationId, variableStateJson, undefined, undefined, expectedVariableStateJson)
       this.conversationStates!.recordTurn(conversationId, runtimeSessionId, turn, 'after', this.snapshotConversationRuntime(conversationId))
@@ -443,7 +445,7 @@ class ProductDataStore {
     this.databaseRepositories()
     const variables = JSON.parse(snapshot.variableStateJson)
     if (!variables || typeof variables !== 'object' || Array.isArray(variables)) {
-      throw new Error('聊天变量状态快照格式不正确。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天变量状态快照格式不正确。', { what: '聊天变量状态快照' })
     }
     this.settingLibraries!.parseConversationRuntimeState(snapshot.settingLibraryStateJson)
   }
@@ -512,7 +514,7 @@ class ProductDataStore {
             variableStateJson: inputState, settingLibraryStateJson: '[]'
           })
         } else {
-          if (!Number.isSafeInteger(item.turn) || item.turn! < 1) throw new Error('导入的回复缺少正式 DSH 轮次。')
+          if (!Number.isSafeInteger(item.turn) || item.turn! < 1) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '导入的回复缺少正式 DSH 轮次。', { what: '导入回复的 DSH 轮次' })
           this.conversationStates!.recordTurn(conversationId, sessionId, item.turn!, 'before', {
             variableStateJson: before, settingLibraryStateJson: '[]'
           })
@@ -717,7 +719,7 @@ class ProductDataStore {
     const metadata = this.conversations!.getMetadata(conversationId)
     if (options.characterId) {
       const character = this.readCharacters().items.find(item => item.id === options.characterId)
-      if (!character) throw new Error(`群聊成员不存在：${options.characterId}`)
+      if (!character) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `群聊成员不存在：${options.characterId}`, { what: '群聊成员' })
       metadata.characterId = character.id; metadata.characterName = typeof character.name === 'string' ? character.name : character.id
       metadata.characterAvatar = typeof character.avatar === 'string' ? character.avatar : ''
       metadata.characterPersona = { ...metadata.characterPersona, ...(isRecord(character.persona) ? character.persona : {}) }
@@ -814,7 +816,7 @@ class ProductDataStore {
     this.store!.withWriteTx((db) => {
       if (expectedVariableStateJson !== undefined && variableStateJson !== undefined
         && this.variableStates!.viewerStates(conversationId).currentStateJson !== expectedVariableStateJson) {
-        throw new Error('生成期间聊天变量已被其他操作修改，未覆盖当前变量。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '生成期间聊天变量已被其他操作修改，未覆盖当前变量。', { what: '聊天变量' })
       }
       if (variableStateJson !== undefined) {
         this.variableStates!.replaceCurrent(conversationId, variableStateJson, db)
@@ -935,7 +937,7 @@ class ProductDataStore {
     this.requireStoryConversation(characterId, conversationId)
     const repository = this.databaseRepositories().settingLibraries
     if (!repository.conversationLibrary(characterId, conversationId)) {
-      throw new Error('该聊天尚未产生分支设定。只有设定修改工具成功提交变更后才能编辑。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '该聊天尚未产生分支设定。只有设定修改工具成功提交变更后才能编辑。', { what: '成功提交一次设定修改' })
     }
     return repository.replaceConversationLibrary(characterId, conversationId, library)
   }
@@ -953,7 +955,7 @@ class ProductDataStore {
   private requireStoryConversation(characterId: string, conversationId: string): void {
     this.databaseRepositories()
     if (this.conversations!.getCharacterBinding(conversationId).characterId !== characterId) {
-      throw new Error('这段对话不属于当前故事角色。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '这段对话不属于当前故事角色。', { what: '对话与故事角色的归属' })
     }
   }
 
@@ -1124,7 +1126,7 @@ class ProductDataStore {
 
   creatorPresetRuntime(presetId: string) {
     const preset = this.readAgentPreset(presetId)
-    if (preset.purpose !== 'creator') throw new Error('AI 创作工作室只能使用创作预设。')
+    if (preset.purpose !== 'creator') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'AI 创作工作室只能使用创作预设。', { field: 'presetId' })
     return { preset, settingLibrary: projectAgentPresetRuntimeContext(preset), historyCompactionInstructions: presetHistoryCompactionInstructions(preset.entries) }
   }
 
@@ -1136,7 +1138,7 @@ class ProductDataStore {
   saveAgentPreset(preset: AgentPreset, expectedRegexRules: RegexRule[], scriptLibrary?: ScriptLibrary): AgentPreset {
     this.databaseRepositories()
     if (!scriptLibrary) return this.requirePresets().save(preset, expectedRegexRules)
-    if (scriptLibrary.scope !== 'preset' || scriptLibrary.ownerId !== preset.id) throw new Error('预设脚本库归属不匹配。')
+    if (scriptLibrary.scope !== 'preset' || scriptLibrary.ownerId !== preset.id) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '预设脚本库归属不匹配。', { what: '脚本库与预设的归属' })
     return this.scripts!.transaction(db => {
       const saved = this.requirePresets().save(preset, expectedRegexRules)
       this.scripts!.saveInTransaction(scriptLibrary, db)
@@ -1210,7 +1212,7 @@ class ProductDataStore {
           .where(eq(characters.id, sourceCharacterId)).get()
       : undefined
     if (input.mode === 'existing' && character === undefined) {
-      throw new Error('找不到要修改的角色。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '找不到要修改的角色。', { what: '角色' })
     }
     return projects.create({
       ...input,
@@ -1247,23 +1249,23 @@ class ProductDataStore {
   }
 
   private requireRegexRules(): RegexRuleRepository {
-    if (!this.regexRules) throw new Error('ElecKoi 正则规则数据服务尚未初始化。')
+    if (!this.regexRules) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'ElecKoi 正则规则数据服务尚未初始化。', { what: '正则规则数据服务' })
     return this.regexRules
   }
 
   private requirePresets(): AgentPresetRepository {
-    if (!this.presets) throw new Error('ElecKoi Agent 预设数据服务尚未初始化。')
+    if (!this.presets) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'ElecKoi Agent 预设数据服务尚未初始化。', { what: 'Agent 预设数据服务' })
     return this.presets
   }
 }
 
 function requireMediaRoot(path: string | undefined): string {
-  if (!path || !isAbsolute(path)) throw new Error('ElecKoi DSH Host 缺少有效的媒体目录。')
+  if (!path || !isAbsolute(path)) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'ElecKoi DSH Host 缺少有效的媒体目录。', { what: '媒体目录' })
   return path
 }
 
 function requireWorkspaceRoot(path: string | undefined): string {
-  if (!path || !isAbsolute(path)) throw new Error('ElecKoi DSH Host 缺少有效的工作区目录。')
+  if (!path || !isAbsolute(path)) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'ElecKoi DSH Host 缺少有效的工作区目录。', { what: '工作区目录' })
   return path
 }
 
@@ -1311,7 +1313,7 @@ function optionalBoolean(value: unknown): boolean | undefined {
 
 function openProductDatabase(path: string | undefined): Database.Database {
   if (!path || !isAbsolute(path)) {
-    throw new Error('ElecKoi DSH Host 缺少有效的产品数据库路径。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'ElecKoi DSH Host 缺少有效的产品数据库路径。', { what: '产品数据库路径' })
   }
   const connection = new Database(path)
   try {
@@ -1323,10 +1325,10 @@ function openProductDatabase(path: string | undefined): Database.Database {
     recoverInterruptedState(connection)
     const version = connection.pragma('user_version', { simple: true }) as number
     if (version !== CURRENT_SCHEMA_VERSION) {
-      throw new Error(`产品数据库结构不匹配：需要 v${CURRENT_SCHEMA_VERSION}。`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dbSchemaMismatch, `产品数据库结构不匹配：需要 v${CURRENT_SCHEMA_VERSION}。`, { what: '产品数据库结构', expected: `v${CURRENT_SCHEMA_VERSION}` })
     }
     if ((connection.pragma('foreign_key_check') as unknown[]).length > 0) {
-      throw new Error('产品数据库外键校验失败。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.dbSchemaMismatch, '产品数据库外键校验失败。', { what: '产品数据库外键' })
     }
     return connection
   } catch (error) {

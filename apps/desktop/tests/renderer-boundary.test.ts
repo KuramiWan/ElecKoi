@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { assertTrustedDshClientFrame, isAllowedExternalUrl, isAppRendererUrl, isDshChildUrl } from '../src/main/platform/electron/validateSender'
+import { assertTrustedDshClientFrame, assertTrustedRenderer, isAllowedExternalUrl, isAppRendererUrl, isDshChildUrl } from '../src/main/platform/electron/validateSender'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { WebContents } from 'electron'
 
 const originalRendererUrl = process.env.ELECTRON_RENDERER_URL
@@ -56,5 +58,23 @@ describe('Renderer trust boundary', () => {
     expect(() => assertTrustedDshClientFrame(sender, url, true, [sender])).not.toThrow()
     expect(() => assertTrustedDshClientFrame(sender, url, true, [])).toThrow()
     expect(() => assertTrustedDshClientFrame(sender, 'dsh-app://app/?view=unknown', true, [sender])).toThrow()
+  })
+
+  it('reports untrusted senders with the contract code', () => {
+    const sender = { getURL: () => 'dsh-app://app/' } as WebContents
+    const capture = (call: () => void): unknown => {
+      try {
+        call()
+        return undefined
+      } catch (error) {
+        return error
+      }
+    }
+    const fromPage = capture(() => assertTrustedRenderer(sender, 'https://evil.example/', true))
+    expect(fromPage).toBeInstanceOf(DesktopError)
+    expect((fromPage as DesktopError).code).toBe(ELECKOI_FAILURE_CODES.senderUntrusted)
+    const fromFrame = capture(() => assertTrustedDshClientFrame(sender, 'dsh-app://app/', true, []))
+    expect(fromFrame).toBeInstanceOf(DesktopError)
+    expect((fromFrame as DesktopError).code).toBe(ELECKOI_FAILURE_CODES.senderUntrusted)
   })
 })

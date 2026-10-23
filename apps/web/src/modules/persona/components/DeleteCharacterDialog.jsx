@@ -1,8 +1,9 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 
-export function DeleteCharacterDialog({ character, deleting = false, error = "", returnFocus, onCancel, onConfirm }) {
+export function DeleteCharacterDialog({ character, deleting = false, error = null, returnFocus, onCancel, onConfirm }) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef(null);
@@ -58,7 +59,7 @@ export function DeleteCharacterDialog({ character, deleting = false, error = "",
       >
         <h2 id={titleId}>删除“{character.name}”？</h2>
         <p id={descriptionId}>角色及其对话记录将被永久删除。</p>
-        {error ? <span className="character-delete-error" role="alert">{error}</span> : null}
+        <FailureAlert failure={error} className="character-delete-error" />
         <div className="character-delete-actions">
           <button ref={cancelRef} type="button" disabled={deleting} onClick={onCancel}>取消</button>
           <button type="button" className="is-danger" disabled={deleting} onClick={onConfirm}>

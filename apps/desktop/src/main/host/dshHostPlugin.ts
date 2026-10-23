@@ -7,6 +7,28 @@ import { resolveDshSystemProxyEnvironment } from '@main/platform/electron/system
 
 const require = createRequire(import.meta.url)
 
+/**
+ * 从任意抛出值里按形状读契约码。
+ * 不用 `instanceof DesktopError`：这个类会被打进 `@eleckoi/desktop-host` 的 bundle 副本。
+ * @param value - 被捕获的任意抛出。 @returns 码，或 `undefined`。
+ */
+function failureCodeOf(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const code = (value as { readonly code?: unknown }).code
+  return typeof code === 'string' ? code : undefined
+}
+
+/**
+ * 按形状读契约详情（只接受非数组对象，与 `foldFailure` 同一条规矩）。
+ * @param value - 被捕获的任意抛出。 @returns 扁平详情对象，或 `undefined`。
+ */
+function failureDetailsOf(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const details = (value as { readonly details?: unknown }).details
+  if (typeof details !== 'object' || details === null || Array.isArray(details)) return undefined
+  return details as Record<string, unknown>
+}
+
 export const dshHostPlugin = {
   name: 'eleckoi-dsh-host',
   inject: ['appPaths', 'appLog'],
@@ -31,8 +53,16 @@ export const dshHostPlugin = {
       agentPatchPath: ctx.appPaths.resolveResource('dsh', 'desktop-agent.patch.yml'),
       executablePath: process.execPath,
       packageManager,
+      // 子进程的 stdout/stderr 以前被完全丢掉（`onDiagnostic` 没人传），唯一能看到的诊断就没了。
+      // 这里接进主进程日志；行前缀是给 grep 用的固定标记，不是用户文案。
+      onDiagnostic(message) {
+        const line = message.trim()
+        if (line !== '') ctx.appLog.info({ source: 'dsh-plugin-host' }, line)
+      },
       onFailure(error) {
-        ctx.appLog.error({ error }, 'DSH plugin Host exited unexpectedly')
+        // 边界③ 已经把子进程的失败折成契约形态（码 + 详情 + 子进程栈），这里只负责记录与转发。
+        // pino 只认 `err` 这个键；写成 `error` 会丢掉栈。
+        ctx.appLog.error({ err: error, code: failureCodeOf(error), details: failureDetailsOf(error) }, 'DSH 插件宿主意外退出')
         for (const listener of failureListeners) listener(error)
         ctx.emit('eleckoi/desktop-fatal', error)
       }

@@ -2,9 +2,13 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { OPTIONAL_BUNDLES, PROFILE_TEMPLATES, readProfileManifest, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { ELECKOI_ANDROID_BUNDLES } from './androidPluginBundles'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 const webProfile = PROFILE_TEMPLATES.web
-if (webProfile === undefined) throw new Error('DSH web profile template is unavailable')
+if (webProfile === undefined) {
+  throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'DSH web profile template is unavailable', { what: 'DSH web profile 模板' })
+}
 export const ELECKOI_ANDROID_RECOVERY_BUNDLES = Object.freeze([
   ...webProfile.bundles, ...ELECKOI_ANDROID_BUNDLES
 ])

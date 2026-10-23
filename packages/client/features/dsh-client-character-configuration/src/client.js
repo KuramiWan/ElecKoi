@@ -1,6 +1,10 @@
 window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-character-configuration',
-  factory() {
+  factory(require) {
+    // 边界⑥ 的信封拆解只有一份实现：@eleckoi/dsh-product-api 的 client 面（本包是 desktop
+    // bundle 成员，运行时用同一个 id 取）。它失败时抛出宿主给的失败对象本身，不再把码压成 message。
+    const { unwrapOrFail, failureAlreadyPublished, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
+
     const idle = { status: 'idle', value: null, error: '' }
 
     class CharacterConfigurationBridge {
@@ -14,10 +18,9 @@ window.__ModuleLoader__.load({
 
       async request(method, args) {
         const api = this.remote.eleckoiCharacterConfiguration
-        if (typeof api[method] !== 'function') throw new Error(`不支持的角色配置操作：${method}`)
+        if (typeof api[method] !== 'function') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, `不支持的角色配置操作：${method}`, { what: '角色配置操作' })
         const result = await api[method](...args)
-        if (!result?.ok) throw new Error(result?.error?.message || '角色配置操作失败。')
-        return result.value
+        return unwrapOrFail(result, '角色配置操作失败。')
       }
 
       subscribe(listener) {
@@ -66,17 +69,16 @@ window.__ModuleLoader__.load({
 
       async listCharacters() {
         const result = await this.remote.eleckoiCharacters.list()
-        if (!result?.ok) throw new Error(result?.error?.message || '读取角色列表失败。')
-        return result.value
+        return unwrapOrFail(result, '读取角色列表失败。')
       }
 
       async listConversations() {
         const result = await this.remote.eleckoiConversations.list()
-        if (!result?.ok) throw new Error(result?.error?.message || '读取聊天消息预览失败。')
-        if (!Array.isArray(result.value) || result.value.some(item => !item || typeof item.id !== 'string')) {
-          throw new Error('会话目录返回的数据格式不正确。')
+        const value = unwrapOrFail(result, '读取聊天消息预览失败。')
+        if (!Array.isArray(value) || value.some(item => !item || typeof item.id !== 'string')) {
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '会话目录返回的数据格式不正确。', { what: '会话目录' })
         }
-        return result.value
+        return value
       }
     }
 
@@ -114,7 +116,7 @@ window.__ModuleLoader__.load({
       }
 
       async request(method, ...args) {
-        if (this.disposed) throw new Error('角色配置客户端模型已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '角色配置客户端模型已关闭。', { what: '角色配置客户端模型' })
         return this.bridge.request(method, args)
       }
 
@@ -132,7 +134,8 @@ window.__ModuleLoader__.load({
           if (!this.disposed && this.generations.get(characterId) === generation) {
             this.publish('configuration', characterId, {
               status: 'error', value: previous.value,
-              error: error instanceof Error ? error.message : String(error)
+              // 按形状取 message，不用 instanceof：RemoteError 可能是别的 realm 的副本。
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -166,10 +169,10 @@ window.__ModuleLoader__.load({
 
       refreshLoaded(characterId) {
         if (characterId) {
-          if (this.snapshots.has(characterId)) void this.read(characterId).catch(() => {})
+          if (this.snapshots.has(characterId)) void this.read(characterId).catch(failureAlreadyPublished)
           return
         }
-        for (const loadedId of this.snapshots.keys()) void this.read(loadedId).catch(() => {})
+        for (const loadedId of this.snapshots.keys()) void this.read(loadedId).catch(failureAlreadyPublished)
       }
 
       start() {
@@ -197,7 +200,7 @@ window.__ModuleLoader__.load({
           'saveSettingLibraryViewState', (value, characterId) => {
             if (!value || value.characterId !== characterId || !Array.isArray(value.entries)
               || !Array.isArray(value.groups) || !Array.isArray(value.versions)) {
-              throw new Error('设定库返回的数据格式不正确。')
+              throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库返回的数据格式不正确。', { what: '设定库' })
             }
             return value
           })
@@ -220,7 +223,7 @@ window.__ModuleLoader__.load({
           const branches = await this.request('readConversationSettingLibraries', characterId)
           if (!Array.isArray(branches) || branches.some(item => !item || typeof item.sessionId !== 'string'
             || item.library?.characterId !== characterId)) {
-            throw new Error('分支设定返回的数据格式不正确。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '分支设定返回的数据格式不正确。', { what: '分支设定' })
           }
           const conversations = branches.length ? await this.bridge.listConversations() : []
           const previews = new Map(conversations.map(item => [item.id, item.preview]))
@@ -233,7 +236,8 @@ window.__ModuleLoader__.load({
           if (!this.disposed && this.conversationGenerations.get(characterId) === generation) {
             this.publishConversations(characterId, {
               status: 'error', value: previous.value,
-              error: error instanceof Error ? error.message : String(error)
+              // 按形状取 message，不用 instanceof：RemoteError 可能是别的 realm 的副本。
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -260,11 +264,11 @@ window.__ModuleLoader__.load({
       refreshLoaded(characterId) {
         super.refreshLoaded(characterId)
         if (characterId) {
-          if (this.conversationSnapshots.has(characterId)) void this.readConversations(characterId).catch(() => {})
+          if (this.conversationSnapshots.has(characterId)) void this.readConversations(characterId).catch(failureAlreadyPublished)
           return
         }
         for (const loadedId of this.conversationSnapshots.keys()) {
-          void this.readConversations(loadedId).catch(() => {})
+          void this.readConversations(loadedId).catch(failureAlreadyPublished)
         }
       }
 
@@ -282,7 +286,7 @@ window.__ModuleLoader__.load({
             if (!value || value.characterId !== characterId || !Array.isArray(value.globalRules)
               || !Array.isArray(value.agentPresetRules) || !Array.isArray(value.characterRules)
               || !Array.isArray(value.versions) || !Number.isInteger(value.revision)) {
-              throw new Error('正则配置返回的数据格式不正确。')
+              throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '正则配置返回的数据格式不正确。', { what: '正则配置' })
             }
             return value
           })
@@ -339,7 +343,7 @@ window.__ModuleLoader__.load({
             || !Array.isArray(value.characterRules) || !Array.isArray(value.versions)
             || !Number.isInteger(value.revision) || typeof value.ownerRevision !== 'string'
             || (scope === 'character' ? value.agentPresetRules.length : value.characterRules.length)) {
-            throw new Error('正则编辑配置返回的数据格式不正确。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '正则编辑配置返回的数据格式不正确。', { what: '正则编辑配置' })
           }
           return value
         })
@@ -373,7 +377,7 @@ window.__ModuleLoader__.load({
         })
       }
       editor(scope, ownerId) {
-        if (!['character', 'preset'].includes(scope) || !ownerId) throw new Error('正则编辑需要明确的角色或预设归属。')
+        if (!['character', 'preset'].includes(scope) || !ownerId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '正则编辑需要明确的角色或预设归属。', { what: '选择角色或预设归属' })
         const key = JSON.stringify([scope, ownerId])
         return {
           getSnapshot: () => this.getSnapshot(key), read: () => this.read(key),
@@ -393,7 +397,7 @@ window.__ModuleLoader__.load({
           if (!value || value.scope !== scope || value.ownerId !== ownerId || !Array.isArray(value.trees)
             || typeof value.enabled !== 'boolean' || !Number.isSafeInteger(value.revision)
             || !value.variables || typeof value.variables !== 'object' || Array.isArray(value.variables)) {
-            throw new Error('脚本库返回的数据格式不正确。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '脚本库返回的数据格式不正确。', { what: '脚本库' })
           }
           return value
         })
@@ -411,7 +415,7 @@ window.__ModuleLoader__.load({
           || typeof value.activeVersionId !== 'string' || !Array.isArray(value.versions)
           || !value.versions.some(version => version.id === value.activeVersionId)
           || value.versions.some(version => typeof version.id !== 'string' || typeof version.name !== 'string' || typeof version.content !== 'string')) {
-          throw new Error('配置版本返回的数据或归属不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '配置版本返回的数据或归属不正确。', { what: '配置版本' })
         }
         return value
       }
@@ -431,7 +435,7 @@ window.__ModuleLoader__.load({
           })
           const result = await bridge.request('saveEditorLibraries', [{ kind, documents: documents.map(document => JSON.stringify(document)), versions }])
           if (!Array.isArray(result?.documents) || result.documents.length !== documents.length || !Array.isArray(result.versions)
-            || result.versions.length !== versions.length) throw new Error('配置版本保存结果不完整。')
+            || result.versions.length !== versions.length) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '配置版本保存结果不完整。', { what: '配置版本保存结果' })
           const saved = result.documents.map((content, index) => model.validate(JSON.parse(content), requests[index].key))
           const storedVersions = result.versions.map((value, index) => validate(value, versions[index].scope, versions[index].ownerId))
           if (!model.disposed) saved.forEach((value, index) => {
@@ -453,7 +457,7 @@ window.__ModuleLoader__.load({
         async openDirectory(scope, ownerId) {
           const workspace = await bridge.request('readScriptWorkspace', [scope, ownerId])
           const result = await bridge.remote.session.openWorkspacePath({ path: workspace.path })
-          if (!result.ok) throw new Error(result.error.message)
+          unwrapOrFail(result, '打开脚本目录失败。')
         },
         async saveAll(libraries) {
           const requests = libraries.map(library => {
@@ -461,7 +465,7 @@ window.__ModuleLoader__.load({
             return { address, generation: model.nextGeneration(address) }
           })
           const saved = await bridge.request('saveScriptLibraries', [libraries])
-          if (!Array.isArray(saved) || saved.length !== requests.length) throw new Error('批量保存脚本库返回的数据格式不正确。')
+          if (!Array.isArray(saved) || saved.length !== requests.length) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '批量保存脚本库返回的数据格式不正确。', { what: '批量保存脚本库结果' })
           const values = saved.map((library, index) => model.validate(library, requests[index].address))
           if (!model.disposed) values.forEach((value, index) => {
             const { address, generation } = requests[index]
@@ -479,9 +483,9 @@ window.__ModuleLoader__.load({
         }),
         async activePreset() {
           const catalog = await bridge.remote.eleckoiAgentPresets.catalog()
-          if (!catalog?.ok) throw new Error(catalog?.error?.message || '读取当前预设失败。')
+          unwrapOrFail(catalog, '读取当前预设失败。')
           const preset = catalog.value.presets.find(item => item.id === catalog.value.activePresetIds.roleplay)
-          if (!preset) throw new Error('当前预设不在预设目录中。')
+          if (!preset) throw productFailure(ELECKOI_FAILURE_CODES.agentPresetNotFound, '当前预设不在预设目录中。', { what: '预设' })
           return { id: preset.id, name: preset.name }
         },
       }
@@ -497,18 +501,18 @@ window.__ModuleLoader__.load({
               || value.libraries[1]?.scope !== 'preset' || !value.libraries[1]?.ownerId
               || value.libraries[2]?.scope !== 'character' || value.libraries[2]?.ownerId !== ownerId
               || value.libraries.some(library => typeof library.enabled !== 'boolean' || !Array.isArray(library.templates)
-                || !Number.isSafeInteger(library.revision) || library.revision < 0)) throw new Error('显示模板组合归属不匹配。')
+                || !Number.isSafeInteger(library.revision) || library.revision < 0)) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '显示模板组合归属不匹配。', { what: '显示模板组合归属' })
             const previous = this.getSnapshot(address).value
             if (previous?.characterId === value.characterId && previous.libraries.every((library, index) =>
               library.scope === value.libraries[index].scope && library.ownerId === value.libraries[index].ownerId
                 && library.revision === value.libraries[index].revision)) return previous
           } else if (!value || value.scope !== scope || value.ownerId !== ownerId || !Array.isArray(value.templates)
-            || typeof value.enabled !== 'boolean' || !Number.isSafeInteger(value.revision) || value.revision < 0) throw new Error('显示模板配置归属或格式不正确。')
+            || typeof value.enabled !== 'boolean' || !Number.isSafeInteger(value.revision) || value.revision < 0) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '显示模板配置归属或格式不正确。', { what: '显示模板配置' })
           return value
         })
       }
       request(method, address, value) {
-        if (this.disposed) throw new Error('显示模板客户端模型已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示模板客户端模型已关闭。', { what: '显示模板客户端模型' })
         const [scope, ownerId] = JSON.parse(address)
         if (method === 'saveDisplayTemplates') return this.bridge.request(method, [value])
         return scope === 'selection' ? this.bridge.request('displayTemplatesForCharacter', [ownerId])
@@ -521,11 +525,11 @@ window.__ModuleLoader__.load({
         })
       }
       async saveAll(libraries) {
-        if (this.disposed) throw new Error('显示模板客户端模型已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示模板客户端模型已关闭。', { what: '显示模板客户端模型' })
         const addresses = libraries.map(library => JSON.stringify([library.scope, library.ownerId]))
         const generations = addresses.map(address => this.nextGeneration(address))
         const values = await this.bridge.request('saveDisplayTemplateLibraries', [libraries])
-        if (!Array.isArray(values) || values.length !== libraries.length) throw new Error('显示模板保存结果不完整。')
+        if (!Array.isArray(values) || values.length !== libraries.length) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '显示模板保存结果不完整。', { what: '显示模板保存结果' })
         return values.map((value, index) => {
           const saved = this.validate(value, addresses[index])
           if (!this.disposed && this.generations.get(addresses[index]) === generations[index]) this.publish('configuration', addresses[index], { status: 'ready', value: saved, error: '' })
@@ -559,7 +563,7 @@ window.__ModuleLoader__.load({
         'saveVariableConfigViewState', (value, characterId) => {
           if (!value || value.characterId !== characterId || !Array.isArray(value.objects)
             || !Array.isArray(value.variables) || !Array.isArray(value.versions)) {
-            throw new Error('变量配置返回的数据格式不正确。')
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量配置返回的数据格式不正确。', { what: '变量配置' })
           }
           return value
         }

@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export const regexLibrariesSql = "CREATE TABLE IF NOT EXISTS `regex_libraries` (`scope` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `characterId` TEXT, `presetId` TEXT, `enabled` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`scope`, `ownerId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`presetId`) REFERENCES `agent_presets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , CHECK (`enabled` IN (0, 1)), CHECK ((`scope` = 'global' AND `ownerId` = '' AND `characterId` IS NULL AND `presetId` IS NULL) OR (`scope` = 'character' AND `characterId` IS NOT NULL AND `ownerId` = `characterId` AND `ownerId` <> '' AND `presetId` IS NULL) OR (`scope` = 'preset' AND `presetId` IS NOT NULL AND `ownerId` = `presetId` AND `ownerId` <> '' AND `characterId` IS NULL)))"
 
@@ -9,12 +11,12 @@ export function addRegexLibraryEnablement(database: Database.Database): void {
   const update = database.prepare('UPDATE editor_library_versions SET stateJson=? WHERE rowid=?')
   for (const row of rows) {
     const state = JSON.parse(row.stateJson)
-    if (!state || !Array.isArray(state.versions)) throw new Error('正则配置版本格式无效，未修改数据。')
+    if (!state || !Array.isArray(state.versions)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '正则配置版本格式无效，未修改数据。', { what: '正则配置版本' })
     let changed = false
     for (const version of state.versions) {
       const content = JSON.parse(version.content)
-      if (!content || !Array.isArray(content.rules)) throw new Error('正则版本内容无效，未修改数据。')
-      if (Object.hasOwn(content, 'enabled') && typeof content.enabled !== 'boolean') throw new Error('正则版本整体启停无效，未修改数据。')
+      if (!content || !Array.isArray(content.rules)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '正则版本内容无效，未修改数据。', { what: '正则版本内容' })
+      if (Object.hasOwn(content, 'enabled') && typeof content.enabled !== 'boolean') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '正则版本整体启停无效，未修改数据。', { what: '正则版本整体启停' })
       if (!Object.hasOwn(content, 'enabled')) { version.content = JSON.stringify({ enabled: true, ...content }); changed = true }
     }
     if (changed) update.run(JSON.stringify(state), row.rowid)

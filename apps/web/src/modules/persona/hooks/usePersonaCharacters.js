@@ -1,5 +1,8 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { emptyPersona } from "../../../utils/constants/defaults.js";
+import { LOG_ACTIONS, logAction } from "../../../utils/logAction.js";
 
 export function newCharacter(group = "") {
   const id = `character-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
@@ -116,7 +119,7 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }, [catalog.collection, catalog.status, characterCatalog]);
 
   async function loadPersona() {
-    if (!personaModel) throw new Error("用户资料服务未装载。");
+    if (!personaModel) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "用户资料服务未装载。", { what: "用户资料服务" });
     const profile = personaModel.getSnapshot().profile || await personaModel.refresh();
     const loaded = { ...emptyPersona, ...(profile || {}) };
     setPersona(loaded);
@@ -124,7 +127,7 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   async function loadCharacters() {
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
     const data = characterCatalog?.getSnapshot().status === "ready"
       ? characterCatalog.getSnapshot().collection
       : await characterCatalog.refresh();
@@ -141,7 +144,7 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   async function saveCharacterGroups(groups, assignments = []) {
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
     const saved = await characterCatalog.saveGroups(groups, assignments);
     applyCharacterCollection(saved);
     setStatus("角色分组已保存");
@@ -157,7 +160,7 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   async function createCharacter(group = "") {
     const character = newCharacter(group);
     setSelectedCharacter(character.id);
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
     const saved = await characterCatalog.create(character);
     applyCharacterCollection(saved);
     setSelectedCharacter(character.id);
@@ -166,7 +169,7 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   async function updateCharacter(character, quiet = false, options = {}) {
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
     const saved = await characterCatalog.update(character);
     if (options.skipApply) setCharacterState(saved);
     else applyCharacterCollection(saved);
@@ -177,7 +180,7 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   async function deleteCharacterIds(characterIds) {
     const ids = [...new Set(characterIds.filter(Boolean))];
     if (!ids.length) return charactersRef.current;
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
     const saved = await characterCatalog.delete(ids);
     applyCharacterCollection(saved);
     setActiveSectionState("character");
@@ -186,8 +189,17 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   async function importPreparedCharacters(token) {
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
-    const result = await characterCatalog.commitImport(token);
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
+    // 关键路径日志：导入角色卡（主窗口角色页这条路；角色卡管理器里另有一条同样的动作）。
+    logAction(LOG_ACTIONS.characterImport, "start");
+    let result;
+    try {
+      result = await characterCatalog.commitImport(token);
+    } catch (error) {
+      logAction(LOG_ACTIONS.characterImport, "failure", error);
+      throw error;
+    }
+    logAction(LOG_ACTIONS.characterImport, "success");
     applyCharacterCollection(result.collection);
     const selectedId = result.importedCharacterIds?.[0] || result.collection.active_character_id;
     setSelectedCharacter(selectedId);
@@ -199,12 +211,12 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
   }
 
   function prepareCharacterImports(source, files) {
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
     return characterCatalog.prepareImport(source, files);
   }
 
   function discardCharacterImports(token) {
-    if (!characterCatalog) throw new Error("角色目录服务未装载。");
+    if (!characterCatalog) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "角色目录服务未装载。", { what: "角色目录服务" });
     return characterCatalog.discardImport(token);
   }
 
@@ -217,7 +229,7 @@ export function usePersonaCharacters({ characterCatalog, personaModel, setStatus
       user_square: avatars?.square ?? persona.user_square ?? "",
       user_portrait: avatars?.portrait ?? persona.user_portrait ?? "",
     };
-    if (!personaModel) throw new Error("用户资料服务未装载。");
+    if (!personaModel) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "用户资料服务未装载。", { what: "用户资料服务" });
     const saved = { persona: await personaModel.save(nextPersona) };
     const updated = { ...emptyPersona, ...(saved.persona || nextPersona) };
     setPersona(updated);

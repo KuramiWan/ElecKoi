@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { CharacterManagerIcon, ChevronRightIcon, ImportIcon, PlusIcon, TrashIcon } from '../../../ui/icons/index.jsx';
@@ -21,6 +23,8 @@ import { PresetToolsEditor } from './PresetToolsEditor.jsx';
 import { fileBase64, PresetImportDialog } from './PresetTransfer.jsx';
 import { openPresetManagerWindow } from '../window/openPresetManagerWindow.js';
 import { PresetPurposeSwitch, isDefaultPreset } from './PresetPurposeSwitch.jsx';
+import { LOG_ACTIONS, logAction } from '../../../utils/logAction.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const PresetContext = createContext(null);
 const ALL_PRESETS = '全部预设';
@@ -100,7 +104,7 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
       setError('');
       return next;
     } catch (cause) {
-      setError(cause?.message || '读取预设失败');
+      setError(resolveFailure(cause, { fallback: '读取预设失败' }).text);
       return null;
     }
   }
@@ -120,7 +124,7 @@ export function PresetProvider({ children, catalogModel, navigationGuardRef: ext
 
 export function usePresets() {
   const value = useContext(PresetContext);
-  if (!value) throw new Error('PresetProvider is missing.');
+  if (!value) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'PresetProvider is missing.', { what: '预设 Provider' });
   return value;
 }
 
@@ -217,7 +221,7 @@ export function PresetListPanel() {
         setSelectedGroup(ALL_PRESETS);
         await refresh(result.preset.id);
       } catch (cause) {
-        setImportError(cause?.message || '导入预设失败');
+        setImportError(resolveFailure(cause, { fallback: '导入预设失败' }).text);
       } finally {
         setImporting(false);
       }
@@ -229,7 +233,7 @@ export function PresetListPanel() {
       try {
         setCatalog(await catalogModel.setActive(preset.id));
         setError('');
-      } catch (cause) { setError(cause?.message || '启用预设失败'); }
+      } catch (cause) { setError(resolveFailure(cause, { fallback: '启用预设失败' }).text); }
     });
   }
 
@@ -238,7 +242,7 @@ export function PresetListPanel() {
       try {
         await catalogModel.delete(preset.id);
         await refresh();
-      } catch (cause) { setError(cause?.message || '删除预设失败'); }
+      } catch (cause) { setError(resolveFailure(cause, { fallback: '删除预设失败' }).text); }
     });
   }
 
@@ -379,7 +383,7 @@ export function PresetWorkspace({
       setTab(initialTab);
       if (requestedTabRef.current) requestedTabHandledRef.current?.();
       setProfileEditing(false);
-    }).catch((cause) => active && setError(cause?.message || '读取预设失败')).finally(() => active && setLoading(false));
+    }).catch((cause) => active && setError(resolveFailure(cause, { fallback: '读取预设失败' }).text)).finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [catalogModel, selectedPresetId]);
 
@@ -455,6 +459,8 @@ export function PresetWorkspace({
     savingRef.current = true;
     setSaving(true);
     setError('');
+    // 关键路径日志：保存预设（预设正文的保存按钮；编辑器内的保存各自另有通道）。
+    logAction(LOG_ACTIONS.presetSave, 'start');
     try {
       const saved = await catalogModel.save(candidate, persisted?.regexRules || []);
       pendingLatestRef.current = null;
@@ -463,9 +469,11 @@ export function PresetWorkspace({
       setPersisted(saved);
       await refresh(saved.id);
       if (compact) onNotify?.('success', '预设已保存');
+      logAction(LOG_ACTIONS.presetSave, 'success');
       return true;
     } catch (cause) {
-      setError(cause?.message || '保存预设失败');
+      logAction(LOG_ACTIONS.presetSave, 'failure', cause);
+      setError(resolveFailure(cause, { fallback: '保存预设失败' }).text);
       return false;
     } finally {
       savingRef.current = false;

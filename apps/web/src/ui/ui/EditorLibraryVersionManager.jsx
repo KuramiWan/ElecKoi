@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { EditorVersionManager } from './EditorVersionManager.jsx';
+import { resolveFailure } from '../../utils/failureText.js';
 
 export function EditorLibraryVersionManager({ title, versions, ownerScope, ownerLabel, onClose, busy, extraActions = [] }) {
   const [scope, setScope] = useState(ownerScope), [error, setError] = useState('');
   const input = useRef(null);
   const current = versions.current(scope);
-  const run = operation => { try { setError(''); operation(); } catch (cause) { setError(cause.message); } };
+  const run = operation => { try { setError(''); operation(); } catch (cause) { setError(resolveFailure(cause, { fallback: '版本操作失败' }).text); } };
   if (!current) return null;
   return <EditorVersionManager title={title} versions={current.versions} activeVersionId={current.activeVersionId}
     scopes={[{ id: 'global', label: '全局' }, { id: ownerScope, label: ownerLabel }]} scope={scope} onScopeChange={setScope}
@@ -20,7 +21,7 @@ export function EditorLibraryVersionManager({ title, versions, ownerScope, owner
     })}>
     <input ref={input} type="file" accept="application/json,.json" hidden onChange={async event => {
       const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
-      try { const json = await file.text(); run(() => versions.importVersion(scope, json)); } catch (cause) { setError(cause.message); }
+      try { const json = await file.text(); run(() => versions.importVersion(scope, json)); } catch (cause) { setError(resolveFailure(cause, { fallback: '导入版本失败' }).text); }
     }} />
   </EditorVersionManager>;
 }

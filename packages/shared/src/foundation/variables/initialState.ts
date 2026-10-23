@@ -1,5 +1,7 @@
 import type { VariableItemConfig, VariableObjectConfig } from '@shared/contracts/variables/schemas'
 import { VARIABLE_INITIALIZATION_OBJECT_ID } from '@shared/contracts/variables/schemas'
+import { ELECKOI_FAILURE_CODES } from '../../contracts/errors/codes.js'
+import { DesktopError } from '../DesktopError.js'
 
 type JsonObject = Record<string, unknown>
 
@@ -29,7 +31,7 @@ function variableDefaultValue(variable: VariableItemConfig): unknown {
     }
     case 'object': {
       const value: unknown = JSON.parse(variable.defaultValue || '{}')
-      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`变量“${variable.title}”的对象默认值不是 JSON 对象。`)
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `变量“${variable.title}”的对象默认值不是 JSON 对象。`, { what: '变量的对象默认值' })
       return value
     }
     case 'string':

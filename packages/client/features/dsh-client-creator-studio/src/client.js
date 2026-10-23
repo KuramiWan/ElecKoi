@@ -2,6 +2,8 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-creator-studio',
   factory(require) {
     const React = require('react')
+    // 边界⑥ 的信封拆解只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    const { unwrapOrFail, failureAlreadyPublished, productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     /** Own one independent official Client Session reference for the Studio surface. */
     class CreatorStudioSessions {
       constructor(remote, sessions) {
@@ -19,8 +21,7 @@ window.__ModuleLoader__.load({
       publish(patch) { if (!this.disposed) { this.snapshot = { ...this.snapshot, ...patch }; for (const listener of this.listeners) listener() } }
       async call(method, ...args) {
         const result = await this.remote.eleckoiCreatorStudioSessions[method](...args)
-        if (!result?.ok) throw new Error(result?.error?.message || 'AI 创作工作室操作失败。')
-        return result.value
+        return unwrapOrFail(result, 'AI 创作工作室操作失败。')
       }
       async refresh() {
         const generation = this.generation, sessionId = this.snapshot.active?.sessionId
@@ -32,7 +33,7 @@ window.__ModuleLoader__.load({
         return items
       }
       async acquire(create, value) {
-        if (this.disposed) throw new Error('AI 创作工作室服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'AI 创作工作室服务已关闭。', { what: 'AI 创作工作室服务' })
         const generation = ++this.generation
         this.publish({ status: 'loading', error: '' })
         let reference
@@ -73,25 +74,25 @@ window.__ModuleLoader__.load({
       }
       async search(query, signal) {
         const result = await this.sessions.search(query, signal)
-        if (!result.ok) throw new Error(result.error.message)
+        unwrapOrFail(result, '创作工作室操作失败。')
         return result.value
       }
       async readDefaultModel() {
         const result = await this.remote.eleckoiConversationModels.current('')
-        if (!result.ok) throw new Error(result.error.message)
+        unwrapOrFail(result, '创作工作室操作失败。')
         return result.value
       }
       async selectModel(selection) {
-        if (!this.snapshot.active) throw new Error('工作室对话尚未打开。')
+        if (!this.snapshot.active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室对话尚未打开。', { what: '打开工作室对话' })
         const result = await this.remote.session.selectModel({ sessionId: this.snapshot.active.sessionId, ...selection })
-        if (!result.ok) throw new Error(result.error.message)
+        unwrapOrFail(result, '创作工作室操作失败。')
         return result.value.selected
       }
-      messages() { if (!this.snapshot.active) throw new Error('工作室对话尚未打开。'); return this.call('messages', this.snapshot.active.sessionId) }
+      messages() { if (!this.snapshot.active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室对话尚未打开。', { what: '打开工作室对话' }); return this.call('messages', this.snapshot.active.sessionId) }
       async mutateMessages(method, ...args) {
         const active = this.snapshot.active
-        if (!active) throw new Error('工作室对话尚未打开。')
-        if (this.messageMutation) throw new Error('请等待当前消息操作完成。')
+        if (!active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室对话尚未打开。', { what: '打开工作室对话' })
+        if (this.messageMutation) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请等待当前消息操作完成。', { what: '等待当前消息操作完成' })
         this.messageMutation = true
         this.publish({ editingSessionId: active.sessionId })
         const generation = this.generation
@@ -112,7 +113,7 @@ window.__ModuleLoader__.load({
       deleteMessagesFrom(eventSeq, role) { return this.mutateMessages('deleteMessagesFrom', eventSeq, role) }
       async selectCharacter(characterId) {
         const active = this.snapshot.active
-        if (!active) throw new Error('工作室会话尚未打开。')
+        if (!active) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '工作室会话尚未打开。', { what: '打开工作室对话' })
         const selected = await this.call('selectCharacter', active.sessionId, characterId)
         if (this.snapshot.active?.sessionId === selected.sessionId) this.publish({ active: selected })
         return selected
@@ -154,7 +155,7 @@ window.__ModuleLoader__.load({
         if (!value || !Array.isArray(value.items) || value.items.some(item => !item
           || typeof item.id !== 'string' || typeof item.name !== 'string'
           || typeof item.rootPath !== 'string' || typeof item.mode !== 'string')) {
-          throw new Error('创作项目返回的数据格式不正确。')
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '创作项目返回的数据格式不正确。', { what: '创作项目列表' })
         }
         return value
       }
@@ -166,7 +167,7 @@ window.__ModuleLoader__.load({
       }
 
       start() {
-        void this.refresh().catch(() => {})
+        void this.refresh().catch(failureAlreadyPublished)
         this.changeAbort = new AbortController()
         void this.consumeChanges(this.changeAbort.signal)
       }
@@ -179,7 +180,7 @@ window.__ModuleLoader__.load({
           for await (const change of stream) {
             if (signal.aborted || this.disposed) break
             if (change?.kind === 'snapshot' || change?.domain === 'creatorProjects') {
-              await this.refresh().catch(() => {})
+              await this.refresh().catch(failureAlreadyPublished)
             }
           }
         } catch (error) {
@@ -188,11 +189,11 @@ window.__ModuleLoader__.load({
       }
 
       async refresh() {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const generation = ++this.generation
         try {
           const result = await this.remote.eleckoiCreatorStudio.list()
-          if (!result?.ok) throw new Error(result?.error?.message || '读取创作项目失败。')
+          unwrapOrFail(result, '读取创作项目失败。')
           const collection = this.assertCollection(result.value)
           if (!this.disposed && generation === this.generation) {
             this.publish({ status: 'ready', collection, error: '' })
@@ -202,7 +203,7 @@ window.__ModuleLoader__.load({
           if (!this.disposed && generation === this.generation) {
             this.publish({
               status: 'error', collection: this.snapshot.collection,
-              error: error instanceof Error ? error.message : String(error)
+              error: typeof error?.message === 'string' && error.message.trim() ? error.message : String(error)
             })
           }
           throw error
@@ -210,25 +211,25 @@ window.__ModuleLoader__.load({
       }
 
       async create(input) {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const result = await this.remote.eleckoiCreatorStudio.create(input)
-        if (!result?.ok) throw new Error(result?.error?.message || '项目创建失败。')
+        unwrapOrFail(result, '项目创建失败。')
         const collection = this.assertCollection(result.value)
         this.adopt(collection)
         return collection
       }
 
       async delete(projectId) {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const result = await this.remote.eleckoiCreatorStudio.delete(projectId)
-        if (!result?.ok) throw new Error(result?.error?.message || '无法删除项目。')
+        unwrapOrFail(result, '无法删除项目。')
         const collection = this.assertCollection(result.value)
         this.adopt(collection)
         return collection
       }
 
       async selectDirectory(signal) {
-        if (this.disposed) throw new Error('创作项目服务已关闭。')
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '创作项目服务已关闭。', { what: '创作项目服务' })
         const request = new AbortController()
         this.directoryRequests.add(request)
         try {
@@ -236,7 +237,7 @@ window.__ModuleLoader__.load({
           lifetime.throwIfAborted()
           const result = await this.remote.directoryPicker.pick(lifetime)
           lifetime.throwIfAborted()
-          if (!result?.ok) throw new Error(result?.error?.message || '无法选择保存位置。')
+          unwrapOrFail(result, '无法选择保存位置。')
           return result.value
         } finally {
           this.directoryRequests.delete(request)
@@ -322,7 +323,7 @@ window.__ModuleLoader__.load({
       for (const name of Object.keys(composerSeats)) projectSeat(name, studioSeat(name))
       ctx.effect(() => {
         projects.start()
-        const stopReset = ctx.on('connection/reset', () => { void projects.refresh().catch(() => {}) })
+        const stopReset = ctx.on('connection/reset', () => { void projects.refresh().catch(failureAlreadyPublished) })
         return () => {
           stopReset()
           projects.dispose()

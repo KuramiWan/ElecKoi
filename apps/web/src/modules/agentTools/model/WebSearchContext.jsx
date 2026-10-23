@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { createContext, useContext } from 'react';
 
 const WebSearchContext = createContext(null);
@@ -8,6 +10,6 @@ export function WebSearchProvider({ model, children }) {
 
 export function useWebSearchModel() {
   const model = useContext(WebSearchContext);
-  if (!model) throw new Error('联网搜索设置服务尚未接入 DSH Client。');
+  if (!model) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '联网搜索设置服务尚未接入 DSH Client。', { what: '联网搜索设置服务' });
   return model;
 }

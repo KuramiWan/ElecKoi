@@ -1,7 +1,11 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretRight, CheckCircle, WarningCircle } from "../../../ui/icons/interfaceIcons.jsx";
 import { ImportIcon, XIcon } from "../../../ui/icons/index.jsx";
+import { bestEffort } from "../../../utils/swallowedFailure.js";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 const SOURCES = [
   { id: "eleckoi", title: "本项目角色卡", detail: "导入 ElecKoi 导出的角色卡" },
@@ -19,7 +23,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
   const [error, setError] = useState("");
 
   const close = useCallback(async () => {
-    if (preview?.token) await onDiscard(preview.token).catch(() => {});
+    if (preview?.token) await onDiscard(preview.token).catch(bestEffort);
     onClose();
   }, [onClose, onDiscard, preview?.token]);
 
@@ -50,9 +54,9 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
     setPreparing(true);
     setError("");
     try {
-      if (selected.length > 50) throw new Error("一次最多导入 50 张角色卡");
+      if (selected.length > 50) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, "一次最多导入 50 张角色卡", { field: "角色卡数量" });
       const oversized = selected.find((file) => file.size > 64 * 1024 * 1024);
-      if (oversized) throw new Error(`${oversized.name} 超过 64 MB`);
+      if (oversized) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `${oversized.name} 超过 64 MB`, { field: "角色卡文件大小" });
       const payloads = await Promise.all(selected.map(async (file) => ({
         displayName: file.name,
         mimeType: file.type,
@@ -62,7 +66,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
       setFiles(selected);
       setPreview(next);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "角色卡无法读取");
+      setError(resolveFailure(caught, { fallback: "角色卡无法读取" }).text);
     } finally {
       setPreparing(false);
     }
@@ -76,7 +80,7 @@ export function CharacterImportDialog({ onClose, onImported, onPrepare, onDiscar
       await onImported(preview.token);
       onClose();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "导入失败");
+      setError(resolveFailure(caught, { fallback: "导入失败" }).text);
     } finally {
       setImporting(false);
     }
@@ -142,7 +146,7 @@ function fileBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || "").split(",", 2)[1] || "");
-    reader.onerror = () => reject(new Error(`${file.name} 无法读取`));
+    reader.onerror = () => reject(new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, `${file.name} 无法读取`, { operation: "read", path: file.name }));
     reader.readAsDataURL(file);
   });
 }

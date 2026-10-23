@@ -4,7 +4,9 @@ import { dirname, isAbsolute, join } from 'node:path'
 import { scriptLibrarySchema, type ScriptLibrary, type ScriptLibraryScope, type ScriptTree } from '@shared/contracts/scripts/schemas'
 import { scriptLibraries } from '@product-data/storage/sqlite/schema/common'
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
-import { DESKTOP_ERROR_CODES, DesktopError } from '@shared/foundation/DesktopError'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
+import { errorMessage } from '@shared/foundation/errorMessage'
 import { ScriptSourceFiles, sourceHash } from './ScriptSourceFiles'
 import { decodeScriptFiles, type PortableScriptLibrary } from './scriptLibraryImport'
 
@@ -13,6 +15,11 @@ const storedScript = z.strictObject({ type: z.literal('script'), metadata, sourc
 const storedFolder = z.strictObject({ type: z.literal('folder'), metadata, scripts: z.array(storedScript) })
 const sourceIndex = z.strictObject({ version: z.literal(1), items: z.array(z.discriminatedUnion('type', [storedScript, storedFolder])) })
 type SourceIndex = z.infer<typeof sourceIndex>
+/** 已落盘的脚本库载荷：解析不出来就是存储损坏，原异常诊断留在 message 里。 */
+function parseStoredJson(raw: string, what: string): unknown {
+  try { return JSON.parse(raw) }
+  catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `${what}已损坏：${errorMessage(error)}`, { what }) }
+}
 export interface ScriptLibraryOwners {
   character(db: ElecKoiDatabase, ownerId: string): boolean
   preset(db: ElecKoiDatabase, ownerId: string): boolean
@@ -21,7 +28,7 @@ export interface ScriptLibraryOwners {
 export class ScriptLibraryRepository {
   readonly files: ScriptSourceFiles
   constructor(private readonly store: ElecKoiSqliteStore, private readonly owners: ScriptLibraryOwners, root?: string) {
-    if (!root && !isAbsolute(store.native.name)) throw new Error('脚本库需要明确的本地目录。')
+    if (!root && !isAbsolute(store.native.name)) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '脚本库需要明确的本地目录。', { what: '脚本库目录' })
     this.files = new ScriptSourceFiles(root ?? join(dirname(store.native.name), 'author-scripts'), store,
       (scope, ownerId) => this.owners[scope](store.db, ownerId))
   }
@@ -36,9 +43,9 @@ export class ScriptLibraryRepository {
     this.requireOwner(empty, this.store.db)
     const directory = this.directory(scope, ownerId)
     const row = this.store.db.select().from(scriptLibraries).where(and(eq(scriptLibraries.scope, scope), eq(scriptLibraries.ownerId, ownerId))).get()
-    const index = row ? sourceIndex.parse(JSON.parse(row.treesJson)) : { version: 1, items: [] } as SourceIndex
+    const index = row ? sourceIndex.parse(parseStoredJson(row.treesJson, '脚本库树')) : { version: 1, items: [] } as SourceIndex
     const entries = index.items.flatMap(item => item.type === 'folder' ? item.scripts : [item]).map(item => {
-      if (!item.sourceFile.startsWith(`${directory}/`)) throw new Error('脚本源码登记的所属目录不匹配。')
+      if (!item.sourceFile.startsWith(`${directory}/`)) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '脚本源码登记的所属目录不匹配。', { what: '脚本源码登记的所属目录' })
       this.files.path(item.sourceFile)
       return { id: z.string().parse(item.metadata.id), file: item.sourceFile.slice(directory.length + 1) }
     })
@@ -47,7 +54,7 @@ export class ScriptLibraryRepository {
 
   asset(scope: ScriptLibraryScope, ownerId: string, version: string, file: string): Uint8Array {
     const workspace = this.workspace(scope, ownerId)
-    if (workspace.version !== version) throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '脚本文件已更新，请重新载入脚本。')
+    if (workspace.version !== version) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本文件已更新，请重新载入脚本。', { what: '脚本文件' })
     return this.files.bytes(this.directory(scope, ownerId), file)
   }
 
@@ -68,7 +75,7 @@ export class ScriptLibraryRepository {
       eq(scriptLibraries.scope, scope), eq(scriptLibraries.ownerId, ownerId),
     )).get()
     if (!row) return empty
-    const index = sourceIndex.parse(JSON.parse(row.treesJson))
+    const index = sourceIndex.parse(parseStoredJson(row.treesJson, '脚本库树'))
     let changed = false
     const read = (script: z.infer<typeof storedScript>) => {
       const content = this.files.read(script.sourceFile), hash = sourceHash(content)
@@ -79,7 +86,7 @@ export class ScriptLibraryRepository {
       ? { ...item.metadata, scripts: item.scripts.map(read) } : read(item))
     const library = scriptLibrarySchema.parse({
       scope: row.scope, ownerId: row.ownerId, enabled: Boolean(row.enabled), revision: row.revision,
-      trees, variables: JSON.parse(row.variablesJson),
+      trees, variables: parseStoredJson(row.variablesJson, '变量配置'),
     })
     // External editors change the authoritative source, invalidating older UI drafts.
     if (changed) {
@@ -102,10 +109,10 @@ export class ScriptLibraryRepository {
     return this.transaction(db => {
       const settings = metadata.parse(values), current = this.get(scope, ownerId, db)
       if (current.revision !== expectedRevision) {
-        throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '脚本设置已被修改，请重新读取后再保存。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本设置已被修改，请重新读取后再保存。', { what: '脚本设置' })
       }
       const item = current.trees.flatMap(tree => tree.type === 'folder' ? tree.scripts : [tree]).find(item => item.id === scriptId)
-      if (!item) throw new Error('脚本设置所属脚本不存在。')
+      if (!item) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '脚本设置所属脚本不存在。', { what: '脚本设置所属的脚本' })
       if (target === 'script') item.data = settings
       else current.variables = settings
       // Save from the latest library; the file participant never rewrites unchanged source.
@@ -117,7 +124,7 @@ export class ScriptLibraryRepository {
     const keys = new Set<string>()
     for (const input of inputs) {
       const key = JSON.stringify([input.scope, input.ownerId])
-      if (keys.has(key)) throw new Error('一次保存不能包含重复的脚本库归属。')
+      if (keys.has(key)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '一次保存不能包含重复的脚本库归属。', { what: '脚本库归属' })
       keys.add(key)
     }
     return this.transaction(db => inputs.map(input => this.saveInTransaction(input, db)))
@@ -129,14 +136,14 @@ export class ScriptLibraryRepository {
     const library = scriptLibrarySchema.parse(input)
     const current = this.get(library.scope, library.ownerId, db)
     if (current.revision !== library.revision) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '脚本库已被修改，请重新加载后再保存。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本库已被修改，请重新加载后再保存。', { what: '脚本库' })
     }
     const next = { ...library, revision: current.revision + 1 }
     const before = db.select().from(scriptLibraries).where(and(
       eq(scriptLibraries.scope, next.scope), eq(scriptLibraries.ownerId, next.ownerId),
     )).get() ?? null
     const index = this.index(next)
-    const oldFiles = before ? this.sources(sourceIndex.parse(JSON.parse(before.treesJson))) : []
+    const oldFiles = before ? this.sources(sourceIndex.parse(parseStoredJson(before.treesJson, '脚本库树'))) : []
     const nextFiles = new Set(this.sources(index))
     for (const path of oldFiles) if (!nextFiles.has(path)) this.files.stage(path, null)
     const row = {
@@ -161,21 +168,21 @@ export class ScriptLibraryRepository {
       path, data: Buffer.from(this.files.readBytes(`${directory}/${path}`)).toString('base64'),
     })))
     if (this.files.version(directory) !== before.version) {
-      throw new DesktopError(DESKTOP_ERROR_CODES.CONFLICT, '脚本文件在导出期间发生变化，请重新导出。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本文件在导出期间发生变化，请重新导出。', { what: '脚本文件' })
     }
     return { trees, variables, enabled, files }
   }
 
   importInTransaction(scope: ScriptLibraryScope, ownerId: string, portable: PortableScriptLibrary, db: ElecKoiDatabase): ScriptLibrary {
     const files = decodeScriptFiles(portable.files ?? []), directory = this.directory(scope, ownerId)
-    if (this.exists(scope, ownerId, db) || this.files.names(directory).length) throw new Error('导入脚本需要新的所属对象，未覆盖现有文件。')
+    if (this.exists(scope, ownerId, db) || this.files.names(directory).length) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '导入脚本需要新的所属对象，未覆盖现有文件。', { what: '脚本导入目标' })
     const saved = this.saveInTransaction({ scope, ownerId, trees: portable.trees, variables: portable.variables,
       enabled: false, revision: 0 }, db)
     const entries = new Set(saved.trees.flatMap(tree => tree.type === 'folder' ? tree.scripts : [tree])
       .map(item => `scripts/${sourceHash(item.id)}.js`))
     for (const file of files) {
       const path = process.platform === 'win32' ? file.path.toLowerCase() : file.path
-      if (entries.has(path)) throw new Error(`脚本附件不能覆盖登记的入口：${file.path}`)
+      if (entries.has(path)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `脚本附件不能覆盖登记的入口：${file.path}`, { what: '脚本附件', path: file.path })
       this.files.stage(`${directory}/${file.path}`, Buffer.from(file.data, 'base64'))
     }
     return saved
@@ -199,7 +206,7 @@ export class ScriptLibraryRepository {
       .map(item => `scripts/${sourceHash(item.id)}.js`))
     const next = new Set(files.map(file => process.platform === 'win32' ? file.path.toLowerCase() : file.path))
     for (const file of files) if (entries.has(process.platform === 'win32' ? file.path.toLowerCase() : file.path)) {
-      throw new Error(`脚本版本资源不能覆盖登记入口：${file.path}`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `脚本版本资源不能覆盖登记入口：${file.path}`, { what: '脚本版本资源', path: file.path })
     }
     for (const name of this.files.names(directory)) {
       const normalized = process.platform === 'win32' ? name.toLowerCase() : name
@@ -228,7 +235,7 @@ export class ScriptLibraryRepository {
   }
 
   private requireOwner(library: ScriptLibrary, db: ElecKoiDatabase): void {
-    if (library.scope === 'character' && !this.owners.character(db, library.ownerId)) throw new Error('脚本库所属角色不存在。')
-    if (library.scope === 'preset' && !this.owners.preset(db, library.ownerId)) throw new Error('脚本库所属预设不存在。')
+    if (library.scope === 'character' && !this.owners.character(db, library.ownerId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '脚本库所属角色不存在。', { what: '角色' })
+    if (library.scope === 'preset' && !this.owners.preset(db, library.ownerId)) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, '脚本库所属预设不存在。', { what: '预设' })
   }
 }

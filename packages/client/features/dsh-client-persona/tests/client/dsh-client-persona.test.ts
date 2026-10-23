@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
+import { dshClientRequire } from '../../../../../../tests/helpers/dshClientPlugin'
 
 const source = readFileSync(new URL('../../src/client.js', import.meta.url), 'utf8')
 const settle = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -37,7 +38,7 @@ describe('DSH ElecKoi persona model', () => {
     const save = vi.fn(async (value: Record<string, unknown>) => ({ ok: true, value: { ...value, user_name: '用户乙' } }))
     let resetListener: (() => void) | undefined
     let cleanup = () => {}
-    let registration: { factory(): { apply(ctx: unknown): void } } | undefined
+    let registration: { factory(require?: (name: string) => unknown): { apply(ctx: unknown): void } } | undefined
     const services = new Map<string, any>()
     const changeFeed = personaChanges()
 
@@ -47,7 +48,7 @@ describe('DSH ElecKoi persona model', () => {
         __ModuleLoader__: { load(value: typeof registration) { registration = value } }
       }
     })
-    registration!.factory().apply({
+    registration!.factory(dshClientRequire).apply({
       remote: { eleckoiPersona: { read, save, changes: (signal?: AbortSignal) => changeFeed.open(signal) } },
       provide(name: string, value: unknown) { services.set(name, value) },
       effect(run: () => () => void) { cleanup = run() },

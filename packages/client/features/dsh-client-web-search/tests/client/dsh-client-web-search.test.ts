@@ -79,7 +79,7 @@ describe('DSH web search Client model', () => {
     const { remote, model, cleanup } = harness()
     try {
       await model.refresh()
-      remote.eleckoiWebSearch.testTavily.mockResolvedValueOnce({ ok: false, error: { message: 'invalid credential' } } as any)
+      remote.eleckoiWebSearch.testTavily.mockResolvedValueOnce({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'invalid credential' } } as any)
       await expect(model.saveAndTest('invalid')).rejects.toThrow('invalid credential')
       expect(remote.credentials.set).not.toHaveBeenCalled()
     } finally { cleanup() }

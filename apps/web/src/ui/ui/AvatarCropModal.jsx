@@ -1,7 +1,10 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { SystemBarOverlay } from './SystemBarOverlay.jsx';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RotateLeftIcon, RotateRightIcon, XIcon } from "../icons/index.jsx";
+import { resolveFailure } from "../../utils/failureText.js";
 
 const STAGE_WIDTH = 440;
 const STAGE_HEIGHT = 320;
@@ -200,7 +203,7 @@ export function AvatarCropModal({
       orientedCanvas.width = orientedSize.width;
       orientedCanvas.height = orientedSize.height;
       const orientedContext = orientedCanvas.getContext("2d");
-      if (!orientedContext) throw new Error("当前设备无法处理图片");
+      if (!orientedContext) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "当前设备无法处理图片", { what: "设备上的图片处理能力" });
       orientedContext.translate(orientedCanvas.width / 2, orientedCanvas.height / 2);
       orientedContext.rotate((normalizedRotation * Math.PI) / 180);
       orientedContext.drawImage(imageRef.current, -naturalSize.width / 2, -naturalSize.height / 2);
@@ -209,7 +212,7 @@ export function AvatarCropModal({
       canvas.width = outputWidth;
       canvas.height = Math.round(outputWidth * cropHeight / cropWidth);
       const context = canvas.getContext("2d");
-      if (!context) throw new Error("当前设备无法处理图片");
+      if (!context) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "当前设备无法处理图片", { what: "设备上的图片处理能力" });
       if (outputShape === "circle") {
         context.save();
         context.beginPath();
@@ -220,11 +223,11 @@ export function AvatarCropModal({
       if (outputShape === "circle") context.restore();
 
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.95));
-      if (!blob) throw new Error("图片处理失败");
+      if (!blob) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片处理失败", { what: "裁剪后的图片" });
       const croppedFile = new File([blob], `${fileBaseName(file)}-cropped.png`, { type: "image/png" });
       await onSave?.(croppedFile, file);
     } catch (nextError) {
-      setError(nextError?.message || "图片保存失败，请稍后重试。");
+      setError(resolveFailure(nextError, { fallback: "图片保存失败，请稍后重试。" }).text);
     } finally {
       savingRef.current = false;
       setSaving(false);
