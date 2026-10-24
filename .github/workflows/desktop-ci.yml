@@ -39,6 +39,11 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      # scripts/android-runtime/tests/android-apk-resources.test.js runs an inline
+      # Python script that imports PIL; windows-latest does not ship Pillow.
+      - name: Install Python image dependency
+        run: python -m pip install pillow
+
       - name: Run Node-side contracts and migrations
         run: pnpm test
 

@@ -24,7 +24,11 @@ import { JSDOM } from 'jsdom'
 const exampleDirectory = resolve('packages/examples/native-author')
 const cleanups: Array<() => void> = []
 afterEach(() => { for (const close of cleanups.splice(0)) close() })
+// The examples are compared with the same text stored inside the JSON cards, so a
+// checkout that rewrites line endings (core.autocrlf on Windows) must not change the
+// comparison.
 const read = (name: string) => readFileSync(join(exampleDirectory, name), 'utf8')
+  .replaceAll('\r\n', '\n')
 
 describe('native author developer documentation and examples', () => {
   it('keeps the searchable page, complete source signatures and import documents current', async () => {
