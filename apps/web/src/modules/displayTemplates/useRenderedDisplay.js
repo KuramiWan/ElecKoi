@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useMemo, useState } from 'react';
 import { runDisplayTemplates } from './runtime/runDisplayTemplates.js';
 const emptyLibraries = [];
@@ -14,7 +16,7 @@ export function useRenderedDisplay(message, content, libraries = emptyLibraries)
         const json = message.nativeVariableStateJson ?? message.variableStateJson;
         if (json !== undefined) variables = JSON.parse(json);
       }
-      if (variables !== null && (!variables || typeof variables !== 'object' || Array.isArray(variables))) throw new Error('消息变量快照必须是 JSON 对象。');
+      if (variables !== null && (!variables || typeof variables !== 'object' || Array.isArray(variables))) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '消息变量快照必须是 JSON 对象。', { what: '消息变量快照' });
     } catch (cause) { error = cause.message; }
     return { libraries, content, variables, error, message: { id: message.id, conversationId: message.conversationId,
       role: message.role, status: message.status ?? 'complete', content: message.content ?? '' } };

@@ -1,0 +1,91 @@
+/* 功能内失败面（`FailureAlert`）：一句话 + 错误码 + 参数化详情 + 可选重试。
+   颜色与圆角只用 token，桌面与移动端共用；调用点传进来的类（如 `.mobile-inline-error`）
+   仍然决定外边距与版式。 */
+.failure-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 9px 12px;
+  color: var(--text);
+  background: color-mix(in srgb, #c63939 6%, var(--surface-subtle));
+  border: 1px solid color-mix(in srgb, #c63939 24%, var(--line-strong));
+  border-left-width: 3px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 应用级码（或调用点上调）：同一块界面里更醒目，但仍是就地失败面，不弹对话框。 */
+.failure-alert.is-app-level {
+  background: color-mix(in srgb, #c63939 11%, var(--surface-subtle));
+  border-color: color-mix(in srgb, #c63939 42%, var(--line-strong));
+}
+
+.failure-alert-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.failure-alert-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 码要够显眼才可选中复制；等宽字体让 `eleckoi/io/failed` 这类码一眼能认。 */
+.failure-alert-code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font: 11px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace;
+  cursor: text;
+  user-select: text;
+}
+
+.failure-alert-details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.failure-alert-details dt {
+  font-weight: 600;
+}
+
+.failure-alert-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  cursor: text;
+  user-select: text;
+}
+
+.failure-alert-retry {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 12px;
+  color: var(--text);
+  background: var(--chat);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.failure-alert-retry:hover {
+  background: var(--control-bg);
+}
+
+.failure-alert-retry:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blue) 55%, transparent);
+  outline-offset: 2px;
+}

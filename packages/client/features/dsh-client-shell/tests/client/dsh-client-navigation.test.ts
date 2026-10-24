@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
+import { dshClientRequire } from '../../../../../../tests/helpers/dshClientPlugin'
 
 const packages = [
   'dsh-client-shell', 'dsh-client-conversations', 'dsh-client-characters',
@@ -51,7 +52,7 @@ describe('ElecKoi DSH client navigation', () => {
         }
         if (name === 'react-dom') return {}
         if (name === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
-        throw new Error(`Unexpected module ${name}`)
+        return dshClientRequire(name)
       })
       let effectCount = 0
       plugin.apply({
@@ -158,6 +159,7 @@ describe('ElecKoi DSH client navigation', () => {
     const plugin = registration.factory((name: string) => {
       if (name === 'react') return React
       if (name === '@deepseek-ai/dsh-client-ui-primitives') return uiPrimitives
+      if (name === '@eleckoi/dsh-product-api') return dshClientRequire(name)
       throw new Error(`Unexpected module ${name}`)
     })
     let effectCount = 0

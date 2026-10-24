@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron'
-import { DesktopError, DESKTOP_ERROR_CODES } from '@shared/foundation/DesktopError'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export function isAppRendererUrl(url: string): boolean {
   try {
@@ -54,7 +55,8 @@ export function isDshChildUrl(url: string): boolean {
 export function assertTrustedRenderer(sender: WebContents, frameUrl: string, isMainFrame: boolean): void {
   if (!isMainFrame || frameUrl !== sender.getURL()
     || (!isAppRendererUrl(frameUrl) && !isDshAppUrl(frameUrl))) {
-    throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi 页面进程的调用。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.senderUntrusted, '拒绝来自非 ElecKoi 页面进程的调用。',
+      { what: '调用来源', guard: '页面来源校验' })
   }
 }
 
@@ -68,6 +70,7 @@ export function assertTrustedDshClientFrame(
     || !isDshAppUrl(frameUrl)
     || (new URL(frameUrl).pathname !== '/')
     || (new URL(frameUrl).search !== '' && !isDshChildUrl(frameUrl))) {
-    throw new DesktopError(DESKTOP_ERROR_CODES.FORBIDDEN, '拒绝来自非 ElecKoi DSH 页面进程的桌面调用。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.senderUntrusted, '拒绝来自非 ElecKoi DSH 页面进程的桌面调用。',
+      { what: '调用来源', guard: '页面来源校验' })
   }
 }

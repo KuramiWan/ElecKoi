@@ -12,6 +12,7 @@ import {
 import { DshPanelLeftIcon } from "../../ui/icons/dshComposerIcons.jsx";
 import { showCurrentWindow } from "../services/windowControls.js";
 import { WindowControls } from "./shell/components/TitleBar.jsx";
+import { bestEffort } from "../../utils/swallowedFailure.js";
 
 function CreatorStudioDevelopmentNotice({ onSimple, onDeveloper }) {
   return <main className="qq-shell creator-studio-shell creator-studio-development-shell" aria-label="AI创作工作室">
@@ -51,7 +52,7 @@ export function CreatorStudioWindow({ characterCatalog, projectCatalog, models, 
   useEffect(() => {
     applyAppearanceTheme(null);
     document.title = "AI创作工作室 - ElecKoi";
-    showCurrentWindow().catch(() => {});
+    showCurrentWindow().catch(bestEffort);
   }, []);
 
   if (mode === 'entry') return <CreatorStudioDevelopmentNotice onSimple={() => setMode('simple')} onDeveloper={() => setMode('developer')} />;

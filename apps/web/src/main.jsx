@@ -1,9 +1,17 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { createRoot } from "react-dom/client";
 import App from "./app/windows/App.jsx";
 import { initRendererAssets } from "./app/services/assets.js";
 import { installResizePerformanceMode } from "./app/services/windowControls.js";
 import { initializeAppearanceMode } from "./modules/appearance/index.js";
+import { installUnhandledFailureReporting } from "./utils/failureText.js";
 import "./app/windows/styles/index.css";
+
+// 未处理拒绝的落点：`reportFailure` 只 console.error，由 Electron 的 console-message 桥
+// 转发进主进程日志（不需要新开 IPC 通道）。每个渲染层入口装一次；`bootstrap` 可被重挂，
+// 重复调用会叠加监听。
+installUnhandledFailureReporting();
 
 async function bootstrap() {
   installResizePerformanceMode();
@@ -12,7 +20,7 @@ async function bootstrap() {
     initializeAppearanceMode(),
   ]);
   const container = document.getElementById("eleckoi-root") || document.getElementById("root");
-  if (!container) throw new Error("ElecKoi 页面容器不存在");
+  if (!container) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, "ElecKoi 页面容器不存在", { what: "ElecKoi 页面容器" });
   globalThis.__ELECKOI_UNMOUNT__?.();
   const root = createRoot(container);
   globalThis.__ELECKOI_UNMOUNT__ = () => {

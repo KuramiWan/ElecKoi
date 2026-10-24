@@ -4,6 +4,8 @@ import { MainPageContext } from '../app/windows/MainPageContext.jsx';
 import { useChatClient } from '../app/hooks/useChatClient.js';
 import { useWindowAppearance } from '../app/hooks/useWindowAppearance.js';
 import { AppToast } from '../ui/ui/AppToast.jsx';
+import { FailureAlert } from '../ui/ui/FailureAlert.jsx';
+import { subscribeAppFailure } from '../utils/appFailureOutlet.js';
 import { ChatBackgroundModal, HistoryModal } from '../modules/chat/index.js';
 import { AppUpdateController, useAppUpdates } from '../modules/updates/index.js';
 import { MobileDialog, MobileHeader } from './MobileChrome.jsx';
@@ -33,7 +35,7 @@ export function MobileWindow(props) {
   const [routeBusy, setRouteBusy] = useState(false);
   const [pendingConversation, setPendingConversation] = useState(null);
   const conversationBusyRef = useRef(false);
-  const [failure, setFailure] = useState('');
+  const [failure, setFailure] = useState(null);
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const drawerState = useSyncExternalStore(navigation.sidebar.subscribe, navigation.sidebar.getSnapshot);
   const { surface: drawerSurface, moving: drawerMoving, present: drawerPresent } = useMobileDrawerMotion(drawerState.shown, viewportWidth);
@@ -55,6 +57,10 @@ export function MobileWindow(props) {
     resize(); window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, [props.rightbar]);
+  // 应用级失败不留在角落里：功能内失败面把这类失败送到窗口级错误对话框（码与详情仍然可见）。
+  useEffect(() => subscribeAppFailure(resolved => {
+    chat.notify('error', resolved.text, resolved);
+  }), [chat.notify]);
   const registerBackHandler = useCallback(handler => {
     backHandlers.current.push(handler);
     return () => { backHandlers.current = backHandlers.current.filter(item => item !== handler); };
@@ -142,7 +148,7 @@ export function MobileWindow(props) {
       ? chat.sessionId === target.sessionId
       : chat.chatCharacter.character_id === target.characterId);
     if (matches) setRoutes([...source, { panel: 'messages', kind: 'conversation' }]);
-    else setFailure(chat.notice?.type === 'error' ? chat.notice.message : chat.status && chat.status !== '就绪' ? chat.status : '对话未能打开，请重试');
+    else setFailure(chat.notice?.type === 'error' ? chat.notice.failure || chat.notice.message : chat.status && chat.status !== '就绪' ? chat.status : '对话未能打开，请重试');
     setPendingConversation(null);
     conversationBusyRef.current = false;
     setRouteBusy(false);
@@ -167,7 +173,7 @@ export function MobileWindow(props) {
       await load();
       setPendingConversation({ target, source, complete: true });
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error));
+      setFailure(error);
       setPendingConversation(null); conversationBusyRef.current = false; setRouteBusy(false);
     }
   }
@@ -248,7 +254,7 @@ export function MobileWindow(props) {
       <ChatBackgroundModal open={backgroundOpen} character={chat.chatBackgroundCharacter} persona={chat.chatPersona} messages={chat.messages} chatDisplay={appearance.chatDisplay}
         globalWallpaper={appearance.globalChatWallpaper} newCharacterBackground={appearance.newCharacterBackground} onClose={() => setBackgroundOpen(false)} onSaveCharacter={chat.updateChatBackground}
         onSaveGlobal={appearance.saveGlobalChatWallpaper} onSaveNewCharacterBackground={appearance.saveNewCharacterBackground} onNotify={chat.notify} />
-      {failure && <MobileDialog title="打开失败" onClose={() => setFailure('')}><p role="alert">{failure}</p></MobileDialog>}
+      {failure && <MobileDialog title="打开失败" onClose={() => setFailure(null)}><FailureAlert failure={failure} /></MobileDialog>}
     </main>
   </MainPageContext.Provider>;
 }

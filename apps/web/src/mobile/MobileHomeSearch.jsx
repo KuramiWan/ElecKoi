@@ -10,6 +10,7 @@ import { useMainPageView } from '../app/windows/MainPageContext.jsx';
 import { MobileProviderLogo } from './MobileModelConfigDetail.jsx';
 import { useMobileBack } from './MobileChrome.jsx';
 import './mobile-search.css';
+import { bestEffort } from "../utils/swallowedFailure.js";
 
 export function MobileHomeSearch({ history, onCommit, onForget, onClear, onClose }) {
   const view = useMainPageView();
@@ -52,7 +53,7 @@ export function MobileHomeSearch({ history, onCommit, onForget, onClear, onClose
     if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       const motion = pageRef.current.animate?.([{ transform: from }, { transform: 'translateY(100%)' }], { duration: 240, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
       motionRef.current = motion;
-      if (motion) await motion.finished.catch(() => {});
+      if (motion) await motion.finished.catch(bestEffort);
     }
     onClose(action);
   }

@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Copy, NotePencil, Plus, Power, Trash } from "../../../ui/icons/interfaceIcons.jsx";
 import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
@@ -7,6 +9,7 @@ import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import { EditorCollectionSurface, EditorCollectionToolbar, EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
 import { useEditorLibraryVersions } from '../../../ui/hooks/useEditorLibraryVersions.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 import {
   REGEX_SCOPES,
   createRegexRule,
@@ -118,7 +121,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
     });
     const cached = editor.getSnapshot();
     if (cached.status === "ready") acceptLatest(cached.value, true);
-    void editor.read().catch((cause) => active && setError(cause?.message || "读取正则配置失败"));
+    void editor.read().catch((cause) => active && setError(resolveFailure(cause, { fallback: "读取正则配置失败" }).text));
     return () => {
       active = false;
       stopListening();
@@ -143,7 +146,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
       setSaving(true);
       setError("");
       try {
-        if (pendingLatestRef.current) throw new Error('正则配置已更新，请放弃本页修改后载入最新内容。');
+        if (pendingLatestRef.current) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已更新，请放弃本页修改后载入最新内容。', { what: '正则配置' });
         const result = await editor.versions.save([collectionRef.current], libraryVersions.prepare());
         const saved = result.documents[0];
         collectionRef.current = saved;
@@ -156,7 +159,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
         setNotice("saved");
         return true;
       } catch (cause) {
-        setError(cause?.message || "保存正则配置失败");
+        setError(resolveFailure(cause, { fallback: "保存正则配置失败" }).text);
         return false;
       } finally {
         savingRef.current = false;

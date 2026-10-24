@@ -30,21 +30,21 @@ export function MobileCreatorStudioConversation({ model, editing = false, onCrea
   const notify = useCallback((kind, text) => { if (kind === 'error') onError(text); }, [onError]);
   useEffect(() => {
     let active = true;
-    model.readDefaultModel().then(value => { if (active) setDefaultModel(value); }).catch(error => { if (active) onError(error.message); });
+    model.readDefaultModel().then(value => { if (active) setDefaultModel(value); }).catch(error => { if (active) onError(error); });
     return () => { active = false; };
   }, [model, onError]);
-  useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(error.message)); }, [model, session.running, onError]);
+  useEffect(() => { if (!session.running) void model.refresh().catch(error => onError(error)); }, [model, session.running, onError]);
   async function regenerate() {
-    try { await model.regenerate(); } catch (error) { onError(error.message); }
+    try { await model.regenerate(); } catch (error) { onError(error); }
   }
   async function openDelete() {
-    try { setMessages(await model.messages()); setDeleteFrom(null); } catch (error) { onError(error.message); }
+    try { setMessages(await model.messages()); setDeleteFrom(null); } catch (error) { onError(error); }
   }
   async function removeMessages() {
     if (!deleteFrom) return;
     setDeleting(true);
     try { await model.deleteMessagesFrom(deleteFrom.eventSeq, deleteFrom.role); setMessages(null); }
-    catch (error) { onError(error.message); }
+    catch (error) { onError(error); }
     finally { setDeleting(false); }
   }
   const menu = <RoleplayInputMenu purpose="creator" isSending={session.running}

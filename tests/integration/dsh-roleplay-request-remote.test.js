@@ -8,19 +8,20 @@ import { TYPERT_REMOTE } from '@eleckoi/dsh-product-api/remote'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { RequestPreviewStore } from '../../packages/client/features/dsh-client-roleplay/src/host/request-preview.mjs'
+import { dshClientRequire } from '../helpers/dshClientPlugin.ts'
 import { describe, expect, it, vi } from 'vitest'
 
 const require = createRequire(import.meta.url)
-function clientPlugin(path, modules, expose = false) {
+function clientPlugin(path, requireModule, expose = false) {
   let entry
   const source = readFileSync(path, 'utf8')
   runInNewContext(expose ? source.replace('return { inject:', 'return { ConversationCatalog, inject:') : source, {
     window: { __ModuleLoader__: { load(value) { entry = value } } },
     crypto: globalThis.crypto, AbortController, AbortSignal, Error, setTimeout, clearTimeout,
   })
-  return entry.factory(name => {
-    if (!Object.hasOwn(modules, name)) throw new Error(`Unexpected client dependency: ${name}`)
-    return modules[name]
+  return entry.factory(typeof requireModule === 'function' ? requireModule : name => {
+    if (!Object.hasOwn(requireModule, name)) throw new Error(`Unexpected client dependency: ${name}`)
+    return requireModule[name]
   })
 }
 
@@ -46,9 +47,8 @@ describe('request preview through the official Client Remote', () => {
       })
       await ctx.plugin(clientPlugin(require.resolve('@deepseek-ai/dsh-api-gateway/client'), { '@deepseek-ai/cordis': Cordis }))
       await ctx.remote.$mount(TYPERT_REMOTE)
-      const client = clientPlugin(new URL('../../packages/client/features/dsh-client-conversations/src/client.js', import.meta.url), {
-        react: { lazy: () => () => null }
-      }, true)
+      const client = clientPlugin(new URL('../../packages/client/features/dsh-client-conversations/src/client.js', import.meta.url),
+        dshClientRequire, true)
       let catalog
       await ctx.plugin({ inject: client.inject.filter(name => name === 'remote' || name === 'remote.eleckoiConversations'), apply(consumer) {
         catalog = new client.ConversationCatalog(consumer.remote)

@@ -8,6 +8,7 @@ import {
   updateOpening,
 } from "../model/settingLibraryEditing.js";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
+import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 
 export function OpeningEditor({ entry, variableVersions = [], variableVersionsError = '', onChange, onRequestDelete }) {
   const messages = useMemo(() => primaryFirstOpeningMessages(entry), [entry]);
@@ -65,7 +66,7 @@ export function OpeningEditor({ entry, variableVersions = [], variableVersionsEr
                   ? <option value={message.variableVersionId} disabled>版本不存在</option> : null}
                 {variableVersions.map((version) => <option key={version.id} value={version.id}>{version.name || '未命名版本'}</option>)}
               </select>
-              {variableVersionsError ? <span role="alert">{variableVersionsError}</span> : null}
+              <FailureAlert failure={variableVersionsError} />
             </label>
             <MarkdownTextareaField
               label="开场白正文"

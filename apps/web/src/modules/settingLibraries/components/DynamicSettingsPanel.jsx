@@ -17,6 +17,7 @@ import {
 import { Avatar } from "../../../ui/ui/Avatar.jsx";
 import { conversationPreviewText } from "../../../ui/messages/conversationPreviewText.js";
 import { UnsavedChangesDialog } from "../../../ui/ui/UnsavedChangesDialog.jsx";
+import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 import { DshFolderClosedIcon, DshFolderOpenIcon, DshTriangleRightIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { SETTING_LIBRARY_CREATE_ICONS } from "../../../ui/icons/settingLibraryCreateIcons.jsx";
 import { PINNED_ENTRY_IDS, canTransferSettingNode, copySettingNode, moveTreeNode, createEntryDraft, createGroupDraft, createId, uniqueName } from "../model/settingLibraryEditing.js";
@@ -128,7 +129,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   const [pendingBack, setPendingBack] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
   const branchNumbersRef = useRef(new Map());
@@ -182,7 +183,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError("");
+    setError(null);
     selectedSessionIdRef.current = "";
     libraryRef.current = null;
     persistedRef.current = null;
@@ -197,7 +198,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       setLoading(false);
     }).catch((cause) => {
       if (!active) return;
-      setError(cause?.message || "读取分支设定失败");
+      setError(cause ?? "读取分支设定失败");
       setLoading(false);
     });
     return () => { active = false; };
@@ -214,7 +215,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       }
       if (snapshot.status !== "ready") return;
       const loaded = snapshot.value;
-      setError("");
+      setError(null);
       setLoading(false);
       updateItems(loaded);
       const sessionId = selectedSessionIdRef.current;
@@ -254,12 +255,12 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     setSelectedKey("");
     setExpandedIds(new Set(item.library.expandedGroupIds || []));
     setQuery("");
-    setError("");
+    setError(null);
     setNotice("");
   }
 
   function changeLibrary(updater) {
-    setError("");
+    setError(null);
     setNotice("");
     setLibrary((current) => {
       const next = typeof updater === "function" ? updater(current) : updater;
@@ -291,7 +292,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     if (!selectedSessionId || !libraryRef.current || saving) return false;
     savingRef.current = true;
     setSaving(true);
-    setError("");
+    setError(null);
     setNotice("");
     try {
       await settingLibraries.saveConversation(characterId, selectedSessionId, libraryRef.current);
@@ -299,7 +300,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       setNotice("saved");
       return true;
     } catch (cause) {
-      setError(cause?.message || "保存分支设定失败");
+      setError(cause ?? "保存分支设定失败");
       return false;
     } finally {
       savingRef.current = false;
@@ -310,7 +311,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   function discard() {
     libraryRef.current = persistedRef.current;
     setLibrary(persistedRef.current);
-    setError("");
+    setError(null);
     setNotice("");
   }
 
@@ -465,12 +466,12 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
     if (!selectedSessionId || saving) return;
     savingRef.current = true;
     setSaving(true);
-    setError("");
+    setError(null);
     try {
       await settingLibraries.resetConversation(characterId, selectedSessionId);
       await refreshItems();
     } catch (cause) {
-      setError(cause?.message || "清空分支设定失败");
+      setError(cause ?? "清空分支设定失败");
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -485,12 +486,12 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
       if (dirty && !(await save())) return;
       savingRef.current = true;
       setSaving(true);
-      setError("");
+      setError(null);
       await settingLibraries.saveConversationVersion(characterId, sessionId, name);
       setNameDialog(null);
       setNotice("saved");
     } catch (cause) {
-      setError(cause?.message || "保存设定版本失败");
+      setError(cause ?? "保存设定版本失败");
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -507,7 +508,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
           </label>
         </header>
         <div className="dynamic-settings-conversation-list">
-          {loading ? <p className="dynamic-settings-status" role="status">正在读取分支设定…</p> : error ? <p className="dynamic-settings-status is-error" role="alert">{error}</p> : null}
+          {loading ? <p className="dynamic-settings-status" role="status">正在读取分支设定…</p> : <FailureAlert failure={error} className="dynamic-settings-status is-error" />}
           {loading ? null : !filteredItems.length ? (
             !error && <p className="dynamic-settings-status">{normalizedQuery ? "没有找到相关对话" : "还没有分支设定"}</p>
           ) : (

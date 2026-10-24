@@ -19,6 +19,8 @@ import { variableConfigVersions, variableConfigs } from '@product-data/storage/s
 import { conversationSettingChanges } from '@product-data/storage/sqlite/schema/common'
 import { readEntry, readGroup, readPromptPositions, writeEntry, writeGroup, writePromptPositions } from './settingLibraryCodec'
 import { OPENING_ENTRY_ID, normalizeSettingLibrary } from './settingLibraryNormalization'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 type EntryRevision = { entry: SettingLibraryEntry; revisionId: string }
 type RuntimeBaseline = {
@@ -55,11 +57,11 @@ export class SettingLibraryRepository {
   parseConversationRuntimeState(raw: string) {
     let value: unknown
     try { value = JSON.parse(raw) } catch (error) {
-      throw new Error('设定状态快照不是合法 JSON。', { cause: error })
+      throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, '设定状态快照不是合法 JSON。', { what: '设定状态快照' })
     }
-    if (!Array.isArray(value)) throw new Error('设定状态快照格式不正确。')
+    if (!Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定状态快照格式不正确。', { what: '设定状态快照' })
     const rows = value.map((item) => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('设定状态快照格式不正确。')
+      if (!item || typeof item !== 'object' || Array.isArray(item)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定状态快照格式不正确。', { what: '设定状态快照' })
       const row = item as Record<string, unknown>
       const targetType = row.targetType === 'entry' || row.targetType === 'group' ? row.targetType : ''
       const operation = row.operation === 'upsert' || row.operation === 'delete' ? row.operation : ''
@@ -67,7 +69,7 @@ export class SettingLibraryRepository {
       const payloadJson = typeof row.payloadJson === 'string' ? row.payloadJson : ''
       const updatedAt = typeof row.updatedAt === 'string' ? row.updatedAt : ''
       if (!targetType || !operation || !targetId || !payloadJson || !updatedAt) {
-        throw new Error('设定状态快照格式不正确。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定状态快照格式不正确。', { what: '设定状态快照' })
       }
       JSON.parse(payloadJson)
       return { targetType, targetId, operation, payloadJson, updatedAt }
@@ -104,7 +106,7 @@ export class SettingLibraryRepository {
         eq(settingEntryContents.entryId, OPENING_ENTRY_ID),
         eq(settingEntryContents.revisionId, link.revisionId)
       )).get()
-    if (!content) throw new Error(`设定“${OPENING_ENTRY_ID}”缺少内容版本。`)
+    if (!content) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, `设定“${OPENING_ENTRY_ID}”缺少内容版本。`, { what: '设定内容版本' })
     return readEntry(content.payloadJson).content.trim()
   }
 
@@ -116,7 +118,7 @@ export class SettingLibraryRepository {
     const byRevision = new Map(contents.map((row) => [`${row.entryId}\u0000${row.revisionId}`, row.payloadJson]))
     const resolveEntry = (entryId: string, revisionId: string): SettingLibraryEntry => {
       const payload = byRevision.get(`${entryId}\u0000${revisionId}`)
-      if (!payload) throw new Error(`设定“${entryId}”缺少内容版本。`)
+      if (!payload) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, `设定“${entryId}”缺少内容版本。`, { what: '设定内容版本' })
       return readEntry(payload)
     }
     const entries = db.select().from(settingLibraryEntryLinks)
@@ -181,7 +183,7 @@ export class SettingLibraryRepository {
           groups.set(row.targetId, { ...group, id: row.targetId })
         }
       } catch {
-        throw new Error(`当前对话的设定库差异已损坏：${row.targetType}/${row.targetId}`)
+        throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `当前对话的设定库差异已损坏：${row.targetType}/${row.targetId}`, { what: '设定库差异' })
       }
     }
     const groupIds = new Set(groups.keys())
@@ -247,7 +249,7 @@ export class SettingLibraryRepository {
       const next = applySettingLibraryEntryUpdates(current.entries, updates, timestamp)
       if (!next.changed.length) return []
       for (const entry of next.changed) if (entry.kind !== 'normal') {
-        throw new Error('开场白请通过完整角色设定库的开场白配置编辑。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '开场白请通过完整角色设定库的开场白配置编辑。', { field: 'opening' })
       }
       const normalized = normalizeSettingLibrary(characterId, { ...current, entries: next.entries })
       const changed = next.changed.map(entry => ({ ...normalized.entries.find(item => item.id === entry.id)!, updatedAt: timestamp }))
@@ -262,7 +264,7 @@ export class SettingLibraryRepository {
           eq(settingLibraryVersionEntryLinks.versionId, current.activeVersionId),
           eq(settingLibraryVersionEntryLinks.entryId, entry.id)
         )).run()
-        if (currentWrite.changes !== 1 || versionWrite.changes !== 1) throw new Error(`设定条目缺少保存数据：${entry.id}`)
+        if (currentWrite.changes !== 1 || versionWrite.changes !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, `设定条目缺少保存数据：${entry.id}`, { what: '设定条目' })
       }
       db.update(settingLibraries).set({ updatedAt: timestamp }).where(eq(settingLibraries.characterId, characterId)).run()
       db.update(settingLibraryVersions).set({ updatedAt: timestamp }).where(and(
@@ -293,7 +295,7 @@ export class SettingLibraryRepository {
     base: SettingLibrary,
     db: ElecKoiDatabase
   ): SettingLibrary {
-    if (desired.characterId !== characterId) throw new Error('分支设定与当前角色不匹配。')
+    if (desired.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '分支设定与当前角色不匹配。', { what: '分支设定与角色' })
     validateConversationLibrary(base, desired)
     db.delete(conversationSettingChanges)
       .where(eq(conversationSettingChanges.sessionId, conversationId)).run()
@@ -326,7 +328,7 @@ export class SettingLibraryRepository {
       const existing = db.select({ targetId: conversationSettingChanges.targetId })
         .from(conversationSettingChanges)
         .where(eq(conversationSettingChanges.sessionId, conversationId)).get()
-      if (!existing) throw new Error('找不到这段对话的分支设定。')
+      if (!existing) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这段对话的分支设定。', { what: '对话的分支设定' })
       db.delete(conversationSettingChanges)
         .where(eq(conversationSettingChanges.sessionId, conversationId)).run()
     })
@@ -335,12 +337,12 @@ export class SettingLibraryRepository {
   saveConversationAsVersion(characterId: string, conversationId: string, name: string): SettingLibrary {
     return this.store.withWriteTx((db) => {
       const normalizedName = name.trim()
-      if (!normalizedName) throw new Error('请输入版本名称。')
+      if (!normalizedName) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '请输入版本名称。', { field: 'name' })
       const effective = this.conversationLibrary(characterId, conversationId, db)
-      if (!effective) throw new Error('找不到这段对话的分支设定。')
+      if (!effective) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '找不到这段对话的分支设定。', { what: '对话的分支设定' })
       const base = this.get(characterId, db)
       if (base.versions.some((version) => version.name.trim() === normalizedName)) {
-        throw new Error('版本名称已存在，请换一个名称。')
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '版本名称已存在，请换一个名称。', { what: '版本名称' })
       }
       const timestamp = new Date().toISOString()
       const version = {
@@ -378,7 +380,7 @@ export class SettingLibraryRepository {
   ): SettingLibrary {
     const base = this.get(characterId, db)
     const effective = this.runtimeContext(conversationId, { characterId }, db)
-    if (!effective) throw new Error('无法读取这段对话的分支设定。')
+    if (!effective) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '无法读取这段对话的分支设定。', { what: '选择一个角色' })
     return settingLibrarySchema.parse({
       ...base,
       entries: effective.entries,
@@ -396,14 +398,14 @@ export class SettingLibraryRepository {
     db: ElecKoiDatabase = this.store.db
   ): string {
     let value: unknown
-    try { value = JSON.parse(raw) } catch (error) { throw new Error('设定库运行时返回了无效 JSON。', { cause: error }) }
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('设定库运行时返回值必须是 object。')
+    try { value = JSON.parse(raw) } catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库运行时返回了无效 JSON。', { what: '设定库运行时结果' }) }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库运行时返回值必须是 object。', { what: '设定库运行时结果' })
     const record = value as Record<string, unknown>
     const entries = settingLibraryEntrySchema.array().parse(record.entries)
     const groups = settingLibraryGroupSchema.array().parse(record.groups)
-    if (!context.characterId || record.characterId !== context.characterId) throw new Error('设定库运行时结果与当前角色不匹配。')
+    if (!context.characterId || record.characterId !== context.characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '设定库运行时结果与当前角色不匹配。', { what: '设定库运行时结果与角色' })
     if (baseline.source.characterId !== context.characterId || baseline.projected.characterId !== context.characterId) {
-      throw new Error('设定库运行时基线与当前角色不匹配。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '设定库运行时基线与当前角色不匹配。', { what: '设定库运行时基线与角色' })
     }
 
     const base = this.get(context.characterId, db)
@@ -493,7 +495,7 @@ export class SettingLibraryRepository {
   }
 
   saveInTransaction(characterId: string, input: SettingLibrary, db: ElecKoiDatabase): SettingLibrary {
-    if (input.characterId !== characterId) throw new Error('设定库与角色不匹配。')
+    if (input.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '设定库与角色不匹配。', { what: '设定库与角色' })
     const normalized = normalizeSettingLibrary(characterId, input)
     const versionIds = new Set(db.select({ id: variableConfigVersions.versionId }).from(variableConfigVersions)
       .where(eq(variableConfigVersions.characterId, characterId)).all().map((row) => row.id))
@@ -502,7 +504,7 @@ export class SettingLibraryRepository {
     }
     for (const version of normalized.versions) for (const entry of version.entries) for (const opening of entry.openingMessages) {
       if (opening.variableVersionId && !versionIds.has(opening.variableVersionId)) {
-        throw new Error(`开场白“${opening.title || '未命名开场白'}”绑定的变量版本不存在。`)
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `开场白“${opening.title || '未命名开场白'}”绑定的变量版本不存在。`, { what: '开场白绑定的变量版本' })
       }
     }
     this.persist(db, normalized)
@@ -677,17 +679,17 @@ function rebaseProjectedRecord(
 
 function validateConversationLibrary(base: SettingLibrary, desired: SettingLibrary): void {
   const groups = new Map(desired.groups.map((group) => [group.id, group]))
-  if (groups.size !== desired.groups.length) throw new Error('分支设定的文件夹编号不能重复。')
+  if (groups.size !== desired.groups.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '分支设定的文件夹编号不能重复。', { field: 'groups' })
   if (new Set(desired.entries.map((entry) => entry.id)).size !== desired.entries.length) {
-    throw new Error('分支设定的条目编号不能重复。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '分支设定的条目编号不能重复。', { field: 'entries' })
   }
   for (const group of desired.groups) {
-    if (!group.name.trim()) throw new Error('分支设定的文件夹名称不能为空。')
-    if (group.parentId && !groups.has(group.parentId)) throw new Error(`文件夹“${group.name}”的上级不存在。`)
+    if (!group.name.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '分支设定的文件夹名称不能为空。', { field: 'group.name' })
+    if (group.parentId && !groups.has(group.parentId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `文件夹“${group.name}”的上级不存在。`, { what: '上级文件夹' })
     const visited = new Set([group.id])
     let parentId = group.parentId
     while (parentId) {
-      if (visited.has(parentId)) throw new Error('分支设定的文件夹不能形成循环。')
+      if (visited.has(parentId)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '分支设定的文件夹不能形成循环。', { field: 'groups' })
       visited.add(parentId)
       parentId = groups.get(parentId)?.parentId ?? ''
     }
@@ -695,7 +697,7 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
   const groupNames = new Set<string>()
   for (const group of desired.groups) {
     const key = `${group.parentId}\u0000${group.name.trim().toLocaleLowerCase()}`
-    if (groupNames.has(key)) throw new Error(`同一位置已存在文件夹“${group.name}”。`)
+    if (groupNames.has(key)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `同一位置已存在文件夹“${group.name}”。`, { what: '文件夹名称' })
     groupNames.add(key)
   }
   const removedBaseGroupIds = new Set(base.groups.filter((group) => !groups.has(group.id)).map((group) => group.id))
@@ -711,26 +713,26 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
   }
   const entryNames = new Set<string>()
   for (const entry of desired.entries) {
-    if (entry.groupId && !groups.has(entry.groupId)) throw new Error(`设定“${entry.title}”所在的文件夹不存在。`)
+    if (entry.groupId && !groups.has(entry.groupId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `设定“${entry.title}”所在的文件夹不存在。`, { what: '设定所在的文件夹' })
     if (entry.kind === 'normal') {
       const key = `${entry.groupId}\u0000${entry.title.trim().toLocaleLowerCase()}`
-      if (entryNames.has(key)) throw new Error(`同一位置已存在设定“${entry.title}”。`)
+      if (entryNames.has(key)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `同一位置已存在设定“${entry.title}”。`, { what: '设定名称' })
       entryNames.add(key)
     }
     const baseline = base.entries.find((item) => item.id === entry.id)
     if (!baseline) {
-      if (!isConversationMutableEntry(entry)) throw new Error('分支设定只能新增普通设定。')
-      if (!entry.title.trim() || !entry.content.trim()) throw new Error('分支设定的标题和正文不能为空。')
+      if (!isConversationMutableEntry(entry)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '分支设定只能新增普通设定。', { field: 'entries' })
+      if (!entry.title.trim() || !entry.content.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '分支设定的标题和正文不能为空。', { field: 'title' })
       continue
     }
     if (!isConversationMutableEntry(baseline)) {
-      if (!sameValue(baseline, entry)) throw new Error(`设定“${baseline.title}”只允许查看，不能在分支设定中修改。`)
+      if (!sameValue(baseline, entry)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, `设定“${baseline.title}”只允许查看，不能在分支设定中修改。`, { what: '只读设定' })
       continue
     }
-    if (!isConversationMutableEntry(entry)) throw new Error(`设定“${baseline.title}”不能更改类型。`)
-    if (!entry.title.trim() || !entry.content.trim()) throw new Error('分支设定的标题和正文不能为空。')
+    if (!isConversationMutableEntry(entry)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, `设定“${baseline.title}”不能更改类型。`, { what: '设定类型' })
+    if (!entry.title.trim() || !entry.content.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '分支设定的标题和正文不能为空。', { field: 'title' })
     if (!sameValue(conversationImmutableEntryFields(baseline), conversationImmutableEntryFields(entry))) {
-      throw new Error(`设定“${baseline.title}”不能修改条目身份或固定设定内容。`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, `设定“${baseline.title}”不能修改条目身份或固定设定内容。`, { what: '设定身份或固定内容' })
     }
   }
   for (const entry of base.entries) {
@@ -739,7 +741,7 @@ function validateConversationLibrary(base: SettingLibrary, desired: SettingLibra
       !isConversationMutableEntry(entry) &&
       !removedBaseGroupIds.has(entry.groupId)
     ) {
-      throw new Error(`设定“${entry.title}”只允许查看，不能从分支设定中删除。`)
+      throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, `设定“${entry.title}”只允许查看，不能从分支设定中删除。`, { what: '只读设定' })
     }
   }
 }

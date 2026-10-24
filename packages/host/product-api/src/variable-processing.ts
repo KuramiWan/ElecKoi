@@ -1,10 +1,12 @@
 import { assertVariableJson, loadVariableSchema } from '@eleckoi/dsh-product-data/variables'
+import { productFailure } from './productFailure.js'
+import { ELECKOI_FAILURE_CODES } from './errorCodes.generated.js'
 import type { ElecKoiProductDataStore } from './types.js'
 
 type VariableObject = Record<string, unknown>
 function assertObject(value: unknown): asserts value is VariableObject {
   assertVariableJson(value)
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('变量状态必须是 JSON 对象。')
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量状态必须是 JSON 对象。', { what: '变量状态' })
 }
 export interface VariableRuleContext {
   conversationId: string
@@ -30,13 +32,13 @@ export class ElecKoiVariableProcessing {
   constructor(private readonly data: ElecKoiProductDataStore) {}
 
   register(provider: VariableRuleProvider): () => void {
-    if (this.provider) throw new Error('作者变量处理服务已经注册。')
+    if (this.provider) throw productFailure(ELECKOI_FAILURE_CODES.internal, '作者变量处理服务已经注册。', { what: '作者变量处理服务重复注册' })
     this.provider = provider
     this.providerRequired = true
     return () => {
       if (this.provider !== provider) return
       this.provider = undefined
-      for (const controller of this.active.values()) controller.abort(new Error('作者变量处理服务已卸载。'))
+      for (const controller of this.active.values()) controller.abort(productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '作者变量处理服务已卸载。', { what: '作者变量处理服务' }))
     }
   }
 
@@ -47,9 +49,9 @@ export class ElecKoiVariableProcessing {
     apply(state: VariableObject): VariableObject
     signal?: AbortSignal
   }): Promise<{ patched: VariableObject; state: VariableObject }> {
-    if (this.closed) throw new Error('变量处理服务已关闭。')
-    if (this.providerRequired && !this.provider) throw Object.assign(new Error('作者变量处理服务已卸载，本次修改未执行。'), { code: 'VARIABLE_RULE_OWNER_UNAVAILABLE' })
-    if (this.active.has(input.conversationId)) throw Object.assign(new Error('该聊天已有变量修改正在处理，请等待后重试。'), { code: 'VARIABLE_UPDATE_BUSY' })
+    if (this.closed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '变量处理服务已关闭。', { what: '变量处理服务' })
+    if (this.providerRequired && !this.provider) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '作者变量处理服务已卸载，本次修改未执行。', { what: '作者变量处理服务' })
+    if (this.active.has(input.conversationId)) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '该聊天已有变量修改正在处理，请等待后重试。', { what: '等待当前变量修改结束' })
     const controller = new AbortController()
     const signal = input.signal ? AbortSignal.any([controller.signal, input.signal]) : controller.signal
     this.active.set(input.conversationId, controller)
@@ -95,7 +97,7 @@ export class ElecKoiVariableProcessing {
     const current = this.data.readAuthorConversationState(conversationId)
     if (current.currentVariableStateJson !== original.currentVariableStateJson
       || JSON.stringify(current.variableConfig) !== JSON.stringify(original.variableConfig)) {
-      throw Object.assign(new Error('处理期间变量或配置已变化，本次修改未保存，请重新读取后再试。'), { code: 'VARIABLE_UPDATE_CONFLICT' })
+      throw productFailure(ELECKOI_FAILURE_CODES.conflictStaleRevision, '处理期间变量或配置已变化，本次修改未保存，请重新读取后再试。', { what: '变量状态或配置' })
     }
     signal?.throwIfAborted()
     return this.data.replaceConversationVariableState(conversationId, JSON.stringify(state))
@@ -103,6 +105,6 @@ export class ElecKoiVariableProcessing {
 
   close(): void {
     this.closed = true
-    for (const controller of this.active.values()) controller.abort(new Error('变量处理服务已关闭。'))
+    for (const controller of this.active.values()) controller.abort(productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '变量处理服务已关闭。', { what: '变量处理服务' }))
   }
 }

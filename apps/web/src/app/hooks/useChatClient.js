@@ -1,7 +1,10 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChatSessions } from "../../modules/chat/index.js";
 import { getModelMeta, useModelRuntime } from "../../modules/models/index.js";
 import { usePersonaCharacters } from "../../modules/persona/index.js";
+import { failureAlreadyPublished } from "../../utils/swallowedFailure.js";
 
 export function useChatClient({ conversations, characters: characterCatalog, models: modelCatalog, persona: personaModel, navigation } = {}) {
   const [localActiveSection, setLocalActiveSection] = useState("messages");
@@ -14,9 +17,11 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
   const [status, setStatus] = useState("就绪");
   const [notice, setNotice] = useState(null);
 
-  function notify(type, message) {
+  // `failure` 是可选的结构化失败（`resolveFailure` 的产物）：错误对话框要显示码与详情，
+  // 只给一句话会把码丢掉。
+  function notify(type, message, failure = null) {
     const id = Date.now();
-    setNotice({ id, type, message });
+    setNotice({ id, type, message, failure });
     if (type === "error") return;
     window.setTimeout(() => {
       setNotice((current) => (current?.id === id ? null : current));
@@ -134,9 +139,9 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
 
   async function updateChatBackground(patch) {
     const characterId = chatSessions.chatCharacter?.character_id;
-    if (!characterId) throw new Error("请先选择一个角色。");
+    if (!characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, "请先选择一个角色。", { what: "选择一个角色" });
     const currentCharacter = characters.items.find((item) => item.id === characterId);
-    if (!currentCharacter) throw new Error("没有找到当前角色卡。");
+    if (!currentCharacter) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, "没有找到当前角色卡。", { what: "角色卡" });
     const saved = await updateCharacter({ ...currentCharacter, ...patch }, true, { skipApply: true });
     setStatus("聊天背景已保存");
     return saved.items.find((item) => item.id === characterId) || currentCharacter;
@@ -164,7 +169,7 @@ export function useChatClient({ conversations, characters: characterCatalog, mod
     loadPersona()
       .then(() => loadCharacters())
       .catch((error) => setStatus(error.message));
-    chatSessions.loadSessions(initialChatId).catch(() => {});
+    chatSessions.loadSessions(initialChatId).catch(failureAlreadyPublished);
     return () => {
       chatSessions.abortActiveRequest();
     };

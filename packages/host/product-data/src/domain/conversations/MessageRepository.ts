@@ -1,4 +1,6 @@
 import type { ChatMessage } from '@shared/contracts/entities/chat'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 
 interface LedgerMessage {
@@ -68,9 +70,9 @@ export class MessageRepository {
     const references = new Map<string, { conversationId: string; attachmentId: string }>()
     for (const row of rows) {
       const draft = JSON.parse(row.draftJson) as { images?: Array<{ attachmentId?: string }> }
-      if (!Array.isArray(draft.images)) throw new Error('待提交输入的图片引用格式不正确。')
+      if (!Array.isArray(draft.images)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待提交输入的图片引用格式不正确。', { what: '待提交输入的图片引用' })
       for (const image of draft.images) {
-        if (typeof image.attachmentId !== 'string' || !image.attachmentId) throw new Error('待提交输入缺少正式图片标识。')
+        if (typeof image.attachmentId !== 'string' || !image.attachmentId) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待提交输入缺少正式图片标识。', { what: '待提交输入的图片标识' })
         references.set(`${row.conversationId}\u0000${image.attachmentId}`, { conversationId: row.conversationId, attachmentId: image.attachmentId })
       }
     }

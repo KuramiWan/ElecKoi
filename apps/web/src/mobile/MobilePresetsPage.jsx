@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { MobileSaveFeedback } from './MobileSaveFeedback.jsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MobileGeneralIcon, MobileOverflowIcon, MobileSettingsIcon } from './MobileIcons.jsx';
@@ -66,7 +68,7 @@ function MobilePresetLibrary() {
           else downloadPresetFile(await catalogModel.export(id, format));
         } catch (cause) { failures.push({ id, message: `${catalog.presets.find(item => item.id === id)?.name || id}：${cause instanceof Error ? cause.message : String(cause)}` }); }
       }
-      if (failures.length) { setSelectedIds(failures.map(item => item.id)); throw new Error(failures.map(item => item.message).join('\n')); }
+      if (failures.length) { setSelectedIds(failures.map(item => item.id)); throw new DesktopError(ELECKOI_FAILURE_CODES.internal, failures.map(item => item.message).join('\n'), { what: '批量预设操作' }); }
       setSelection(''); setSelectedIds([]); setDeleteOpen(false);
     });
   }
@@ -74,7 +76,7 @@ function MobilePresetLibrary() {
     const file = event.target.files?.[0]; event.target.value = '';
     if (!file) return;
     await run(async () => {
-      if (file.size > 64 * 1024 * 1024) throw new Error('预设文件不能超过 64 MB');
+      if (file.size > 64 * 1024 * 1024) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '预设文件不能超过 64 MB', { field: '预设文件大小' });
       const result = await catalogModel.import(importSource.current, { displayName: file.name, mimeType: file.type, base64: await fileBase64(file) }, purpose);
       open(result.preset.id);
     });

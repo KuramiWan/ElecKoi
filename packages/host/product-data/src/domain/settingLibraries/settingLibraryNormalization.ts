@@ -5,6 +5,8 @@ import type {
   SettingLibraryGroup,
   SettingLibraryVersion
 } from '@shared/contracts/settingLibrary/schemas'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 export const OPENING_ENTRY_ID = 'fixed-opening-assistant'
 
@@ -45,29 +47,29 @@ export function emptyEntry(id: string = randomUUID(), timestamp = now()): Settin
 
 function validateTree(groups: SettingLibraryGroup[], entries: SettingLibraryEntry[]): void {
   const groupsById = new Map(groups.map((group) => [group.id, group]))
-  if (groupsById.size !== groups.length) throw new Error('设定库文件夹编号不能重复。')
-  if (new Set(entries.map((entry) => entry.id)).size !== entries.length) throw new Error('设定条目编号不能重复。')
+  if (groupsById.size !== groups.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '设定库文件夹编号不能重复。', { field: 'groups' })
+  if (new Set(entries.map((entry) => entry.id)).size !== entries.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '设定条目编号不能重复。', { field: 'entries' })
   for (const group of groups) {
-    if (group.parentId && !groupsById.has(group.parentId)) throw new Error(`文件夹“${group.name}”的上级不存在。`)
+    if (group.parentId && !groupsById.has(group.parentId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `文件夹“${group.name}”的上级不存在。`, { what: '上级文件夹' })
     const visited = new Set([group.id])
     let parentId = group.parentId
     while (parentId) {
-      if (visited.has(parentId)) throw new Error('设定库文件夹不能形成循环。')
+      if (visited.has(parentId)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '设定库文件夹不能形成循环。', { field: 'groups' })
       visited.add(parentId)
       parentId = groupsById.get(parentId)?.parentId ?? ''
     }
   }
-  for (const entry of entries) if (entry.groupId && !groupsById.has(entry.groupId)) throw new Error(`设定“${entry.title}”所在的文件夹不存在。`)
+  for (const entry of entries) if (entry.groupId && !groupsById.has(entry.groupId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `设定“${entry.title}”所在的文件夹不存在。`, { what: '设定所在的文件夹' })
   const folderNames = new Set<string>()
   for (const group of groups) {
     const key = `${group.parentId}\u0000${group.name.trim().toLocaleLowerCase()}`
-    if (folderNames.has(key)) throw new Error(`同一位置已存在文件夹“${group.name}”。`)
+    if (folderNames.has(key)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `同一位置已存在文件夹“${group.name}”。`, { what: '文件夹名称' })
     folderNames.add(key)
   }
   const entryNames = new Set<string>()
   for (const entry of entries.filter((item) => item.kind === 'normal')) {
     const key = `${entry.groupId}\u0000${entry.title.trim().toLocaleLowerCase()}`
-    if (entryNames.has(key)) throw new Error(`同一位置已存在设定“${entry.title}”。`)
+    if (entryNames.has(key)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `同一位置已存在设定“${entry.title}”。`, { what: '设定名称' })
     entryNames.add(key)
   }
 }

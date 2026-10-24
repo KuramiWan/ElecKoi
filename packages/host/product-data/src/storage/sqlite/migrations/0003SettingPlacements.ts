@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 type JsonObject = Record<string, unknown>
 type EntryStyle = 'camel' | 'snake'
@@ -123,7 +125,7 @@ function migrateSettingStateSnapshots(database: Database.Database): void {
       const record = jsonObject(item, `agent_content_parts/${row.rowid}/${index}`)
       if (record.targetType !== 'entry' || record.operation !== 'upsert') return record
       if (typeof record.targetId !== 'string' || typeof record.payloadJson !== 'string') {
-        throw new Error(`对话设定状态快照格式无效：agent_content_parts/${row.rowid}/${index}。`)
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `对话设定状态快照格式无效：agent_content_parts/${row.rowid}/${index}。`, { what: '对话设定状态快照' })
       }
       const payloadJson = migrateEntry(
         record.payloadJson,
@@ -159,13 +161,13 @@ function migrateEntry(raw: string, style: EntryStyle, entryId: string, label: st
   } else {
     const position = value[positionKey]
     if (position !== undefined && position !== null && position !== '') {
-      if (typeof position !== 'string') throw new Error(`设定位置格式无效：${label}。`)
+      if (typeof position !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `设定位置格式无效：${label}。`, { what: '设定位置' })
       const placement = LEGACY_PLACEMENTS.get(position)
       if (placement) {
         value[positionKey] = placement.anchor
         changed = true
       } else if (!CURRENT_POSITIONS.has(position)) {
-        throw new Error(`无法识别设定位置“${position}”：${label}。`)
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, `无法识别设定位置“${position}”：${label}。`, { what: '设定位置' })
       }
     }
   }
@@ -191,13 +193,13 @@ function migratePromptPositions(
       changed = true
     } else {
       if (typeof position.anchor !== 'string' || !CURRENT_POSITIONS.has(position.anchor)) {
-        throw new Error(`无法识别提示词位置：${label}/${index}。`)
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, `无法识别提示词位置：${label}/${index}。`, { what: '提示词位置' })
       }
       if (position.side === undefined || position.side === '') {
         position.side = 'before_setting_position'
         changed = true
       } else if (typeof position.side !== 'string' || !VALID_SIDES.has(position.side)) {
-        throw new Error(`无法识别提示词位置方向：${label}/${index}。`)
+        throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, `无法识别提示词位置方向：${label}/${index}。`, { what: '提示词位置方向' })
       }
     }
     if (includeHiddenTimeline && position.id === HIDDEN_TIMELINE_POSITION_ID) {
@@ -227,20 +229,20 @@ function migratePromptPositions(
 function json(raw: string, label: string): unknown {
   try {
     return JSON.parse(raw) as unknown
-  } catch (error) {
-    throw new Error(`数据库 JSON 已损坏：${label}。`, { cause: error })
+  } catch {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.storageCorrupt, `数据库 JSON 已损坏：${label}。`, { what: '数据库 JSON' })
   }
 }
 
 function jsonObject(value: unknown, label: string): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`数据库对象格式无效：${label}。`)
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `数据库对象格式无效：${label}。`, { what: '数据库对象' })
   }
   return value as JsonObject
 }
 
 function jsonArray(raw: string, label: string): unknown[] {
   const value = json(raw, label)
-  if (!Array.isArray(value)) throw new Error(`数据库数组格式无效：${label}。`)
+  if (!Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `数据库数组格式无效：${label}。`, { what: '数据库数组' })
   return value
 }

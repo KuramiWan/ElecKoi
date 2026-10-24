@@ -1,8 +1,11 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useRef, useState } from "react";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { Avatar } from "./Avatar.jsx";
 import { AvatarCropModal } from "./AvatarCropModal.jsx";
 import { assetFetchSrc } from "../../app/services/assets.js";
+import { resolveFailure } from "../../utils/failureText.js";
 
 const PORTRAIT_OUTPUT_WIDTH = 900;
 const SQUARE_OUTPUT_WIDTH = 420;
@@ -11,7 +14,7 @@ function readBlob(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
+    reader.onerror = () => reject(reader.error || new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片读取失败", { what: "头像图片" }));
     reader.readAsDataURL(blob);
   });
 }
@@ -26,7 +29,7 @@ function loadImage(file) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("图片解码失败"));
+      reject(new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片解码失败", { what: "头像图片" }));
     };
     image.src = url;
   });
@@ -53,14 +56,14 @@ async function centerCrop(file, outputWidth, outputHeight) {
   canvas.width = outputWidth;
   canvas.height = outputHeight;
   const context = canvas.getContext("2d");
-  if (!context) throw new Error("当前设备无法处理图片");
+  if (!context) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, "当前设备无法处理图片", { what: "设备上的图片处理能力" });
   context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
   return canvas.toDataURL("image/png", 0.95);
 }
 
 async function sourceToFile(source, name) {
   const response = await fetch(assetFetchSrc(source));
-  if (!response.ok) throw new Error("头像图片读取失败");
+  if (!response.ok) throw new DesktopError(ELECKOI_FAILURE_CODES.ioFailed, "头像图片读取失败", { operation: "read" });
   const blob = await response.blob();
   return new File([blob], name, { type: blob.type || "image/png" });
 }
@@ -123,7 +126,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onCha
       await updateAvatars(nextAvatars);
       setSourceFile(file);
     } catch (nextError) {
-      setError(nextError?.message || "图片处理失败，请稍后重试。");
+      setError(resolveFailure(nextError, { fallback: "图片处理失败，请稍后重试。" }).text);
     } finally {
       setReading(false);
     }
@@ -143,7 +146,7 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onCha
       const file = sourceFile || await sourceToFile(existing, kind === "portrait" ? "rectangle-avatar.png" : "square-avatar.png");
       setCropRequest({ kind, file });
     } catch (nextError) {
-      setError(nextError?.message || "头像图片读取失败");
+      setError(resolveFailure(nextError, { fallback: "头像图片读取失败" }).text);
     } finally {
       setPreparing(false);
     }
@@ -153,14 +156,14 @@ export function AvatarManagerEditor({ value, name, saving = false, onBack, onCha
     setError("");
     try {
       const cropped = await readBlob(croppedFile);
-      if (!cropped) throw new Error("图片处理失败");
+      if (!cropped) throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, "图片处理失败", { what: "裁剪后的图片" });
       const nextAvatars = cropRequest?.kind === "portrait"
         ? { ...avatars, portrait: cropped }
         : { ...avatars, circle: cropped, square: cropped };
       await updateAvatars(nextAvatars);
       setCropRequest(null);
     } catch (nextError) {
-      setError(nextError?.message || "头像保存失败，请稍后重试。");
+      setError(resolveFailure(nextError, { fallback: "头像保存失败，请稍后重试。" }).text);
       throw nextError;
     }
   }

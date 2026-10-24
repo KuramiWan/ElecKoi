@@ -1,7 +1,10 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { SystemBarOverlay } from '../ui/ui/SystemBarOverlay.jsx';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMobileBack } from './MobileChrome.jsx';
+import { resolveFailure } from '../utils/failureText.js';
 import './mobile-library.css';
 
 export function useMobileOperation() {
@@ -12,7 +15,7 @@ export function useMobileOperation() {
     if (pending.current) return false;
     pending.current = true; setBusy(true); setError('');
     try { await action(); return true; }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); return false; }
+    catch (cause) { setError(resolveFailure(cause, { fallback: '操作失败，请重试。' }).text); return false; }
     finally { pending.current = false; setBusy(false); }
   }
   return { busy, error, setError, run };
@@ -76,7 +79,7 @@ export function MobileConfirm({ title, children, confirmText = '删除', destruc
 export function MobileNameDialog({ title, initialName = '', onClose, onSave }) {
   const [name, setName] = useState(initialName);
   const { busy, error, run } = useMobileOperation();
-  return <MobileConfirm title={title} onClose={onClose} busy={busy} error={error} confirmText="保存" destructive={false} onConfirm={() => run(async () => { if (!name.trim()) throw new Error('请输入名称'); await onSave(name.trim()); onClose(); })}>
+  return <MobileConfirm title={title} onClose={onClose} busy={busy} error={error} confirmText="保存" destructive={false} onConfirm={() => run(async () => { if (!name.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '请输入名称', { field: '名称' }); await onSave(name.trim()); onClose(); })}>
     <input className="mobile-library-name" aria-label="名称" value={name} disabled={busy} onChange={event => setName(event.target.value)} />
   </MobileConfirm>;
 }

@@ -6,6 +6,8 @@ import {
   type DesktopBrowserOpenRequest,
   type DesktopBrowserReservation
 } from '@shared/contracts/desktopShell'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 interface GuestLease {
   readonly owner: WebContents
@@ -24,7 +26,7 @@ export class DesktopBrowserGuests {
 
   acquire(owner: WebContents, workspace: unknown): DesktopBrowserReservation {
     if (typeof workspace !== 'string' || workspace.length === 0 || workspace.length > 4096) {
-      throw new Error('桌面浏览器需要有效的工作区存储标识。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '桌面浏览器需要有效的工作区存储标识。', { field: 'workspace' })
     }
     let partition = this.partitions.get(workspace)
     if (partition === undefined) {
@@ -38,11 +40,15 @@ export class DesktopBrowserGuests {
   }
 
   async release(owner: WebContents, id: unknown): Promise<void> {
-    if (typeof id !== 'string') throw new Error('桌面浏览器租约无效。')
+    if (typeof id !== 'string') {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '桌面浏览器租约无效。', { field: 'lease' })
+    }
     const key = id as DesktopBrowserLeaseId
     const lease = this.leases.get(key)
     if (lease === undefined) return
-    if (lease.owner !== owner) throw new Error('桌面浏览器租约不属于当前窗口。')
+    if (lease.owner !== owner) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '桌面浏览器租约不属于当前窗口。', { what: '桌面浏览器租约的归属' })
+    }
     lease.releaseInput?.()
     this.leases.delete(key)
     const guest = lease.guest

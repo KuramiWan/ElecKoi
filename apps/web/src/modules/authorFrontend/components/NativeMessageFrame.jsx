@@ -1,7 +1,10 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useContext, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
 import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
 import { FrontendDiagnostics } from './FrontendDiagnostics.jsx';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 const noSubscription = () => () => {};
 const noRuntime = () => null;
@@ -59,14 +62,14 @@ export function NativeMessageFrame({ message, document, rootIndex = 0, onSettled
     let complete;
     try {
       complete = target.__ElecKoiCompleteDocument;
-      if (target.__ElecKoiDocumentChannel !== channel) throw new Error('原生作者页面已离开所属文档');
+      if (target.__ElecKoiDocumentChannel !== channel) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '原生作者页面已离开所属文档', { what: '作者页面的所属文档' });
       if (release.current) return;
       release.current = runtime.mountDocument(target, message.conversationId, message.id);
       complete(target.ElecKoi);
     } catch (failure) {
       release.current?.(); release.current = null;
       complete?.(undefined, failure);
-      setError(failure.message || String(failure));
+      setError(resolveFailure(failure, { fallback: '原生作者页面加载失败' }).text);
     }
   };
   if (!runtime) return <div className="rich-message-error" role="alert">原生作者插件未启用</div>;

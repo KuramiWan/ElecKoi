@@ -424,7 +424,7 @@ describe('DSH conversation context', () => {
   })
 
   describe('visible dialogue history', () => {
-    it('keeps user input and final replies without tool steps or FINAL tags', () => {
+    it('keeps visible user input and final replies without tool steps', () => {
       const messages = [
         message('system', '系统配置', { kind: 'plugin:system' }),
         message('user', '旧输入', { kind: 'user' }),
@@ -444,10 +444,26 @@ describe('DSH conversation context', () => {
         message('assistant', '旧回复', { kind: 'model' }),
         message('user', '当前输入', { kind: 'user' })
       ]
-      expect(visibleDialogueHistory(messages)).toEqual([
+      expect(visibleDialogueHistory(messages, messages.at(-1).id)).toEqual([
         { role: 'user', content: '旧输入' },
         { role: 'assistant', content: '旧回复' }
       ])
+      expect(visibleDialogueHistory(messages).at(-1)).toEqual({ role: 'user', content: '当前输入' })
+      expect(() => visibleDialogueHistory(messages, 'missing-input')).toThrow('重新生成保留的用户输入不在当前 Session 中')
+    })
+
+    it('preserves every entry and long first, middle and last replies in a large history', () => {
+      const count = 10_001
+      const long = '合成长正文'.repeat(4_001)
+      const selected = new Set([0, 5_000, count - 1])
+      const messages = Array.from({ length: count }, (_, index) => [
+        message('user', `合成输入-${index}`, { kind: 'user' }),
+        message('assistant', `合成回复-${index}${selected.has(index) ? long : ''}`, { kind: 'model' })
+      ]).flat()
+      const history = visibleDialogueHistory(messages)
+      expect(history).toHaveLength(count * 2)
+      for (const index of selected) expect(history[index * 2 + 1].content).toBe(`合成回复-${index}${long}`)
+      expect(history.at(-1).content.endsWith(long)).toBe(true)
     })
 
     it('keeps a trailing compaction checkpoint', () => {

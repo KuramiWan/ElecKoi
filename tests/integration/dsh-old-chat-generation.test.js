@@ -412,6 +412,27 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
     ])
   })
 
+  it.each(['new-input', 'edit-input', 'regenerate'])('keeps the correct setting history after deleting an assistant reply: %s', async action => {
+    const f = await fixture(true, { finalReply: true })
+    const reply = f.getAgent().session.snapshotEvents().find(event => event.type === 'assistant/message')
+    await f.ctx.eleckoiConversationsApi.deleteMessagesFrom(f.conversationId, reply.seq, 'assistant')
+    if (action === 'regenerate') {
+      await f.ctx.eleckoiConversationsApi.regenerateMessage(f.conversationId, f.userEvent.seq, 'synthetic-deleted-reply-retry')
+      expect(settingBridge(f).history).toEqual([
+        { role: 'assistant', content: '合成开场白' },
+        { role: 'user', content: '合成旧输入' }
+      ])
+    } else {
+      if (action === 'edit-input') await f.ctx.eleckoiConversationsApi.editMessage(f.conversationId, f.userEvent.seq, 'user', '合成修改后的输入')
+      await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, '合成下一次输入')
+      expect(settingBridge(f).history).toEqual([
+        { role: 'assistant', content: '合成开场白' },
+        { role: 'user', content: action === 'edit-input' ? '合成修改后的输入' : '合成旧输入' },
+        { role: 'user', content: '合成下一次输入' }
+      ])
+    }
+  })
+
   it('rewinds an old native session and prepares and starts regeneration through Remote', async () => {
     const f = await fixture()
     await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'regenerateMessage',

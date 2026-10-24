@@ -8,6 +8,7 @@ import { validateStoredEvents } from '@deepseek-ai/dsh-session-persistence'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { REQUEST_CONTEXT_EVENT } from '@eleckoi/dsh-client-roleplay/host/request-context-record.mjs'
 import { requestContextRecordSchema } from '@eleckoi/dsh-client-roleplay/host/request-context-schema.mjs'
+import { ELECKOI_FAILURE_CODES, productFailure } from '@eleckoi/dsh-product-api'
 import { readDshSessionLog } from './trajectory'
 
 /**
@@ -28,7 +29,7 @@ export async function repairRequestContextLog(root: string, id: string): Promise
     for (const row of rows.slice(1)) restore.decodeRow(row)
     const log = restore.finish()
     if (log.header.id !== id || log.header.version !== sessionFormatCatalog.currentVersion) {
-      throw new Error('请求上下文修复的 Session 身份或版本不匹配。')
+      throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '请求上下文修复的 Session 身份或版本不匹配。', { what: '请求上下文修复的会话标识与版本' })
     }
     let pending: number | undefined
     let repaired = 0
@@ -38,7 +39,7 @@ export async function repairRequestContextLog(root: string, id: string): Promise
       if (event.type !== REQUEST_CONTEXT_EVENT || event.ignorable !== undefined) return event
       const record = requestContextRecordSchema.parse(event.data)
       if (record.requestSeq !== pending || record.requestSeq >= event.seq) {
-        throw new Error(`请求上下文记录 ${event.seq} 没有对应正在执行的步骤；原日志未修改。`)
+        throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, `请求上下文记录 ${event.seq} 没有对应正在执行的步骤；原日志未修改。`, { what: '请求上下文记录与执行步骤的对应关系' })
       }
       repaired++
       return { ...event, ignorable: true as const }
@@ -60,19 +61,19 @@ export async function repairRequestContextLog(root: string, id: string): Promise
     let committed = false
     try {
       writeFileSync(temporary, serialized, { encoding: 'utf8', flag: 'wx' })
-      if (readFileSync(located.path, 'utf8') !== original) throw new Error('Session 日志在修复期间发生变化。')
+      if (readFileSync(located.path, 'utf8') !== original) throw productFailure(ELECKOI_FAILURE_CODES.conflictStaleRevision, 'Session 日志在修复期间发生变化。', { what: 'Session 日志' })
       copyFileSync(located.path, backup)
       renameSync(temporary, located.path)
       committed = true
-      if (readFileSync(located.path, 'utf8') !== serialized) throw new Error('Session 修复写入校验失败。')
+      if (readFileSync(located.path, 'utf8') !== serialized) throw productFailure(ELECKOI_FAILURE_CODES.internal, 'Session 修复写入校验失败。', { what: 'Session 修复的写入校验' })
       const reread = readDshSessionLog(root, id)
       if (!reread || reread.header.id !== id || reread.events.length !== log.events.length) {
-        throw new Error('Session 修复后的完整性校验失败。')
+        throw productFailure(ELECKOI_FAILURE_CODES.internal, 'Session 修复后的完整性校验失败。', { what: '修复后的 Session 完整性' })
       }
     } catch (error) {
       if (committed) {
         try { renameSync(backup, located.path) }
-        catch (cause) { throw new Error(`修复失败，原日志备份位于 ${backup}。`, { cause }) }
+        catch { throw productFailure(ELECKOI_FAILURE_CODES.ioFailed, `修复失败，原日志备份位于 ${backup}。`, { operation: 'write', path: located.path }) }
       }
       throw error
     } finally {

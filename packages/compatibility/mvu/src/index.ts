@@ -17,13 +17,32 @@ const formatMessageVariableMacro = /\{\{format_message_variable::(.*?)\}\}/i
 
 type JsonObject = Record<string, unknown>
 
+/** 契约码 `eleckoi/storage/corrupt` 的本地副本：本包没有运行期依赖，`tests/` 守住与码表一致。 */
+const STORAGE_CORRUPT = 'eleckoi/storage/corrupt'
+
+/**
+ * 已落盘的消息变量状态读不出来：造一条带契约码的失败。
+ *
+ * 形状是 `Error` 实例（渲染层有些调用点还按 `instanceof Error` 取诊断）加官方 `RemoteError`
+ * 的结构标记；`foldFailure` 的 remote 分支按标记保真码与详情。
+ */
+function corruptState(message: string): Error {
+  return Object.assign(new Error(message), {
+    isDSHRemoteError: true as const,
+    code: STORAGE_CORRUPT,
+    details: { what: '消息变量状态' }
+  })
+}
+
 function record(value: unknown): JsonObject | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : undefined
 }
 
 function parseState(source: string): JsonObject {
-  const state = record(JSON.parse(source))
-  if (!state) throw new TypeError('Native message variable state must be a JSON object')
+  let parsed: unknown
+  try { parsed = JSON.parse(source) } catch { throw corruptState('Native message variable state is not valid JSON') }
+  const state = record(parsed)
+  if (!state) throw corruptState('Native message variable state must be a JSON object')
   return state
 }
 

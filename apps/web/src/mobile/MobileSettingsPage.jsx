@@ -9,6 +9,9 @@ import { ChatDisplayPreview, UserProfileSettings } from '../modules/settings/com
 import { AboutSettings } from '../modules/settings/components/AboutSettings.jsx';
 import { chatDisplaySettings, chatDisplayTuners, chatLayouts, avatarShapes, reasoningDisplayModes, textColorOptions, richMessageFloorTuner, richMessageLimitDescription } from '../modules/settings/model/chatDisplaySettings.js';
 import { MobileHeader, useMobileBack, useMobileScroll } from './MobileChrome.jsx';
+import { FailureAlert } from '../ui/ui/FailureAlert.jsx';
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { MobileChevronRightIcon } from './MobileIcons.jsx';
 import './mobile-settings.css';
 
@@ -78,6 +81,13 @@ const detailTitles = {
   'chat:spacing': '间距与留白', 'chat:reasoning': '思维链显示', 'chat:colors': '文本颜色', 'chat:bubble': '气泡样式',
   'chat:rich': '富消息',
 };
+/** 设置项已从设置列表消失时的失败（码给用户话，这里只写开发者诊断）。 */
+const UNAVAILABLE_SETTING_FAILURE = new DesktopError(
+  ELECKOI_FAILURE_CODES.statePrecondition,
+  '设置项已不可用：该设置分区已从设置列表移除。',
+  { what: '返回设置列表' },
+);
+
 const themeChoices = [{ id: 'light', label: '浅色' }, { id: 'dark', label: '深色' }];
 const artworkChoices = [{ id: 'cover', label: '封面立绘' }, { id: 'avatar', label: '头像' }];
 
@@ -170,7 +180,7 @@ export function MobileSettingsPage() {
   } else if (plugin) {
     content = <div className="mobile-settings-plugin" data-plugin-panel>{view.renderSettingsSection(plugin, () => view.selectPanel('messages'))}</div>;
   } else {
-    content = <p className="mobile-settings-error" role="alert">此设置项已不可用，请返回设置列表。</p>;
+    content = <FailureAlert failure={UNAVAILABLE_SETTING_FAILURE} className="mobile-settings-error" />;
   }
   return <div className="mobile-settings-page" data-settings-page={page}>
     <MobileHeader title={title} back={back} />

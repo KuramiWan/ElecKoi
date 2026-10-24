@@ -1,19 +1,23 @@
 const { app, BrowserWindow, ipcMain, protocol, session, webFrameMain } = require('electron')
-const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
+const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join, resolve } = require('node:path')
 const { spawn } = require('node:child_process')
 const { createServer } = require('node:http')
 const Module = require('node:module')
-const { transformSync } = Module.createRequire(require.resolve('vite'))('esbuild')
+const { buildSync } = Module.createRequire(require.resolve('vite'))('esbuild')
 app.on('window-all-closed', () => {})
 
+// 主进程源用 `@shared` 别名（vite / tsconfig），而本探针在 Electron 里裸加载、没有别名解析器；
+// 所以先按同一别名打包再 `_compile`，与 probe-dsh-desktop-plugin-host.mjs、
+// probe-local-media-crop.cjs 同一手法。
 const documentPath = resolve('apps/desktop/src/main/platform/electron/dshClientDocument.ts')
 const documentModule = new Module(documentPath, module)
 documentModule.paths = module.paths
-documentModule._compile(transformSync(readFileSync(documentPath, 'utf8'), {
-  loader: 'ts', format: 'cjs', target: 'es2024',
-}).code, documentPath)
+documentModule._compile(buildSync({
+  entryPoints: [documentPath], bundle: true, write: false, platform: 'node', format: 'cjs',
+  alias: { '@shared': resolve('packages/shared/src') },
+}).outputFiles[0].text, documentPath)
 const document = documentModule.exports
 protocol.registerSchemesAsPrivileged([{ scheme: 'dsh-app', privileges: {
   standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true,

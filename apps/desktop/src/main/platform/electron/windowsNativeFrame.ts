@@ -1,6 +1,8 @@
 import { join } from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import koffi from 'koffi'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 
 type WindowsNativeFrameLibrary = {
   install: (hwnd: bigint | number) => boolean
@@ -18,7 +20,7 @@ export function installWindowsNativeFrame(window: BrowserWindow): void {
 
   const hwnd = readNativeHandle(window.getNativeWindowHandle())
   if (!getNativeFrameLibrary().install(hwnd)) {
-    throw new Error('无法安装 ElecKoi 的 Windows 无边框阴影。')
+    throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '无法安装 ElecKoi 的 Windows 无边框阴影。', { what: 'Windows 无边框阴影安装' })
   }
 }
 
@@ -27,7 +29,9 @@ function getNativeFrameLibrary(): WindowsNativeFrameLibrary {
 
   const architecture = process.arch === 'x64' ? 'win32-x64' : undefined
   if (architecture === undefined) {
-    throw new Error(`Windows 无边框阴影暂不支持 ${process.arch} 架构。`)
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `Windows 无边框阴影暂不支持 ${process.arch} 架构。`, {
+      what: 'Windows 无边框阴影', expected: 'x64'
+    })
   }
 
   const developmentPath = join(app.getAppPath(), 'resources', 'native', architecture, 'eleckoi-window-frame.dll')

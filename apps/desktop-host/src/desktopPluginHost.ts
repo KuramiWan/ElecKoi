@@ -5,13 +5,18 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { initProfile, OPTIONAL_BUNDLES, PROFILE_TEMPLATES, readProfileManifest, sanitizeProfile, writeProfileBundles } from '@deepseek-ai/dsh-app-boot'
 import { ELECKOI_DESKTOP_BUNDLES, registerDesktopBundles } from './desktopPluginBundles'
+import { ELECKOI_FAILURE_CODES, isEleckoiFailureCode } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
+import { isChildFatalFrame, pluginHostFailureOf } from './childHostFailure'
 import type { ChildHostMessage, ParentHostMessage } from './hostSessionProtocol'
 
 const require = createRequire(import.meta.url)
 const runtimeRequire = createRequire(require.resolve('@eleckoi/desktop-host'))
 const TAVILY_BUNDLE = '@eleckoi/dsh-web-search-tavily'
 const webProfile = PROFILE_TEMPLATES.web
-if (webProfile === undefined) throw new Error('DSH web profile template is unavailable')
+if (webProfile === undefined) {
+  throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'DSH web profile template is unavailable', { what: 'DSH web profile 模板' })
+}
 export const ELECKOI_DESKTOP_RECOVERY_BUNDLES = Object.freeze([
   ...webProfile.bundles, ...ELECKOI_DESKTOP_BUNDLES, TAVILY_BUNDLE
 ])
@@ -58,7 +63,7 @@ function isChildMessage(value: unknown): value is ChildHostMessage {
   if (typeof value !== 'object' || value === null || !('type' in value)) return false
   const message = value as Record<string, unknown>
   if (message.type === 'ready') return typeof message.url === 'string' && Array.isArray(message.injections)
-  if (message.type === 'fatal') return typeof message.message === 'string'
+  if (message.type === 'fatal') return isChildFatalFrame(message)
   if (message.type === 'update-tasks-complete') return typeof message.id === 'string'
     && typeof message.active === 'boolean'
     && (message.message === undefined || typeof message.message === 'string')
@@ -80,16 +85,16 @@ export class DshDesktopPluginHost {
 
   constructor(private readonly options: DshDesktopPluginHostOptions) {
     if (typeof options.productDatabasePath !== 'string' || options.productDatabasePath.trim().length === 0) {
-      throw new Error('DSH 插件宿主必须提供产品数据库路径。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'DSH 插件宿主必须提供产品数据库路径。', { field: 'productDatabasePath' })
     }
     if (typeof options.productMediaRoot !== 'string' || options.productMediaRoot.trim().length === 0) {
-      throw new Error('DSH 插件宿主必须提供产品媒体目录。')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'DSH 插件宿主必须提供产品媒体目录。', { field: 'productMediaRoot' })
     }
   }
 
   start(environment: DshDesktopPluginHostEnvironment = {}): Promise<DshDesktopPluginHostReady> {
     if (this.readyTask !== undefined) return this.readyTask
-    if (this.stopping) return Promise.reject(new Error('DSH 插件宿主正在停止。'))
+    if (this.stopping) return Promise.reject(new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 插件宿主正在停止。', { what: 'DSH 插件宿主' }))
     const home = join(this.options.runtimeDataRoot, 'home')
     const profile = join(home, 'profiles', 'desktop')
     initProfile(profile, ELECKOI_DESKTOP_RECOVERY_BUNDLES)
@@ -153,7 +158,7 @@ export class DshDesktopPluginHost {
       let settled = false
       let failureReported = false
       const timeout = setTimeout(() => {
-        fail(new Error('DSH 插件宿主启动超时。'))
+        fail(new DesktopError(ELECKOI_FAILURE_CODES.timeoutExpired, 'DSH 插件宿主启动超时。', { what: 'DSH 插件宿主启动' }))
         child.kill()
       }, 90_000)
       const reportFailure = (error: Error): void => {
@@ -171,16 +176,18 @@ export class DshDesktopPluginHost {
       }
       child.on('message', (value: unknown) => {
         if (!isChildMessage(value)) {
-          fail(new Error('DSH 插件宿主返回了无效消息。'))
+          fail(new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidResponse, 'DSH 插件宿主返回了无效消息。', {
+            issues: [{ path: 'message', message: '子进程消息不满足 hostSessionProtocol 的形状' }]
+          }))
           return
         }
-        if (value.type === 'fatal') fail(new Error(value.message))
+        if (value.type === 'fatal') fail(pluginHostFailureOf(value))
         if (value.type === 'update-tasks-complete') {
           const pending = this.controls.get(value.id)
           if (pending !== undefined) {
             clearTimeout(pending.timer)
             this.controls.delete(value.id)
-            if (value.message) pending.reject(new Error(value.message))
+            if (value.message) pending.reject(new DesktopError(ELECKOI_FAILURE_CODES.ipcCallFailed, value.message, { what: 'DSH 任务检查' }))
             else pending.resolve(value.active)
           }
         }
@@ -192,7 +199,7 @@ export class DshDesktopPluginHost {
       })
       child.once('error', error => fail(error))
       child.once('exit', code => {
-        const error = new Error(`DSH 插件宿主退出：${String(code)}`)
+        const error = new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, `DSH 插件宿主退出：${String(code)}`, { what: 'DSH 插件宿主进程' })
         this.rejectControls(error)
         if (this.child === child) {
           this.child = undefined
@@ -207,12 +214,12 @@ export class DshDesktopPluginHost {
   async updateTasks(action: 'inspect' | 'lock' | 'unlock'): Promise<boolean> {
     await (this.readyTask ?? this.start())
     const child = this.child
-    if (child === undefined || !child.connected) throw new Error('DSH 插件宿主未连接。')
+    if (child === undefined || !child.connected) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 插件宿主未连接。', { what: 'DSH 插件宿主' })
     const id = randomUUID()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.controls.delete(id)
-        reject(new Error('DSH 任务检查超时。'))
+        reject(new DesktopError(ELECKOI_FAILURE_CODES.timeoutExpired, 'DSH 任务检查超时。', { what: 'DSH 任务检查' }))
       }, 10_000)
       this.controls.set(id, { resolve, reject, timer })
       const message: ParentHostMessage = { type: 'update-tasks', id, action }
@@ -246,7 +253,7 @@ export class DshDesktopPluginHost {
     this.stopping = true
     const child = this.child
     this.readyTask = undefined
-    this.rejectControls(new Error('DSH 插件宿主正在停止。'))
+    this.rejectControls(new DesktopError(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'DSH 插件宿主正在停止。', { what: 'DSH 插件宿主' }))
     if (child === undefined || child.exitCode !== null || child.signalCode !== null) return
     const exited = new Promise<void>(resolve => child.once('exit', () => resolve()))
     if (child.connected) {
@@ -268,7 +275,9 @@ export class DshDesktopPluginHost {
         exited.then(() => true),
         new Promise<false>(resolve => setTimeout(() => resolve(false), 5_000))
       ])
-      if (!terminated) throw new Error('DSH 插件宿主未能停止，插件配置未修改。')
+      if (!terminated) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.timeoutExpired, 'DSH 插件宿主未能停止，插件配置未修改。', { what: 'DSH 插件宿主停止' })
+      }
     }
     if (this.child === child) this.child = undefined
   }

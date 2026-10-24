@@ -1,7 +1,11 @@
 import { readSessionSnapshot, writeSessionSnapshot } from './session-snapshot.mjs'
 
+// 「确实不处理」的具名声明：语义见 packages/shared/src/foundation/swallowedFailure.ts。
+// 本文件是独立 bundle 的源，运行时取不到那个包，所以就地定义（同名同义，空函数）。
+const bestEffort = () => {}
+
 /**
- * TODO(迁移清理)：停止支持 v0.2.1 及更早版本直升，且受支持的 profile 恢复入口
+ * RETIRE WHEN: 停止支持 v0.2.1 及更早版本直升，且受支持的 profile 恢复入口
  * 不再携带旧路由后，删除本迁移函数、专用辅助函数和旧路由测试，同时移除 roleplay
  * 启动调用。currentRequestSnapshot 改为直接解析当前选择；requestSnapshot、
  * refreshSessionModelSnapshot 和每轮冻结当前全局模型的正常运行路径必须保留。
@@ -88,7 +92,10 @@ async function validMigrationCandidates(ctx, selected, providers, entries) {
     try {
       await ctx.llm.resolveModelInfo(candidate.provider, candidate.model)
       valid.push(candidate)
-    } catch {}
+    } catch {
+      // 解析失败只说明这个候选不可迁移，跳过它即可；迁移本身是尽力而为的探测。
+      bestEffort()
+    }
   }
   return valid
 }

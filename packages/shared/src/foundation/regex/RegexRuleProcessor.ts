@@ -5,7 +5,9 @@ import type {
   RegexRuleSurface,
   RegexRuleTarget
 } from '@shared/contracts/regex/schemas'
+import { ELECKOI_FAILURE_CODES } from '../../contracts/errors/codes.js'
 import { completedRichDocumentAssemblyRanges, hasOpenRichDocumentAssembly } from '@shared/foundation/richMessage'
+import { DesktopError } from '../DesktopError.js'
 
 interface ParsedPattern {
   body: string
@@ -47,8 +49,8 @@ export function validateRegexRule(rule: RegexRule): string | null {
 function compileRegexRule(rule: RegexRule): RegExp {
   const parsed = parseRegexPattern(rule.pattern)
   const unsupported = [...new Set([...parsed.flags].filter((flag) => !supportedFlags.has(flag)))]
-  if (unsupported.length > 0) throw new Error(`不支持的正则标志：${unsupported.join('')}`)
-  if (new Set(parsed.flags).size !== parsed.flags.length) throw new Error('正则标志不能重复。')
+  if (unsupported.length > 0) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `不支持的正则标志：${unsupported.join('')}`, { what: '正则标志', expected: 'dgimsuvy' })
+  if (new Set(parsed.flags).size !== parsed.flags.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '正则标志不能重复。', { field: 'flags' })
   const key = `${parsed.flags}\u0000${parsed.body}`
   const existing = compiledExpressions.get(key)
   if (existing) {
@@ -82,7 +84,7 @@ function replacementFor(match: RegExpExecArray, source: string, trimStrings: str
 function applyRule(text: string, rule: RegexRule, replacementDecorator?: (replacement: string, prefix: () => string) => string, options: RegexTransformOptions = {}): string {
   const expand = (value: string, escape?: (value: string) => string): string => {
     if (!value.includes('{{')) return value
-    if (!options.expandMacros) throw new Error(`Regex rule ${rule.id} requires the macro runtime`)
+    if (!options.expandMacros) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, `Regex rule ${rule.id} requires the macro runtime`, { what: '提供宏运行时' })
     return options.expandMacros(value, escape)
   }
   if (rule.substituteRegex) rule = { ...rule, pattern: expand(rule.pattern, rule.substituteRegex === 2

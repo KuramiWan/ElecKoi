@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
+import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 import { requestContextItems } from './conversation-context.mjs'
 
 /** Actual dispatches retained only by the running Host, with shared immutable message versions. */
@@ -15,7 +16,7 @@ export class RequestPreviewStore {
       state = { records: new Map(), messages: new Map(), plan: [], inputRequests: new Map() }
       this.#sessions.set(session.id, state)
     }
-    if (!execution) throw new Error('实际模型请求缺少 Session 步骤。')
+    if (!execution) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '实际模型请求缺少 Session 步骤。', { what: '实际模型请求的 Session 步骤' })
     const input = options.messages.findLast(message => message.role === 'user' && message.source.kind === 'user')
     const { round, turn, step } = execution
     const group = input?.id ?? turn
@@ -41,7 +42,7 @@ export class RequestPreviewStore {
 
   read(sessionId, requestId) {
     const record = this.#sessions.get(sessionId)?.records.get(requestId)
-    if (!record) throw new Error('此请求不在当前运行期间的上下文预览中。')
+    if (!record) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '此请求不在当前运行期间的上下文预览中。', { what: '这次请求的上下文预览' })
     return { id: requestId, items: requestContextItems(record.messages, record.plan) }
   }
 

@@ -11,6 +11,7 @@ import { SettingLibraryRepository } from '../src/domain/settingLibraries/Setting
 import { VariableConfigRepository } from '../src/domain/variables/VariableConfigRepository'
 import { VariableStateRepository } from '../src/domain/variables/VariableStateRepository'
 import { restoreLegacyConversationStorage, insertLegacyReply } from './helpers/conversationStorageV11'
+import { ELECKOI_FAILURE_CODES } from '../../../shared/src/contracts/errors/codes'
 
 const cleanups: Array<() => void> = []
 afterEach(() => { for (const fn of cleanups.splice(0).reverse()) fn() })
@@ -151,4 +152,25 @@ it('exports current settings and every state in one archive and remaps Session i
   expect(f.history.read(imported, 'imported-session', 1, 'before', 'session-input-id')).toEqual(state(1))
   expect(f.settings.snapshotConversationRuntimeState(imported)).toBe(setting('current-task'))
   expect(f.db.native.prepare('SELECT COUNT(*) AS n FROM agent_responses WHERE conversationId=?').get(imported)).toEqual({ n: 0 })
+})
+
+it('rejects an imported variable snapshot whose stored initial state is not valid JSON', () => {
+  const f = fixture()
+  f.db.native.prepare(`INSERT INTO characters(id,name,avatar,squareImage,coverImage,groupName,orderIndex,groupViewOrder,folder,
+    frontendBeautyEnabled,assistantName,assistantAvatar,profileAge,profileSex,profileHeight,profileBirthday,profileLike,
+    showOpening,chatBackground,chatBackgroundOpacity,chatBackgroundBlur,chatBackgroundScrim)
+    VALUES ('synthetic-card','Synthetic','','','','',0,0,'',0,'Synthetic','','','','','','',0,'',1,0,0)`).run()
+  const configs = new VariableConfigRepository(f.db)
+  const current = configs.get('synthetic-card')
+  const active = current.versions.find(version => version.id === current.activeVersionId)!
+  const broken = { ...current, initialStateJson: '{not json',
+    versions: [{ ...active, initialStateJson: '{not json' }] }
+  let failure: { code?: string; details?: Record<string, unknown> } | undefined
+  try { f.db.withWriteTx(db => configs.restoreInTransaction('synthetic-card', broken, db)) }
+  catch (error) { failure = error as typeof failure }
+  expect(failure).toMatchObject({
+    code: ELECKOI_FAILURE_CODES.dataShapeInvalid,
+    details: { what: '变量备份的初始状态', path: 'initialStateJson' }
+  })
+  expect(f.db.native.prepare('SELECT COUNT(*) AS count FROM variable_configs').get()).toEqual({ count: 0 })
 })

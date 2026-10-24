@@ -1,6 +1,9 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useState } from "react";
 import { Copy, Play, Trash, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { REGEX_SCOPES, REGEX_TARGETS } from "../model/regexRulesEditing.js";
+import { resolveFailure } from "../../../utils/failureText.js";
 
 function Switch({ checked, onChange, label }) {
   return (
@@ -28,12 +31,12 @@ export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLo
     setTesting(true);
     setTestError("");
     try {
-      if (typeof onTest !== "function") throw new Error("正则测试服务尚未就绪");
+      if (typeof onTest !== "function") throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "正则测试服务尚未就绪", { what: "正则测试服务" });
       const result = await onTest(testInput, rule, rule.targets[0] || "AiOutput");
       setTestOutput(result.output);
       setTestError(result.validationMessage || "");
     } catch (error) {
-      setTestError(error?.message || "测试失败");
+      setTestError(resolveFailure(error, { fallback: "测试失败" }).text);
     } finally {
       setTesting(false);
     }

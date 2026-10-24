@@ -1,6 +1,9 @@
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
 import { frontendAssetUrl } from '../model/applicationFrontendTargets.js';
+import { resolveFailure } from '../../../utils/failureText.js';
 
 /** Native project documents contain only their own assets and the native SDK bootstrap. */
 export function NativeProjectFrame({ content, project, entryFile, revision, context, runtime, onError }) {
@@ -24,7 +27,7 @@ export function NativeProjectFrame({ content, project, entryFile, revision, cont
   }, [content, channel, autoHeight, project.id, project.manifest, entryFile, revision]);
   const close = () => { release.current?.(); release.current = null; mountedPage.current = null; };
   const fail = reason => {
-    close(); const message = `${project.name} · ${entryFile}: ${reason?.message || String(reason)}`;
+    close(); const message = `${project.name} · ${entryFile}: ${resolveFailure(reason, { fallback: '原生前端页面加载失败' }).text}`;
     setError(message); report.current?.(message);
   };
   const sync = () => {
@@ -39,7 +42,7 @@ export function NativeProjectFrame({ content, project, entryFile, revision, cont
     if (!page || page.__ElecKoiDocumentChannel !== channel || mountedPage.current === page) return;
     try {
       close(); sync();
-      if (!runtime) throw new Error('原生作者插件未启用');
+      if (!runtime) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '原生作者插件未启用', { what: '原生作者插件' });
       release.current = runtime.mountProjectDocument(page, { projectId: project.id, entryFile, view: currentContext.current?.view || 'main', scope: project.scope,
         ...(project.scope === 'character' ? { characterId, ...(conversationId ? { conversationId } : {}) } : {}) });
       mountedPage.current = page; page.__ElecKoiCompleteDocument(page.ElecKoi);

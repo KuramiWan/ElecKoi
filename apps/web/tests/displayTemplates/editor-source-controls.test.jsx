@@ -134,7 +134,7 @@ it('tests only the selected template and displays failures inside the test dialo
   expect(dialog().querySelector('[role=alert]')).toBeNull();
   await type(dialog().querySelectorAll('textarea')[1], '[]');
   await act(async () => run().click());
-  expect(dialog().querySelector('[role=alert]').textContent).toBe('测试变量必须是 JSON 对象。');
+  expect(dialog().querySelector('[role=alert]').textContent).toBe('输入不合法：testVariables。');
   expect(dialog().querySelector('textarea[readonly]').value).toBe('');
   await act(() => dialog().querySelector('[aria-label="关闭"]').click());
   expect(document.querySelector('.editor-management-modal')).toBeNull();

@@ -4,6 +4,8 @@ import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
   PartialAssistant, RequestView,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
+import { DesktopError } from '@shared/foundation/DesktopError'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import { assistantStreamFirstTokenTime } from '@deepseek-ai/dsh-llm/assistant-stream'
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
@@ -358,7 +360,7 @@ export const trajectoryAssistantDefinition: ConversationNodeDefinition<Assistant
   },
   start: (_context, match) => {
     if (match.event.type !== 'step/start') {
-      throw new Error('trajectory-assistant-step start requires step/start')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'trajectory-assistant-step start requires step/start', { what: '轨迹助手步骤的起始事件' })
     }
     return initialState(
       match.event.data.turn,
@@ -439,7 +441,7 @@ const trajectoryTurnEndDefinition: ConversationNodeDefinition<TurnEndState> = {
     : null,
   start: (_context, match) => {
     if (match.event.type !== 'turn/end') {
-      throw new Error('trajectory-turn-end start requires turn/end')
+      throw new DesktopError(ELECKOI_FAILURE_CODES.internal, 'trajectory-turn-end start requires turn/end', { what: '轨迹回合结束的起始事件' })
     }
     const reason = match.event.data.reason
     const failure = reason.kind === 'error' ? displayFailure(reason.error) : undefined

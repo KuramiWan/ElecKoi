@@ -67,7 +67,7 @@ async function clientCatalog(ctx: Context) {
   let catalog: any
   const result = async (read: () => unknown) => {
     try { return { ok: true, value: await read() } }
-    catch (error) { return { ok: false, error: { message: (error as Error).message } } }
+    catch (error) { return { ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: (error as Error).message } } }
   }
   const remote = {
     settings: {

@@ -79,7 +79,7 @@ describe('production native project frame', () => {
     }
     request.mockResolvedValue({ content: html.replace('0.1.0', '9.0.0') });
     await render({ revision: 2, runtime: { sdk: {} } });
-    expect(container.textContent).toContain('不支持的原生作者 SDK 版本');
+    expect(container.textContent).toContain('不支持这个格式、版本或能力：原生作者 SDK 声明。');
     expect(container.querySelector('iframe')).toBeNull();
     expect(runtime.mountProjectDocument).toHaveBeenCalledOnce();
   });

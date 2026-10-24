@@ -1,3 +1,5 @@
+import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
+import { DesktopError } from "@shared/foundation/DesktopError";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   createChat as createChatSession,
@@ -12,6 +14,7 @@ import {
   updateChatOpening,
 } from "../api/chatApi.js";
 import { useChatInputFiles } from './useChatInputFiles.js';
+import { LOG_ACTIONS, runLoggedAction } from '../../../utils/logAction.js';
 import {
   createEmptyChatCharacter,
   normalizeChatItemCharacter,
@@ -36,6 +39,7 @@ import { useChatHistoryPaging } from "./useChatHistoryPaging.js";
 import { useAuthorFrontendActions } from "./useAuthorFrontendActions.js";
 import { useChatInputImages } from "./useChatInputImages.js";
 import { getErrorMessage, isAbortError, runChatMessageSend, stopChatMessageSend, throwIfAborted } from "./chatMessageSend.js";
+import { failureAlreadyPublished } from "../../../utils/swallowedFailure.js";
 
 const EMPTY_CATALOG = { status: "loading", items: [], error: "" };
 const EMPTY_DETAILS = { id: "", status: "idle", details: null, error: "" };
@@ -219,7 +223,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     const nextMessages = chat?.messages || [];
     if (conversations && chat?.id && conversations.getDetailsSnapshot().id !== chat.id) {
       conversations.activate(chat.id);
-      void conversations.refreshDetails().catch(() => {});
+      void conversations.refreshDetails().catch(failureAlreadyPublished);
     }
     setMessagesWithScroll(nextMessages, behavior, {
       hasMore: chat?.messages_has_more,
@@ -248,7 +252,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   }, [chatBusy, conversations, detailsSnapshot.details, sessionId]);
 
   async function readSessions() {
-    if (!conversations) throw new Error("DSH 聊天服务尚未就绪");
+    if (!conversations) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "DSH 聊天服务尚未就绪", { what: "聊天服务" });
     return { items: mapConversations(await conversations.refresh()) };
   }
 
@@ -384,7 +388,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     requestRef.current = null;
     activeRequest?.controller?.abort?.();
     if (activeRequest?.requestId && conversations) {
-      conversations.cancelRequest(activeRequest.conversationId || sessionId, activeRequest.requestId).catch(() => {});
+      conversations.cancelRequest(activeRequest.conversationId || sessionId, activeRequest.requestId).catch(failureAlreadyPublished);
     }
   }
 
@@ -490,7 +494,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
       .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
     const shouldCreateReplacement = Boolean(targetCharacterId) && remainingSameCharacterSessions.length === 0;
 
-    await deleteChat(chatId, { model: conversations });
+    await runLoggedAction(LOG_ACTIONS.conversationDelete, () => deleteChat(chatId, { model: conversations }));
     unpinChat(chatId);
     forgetPreferredSession(targetCharacterId, chatId);
 
@@ -573,7 +577,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
     if (!sessionId || !messageId || chatBusy) return false;
     try {
       const message = messages.find((item) => item.id === messageId);
-      if (!message || !Number.isSafeInteger(message.sessionEventSeq)) throw new Error("找不到对应的 DSH 消息");
+      if (!message || !Number.isSafeInteger(message.sessionEventSeq)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, "找不到对应的 DSH 消息", { what: "聊天消息" });
       const result = await deleteChatMessagesFrom(sessionId, message, { model: conversations });
       replaceChatMessages(result.chat, "auto");
       setChatCharacter(normalizeLatestChatCharacter(result.chat));
@@ -589,7 +593,7 @@ export function useChatSessions({ conversations, persona, characters, modelConfi
   async function editMessage(message, replacementMessage) {
     if (!sessionId || !message?.id || chatBusy) return false;
     try {
-      if (!Number.isSafeInteger(message.sessionEventSeq)) throw new Error("找不到对应的 DSH 消息");
+      if (!Number.isSafeInteger(message.sessionEventSeq)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, "找不到对应的 DSH 消息", { what: "聊天消息" });
       const result = await editChatMessage(sessionId, message, replacementMessage, { model: conversations });
       replaceChatMessages(result.chat, "auto");
       conversations?.invalidateDetails(sessionId);
