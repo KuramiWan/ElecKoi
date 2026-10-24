@@ -1,3 +1,4 @@
+import { tavernEntryScanDepth } from "@shared/foundation/tavernWorldBook";
 import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
 import { DesktopError } from "@shared/foundation/DesktopError";
 import { FIXED_ENTRY_IDS, PINNED_ENTRY_IDS, createId, uniqueName } from "./settingLibraryEditing.js";
@@ -329,7 +330,7 @@ function parseSillyTavernExport(source) {
       dynamicMode: "standard",
       contentMode: "plain_text",
       keywords: constant ? [] : keys,
-      keywordScanDepth: 1,
+      keywordScanDepth: tavernEntryScanDepth(item, book),
       conditionKeywords: constant ? [] : secondary,
       keywordCondition: constant || !secondary.length ? "none" : logic === 2 ? "not_any" : logic === 3 ? "all" : "any",
       keywordUseRegex: !constant && bool(item.use_regex),

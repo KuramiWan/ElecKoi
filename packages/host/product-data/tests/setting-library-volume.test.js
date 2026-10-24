@@ -28,7 +28,7 @@ describe('large character-card setting libraries', () => {
       content: `首-${index}|${probes.has(index) ? '合成𠮷'.repeat(32_769) : '合成正文'}|尾-${index}`,
       keys: Array.from({ length: probes.has(index) ? 1_501 : 2 }, (_, key) => `合成导入关键词-${index}-${key}`),
       secondary_keys: [`合成条件-${index}`], constant: index % 3 === 0,
-      enabled: index !== count - 2,
+      enabled: index !== count - 2, extensions: { scan_depth: count + index + 1 },
     }));
     const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: '合成大量条目角色', description: '', first_mes: '合成开场', character_book: { name: '合成大量条目库', entries } } };
     const f = await database(), data = f.ctx.eleckoiProductData;
@@ -46,6 +46,7 @@ describe('large character-card setting libraries', () => {
       expect(entry.title).toBe(source.name);
       expect(entry.content).toBe(source.content);
       expect(entry.enabled).toBe(source.enabled);
+      expect(entry.keywordScanDepth).toBe(source.extensions.scan_depth);
       expect(entry.keywords).toEqual(source.constant ? [] : source.keys);
       expect(entry.conditionKeywords).toEqual(source.constant ? [] : source.secondary_keys);
     }
@@ -68,6 +69,7 @@ describe('large character-card setting libraries', () => {
       const expected = actual[index];
       const value = operations.get('settings.read').execute(characterId, { id: expected.id });
       expect(value.content).toBe(entries[index].content);
+      expect(value.keywordScanDepth).toBe(entries[index].extensions.scan_depth);
       expect(value.keywords).toEqual(expected.keywords);
       expect(value.conditionKeywords).toEqual(expected.conditionKeywords);
       expect(value.content.endsWith(`|尾-${index}`)).toBe(true);

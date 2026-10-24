@@ -97,6 +97,24 @@ function tavernCard(name = '测试角色甲') {
 }
 
 describe('character card import', () => {
+  it('maps world book scan depth onto the keyword scan window', () => {
+    const depthOf = (book: Record<string, unknown>, title: string): number | undefined => {
+      const source = tavernCard('扫描深度')
+      source.data.character_book = book as unknown as typeof source.data.character_book
+      const decoded = decodeCharacterCard(jsonBytes(source), 'sillytavern')
+      return decoded.settingLibrary?.entries.find((entry) => entry.title === title)?.keywordScanDepth
+    }
+
+    expect(depthOf({ entries: [{ name: '条目级优先', content: 'A', keys: ['甲'], extensions: { scan_depth: 4 } }] }, '条目级优先')).toBe(4)
+    expect(depthOf({ entries: [{ name: '合成原生字段', content: '合成正文', keys: ['合成关键词'], scanDepth: 6 }] }, '合成原生字段')).toBe(6)
+    expect(depthOf({ scan_depth: 8, entries: [{ name: '合成优先级', content: '合成正文', keys: ['合成关键词'], scanDepth: 6, extensions: { scan_depth: 5 } }] }, '合成优先级')).toBe(5)
+    expect(depthOf({ scan_depth: 3, entries: [{ name: '跟随书级', content: 'B', keys: ['乙'], extensions: { scan_depth: null } }] }, '跟随书级')).toBe(3)
+    expect(depthOf({ entries: [{ name: '缺省兜底', content: 'C', keys: ['丙'] }] }, '缺省兜底')).toBe(2)
+    expect(depthOf({ entries: [{ name: '完整保留大深度', content: 'D', keys: ['丁'], extensions: { scan_depth: 2000 } }] }, '完整保留大深度')).toBe(2000)
+    expect(depthOf({ entries: [{ name: '零值抬到最小', content: 'E', keys: ['戊'], extensions: { scan_depth: 0 } }] }, '零值抬到最小')).toBe(1)
+    expect(depthOf({ scan_depth: 3, entries: [{ name: '条目级覆盖书级', content: 'F', keys: ['己'], extensions: { scan_depth: 5 } }] }, '条目级覆盖书级')).toBe(5)
+  })
+
   it('rejects retired setting kinds embedded in an ElecKoi character package', () => {
     expect(() => decodeSettingLibrarySnapshot(JSON.stringify({
       format: 'eleckoi.setting-library-snapshot',

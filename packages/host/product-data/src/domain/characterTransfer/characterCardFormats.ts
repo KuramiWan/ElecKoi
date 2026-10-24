@@ -1,3 +1,4 @@
+import { tavernEntryScanDepth } from '@shared/foundation/tavernWorldBook'
 import { gzipSync, gunzipSync } from 'node:zlib'
 import { randomUUID } from 'node:crypto'
 import type { RegexRule } from '@shared/contracts/regex/schemas'
@@ -212,6 +213,7 @@ function convertWorldBookEntries(worldBook: JsonObject | undefined, timestamp: s
       keywordUseRegex: !constant && boolean(item.use_regex),
       keywordIgnoreCase: !boolean(item.case_sensitive, boolean(record(item.extensions)?.case_sensitive)),
       keywordWholeWord: boolean(item.match_whole_words, boolean(record(item.extensions)?.match_whole_words)),
+      keywordScanDepth: tavernEntryScanDepth(item, worldBook),
       triggerMode: 'agent_tool', enabled: enabledFrom(item), order: index + 1, treeViewOrder: index + 1
     }
   })
