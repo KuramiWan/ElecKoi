@@ -1,17 +1,17 @@
 {
   "repository": "https://github.com/deepseek-ai/deepseek-harness",
-  "commit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+  "commit": "1f81c047fc48fa190a683e469daa699857e9afe8",
   "license": "MIT",
   "licenseFile": "apps/desktop/resources/licenses/dsh-desktop-MIT.txt",
   "files": [
     {
       "path": "update-coordinator.ts",
       "source": "apps/desktop/src/update-coordinator.ts",
-      "sha256": "25af5dccba70f312fa2154fb9a006c9d4820a1e8f5b844b7723a2cfbd74007fe",
+      "sha256": "5cf1f239f82b8695afa607f36176cb95792d2b61be12aa3e28f0ee5341a95aa7",
       "changes": [
         "Relative TypeScript import suffixes use .js for the local compiler."
       ],
-      "localSha256": "24b696f2a646c1a64df2dd0330bb5822ae165df2f640c8b00ed19d08c8f96d4c"
+      "localSha256": "8e73b5b2bb09010fc7dd4faa0483da06a04ee15887dd4ec951950ddb014bcc56"
     },
     {
       "path": "update-http-executor.ts",

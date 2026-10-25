@@ -8,7 +8,7 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import Commands from '@deepseek-ai/dsh-commands'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
@@ -95,6 +95,18 @@ async function* text(text) {
 }
 
 describe('AI creator studio official Agent integration', { timeout: 30_000 }, () => {
+  it('waits for regex EJS computation in the actual authoring tool and preserves the rule library', async () => {
+    const f = await fixture(async function* () { yield* text('Synthetic completion') })
+    const before = f.ctx.eleckoiProductData.readRegexRules(f.character.id)
+    const rule = { id: 'synthetic-test-rule', name: 'Synthetic regex EJS', pattern: 'TOKEN', replacement: '<%= await Promise.resolve(getvar("score") * 2) %>',
+      targets: ['AiOutput'], enabled: true, displayOnly: true, promptOnly: false, runOnEdit: false, order: 0 }
+    const result = await f.handle.agent.ctx.tools.execute({ callId: 'synthetic-regex-test', name: 'eleckoi_call_capability',
+      arguments: { capability_id: 'regex.test', arguments: { text: 'TOKEN', rule, target: 'AiOutput', surface: 'Display', variables: { score: 12 } } },
+      agent: f.handle.agent, signal: new AbortController().signal })
+    expect(result.isError, JSON.stringify(result)).not.toBe(true)
+    expect(JSON.parse(result.content.find(item => item.type === 'text').text).value).toEqual({ output: '24', changed: true, appliesToSurface: true })
+    expect(f.ctx.eleckoiProductData.readRegexRules(f.character.id)).toEqual(before)
+  })
   it.each([101, 1_001, 10_001])('delivers every one of %i settings and complete large keyword bodies to the next actual Studio model request', async count => {
     const selectedIndexes = [0, Math.floor(count / 2), count - 1]
     const entries = Array.from({ length: count }, (_, index) => ({
@@ -285,15 +297,11 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
       return JSON.parse(result.content.find(item => item.type === 'text').text).value
     }
     for (const target of [{ scope: 'global' }, { scope: 'preset', presetId }]) {
-      const library = await value('displayTemplates.read', target)
-      await value('displayTemplates.configure', { target, expectedRevision: library.revision, enabled: true })
-      expect(data.readDisplayTemplates(target.scope, target.scope === 'global' ? '' : presetId).enabled).toBe(true)
-      for (const kind of ['scripts', 'displayTemplates', 'regex']) {
+      for (const kind of ['scripts', 'regex']) {
         const state = await value('editorVersions.read', { kind, target })
         expect(state.scope).toBe(target.scope)
         const document = kind === 'regex' ? data.readRegexEditor({ scope: 'preset', ownerId: presetId })
-          : kind === 'scripts' ? data.readScriptLibrary(target.scope, target.scope === 'global' ? '' : presetId)
-            : data.readDisplayTemplates(target.scope, target.scope === 'global' ? '' : presetId)
+          : data.readScriptLibrary(target.scope, target.scope === 'global' ? '' : presetId)
         await value('editorVersions.save', { kind, documents: [JSON.stringify(document)], versions: [state] })
       }
     }
@@ -302,9 +310,8 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
     expect(data.readScriptLibrary('preset', presetId).variables).toEqual({ synthetic: 1 })
     expect(records).not.toHaveBeenCalled()
     for (const args of [
-      { capability_id: 'displayTemplates.read', arguments: { scope: 'character' } },
       { capability_id: 'editorVersions.read', arguments: { kind: 'regex', target: { scope: 'character' } } },
-      { capability_id: 'editorVersions.save', arguments: { kind: 'displayTemplates', documents: [JSON.stringify(data.readDisplayTemplates('character', f.character.id))], versions: [] } },
+      { capability_id: 'editorVersions.save', arguments: { kind: 'scripts', documents: [JSON.stringify(data.readScriptLibrary('character', f.character.id))], versions: [] } },
     ]) {
       const result = await execute(args)
       expect(result.isError).toBe(true)
@@ -312,7 +319,7 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
     }
     f.handle.agent.session.append(CREATOR_STUDIO_EVENT, { presetId: 'agent-preset-creator', characterId: f.character.id }, { ignorable: true })
     data.createCharacter({ id: 'synthetic-unrelated-owner', name: 'Synthetic unrelated owner' })
-    const denied = await execute({ capability_id: 'editorVersions.save', arguments: { kind: 'displayTemplates', documents: [JSON.stringify(data.readDisplayTemplates('character', 'synthetic-unrelated-owner'))], versions: [] } })
+    const denied = await execute({ capability_id: 'editorVersions.save', arguments: { kind: 'scripts', documents: [JSON.stringify(data.readScriptLibrary('character', 'synthetic-unrelated-owner'))], versions: [] } })
     expect(denied.isError).toBe(true)
     expect(JSON.stringify(denied)).toContain('不属于当前编辑角色')
     records.mockRestore()
@@ -495,7 +502,7 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
       provide: (_key, value) => { service = value },
       sessionController: {
         inspect: async () => ({ meta: f.handle.agent.session.header, events: f.handle.agent.session.snapshotEvents() }),
-        create: async () => { await f.reopen() }, resolveAgent: async () => ({ agent: f.handle.agent }),
+        resolveAgent: async () => { if (!f.ctx.agents.get('synthetic-studio-session')) await f.reopen(); return { agent: f.handle.agent } },
       },
       eleckoiSessionEditor: { transaction: async (_id, run) => run(), rewind: async (id, turn, seq, retain) => {
         await f.close(); return rewindDshSession(join(f.root, 'sessions'), id, turn, seq, retain)
@@ -630,7 +637,7 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
     const missing = await execute({ capability_id: 'character.read', arguments: {} })
     expect(missing.isError).toBe(true)
     expect(JSON.stringify(missing)).toContain('选择角色')
-    const global = await execute({ capability_id: 'displayTemplates.read', arguments: { scope: 'global' } })
+    const global = await execute({ capability_id: 'editorVersions.read', arguments: { kind: 'regex', target: { scope: 'global' } } })
     expect(global.isError, JSON.stringify(global)).not.toBe(true)
     const created = await execute({ capability_id: 'character.create', arguments: { name: 'Synthetic replacement editing target' } })
     expect(created.isError, JSON.stringify(created)).not.toBe(true)

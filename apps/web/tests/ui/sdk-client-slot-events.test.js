@@ -53,7 +53,7 @@ it('passes the public SlotRegistry event subscription to the SDK application con
         subscribe: () => () => {}, getSnapshot: () => ({ revision: 0 }),
       });
       owner.reflect.provide('theme', {
-        getTheme: () => ({ active: { colorScheme: 'light', tokens: {} }, fontSize: 15 }),
+        getTheme: () => ({ active: { colorScheme: 'light', tokens: {} }, fontSizes: { text: 15, code: 14, terminal: 13 }, fontFamilies: { text: '', code: '', terminal: '' } }),
       });
       for (const name of shell.inject.filter(name => !['slots', 'locale', 'theme'].includes(name))) {
         owner.reflect.provide(name, {});
@@ -81,5 +81,43 @@ it('passes the public SlotRegistry event subscription to the SDK application con
     listener.mockClear();
     ctx.emit('slots/changed', 'main');
     expect(listener).not.toHaveBeenCalled();
+  } finally { await ctx.fiber.dispose(); }
+});
+
+it('applies and releases all official theme font roles through startup and live settings changes', async () => {
+  const renderer = load(require.resolve('@deepseek-ai/dsh-client-ui-renderer/client'));
+  const shell = load(resolve('packages/client/features/dsh-client-shell/src/client.js'));
+  let snapshot = {
+    preference: 'light', active: { colorScheme: 'light', tokens: {} },
+    fontSizes: { text: 15, code: 14, terminal: 13 },
+    fontFamilies: { text: '', code: '', terminal: '' },
+  };
+  const ctx = new Cordis.Context();
+  try {
+    await ctx.plugin({ name: 'synthetic-theme-root', apply(owner) {
+      new renderer.SlotRegistry(owner);
+      owner.reflect.provide('locale', { register: () => () => {}, bind: () => key => key });
+      owner.reflect.provide('theme', { getTheme: () => snapshot });
+      for (const name of shell.inject.filter(name => !['slots', 'locale', 'theme'].includes(name))) owner.reflect.provide(name, {});
+    } });
+    const product = await ctx.plugin(shell);
+    expect(document.body.style.getPropertyValue('--dsh-content-font-size')).toBe('15px');
+    expect(document.head.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1);
+    snapshot = { preference: 'dark', active: { colorScheme: 'dark', tokens: { '--synthetic-theme-token': '#123456' } },
+      fontSizes: { text: 21, code: 18, terminal: 17 },
+      fontFamilies: { text: '"Synthetic Text", sans-serif', code: '"Synthetic Code", monospace', terminal: 'monospace' } };
+    ctx.emit('theme/change', snapshot);
+    expect(document.body.style.getPropertyValue('--dsh-content-font-size')).toBe('21px');
+    expect(document.body.style.getPropertyValue('--dsh-code-font-size')).toBe('18px');
+    expect(document.body.style.getPropertyValue('--dsh-terminal-font-size')).toBe('17px');
+    expect(document.body.style.getPropertyValue('--dsh-font-family-text')).toBe(snapshot.fontFamilies.text);
+    expect(document.body.style.getPropertyValue('--dsh-font-family-code')).toBe(snapshot.fontFamilies.code);
+    expect(document.body.hasAttribute('data-ds-dark-theme')).toBe(true);
+    await product.dispose();
+    for (const name of ['--dsh-content-font-size', '--dsh-code-font-size', '--dsh-terminal-font-size', '--dsh-font-family-text', '--dsh-font-family-code', '--dsh-font-family-terminal', '--synthetic-theme-token']) {
+      expect(document.body.style.getPropertyValue(name), name).toBe('');
+    }
+    expect(document.body.hasAttribute('data-ds-dark-theme')).toBe(false);
+    expect(document.head.querySelectorAll('meta[name="theme-color"]')).toHaveLength(0);
   } finally { await ctx.fiber.dispose(); }
 });

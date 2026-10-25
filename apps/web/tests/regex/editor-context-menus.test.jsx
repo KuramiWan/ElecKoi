@@ -3,7 +3,6 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RegexRulesPanel } from '../../src/modules/regex/components/RegexRulesPanel.jsx';
-import { DisplayTemplatesPanel, newDisplayTemplate } from '../../src/modules/displayTemplates/DisplayTemplatesPanel.jsx';
 import { ScriptLibrariesPanel } from '../../src/modules/scripts/components/ScriptLibrariesPanel.jsx';
 import { PresetIntroductionEditor } from '../../src/modules/presets/components/PresetIntroductionEditor.jsx';
 import { createScriptItem } from '../../src/modules/scripts/model/scriptEditing.js';
@@ -18,7 +17,6 @@ afterEach(async () => { if (root) await act(() => root.unmount()); node?.remove(
 
 const scenarios = [
   { kind: 'regex', noun: '正则', directory: '.regex-list-scroll', row: '.regex-rule-row', name: '.regex-rule-main', inspector: '.regex-inspector' },
-  { kind: 'templates', noun: '显示模板', directory: '.editor-collection-directory', row: '.editor-library-row', name: '.editor-library-name', inspector: '.script-inspector' },
   { kind: 'scripts', noun: '脚本', directory: '.script-groups', row: '.script-list-row', name: '.script-list-name', inspector: '.script-inspector' },
 ];
 const labels = { global: '全局', character: '角色', preset: '预设' };
@@ -39,11 +37,10 @@ async function mount(scenario, ownerScope = 'character', empty = false, trees, p
   } else {
     const documents = Object.fromEntries(Object.entries(owners).map(([scope, id]) => [scope, {
       scope, ownerId: id, enabled: false, revision: 0,
-      ...(scenario.kind === 'scripts' ? { variables: {}, trees: trees?.[scope] || (empty ? [] : [{ ...createScriptItem('script', 'synthetic-item'), name: `合成${labels[scope]}条目` }]) }
-        : { templates: empty ? [] : [{ ...newDisplayTemplate('synthetic-item'), name: `合成${labels[scope]}条目` }] }),
+      ...({ variables: {}, trees: trees?.[scope] || (empty ? [] : [{ ...createScriptItem('script', 'synthetic-item'), name: `合成${labels[scope]}条目` }]) }),
     }]));
     write = vi.fn(async drafts => drafts.map(draft => documents[draft.scope] = { ...draft, revision: draft.revision + 1 }));
-    service = withLibraryVersions({ read: async scope => structuredClone(documents[scope]), subscribe: () => () => {}, subscribeChanges: () => () => {}, saveAll: write }, scenario.kind === 'scripts' ? 'scripts' : 'displayTemplates');
+    service = withLibraryVersions({ read: async scope => structuredClone(documents[scope]), subscribe: () => () => {}, subscribeChanges: () => () => {}, saveAll: write }, 'scripts');
   }
   if (pendingVersions) {
     if (scenario.kind === 'regex') {
@@ -53,9 +50,7 @@ async function mount(scenario, ownerScope = 'character', empty = false, trees, p
   }
   node = document.createElement('div'); document.body.append(node); root = createRoot(node);
   const ownerProps = ownerScope === 'preset' ? { presetId: ownerId } : { characterId: ownerId };
-  await act(async () => root.render(scenario.kind === 'regex' ? <RegexRulesPanel {...ownerProps} regexRules={service} />
-    : scenario.kind === 'scripts' ? <ScriptLibrariesPanel {...ownerProps} scriptLibraries={service} />
-      : <DisplayTemplatesPanel scope={ownerScope} ownerId={ownerId} displayTemplates={service} />));
+  await act(async () => root.render(scenario.kind === 'regex' ? <RegexRulesPanel {...ownerProps} regexRules={service} /> : <ScriptLibrariesPanel {...ownerProps} scriptLibraries={service} />));
   return { write, group: scope => node.querySelector(`.editor-library-group[aria-label="${labels[scope]}${scenario.noun}"]`) };
 }
 async function rightClick(element) {
@@ -155,7 +150,7 @@ describe('editor context menus', () => {
   });
 
   it('omits script library variables editing and creates a folder child through right-click', async () => {
-    const { write, group } = await mount(scenarios[2], 'character', false, { character: [createScriptItem('folder', 'synthetic-folder')] });
+    const { write, group } = await mount(scenarios.find(value => value.kind === 'scripts'), 'character', false, { character: [createScriptItem('folder', 'synthetic-folder')] });
     expect(node.querySelector('.editor-row-menu')).toBeNull();
     await rightClick(group('character').querySelector('.editor-library-heading'));
     expect(menuLabels()).toEqual(['新建脚本', '新建文件夹']);
@@ -167,22 +162,7 @@ describe('editor context menus', () => {
     expect(write.mock.lastCall[0]).toEqual([expect.objectContaining({ scope: 'character', trees: [expect.objectContaining({ id: 'synthetic-folder', scripts: [expect.objectContaining({ type: 'script' })] })] })]);
   });
 
-  it.each(['character', 'preset'])('offers both template destinations from either %s group and saves to the chosen destination', async ownerScope => {
-    const scenario = scenarios.find(value => value.kind === 'templates');
-    const { write, group } = await mount(scenario, ownerScope, true);
-    const expected = ['新建全局显示模板', `新建${labels[ownerScope]}显示模板`];
-    for (const sourceScope of ['global', ownerScope]) {
-      await rightClick(group(sourceScope).querySelector('.editor-library-heading'));
-      expect(menuLabels()).toEqual(expected);
-      await rightClick(group(sourceScope).querySelector('.editor-library-rows'));
-      expect(menuLabels()).toEqual(expected);
-      const destination = sourceScope === 'global' ? ownerScope : 'global';
-      await action(`新建${labels[destination]}显示模板`);
-      expect(group(destination).querySelectorAll(scenario.row)).toHaveLength(1);
-      await save();
-      expect(write.mock.lastCall[0]).toEqual([expect.objectContaining({ scope: destination, ownerId: destination === 'global' ? '' : `synthetic-${ownerScope}` })]);
-    }
-  });
+
 
   it.each(scenarios)('$kind disables creation until its version catalog is ready', async scenario => {
     const { write, group } = await mount(scenario, 'character', true, undefined, true);

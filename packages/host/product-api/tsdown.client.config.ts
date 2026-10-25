@@ -11,7 +11,7 @@ export default defineConfig({
   dts: false,
   sourcemap: true,
   clean: false,
-  noExternal: ['zod'],
+  noExternal: ['zod', '@deepseek-ai/dsh-typert-protocol/remote-info'],
   outputOptions: {
     entryFileNames: 'client.js',
     banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {`,

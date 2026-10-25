@@ -83,7 +83,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
   }
   function create(targetScope, name, copy = false, imported) {
     const blank = kind === 'scripts' ? { enabled: false, trees: [], variables: {}, files: [] }
-      : kind === 'displayTemplates' ? { enabled: false, templates: [] } : { enabled: true, rules: [] };
+      : { enabled: true, rules: [] };
     const next = change(targetScope, current => {
       const active = current.versions.find(version => version.id === current.activeVersionId);
       const content = imported ? JSON.stringify(imported) : copy ? active.content : JSON.stringify(blank);
@@ -101,7 +101,7 @@ export function useEditorLibraryVersions({ kind, scope, ownerId, service, captur
       const versions = current.versions.filter(version => version.id !== current.activeVersionId);
       if (!versions.length) {
         const content = kind === 'scripts' ? { enabled: false, trees: [], variables: {}, files: [] }
-          : kind === 'displayTemplates' ? { enabled: false, templates: [] } : { enabled: true, rules: [] };
+          : { enabled: true, rules: [] };
         versions.push({ id: crypto.randomUUID(), name: '默认版本', content: JSON.stringify(content) });
       }
       return { ...current, versions, activeVersionId: versions[Math.min(index, versions.length - 1)].id };

@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { Context } from '@deepseek-ai/cordis';
 import { Session, SessionId, SessionStore } from '@deepseek-ai/dsh-session';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local';
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection';
 import { createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm';

@@ -9,7 +9,7 @@ import { once } from 'node:events'
 import { Context } from '@deepseek-ai/cordis'
 import { initProfile, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-app-boot'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { ELECKOI_ANDROID_BUNDLES } from '../../apps/android-host/dist/index.mjs'
 
 const root = mkdtempSync(join(tmpdir(), 'eleckoi-android-host-'))

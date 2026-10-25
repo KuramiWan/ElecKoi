@@ -18,12 +18,12 @@ app.whenReady().then(async () => {
   try {
     await win.loadURL(pathToFileURL(htmlPath).href);
     const reports = [];
-    for (const kind of ['regex', 'templates', 'scripts']) for (const ownerScope of ['character', 'preset']) {
+    for (const kind of ['regex', 'scripts']) for (const ownerScope of ['character', 'preset']) {
       await wait('Boolean(document.querySelector("nav"))');
       await evaluate(`document.querySelector('[data-editor="${kind}:${ownerScope}"]').click()`);
       await wait(`document.querySelector('main').dataset.current === '${kind}:${ownerScope}' && document.querySelectorAll('.editor-library-group').length === 2 && document.querySelector('.setting-library-save-button')?.disabled`);
-      const rowSelector = kind === 'regex' ? '.regex-rule-row' : kind === 'templates' ? '.editor-library-row' : '.script-list-row';
-      const nameSelector = kind === 'regex' ? '.regex-rule-main > span' : kind === 'templates' ? '.editor-library-name > span' : '.script-list-name > span';
+      const rowSelector = kind === 'regex' ? '.regex-rule-row' : '.script-list-row';
+      const nameSelector = kind === 'regex' ? '.regex-rule-main > span' : '.script-list-name > span';
       for (let groupIndex = 0; groupIndex < 2; groupIndex++) {
         const select = `document.querySelectorAll('.editor-library-group')[${groupIndex}]`;
         const measure = `(()=>{const group=${select}, palette=getComputedStyle(group);
@@ -52,28 +52,21 @@ app.whenReady().then(async () => {
     }
     const immersive = [];
     const sourceActions = [];
-    for (const kind of ['templates', 'scripts']) {
+    for (const kind of ['scripts']) {
       win.setContentSize(1200, 800);
       await evaluate(`document.querySelector('[data-editor="${kind}:character"]').click()`);
       await wait(`document.querySelector('main').dataset.current === '${kind}:character' && document.querySelectorAll('.editor-library-group').length === 2`);
-      await evaluate(`document.querySelector('${kind === 'templates' ? '.editor-library-name' : '.script-list-row.is-nested .script-list-name'}').click()`);
+      await evaluate(`document.querySelector('${'.script-list-row.is-nested .script-list-name'}').click()`);
       await wait('Boolean(document.querySelector(".script-inspector .script-source"))');
       for (const [width, height] of [[1200, 800], [400, 760]]) {
         win.setContentSize(width, height);
         await wait(`window.innerWidth === ${width} && window.innerHeight === ${height}`);
         await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
         await evaluate('Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})))');
-        if (kind === 'templates') {
-          sourceActions.push(await evaluate(`(() => {
-            const field=document.querySelector('.setting-library-content-field'), rect=node=>{const r=node.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,height:r.height}};
-            return {width:${width},headerTest:!!document.querySelector('.script-inspector > header [aria-label="测试显示模板"]'),
-              heading:rect(field.querySelector('.setting-library-content-heading')),buttons:[...field.querySelectorAll('.setting-library-content-actions button')].map(rect)};
-          })()`));
-          if (width === 1200) writeFileSync(join(dirname(reportPath), 'ejs-source-actions.png'), (await win.webContents.capturePage()).toPNG());
-        }
+
         await evaluate(`[...document.querySelectorAll('.script-inspector button')].find(button=>button.textContent.includes('沉浸编辑')).click()`);
         await wait('Boolean(document.querySelector(".immersive-markdown-editor"))');
-        const content = kind === 'templates' ? '<div>合成模板</div>\n<%= rawContent %>' : 'export default () => {\n  return () => {};\n};\n';
+        const content = 'export default () => {\n  return () => {};\n};\n';
         await evaluate(`(() => { const field=document.querySelector('.immersive-markdown-body textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(field,${JSON.stringify(content)});field.dispatchEvent(new Event('input',{bubbles:true})); })()`);
         const dimensions = await evaluate(`(() => { const dialog=document.querySelector('.immersive-markdown-editor'), r=dialog.getBoundingClientRect(), editor=dialog.querySelector('textarea');return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,editorHeight:editor.clientHeight,code:getComputedStyle(editor).whiteSpace,preview:!!dialog.querySelector('[role=tablist]')}; })()`);
         await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);

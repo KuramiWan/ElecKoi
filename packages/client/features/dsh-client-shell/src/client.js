@@ -2,14 +2,14 @@ window.__ModuleLoader__.load({
   id: '@eleckoi/dsh-client-shell',
   factory(require) {
     const React = require('react')
+    const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
     const {
       MarkdownText,
       PluginArtworkDefault,
       SegmentedTabs,
       StateDot,
       Switch
-    } = require('@deepseek-ai/dsh-client-ui-primitives')
-    // 带码失败的构造器只有一份实现（@eleckoi/dsh-product-api 的 client 面）。
+    } = primitives
     const { productFailure, ELECKOI_FAILURE_CODES } = require('@eleckoi/dsh-product-api')
     const SettingsPage = React.lazy(() => import(new URL('eleckoi-page-settings.js', new URL(globalThis.__ELECKOI_CLIENT_ASSETS__.script, location.href)).href)
       .then(module => ({ default: module.SettingsPage })))
@@ -167,6 +167,11 @@ window.__ModuleLoader__.load({
           }))
           .sort((a, b) => a.order - b.order)
       }, [slots, navigationVersion, mainVersion, localeRevision])
+      const [unpinnedPanels, setUnpinnedPanels] = React.useState([])
+      const hasSidebarEntryActions = React.useSyncExternalStore(
+        listener => slots.subscribe('sidebar.panellist.actions', listener),
+        () => slots.entriesOfSlot('sidebar.panellist.actions').length > 0
+      )
       const productPanelIds = React.useMemo(() => slots.entriesOfSlot('main')
         .filter(entry => entry.registrant?.startsWith('@eleckoi/dsh-client-'))
         .map(entry => entry.options.key), [slots, mainVersion])
@@ -235,7 +240,7 @@ window.__ModuleLoader__.load({
               || (pkg.meta?.title === undefined ? pkg.name : face.resolveText(pkg.meta.title) || pkg.name),
             icon: pkg.meta?.icon || '',
             group: pkg.name.startsWith('@eleckoi/') || eleckoiPackages.has(pkg.name) ? 'eleckoi'
-              : pkg.name.startsWith('@deepseek-ai/') || (pkg.optional && !pkg.installed) ? 'official'
+              : pkg.official === true ? 'official'
                 : 'installed'
           })
           return [
@@ -326,7 +331,8 @@ window.__ModuleLoader__.load({
           react: React,
           jsxRuntime: require('react/jsx-runtime'),
           reactDom: require('react-dom'),
-          reactDomClient: require('react-dom/client')
+          reactDomClient: require('react-dom/client'),
+          primitives
         }
         const ready = () => {
           if (typeof globalThis.__ELECKOI_DSH_APP__ === 'function') {
@@ -369,7 +375,19 @@ window.__ModuleLoader__.load({
           slots, subscribeSlots, frontendConnection,
           conversations, characters, characterConfiguration, creatorStudio, models, persona, presets, webSearch, displayPreferences, appearance, settingsSections, rightbar,
           navigation: {
-            items: navigationItems,
+            items: navigationItems.filter(item => !unpinnedPanels.includes(item.id)),
+            hasSidebarEntryActions,
+            renderSidebarEntryActions: (renderSidebarSlot, onDismiss) => renderSidebarSlot('sidebar.panellist.actions', {
+              entries: navigationItems.filter(item => !item.action && item.id !== 'plugins').map(item => ({
+                id: item.id, label: item.label, pinned: !unpinnedPanels.includes(item.id), active: panelInfo.activePanelId === item.id
+              })),
+              onOpen: id => layout.selectPanel(id),
+              onPinnedChange: (id, pinned) => {
+                if (id === 'plugins') return
+                setUnpinnedPanels(current => pinned ? current.filter(value => value !== id) : [...new Set([...current, id])])
+              },
+              onDismiss
+            }),
             productPanelIds,
             hasSidebarFooterActions,
             selectedPanelId: panelInfo.windowPanelId ?? panelInfo.activePanelId ?? 'messages',
@@ -503,7 +521,8 @@ window.__ModuleLoader__.load({
               throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `layout.selectPanel: main panel "${id}" is not registered`, { what: '主面板' })
             }
             const mobile = globalThis.__ELECKOI_CLIENT_PLATFORM__?.kind === 'android'
-            const panelId = mobile && (id === null || id === 'conversation' || id === 'creatorStudio') ? null : id === 'messages' ? null : id
+            const panelId = mobile && (id === null || id === 'conversation' || id === 'creatorStudio') ? null
+              : id === null ? 'conversation' : id === 'messages' ? null : id
             const windowPanelId = mobile ? id ?? 'conversation' : undefined
             if (panelSnapshot.activePanelId === panelId && panelSnapshot.windowPanelId === windowPanelId) { showSidebar(false); return }
             const commit = () => {
@@ -571,7 +590,6 @@ window.__ModuleLoader__.load({
             'eleckoi.character.editor.variables': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.regex': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.scripts': { kind: 'chain', scope: 'root' },
-            'eleckoi.character.editor.displayTemplates': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.frontend': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.dynamic': { kind: 'chain', scope: 'root' },
             'eleckoi.character.manager': { kind: 'chain', scope: 'root' },
@@ -582,7 +600,6 @@ window.__ModuleLoader__.load({
             'eleckoi.preset.editor.tools': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.editor.regex': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.editor.scripts': { kind: 'chain', scope: 'root' },
-            'eleckoi.preset.editor.displayTemplates': { kind: 'chain', scope: 'root' },
             'eleckoi.preset.manager': { kind: 'chain', scope: 'root' },
             'eleckoi.roleplay': { kind: 'chain', scope: 'root' },
             'eleckoi.creator-studio.conversation': { kind: 'single', scope: 'root' }
@@ -592,7 +609,7 @@ window.__ModuleLoader__.load({
             conversations: ctx.get('eleckoiConversations'), characters: ctx.eleckoiCharacters,
             characterConfiguration: { settingLibraries: ctx.eleckoiSettingLibraries,
               variables: ctx.eleckoiVariables, regexRules: ctx.eleckoiRegexRules,
-              scripts: ctx.eleckoiScriptLibraries, displayTemplates: ctx.eleckoiDisplayTemplates, scriptRuntimeConnection },
+              scripts: ctx.eleckoiScriptLibraries, scriptRuntimeConnection },
             creatorStudio: ctx.eleckoiCreatorStudio,
             sidebarRight: ctx.get('sidebarRight'),
             models: ctx.eleckoiModels,
@@ -618,6 +635,7 @@ window.__ModuleLoader__.load({
           'sidebar.brand.name': { kind: 'single', scope: 'root' },
           'sidebar.toggle.badge': { kind: 'single', scope: 'root' },
           'sidebar.panellist': { kind: 'list', scope: 'root' },
+          'sidebar.panellist.actions': { kind: 'list', scope: 'root' },
           'sidebar.workspaces': { kind: 'single', scope: 'root' },
           'sidebar.settings': { kind: 'single', scope: 'root' },
           'sidebar.footer.action': { kind: 'list', scope: 'root' }
@@ -650,6 +668,16 @@ window.__ModuleLoader__.load({
       ])
 
       ctx.effect(() => {
+        const fontSizeVariables = {
+          text: '--dsh-content-font-size',
+          code: '--dsh-code-font-size',
+          terminal: '--dsh-terminal-font-size'
+        }
+        const fontFamilyVariables = {
+          text: '--dsh-font-family-text',
+          code: '--dsh-font-family-code',
+          terminal: '--dsh-font-family-terminal'
+        }
         let appliedTokens = []
         const themeColorMeta = document.createElement('meta')
         themeColorMeta.name = 'theme-color'
@@ -658,7 +686,14 @@ window.__ModuleLoader__.load({
           document.documentElement.style.colorScheme = scheme
           document.documentElement.dataset.dsThemeSource = snapshot.preference === 'system' ? 'system' : scheme
           document.body.toggleAttribute('data-ds-dark-theme', scheme === 'dark')
-          document.body.style.setProperty('--dsh-content-font-size', `${snapshot.fontSize}px`)
+          for (const [role, name] of Object.entries(fontSizeVariables)) {
+            document.body.style.setProperty(name, `${snapshot.fontSizes[role]}px`)
+          }
+          for (const [role, name] of Object.entries(fontFamilyVariables)) {
+            const list = snapshot.fontFamilies[role]
+            if (list === '') document.body.style.removeProperty(name)
+            else document.body.style.setProperty(name, list)
+          }
           for (const name of appliedTokens) document.body.style.removeProperty(name)
           appliedTokens = Object.keys(snapshot.active.tokens)
           for (const name of appliedTokens) document.body.style.setProperty(name, snapshot.active.tokens[name])
@@ -672,7 +707,8 @@ window.__ModuleLoader__.load({
           document.documentElement.style.removeProperty('color-scheme')
           delete document.documentElement.dataset.dsThemeSource
           document.body.removeAttribute('data-ds-dark-theme')
-          document.body.style.removeProperty('--dsh-content-font-size')
+          for (const name of Object.values(fontSizeVariables)) document.body.style.removeProperty(name)
+          for (const name of Object.values(fontFamilyVariables)) document.body.style.removeProperty(name)
           for (const name of appliedTokens) document.body.style.removeProperty(name)
           themeColorMeta.remove()
         }
@@ -680,7 +716,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale', 'theme', 'eleckoiCharacters', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiScriptLibraries', 'eleckoiDisplayTemplates', 'eleckoiCreatorStudio', 'eleckoiDisplayPreferences', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets', 'eleckoiWebSearch'],
+      inject: ['slots', 'locale', 'theme', 'eleckoiCharacters', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiScriptLibraries', 'eleckoiCreatorStudio', 'eleckoiDisplayPreferences', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets', 'eleckoiWebSearch'],
       apply
     }
   }

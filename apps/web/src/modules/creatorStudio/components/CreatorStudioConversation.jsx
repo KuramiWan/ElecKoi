@@ -4,16 +4,18 @@ import { DshNewChatIcon } from '../../../ui/icons/dshComposerIcons.jsx';
 import { RoleplayInputMenu, AgentToolsDialog } from '../../chat/index.js';
 import { ModelPicker } from '../../models/index.js';
 import { openPresetManagerWindow } from '../../presets/index.js';
+import { DshEntryActionsMenu } from '../../../ui/ui/DshEntryActionsMenu.jsx';
 import { FailureAlert } from '../../../ui/ui/FailureAlert.jsx';
 
 /** Desktop assembly of the shared Studio Session with native views and resident input. */
 export function CreatorStudioConversation({ model, editing = false, creating = false, models, presetCatalog, title, onCreate, onSelectCharacter, onError,
-  sessionId, useSession, useInput, useSessionStatus, useProjection, useInspectCall, useConversationViews, useStore, actions, openView, selectView, renderHeaderSlot, renderSlot, renderSlotChain }) {
+  sessionId, useSession, useInput, useSessionStatus, useProjection, useInspectCall, useConversationViews, useEntryPins, useEntryActions, setPinned, useStore, actions, openView, selectView, renderHeaderSlot, renderSlot, renderSlotChain }) {
   const session = useSession(value => value), input = useInput(value => value);
   const pendingInteraction = useSessionStatus(value => value.get(sessionId)?.pendingInteraction);
   const projectedModel = useProjection('modelSelection'), projectedTitle = useProjection('title');
   const inspectCall = useInspectCall(value => value), activeView = useStore(value => value.view);
   const tabs = useConversationViews(value => value);
+  const unpinned = useEntryPins(value => value), hasEntryActions = useEntryActions(value => value);
   const active = tabs.find(tab => tab.id === activeView) ?? tabs.find(tab => tab.id === 'chat') ?? tabs[0];
   const viewRequest = useStore(value => value.viewRequest ?? null);
   const owner = { inspectCall, viewRequest, openView, completeViewRequest: actions.completeViewRequest };
@@ -63,8 +65,13 @@ export function CreatorStudioConversation({ model, editing = false, creating = f
           {renderHeaderSlot('eleckoi.creator-studio.session.header.corner', {})}
         </div>
       </div>
-      <div role="tablist" aria-label="工作室视图" data-conversation-tabs="">{tabs.map(({ id, label }) => <button type="button" role="tab" key={id}
-        aria-selected={active?.id === id} onClick={() => selectView(id)}>{label}</button>)}</div>
+      <div role="tablist" aria-label="工作室视图" data-conversation-tabs="">{tabs.filter(tab => !unpinned.includes(tab.id)).map(({ id, label }) => <button type="button" role="tab" key={id}
+        aria-selected={active?.id === id} onClick={() => selectView(id)}>{label}</button>)}
+        {hasEntryActions ? <DshEntryActionsMenu region="conversation" renderActions={onDismiss => renderHeaderSlot('eleckoi.creator-studio.session.header.views.actions', {
+          entries: tabs.filter(tab => unpinned.includes(tab.id)).map(tab => ({ id: tab.id, label: tab.label, pinned: false, active: tab.id === active?.id })),
+          onOpen: selectView, onPinnedChange: setPinned, onDismiss
+        })} /> : null}
+      </div>
     </header>
     <div ref={body} className="creator-simple-conversation-scroll" data-conversation-scroll="true">
       <div className={`creator-simple-transcript${active?.id !== 'chat' ? ' is-panel-view' : ''}${active?.id === 'trajectory' ? ' is-trajectory' : ''}`}>{active && renderSlot('eleckoi.creator-studio.view', owner, { only: active.id })}</div>

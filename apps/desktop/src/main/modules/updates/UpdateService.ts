@@ -47,7 +47,7 @@ export class UpdateService {
         return false
       }
       return accepted
-    }, options.updater, () => options.enabled, () => options.currentVersion)
+    }, options.updater, () => options.enabled, () => options.currentVersion, undefined, 'latest')
     // Product releases use the stable feed; selecting a channel can enable downgrade.
     options.updater.channel = 'latest'
     options.updater.allowPrerelease = false

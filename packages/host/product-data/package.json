@@ -22,7 +22,11 @@
       "types": "./lib/variables.d.ts",
       "default": "./lib/variables.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./regex": {
+      "types": "./lib/regex-ejs.d.ts",
+      "default": "./lib/regex-ejs.js"
+    }
   },
   "files": [
     "lib/index.js",
@@ -33,7 +37,8 @@
     "lib/media.js.map",
     "lib/variables.d.ts",
     "lib/*.js",
-    "lib/*.js.map"
+    "lib/*.js.map",
+    "lib/regex-ejs.d.ts"
   ],
   "scripts": {
     "build": "tsdown"
@@ -42,7 +47,7 @@
     "@babel/parser": "7.29.8",
     "@babel/traverse": "7.29.8",
     "@eleckoi/compatibility-mvu": "workspace:*",
-    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/cordis": "4.0.5",
     "better-sqlite3": "12.11.1",
     "drizzle-orm": "0.44.5",
     "fast-json-patch": "3.1.1",
@@ -50,7 +55,8 @@
     "json5": "2.2.3",
     "lodash": "4.17.21",
     "yaml": "2.9.0",
-    "zod": "4.1.11"
+    "zod": "4.1.11",
+    "@eleckoi/product-shared": "workspace:*"
   },
   "devDependencies": {
     "@types/babel__traverse": "7.28.0",
@@ -61,6 +67,6 @@
   },
   "description": "ElecKoi 产品数据的 DSH Host Cordis 服务。",
   "engines": {
-    "dsh": "0.2.0-rc.2"
+    "dsh": "0.2.1-rc.3"
   }
 }

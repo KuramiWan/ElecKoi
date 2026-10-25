@@ -1,3 +1,5 @@
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
+import { ownerPeer } from '../support/owner-peer.js'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
@@ -6,7 +8,7 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { LlmRuntime, createAssistantMessage, createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import * as piAi from '@deepseek-ai/dsh-llm-pi-ai'
 import SessionController from '@deepseek-ai/dsh-api-session-controller'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import TypertGatewayService from '@deepseek-ai/dsh-api-gateway'
@@ -186,6 +188,7 @@ async function fixture(withOpening = true, { failPreparation = false,
   writeSessionSnapshot(env.ELECKOI_SESSION_SNAPSHOT_ROOT, conversationId, { conversationId,
     model: { provider: 'removed-provider', model: 'old-model', temperature: 0.1, topP: 0.1 } })
   await ctx.plugin(TypertRegistry)
+  await ctx.plugin(RemoteAccessService)
   await ctx.plugin(SessionController, {})
   await ctx.plugin(sessionEditPlugin)
   let preparationCount = 0
@@ -435,7 +438,7 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
 
   it('rewinds an old native session and prepares and starts regeneration through Remote', async () => {
     const f = await fixture()
-    await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'regenerateMessage',
+    await expect(f.ctx.typertGateway.invoke({ peer: ownerPeer(f.ctx), namespace: 'eleckoiConversations', method: 'regenerateMessage',
       args: { conversationId: f.conversationId, eventSeq: f.userEvent.seq,
         requestId: 'synthetic-regeneration', replacementMessage: '合成替换输入' } }))
       .resolves.toMatchObject({ runtimeSessionId: f.conversationId, prepared: true, operationId: expect.any(String) })
@@ -449,7 +452,7 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
     ])
     expect(JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, `${f.conversationId}.json`), 'utf8')).model)
       .toMatchObject({ provider: 'test', model: 'test', temperature: 0.6, topP: 0.8 })
-    await expect(f.ctx.typertGateway.invoke({ namespace: 'eleckoiConversations', method: 'startRegeneration',
+    await expect(f.ctx.typertGateway.invoke({ peer: ownerPeer(f.ctx), namespace: 'eleckoiConversations', method: 'startRegeneration',
       args: { conversationId: f.conversationId, requestId: 'synthetic-regeneration', cancelled: false } }))
       .resolves.toEqual({ accepted: true, turn: 2 })
     expect(f.followed).toHaveLength(1)

@@ -3,7 +3,6 @@ import React, { act, createRef, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ScriptLibrariesPanel } from '../../src/modules/scripts/components/ScriptLibrariesPanel.jsx';
-import { DisplayTemplatesPanel } from '../../src/modules/displayTemplates/DisplayTemplatesPanel.jsx';
 import { RegexRulesPanel } from '../../src/modules/regex/components/RegexRulesPanel.jsx';
 import { EditorPresentationContext } from '../../src/ui/ui/EditorPresentationContext.jsx';
 import { editorCollectionService } from '../helpers/editorCollectionServices.js';
@@ -25,16 +24,14 @@ async function mount(kind, scope, compact = true, prepare) {
     const presentation = useMemo(() => ({ compact, registerSubpage: next => { setPage(next); return () => setPage(current => current === next ? null : current); } }), []);
     return <EditorPresentationContext.Provider value={presentation}>
       <header><button onClick={page?.back}>返回</button>{page?.actions}</header>
-      {kind === 'scripts' ? <ScriptLibrariesPanel ref={ref} {...{ [scope === 'preset' ? 'presetId' : 'characterId']: ownerId }} scriptLibraries={service} />
-        : kind === 'templates' ? <DisplayTemplatesPanel ref={ref} scope={scope} ownerId={ownerId} displayTemplates={service} />
-          : <RegexRulesPanel ref={ref} {...{ [scope === 'preset' ? 'presetId' : 'characterId']: ownerId }} regexRules={service} />}
+      {kind === 'scripts' ? <ScriptLibrariesPanel ref={ref} {...{ [scope === 'preset' ? 'presetId' : 'characterId']: ownerId }} scriptLibraries={service} /> : <RegexRulesPanel ref={ref} {...{ [scope === 'preset' ? 'presetId' : 'characterId']: ownerId }} regexRules={service} />}
     </EditorPresentationContext.Provider>;
   }
   node = document.createElement('div'); document.body.append(node); root = createRoot(node);
   await act(() => root.render(<Harness />)); return { write, ref };
 }
 
-it.each(['scripts', 'templates'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind, scope }))))('$kind $scope selects in the list, edits from the bottom and saves creation to the explicit owner', async ({ kind, scope }) => {
+it.each(['scripts'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind, scope }))))('$kind $scope selects in the list, edits from the bottom and saves creation to the explicit owner', async ({ kind, scope }) => {
   const { ref, write } = await mount(kind, scope);
   expect([...node.querySelectorAll('.mobile-editor-actions [role=toolbar] button')].map(button => button.textContent)).toEqual(['新建', '编辑', '移动', '删除', '更多']);
   expect(node.querySelector('.editor-collection-toolbar').textContent).not.toContain('新建');
@@ -43,29 +40,29 @@ it.each(['scripts', 'templates'].flatMap(kind => ['character', 'preset'].map(sco
   expect(node.querySelector('.editor-page-detail')).toBeNull();
   await click('编辑');
   expect(node.querySelector('.script-inspector input').value).toBe(`合成${scope}条目`);
-  if (kind === 'templates') { await click('测试显示模板'); expect(document.querySelector('.editor-management-modal').textContent).toContain('测试变量 JSON'); await click('关闭', document.querySelector('.editor-management-modal')); }
+
   await click('返回');
   expect(node.querySelector('.editor-page-list').hidden).toBe(false);
   expect(node.querySelector('.is-selected')).toBeTruthy();
   await click('新建');
-  await click(`${scope === 'preset' ? '预设' : '角色'}${kind === 'scripts' ? '脚本' : '显示模板'}`, node.querySelector('.mobile-editor-action-menu'));
+  await click(`${scope === 'preset' ? '预设' : '角色'}脚本`, node.querySelector('.mobile-editor-action-menu'));
   expect(node.querySelector('.editor-page-detail')).toBeTruthy();
   await act(async () => expect(await ref.current.save()).toBe(true));
-  expect(write).toHaveBeenCalledWith([expect.objectContaining({ scope, ownerId: `synthetic-${scope}`, [kind === 'scripts' ? 'trees' : 'templates']: expect.any(Array) })]);
-  const items = write.mock.lastCall[0][0][kind === 'scripts' ? 'trees' : 'templates'];
+  expect(write).toHaveBeenCalledWith([expect.objectContaining({ scope, ownerId: `synthetic-${scope}`, ['trees']: expect.any(Array) })]);
+  const items = write.mock.lastCall[0][0]['trees'];
   expect(items).toHaveLength(2); expect(items[0].id).toBe('synthetic-item'); expect(items[1].id).not.toBe('synthetic-item');
   if (kind === 'scripts') expect(items[1]).toMatchObject({ content: '', enabled: false });
   await click('返回'); await click('移动');
-  await click(kind === 'templates' ? '上移' : '根目录', node.querySelector('.mobile-editor-action-menu'));
+  await click('根目录', node.querySelector('.mobile-editor-action-menu'));
   await click('更多'); await click('复制', node.querySelector('.mobile-editor-action-menu'));
   await act(async () => expect(await ref.current.save()).toBe(true));
-  expect(write.mock.lastCall[0][0][kind === 'scripts' ? 'trees' : 'templates']).toHaveLength(3);
+  expect(write.mock.lastCall[0][0]['trees']).toHaveLength(3);
   await click('删除'); await click('删除', document.querySelector('[role=alertdialog]'));
   await act(async () => expect(await ref.current.save()).toBe(true));
-  expect(write.mock.lastCall[0][0][kind === 'scripts' ? 'trees' : 'templates']).toHaveLength(2);
+  expect(write.mock.lastCall[0][0]['trees']).toHaveLength(2);
 });
 
-it.each(['scripts', 'templates'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind, scope }))))
+it.each(['scripts'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind, scope }))))
   ('$kind $scope opens the selected item on double click while switches and multi-select remain independent', async ({ kind, scope }) => {
     await mount(kind, scope);
     const names = () => node.querySelectorAll('.editor-library-group')[1].querySelector(kind === 'scripts' ? '.script-list-name' : '.editor-library-name');
@@ -109,7 +106,7 @@ it.each([false, true].flatMap(compact => ['character', 'preset'].map(scope => ({
   expect(node.querySelector('.regex-file-input')).toBeNull();
 });
 
-it.each(['scripts', 'templates'].flatMap(kind => ['character', 'preset'].flatMap(scope => [false, true].map(compact => ({ kind, scope, compact })))))
+it.each(['scripts'].flatMap(kind => ['character', 'preset'].flatMap(scope => [false, true].map(compact => ({ kind, scope, compact })))))
   ('$kind $scope clears a single selection on directory space while retaining row, action and multi-selection interactions (compact=$compact)', async ({ kind, scope, compact }) => {
     const { ref, write } = await mount(kind, scope, compact);
     const directory = node.querySelector('.editor-sidebar-directory');

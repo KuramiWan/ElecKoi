@@ -181,6 +181,195 @@ function nativeMessage(id: string, role: 'user' | 'assistant', seq: number, over
     sequence: seq, sessionEventSeq: seq, dshTurn: 2, ...overrides }
 }
 
+describe('native frontend requests to running scripts', () => {
+  const target = { scope: 'character' as const, ownerId: 'synthetic-character', scriptId: 'synthetic-script' }
+
+  it('routes identical names and actions by full identity and carries the exact message caller with isolated data', async () => {
+    const scripts = (['global', 'preset', 'character'] as const).map(scope => ({ ...script(scope), name: 'Same name' }))
+    const callers: any[] = []
+    const r = harness(scripts.map(item => ({ api }) => {
+      api.scripts.registerHandler('inspect', ({ caller, data }) => {
+        callers.push(caller); (data as any).nested.value++
+        return { scope: item.scope, data }
+      })
+    }), scripts)
+    await r.runtime.start()
+    const page = r.mount('synthetic-message'), data = { nested: { value: 1 } }
+    const listed = await page.scripts.list()
+    expect(listed.items).toHaveLength(3)
+    expect(listed.items.map(item => item.identity)).toEqual(scripts.map(item => ({ scope: item.scope, ownerId: item.ownerId, scriptId: item.id })))
+    expect(listed.items.every(item => item.actions.join() === 'inspect')).toBe(true)
+    listed.items[0]!.actions.push('forged')
+    expect((await page.scripts.list()).items[0]!.actions).toEqual(['inspect'])
+    for (const item of scripts) {
+      expect(await page.scripts.request({ scope: item.scope, ownerId: item.ownerId, scriptId: item.id }, 'inspect', data))
+        .toEqual({ scope: item.scope, data: { nested: { value: 2 } } })
+    }
+    expect(data).toEqual({ nested: { value: 1 } })
+    expect(callers).toEqual(scripts.map(() => ({ surface: 'message-renderer', conversationId: 'synthetic-chat', messageId: 'synthetic-message', script: null })))
+    await expect(page.scripts.request({ ...target, ownerId: 'another-owner' }, 'inspect', null)).rejects.toMatchObject({ code: 'SCRIPT_UNAVAILABLE' })
+    await expect(page.scripts.request(target, 'forged', null)).rejects.toMatchObject({ code: 'SCRIPT_ACTION_UNAVAILABLE' })
+    expect((await page.app.getCapabilities()).map(item => item.method)).toEqual(expect.arrayContaining(['scripts.list', 'scripts.request']))
+    expect(() => page.scripts.registerHandler('forged', () => null)).toThrow('只有运行中的原生脚本')
+  })
+
+  it('handles simultaneous requests independently and preserves both explicit errors and empty JSON values', async () => {
+    const pending = new Map<string, () => void>()
+    const r = harness([({ api }) => {
+      api.scripts.registerHandler('echo', async ({ data }) => {
+        await new Promise<void>(resolve => pending.set(String(data), resolve)); return data
+      })
+      api.scripts.registerHandler('fail', () => { throw Object.assign(new Error('Synthetic operation refused'), { code: 'SYNTHETIC_REFUSED' }) })
+      api.scripts.registerHandler('throw', () => { throw new Error('Synthetic failure') })
+    }])
+    await r.runtime.start(); const api = r.mount()
+    const first = api.scripts.request(target, 'echo', 'first'), second = api.scripts.request(target, 'echo', false)
+    await vi.waitFor(() => expect(pending.size).toBe(2))
+    pending.get('false')!(); expect(await second).toBe(false)
+    pending.get('first')!(); expect(await first).toBe('first')
+    await expect(api.scripts.request(target, 'fail', null)).rejects.toMatchObject({ code: 'SYNTHETIC_REFUSED', message: 'Synthetic operation refused' })
+    await expect(api.scripts.request(target, 'throw', null)).rejects.toMatchObject({ code: 'SCRIPT_HANDLER_FAILED', message: 'Synthetic failure' })
+    expect(r.runtime.getSnapshot().status).toBe('ready')
+  })
+
+  it('rejects unsupported data without executing the handler, and rejects invalid results without silent JSON loss', async () => {
+    let invalid: any
+    const invoked = vi.fn()
+    const r = harness([({ api }) => { api.scripts.registerHandler('check', () => { invoked(); return invalid }) }])
+    await r.runtime.start(); const api = r.mount()
+    const cycle: any = {}; cycle.self = cycle
+    for (const value of [undefined, NaN, Infinity, 1n, new Date(), { missing: undefined }, { fn() {} }, cycle, [, 1]]) {
+      await expect(api.scripts.request(target, 'check', value as any)).rejects.toMatchObject({ code: 'INVALID_PARAMS' })
+    }
+    expect(invoked).not.toHaveBeenCalled()
+    for (const value of [undefined, NaN, new Date(), { fn() {} }, cycle]) {
+      invalid = value
+      await expect(api.scripts.request(target, 'check', null)).rejects.toMatchObject({ code: 'INVALID_SCRIPT_RESULT' })
+    }
+    for (const value of [null, false, 0, '', [], {}]) {
+      invalid = value; expect(await api.scripts.request(target, 'check', null)).toEqual(value)
+    }
+    for (const identity of [{ scriptId: target.scriptId }, { ...target, name: 'Same name' }, { ...target, scope: 'global' }]) {
+      await expect(api.scripts.request(identity as any, 'check', null)).rejects.toMatchObject({ code: 'INVALID_PARAMS' })
+    }
+  })
+
+  it('withdraws pending operations immediately and permits a fresh registration under the same action', async () => {
+    let stop!: () => void, resume!: () => void, signal!: AbortSignal, escaped!: ElecKoiAuthorApi
+    const r = harness([({ api }) => {
+      escaped = api
+      stop = api.scripts.registerHandler('wait', async context => {
+        signal = context.signal
+        await new Promise<void>(resolve => { resume = resolve })
+        return context.api.input.set('Synthetic late draft') as any
+      })
+    }])
+    const write = vi.fn(); r.runtime.registerChatUi('synthetic-chat', { 'input.set': write })
+    await r.runtime.start(); const api = r.mount()
+    const rejected = expect(api.scripts.request(target, 'wait', null)).rejects.toMatchObject({ code: 'SCRIPT_ACTION_CLOSED' })
+    await vi.waitFor(() => expect(resume).toBeTypeOf('function'))
+    stop(); await rejected; expect(signal.aborted).toBe(true)
+    escaped.scripts.registerHandler('wait', () => 'new handler')
+    expect(await api.scripts.request(target, 'wait', null)).toBe('new handler')
+    resume(); await new Promise(resolve => setTimeout(resolve, 0)); expect(write).not.toHaveBeenCalled()
+  })
+
+  it('returns complete large JSON payloads without truncating rows or long text', async () => {
+    const r = harness([({ api }) => { api.scripts.registerHandler('echo', ({ data }) => data) }])
+    await r.runtime.start()
+    const data = { rows: Array.from({ length: 10001 }, (_, index) => ({ id: index, text: `Synthetic row ${index}` })),
+      text: 'Synthetic long content '.repeat(100001) + 'Synthetic tail' }
+    const result = await r.mount('synthetic-message').scripts.request(target, 'echo', data)
+    expect(result).toEqual(data)
+    expect(result).not.toBe(data)
+  })
+
+  it.each(['page-close', 'chat-switch', 'script-edit', 'script-disable', 'runtime-close'] as const)
+  ('cancels %s without executing delayed operations through the handler API', async change => {
+    let resume!: () => void, signal!: AbortSignal, late: any
+    const r = harness([({ api }) => { api.scripts.registerHandler('wait', async context => {
+      signal = context.signal
+      await new Promise<void>(resolve => { resume = resolve })
+      try { await context.api.input.set('Synthetic old draft') } catch (error) { late = error }
+      return 'late result'
+    }) }, () => {}], [script()])
+    const write = vi.fn(); r.runtime.registerChatUi('synthetic-chat', { 'input.set': write })
+    await r.runtime.start()
+    const document = new JSDOM('<body></body>', { url: 'http://localhost/' }); cleanups.push(async () => document.window.close())
+    r.runtime.mountDocument(document.window, 'synthetic-chat', 'synthetic-message')
+    const rejected = expect(document.window.ElecKoi.scripts.request(target, 'wait', null)).rejects.toBeTruthy()
+    await vi.waitFor(() => expect(resume).toBeTypeOf('function'))
+    if (change === 'page-close') document.window.dispatchEvent(new document.window.Event('pagehide'))
+    else if (change === 'chat-switch') { r.selected = { id: 'other-chat', status: 'loading', details: null }; r.changed() }
+    else if (change === 'runtime-close') await r.runtime.dispose()
+    else { r.catalog = { ...r.catalog, version: 'replacement', scripts: change === 'script-disable' ? [] : r.catalog.scripts }; r.edited() }
+    await rejected; expect(signal.aborted).toBe(true)
+    resume(); await vi.waitFor(() => expect(late).toMatchObject({ code: 'FRAME_CLOSED' }))
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('keeps request APIs outside an in-flight variable candidate and ends them when their handler returns', async () => {
+    let releaseRule!: () => void, escaped!: ElecKoiAuthorApi
+    const r = harness([({ api }) => {
+      api.variables.registerRule({ id: 'pending', stage: 'before', run: async () => {
+        await new Promise<void>(resolve => { releaseRule = resolve })
+      } })
+      api.scripts.registerHandler('update', async context => { escaped = context.api; return await context.api.variables.merge({ value: 9 }) as any })
+    }])
+    await r.runtime.start(); r.tasks[0]!.push(task('candidate', 'synthetic-run', 'before'))
+    await vi.waitFor(() => expect(releaseRule).toBeTypeOf('function'))
+    expect(await r.mount().scripts.request(target, 'update', null)).toEqual({ value: 2 })
+    expect(r.remote.eleckoiAuthorVariables.merge).toHaveBeenCalledWith('synthetic-chat', '{"value":9}', expect.anything())
+    await expect(escaped.input.set('After return')).rejects.toMatchObject({ code: 'SCRIPT_REQUEST_FINISHED' })
+    expect(() => escaped.scripts.registerHandler('after-return', () => null)).toThrow('本次脚本操作已经结束')
+    expect(() => escaped.events.on('messages.changed', () => {})).toThrow('本次脚本操作已经结束')
+    releaseRule()
+  })
+
+  it('preserves the real project and script caller identities and refuses calls until startup finishes', async () => {
+    let finish!: () => void, source!: ElecKoiAuthorApi
+    const r = harness([async ({ api }) => {
+      source = api
+      api.scripts.registerHandler('caller', ({ caller }) => caller as any)
+      await new Promise<void>(resolve => { finish = resolve })
+    }])
+    const starting = r.runtime.start(); await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    const api = r.mount()
+    await expect(api.scripts.request(target, 'caller', null)).rejects.toMatchObject({ code: 'SCRIPTS_NOT_READY' })
+    finish(); await starting
+    expect(await source.scripts.request(target, 'caller', null)).toMatchObject({ surface: 'script', script: target })
+    const page = new JSDOM('<body></body>', { url: 'http://localhost/' }); cleanups.push(async () => page.window.close())
+    r.runtime.mountProjectDocument(page.window, { scope: 'application', projectId: 'synthetic-project', entryFile: 'index.html', view: 'main' } as any)
+    expect(await page.window.ElecKoi.scripts.request(target, 'caller', null)).toMatchObject({
+      surface: 'application-frontend', projectId: 'synthetic-project', entryFile: 'index.html', view: 'main', script: null
+    })
+  })
+
+  it('rejects duplicate actions during startup and removes every partial registration', async () => {
+    const r = harness([({ api }) => {
+      api.scripts.registerHandler('same', () => null)
+      api.scripts.registerHandler('same', () => null)
+    }])
+    await r.runtime.start()
+    expect(r.runtime.getSnapshot()).toMatchObject({ status: 'error', error: expect.stringContaining('操作名重复') })
+    await expect(r.mount().scripts.list()).rejects.toMatchObject({ code: 'SCRIPTS_NOT_READY' })
+  })
+
+  it('opens an owned panel through a message request and keeps panel calls bound to the originating script', async () => {
+    const panel = { id: 'synthetic-request-panel', title: 'Synthetic request panel',
+      html: '<html><head><meta name="eleckoi-author-api" content="0.1.0"></head><body>Panel</body></html>' }
+    const r = harness([({ api }) => {
+      api.scripts.registerHandler('open', async context => { await context.api.ui.openPanel(panel); return context.caller as any })
+      api.scripts.registerHandler('caller', context => context.caller as any)
+    }])
+    await r.runtime.start(); const api = r.mount('synthetic-message')
+    expect(await api.scripts.request(target, 'open', null)).toMatchObject({ surface: 'message-renderer', messageId: 'synthetic-message' })
+    const page = new JSDOM('<body></body>', { url: 'http://localhost/' }); cleanups.push(async () => page.window.close())
+    r.runtime.mountScriptPanelDocument(page.window, r.runtime.getUiSnapshot().panel!.key)
+    expect(await page.window.ElecKoi.scripts.request(target, 'caller', null)).toMatchObject({ surface: 'script-panel', script: target })
+  })
+})
+
 describe('native script buttons and panels', () => {
   const panel = { id: 'synthetic-settings', title: 'Synthetic settings', html: '<html><head><meta name="eleckoi-author-api" content="0.1.0"></head><body>Settings</body></html>' }
 
@@ -452,8 +641,9 @@ describe('native author chat and model commands', () => {
   })
   it('advertises the connected native commands', async () => {
     const api = harness().mount(), capabilities = (await api.app.getCapabilities()).map(item => item.method)
-    expect(capabilities).toHaveLength(69)
-    for (const method of ['displayTemplates.read', 'displayTemplates.save', 'chat.current', 'chat.list', 'chat.create', 'chat.getGenerationState', 'chat.getModels', 'chat.selectModel', 'character.current']) {
+    expect(new Set(capabilities).size).toBe(capabilities.length)
+    expect(capabilities).toEqual(expect.arrayContaining(['scripts.list', 'scripts.request']))
+    for (const method of ['chat.current', 'chat.list', 'chat.create', 'chat.getGenerationState', 'chat.getModels', 'chat.selectModel', 'character.current']) {
       expect(capabilities).toContain(method)
     }
     expect(capabilities).toContain('audio.play')

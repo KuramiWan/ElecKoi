@@ -9,11 +9,7 @@ import { VariableConfigRepository } from '../src/domain/variables/VariableConfig
 import { RegexRuleRepository } from '../src/domain/regexRules/RegexRuleRepository'
 import { AgentPresetRepository } from '../src/domain/agentPresets'
 import { ScriptLibraryRepository } from '../src/domain/scripts'
-import { DisplayTemplateRepository } from '../src/domain/displayTemplates'
-import { characterExists } from '../src/domain/personas'
-import { agentPresetExists } from '../src/domain/agentPresets'
 import { createScriptLibraryRepository } from './helpers/scriptLibraryOwners'
-import { restoreLegacyConversationStorage } from './helpers/conversationStorageV11'
 import { SqliteDatabase } from '../src/storage/sqlite/SqliteDatabase'
 import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 
@@ -50,6 +46,33 @@ function files(path: string) {
 function input(exported: { fileName: string; mimeType: string; base64: string }) {
   return { displayName: exported.fileName, mimeType: exported.mimeType, base64: exported.base64 }
 }
+
+it.each(['json', 'png'] as const)('persists EJS solely as regex replacement through character and preset %s round trips', format => {
+  for (const scope of ['character', 'preset'] as const) {
+    const source = setup(), target = setup()
+    source.characters.create({ id: 'synthetic-ejs-character', name: 'Synthetic EJS character' })
+    const presetId = source.presets.create('Synthetic EJS preset').id
+    const ownerId = scope === 'character' ? 'synthetic-ejs-character' : presetId
+    const regex = new RegexRuleRepository(source.database, source.presets), collection = regex.readEditor({ scope, ownerId })
+    const rule = { id: 'synthetic-ejs-rule', name: 'Synthetic EJS regex', pattern: '/<option>([\\s\\S]*?)<\\/option>/g',
+      replacement: '<% for (const line of rawContent.split("\\n")) { %><p><%= line %>:<%= getvar("score") %></p><% } %>',
+      targets: ['AiOutput' as const], enabled: false, displayOnly: true, promptOnly: false, runOnEdit: true,
+      order: 0, trimStrings: ['REMOVE'], minDepth: 2, maxDepth: 8, substituteRegex: 2 as const }
+    const key = scope === 'character' ? 'characterRules' : 'agentPresetRules'
+    regex.saveEditor({ ...collection, [key]: [rule] })
+    const exported = scope === 'character' ? source.transfer.export(ownerId, format) : source.presets.export(ownerId, format)
+    const importedOwner = scope === 'character'
+      ? target.transfer.commit(target.transfer.prepare([input(exported)], 'eleckoi').token).importedCharacterIds[0]!
+      : target.presets.import(input(exported), 'eleckoi').preset.id
+    const read = () => new RegexRuleRepository(target.database, target.presets).readEditor({ scope, ownerId: importedOwner })[key]
+    const saved = read()
+    expect(saved).toEqual([{ ...rule, id: scope === 'preset' ? expect.any(String) : rule.id }])
+    if (scope === 'preset') expect(saved[0]!.id).not.toBe(rule.id)
+    target.database.close(); target.database.open()
+    expect(read()).toEqual(saved)
+    expect(target.database.native.prepare("SELECT 1 FROM sqlite_master WHERE name='display_template_libraries'").get()).toBeUndefined()
+  }
+}, 30_000)
 function assertWorkspace(scripts: ScriptLibraryRepository, scope: 'character' | 'preset', ownerId: string) {
   const workspace = scripts.workspace(scope, ownerId)
   expect(readFileSync(join(workspace.path, workspace.entries[0]!.file), 'utf8')).toBe(script.content)
@@ -60,50 +83,9 @@ function assertWorkspace(scripts: ScriptLibraryRepository, scope: 'character' | 
 }
 
 describe('native script file transfer', () => {
-  it.each(['json', 'png'] as const)('preserves character and preset EJS sources, names and ordering through %s, with imported libraries disabled', format => {
-    const source = setup(), target = setup()
-    const owners = { character: characterExists, preset: agentPresetExists }
-    const from = new DisplayTemplateRepository(source.database, owners), to = new DisplayTemplateRepository(target.database, owners)
-    source.characters.create({ id: 'synthetic-character', name: 'Synthetic character' })
-    const presetId = source.presets.create('Synthetic preset').id
-    const templates = [{ id: 'synthetic-display', name: 'Synthetic display', enabled: true, position: 'after' as const,
-      pattern: '', flags: '', source: '<p><%= "<Choice>" %></p>' },
-      { id: 'synthetic-heading', name: 'Synthetic heading', enabled: true, position: 'before' as const,
-        pattern: '', flags: '', source: '<header>Synthetic scene</header>' }]
-    for (const [scope, ownerId] of [['character', 'synthetic-character'], ['preset', presetId]] as const) {
-      from.save({ ...from.get(scope, ownerId), enabled: true, templates })
-    }
-    const preview = target.transfer.prepare([input(source.transfer.export('synthetic-character', format))], 'eleckoi')
-    const characterId = target.transfer.commit(preview.token).importedCharacterIds[0]!
-    const preset = target.presets.import(input(source.presets.export(presetId, format)), 'eleckoi').preset
-    for (const [scope, ownerId] of [['character', characterId], ['preset', preset.id]] as const) {
-      expect(to.get(scope, ownerId)).toEqual({ scope, ownerId, enabled: false, revision: 1, templates })
-    }
-    expect(target.database.native.pragma('foreign_key_check')).toEqual([])
-  }, 30000)
 
-  it('migrates schema 11 without losing owners, rejects stale or invalid template writes and cascades owner deletion', () => {
-    const f = setup()
-    f.characters.create({ id: 'synthetic-character', name: 'Synthetic character' })
-    const preset = f.presets.create('Synthetic preset')
-    restoreLegacyConversationStorage(f.database.native)
-    f.database.native.exec('DROP TABLE display_template_libraries; DROP TABLE editor_library_versions; PRAGMA user_version = 11;')
-    f.database.close(); f.database.open()
-    expect(f.characters.get().items.some(item => item.id === 'synthetic-character')).toBe(true)
-    expect(f.presets.get(preset.id).name).toBe('Synthetic preset')
-    const repository = new DisplayTemplateRepository(f.database, { character: characterExists, preset: agentPresetExists }), empty = repository.get('preset', preset.id)
-    const saved = repository.save({ ...empty, enabled: true })
-    expect(saved.revision).toBe(1)
-    expect(() => repository.save(empty)).toThrow('重新读取')
-    expect(repository.get('preset', preset.id)).toEqual(saved)
-    expect(() => repository.save({ ...saved, scope: 'other' } as any)).toThrow()
-    expect(() => repository.get('preset', 'missing')).toThrow('不存在')
-    expect(repository.get('character', 'synthetic-character').revision).toBe(0)
-    f.presets.delete(preset.id)
-    expect(f.database.native.prepare('SELECT * FROM display_template_libraries').all()).toEqual([])
-    expect(f.database.native.pragma('user_version', { simple: true })).toBe(12)
-    expect(f.database.native.pragma('integrity_check', { simple: true })).toBe('ok')
-  }, 30000)
+
+
 
   it.each(['json', 'png'] as const)('carries character helper paths and exact binary bytes through %s into a different workspace', format => {
     const source = setup(), target = setup()

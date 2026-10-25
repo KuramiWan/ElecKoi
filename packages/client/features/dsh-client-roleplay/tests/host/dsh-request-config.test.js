@@ -12,7 +12,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt';
 import ToolRuntime from '@deepseek-ai/dsh-tools';
 import TokenMeter from '@deepseek-ai/dsh-token-meter';
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import { installRequestConfig, projectCompactionRequest } from '../../../../../../apps/desktop/resources/dsh/request-config.mjs';
 
 describe('DSH request configuration', () => {

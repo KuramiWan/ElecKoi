@@ -41,14 +41,15 @@ async function fixture() {
   const meta = { cwd: root, agentPreset: 'synthetic-runtime-preset' }
   const controller = {
     inspect: vi.fn(async () => ({ meta, events: agent?.session.snapshotEvents() ?? readDshSessionLog(join(root, 'logs'), id).events })),
-    create: vi.fn(async request => {
-      expect(request.sessionId).toBe(id)
+    create: vi.fn(),
+    resolveAgent: vi.fn(async sessionId => {
+      expect(sessionId).toBe(id)
+      if (agent) return { agent }
       const log = readDshSessionLog(join(root, 'logs'), id)
       agent = { session: Session.create(SessionId(id), log.events, log.header, log.inheritedEventCount), status: 'idle', followup: vi.fn() }
-      return { sessionId: id }
+      return { agent }
     }),
     rename: vi.fn(async ({ title }) => agent.session.append('session/title', { title, messageSeqs: [], source: { kind: 'user' } })),
-    resolveAgent: async () => ({ agent }),
   }
   const dispose = await installCreatorStudioRuntime({
     sessionController: controller, agents: { get: () => agent },

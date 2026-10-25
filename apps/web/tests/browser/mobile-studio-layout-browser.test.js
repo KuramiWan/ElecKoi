@@ -19,10 +19,10 @@ it('matches the roleplay header height and gives the official Studio trajectory 
         build.onResolve({ filter: /^official-trajectory-fixture$/ }, () => ({ path: 'official-trajectory-fixture', namespace: 'trajectory-fixture' }));
         build.onLoad({ filter: /.*/, namespace: 'trajectory-fixture' }, () => ({ resolveDir: resolve('.'), contents: `
           import * as React from 'react'; import * as jsxRuntime from 'react/jsx-runtime'; import * as ReactDOM from 'react-dom';
-          import * as store from '@deepseek-ai/dsh-client-store'; import * as primitives from '@deepseek-ai/dsh-client-ui-primitives';
+          import * as virtual from '@tanstack/react-virtual'; import * as store from '@deepseek-ai/dsh-client-store'; import * as primitives from '@deepseek-ai/dsh-client-ui-primitives';
           let registration;const captureModule=value=>{registration=value;};
           ${source.replace('window.__ModuleLoader__.load(', 'captureModule(').replace('return module.exports;', 'return { ...module.exports, TrajectoryView, trajectoryZh: zh };')}
-          const modules={react:React,'react/jsx-runtime':jsxRuntime,'react-dom':ReactDOM,'@deepseek-ai/dsh-client-store':store,'@deepseek-ai/dsh-client-ui-primitives':primitives};
+          const modules={'@tanstack/react-virtual':virtual,react:React,'react/jsx-runtime':jsxRuntime,'react-dom':ReactDOM,'@deepseek-ai/dsh-client-store':store,'@deepseek-ai/dsh-client-ui-primitives':primitives};
           export const {TrajectoryView,trajectoryZh}=registration.factory(name=>{if(!(name in modules))throw new Error(name);return modules[name];});
         ` }));
       } }],

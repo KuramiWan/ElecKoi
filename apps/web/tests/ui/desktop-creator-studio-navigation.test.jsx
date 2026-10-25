@@ -44,6 +44,29 @@ function studioFixture() {
   return { model, props };
 }
 describe('Desktop simple AI creator studio', () => {
+  it('opens official plugin panels and returns without remounting the right sidebar or releasing the Studio Session', async () => {
+    const { model, props } = studioFixture();
+    let selectPanel;
+    function Window() {
+      const [selectedPanelId, setPanel] = React.useState('messages');
+      selectPanel = setPanel;
+      return <CreatorStudioWindow {...props} navigation={{ selectedPanelId, selectPanel: setPanel,
+        renderPanel: id => <div data-official-panel={id}>插件配置</div> }}
+        rightbar={{ render: () => <div data-native-rightbar="" /> }} />;
+    }
+    const f = await mount(<Window />);
+    await f.click('进入简易版');
+    const rightbar = f.node.querySelector('[data-native-rightbar]');
+    await act(() => selectPanel('plugins'));
+    expect(f.node.querySelector('[data-official-panel="plugins"]')).toBeTruthy();
+    expect(f.node.querySelector('[data-native-studio]')).toBeNull();
+    expect(f.node.querySelector('[data-native-rightbar]')).toBe(rightbar);
+    expect(model.release).not.toHaveBeenCalled();
+    await f.click('返回工作室对话');
+    expect(f.node.querySelector('[data-native-studio]')).toBeTruthy();
+    expect(f.node.querySelector('[data-native-rightbar]')).toBe(rightbar);
+    expect(model.restoreRecent).toHaveBeenCalledOnce();
+  });
   it('restores the recent Session and sends its title to the native conversation assembly', async () => {
     const { model, props } = studioFixture(), f = await mount(<CreatorStudioWindow {...props} />);
     expect(model.restoreRecent).not.toHaveBeenCalled();

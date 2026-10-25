@@ -7,13 +7,13 @@ import '../../src/app/windows/styles/base.css';
 import '../../src/modules/agentTools/styles/web-search-settings.css';
 import '../../src/mobile/mobile-conversation-overlays.css';
 
-let snapshot = { status: 'ready', mode: 'deepseek_api', fetchMode: 'deepseek_api', writable: true, tavilyAvailable: true,
-  apiKeyConfigured: false, apiKeyWritable: true, apiKeyRef: 'TAVILY_API_KEY', maxResults: 5,
-  deepseek: { available: true, count: 10, needContent: false, localization: '', apiKeyRef: 'DEEPSEEK_WEB_API_KEY', apiKeyConfigured: false, apiKeyWritable: true } };
+let snapshot = { status: 'ready', mode: 'deepseek_search_api', fetchMode: 'deepseek_fetch_api', writable: true, tavilyAvailable: true,
+  apiKeyConfigured: false, apiKeyWritable: true, apiKeyRef: 'TAVILY_API_KEY', maxResults: 5, officialDeepSeekAvailable: true };
 const listeners = new Set();
 const calls = [];
 const model = { getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },
-  update: async patch => { calls.push(patch); snapshot = { ...snapshot, ...patch, deepseek: { ...snapshot.deepseek, ...(patch.deepseekCount !== undefined ? { count: patch.deepseekCount } : {}), ...(patch.needContent !== undefined ? { needContent: patch.needContent } : {}) } }; listeners.forEach(listener => listener()); },
-  saveAndTest: async (_key, provider) => { calls.push({ credentialProvider: provider }); return { connection: { ok: true, provider: 'deepseek_api', search: true, fetch: true } }; } };
+  update: async patch => { calls.push(patch); snapshot = { ...snapshot, ...patch }; listeners.forEach(listener => listener()); },
+  openPluginSettings: () => calls.push({ open: 'web-search' }),
+  saveAndTest: async () => { calls.push({ credentialProvider: 'tavily' }); return { connection: { ok: true, plan: 'Test', used: 0, limit: 100 } }; } };
 window.webSearchFixture = { calls };
-createRoot(document.getElementById('root')).render(<main style={{ padding: 16, maxWidth: 560, margin: '0 auto' }}><WebSearchProvider model={model}><WebSearchSettings /></WebSearchProvider></main>);
+createRoot(document.getElementById('root')).render(<main style={{ padding: 16, maxWidth: 560, margin: '0 auto' }}><WebSearchProvider model={model}><WebSearchSettings onOpenPluginSettings={() => calls.push({ closed: true })} /></WebSearchProvider></main>);

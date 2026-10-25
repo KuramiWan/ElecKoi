@@ -17,6 +17,7 @@ const localMethods = new Map([
   ['call', '按明确方法名调用同一 SDK；优先使用有类型的命名空间方法'],
   ['variables.registerRule', '运行脚本同步注册候选处理规则，返回撤回函数'],
   ['ui.registerButton', '运行脚本同步注册聊天按钮，返回撤回函数'],
+  ['scripts.registerHandler', '运行脚本登记自定义操作及处理函数，返回撤回函数'],
   ['events.on', '注册事件监听，返回撤回函数'],
   ['events.off', '撤回指定事件与函数的监听'],
 ]);
@@ -25,7 +26,7 @@ export async function generateAuthorDocs(workspace = root, { check = false } = {
   const source = async path => (await readFile(resolve(workspace, path), 'utf8')).replaceAll('\r\n', '\n');
   const parse = async file => ts.createSourceFile(file, await source(file), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const index = await parse(sdk + 'index.ts');
-  const files = await Promise.all(['contracts.ts', 'scripts.ts', 'variables.ts', 'trajectory.ts', 'display-templates.ts', 'editor-versions.ts'].map(file => parse(sdk + file)));
+  const files = await Promise.all(['contracts.ts', 'scripts.ts', 'variables.ts', 'trajectory.ts', 'editor-versions.ts'].map(file => parse(sdk + file)));
   const declarations = new Map(files.flatMap(file => file.statements
     .filter(node => ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)).map(node => [node.name.text, node])));
   function initializer(name) {
@@ -93,7 +94,7 @@ export async function generateAuthorDocs(workspace = root, { check = false } = {
     for (const { method, node } of rows) {
       const description = descriptions.get(method)?.description ?? localMethods.get(method);
       const signature = renderType(node);
-      const owner = method === 'ui.registerButton' || method === 'variables.registerRule' ? '仅运行脚本'
+      const owner = method === 'ui.registerButton' || method === 'variables.registerRule' || method === 'scripts.registerHandler' ? '仅运行脚本'
         : method.startsWith('script.') || method.startsWith('ui.') ? '所属运行脚本及其面板' : '当前页面绑定的原生服务';
       const permission = descriptions.get(method)?.permission;
       if (descriptions.has(method) && !permission) throw new Error(`方法没有明确权限：${method}`);
@@ -158,11 +159,11 @@ async function exampleDocuments(source) {
     variableVersion('example-advanced-variables', '从十开始', { score: 10, total: 20, level: 2 }),
   ] };
   const card = { format: 'eleckoi.character-card', version: 1,
-    character: { name: '原生 SDK 示例角色', group: 'SDK 示例', opening: frontend, show_opening: true, frontend_beauty_enabled: true }, assets: [], regex_rules: [],
+    character: { name: '原生 SDK 示例角色', group: 'SDK 示例', opening: frontend, show_opening: true, frontend_beauty_enabled: true }, assets: [],
     setting_library: JSON.stringify({ format: 'eleckoi.setting-library-snapshot', version: 1, active_version_id: 'example-settings', versions: [{ id: 'example-settings', name: '示例设定', entries: [opening], groups: [], prompt_positions: [], list_all_expanded: true, expanded_group_ids: [] }] }),
     variable_config: JSON.stringify(config),
-    ejs_display_templates: { enabled: false, templates: [{ id: 'example-display-panel', name: '历史积分与选项', enabled: true,
-      position: 'after', pattern: '', flags: '', source: await source(exampleRoot + 'display-panel.ejs') }] },
+    regex_rules: [{ id: 'example-choice-regex', name: '历史积分与选项', enabled: false, pattern: '/<option>[\\s\\S]*?<\\/option>/g',
+      replacement: await source(exampleRoot + 'choices.ejs'), targets: ['AiOutput'], display_only: true, prompt_only: false, run_on_edit: true, order: 0 }],
     script_library: { enabled: false, variables: {}, trees: [await script('character.js', 'example-score-rule', '积分规则', { multiplier: 2 })],
       files: await Promise.all(['derive.js', 'settings.html'].map(async path => ({ path, data: Buffer.from(await source(exampleRoot + path)).toString('base64') }))) } };
   const preset = { format: 'eleckoi.agent-preset', version: 1, preset: { name: '原生 SDK 示例预设', model_family: 'general',

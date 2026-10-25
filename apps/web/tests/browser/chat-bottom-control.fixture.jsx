@@ -43,7 +43,7 @@ const props = {
   useConversation: select => select({ views: { grouped: () => undefined } }),
   useSessions: select => select({ byId: { 'synthetic-scroll-session': {} } }),
   useProjection: key => key === 'inbox' ? { 'next-step': empty } : undefined,
-  usePresentation: select => select({ foldCompletedTurns: false, stepGrouping: 'expanded' }),
+  usePresentation: select => select({ foldCompletedTurns: false, stepGrouping: 'none' }),
   useStore: select => select({ turnProcess: {} }), actions: { setTurnProcessOpen() {} }, t: key => key,
   chatScroll: { read: () => saved, save: value => { saved = value; } },
   loadOlder: async () => {}, loadThrough: async () => {}, openFile: async () => {}, openSkill() {},

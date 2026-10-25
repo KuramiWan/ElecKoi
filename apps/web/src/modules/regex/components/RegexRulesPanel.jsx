@@ -260,7 +260,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
           scopes={scopes}
           scope={selected.scope}
           rule={selected.rule}
-          onTest={(text, rule, target) => regexRules.test(text, rule, target)}
+          onTest={(text, rule, target, options, signal) => regexRules.test(text, rule, target, options, signal)}
           onChange={changeSelected}
           onMoveScope={moveSelectedScope}
           onClose={closeEditor}

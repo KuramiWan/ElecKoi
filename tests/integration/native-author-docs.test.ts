@@ -33,7 +33,7 @@ const read = (name: string) => readFileSync(join(exampleDirectory, name), 'utf8'
 describe('native author developer documentation and examples', () => {
   it('keeps the searchable page, complete source signatures and import documents current', async () => {
     const result = await generateAuthorDocs(resolve('.'), { check: true })
-    expect(result).toMatchObject({ methods: 80, requestMethods: 75, files: 4 })
+    expect(result).toMatchObject({ methods: 81, requestMethods: 75, files: 4 })
     const view = new JSDOM(readFileSync('docs/plugins/author-sdk.html', 'utf8'), { runScripts: 'outside-only' }).window
     const page = view.document
     expect(page.querySelectorAll('.api-method')).toHaveLength(result.methods)

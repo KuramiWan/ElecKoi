@@ -316,12 +316,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: '管理完整设定库、变量定义和正则配置，通过官方 Typert Remote 公开跨端调用。',
     methods: [
       {
-        signature: '@Remote readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary',
-        description: '读取共享全局或明确所属角色、预设的显示模板，结果不进入 Agent 设定目录。',
-        parameters: [{ name: 'scope', description: '全局、角色或预设归属。' }, { name: 'ownerId', description: '全局使用空字符串，其他归属使用明确编号。' }],
-        returns: '完整显示模板库及保存版本。',
-      },
-      {
         signature: '@Remote readEditorLibraryVersions(address: EditorLibraryAddress): EditorLibraryVersions',
         description: '读取明确归属的命名配置版本，脚本归档只在需要编辑版本时读取。',
         parameters: [{ name: 'address', description: '类型、作用域与所属编号；全局使用空所属编号。' }],
@@ -332,24 +326,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: '原子保存配置草稿及其命名版本，源码资源在同一操作中保持完整。',
         parameters: [{ name: 'request', description: '明确类型的配置文档、版本草稿与读取时的修改标识。' }],
         returns: '保存后的配置文档和版本；冲突时保留原数据。',
-      },
-      {
-        signature: '@Remote saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary',
-        description: '按读取版本保存显示模板并通知已有聊天重新显示。',
-        parameters: [{ name: 'library', description: '保留读取 revision 的完整库。' }],
-        returns: '已接受的库及递增版本。',
-      },
-      {
-        signature: '@Remote saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[]',
-        description: '在同一事务中保存编辑器修改的全局和所属显示模板。',
-        parameters: [{ name: 'libraries', description: '修改后的库及各自 revision；归属不得重复。' }],
-        returns: '与输入顺序相同的保存结果；任一冲突时全部回滚。',
-      },
-      {
-        signature: '@Remote displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection',
-        description: '返回全局、当前扮演预设及指定角色的显示模板，各库保持独立归属。',
-        parameters: [{ name: 'characterId', description: '聊天绑定角色编号。' }],
-        returns: '全局、预设、角色顺序排列的库。',
       },
       {
         signature: '@Remote({ mode: \'stream\' }) changes(signal: AbortSignal): AsyncIterable<CharacterConfigurationChange>',
@@ -502,9 +478,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
-        signature: '@Remote testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget): RegexRuleTestResult',
+        signature: '@Remote testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget, options?: { surface?: \'Display\' | \'Prompt\' | \'Stored\'; variablesJson?: string; depth?: number; isEdit?: boolean }, signal?: AbortSignal): Promise<RegexRuleTestResult>',
         description: '测试规则对文本的作用，不保存规则。',
-        parameters: [{ name: 'text', description: '本次输入或待测试文本。' }, { name: 'rule', description: '待测试规则。' }, { name: 'target', description: '规则作用的内容类别。' }],
+        parameters: [{ name: 'text', description: '本次输入或待测试文本。' }, { name: 'rule', description: '待测试规则。' }, { name: 'target', description: '规则作用的内容类别。' }, { name: 'options', description: '测试范围、变量快照 JSON、深度与编辑场景。' }, { name: 'signal', description: '关闭编辑器或取消测试时结束计算。' }],
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
     ],
@@ -1045,12 +1021,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'mode', description: '网页抓取方式。' }],
         returns: '已保存的网页抓取提供商。',
       },
-      {
-        signature: '@Remote async testDeepSeek(apiKey?: string, signal?: AbortSignal): Promise<DeepSeekWebConnection>',
-        description: '测试 Search 和 Fetch；产生两次官方 API 调用，不保存临时密钥。',
-        parameters: [{ name: 'apiKey', description: '临时测试密钥；省略时读取已配置的官方凭据。' }, { name: 'signal', description: '取消测试的信号。' }],
-        returns: 'Search 和 Fetch 均成功时的连接状态，不包含密钥。',
-      },
     ],
   },
 ]
@@ -1139,7 +1109,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CharacterConfigurationChange',
-    declaration: 'export type CharacterConfigurationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'configuration\';\n    domain: \'settingLibraries\' | \'variables\' | \'regexRules\' | \'agentPresets\' | \'scripts\' | \'displayTemplates\';\n    characterId?: string;\n};',
+    declaration: 'export type CharacterConfigurationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'configuration\';\n    domain: \'settingLibraries\' | \'variables\' | \'regexRules\' | \'agentPresets\' | \'scripts\';\n    characterId?: string;\n};',
   },
   {
     name: 'CharacterExportFormat',
@@ -1274,10 +1244,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreatorStudioSessionSummary extends CreatorStudioSession {\n    title: string;\n    updatedAt: number;\n    pinned: boolean;\n    pinIndex: number;\n}',
   },
   {
-    name: 'DeepSeekWebConnection',
-    declaration: 'export interface DeepSeekWebConnection {\n    ok: true;\n    provider: \'deepseek_api\';\n    search: true;\n    fetch: true;\n}',
-  },
-  {
     name: 'DisplayPreferencesSnapshot',
     declaration: 'export interface DisplayPreferencesSnapshot {\n    ui: Record<string, DisplayPreferenceValue>;\n    chatDisplay: Record<string, DisplayPreferenceValue>;\n    writable: boolean;\n    revision: number;\n}',
   },
@@ -1286,28 +1252,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type DisplayPreferenceValue = null | boolean | number | string | DisplayPreferenceValue[] | {\n    [key: string]: DisplayPreferenceValue;\n};',
   },
   {
-    name: 'DisplayTemplate',
-    declaration: 'export interface DisplayTemplate {\n    id: string;\n    name: string;\n    enabled: boolean;\n    position: \'before\' | \'after\' | \'replace\';\n    pattern: string;\n    flags: string;\n    source: string;\n}',
-  },
-  {
-    name: 'DisplayTemplateLibrary',
-    declaration: 'export interface DisplayTemplateLibrary {\n    scope: DisplayTemplateScope;\n    ownerId: string;\n    enabled: boolean;\n    revision: number;\n    templates: DisplayTemplate[];\n}',
-  },
-  {
-    name: 'DisplayTemplateScope',
-    declaration: 'export type DisplayTemplateScope = \'global\' | \'character\' | \'preset\';',
-  },
-  {
-    name: 'DisplayTemplateSelection',
-    declaration: 'export interface DisplayTemplateSelection {\n    characterId: string;\n    libraries: DisplayTemplateLibrary[];\n}',
-  },
-  {
     name: 'EditorLibraryAddress',
     declaration: 'export interface EditorLibraryAddress {\n    kind: EditorLibraryKind;\n    scope: \'global\' | \'character\' | \'preset\';\n    ownerId: string;\n}',
   },
   {
     name: 'EditorLibraryKind',
-    declaration: 'export type EditorLibraryKind = \'scripts\' | \'displayTemplates\' | \'regex\';',
+    declaration: 'export type EditorLibraryKind = \'scripts\' | \'regex\';',
   },
   {
     name: 'EditorLibrarySaveRequest',
@@ -1575,11 +1525,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WebFetchMode',
-    declaration: 'export type WebFetchMode = \'http\' | \'deepseek_api\';',
+    declaration: 'export type WebFetchMode = \'http\' | \'deepseek_fetch_api\';',
   },
   {
     name: 'WebSearchMode',
-    declaration: 'export type WebSearchMode = \'provider_native\' | \'tavily\' | \'deepseek_api\';',
+    declaration: 'export type WebSearchMode = \'provider_native\' | \'tavily\' | \'deepseek_search_api\';',
   },
 ]
 

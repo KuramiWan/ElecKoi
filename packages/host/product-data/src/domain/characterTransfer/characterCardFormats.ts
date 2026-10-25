@@ -9,7 +9,6 @@ import { decodeRegexDocuments } from '@shared/foundation/regexRuleTransfer'
 import { emptyEntry, normalizeSettingLibrary } from '@product-data/domain/settingLibraries'
 import { convertMvuVariables, type MvuVariableConversion } from './mvuImport'
 import { decodePortableScriptLibrary } from '@product-data/domain/scripts'
-import { decodePortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import { isPng, readPngText } from '@product-data/storage/media/PngTextChunkCodec'
 import type { DecodedCharacterCard, PortableCharacterPackage } from './characterTransferTypes'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
@@ -265,7 +264,6 @@ function decodePortableRoot(root: JsonObject): PortableCharacterPackage {
     variableConfigJson: string(root.variable_config),
     regexRules: decodePortableRegexRules(root.regex_rules),
     ...(root.script_library === undefined ? {} : { scriptLibrary: decodePortableScriptLibrary(root.script_library) }),
-    ...(root.ejs_display_templates === undefined ? {} : { displayTemplates: decodePortableDisplayTemplates(root.ejs_display_templates) })
   }
 }
 
@@ -292,7 +290,6 @@ function portableRoot(value: PortableCharacterPackage): JsonObject {
     })),
     setting_library: value.settingLibraryJson,
     variable_config: value.variableConfigJson,
-    ...(value.displayTemplates ? { ejs_display_templates: value.displayTemplates } : {}),
     ...(value.scriptLibrary ? { script_library: {
       trees: value.scriptLibrary.trees, variables: value.scriptLibrary.variables, enabled: value.scriptLibrary.enabled,
       files: value.scriptLibrary.files ?? []

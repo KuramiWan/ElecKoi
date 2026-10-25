@@ -1,0 +1,15 @@
+.anchor {
+  flex: none;
+}
+
+.viewsMore {
+  width: 22px;
+  height: 22px;
+  margin-top: -3px;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.viewsMore[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

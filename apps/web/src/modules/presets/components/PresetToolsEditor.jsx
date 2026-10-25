@@ -170,7 +170,7 @@ function PresetToolConfigDialog({
       onOpen={onClose}
       onNotify={onNotify}
     /> : null}
-    {group.id === 'builtin:web' ? <div className="preset-tool-web-config"><WebSearchSettings /></div> : <>
+    {group.id === 'builtin:web' ? <div className="preset-tool-web-config"><WebSearchSettings onBeforeOpenPluginSettings={onBeforeOpenSubagentSettings} onOpenPluginSettings={onClose} /></div> : <>
       {group.id === 'builtin:roleplay-workflow' ? <RoleplayPlanEditor
         value={roleplayPlan}
         onChange={onRoleplayPlanChange}

@@ -27,7 +27,7 @@ function createProbeBundle() {
     description: 'Temporary ElecKoi plugin contract verification bundle',
     private: true,
     type: 'module',
-    engines: { dsh: '0.2.0-rc.2' },
+    engines: { dsh: '0.2.1-rc.3' },
     exports: {
       '.': './src/index.js',
       './client': './src/client.js',

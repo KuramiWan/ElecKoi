@@ -8,6 +8,7 @@
 <a href="#guide-页面能力与错误">页面能力与错误</a>
 <a href="#guide-数据与运行位置">数据与运行位置</a>
 <a href="#guide-脚本按钮与作者面板">脚本按钮与作者面板</a>
+<a href="#guide-前端调用脚本">前端调用脚本</a>
 <a href="#guide-当前变量接口">当前变量接口</a>
 <a href="#guide-规则与失败">规则与失败</a>
 <a href="#guide-聊天、角色与模型">聊天、角色与模型</a>
@@ -15,7 +16,7 @@
 <a href="#guide-原生预设条目">原生预设条目</a>
 <a href="#guide-原生脚本合同">原生脚本合同</a>
 <a href="#guide-原生-html-消息">原生 HTML 消息</a>
-<a href="#guide-当前边界">当前边界</a><a href="#reference">接口参考</a><a href="#api-call"><code>call</code></a><a href="#api-app"><code>app</code></a><a href="#api-context"><code>context</code></a><a href="#api-script"><code>script</code></a><a href="#api-ui"><code>ui</code></a><a href="#api-variables"><code>variables</code></a><a href="#api-openings"><code>openings</code></a><a href="#api-messages"><code>messages</code></a><a href="#api-chat"><code>chat</code></a><a href="#api-character"><code>character</code></a><a href="#api-settingLibrary"><code>settingLibrary</code></a><a href="#api-displayTemplates"><code>displayTemplates</code></a><a href="#api-editorVersions"><code>editorVersions</code></a><a href="#api-presets"><code>presets</code></a><a href="#api-media"><code>media</code></a><a href="#api-audio"><code>audio</code></a><a href="#api-input"><code>input</code></a><a href="#api-events"><code>events</code></a><a href="#types">数据类型</a></nav>
+<a href="#guide-当前边界">当前边界</a><a href="#reference">接口参考</a><a href="#api-call"><code>call</code></a><a href="#api-app"><code>app</code></a><a href="#api-context"><code>context</code></a><a href="#api-script"><code>script</code></a><a href="#api-scripts"><code>scripts</code></a><a href="#api-ui"><code>ui</code></a><a href="#api-variables"><code>variables</code></a><a href="#api-openings"><code>openings</code></a><a href="#api-messages"><code>messages</code></a><a href="#api-chat"><code>chat</code></a><a href="#api-character"><code>character</code></a><a href="#api-settingLibrary"><code>settingLibrary</code></a><a href="#api-editorVersions"><code>editorVersions</code></a><a href="#api-presets"><code>presets</code></a><a href="#api-media"><code>media</code></a><a href="#api-audio"><code>audio</code></a><a href="#api-input"><code>input</code></a><a href="#api-events"><code>events</code></a><a href="#types">数据类型</a></nav>
 <main><div id="guide"><h1 id="guide-eleckoi-原生作者-sdk">ElecKoi 原生作者 SDK</h1>
 <p>状态：预览。本文是 ElecKoi 原生作者开发教程，按下述已接通合同创作。可直接打开 <a href="author-sdk.html">开发文档页面</a>，查询 <a href="#reference">完整接口参考</a>，或使用 <a href="../../packages/examples/native-author/README.md">可导入的原生示例</a>。预览合同与当前能力边界在本文中明确列出，不代表所有插件管理接口都开放给作者页面。</p>
 <h2 id="guide-从这里开始">从这里开始</h2>
@@ -37,8 +38,7 @@
 </code></pre>
 <p>把 <a href="../../packages/examples/native-author/example.character.json">原生示例角色</a> 按 ElecKoi 格式导入，即可获得后台规则、设置弹窗、辅助模块、两个开场白及原生 HTML 页面。导入脚本保持停用，用户明确启用；不凭卡容器格式或脚本名称改写程序。完整步骤见 <a href="../../packages/examples/native-author/README.md">示例说明</a>。</p>
 <h2 id="guide-输入与发送">输入与发送</h2>
-<p>EJS显示模板生成 AI 消息界面，模板计算与 SDK 交互分开。角色与预设都有独立入口，各显示共享全局库及自身所属库；原生脚本也可通过 <code>displayTemplates.read/save</code> 管理绑定库；具体语法、历史变量快照、片段替换及示例见 <a href="ejs-display-templates.md">EJS显示模板</a>。</p>
-<p>正则、EJS显示模板及脚本的分组标题开关批量设置整个库及全部条目：开启全部启用，关闭全部停用，包含搜索隐藏的条目、脚本文件夹和子脚本；条目开关仍可单独修改，修改后统一保存。运行时要求库、条目及所属文件夹均启用，停用的名称置灰。SDK 保存提交调用者提供的完整配置，不自动改写条目状态；需要批量启停时同时设置库与全部条目的 <code>enabled</code>。<code>editorVersions.read/save</code> 管理完整命名版本，正则 content 为 <code>{enabled,rules}</code>，显示模板为 <code>{enabled,templates}</code>，脚本包含 <code>{enabled,trees,variables,files}</code>；版本恢复包含整体开关。正则配置正文使用 <code>globalEnabled</code>、<code>agentPresetEnabled</code>、<code>characterEnabled</code> 表达对应归属的整体状态，编辑入口仅提交全局与自身归属。</p>
+<p>正则及脚本的分组标题开关批量设置整个库及全部条目：开启全部启用，关闭全部停用，包含搜索隐藏的条目、脚本文件夹和子脚本；条目开关仍可单独修改，修改后统一保存。运行时要求库、条目及所属文件夹均启用，停用的名称置灰。SDK 保存提交调用者提供的完整配置，不自动改写条目状态；需要批量启停时同时设置库与全部条目的 <code>enabled</code>。<code>editorVersions.read/save</code> 管理完整命名版本，正则 content 为 <code>{enabled,rules}</code>，脚本包含 <code>{enabled,trees,variables,files}</code>；版本恢复包含整体开关。正则配置正文使用 <code>globalEnabled</code>、<code>agentPresetEnabled</code>、<code>characterEnabled</code> 表达对应归属的整体状态，编辑入口仅提交全局与自身归属。</p>
 <p><code>input.set(text)</code> 只填写实际输入框；<code>input.append(text)</code> 追加，<code>input.clear()</code> 清空。<code>input.send()</code> 请求官方输入框提交当前草稿和附件，返回 <code>{ submitted }</code>，不是 AI 完成回执。</p>
 <p><code>chat.send(text, options?)</code> 直接发送作者提供的用户消息，不替换输入框草稿，等待当前正式生成流程结束。成功返回 <code>{ accepted: true, conversationId, runId, messageId }</code>；生成失败或取消会拒绝 Promise。<code>runId</code> 是正式 Session 编号，<code>messageId</code> 是本次用户消息编号，不是猜测的最新 AI 回复。</p>
 <pre><code class="js language-js">const api = await window.ElecKoiReady;
@@ -99,6 +99,7 @@ const context = await api.context.current();
 </table>
 <p>三类脚本是归属范围，不是三个 SDK。角色编辑器只展示全局和角色库，预设编辑器只展示同一全局库和选中预设库。修改全局会通知已打开的编辑器及聊天；未保存草稿遇到版本冲突时拒绝覆盖。全局脚本被所有角色共享；角色脚本属于指定角色；预设脚本属于指定预设。将旧脚本保存或导出成原生卡容器，不会改变脚本使用的接口，也不会自动成为原生 SDK 程序。</p>
 <h2 id="guide-脚本按钮与作者面板">脚本按钮与作者面板</h2>
+<p>消息前端与脚本的自定义调用见下方「前端调用脚本」：菜单按钮与消息网页里的按钮可以调用同一个脚本操作。</p>
 <p>聊天的扮演菜单提供“脚本”展开项，只列出当前运行程序实际注册的按钮。角色配置仍管理源码、启停和“显示脚本按钮”总开关；原生按钮由代码注册，不从旧按钮名称或排列顺序推断回调。不同库或脚本可以使用相同按钮编号，同一脚本重复编号会报告冲突。</p>
 <pre><code class="js language-js">export default ({ api }) =&gt; {
   return api.ui.registerButton({
@@ -118,6 +119,35 @@ const context = await api.context.current();
 <p><code>registerButton</code> 同步返回撤回函数，只在运行脚本安装；不通过通用 <code>call</code> 传递函数。点击回调获得本次操作的 <code>api</code> 与取消信号，业务调用应使用回调参数的 API 并等待完成。它的变量调用始终经过 Host 正式处理链，不加入同一脚本当时可能正在执行的规则候选。回调完成后该操作 API 结束；持续监听在脚本启动阶段注册，返回清理函数撤回。</p>
 <p><code>ui.openPanel({ id, title, html })</code> 返回 Promise；成功说明已接受显示，不表示面板代码执行完成。HTML 必须显式声明原生版本，面板代码等待 <code>window.ElecKoiReady</code> 后调用 SDK。相对脚本、图片与样式按所属脚本入口文件解析，支持普通辅助文件；当前只显示一个作者面板，新面板替换旧面板。面板提供所属脚本的 <code>script</code> 设置接口，但不能再次注册后台规则或聊天按钮。<code>ui.closePanel(id)</code> 只关闭调用者所属脚本且编号相同的面板，未匹配返回 <code>{ closed: false }</code>。</p>
 <p>关闭弹窗结束该页面 SDK，不停用后台脚本；停用脚本、修改程序或切换聊天则撤回旧按钮并关闭旧面板。新聊天启动自己的可用脚本，全局脚本仍可使用，但旧页面不能误写新聊天。按钮执行中拒绝重复点击；作者失败显示在菜单并可再次执行，不把整个原生脚本运行状态变成启动失败。面板加载失败显示原因，提供重新加载和关闭。作者外部副作用不能被强制回滚。</p>
+<h2 id="guide-前端调用脚本">前端调用脚本</h2>
+<p>消息网页、正则 EJS 输出的原生网页、角色或应用前端、脚本面板都可调用当前聊天的运行脚本。无需把命令塞进剧情变量或聊天正文；EJS 计算阶段本身没有 SDK，调用写在输出 HTML 的页面脚本中。</p>
+<p>后台脚本在启动时登记明确操作。处理函数获得本次 <code>api</code>、<code>signal</code>、请求数据 <code>data</code> 和实际来源 <code>caller</code>；业务调用使用这次的 API：</p>
+<pre><code class="js language-js">export default ({ api }) =&gt; {
+  return api.scripts.registerHandler('fill-draft', async ({ api, signal, data, caller }) =&gt; {
+    if (typeof data !== 'string') throw new Error('请提供要填写的文字');
+    signal.throwIfAborted();
+    const result = await api.input.set(data);
+    return { text: result.text, messageId: caller.messageId };
+  });
+};
+</code></pre>
+<p>前端按钮取得 SDK 后，按作者约定的完整脚本身份发起调用：</p>
+<pre><code class="js language-js">const api = await window.ElecKoiReady;
+const { characterId } = await api.context.current();
+const target = { scope: 'character', ownerId: characterId, scriptId: 'my-draft-script' };
+document.querySelector('#fill-draft').onclick = async () =&gt; {
+  try {
+    const result = await api.scripts.request(target, 'fill-draft', '继续探索');
+    document.querySelector('output').textContent = `已填写：${result.text}`;
+  } catch (error) {
+    document.querySelector('output').textContent = `${error.code}: ${error.message}`;
+  }
+};
+</code></pre>
+<p><code>my-draft-script</code> 必须是实际保存的脚本编号。<code>scripts.list()</code> 返回 <code>{items: [{identity, name, actions}]}</code>，可用于让用户明确选择目标，再把选中项的 <code>identity</code> 传给 request；不得取同名、第一个或最后一个脚本作为猜测目标。全局身份的 ownerId 固定为空字符串，角色和预设身份使用各自明确编号。<code>caller</code> 由运行服务填写，包含聊天、消息编号、页面类型及脚本或项目来源，不能由请求数据伪造。登记函数只向正在运行的脚本开放，普通消息和面板不能冒充另一个脚本登记操作。</p>
+<p>数据与返回值支持完整 JSON：对象、数组、字符串、有限数字、布尔和 null。无参数或无结果时明确使用 null；undefined、函数、循环引用、特殊对象及会丢失属性的值会报错，不截断或静默删除。重复登记、未就绪、目标不存在、未登记操作和处理失败有独立错误原因。每次请求独立等待结果，不因按钮名称相同、显示按钮被隐藏或窗口数量而改变目标。</p>
+<p>页面关闭、聊天切换、脚本停用或更新、处理函数撤回都会取消进行中的调用；处理函数应在异步操作后检查 signal，并始终使用本次回调 API。处理完成后不能继续使用该调用 API。此通道只属于当前客户端的实时运行状态，不会落库、进入模型提示词或在重开后重放；已经成功保存的数据不会因后续取消自动回滚，也不自动重试可能已执行的操作。关闭脚本面板不会停止仍启用的后台程序。</p>
+<p>可导入示例的角色脚本还登记了 <code>calculate-score</code>：目标 scriptId 为 <code>example-score-rule</code>，传入 <code>{score: 12}</code> 可得到按脚本倍率计算的积分结果，不修改剧情变量。示例步骤见 <a href="../../packages/examples/native-author/README.md">原生作者示例</a>。</p>
 <h2 id="guide-当前变量接口">当前变量接口</h2>
 <p>这些方法返回 Promise，修改必须等待结果。成功返回的是规则处理后的实际结果，不一定等于传入内容。</p>
 <table>
@@ -618,7 +648,7 @@ async function saveMultiplier(api, multiplier) {
 <li><code>mountDocument</code> 为同源作者页面安装固定聊天作用域的 SDK；切换到其他聊天后撤回，普通未完成调用取消，不改为操作新聊天；已正式交接的聊天切换或删除等待实际操作结果。<code>mountProjectDocument</code> 必须明确声明应用或角色作用域：应用调用固定开始时选中的聊天，角色调用还校验所属角色与可选固定聊天。当前通用请求方法表共 71 项：普通聊天页面已接通 65 项，4 项脚本设置及 2 项面板方法只在所属脚本与其面板提供；完整接口参考另含 <code>call</code> 和 4 项本地函数，共 76 项。生成事件已接通，原生作者阶段的独立运行已完成验收。能力查询只列本页已接通方法，未知操作明确报告未接通；现有兼容配置与有效数据仍保留。</li>
 <li>原生作者运行环境与数据独立于外部格式转换；MVU 变量导入不改变原生 SDK 的创作合同。</li>
 </ul>
-<p>Host 参数与返回类型见 <a href="api-remote.md">Remote 参考</a>中的 <code>eleckoiAuthorVariables</code>。阶段验收、数据归属与明确边界见 <a href="../adr/0032-native-script-libraries.md">ADR 0032</a>。</p></div><section id="reference"><h1>接口参考</h1><p>80 个方法。参数与返回值从当前 SDK 合同生成；函数注册与业务请求分开处理。</p><p id="search-status" role="status"></p><section class="api-namespace" id="api-call"><h2>call</h2>
+<p>Host 参数与返回类型见 <a href="api-remote.md">Remote 参考</a>中的 <code>eleckoiAuthorVariables</code>。阶段验收、数据归属与明确边界见 <a href="../adr/0032-native-script-libraries.md">ADR 0032</a>。</p></div><section id="reference"><h1>接口参考</h1><p>81 个方法。参数与返回值从当前 SDK 合同生成；函数注册与业务请求分开处理。</p><p id="search-status" role="status"></p><section class="api-namespace" id="api-call"><h2>call</h2>
 <article class="api-method" id="method-call" data-search="call 按明确方法名调用同一 SDK；优先使用有类型的命名空间方法"><h3><code>call</code></h3><p>按明确方法名调用同一 SDK；优先使用有类型的命名空间方法</p><p>当前页面绑定的原生服务</p><pre><code>call&lt;TResult = unknown&gt;(method: string, params?: Record&lt;string, unknown&gt;): Promise&lt;TResult&gt;;</code></pre></article>
 </section>
 <section class="api-namespace" id="api-app"><h2>app</h2>
@@ -634,6 +664,16 @@ getSettings(): Promise&lt;AuthorScriptSettings&gt;;</code></pre></article>
 <article class="api-method" id="method-script-setSettings" data-search="script.setSettings 保存当前脚本设置，不重新启动程序"><h3><code>script.setSettings</code></h3><p>保存当前脚本设置，不重新启动程序</p><p>所属运行脚本及其面板 · <code>script.write</code></p><pre><code>setSettings(values: Record&lt;string, unknown&gt;, expectedRevision: number): Promise&lt;AuthorScriptSettings&gt;;</code></pre></article>
 <article class="api-method" id="method-script-getLibrarySettings" data-search="script.getLibrarySettings 读取当前脚本所属库的共享设置"><h3><code>script.getLibrarySettings</code></h3><p>读取当前脚本所属库的共享设置</p><p>所属运行脚本及其面板 · <code>script.read</code></p><pre><code>getLibrarySettings(): Promise&lt;AuthorScriptSettings&gt;;</code></pre></article>
 <article class="api-method" id="method-script-setLibrarySettings" data-search="script.setLibrarySettings 保存当前脚本所属库的共享设置"><h3><code>script.setLibrarySettings</code></h3><p>保存当前脚本所属库的共享设置</p><p>所属运行脚本及其面板 · <code>script.write</code></p><pre><code>setLibrarySettings(values: Record&lt;string, unknown&gt;, expectedRevision: number): Promise&lt;AuthorScriptSettings&gt;;</code></pre></article>
+</section>
+<section class="api-namespace" id="api-scripts"><h2>scripts</h2>
+<article class="api-method" id="method-scripts-list" data-search="scripts.list 查询当前聊天运行脚本的明确身份及已登记操作"><h3><code>scripts.list</code></h3><p>查询当前聊天运行脚本的明确身份及已登记操作</p><p>当前页面绑定的原生服务 · <code>script.read</code></p><pre><code>/** Lists running scripts and their explicitly registered actions in this chat. */
+list(): Promise&lt;{
+    items: AuthorScriptEndpoint[];
+}&gt;;</code></pre></article>
+<article class="api-method" id="method-scripts-registerHandler" data-search="scripts.registerHandler 运行脚本登记自定义操作及处理函数，返回撤回函数"><h3><code>scripts.registerHandler</code></h3><p>运行脚本登记自定义操作及处理函数，返回撤回函数</p><p>仅运行脚本</p><pre><code>/** Running script only; each action has exactly one handler within that script. */
+registerHandler(action: string, handler: (context: AuthorScriptRequestContext) =&gt; AuthorScriptData | Promise&lt;AuthorScriptData&gt;): () =&gt; void;</code></pre></article>
+<article class="api-method" id="method-scripts-request" data-search="scripts.request 调用当前聊天指定脚本的操作并等待结果"><h3><code>scripts.request</code></h3><p>调用当前聊天指定脚本的操作并等待结果</p><p>当前页面绑定的原生服务 · <code>scripts.call</code></p><pre><code>/** Calls one exact script and action. Use null when no data is needed. */
+request(target: AuthorScriptIdentity, action: string, data: AuthorScriptData): Promise&lt;AuthorScriptData&gt;;</code></pre></article>
 </section>
 <section class="api-namespace" id="api-ui"><h2>ui</h2>
 <article class="api-method" id="method-ui-registerButton" data-search="ui.registerButton 运行脚本同步注册聊天按钮，返回撤回函数"><h3><code>ui.registerButton</code></h3><p>运行脚本同步注册聊天按钮，返回撤回函数</p><p>仅运行脚本</p><pre><code>/** Running script only. IDs are unique within that script, not across scopes. */
@@ -743,14 +783,10 @@ replace(library: AuthorSettingLibrary): Promise&lt;AuthorSettingLibrary&gt;;</co
 <article class="api-method" id="method-settingLibrary-updateEntries" data-search="settingLibrary.updateEntries 原子修改角色设定库的一组条目"><h3><code>settingLibrary.updateEntries</code></h3><p>原子修改角色设定库的一组条目</p><p>当前页面绑定的原生服务 · <code>setting_library.write</code></p><pre><code>/** Atomically edits the character&#39;s ordinary entries and active version, leaving story overrides unchanged. */
 updateEntries(updates: AuthorSettingEntryUpdate[]): Promise&lt;AuthorSettingLibraryEntry[]&gt;;</code></pre></article>
 </section>
-<section class="api-namespace" id="api-displayTemplates"><h2>displayTemplates</h2>
-<article class="api-method" id="method-displayTemplates-read" data-search="displayTemplates.read 读取共享全局、所属角色或当前扮演预设的 EJS显示模板"><h3><code>displayTemplates.read</code></h3><p>读取共享全局、所属角色或当前扮演预设的 EJS显示模板</p><p>当前页面绑定的原生服务 · <code>display_templates.read</code></p><pre><code>read(scope: &#39;global&#39; | &#39;character&#39; | &#39;preset&#39;): Promise&lt;AuthorDisplayTemplateLibrary&gt;;</code></pre></article>
-<article class="api-method" id="method-displayTemplates-save" data-search="displayTemplates.save 按读取版本保存 EJS显示模板并刷新已有消息"><h3><code>displayTemplates.save</code></h3><p>按读取版本保存 EJS显示模板并刷新已有消息</p><p>当前页面绑定的原生服务 · <code>display_templates.write</code></p><pre><code>save(library: AuthorDisplayTemplateLibrary): Promise&lt;AuthorDisplayTemplateLibrary&gt;;</code></pre></article>
-</section>
 <section class="api-namespace" id="api-editorVersions"><h2>editorVersions</h2>
 <article class="api-method" id="method-editorVersions-read" data-search="editorVersions.read 读取共享全局、所属角色或当前扮演预设的完整配置版本"><h3><code>editorVersions.read</code></h3><p>读取共享全局、所属角色或当前扮演预设的完整配置版本</p><p>当前页面绑定的原生服务 · <code>editor_versions.read</code></p><pre><code>/** 角色作用域固定为本页角色；预设作用域固定为当前扮演预设。 */
 read(kind: AuthorEditorLibraryVersions[&#39;kind&#39;], scope: AuthorEditorLibraryVersions[&#39;scope&#39;]): Promise&lt;AuthorEditorLibraryVersions&gt;;</code></pre></article>
-<article class="api-method" id="method-editorVersions-save" data-search="editorVersions.save 原子保存正则、脚本或 EJS显示模板的配置及命名版本"><h3><code>editorVersions.save</code></h3><p>原子保存正则、脚本或 EJS显示模板的配置及命名版本</p><p>当前页面绑定的原生服务 · <code>editor_versions.write</code></p><pre><code>/** 配置正文和命名版本原子保存；documents 为相同类型的正式配置 JSON。 */
+<article class="api-method" id="method-editorVersions-save" data-search="editorVersions.save 原子保存正则或脚本的配置及命名版本"><h3><code>editorVersions.save</code></h3><p>原子保存正则或脚本的配置及命名版本</p><p>当前页面绑定的原生服务 · <code>editor_versions.write</code></p><pre><code>/** 配置正文和命名版本原子保存；documents 为相同类型的正式配置 JSON。 */
 save(kind: AuthorEditorLibraryVersions[&#39;kind&#39;], documents: string[], versions: AuthorEditorLibraryVersions[]): Promise&lt;AuthorEditorLibrarySaveResult&gt;;</code></pre></article>
 </section>
 <section class="api-namespace" id="api-presets"><h2>presets</h2>
@@ -1089,34 +1125,13 @@ export interface AuthorAgentTrajectory {
     entryFile?: string;
     view?: string;
 }</code></pre></details>
-<details id="type-AuthorDisplayTemplate"><summary><code>AuthorDisplayTemplate</code></summary><pre><code>/** 显示模板是持久作者配置，计算结果只属于消息显示。 */
-export interface AuthorDisplayTemplate {
-    id: string;
-    name: string;
-    enabled: boolean;
-    /** before / after 在 AI 消息开头 / 末尾添加结果；replace 替换匹配片段。 */
-    position: &#39;before&#39; | &#39;after&#39; | &#39;replace&#39;;
-    /** replace 使用表达式正文，不包含 /.../g 外壳。 */
-    pattern: string;
-    /** replace 的独立正则标志，例如 g。 */
-    flags: string;
-    /** 标准 &lt;% ... %&gt; EJS 源码，保留空白；新建时可为空。 */
-    source: string;
-}</code></pre></details>
-<details id="type-AuthorDisplayTemplateLibrary"><summary><code>AuthorDisplayTemplateLibrary</code></summary><pre><code>export interface AuthorDisplayTemplateLibrary {
-    scope: &#39;global&#39; | &#39;character&#39; | &#39;preset&#39;;
-    ownerId: string;
-    enabled: boolean;
-    revision: number;
-    templates: AuthorDisplayTemplate[];
-}</code></pre></details>
 <details id="type-AuthorEditorLibrarySaveResult"><summary><code>AuthorEditorLibrarySaveResult</code></summary><pre><code>export interface AuthorEditorLibrarySaveResult {
     documents: string[];
     versions: AuthorEditorLibraryVersions[];
 }</code></pre></details>
 <details id="type-AuthorEditorLibraryVersions"><summary><code>AuthorEditorLibraryVersions</code></summary><pre><code>/** 完整命名版本；content 是对应配置类型的 JSON，脚本版本包含源码及资源，正则版本包含整体 enabled 与 rules。 */
 export interface AuthorEditorLibraryVersions {
-    kind: &#39;scripts&#39; | &#39;displayTemplates&#39; | &#39;regex&#39;;
+    kind: &#39;scripts&#39; | &#39;regex&#39;;
     scope: &#39;global&#39; | &#39;character&#39; | &#39;preset&#39;;
     ownerId: string;
     revision: number;
@@ -1302,6 +1317,29 @@ export interface AuthorMediaResource {
         signal: AbortSignal;
     }): void | Promise&lt;void&gt;;
 }</code></pre></details>
+<details id="type-AuthorScriptCaller"><summary><code>AuthorScriptCaller</code></summary><pre><code>export interface AuthorScriptCaller {
+    surface: AuthorSurface | &#39;script&#39; | &#39;script-panel&#39;;
+    conversationId: string;
+    messageId: string;
+    script: AuthorScriptIdentity | null;
+    projectId?: string;
+    entryFile?: string;
+    view?: string;
+}</code></pre></details>
+<details id="type-AuthorScriptData"><summary><code>AuthorScriptData</code></summary><pre><code>export type AuthorScriptData = null | boolean | number | string | AuthorScriptData[] | {
+    [key: string]: AuthorScriptData;
+};</code></pre></details>
+<details id="type-AuthorScriptEndpoint"><summary><code>AuthorScriptEndpoint</code></summary><pre><code>export interface AuthorScriptEndpoint {
+    identity: AuthorScriptIdentity;
+    name: string;
+    actions: string[];
+}</code></pre></details>
+<details id="type-AuthorScriptIdentity"><summary><code>AuthorScriptIdentity</code></summary><pre><code>export interface AuthorScriptIdentity {
+    scope: &#39;global&#39; | &#39;character&#39; | &#39;preset&#39;;
+    /** Shared global scripts use the empty string. Other owners are explicit IDs. */
+    ownerId: string;
+    scriptId: string;
+}</code></pre></details>
 <details id="type-AuthorScriptPanel"><summary><code>AuthorScriptPanel</code></summary><pre><code>export interface AuthorScriptPanel {
     id: string;
     title: string;
@@ -1316,6 +1354,13 @@ export interface AuthorMediaResource {
     scope: &#39;global&#39; | &#39;character&#39; | &#39;preset&#39;;
     ownerId: string;
     scriptId: string;
+}</code></pre></details>
+<details id="type-AuthorScriptRequestContext"><summary><code>AuthorScriptRequestContext</code></summary><pre><code>export interface AuthorScriptRequestContext {
+    /** Use this invocation&#39;s API; requests do not join a pending variable-rule candidate. */
+    api: ElecKoiAuthorApi;
+    signal: AbortSignal;
+    readonly caller: AuthorScriptCaller;
+    data: AuthorScriptData;
 }</code></pre></details>
 <details id="type-AuthorScriptSettings"><summary><code>AuthorScriptSettings</code></summary><pre><code>export interface AuthorScriptSettings {
     revision: number;
@@ -1528,6 +1573,16 @@ export interface AuthorSendAttachment {
         getLibrarySettings(): Promise&lt;AuthorScriptSettings&gt;;
         setLibrarySettings(values: Record&lt;string, unknown&gt;, expectedRevision: number): Promise&lt;AuthorScriptSettings&gt;;
     };
+    readonly scripts: {
+        /** Lists running scripts and their explicitly registered actions in this chat. */
+        list(): Promise&lt;{
+            items: AuthorScriptEndpoint[];
+        }&gt;;
+        /** Running script only; each action has exactly one handler within that script. */
+        registerHandler(action: string, handler: (context: AuthorScriptRequestContext) =&gt; AuthorScriptData | Promise&lt;AuthorScriptData&gt;): () =&gt; void;
+        /** Calls one exact script and action. Use null when no data is needed. */
+        request(target: AuthorScriptIdentity, action: string, data: AuthorScriptData): Promise&lt;AuthorScriptData&gt;;
+    };
     readonly ui: {
         /** Running script only. IDs are unique within that script, not across scopes. */
         registerButton(button: AuthorScriptButton): () =&gt; void;
@@ -1635,10 +1690,6 @@ export interface AuthorSendAttachment {
         updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise&lt;AuthorSettingLibraryEntry&gt;;
         /** Atomically edits the character&#39;s ordinary entries and active version, leaving story overrides unchanged. */
         updateEntries(updates: AuthorSettingEntryUpdate[]): Promise&lt;AuthorSettingLibraryEntry[]&gt;;
-    };
-    readonly displayTemplates: {
-        read(scope: &#39;global&#39; | &#39;character&#39; | &#39;preset&#39;): Promise&lt;AuthorDisplayTemplateLibrary&gt;;
-        save(library: AuthorDisplayTemplateLibrary): Promise&lt;AuthorDisplayTemplateLibrary&gt;;
     };
     readonly editorVersions: {
         /** 角色作用域固定为本页角色；预设作用域固定为当前扮演预设。 */

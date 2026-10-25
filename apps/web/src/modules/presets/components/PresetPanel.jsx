@@ -17,7 +17,6 @@ import { PresetProfileHeader } from './PresetProfileHeader.jsx';
 import { PresetProfileEditor } from './PresetProfileEditor.jsx';
 import { PresetPromptEditor } from './PresetPromptEditor.jsx';
 import { ScriptLibrariesPanel } from '../../scripts/index.js';
-import { DisplayTemplatesPanel } from '../../displayTemplates/index.js';
 import { RegexRulesPanel } from '../../regex/index.js';
 import { PresetToolsEditor } from './PresetToolsEditor.jsx';
 import { fileBase64, PresetImportDialog } from './PresetTransfer.jsx';
@@ -34,7 +33,6 @@ const TABS = [
   { id: 'prompts', label: '预设提示词' },
   { id: 'tools', label: '工具' },
   { id: 'regex', label: '正则' },
-  { id: 'displayTemplates', label: 'EJS显示模板' },
   { id: 'scripts', label: '脚本' },
 ];
 const EMPTY_PRESET_CATALOG = { status: 'loading', catalog: null, error: '' };
@@ -327,7 +325,7 @@ export function PresetWorkspace({
   const [error, setError] = useState('');
   const [profileEditing, setProfileEditing] = useState(false);
   const introductionRef = useRef(null);
-  const scriptsRef = useRef(null), templatesRef = useRef(null), regexRef = useRef(null);
+  const scriptsRef = useRef(null), regexRef = useRef(null);
   const [editorDirty, setEditorDirty] = useState(false);
   const savingRef = useRef(false);
   const dirtyRef = useRef(false);
@@ -355,7 +353,7 @@ export function PresetWorkspace({
     else action();
   }
 
-  function confirmPresetSavedBeforeSubagentSettings() {
+  function confirmPresetSavedBeforePluginSettings() {
     if (savingRef.current) return false;
     if (!dirty) return true;
     setPendingAction({ reminderOnly: true });
@@ -444,7 +442,7 @@ export function PresetWorkspace({
 
   async function save(candidate = preset) {
     if (editorUnavailable) return false;
-    const editor = tab === 'scripts' ? scriptsRef.current : tab === 'displayTemplates' ? templatesRef.current : tab === 'regex' ? regexRef.current : null;
+    const editor = tab === 'scripts' ? scriptsRef.current : tab === 'regex' ? regexRef.current : null;
     if (editor) {
       if (savingRef.current) return false;
       savingRef.current = true; setSaving(true);
@@ -482,7 +480,7 @@ export function PresetWorkspace({
   }
 
   function discardChanges() {
-    scriptsRef.current?.discard?.(); templatesRef.current?.discard?.(); regexRef.current?.discard?.(); setEditorDirty(false);
+    scriptsRef.current?.discard?.(); regexRef.current?.discard?.(); setEditorDirty(false);
     const latest = pendingLatestRef.current || persisted;
     pendingLatestRef.current = null;
     externalChangeRef.current = false;
@@ -515,7 +513,7 @@ export function PresetWorkspace({
     open={Boolean(pendingAction)}
     title="保存修改？"
     description={pendingAction?.reminderOnly
-      ? '前往子智能体设置前是否先保存当前预设的修改？'
+      ? '前往插件设置前是否先保存当前预设的修改？'
       : '离开前是否保存当前预设的修改？'}
     saving={saving}
     onCancel={() => setPendingAction(null)}
@@ -584,7 +582,7 @@ export function PresetWorkspace({
       preset={preset}
       onChange={setPreset}
       onNotify={onNotify}
-      onBeforeOpenSubagentSettings={confirmPresetSavedBeforeSubagentSettings}
+      onBeforeOpenSubagentSettings={confirmPresetSavedBeforePluginSettings}
       savePromptOpen={Boolean(pendingAction?.reminderOnly)}
       saveAction={saveAction}
     />;
@@ -592,9 +590,6 @@ export function PresetWorkspace({
     tabEditor = <ScriptLibrariesPanel key={preset.id} ref={scriptsRef} presetId={preset.id} presetName={preset.name} manageSaveShortcut={false}
       scriptLibraries={characterConfiguration?.scripts} scriptRuntimeConnection={characterConfiguration?.scriptRuntimeConnection}
       onDirtyChange={setEditorDirty} />;
-  } else if (tab === 'displayTemplates') {
-    tabEditor = <DisplayTemplatesPanel key={preset.id} ref={templatesRef} scope="preset" ownerId={preset.id}
-      displayTemplates={characterConfiguration?.displayTemplates} onDirtyChange={setEditorDirty} />;
   } else if (tab === 'regex') {
     tabEditor = <RegexRulesPanel key={preset.id} ref={regexRef} presetId={preset.id} regexRules={characterConfiguration?.regexRules}
       manageSaveShortcut={false} onDirtyChange={setEditorDirty} />;

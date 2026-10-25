@@ -1,5 +1,4 @@
 import type { Context, Plugin } from '@deepseek-ai/cordis'
-import type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from './types.js'
 import type { EditorLibraryAddress, EditorLibraryVersions, EditorLibrarySaveRequest, EditorLibrarySaveResult } from './types.js'
 import { ElecKoiConversationLifecycle } from './conversationLifecycle.js'
 import { parseChatImport } from './chatImport.js'
@@ -93,12 +92,10 @@ import type {
   TavilyConnection,
   WebSearchMode,
   WebFetchMode,
-  DeepSeekWebConnection,
   VariableConfig,
   VariableViewerTimeline
 } from './types.js'
 import { testTavilyConnection } from './tavily.js'
-import { DEEPSEEK_API_PROVIDER, DEEPSEEK_WEB_KEY_REF, DEEPSEEK_WEB_NAMESPACE, testDeepSeekConnection } from '@eleckoi/dsh-web-deepseek/api'
 import { ElecKoiVariableProcessing } from './variable-processing.js'
 import { ElecKoiAuthorVariablesApi } from './author-variables.js'
 import { ElecKoiAuthorScriptsApi, eleckoiScriptAssetsPlugin } from './author-scripts.js'
@@ -139,7 +136,6 @@ export type {
   TavilyConnection,
   WebSearchMode,
   WebFetchMode,
-  DeepSeekWebConnection,
   CreateCreatorProjectInput,
   CharacterCollection,
   CharacterExportFormat,
@@ -1460,9 +1456,9 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
   @Remote
   selection(): WebSearchMode {
     const provider = this.webConfiguration().searchProvider
+    if (provider === 'deepseek-search-api') return 'deepseek_search_api'
     if (provider === TAVILY_WEB_PROVIDER) return 'tavily'
     if (provider === DEEPSEEK_WEB_PROVIDER) return 'provider_native'
-    if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
     throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前搜索提供器未由 ElecKoi 设置页面管理。', { what: '当前搜索提供器' })
   }
 
@@ -1473,13 +1469,15 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
    */
   @Remote
   async select(mode: WebSearchMode): Promise<WebSearchMode> {
-    if (mode !== 'provider_native' && mode !== 'tavily' && mode !== 'deepseek_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的联网搜索方式。', { what: '联网搜索方式', expected: 'provider_native、tavily、deepseek_api' })
+    if (mode !== 'provider_native' && mode !== 'tavily' && mode !== 'deepseek_search_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的联网搜索方式。', { what: '联网搜索方式', expected: 'provider_native、tavily、deepseek_search_api' })
     if (mode === 'tavily' && !this.ownerContext.settings.describe().some(item => item.ns === 'web-search-tavily')) {
       throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'Tavily 搜索插件当前未启用。', { field: 'Tavily 搜索插件', what: '联网搜索插件配置' })
     }
-    if (mode === 'deepseek_api') this.requireDeepSeek()
+    if (mode === 'deepseek_search_api') {
+      if (!this.ownerContext.settings.describe().some(item => item.ns === 'web-deepseek-api')) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 官方 DeepSeek 联网 API 插件当前未启用。', { what: 'DSH 官方 DeepSeek 联网 API 插件' })
+    }
     const row = this.webRow()
-    const provider = mode === 'deepseek_api' ? DEEPSEEK_API_PROVIDER : mode === 'tavily' ? TAVILY_WEB_PROVIDER : DEEPSEEK_WEB_PROVIDER
+    const provider = mode === 'deepseek_search_api' ? 'deepseek-search-api' : mode === 'tavily' ? TAVILY_WEB_PROVIDER : DEEPSEEK_WEB_PROVIDER
     await this.ownerContext.configEditor.edit(row, current => ({ ...current, searchProvider: provider }))
     return mode
   }
@@ -1509,8 +1507,8 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
   @Remote
   fetchSelection(): WebFetchMode {
     const provider = this.webConfiguration().fetchProvider
+    if (provider === 'deepseek-fetch-api') return 'deepseek_fetch_api'
     if (provider === 'http') return 'http'
-    if (provider === DEEPSEEK_API_PROVIDER) return 'deepseek_api'
     throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '当前抓取提供器未由 ElecKoi 设置页面管理。', { what: '当前抓取提供器' })
   }
 
@@ -1521,30 +1519,12 @@ export class ElecKoiWebSearchApi extends TypertRemoteService {
    */
   @Remote
   async selectFetch(mode: WebFetchMode): Promise<WebFetchMode> {
-    if (mode !== 'http' && mode !== 'deepseek_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的网页抓取方式。', { what: '网页抓取方式', expected: 'http、deepseek_api' })
-    if (mode === 'deepseek_api') this.requireDeepSeek()
-    await this.ownerContext.configEditor.edit(this.webRow(), current => ({ ...current, fetchProvider: mode === 'http' ? 'http' : DEEPSEEK_API_PROVIDER }))
+    if (mode !== 'http' && mode !== 'deepseek_fetch_api') throw productFailure(ELECKOI_FAILURE_CODES.inputUnsupported, '不支持的网页抓取方式。', { what: '网页抓取方式', expected: 'http、deepseek_fetch_api' })
+    if (mode === 'deepseek_fetch_api') {
+      if (!this.ownerContext.settings.describe().some(item => item.ns === 'web-deepseek-api')) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH 官方 DeepSeek 联网 API 插件当前未启用。', { what: 'DSH 官方 DeepSeek 联网 API 插件' })
+    }
+    await this.ownerContext.configEditor.edit(this.webRow(), current => ({ ...current, fetchProvider: mode === 'deepseek_fetch_api' ? 'deepseek-fetch-api' : 'http' }))
     return mode
-  }
-
-  /**
-   * 测试 Search 和 Fetch；产生两次官方 API 调用，不保存临时密钥。
-   * @param apiKey - 临时测试密钥；省略时读取已配置的官方凭据。
-   * @param signal - 取消测试的信号。
-   * @returns Search 和 Fetch 均成功时的连接状态，不包含密钥。
-   */
-  @Remote
-  async testDeepSeek(apiKey?: string, signal?: AbortSignal): Promise<DeepSeekWebConnection> {
-    const config = this.requireDeepSeek().value as Record<string, unknown> | undefined
-    const ref = typeof config?.apiKeyEnv === 'string' ? config.apiKeyEnv : DEEPSEEK_WEB_KEY_REF
-    const candidate = apiKey?.trim() || (await this.ownerContext.credentials.resolve(credentialRef(ref)))?.value?.trim() || ''
-    return testDeepSeekConnection(candidate, signal)
-  }
-
-  private requireDeepSeek() {
-    const namespace = this.ownerContext.settings.describe().find(item => item.ns === DEEPSEEK_WEB_NAMESPACE)
-    if (!namespace) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'DeepSeek 联网 API 插件当前未启用。', { field: 'DeepSeek 联网 API 插件', what: '联网搜索插件配置' })
-    return namespace
   }
 
   private webRow(): ReturnType<Context['configEditor']['entries']>[number] {
@@ -1802,16 +1782,6 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     this.changeFeed = ctx.eleckoiCharacterConfigurationChanges
   }
 
-  /**
-   * 读取共享全局或明确所属角色、预设的显示模板，结果不进入 Agent 设定目录。
-   * @param scope - 全局、角色或预设归属。
-   * @param ownerId - 全局使用空字符串，其他归属使用明确编号。
-   * @returns 完整显示模板库及保存版本。
-   */
-  @Remote
-  readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary {
-    return this.productData.readDisplayTemplates(scope, ownerId)
-  }
 
   /**
    * 读取明确归属的命名配置版本，脚本归档只在需要编辑版本时读取。
@@ -1835,39 +1805,8 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
     return result
   }
 
-  /**
-   * 按读取版本保存显示模板并通知已有聊天重新显示。
-   * @param library - 保留读取 revision 的完整库。
-   * @returns 已接受的库及递增版本。
-   */
-  @Remote
-  saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary {
-    const saved = this.productData.saveDisplayTemplates(library)
-    this.publish('displayTemplates', saved.scope === 'character' ? saved.ownerId : undefined)
-    return saved
-  }
 
-  /**
-   * 在同一事务中保存编辑器修改的全局和所属显示模板。
-   * @param libraries - 修改后的库及各自 revision；归属不得重复。
-   * @returns 与输入顺序相同的保存结果；任一冲突时全部回滚。
-   */
-  @Remote
-  saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[] {
-    const saved = this.productData.saveDisplayTemplateLibraries(libraries)
-    this.publish('displayTemplates')
-    return saved
-  }
 
-  /**
-   * 返回全局、当前扮演预设及指定角色的显示模板，各库保持独立归属。
-   * @param characterId - 聊天绑定角色编号。
-   * @returns 全局、预设、角色顺序排列的库。
-   */
-  @Remote
-  displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection {
-    return this.productData.displayTemplatesForCharacter(characterId)
-  }
 
   /**
    * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
@@ -2207,11 +2146,13 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
    * @param text - 本次输入或待测试文本。
    * @param rule - 待测试规则。
    * @param target - 规则作用的内容类别。
+   * @param options - 测试范围、变量快照 JSON、深度与编辑场景。
+   * @param signal - 关闭编辑器或取消测试时结束计算。
    * @returns 操作结果，结构见返回类型；失败抛出错误。
    */
   @Remote
-  testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget): RegexRuleTestResult {
-    return this.productData.testRegexRule(text, rule, target)
+  testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget, options?: { surface?: 'Display' | 'Prompt' | 'Stored'; variablesJson?: string; depth?: number; isEdit?: boolean }, signal?: AbortSignal): Promise<RegexRuleTestResult> {
+    return this.productData.testRegexRule(text, rule, target, options, signal)
   }
 
   private publish(

@@ -13,7 +13,7 @@ it('consolidates editor storage and command-target removal in v11 to v12 while p
   let db = new Database(path)
   try {
     db.exec(commonSchemaSql.replace('PRAGMA user_version = 12', 'PRAGMA user_version = 11'))
-    db.exec('DROP TABLE display_template_libraries; DROP TABLE editor_library_versions')
+    db.exec('DROP TABLE IF EXISTS display_template_libraries; DROP TABLE editor_library_versions')
     // Configuration rows are synthetic; foreign keys are restored before migration.
     db.pragma('foreign_keys = OFF')
     const rules = [
@@ -34,7 +34,7 @@ it('consolidates editor storage and command-target removal in v11 to v12 while p
       .run('synthetic-preset', 'synthetic-version', 1, 'Synthetic version', 1, '[]')
     db.pragma('foreign_keys = ON')
     installSchema(db)
-    expect(db.pragma('user_version', { simple: true })).toBe(12)
+    expect(db.pragma('user_version', { simple: true })).toBe(13)
     const global = db.prepare('SELECT targetsJson,enabled,pattern,replacement FROM global_regex_rules').get() as Record<string, unknown>
     expect(global).toEqual({ targetsJson: '[]', enabled: 0, pattern: 'SYNTHETIC', replacement: 'CHANGED' })
     for (const table of ['agent_preset_contents', 'agent_preset_version_contents']) {
@@ -45,7 +45,7 @@ it('consolidates editor storage and command-target removal in v11 to v12 while p
       expect(saved.map((rule: unknown) => regexRuleSchema.parse(rule))).toHaveLength(2)
     }
     expect(db.prepare('SELECT count(*) AS count FROM editor_library_versions').get()).toEqual({ count: 0 })
-    expect(db.prepare('SELECT count(*) AS count FROM display_template_libraries').get()).toEqual({ count: 0 })
+    expect(db.prepare("SELECT 1 FROM sqlite_master WHERE name='display_template_libraries'").get()).toBeUndefined()
     db.close(); db = new Database(path); installSchema(db)
     expect(db.prepare("SELECT content FROM agent_preset_contents WHERE kind='instructions'").get()).toEqual({ content: 'Preserved instructions' })
     expect(db.pragma('foreign_key_check')).toEqual([])
@@ -65,7 +65,7 @@ it('rolls the entire v11 to v12 migration back when a historical rule cannot be 
   const db = new Database(path)
   try {
     db.exec(commonSchemaSql.replace('PRAGMA user_version = 12', 'PRAGMA user_version = 11'))
-    db.exec('DROP TABLE display_template_libraries; DROP TABLE editor_library_versions')
+    db.exec('DROP TABLE IF EXISTS display_template_libraries; DROP TABLE editor_library_versions')
     db.prepare('INSERT INTO global_regex_rules (id,name,pattern,replacement,targetsJson,enabled,displayOnly,promptOnly,runOnEdit,sortIndex) VALUES (?,?,?,?,?,?,?,?,?,?)')
       .run('synthetic-command', 'Synthetic command', 'SYNTHETIC', 'CHANGED', '["SlashCommand"]', 1, 1, 0, 0, 0)
     db.prepare('INSERT INTO agent_presets (id,name,modelFamily,sortIndex,expandedGroupIdsJson) VALUES (?,?,?,?,?)')

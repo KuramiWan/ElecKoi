@@ -1,4 +1,4 @@
-import { AuthorScriptSession, authorApiDefinitions, AUTHOR_EVENT_NAMES, type AuthorEventName, type AuthorEventMap } from '@eleckoi/author-sdk'
+import { AuthorApiError, AuthorScriptSession, authorApiDefinitions, AUTHOR_EVENT_NAMES, type AuthorEventName, type AuthorEventMap, type AuthorScriptCaller } from '@eleckoi/author-sdk'
 import { createAuthorVariableBindings, installElecKoiAuthorApi, type AuthorHostAdapter } from '@eleckoi/author-sdk/browser'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ElecKoiConversations } from '@eleckoi/dsh-client-conversations/client'
@@ -13,10 +13,11 @@ import { createNativeMessageBindings } from './messages.js'
 import { createNativeChatBindings } from './chats.js'
 import { createNativeSettingLibraryBindings, createNativePresetBindings } from './settings.js'
 import { createNativeScriptSettingsBindings } from './script-settings.js'
-import { createNativeDisplayTemplateBindings } from './display-templates.js'
+import { createNativeEditorVersionBindings } from './editor-versions.js'
 import { NativeAudioRuntime, nativeAudioMethods } from './audio.js'
 import { NativeGenerationEvents } from './generation.js'
 import { NativeScriptUi, type NativeScriptUiOwner } from './script-ui.js'
+import { NativeScriptRequests } from './script-requests.js'
 
 // 两个「确实不处理」的具名声明：语义见 packages/shared/src/foundation/swallowedFailure.ts。
 // 本文件是独立 bundle 的源，运行时取不到那个包，所以就地定义（同名同义，空函数）。
@@ -56,6 +57,7 @@ export class NativeAuthorClient {
   private readonly audio: NativeAudioRuntime
   private readonly generation: NativeGenerationEvents
   private readonly scriptUi: NativeScriptUi
+  private readonly scriptRequests = new NativeScriptRequests()
   private current: { catalog: NativeAuthorScriptCatalog; revision: number; session: AuthorScriptSession; abort: AbortController; stream?: ReturnType<Context['remote']['eleckoiAuthorScripts']['connect']> } | undefined
   private queue = Promise.resolve()
   private revision = 0
@@ -94,7 +96,7 @@ export class NativeAuthorClient {
     return this.scriptUi.mountPanel(key, owner => {
       const page = target as AuthorBrowserWindow
       installElecKoiAuthorApi(page, this.adapter(owner.conversationId, '', { version: owner.version,
-        identity: owner.identity }, owner))
+        identity: owner.identity }, owner, { surface: 'script-panel' }))
       const entry = { conversationId: owner.conversationId, close: () => {
         if (!this.documents.delete(entry)) return
         page.dispatchEvent(new page.Event('pagehide'))
@@ -185,7 +187,10 @@ export class NativeAuthorClient {
         options.signal.addEventListener('abort', cancel, { once: true })
         try {
           const signal = call.abort.signal
-          const result = await this.adapter(call.conversationId, '').request(method, params, { signal,
+          const result = await this.adapter(call.conversationId, '', undefined, undefined, {
+            surface: fixed.scope === 'application' ? 'application-frontend' : 'character-frontend',
+            projectId: fixed.projectId, entryFile: fixed.entryFile, view: fixed.view
+          }).request(method, params, { signal,
             commitContextChange: () => {
               signal.throwIfAborted(); options.commitContextChange?.(); call.contextCommitted = true
             } })
@@ -308,8 +313,10 @@ export class NativeAuthorClient {
         catalog.scripts.find(item => item.key === script.key)!.entryUrl),
       adapter: script => {
         const owner = this.scriptUi.createOwner(selected.id, catalog.version, catalog.scripts.find(item => item.key === script.key)!)
+        const requests = this.scriptRequests.createOwner(catalog.scripts.find(item => item.key === script.key)!)
         return { ...this.adapter(selected.id, '', { version: catalog.version, identity: owner.identity }, owner),
-          registerButton: owner.registerButton, dispose: owner.dispose }
+          registerButton: owner.registerButton, registerScriptHandler: requests.register,
+          dispose: () => { requests.dispose(); owner.dispose() } }
       },
       status: status => {
         const script = catalog.scripts.find(item => item.key === status.key)!
@@ -361,7 +368,8 @@ export class NativeAuthorClient {
   }
 
   private adapter(conversationId: string, messageId: string,
-    script?: { version: string; identity: NativeAuthorScriptIdentity }, uiOwner?: NativeScriptUiOwner): AuthorHostAdapter {
+    script?: { version: string; identity: NativeAuthorScriptIdentity }, uiOwner?: NativeScriptUiOwner,
+    source?: Pick<AuthorScriptCaller, 'surface' | 'projectId' | 'entryFile' | 'view'>): AuthorHostAdapter {
     const bindings = createAuthorVariableBindings(this.options.remote.eleckoiAuthorVariables, () => conversationId)
     const messages = createNativeMessageBindings(this.options.conversations, conversationId, messageId,
       () => this.assertChat(conversationId), () => this.options.window.crypto.randomUUID())
@@ -370,7 +378,7 @@ export class NativeAuthorClient {
     const settings = createNativeSettingLibraryBindings(this.options.remote.eleckoiCharacterConfiguration,
       this.options.conversations.getDetailsSnapshot().details!.metadata.characterId, () => this.assertChat(conversationId))
     const presets = createNativePresetBindings(this.options.remote.eleckoiAgentPresets, () => this.assertChat(conversationId))
-    const displayTemplates = createNativeDisplayTemplateBindings(this.options.remote.eleckoiCharacterConfiguration,
+    const editorVersions = createNativeEditorVersionBindings(this.options.remote.eleckoiCharacterConfiguration,
       this.options.remote.eleckoiAgentPresets, this.options.conversations.getDetailsSnapshot().details!.metadata.characterId,
       () => this.assertChat(conversationId))
     const scriptSettings = script ? createNativeScriptSettingsBindings(this.options.remote.eleckoiAuthorScripts,
@@ -379,6 +387,14 @@ export class NativeAuthorClient {
       request: async (method, params, options) => {
         this.assertChat(conversationId); options.signal.throwIfAborted()
         if (params.conversationId !== undefined && params.conversationId !== conversationId) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, 'An author page cannot redirect its chat', { what: '作者页面切换聊天', guard: '作者页面的聊天归属' })
+        if (method === 'scripts.list' || method === 'scripts.request') {
+          if (this.snapshot.status !== 'ready') throw new AuthorApiError('SCRIPTS_NOT_READY', '当前聊天的脚本尚未就绪')
+          if (method === 'scripts.list') return this.scriptRequests.list()
+          return this.scriptRequests.request(params.target, params.action, params.dataJson, {
+            surface: messageId ? 'message-renderer' : script ? 'script' : 'chat-ui',
+            ...source, conversationId, messageId, script: script ? { ...script.identity } : null
+          }, options.signal)
+        }
         if (method === 'ui.openPanel' || method === 'ui.closePanel') {
           if (!uiOwner) throw productFailure(ELECKOI_FAILURE_CODES.securityDenied, '只有所属脚本可以打开或关闭作者面板', { what: '作者面板开关', guard: '所属脚本' })
           return uiOwner.request(method, params)
@@ -390,7 +406,7 @@ export class NativeAuthorClient {
         if (Object.hasOwn(chats, method)) return chats[method]!(params, options)
         if (Object.hasOwn(settings, method)) return settings[method]!(params, options)
         if (Object.hasOwn(presets, method)) return presets[method]!(params, options)
-        if (Object.hasOwn(displayTemplates, method)) return displayTemplates[method]!(params, options)
+        if (Object.hasOwn(editorVersions, method)) return editorVersions[method]!(params, options)
         if (Object.hasOwn(scriptSettings, method)) return scriptSettings[method]!(params, options)
         if (nativeAudioMethods.includes(method as typeof nativeAudioMethods[number])) return this.audio.invoke(conversationId, method, params, options.signal)
         const details = this.options.conversations.getDetailsSnapshot().details!
@@ -398,7 +414,7 @@ export class NativeAuthorClient {
         const openings = () => (opening?.openingOptions || []).map(item => ({ ...item, initialVariableState: JSON.parse(item.initialVariableStateJson) }))
         switch (method) {
           case 'app.getInfo': return { name: 'ElecKoi', apiVersion: '0.1.0', stage: 'preview' }
-          case 'app.getCapabilities': return authorApiDefinitions.filter(item => Object.hasOwn(bindings, item.method) || Object.hasOwn(messages, item.method) || Object.hasOwn(chats, item.method) || Object.hasOwn(settings, item.method) || Object.hasOwn(presets, item.method) || Object.hasOwn(scriptSettings, item.method) || Object.hasOwn(displayTemplates, item.method) || !!uiOwner && ['ui.openPanel', 'ui.closePanel'].includes(item.method) || nativeAudioMethods.includes(item.method as typeof nativeAudioMethods[number]) || ['app.getInfo', 'app.getCapabilities', 'context.current', 'openings.list', 'openings.current', 'openings.select', 'chat.send', 'chat.stopGeneration', 'input.get', 'input.set', 'input.append', 'input.clear', 'input.send', 'events.list'].includes(item.method))
+          case 'app.getCapabilities': return authorApiDefinitions.filter(item => Object.hasOwn(bindings, item.method) || Object.hasOwn(messages, item.method) || Object.hasOwn(chats, item.method) || Object.hasOwn(settings, item.method) || Object.hasOwn(presets, item.method) || Object.hasOwn(scriptSettings, item.method) || Object.hasOwn(editorVersions, item.method) || !!uiOwner && ['ui.openPanel', 'ui.closePanel'].includes(item.method) || nativeAudioMethods.includes(item.method as typeof nativeAudioMethods[number]) || ['scripts.list', 'scripts.request', 'app.getInfo', 'app.getCapabilities', 'context.current', 'openings.list', 'openings.current', 'openings.select', 'chat.send', 'chat.stopGeneration', 'input.get', 'input.set', 'input.append', 'input.clear', 'input.send', 'events.list'].includes(item.method))
           case 'context.current': return { surface: messageId ? 'message-renderer' : 'chat-ui', scope: 'current-character', conversationId,
             messageId, characterId: details.metadata.characterId, conversationTitle: details.conversation.title }
           case 'openings.list': return { items: openings() }
@@ -470,12 +486,14 @@ export class NativeAuthorClient {
   private publish(snapshot: NativeAuthorRuntimeSnapshot): void { this.snapshot = snapshot; for (const listener of this.listeners) listener() }
   private fail(error: unknown): void {
     if (this.closed) return
+    this.scriptRequests.close()
     this.scriptUi.close()
     this.current?.abort.abort(error)
     void this.current?.session.close().catch(cleanupError => this.options.report(cleanupError))
     this.publish({ ...this.snapshot, status: 'error', error: failureMessage(error) }); this.options.report(error)
   }
   private async stopCurrent(): Promise<void> {
+    this.scriptRequests.close()
     this.scriptUi.close()
     const current = this.current; this.current = undefined
     if (!current) return

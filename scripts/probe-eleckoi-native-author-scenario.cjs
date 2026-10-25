@@ -59,9 +59,12 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
         }});
         document.body.dataset.nativeScope=scope;
         globalThis.nativeContext=context;
+        const request=api.scripts.registerHandler('inspect',({data,caller})=>({data,caller,scope}));
+        const fill=api.scripts.registerHandler('fill-draft',async({api,data})=>{await api.input.set(data);return {filled:data}});
+        const fail=api.scripts.registerHandler('fail',()=>{throw new Error('Synthetic request failure')});
         const button=api.ui.registerButton({id:'settings',label:'Synthetic '+scope+' settings',
           async onClick({api}){await api.ui.openPanel(${JSON.stringify(scriptPanel)})}});
-        return()=>{button();stop();document.body.dataset.cleaned='yes'};
+        return()=>{request();fill();fail();button();stop();document.body.dataset.cleaned='yes'};
       }` }]
     await call('eleckoiCharacterConfiguration/saveScriptLibrary', { library })
     const files = await call('eleckoiCharacterConfiguration/readScriptWorkspace', { scope, ownerId })
@@ -83,7 +86,7 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
     window.nativeEvents=[];
     for(const name of ['agent.state.changed','agent.run.finished'])api.events.on(name,event=>window.nativeEvents.push({name,...event}));
     const output=document.querySelector('#result');
-    document.querySelector('#draft').onclick=()=>api.input.set('Synthetic draft');
+    document.querySelector('#draft').onclick=()=>api.scripts.request(${JSON.stringify({ scope: 'character', ownerId: characterId, scriptId: 'synthetic-script' })},'fill-draft','Synthetic draft');
     document.querySelector('#send').onclick=async()=>{output.dataset.status='running';try{
       const state=await api.variables.merge({value:Number(document.querySelector('#value').value)});
       const receipt=await api.chat.send('Synthetic accepted '+state.value);
@@ -194,6 +197,20 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
       color:frame.contentWindow.getComputedStyle(frame.contentDocument.body).color};
   })()`)
   assert.equal(actual.image, 1); assert.equal(actual.color, 'rgb(32, 32, 32)')
+  await waitFor(`${page}?.contentWindow.ElecKoi?.scripts.list().then(result=>result.items.length===3&&result.items.every(item=>item.actions.includes('inspect'))).catch(error=>{if(error.code==='SCRIPTS_NOT_READY')return false;throw error})`, 'Synthetic script request handlers did not finish startup')
+  const scriptRequests = await window.webContents.executeJavaScript(`(async () => {
+    const api=${page}.contentWindow.ElecKoi;
+    const items=(await api.scripts.list()).items;
+    if(items.length!==3)throw new Error('Expected three exact script identities');
+    const results=await Promise.all(items.map(item=>api.scripts.request(item.identity,'inspect',{text:'Synthetic frontend request'})));
+    let failed;try{await api.scripts.request(items[0].identity,'fail',null)}catch(error){failed={code:error.code,message:error.message}}
+    return {results,failed};
+  })()`)
+  assert.deepEqual(scriptRequests.results.map(result => result.scope), ['global', 'preset', 'character'])
+  assert(scriptRequests.results.every(result => result.data.text === 'Synthetic frontend request' && result.caller.surface === 'character-frontend'
+    && result.caller.conversationId === conversationId && result.caller.projectId === projectId))
+  assert.deepEqual(scriptRequests.failed, { code: 'SCRIPT_HANDLER_FAILED', message: 'Synthetic request failure' })
+  process.stdout.write('Native author Client: frontend requests reached three exact script handlers with real results and errors.\n')
   const scriptSettings = await window.webContents.executeJavaScript(`(async () => {
     const frame=[...document.querySelectorAll('iframe[title="ElecKoi author script"]')].find(frame=>frame.contentDocument.body.dataset.nativeScope==='character');
     const api=frame.contentWindow.ElecKoi;
@@ -213,6 +230,9 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   await window.webContents.executeJavaScript(`[...document.querySelectorAll('[aria-label="脚本按钮"] button')].find(button=>button.title==='Synthetic native script · Synthetic character settings').click()`)
   const settingsPage = `document.querySelector('.native-script-dialog iframe')`
   await waitFor(`${settingsPage}?.contentDocument.querySelector('#settings-status')?.textContent==='ready'`, 'Script panel relative module or native SDK did not boot')
+  const panelRequest = await window.webContents.executeJavaScript(`${settingsPage}.contentWindow.ElecKoi.scripts.request(${JSON.stringify({ scope: 'character', ownerId: characterId, scriptId: 'synthetic-script' })},'inspect',null)`)
+  assert.equal(panelRequest.caller.surface, 'script-panel')
+  assert.deepEqual(panelRequest.caller.script, { scope: 'character', ownerId: characterId, scriptId: 'synthetic-script' })
   assert.equal(await window.webContents.executeJavaScript(`${settingsPage}.contentDocument.querySelector('#multiplier').value`), '3')
   const desktopShot = join(tmpdir(), 'eleckoi-native-script-panel-desktop.png'), mobileShot = join(tmpdir(), 'eleckoi-native-script-panel-mobile.png')
   writeFileSync(desktopShot, (await window.webContents.capturePage()).toPNG())
@@ -379,6 +399,18 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   const examplePreset = (await call('eleckoiAgentPresets/import', { source: 'eleckoi', document: importDocument('example.preset.json'), purpose: 'roleplay' })).preset
   assert.deepEqual(examplePreset.entries.filter(entry => entry.id.startsWith('example-')).map(entry => entry.id), ['example-brief', 'example-detailed'])
   await call('eleckoiAgentPresets/setActive', { presetId: examplePreset.id })
+  const regex = await call('eleckoiCharacterConfiguration/readRegexRules', { characterId: exampleId })
+  const ejsRule = { id: 'synthetic-ejs-rule', name: 'Synthetic regex EJS', pattern: '/<output id="state"><\\/output>/',
+    replacement: '<output id="state"></output><output id="synthetic-regex-ejs"><%= await Promise.resolve(42) %></output>',
+    targets: ['AiOutput'], enabled: true, displayOnly: true, promptOnly: false, runOnEdit: true, order: 1 }
+  regex.characterRules.push(ejsRule); regex.characterEnabled = true
+  regex.versions = regex.versions.map(version => version.id === regex.activeVersionId
+    ? { ...version, characterEnabledIds: [...new Set([...version.characterEnabledIds, ejsRule.id])] } : version)
+  await call('eleckoiCharacterConfiguration/saveRegexRules', { characterId: exampleId, collection: regex, expectedRevision: regex.revision })
+  const ejsTest = await call('eleckoiCharacterConfiguration/testRegexRule', { text: 'TOKEN', target: 'AiOutput',
+    rule: { ...ejsRule, pattern: 'TOKEN', replacement: '<%= await Promise.resolve(getvar("score") * 2) %>' },
+    options: { surface: 'Display', variablesJson: '{"score":12}' } })
+  assert.deepEqual(ejsTest, { output: '24', validationMessage: null })
   for (const [scope, ownerId] of [['character', exampleId], ['preset', examplePreset.id], ['global', '']]) {
     const library = await call('eleckoiCharacterConfiguration/readScriptLibrary', { scope, ownerId })
     library.enabled = true
@@ -395,6 +427,14 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   await window.webContents.executeJavaScript(`(() => {const row=document.querySelector('.conversation-item');if(!row.classList.contains('active'))row.click()})()`)
   const examplePage = `Array.from(document.querySelectorAll('iframe')).find(frame=>frame.contentDocument?.querySelector('#score'))`
   await waitFor(`${examplePage}?.contentDocument.querySelector('#update')?.disabled===false&&document.querySelectorAll('iframe[title="ElecKoi author script"]').length===3`, 'Published example opening or scripts did not boot')
+  try {
+    await waitFor(`${examplePage}?.contentDocument.querySelector('#synthetic-regex-ejs')?.textContent==='42'`, 'Message regex EJS was not computed before rendering its native HTML')
+  } catch (error) {
+    const details = await call('eleckoiConversations/details', { conversationId: exampleChat.conversation.id })
+    const evidence = await window.webContents.executeJavaScript(`(() => ({errors:[...document.querySelectorAll('.script-execution-error,[role="alert"]')].map(node=>node.textContent),frames:[...document.querySelectorAll('iframe')].map(frame=>({title:frame.title,source:frame.srcdoc?.includes('synthetic-regex-ejs'),result:frame.contentDocument?.querySelector('#synthetic-regex-ejs')?.textContent}))}))()`)
+    throw new Error(error.message + '\nEJS diagnostics: ' + JSON.stringify({ evidence, opening: details.messages?.filter(message => message.id === 'opening').map(message=>({id:message.id,sourceMatch:message.content?.includes('<output id="state"></output>'),displayMatch:message.displayContent?.includes('synthetic-regex-ejs'),hasEjs:message.displayContent?.includes('regex-ejs:start'),variables:message.variableStateJson})), rules: await call('eleckoiCharacterConfiguration/readRegexRules', { characterId: exampleId }) }))
+  }
+  process.stdout.write('Native author Client: actual message regex replacement evaluated async EJS and rendered its result.\n')
   await window.webContents.executeJavaScript(`(() => {const frame=${examplePage},select=frame.contentDocument.querySelector('#opening');select.value='example-advanced';select.dispatchEvent(new frame.contentWindow.Event('change'))})()`)
   try {
     await waitFor(`${examplePage}?.contentDocument.querySelector('#update')?.disabled===false&&JSON.parse(${examplePage}.contentDocument.querySelector('#state').textContent).score===10`, 'Published example opening did not select its bound initial state')
@@ -412,6 +452,18 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
     }
   }
   await updateScore(5, 10)
+  const beforeMessageRequest = await call('eleckoiAuthorVariables/getState', { conversationId: exampleChat.conversation.id })
+  await window.webContents.executeJavaScript(`(() => {
+    const frame=${examplePage},doc=frame.contentDocument,api=frame.contentWindow.ElecKoi;
+    const button=doc.createElement('button'),output=doc.createElement('output');
+    button.id='synthetic-script-request';button.textContent='Synthetic script operation';output.id='synthetic-script-result';
+    button.onclick=async()=>{try{const result=await api.scripts.request(${JSON.stringify({ scope: 'character', ownerId: exampleId, scriptId: 'example-score-rule' })},'calculate-score',{score:12});output.textContent=JSON.stringify(result);output.dataset.status='ok'}catch(error){output.textContent=error.message;output.dataset.status='error'}};
+    doc.body.append(button,output);button.click();
+  })()`)
+  await waitFor(`${examplePage}?.contentDocument.querySelector('#synthetic-script-result')?.dataset.status==='ok'`, 'Message frontend button did not receive its script result')
+  assert.deepEqual(JSON.parse(await window.webContents.executeJavaScript(`${examplePage}.contentDocument.querySelector('#synthetic-script-result').textContent`)), { total: 24, level: 2 })
+  assert.equal(await call('eleckoiAuthorVariables/getState', { conversationId: exampleChat.conversation.id }), beforeMessageRequest)
+  process.stdout.write('Native author Client: actual message frontend button received the imported script result without changing story variables.\n')
   process.stdout.write('Native author Client: alternate opening and example derivation passed.\n')
   const openButtons = async () => {
     await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="扮演菜单"]').click()`)

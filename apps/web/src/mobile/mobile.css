@@ -237,7 +237,7 @@
 .mobile-conversation-page [data-input-scroll] { overscroll-behavior: none; }
 .mobile-conversation-page .message-area::-webkit-scrollbar { display: none; }
 .mobile-conversation-page .markdown-message .md-table-wide { overflow-x: auto; }
-.mobile-conversation-page .message-area.layout-roleplay [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
+.mobile-conversation-page .message-area.layout-roleplay [data-chat-column] > :is([data-slot="conversation.chat.flow"], [data-slot="eleckoi.roleplay.chat.flow"]) > [data-chat-flow-key]:not(:has(.message-flow)) {
   width: 100%;
   padding-inline-start: calc(var(--chat-horizontal-padding, 10px) + var(--mobile-roleplay-avatar-width) + var(--chat-avatar-gap, 10px));
   padding-inline-end: calc(var(--chat-horizontal-padding, 10px) + var(--mobile-message-tool-width) + var(--mobile-message-tool-gap) + (var(--mobile-message-tool-width) - var(--mobile-message-more-icon-width)) / 2);

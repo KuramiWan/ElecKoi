@@ -1,9 +1,9 @@
-import type { AuthorEventMap, AuthorEventName, AuthorSendAttachment, ElecKoiAuthorApi } from './contracts'
+import type { AuthorEventMap, AuthorEventName, AuthorSendAttachment, AuthorScriptCaller, ElecKoiAuthorApi } from './contracts'
 import { AuthorApiError } from './errors'
 import { applyAuthorVariablePatch, mergeAuthorVariableState, type AuthorVariableState } from './variables'
 import type { AuthorVariableRule } from './scripts'
 import type { AuthorRequestOptions } from './variable-bindings'
-import { serializeAuthorJsonObject } from './json'
+import { serializeAuthorJsonObject, serializeAuthorJsonValue } from './json'
 export * from './scripts'
 export { createAuthorVariableBindings } from './variable-bindings'
 export type { AuthorVariablesRemote, AuthorVariableBinding, AuthorRequestOptions } from './variable-bindings'
@@ -14,6 +14,7 @@ export interface AuthorHostAdapter {
   isEventCurrent?(event: AuthorEventName, payload: unknown): boolean
   registerVariableRule?(rule: AuthorVariableRule): () => void
   registerButton?(button: { id: string; label: string; onClick(signal: AbortSignal): void | Promise<void> }): () => void
+  registerScriptHandler?(action: string, handler: (request: { dataJson: string; caller: AuthorScriptCaller; signal: AbortSignal }) => Promise<string>): () => void
   dispose?(): void
 }
 
@@ -91,6 +92,11 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
     if (method === 'script.setSettings' || method === 'script.setLibrarySettings') {
       const prototype = (global as AuthorApiWindow & { Object: typeof Object }).Object.prototype
       params = { ...params, settingsJson: serializeAuthorJsonObject(params.values, [prototype], 'INVALID_PARAMS') }
+    }
+    if (method === 'scripts.request') {
+      const prototype = (global as AuthorApiWindow & { Object: typeof Object }).Object.prototype
+      params = { target: JSON.parse(serializeAuthorJsonObject(params.target, [prototype], 'INVALID_PARAMS')), action: params.action,
+        dataJson: serializeAuthorJsonValue(params.data, [prototype], 'INVALID_PARAMS') }
     }
     if (method === 'audio.play') params = { ...params, track: resolveAudioTrack(params.track) }
     else if (['audio.setPlaylist', 'audio.appendPlaylist'].includes(method) && Array.isArray(params.items)) {
@@ -186,7 +192,8 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
     return { type: 'image', mediaType: source.mimeType || blob.type, name: source.name, data: global.btoa(binary) }
   }
 
-  function createApi(call: ElecKoiAuthorApi['call']): ElecKoiAuthorApi {
+  function createApi(call: ElecKoiAuthorApi['call'], invocationSignal?: AbortSignal): ElecKoiAuthorApi {
+    const assertInvocation = () => invocationSignal?.throwIfAborted()
     return Object.freeze<ElecKoiAuthorApi>({
     api: Object.freeze({ stage: 'preview', version: '0.1.0' }), call,
     app: Object.freeze<ElecKoiAuthorApi['app']>({ getInfo: () => call('app.getInfo'), getCapabilities: () => call('app.getCapabilities') }),
@@ -197,8 +204,42 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
       getLibrarySettings: () => call('script.getLibrarySettings'),
       setLibrarySettings: (values, expectedRevision) => call('script.setLibrarySettings', { values, expectedRevision })
     }),
+    scripts: Object.freeze<ElecKoiAuthorApi['scripts']>({
+      list: () => call('scripts.list'),
+      request: (target, action, data) => call('scripts.request', { target, action, data }),
+      registerHandler: (action, handler) => {
+        assertInvocation()
+        if (runtime.closed) throw new AuthorApiError('FRAME_CLOSED', '作者页面已经关闭')
+        if (!adapter?.registerScriptHandler) throw new AuthorApiError('SCRIPT_HANDLER_UNAVAILABLE', '只有运行中的原生脚本可以登记操作')
+        if (typeof action !== 'string' || !action.trim() || typeof handler !== 'function') {
+          throw new AuthorApiError('INVALID_PARAMS', '脚本操作需要非空操作名和处理函数')
+        }
+        const dispose = adapter.registerScriptHandler(action, async request => {
+          const invocation = new global.AbortController(), signal = invocation.signal
+          const cancelRequest = () => invocation.abort(request.signal.reason), cancelFrame = () => invocation.abort(lifetime.signal.reason)
+          request.signal.addEventListener('abort', cancelRequest, { once: true }); lifetime.signal.addEventListener('abort', cancelFrame, { once: true })
+          if (request.signal.aborted) cancelRequest()
+          if (lifetime.signal.aborted) cancelFrame()
+          const hostCall: ElecKoiAuthorApi['call'] = (method, params = {}) => dispatch(method, params, false, signal)
+          try {
+            signal.throwIfAborted()
+            const result = await handler({ api: createApi(hostCall, signal), signal,
+              caller: structuredClone(request.caller), data: JSON.parse(request.dataJson) })
+            signal.throwIfAborted()
+            return serializeAuthorJsonValue(result, [(global as AuthorApiWindow & { Object: typeof Object }).Object.prototype], 'INVALID_SCRIPT_RESULT')
+          } finally {
+            request.signal.removeEventListener('abort', cancelRequest); lifetime.signal.removeEventListener('abort', cancelFrame)
+            invocation.abort(new AuthorApiError('SCRIPT_REQUEST_FINISHED', '本次脚本操作已经结束'))
+          }
+        })
+        const stop = () => { if (ruleStops.delete(stop)) dispose() }
+        ruleStops.add(stop)
+        return stop
+      }
+    }),
     ui: Object.freeze<ElecKoiAuthorApi['ui']>({
       registerButton: button => {
+        assertInvocation()
         if (runtime.closed) throw new AuthorApiError('FRAME_CLOSED', '作者页面已经关闭')
         if (!adapter?.registerButton) throw new AuthorApiError('UI_UNAVAILABLE', '只有运行中的原生脚本可以注册聊天按钮')
         if (!button || typeof button.id !== 'string' || !button.id.trim() || typeof button.label !== 'string'
@@ -212,7 +253,7 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
           if (signal.aborted) cancelButton()
           if (lifetime.signal.aborted) cancelFrame()
           const hostCall: ElecKoiAuthorApi['call'] = (method, params = {}) => dispatch(method, params, false, invocationSignal)
-          return Promise.resolve().then(() => { invocationSignal.throwIfAborted(); return button.onClick({ api: createApi(hostCall), signal: invocationSignal }) }).finally(() => {
+          return Promise.resolve().then(() => { invocationSignal.throwIfAborted(); return button.onClick({ api: createApi(hostCall, invocationSignal), signal: invocationSignal }) }).finally(() => {
             signal.removeEventListener('abort', cancelButton); lifetime.signal.removeEventListener('abort', cancelFrame)
             invocation.abort(new AuthorApiError('BUTTON_FINISHED', '本次按钮回调已经结束'))
           })
@@ -229,6 +270,7 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
       setState: state => call('variables.setState', { state }), merge: state => call('variables.merge', { state }),
       applyPatch: patch => call('variables.applyPatch', { patch }), reset: () => call('variables.reset'),
       registerRule: rule => {
+        assertInvocation()
         if (runtime.closed) throw new AuthorApiError('FRAME_CLOSED', '作者页面已经关闭')
         if (!adapter?.registerVariableRule) throw new AuthorApiError('RULES_UNAVAILABLE', '当前页面没有安装原生作者变量规则服务')
         if (!rule || typeof rule.id !== 'string' || !rule.id.trim()
@@ -265,10 +307,6 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
       updateEntry: (id, changes) => call('settingLibrary.updateEntry', { id, changes }),
       updateEntries: updates => call('settingLibrary.updateEntries', { updates })
     }),
-    displayTemplates: Object.freeze<ElecKoiAuthorApi['displayTemplates']>({
-      read: scope => call('displayTemplates.read', { scope }),
-      save: library => call('displayTemplates.save', { library }),
-    }),
     editorVersions: Object.freeze<ElecKoiAuthorApi['editorVersions']>({
       read: (kind, scope) => call('editorVersions.read', { kind, scope }),
       save: (kind, documents, versions) => call('editorVersions.save', { kind, documents, versions }),
@@ -298,7 +336,9 @@ export function installElecKoiAuthorApi(global: AuthorApiWindow, adapter = globa
       get: () => call('input.get'), set: text => call('input.set', { text }), append: text => call('input.append', { text }),
       clear: () => call('input.clear'), send: () => call('input.send')
     }),
-    events: Object.freeze<ElecKoiAuthorApi['events']>({ list: () => call('events.list'), on, off })
+    events: Object.freeze<ElecKoiAuthorApi['events']>({ list: () => call('events.list'),
+      on: (name, listener) => { assertInvocation(); return on(name, listener) },
+      off: (name, listener) => { assertInvocation(); return off(name, listener) } })
     })
   }
   const api = createApi(dispatch)

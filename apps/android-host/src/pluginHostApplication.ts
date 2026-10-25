@@ -1,13 +1,14 @@
 import { timingSafeEqual } from 'node:crypto'
 import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles } from '@deepseek-ai/dsh-app-boot'
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
+import { retireDeepSeekExtensionSelection } from '@eleckoi/dsh-client-web-search/profile'
 import { ELECKOI_INSTALL_ANCHOR } from './androidPluginBundles'
 import { repairRequestContextLogs } from '@eleckoi/dsh-runtime'
 import { recoverStartupSessions } from '@eleckoi/dsh-runtime'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-gateway'
 import type {} from '@deepseek-ai/dsh-jobs'
-import type {} from '@deepseek-ai/dsh-client-connection'
+import { Peer } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@eleckoi/dsh-product-api'
 import type { ParentHostMessage } from './hostSessionProtocol'
@@ -31,6 +32,7 @@ export interface PluginHostApplication {
 
 /** Shared application boot: transports own process IO, all product services stay here. */
 export async function startPluginHostApplication(options: PluginHostApplicationOptions): Promise<PluginHostApplication> {
+  await retireDeepSeekExtensionSelection(options.profileDirectory)
   if (process.env.DSH_SESSION_ROOT) await repairRequestContextLogs(process.env.DSH_SESSION_ROOT)
   const profile = loadProfileDirectory('dsh', options.profileDirectory, ELECKOI_INSTALL_ANCHOR)
   reportSkippedBundles('dsh', profile)
@@ -50,11 +52,13 @@ export async function startPluginHostApplication(options: PluginHostApplicationO
     const { ctx } = running
     if (options.clientDirectory) await installWebClientAssets(ctx, options.clientDirectory)
     installProductMediaAssets(ctx)
+    const startupPeer = new Peer(ctx.root, { principal: { kind: 'owner' } })
     const remoteStatus = await ctx.typertGateway.invoke({
+      peer: startupPeer,
       namespace: 'eleckoiSystem',
       method: 'status',
       args: {}
-    }) as { architecture?: unknown; protocolVersion?: unknown }
+    }).finally(() => startupPeer.dispose()) as { architecture?: unknown; protocolVersion?: unknown }
     if (remoteStatus.architecture !== 'dsh-remote' || remoteStatus.protocolVersion !== 1) {
       throw new DesktopError(ELECKOI_FAILURE_CODES.pluginLoadFailed, 'ElecKoi DSH Remote Host 协议未正确装载。', { what: 'ElecKoi DSH Remote Host 协议' })
     }

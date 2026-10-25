@@ -121,9 +121,9 @@ describe('NAI preset illustration', () => {
         settingsCtx.provide('settings', { describe: () => [{ ns: 'eleckoi-client-models', value: { entries: { 'image-a': entry } } }] });
       } });
       const images = createNovelAiImageGeneration(ctx); ctx.provide('eleckoiImageGeneration', images);
-      await ctx.plugin(imageTool, { configId: 'image-a' });
       ctx.llm.registerAdapter(['synthetic'], new Adapter());
-      const handle = await ctx.agents.create({ sessionId: SessionId(sessionId), agentOptions: { provider: 'synthetic', model: 'synthetic' } });
+      const handle = await ctx.agents.create({ sessionId: SessionId(sessionId), agentOptions: { provider: 'synthetic', model: 'synthetic' },
+        setup: async owner => { await owner.plugin(imageTool, { configId: 'image-a' }); } });
       ctx.on('agent/assistant-stream', event => {
         if (!bodyStreamed && event.frame.type === 'chunk' && event.frame.chunk.type === 'text-delta' && event.frame.chunk.text.includes('<FINAL>')) {
           bodyStreamed = true;
@@ -169,6 +169,17 @@ describe('NAI preset illustration', () => {
       expect((requests[1].tools || []).some(tool => tool.name === 'generate_image')).toBe(false);
       expect(JSON.stringify(requests[1].messages)).not.toContain('当前角色对话已启用每轮自动配图');
       expect(remote.requests).toHaveLength(1);
+      const peer = await ctx.agents.create({ sessionId: SessionId('synthetic-independent-studio'), agentOptions: { provider: 'synthetic', model: 'synthetic' } });
+      peer.agent.followup(createUserMessage({ content: [{ type: 'text', text: '合成独立会话请求' }], source: { kind: 'user' } }));
+      await peer.agent.whenIdle();
+      expect(peer.agent.session.snapshotEvents().findLast(event => event.type === 'turn/end').data.reason).toEqual({ kind: 'completed' });
+      expect(requests).toHaveLength(3);
+      expect(remote.requests).toHaveLength(1);
+      rmSync(join(snapshotRoot, `${sessionId}.json`));
+      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: '合成所属会话缺失快照' }], source: { kind: 'user' } }));
+      await handle.agent.whenIdle();
+      expect(handle.agent.session.snapshotEvents().findLast(event => event.type === 'turn/end').data.reason).toMatchObject({ kind: 'error', error: { message: expect.stringContaining('ENOENT') } });
+      expect(requests).toHaveLength(3);
       images.close();
     } finally { await ctx.fiber.dispose(); }
   }, 30000);

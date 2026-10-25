@@ -19,6 +19,7 @@ export default defineConfig({
       '@eleckoi/dsh-product-data/media': resolve('packages/host/product-data/src/storage/media/index.ts'),
       '@eleckoi/dsh-product-data/variables': resolve('packages/host/product-data/src/domain/variables/variableSchema.ts'),
       '@eleckoi/dsh-product-data/frontends': resolve('packages/host/product-data/src/domain/frontends/index.ts'),
+      '@eleckoi/dsh-product-data/regex': resolve('packages/host/product-data/src/regex-ejs.ts'),
       '@eleckoi/dsh-product-data': resolve('packages/host/product-data/src/index.ts'),
       '@eleckoi/desktop-host': resolve('apps/desktop-host/src/index.ts'),
       '@eleckoi/dsh-runtime': resolve('packages/host/runtime/src/index.ts')

@@ -1,3 +1,4 @@
+import { restoreEditorSchemaV12 } from './helpers/editorSchemaV12'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -9,7 +10,6 @@ import { commonTables } from '../src/storage/sqlite/schema/common'
 import { BASELINE_ID, CURRENT_SCHEMA_VERSION, installSchema } from '../src/storage/sqlite/installSchema'
 import { schemaV10Sql, restoreV10PresetFixture } from './helpers/presetSchemaV10'
 import { commonSchemaSql } from '../src/storage/sqlite/migrations/commonSchemaSql'
-import { restoreLegacyConversationStorage } from './helpers/conversationStorageV11'
 import { ConversationRepository } from '../src/domain/conversations/ConversationRepository'
 import { MessageRepository } from '../src/domain/conversations/MessageRepository'
 import { CharacterRepository } from '../src/domain/personas/CharacterRepository'
@@ -54,33 +54,25 @@ function card(id = 'card-a') {
 
 const unreleasedGenerationTableSql = 'CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )'
 
-describe('global display template schema migration', () => {
-  it('preserves v11 character data and adds shared display and version storage across reopen', () => {
-    const { path, database, characters } = harness()
+describe('retired display template storage removal', () => {
+  it('removes only standalone template records from v12 and preserves regex, script and character data across reopen', () => {
+    const { database, characters } = harness()
     characters.replaceAll({ active_character_id: 'synthetic-character', groups: [], items: [card('synthetic-character')] })
-    database.close()
-    const legacy = new Database(path)
-    restoreLegacyConversationStorage(legacy)
-    legacy.exec('DROP TABLE display_template_libraries; DROP TABLE editor_library_versions')
-    legacy.pragma('user_version = 11')
-    const before = legacy.prepare('SELECT * FROM characters').all()
-    legacy.close()
-    const upgraded = new SqliteDatabase(path)
-    upgraded.open()
-    try {
-      expect(upgraded.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(upgraded.native.prepare('SELECT * FROM characters').all()).toEqual(before)
-      expect(upgraded.native.prepare('SELECT * FROM display_template_libraries').all()).toEqual([])
-      expect(upgraded.native.prepare('SELECT * FROM editor_library_versions').all()).toEqual([])
-      upgraded.native.prepare('INSERT INTO display_template_libraries VALUES (?, ?, ?, ?, ?, ?, ?)').run('global', '', null, null, 0, 1, '[]')
-      expect(() => upgraded.native.prepare('INSERT INTO display_template_libraries VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run('global', 'synthetic-invalid-owner', null, null, 0, 0, '[]')).toThrow()
-      expect(upgraded.native.pragma('foreign_key_check')).toEqual([])
-      expect(upgraded.native.pragma('integrity_check', { simple: true })).toBe('ok')
-    } finally { upgraded.close() }
-    upgraded.open()
-    try { expect(upgraded.native.prepare('SELECT revision FROM display_template_libraries WHERE scope = ?').get('global')).toEqual({ revision: 1 }) }
-    finally { upgraded.close() }
+    restoreEditorSchemaV12(database.native)
+    database.native.prepare('INSERT INTO display_template_libraries VALUES (?, ?, ?, ?, ?, ?, ?)').run('global', '', null, null, 1, 2, '[{"id":"synthetic-retired","source":"<%= 12 %>"}]')
+    for (const kind of ['regex', 'scripts', 'displayTemplates']) database.native.prepare('INSERT INTO editor_library_versions VALUES (?,?,?,?,?,?,?)').run(kind, 'global', '', null, null, 4, JSON.stringify({ synthetic: kind }))
+    const before = productRecords(database.native)
+    database.close(); database.open()
+    const after = productRecords(database.native)
+    const { display_template_libraries: _retired, editor_library_versions: versions, ...records } = before
+    expect(after).toEqual({ ...records, editor_library_versions: versions!.filter((row: any) => row.kind !== 'displayTemplates') })
+    expect(database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+    expect(database.native.prepare("SELECT 1 FROM sqlite_master WHERE name='display_template_libraries'").get()).toBeUndefined()
+    expect(() => database.native.prepare('INSERT INTO editor_library_versions VALUES (?,?,?,?,?,?,?)').run('displayTemplates', 'global', '', null, null, 0, '{}')).toThrow()
+    database.close(); database.open()
+    expect(productRecords(database.native)).toEqual(after)
+    expect(database.native.pragma('foreign_key_check')).toEqual([])
+    expect(database.native.pragma('integrity_check', { simple: true })).toBe('ok')
   }, 30_000)
 })
 
@@ -105,7 +97,7 @@ describe('unreleased database baseline consolidation', () => {
       expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
       expect(reopened.native.prepare('SELECT * FROM script_libraries').all()).toEqual([])
       expect(reopened.native.prepare("SELECT 1 FROM sqlite_master WHERE name='conversation_generation_results'").get()).toBeUndefined()
-      expect(productRecords(reopened.native)).toEqual({ ...before, display_template_libraries: [], editor_library_versions: [], regex_libraries: [] })
+      expect(productRecords(reopened.native)).toEqual({ ...before, editor_library_versions: [], regex_libraries: [] })
       expect(new ConversationRepository(reopened).get(conversationId).title).toBe('合成迁移聊天')
       expect(JSON.parse(new VariableStateRepository(reopened, new VariableConfigRepository(reopened)).viewerStates(conversationId).currentStateJson)).toEqual({ score: 7 })
       expect(reopened.native.pragma('foreign_key_check')).toEqual([])
@@ -114,7 +106,7 @@ describe('unreleased database baseline consolidation', () => {
     reopened.open()
     try {
       expect(reopened.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
-      expect(productRecords(reopened.native)).toEqual({ ...before, display_template_libraries: [], editor_library_versions: [], regex_libraries: [] })
+      expect(productRecords(reopened.native)).toEqual({ ...before, editor_library_versions: [], regex_libraries: [] })
     } finally { reopened.close() }
   }, 30_000)
 
@@ -357,7 +349,7 @@ describe('shared SQLite baseline', () => {
         expect(database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
         expect((database.native.pragma('table_info(chat_sessions)') as { name: string }[]).map(column => column.name))
           .not.toContain('historyUserMessageCount')
-        expect(productRecords(database.native)).toEqual({ ...expected!, display_template_libraries: [], editor_library_versions: [], regex_libraries: [] })
+        expect(productRecords(database.native)).toEqual({ ...expected!, editor_library_versions: [], regex_libraries: [] })
         expect(database.native.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='chat_sessions' ORDER BY name").all())
           .toEqual([
             { name: 'index_chat_sessions_characterId' },

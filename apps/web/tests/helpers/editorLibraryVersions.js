@@ -3,8 +3,7 @@ export function editorVersionsFixture(kind, read, write, subscribe = () => () =>
   const states = new Map();
   const content = (scope, document) => JSON.stringify(kind === 'scripts'
     ? { enabled: document.enabled, trees: document.trees, variables: document.variables, files: [] }
-    : kind === 'displayTemplates' ? { enabled: document.enabled, templates: document.templates }
-      : { enabled: document[scope === 'global' ? 'globalEnabled' : scope === 'preset' ? 'agentPresetEnabled' : 'characterEnabled'] !== false,
+    : { enabled: document[scope === 'global' ? 'globalEnabled' : scope === 'preset' ? 'agentPresetEnabled' : 'characterEnabled'] !== false,
         rules: scope === 'global' ? document.globalRules : scope === 'preset' ? document.agentPresetRules : document.characterRules });
   return {
     subscribe,

@@ -1,3 +1,4 @@
+import * as zod from 'zod';
 // @vitest-environment jsdom
 import React, { act } from 'react';
 import * as jsxRuntime from 'react/jsx-runtime';
@@ -15,7 +16,7 @@ const start = client.indexOf('factory: (require) => {') + 'factory: (require) =>
 const end = client.lastIndexOf('return module.exports;');
 if (start < 25 || end < start) throw new Error('Locked conversation module factory changed');
 const primitives = new Proxy({}, { get: (_target, key) => key === 'Tooltip' ? ({ children }) => children : () => null });
-const dependencies = { react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': ReactDOM,
+const dependencies = { zod, react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': ReactDOM,
   '@deepseek-ai/cordis': Cordis, '@deepseek-ai/dsh-client-ui-primitives': primitives,
   '@deepseek-ai/dsh-client-store': {}, '@deepseek-ai/dsh-client-ui-slots': {} };
 const { DraftEditorRuntime, InputBar, enter, paragraph, registerPlainText, readText } = new Function('require',

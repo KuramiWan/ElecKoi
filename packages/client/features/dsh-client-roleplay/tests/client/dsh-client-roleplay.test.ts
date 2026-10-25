@@ -44,10 +44,24 @@ describe('ElecKoi roleplay client contribution', () => {
     const injectBody = () => ({})
     const releaseHeader = slots.register({ name: 'conversation.session.header', store, inject: injectHeader, locale: 'conversation' }, () => null)
     const releaseBody = slots.register({ name: 'conversation.session', store, inject: injectBody, children: {
-      'conversation.view': { kind: 'list', scope: 'session' }
+      'conversation.chat.user.images': { kind: 'single', scope: 'session' },
+        'conversation.chat.message.images': { kind: 'single', scope: 'session' },
+        'conversation.view': { kind: 'list', scope: 'session' }
     } }, () => null)
     await Promise.resolve()
-    const releaseChat = slots.register({ name: 'conversation.view', id: 'chat', order: 0, label: () => '对话' }, () => null)
+    const releaseChat = slots.register({ name: 'conversation.view', id: 'chat', order: 0, label: () => '对话', children: {
+      'conversation.chat.flow': { kind: 'single', scope: 'session' }
+    } }, () => null)
+    const releaseFlow = slots.register({ name: 'conversation.chat.flow', children: {
+      'conversation.chat.before': { kind: 'single', scope: 'session' },
+      'conversation.chat.pending-input': { kind: 'single', scope: 'session' },
+      'conversation.chat.node': { kind: 'keyed', scope: 'session' }
+    } }, () => null)
+    await Promise.resolve()
+    expect(slots.entriesOfSlot('eleckoi.roleplay.chat.flow')).toHaveLength(1)
+    expect(slots.entriesOfSlot('eleckoi.roleplay.view.conversation.chat.flow')).toHaveLength(1)
+    expect(slots.spec('eleckoi.roleplay.chat.before')).toBeDefined()
+    expect(slots.spec('eleckoi.roleplay.view.conversation.chat.before')).toBeDefined()
     const releaseCustom = slots.register({ name: 'conversation.view', id: 'sample-view', order: 5, label: () => '示例视图',
       children: { 'sample-view.controls': { kind: 'list', scope: 'session' } },
       store: () => null, inject: () => ({ hooks: {} }),
@@ -84,7 +98,8 @@ describe('ElecKoi roleplay client contribution', () => {
     let preferred = 'sample-view'
     const useStore = (select: any) => select({ view: preferred, viewRequest: { view: 'sample-view', focus: 'sample-focus' } })
     const selectView = (id: string) => { preferred = id }
-    const headerProps = { matched, useConversationViews, useStore, selectView }
+    const headerProps = { matched, useConversationViews, useStore, selectView,
+      useEntryPins: (select: any) => select([]), useEntryActions: (select: any) => select(false), setPinned() {} }
     const headerNode = header.component(headerProps)
     const selected = headerNode.type(headerNode.props)
     expect(selected.owner.navigation.tabs.map((tab: any) => tab.id)).toEqual(['chat', 'sample-view', 'trajectory'])
@@ -116,6 +131,7 @@ describe('ElecKoi roleplay client contribution', () => {
     await Promise.resolve()
     expect(slots.entriesOfSlot('eleckoi.roleplay.session.body')).toHaveLength(0)
     expect(slots.entriesOfSlot('eleckoi.roleplay.session.header')).toHaveLength(0)
+    releaseFlow()
     releaseChat()
     releaseTrajectory()
     for (const dispose of disposers.reverse()) dispose()
@@ -353,15 +369,20 @@ describe('ElecKoi roleplay client contribution', () => {
     const chatInject = () => ({ useChatNode: () => null })
     const chatStore = () => null
     const nodeInject = () => ({ useTurnData: () => null })
-    const releaseChat = slots.register({
+    const releaseChatView = slots.register({
       name: 'conversation.view', id: 'chat', inject: chatInject, store: chatStore, locale: 'chat',
       children: {
+        'conversation.chat.flow': { kind: 'single', scope: 'session' },
+      },
+    }, officialChat)
+    const releaseFlow = slots.register({ name: 'conversation.chat.flow',
+      children: {
         'conversation.chat.node': { kind: 'keyed', scope: 'session', inject: nodeInject },
-        'conversation.message.images': { kind: 'single', scope: 'session' },
         'conversation.chat.before': { kind: 'single', scope: 'session' },
         'conversation.chat.pending-input': { kind: 'single', scope: 'session' },
       },
     }, officialChat)
+    const releaseChat = () => { releaseFlow(); releaseChatView() }
     await Promise.resolve()
 
     const typeDeclarations = [...slotTypes.matchAll(/'([^']+)':\s*\{\s*kind:\s*'([^']+)'\s*scope:\s*'([^']+)'/g)]
@@ -496,10 +517,10 @@ describe('ElecKoi roleplay client contribution', () => {
       type: extensionDock,
       props: { session: { id: 's1' }, input: { text: 'draft' } }
     })
-    const releaseStats = slots.register({ name: 'conversation.composer.dock', id: 'stats' }, extensionDock)
+    const releaseStats = slots.register({ name: 'conversation.composer.dock', id: 'usage' }, extensionDock)
     await Promise.resolve()
     const statsEntry = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')
-      .find((entry: any) => entry.options.id === 'dsh:conversation.composer.dock:stats')
+      .find((entry: any) => entry.options.id === 'dsh:conversation.composer.dock:usage')
     expect(statsEntry).toBeDefined()
     let statsAvailable = true
     const statsProjection = (key: string) => !statsAvailable ? null : key === 'sessionStats'
@@ -560,7 +581,7 @@ describe('ElecKoi roleplay client contribution', () => {
     expect(renderedChat.type).toBe(officialChat)
     expect(renderedChat.props.useChatNode).toBe(useChatNode)
     expect(renderedChat.props.usePresentation((value: any) => value)).toEqual({
-      foldCompletedTurns: false, stepGrouping: 'expanded', showImages: true,
+      foldCompletedTurns: false, stepGrouping: 'none', showImages: true,
     })
     expect(renderedChat.props.renderSlot('conversation.chat.node', { node: { kind: 'user' } }, {})).toBe('roleplay-input')
     expect(renderedChat.props.renderSlot('conversation.chat.node', { node: { kind: 'turn-process' } }, {})).toBeNull()

@@ -4,6 +4,7 @@ import { Avatar } from "../../../../ui/ui/Avatar.jsx";
 import logoIcon from "../../../../assets/eleckoi-app-icon.png";
 import { DshPanelLeftIcon } from "../../../../ui/icons/dshComposerIcons.jsx";
 import { ElecKoiWordmark } from "../../../../ui/icons/ElecKoiWordmark.jsx";
+import { DshEntryActionsMenu } from '../../../../ui/ui/DshEntryActionsMenu.jsx';
 
 function RailIconButton({ label, active, onClick, icon, productIcon, expanded }) {
   function handleClick() {
@@ -68,7 +69,7 @@ function RailSettingsButton({ active, onOpenSettings, expanded }) {
   );
 }
 
-export function SidebarRail({ activeSection, navigationItems = [], renderSidebarSlot, profileActive, onSectionChange, onNavigationAction, persona, onOpenProfile, onOpenSettings, expanded = false, compactAccount = false, onCollapse, footerActions }) {
+export function SidebarRail({ activeSection, navigationItems = [], renderEntryActions, renderSidebarSlot, profileActive, onSectionChange, onNavigationAction, persona, onOpenProfile, onOpenSettings, expanded = false, compactAccount = false, onCollapse, footerActions }) {
   const brand = <span className="rail-brand-seat" aria-hidden="true">
     {renderSidebarSlot?.("sidebar.brand.mark", { size: 30, content: <img src={logoIcon} alt="" draggable="false" /> }) || <img src={logoIcon} alt="" draggable="false" />}
     {renderSidebarSlot?.("sidebar.toggle.badge", {})}
@@ -99,6 +100,7 @@ export function SidebarRail({ activeSection, navigationItems = [], renderSidebar
       {!expanded && brand}
       <div className="rail-nav-group">
         {navigationItems.map(renderItem)}
+        {renderEntryActions ? <DshEntryActionsMenu region="sidebar" className="rail-nav-button is-plugin-icon" showLabel={expanded} renderActions={renderEntryActions} /> : null}
       </div>
       <div className="rail-bottom-zone">
         {footerActions && <div className="rail-footer-actions" aria-label="侧边栏插件操作">{footerActions}</div>}

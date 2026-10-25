@@ -1,3 +1,5 @@
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
+import { ownerPeer } from '../../../../tests/support/owner-peer.js'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -33,6 +35,7 @@ it('serves registered modules and relative resources through the actual Host, Re
   await ctx.plugin(productDataPlugin)
   const feed = new CharacterConfigurationChangeFeed()
   ctx.provide('eleckoiCharacterConfigurationChanges', feed); cleanups.push(() => feed.close())
+  await ctx.plugin(RemoteAccessService)
   await ctx.plugin(TypertGatewayService)
   await ctx.plugin(ElecKoiCharacterConfigurationApi)
   const processor = new ElecKoiVariableProcessing(ctx.eleckoiProductData)
@@ -45,27 +48,27 @@ it('serves registered modules and relative resources through the actual Host, Re
     trees: [{ type: 'script', id: 'synthetic-script', name: 'Synthetic script', enabled: true,
       content: "import { derive } from '../helpers/derive.js'; export default () => derive(2);", info: '', data: {},
       button: { enabled: false, buttons: [] }, export_with: { data: true, button: true }, runtime: { kind: 'eleckoi-module', apiVersion: 1 } }], variables: {} })
-  const workspace = () => ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'readScriptWorkspace',
+  const workspace = () => ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method: 'readScriptWorkspace',
     args: { scope: 'character', ownerId: 'synthetic-character' } }) as Promise<{ path: string; version: string; entries: Array<{ id: string; file: string }> }>
   const before = await workspace()
   mkdirSync(join(before.path, 'helpers'))
   writeFileSync(join(before.path, 'helpers', 'derive.js'), 'export const derive = n => n * 2;')
   const ready = await workspace(), base = `http://127.0.0.1:${ctx.webServer.port}/eleckoi/scripts/character/synthetic-character/${ready.version}`
-  const catalog = () => ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorScripts', method: 'read', args: { conversationId } }) as Promise<NativeAuthorScriptCatalog>
+  const catalog = () => ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorScripts', method: 'read', args: { conversationId } }) as Promise<NativeAuthorScriptCatalog>
   const loaded = await catalog()
   expect(loaded.scripts).toHaveLength(1)
   expect(loaded.scripts[0]).toMatchObject({ scope: 'character', ownerId: 'synthetic-character', id: 'synthetic-script',
     entryUrl: `/eleckoi/scripts/character/synthetic-character/${ready.version}/${ready.entries[0]!.file}` })
   const identity = { scope: 'character', ownerId: 'synthetic-character', scriptId: 'synthetic-script' }
-  const settings = await ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorScripts', method: 'getSettings',
+  const settings = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorScripts', method: 'getSettings',
     args: { conversationId, version: loaded.version, identity, target: 'script' }, signal: new AbortController().signal }) as any
-  const saved = await ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorScripts', method: 'setSettings',
+  const saved = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorScripts', method: 'setSettings',
     args: { conversationId, version: loaded.version, identity, target: 'script', settingsJson: '{"amount":3}', expectedRevision: settings.revision },
     signal: new AbortController().signal })
   expect(saved).toEqual({ revision: settings.revision + 1, values: { amount: 3 } })
   expect((await workspace()).version).toBe(ready.version); expect((await catalog()).version).toBe(loaded.version)
   expect(ctx.eleckoiProductData.readScriptLibrary('character', 'synthetic-character').trees[0]!.data).toEqual({ amount: 3 })
-  const callSettings = (changes: object, signal = new AbortController().signal) => ctx.typertGateway.invoke({
+  const callSettings = (changes: object, signal = new AbortController().signal) => ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
     namespace: 'eleckoiAuthorScripts', method: 'setSettings', args: { conversationId, version: loaded.version, identity,
       target: 'script', settingsJson: '{"amount":9}', expectedRevision: settings.revision, ...changes }, signal })
   await expect(callSettings({})).rejects.toThrow('重新读取')
@@ -87,7 +90,7 @@ it('serves registered modules and relative resources through the actual Host, Re
   expect((await fetch(`${base}/helpers/derive.js`, { method: 'POST' })).status).toBe(405)
   expect((await fetch(`${base}/%ZZ`)).status).toBe(400)
   const abort = new AbortController(); cleanups.push(() => abort.abort())
-  const changes = await ctx.typertGateway.stream({ namespace: 'eleckoiCharacterConfiguration', method: 'changes', args: {}, signal: abort.signal })
+  const changes = await ctx.typertGateway.stream({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method: 'changes', args: {}, signal: abort.signal })
   const iterator = changes[Symbol.asyncIterator]()
   expect((await iterator.next()).value).toEqual({ kind: 'snapshot' })
   writeFileSync(join(before.path, 'helpers', 'derive.js'), 'export const derive = n => n * 3;')

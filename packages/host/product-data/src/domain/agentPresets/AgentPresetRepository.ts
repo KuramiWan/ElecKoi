@@ -10,7 +10,6 @@ import {
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
 import type { LocalMediaStore } from '@product-data/storage/media/LocalMediaStore'
 import { ScriptLibraryRepository } from '@product-data/domain/scripts'
-import { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
 import { characterExists } from '@product-data/domain/personas'
 import { agentPresetExists } from './agentPresetLookup'
 import {
@@ -119,7 +118,6 @@ export class AgentPresetRepository {
     private readonly store: ElecKoiSqliteStore,
     private readonly mediaAssets?: LocalMediaStore,
     private readonly scripts = new ScriptLibraryRepository(store, { character: characterExists, preset: agentPresetExists }),
-    private readonly displayTemplates = new DisplayTemplateRepository(store, { character: characterExists, preset: agentPresetExists })
   ) {}
 
   ensureInitialized(): void {
@@ -501,7 +499,6 @@ export class AgentPresetRepository {
         }
       })
       if (decoded.scriptLibrary) this.scripts.importInTransaction('preset', created.id, decoded.scriptLibrary, db)
-      if (decoded.displayTemplates) this.displayTemplates.import('preset', created.id, decoded.displayTemplates)
       return agentPresetImportResultSchema.parse({
         preset: imported,
         source: decoded.source,
@@ -523,7 +520,6 @@ export class AgentPresetRepository {
     const avatar = portableAvatar(preset.profile.authorAvatarPath, this.mediaAssets)
     const json = encodeElecKoiAgentPreset(preset, {
       scriptLibrary: this.scripts.portable('preset', presetId),
-      displayTemplates: this.displayTemplates.portable('preset', presetId),
       ...(avatar ? { authorAvatar: avatar.transfer } : {}),
       versions: this.transferVersions(presetId)
     })

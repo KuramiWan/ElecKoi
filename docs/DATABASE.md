@@ -8,8 +8,8 @@
 - 数据库文件：Electron `userData/eleckoi-common.sqlite3`，路径由桌面壳作为 Host 启动参数传入。
 - SQLite 打开、迁移、恢复和所有 Repository 写入均位于 `packages/host/product-data/src`。Electron Main、Client 和 Renderer 不打开数据库。
 - 公共 SQL：`apps/desktop/resources/database/eleckoi-common-schema-v1.sql`。
-- 当前 `PRAGMA user_version`：`12`。
-- 当前结构：47 张业务表、2 个视图；数据库物理结构版本只使用 SQLite `PRAGMA user_version`。
+- 当前 `PRAGMA user_version`：`13`。
+- 当前结构：46 张业务表、2 个视图；数据库物理结构版本只使用 SQLite `PRAGMA user_version`。
 
 `pnpm db:generate` 从固定 SQL 生成内嵌迁移 SQL与 Drizzle 查询映射；`pnpm check:database-schema` 校验生成内容。SQL 是公共结构权威，Drizzle 映射不反向生成迁移。
 
@@ -38,7 +38,7 @@
 
 当前产品数据库没有挂载 `@deepseek-ai/dsh-storage-sqlite`。该官方包是 Host 侧文档型 KV 后端，每个键对应一行 JSON；`@deepseek-ai/dsh-storage-domain` 在其上提供 schema 校验、写入串行化和 `domain/changed` 事件。它适合简单、独立、按键读写的领域状态。
 
-ElecKoi 当前 47 张产品表需要关系、外键、排序、搜索、跨表事务和从 v1 连续迁移到当前版本。锁定版本的 DSH Storage 不提供二级索引、跨表事务或自动迁移，因此不替代这套关系型产品库。两者遵守同一所有权边界：只在 DSH Host 打开，Client 通过正式 Remote 调用；新增简单 KV 领域时先评估 `ctx.storageDomain`，新增关系型领域则进入本产品库并维护迁移链。聊天正文与轨迹仍由 DSH Session 持久化，查询索引由官方 `dsh-session-query-sqlite` 负责。
+ElecKoi 当前 46 张产品表需要关系、外键、排序、搜索、跨表事务和从 v1 连续迁移到当前版本。锁定版本的 DSH Storage 不提供二级索引、跨表事务或自动迁移，因此不替代这套关系型产品库。两者遵守同一所有权边界：只在 DSH Host 打开，Client 通过正式 Remote 调用；新增简单 KV 领域时先评估 `ctx.storageDomain`，新增关系型领域则进入本产品库并维护迁移链。聊天正文与轨迹仍由 DSH Session 持久化，查询索引由官方 `dsh-session-query-sqlite` 负责。
 
 角色扮演的下一轮模型请求从 Session 投影：旧轮次只携带用户输入和角色最终正文，旧推理、工具过程与 Provider replay state 不再发送；当前轮次流程完整保留。该投影不会删除历史轨迹。编辑、删除、回退和重新生成保持同一聊天与 Session ID。
 
@@ -115,8 +115,10 @@ ElecKoi 当前 47 张产品表需要关系、外键、排序、搜索、跨表�
 
 ## 验证
 
-- `pnpm check:database-schema`：44 张公共表、2 个视图与生成文件一致。
-- `pnpm test`：覆盖 v1 至 v11 迁移、未发布开发库整理、失败回滚、外键、重启持久化、角色与媒体、设定、变量、正则、预设、脚本库、聊天索引和 Remote 写入。
-- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 47 张业务表、2 个视图、`user_version = 12`、冗余列缺失、外键和完整性。
+- `pnpm check:database-schema`：46 张公共表、2 个视图与生成文件一致。
+- `pnpm test`：覆盖 v1 至 v13 迁移、未发布开发库整理、失败回滚、外键、重启持久化、角色与媒体、设定、变量、正则、预设、脚本库、聊天索引和 Remote 写入。
+- `pnpm rebuild:electron && pnpm check:electron-sqlite`：使用 Electron 的真实原生 SQLite ABI 创建公共结构，核对 46 张业务表、2 个视图、`user_version = 13`、冗余列缺失、外键和完整性。
 
 架构决策见 [ADR 0018](adr/0018-dsh-host-owns-product-data.md)。
+
+数据库 v12→v13 删除独立显示模板表及其编辑器版本；正则与脚本版本逐行保留。旧模板不转换为正则，运行时不提供旧配置读写入口。历史升级步骤保留以支持受支持数据库连续升级。

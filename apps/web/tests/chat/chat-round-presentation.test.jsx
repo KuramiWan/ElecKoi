@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { TurnNavigator, mergeTurnRailItems, StatsPills, ChatView, chatFixture, userNode } from '../helpers/officialChatView.jsx'
+import { TurnNavigator, mergeTurnRailItems, ActivityPill, ChatView, chatFixture, userNode } from '../helpers/officialChatView.jsx'
 import { createInputRoundIndex, presentChatTurnNavigation, adaptChatSessionStats } from '../helpers/roleplayPresentation.js'
 import { inputContinuationsProjection } from '../../../../packages/client/features/dsh-client-roleplay/src/host/input-continuations-projection.mjs'
 import { historyStatsProjection } from '../../../../packages/client/features/dsh-client-roleplay/src/host/history-stats-projection.mjs'
@@ -103,7 +103,7 @@ describe('chat rounds presented by native DSH components', () => {
     const upstream = { turns: 6, steps: 12, llmMs: 0, toolMs: 0, ttftSteps: 0, decodeMs: 1000, decodeTokens: 200 }
     const stats = adaptChatSessionStats(upstream, { steps: 3 }, createInputRoundIndex(identities))
     try {
-      await act(async () => root.render(<StatsPills usePerformanceUsage={select => select('full')}
+      await act(async () => root.render(<ActivityPill usePerformanceUsage={select => select('full')}
         useChat={select => select({ legacy: { nodes: [] } })} useProjection={key => key === 'sessionStats' ? stats : undefined} t={translate} />))
       expect(host.textContent).toContain('3 轮 9 步')
       expect(host.textContent).toContain('200 tok/s')

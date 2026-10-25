@@ -22,7 +22,6 @@ import type { ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteData
 import type { CharacterRepository } from '@product-data/domain/personas'
 import type { LocalMediaStore } from '@product-data/storage/media/LocalMediaStore'
 import { ScriptLibraryRepository } from '@product-data/domain/scripts'
-import { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
 import { agentPresetExists } from '@product-data/domain/agentPresets'
 import { characterExists } from '@product-data/domain/personas'
 import {
@@ -62,7 +61,6 @@ export class CharacterTransferService {
     private readonly regexRules: RegexRuleRepository,
     private readonly mediaAssets?: LocalMediaStore,
     private readonly scripts = new ScriptLibraryRepository(store, { character: characterExists, preset: agentPresetExists }),
-    private readonly displayTemplates = new DisplayTemplateRepository(store, { character: characterExists, preset: agentPresetExists })
   ) {}
 
   export(characterId: string, format: CharacterExportFormat): CharacterExportResult {
@@ -92,7 +90,6 @@ export class CharacterTransferService {
       },
       assets,
       scriptLibrary: this.scripts.portable('character', characterId),
-      displayTemplates: this.displayTemplates.portable('character', characterId),
       settingLibraryJson: encodeSettingLibrarySnapshot(this.settingLibraries.get(characterId)),
       variableConfigJson: encodeVariableConfigSnapshot(this.variables.get(characterId)),
       regexRules: this.regexRules.get(characterId).characterRules
@@ -213,7 +210,6 @@ export class CharacterTransferService {
       this.scripts.transaction((db) => {
         this.characters.createInTransaction(this.characterRecord(characterId, decoded), db)
         if (scripts) this.scripts.importInTransaction('character', characterId, scripts, db)
-        if (decoded.packageData.displayTemplates) this.displayTemplates.import('character', characterId, decoded.packageData.displayTemplates)
         const library = this.importedLibrary(characterId, decoded)
         const variables = this.importedVariables(characterId, decoded)
         if (variables) this.variables.restoreInTransaction(characterId, variables, db)

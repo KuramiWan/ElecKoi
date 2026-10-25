@@ -20,13 +20,6 @@ if (!existsSync(executable) || !existsSync(appAsar)) {
   throw new Error(`找不到已解包的 ElecKoi：${unpacked}`)
 }
 
-for (const [source, packaged] of [['LICENSE', 'ElecKoi-LICENSE.txt'], ['NOTICE', 'ElecKoi-NOTICE.txt']]) {
-  const packagedPath = join(unpacked, 'resources', 'licenses', packaged)
-  if (!existsSync(packagedPath) || !readFileSync(packagedPath).equals(readFileSync(join(process.cwd(), source)))) {
-    throw new Error(`安装包缺少完整的 ElecKoi 许可文件：${packaged}`)
-  }
-}
-
 const probe = `
   import('node:fs/promises').then(async ({ access, mkdtemp, readFile, rm }) => {
     const { tmpdir } = await import('node:os')

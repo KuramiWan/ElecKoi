@@ -17,7 +17,8 @@ import { migration0008, schemaV7ChatSessionsSql } from './migrations/0008RemoveH
 import { migration0009, schemaV8AgentConversationsSql } from './migrations/0009OpeningVariableVersion'
 import { migration0010 } from './migrations/0010ScriptLibraries'
 import { migration0011, schemaV10PresetStateSql } from './migrations/0011PresetPurposes'
-import { migration0012 } from './migrations/0012EditorConfiguration'
+import { displayTemplatesSql, migration0012 } from './migrations/0012EditorConfiguration'
+import { migration0013 } from './migrations/0013RemoveDisplayTemplates'
 import { legacySettingSnapshotsSql } from './migrations/conversationStateStorage'
 import { addRegexLibraryEnablement } from './migrations/regexLibraryEnablement'
 import { commonSchemaSql } from './migrations/commonSchemaSql'
@@ -30,7 +31,7 @@ const PRE_RELEASE_V2_BASELINES = [BASELINE_ID, 'eleckoi-common-v1-2026-09-14-run
 // 出发的步骤，并同步删除 import、登记和 tests/database.test.ts 中对应旧库 fixture。
 // 当前仍支持 v1 连续升级至 v11；已升级的本机数据库不能证明其他旧安装已完成迁移。
 // 剩余受支持版本必须仍有连续原子迁移链，当前 SQL、版本常量和完整性检查始终保留。
-const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007, migration0008, migration0009, migration0010, migration0011, migration0012] as const
+const migrations = [migration0002, migration0003, migration0004, migration0005, migration0006, migration0007, migration0008, migration0009, migration0010, migration0011, migration0012, migration0013] as const
 const unreleasedGenerationTableSql = 'CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )'
 
 function hasTable(database: Database.Database, name: string): boolean {
@@ -41,13 +42,14 @@ function normalized(sql: string): string {
   return sql.replace(/\bIF NOT EXISTS\s+/gi, '').replace(/\s+/g, ' ').replace(/;$/, '').trim()
 }
 
-function validateSchema(database: Database.Database, previousChatSessionsSql?: string, unreleasedGenerationResults = false, previousVariableBinding = false, previousScripts = false, previousPresets = false, previousDisplayTemplates = false, previousEditorVersions = false, previousRuntimeStates = false, previousRegexLibraries = false): void {
+function validateSchema(database: Database.Database, previousChatSessionsSql?: string, unreleasedGenerationResults = false, previousVariableBinding = false, previousScripts = false, previousPresets = false, previousDisplayTemplates = false, previousEditorVersions = false, previousRuntimeStates = false, previousRegexLibraries = false, retiredTemplates = false): void {
   const installed = database.prepare("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL").all() as { name: string; sql: string }[]
   const objects = new Map(installed.map((row) => [row.name, normalized(row.sql)]))
   for (const match of commonSchemaSql.matchAll(/(CREATE (?:TABLE|(?:UNIQUE )?INDEX|VIEW)[\s\S]*?);/g)) {
     let sql = match[1]!
     const name = sql.match(/^CREATE (?:TABLE|(?:UNIQUE )?INDEX|VIEW) (?:IF NOT EXISTS )?`?([\w]+)`?/)?.[1]
     if (name === 'editor_library_versions' && previousEditorVersions) continue
+    if (name === 'editor_library_versions' && retiredTemplates) sql = sql.replace("'scripts', 'regex'", "'scripts', 'displayTemplates', 'regex'")
     if (name === 'regex_libraries' && (previousDisplayTemplates || previousRuntimeStates || previousRegexLibraries)) continue
     if (previousRuntimeStates && (name === 'conversation_state_snapshots' || name === 'index_conversation_state_snapshots_session_turn')) continue
     if (previousRuntimeStates && name === 'agent_responses') {
@@ -68,6 +70,7 @@ function validateSchema(database: Database.Database, previousChatSessionsSql?: s
     }
     if (!name || objects.get(name) !== normalized(sql)) throw new DesktopError(ELECKOI_FAILURE_CODES.dbSchemaMismatch, `公共数据库结构不匹配：${name ?? 'unknown'}。`, { what: '公共数据库结构' })
   }
+  if (retiredTemplates && objects.get('display_template_libraries') !== normalized(displayTemplatesSql)) throw new DesktopError(ELECKOI_FAILURE_CODES.dbSchemaMismatch, '待删除模板表结构不匹配。', { what: '待删除模板表结构' })
   if (previousRuntimeStates && objects.get('agent_setting_snapshots') !== normalized(legacySettingSnapshotsSql)) {
     throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧聊天设定快照结构不匹配，拒绝修改数据。', { what: '旧聊天设定快照' })
   }
@@ -81,10 +84,10 @@ function requiredTableNames(): string[] {
     .map((match) => match[1]!)
 }
 
-function validateTableInventory(database: Database.Database, unreleasedGenerationResults = false, previousScripts = false, previousDisplayTemplates = false, previousEditorVersions = false, previousRuntimeStates = false, previousRegexLibraries = false): void {
+function validateTableInventory(database: Database.Database, unreleasedGenerationResults = false, previousScripts = false, previousDisplayTemplates = false, previousEditorVersions = false, previousRuntimeStates = false, previousRegexLibraries = false, retiredTemplates = false): void {
   const installed = database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
     .all() as { name: string }[]
-  const required = [...requiredTableNames().filter(name => (!previousScripts || name !== 'script_libraries') && (!previousDisplayTemplates || name !== 'display_template_libraries') && (!previousEditorVersions || name !== 'editor_library_versions') && (!previousRuntimeStates || name !== 'conversation_state_snapshots') && (!(previousDisplayTemplates || previousRuntimeStates || previousRegexLibraries) || name !== 'regex_libraries')), ...(unreleasedGenerationResults ? ['conversation_generation_results'] : []), ...(previousRuntimeStates ? ['agent_setting_snapshots'] : [])]
+  const required = [...(retiredTemplates ? ['display_template_libraries'] : []), ...requiredTableNames().filter(name => (!previousScripts || name !== 'script_libraries') && (!previousDisplayTemplates || name !== 'display_template_libraries') && (!previousEditorVersions || name !== 'editor_library_versions') && (!previousRuntimeStates || name !== 'conversation_state_snapshots') && (!(previousDisplayTemplates || previousRuntimeStates || previousRegexLibraries) || name !== 'regex_libraries')), ...(unreleasedGenerationResults ? ['conversation_generation_results'] : []), ...(previousRuntimeStates ? ['agent_setting_snapshots'] : [])]
   if (required.some((name) => !installed.some((table) => table.name === name)) || installed.length !== required.length) {
     throw new DesktopError(ELECKOI_FAILURE_CODES.dbSchemaMismatch, '数据库业务表不完整或包含未知表，拒绝启动。', { what: '业务表清单' })
   }
@@ -164,11 +167,11 @@ export function installSchema(database: Database.Database): void {
     let version = database.pragma('user_version', { simple: true }) as number
     // 未发布 v12 中补齐正则整体启停，先精确校验原结构再原子整理。
     if (version === 12 && !hasTable(database, 'regex_libraries') && hasTable(database, 'conversation_state_snapshots')) {
-      validateTableInventory(database, false, false, false, false, false, true)
-      validateSchema(database, undefined, false, false, false, false, false, false, false, true)
+      validateTableInventory(database, false, false, false, false, false, true, true)
+      validateSchema(database, undefined, false, false, false, false, false, false, false, true, true)
       database.transaction(() => {
         addRegexLibraryEnablement(database)
-        validateTableInventory(database); validateSchema(database)
+        validateTableInventory(database, false, false, false, false, false, false, true); validateSchema(database, undefined, false, false, false, false, false, false, false, false, true)
         if ((database.pragma('foreign_key_check') as unknown[]).length || database.pragma('integrity_check', { simple: true }) !== 'ok') {
           throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '正则整体启停整理后的完整性校验失败。', { what: '正则整体启停整理' })
         }
@@ -178,11 +181,11 @@ export function installSchema(database: Database.Database): void {
     // RETIRE WHEN: 停止支持旧开发 v12/v13/v14 结构直接升级后删除此入口；
     // 正式 v11→v12 迁移及原生旧归档的数据解码不能随之删除。
     if ([12, 13, 14].includes(version) && hasTable(database, 'agent_setting_snapshots')) {
-      validateTableInventory(database, false, false, false, false, true)
-      validateSchema(database, undefined, false, false, false, false, false, false, true)
+      validateTableInventory(database, false, false, false, false, true, false, true)
+      validateSchema(database, undefined, false, false, false, false, false, false, true, false, true)
       database.transaction(() => {
         migration0012.apply(database)
-        validateTableInventory(database); validateSchema(database)
+        validateTableInventory(database, false, false, false, false, false, false, true); validateSchema(database, undefined, false, false, false, false, false, false, false, false, true)
         if ((database.pragma('foreign_key_check') as unknown[]).length || database.pragma('integrity_check', { simple: true }) !== 'ok') {
           throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '未发布聊天状态整理后的完整性校验失败。', { what: '聊天状态整理' })
         }
@@ -200,20 +203,20 @@ export function installSchema(database: Database.Database): void {
         migration0010.apply(database)
         migration0011.apply(database)
         migration0012.apply(database)
-        validateTableInventory(database)
-        validateSchema(database)
+        validateTableInventory(database, false, false, false, false, false, false, true)
+        validateSchema(database, undefined, false, false, false, false, false, false, false, false, true)
         if ((database.pragma('foreign_key_check') as unknown[]).length || database.pragma('integrity_check', { simple: true }) !== 'ok') {
           throw new DesktopError(ELECKOI_FAILURE_CODES.internal, '未发布开发库整理后的完整性校验失败。', { what: '开发库整理' })
         }
-        database.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`)
+        database.pragma('user_version = 12')
       }).immediate()
-      version = CURRENT_SCHEMA_VERSION
+      version = 12
     }
     if (version < CURRENT_SCHEMA_VERSION) {
-      if (version >= 6 && version <= 11) {
+      if (version >= 6 && version <= 12) {
         normalizePreReleaseV6(database, version)
-        validateTableInventory(database, false, version < 10, version < 12, true, true)
-        validateSchema(database, version < 8 ? schemaV7ChatSessionsSql : undefined, false, version < 9, version < 10, version < 11, true, true, true)
+        validateTableInventory(database, false, version < 10, version < 12, version < 12, version < 12, false, version === 12)
+        validateSchema(database, version < 8 ? schemaV7ChatSessionsSql : undefined, false, version < 9, version < 10, version < 11, version < 12, version < 12, version < 12, false, version === 12)
         migrate(database, BASELINE_ID, version)
       } else {
         if (!tables.some(({ name }) => name === 'desktop_schema')) throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '此文件不是 ElecKoi 数据库的可迁移版本，拒绝修改数据。', { what: '数据库文件的版本' })

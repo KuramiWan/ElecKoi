@@ -268,7 +268,8 @@
         if (!modal && !image) continue;
         const style = getComputedStyle(layer);
         if (style.position !== 'fixed' || !fillsBox(style)) continue;
-        for (const mask of layer.querySelectorAll(':scope > [aria-hidden="true"]')) {
+        // ImageLightbox paints its mask inside the caption-aware stage.
+        for (const mask of layer.querySelectorAll(image ? ':scope > div > [aria-hidden="true"]' : ':scope > [aria-hidden="true"]')) {
           const maskStyle = getComputedStyle(mask);
           if (!['absolute', 'fixed'].includes(maskStyle.position) || !fillsBox(maskStyle)) continue;
           current.set(mask, { mask, pseudo: modal ? '::after' : '' });

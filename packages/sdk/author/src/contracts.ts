@@ -1,5 +1,4 @@
 import type { AuthorVariablePatch } from './variables'
-import type { AuthorDisplayTemplateLibrary } from './display-templates'
 import type { AuthorEditorLibraryVersions, AuthorEditorLibrarySaveResult } from './editor-versions'
 import type { AuthorVariableRule } from './scripts'
 import type { AuthorAgentTrajectory } from './trajectory'
@@ -366,6 +365,39 @@ export interface ElecKoiAuthorEvents {
 
 export interface AuthorScriptSettings { revision: number; values: Record<string, unknown> }
 
+export type AuthorScriptData = null | boolean | number | string | AuthorScriptData[] | { [key: string]: AuthorScriptData }
+
+export interface AuthorScriptIdentity {
+  scope: 'global' | 'character' | 'preset'
+  /** Shared global scripts use the empty string. Other owners are explicit IDs. */
+  ownerId: string
+  scriptId: string
+}
+
+export interface AuthorScriptEndpoint {
+  identity: AuthorScriptIdentity
+  name: string
+  actions: string[]
+}
+
+export interface AuthorScriptCaller {
+  surface: AuthorSurface | 'script' | 'script-panel'
+  conversationId: string
+  messageId: string
+  script: AuthorScriptIdentity | null
+  projectId?: string
+  entryFile?: string
+  view?: string
+}
+
+export interface AuthorScriptRequestContext {
+  /** Use this invocation's API; requests do not join a pending variable-rule candidate. */
+  api: ElecKoiAuthorApi
+  signal: AbortSignal
+  readonly caller: AuthorScriptCaller
+  data: AuthorScriptData
+}
+
 export interface AuthorScriptButton {
   id: string
   label: string
@@ -389,6 +421,14 @@ export interface ElecKoiAuthorApi {
     setSettings(values: Record<string, unknown>, expectedRevision: number): Promise<AuthorScriptSettings>
     getLibrarySettings(): Promise<AuthorScriptSettings>
     setLibrarySettings(values: Record<string, unknown>, expectedRevision: number): Promise<AuthorScriptSettings>
+  }
+  readonly scripts: {
+    /** Lists running scripts and their explicitly registered actions in this chat. */
+    list(): Promise<{ items: AuthorScriptEndpoint[] }>
+    /** Running script only; each action has exactly one handler within that script. */
+    registerHandler(action: string, handler: (context: AuthorScriptRequestContext) => AuthorScriptData | Promise<AuthorScriptData>): () => void
+    /** Calls one exact script and action. Use null when no data is needed. */
+    request(target: AuthorScriptIdentity, action: string, data: AuthorScriptData): Promise<AuthorScriptData>
   }
   readonly ui: {
     /** Running script only. IDs are unique within that script, not across scopes. */
@@ -456,10 +496,6 @@ export interface ElecKoiAuthorApi {
     updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSettingLibraryEntry>
     /** Atomically edits the character's ordinary entries and active version, leaving story overrides unchanged. */
     updateEntries(updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>
-  }
-  readonly displayTemplates: {
-    read(scope: 'global' | 'character' | 'preset'): Promise<AuthorDisplayTemplateLibrary>
-    save(library: AuthorDisplayTemplateLibrary): Promise<AuthorDisplayTemplateLibrary>
   }
   readonly editorVersions: {
     /** 角色作用域固定为本页角色；预设作用域固定为当前扮演预设。 */

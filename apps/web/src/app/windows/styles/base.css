@@ -44,7 +44,7 @@ body {
   overflow: hidden;
   color: var(--text);
   background: var(--shell-backdrop);
-  font-family: "Noto Sans", sans-serif;
+  font-family: var(--dsw-font-family, "Noto Sans", sans-serif);
 }
 
 body:has(#eleckoi-root) {

@@ -29,7 +29,7 @@
   },
   "description": "管理预设内容、提示词、工具策略和正则。",
   "engines": {
-    "dsh": "0.2.0-rc.2"
+    "dsh": "0.2.1-rc.3"
   },
   "eleckoi": {
     "developerInterfaces": [
@@ -122,20 +122,11 @@
         "mode": "replace",
         "scope": "root",
         "relation": "provides"
-      },
-      {
-        "id": "eleckoi.preset.editor.displayTemplates",
-        "kind": "ui-slot",
-        "title": "EJS显示模板编辑区",
-        "description": "替换或扩展独立配置入口。",
-        "mode": "replace",
-        "scope": "root",
-        "relation": "provides"
       }
     ]
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/cordis": "4.0.5",
     "@eleckoi/dsh-product-api": "workspace:*"
   }
 }

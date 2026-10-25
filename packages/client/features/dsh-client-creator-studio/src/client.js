@@ -316,8 +316,8 @@ window.__ModuleLoader__.load({
         'eleckoi.creator-studio.session.header': { kind: 'single', scope: 'session' },
       }, component: ({ component, props, ...native }) => native.renderSlot('eleckoi.creator-studio.session.header', { component, props, native }) })
       projectSeat('conversation.session.header', 'eleckoi.creator-studio.session.header', undefined, {
-        component: ({ component, props, native, selectView, renderSlot }) => React.createElement(component, {
-          ...props, ...native, selectView, renderHeaderSlot: renderSlot,
+          component: ({ component, props, native, selectView, renderSlot, useEntryPins, useEntryActions, setPinned }) => React.createElement(component, {
+            ...props, ...native, selectView, useEntryPins, useEntryActions, setPinned, renderHeaderSlot: renderSlot,
         }),
       })
       for (const name of Object.keys(composerSeats)) projectSeat(name, studioSeat(name))

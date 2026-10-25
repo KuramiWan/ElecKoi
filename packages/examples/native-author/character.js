@@ -1,6 +1,12 @@
 import { derive } from '../derive.js';
 
 export default context => {
+  const stopRequest = context.api.scripts.registerHandler('calculate-score', ({ data }) => {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || typeof data.score !== 'number' || !Number.isFinite(data.score)) {
+      throw new Error('score 必须是有限数字');
+    }
+    return derive(data.score, context.settings.multiplier ?? 2);
+  });
   const stopRule = context.api.variables.registerRule({
     id: 'derive-score',
     stage: 'afterSchema',
@@ -19,5 +25,5 @@ export default context => {
       await api.ui.openPanel({ id: 'settings', title: '积分设置', html: await response.text() });
     },
   });
-  return () => { stopButton(); stopRule(); };
+  return () => { stopRequest(); stopButton(); stopRule(); };
 };

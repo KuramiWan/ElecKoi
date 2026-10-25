@@ -1,3 +1,5 @@
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
 import { Context } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
 import Loader, { Group } from '@deepseek-ai/cordis-plugin-loader'
@@ -7,7 +9,7 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SessionQuery from '@deepseek-ai/dsh-session-query-sqlite'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import FileUploads from '@deepseek-ai/dsh-client-file-upload'
@@ -68,6 +70,7 @@ async function fixture(existing, { productionTemplate = false, stream } = {}) {
   await ctx.plugin(SessionQuery, { path: join(root, 'query.sqlite') })
   await ctx.plugin(LocalAttachmentStore, { dshHome: root })
   await ctx.plugin(LocalFileSystem, { cwd: root })
+  await ctx.plugin(WorkingDirectory, { defaultDirectory: root })
   await ctx.plugin(ToolResultStore, { root: join(root, 'tool-results'), cleanupPeriodDays: 0 })
   await ctx.plugin(spillPolicy, { maxInlineTokens: 12_500, exemptTools: ['eleckoi_read_uploaded_file'], pagedTools: ['eleckoi_read_setting_files', 'eleckoi_read_variables', RESULT_READER] })
   await ctx.plugin(FileUploads)
@@ -79,6 +82,7 @@ async function fixture(existing, { productionTemplate = false, stream } = {}) {
   await ctx.plugin(Loader)
   ctx.loader.builtins.group = Group
   await ctx.plugin(AgentPresetRegistry, { default: 'synthetic-unused-preset' })
+  await ctx.plugin(RemoteAccessService)
   await ctx.plugin(SessionController, { nativeOpen: false })
   const expectedContent = '合成上传内容：synthetic-file-marker'
   class Adapter extends LlmAdapter {
@@ -89,7 +93,7 @@ async function fixture(existing, { productionTemplate = false, stream } = {}) {
       const last = options.messages.at(-1)
       if (last.role === 'user') {
         const uploaded = (await ctx.sessionQuery.readSurface(options.sessionId)).events
-          .findLast(event => event.type === 'user/message').data.content.find(part => part.type === 'file').attachment
+          .findLast(event => event.type === 'user/message' && event.data.source.kind === 'user').data.content.find(part => part.type === 'file').attachment
         const filePath = requestedPaths.get(options.sessionId) ?? ctx.fs.processPathFromHostPath(ctx.attachments.fileHostPath(uploaded))
         yield { type: 'block-start', index: 0, blockType: 'tool-call' }
         yield { type: 'block-end', index: 0, block: { type: 'tool-call', id: `synthetic-read-${requests.length}`,

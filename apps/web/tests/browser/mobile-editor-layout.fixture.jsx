@@ -1,7 +1,7 @@
+import '../../src/modules/scripts/styles/script-libraries.css';
 import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ScriptLibrariesPanel } from '../../src/modules/scripts/components/ScriptLibrariesPanel.jsx';
-import { DisplayTemplatesPanel } from '../../src/modules/displayTemplates/DisplayTemplatesPanel.jsx';
 import { RegexRulesPanel } from '../../src/modules/regex/components/RegexRulesPanel.jsx';
 import { SettingLibraryPanel } from '../../src/modules/settingLibraries/components/SettingLibraryPanel.jsx';
 import { SettingLibraryManager } from '../../src/modules/settingLibraries/components/SettingLibraryManager.jsx';
@@ -23,7 +23,7 @@ import '../../src/modules/settingLibraries/styles/dynamic-settings.css';
 import '../../src/mobile/mobile.css';
 import '../../src/mobile/mobile-preset-editor.css';
 
-const kinds = ['settings', 'variables', 'regex', 'templates', 'scripts', 'merge', 'prompts', 'tools', 'branches'];
+const kinds = ['settings', 'variables', 'regex', 'scripts', 'merge', 'prompts', 'tools', 'branches'];
 function PresetFixture({ kind }) {
   const [preset, setPreset] = useState(() => ({ id: 'synthetic-preset', name: '合成预设', groups: [], expandedGroupIds: [], promptPositions: [],
     entries: [{ ...createEntryDraft('', 1, []), id: 'synthetic-prompt', title: '合成提示词' }],
@@ -65,8 +65,7 @@ function Fixture() {
             : kind === 'settings' ? <SettingLibraryPanel characterId="synthetic-character" settingLibraries={service} />
             : kind === 'variables' ? <VariableConfigPanel characterId="synthetic-character" variables={service} />
             : kind === 'regex' ? <RegexRulesPanel {...ownerProps} regexRules={service} />
-            : kind === 'scripts' ? <ScriptLibrariesPanel {...ownerProps} scriptLibraries={service} />
-              : <DisplayTemplatesPanel scope={scope} ownerId={`synthetic-${scope}`} displayTemplates={service} />}
+            : <ScriptLibrariesPanel {...ownerProps} scriptLibraries={service} />}
         </EditorPresentationContext.Provider>
       </div>
     </main>

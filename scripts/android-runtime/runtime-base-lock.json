@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "architecture": "arm64-v8a",
-  "upstreamCommit": "c1b47e41fcd54d20a0f061df28683bfc29ee24e5",
+  "upstreamCommit": "1f81c047fc48fa190a683e469daa699857e9afe8",
   "rootfs": {
     "version": "24.04.4",
     "url": "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.4-base-arm64.tar.gz",

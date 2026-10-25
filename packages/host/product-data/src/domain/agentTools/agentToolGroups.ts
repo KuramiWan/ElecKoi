@@ -28,9 +28,9 @@ export const AGENT_TOOL_GROUPS: ReadonlyArray<Omit<AgentToolGroup, 'enabled' | '
   ]),
   group('builtin:workspace', '本地工作区', '执行命令并修改角色或创作工作区中的文件', [
     'shell_command', 'bash', 'pwsh', 'read', 'edit', 'write', 'exec_command', 'write_stdin', 'apply_patch',
-    'request_permissions'
+    'request_permissions', 'working_directory'
   ]),
-  group('builtin:web', '联网搜索', '使用模型原生、Tavily 或 DeepSeek Search 搜索，并通过 HTTP 或 DeepSeek Fetch 读取网页正文', [
+  group('builtin:web', '联网搜索', '使用 DeepSeek 或 Tavily 搜索网页并读取内容', [
     'web_search', 'web_fetch'
   ]),
   group('builtin:roleplay-workflow', '角色扮演计划', '维护角色扮演专用任务计划', [

@@ -132,13 +132,14 @@ describe('ElecKoi built-in bundle details', () => {
         const root = createRoot(node);
         const name = '@test/shipped-bundle';
         let view = { kind: 'list' }, state = { ...initialState, status: 'ready', packages: [{ name,
-                enabled: true, installed: false, optional: false, rows: [], overrides: [], meta: { title: '合成插件' } }] };
+                enabled: true, installed: false, official: false, availability: 'installation', optional: false, rows: [], overrides: [], meta: { title: '合成插件' } }] };
         const render = () => root.render(React.createElement(page, {
             t: (key, values) => key === 'enableToggle' ? `启用 ${values.name}` : key,
             ensure: () => {}, renderSlot: () => null, resolveText: value => value,
             useConfigurations: select => select({}), configForm: () => {},
+            usePluginTabs: select => select([]),
             usePluginManager: select => select(state), useConfigLedger: select => select({ items: [], bundles: new Set(), rows: new Set() }),
-            useStore: select => select({ view }), actions: { setView: next => { view = next; render(); } },
+            useStore: select => select({ view, tab: 'installed' }), actions: { setTab() {}, setView: next => { view = next; render(); } },
             setEnabled: (id, enabled) => { expect(id).toBe(name); state = { ...state, packages: [{ ...state.packages[0], enabled }] }; render(); },
         }));
         try {
@@ -320,7 +321,7 @@ describe('ElecKoi built-in bundle details', () => {
                 continue;
             expect(source, spec).toContain("['" + packageName + "',");
         }
-        expect(workspace.patchedDependencies['@deepseek-ai/dsh-typert-generator@0.2.0-rc.2'])
-            .toBe('patches/@deepseek-ai__dsh-typert-generator@0.2.0-rc.2.patch');
+        expect(workspace.patchedDependencies['@deepseek-ai/dsh-typert-generator@0.2.1-rc.3'])
+            .toBe('patches/@deepseek-ai__dsh-typert-generator@0.2.1-rc.3.patch');
     });
 });

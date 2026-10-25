@@ -10,7 +10,11 @@
       "default": "./src/client.js"
     },
     "./package.json": "./package.json",
-    "./locale/*.json": "./locale/*.json"
+    "./locale/*.json": "./locale/*.json",
+    "./profile": {
+      "types": "./src/profile.d.ts",
+      "default": "./src/profile.js"
+    }
   },
   "dsh": {
     "client": {
@@ -26,7 +30,7 @@
   },
   "description": "通过 DSH Settings、Credentials 与 Remote 管理联网搜索配置。",
   "engines": {
-    "dsh": "0.2.0-rc.2"
+    "dsh": "0.2.1-rc.3"
   },
   "eleckoi": {
     "developerInterfaces": [
@@ -34,7 +38,7 @@
         "id": "eleckoiWebSearch",
         "kind": "service",
         "title": "联网搜索设置服务",
-        "description": "分别选择搜索与网页抓取，维护 Tavily、DeepSeek Search 与 Fetch 的配置和独立凭据。",
+        "description": "选择官方搜索与抓取方式，跳转官方网页搜索插件设置，并管理 Tavily 配置和凭据。",
         "mode": "call",
         "scope": "client",
         "relation": "provides",
@@ -45,28 +49,16 @@
           "update",
           "saveAndTest",
           "test",
-          "removeKey"
-        ]
-      },
-      {
-        "id": "dsh.web.provider:deepseek-api",
-        "kind": "contribution",
-        "title": "DeepSeek 搜索与网页抓取",
-        "description": "通过官方 Credentials 调用独立 Search、Fetch API，保留完整结果并支持取消。",
-        "mode": "register",
-        "scope": "host",
-        "relation": "contributes",
-        "owner": "@deepseek-ai/dsh-web",
-        "members": [
-          "registerSearchProvider",
-          "registerFetchProvider"
+          "removeKey",
+          "openPluginSettings"
         ]
       }
     ]
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/cordis": "4.0.5",
     "@eleckoi/dsh-product-api": "workspace:*",
-    "@eleckoi/dsh-web-deepseek": "workspace:*"
+    "yaml": "2.9.0",
+    "@deepseek-ai/dsh-atomic-write": "0.2.1-rc.3"
   }
 }

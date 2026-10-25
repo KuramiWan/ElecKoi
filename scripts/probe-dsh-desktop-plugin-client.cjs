@@ -1,15 +1,32 @@
-const { app, BrowserWindow, nativeTheme } = require('electron')
-const { mkdtempSync, rmSync, writeFileSync } = require('node:fs')
+const { app, BrowserWindow, nativeTheme, protocol, session, ipcMain } = require('electron')
+const { spawn } = require('node:child_process')
+const { mkdtempSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join, resolve } = require('node:path')
 
+const Module = require('node:module')
+const { transformSync } = Module.createRequire(require.resolve('vite'))('esbuild')
+const documentPath = resolve('apps/desktop/src/main/platform/electron/dshClientDocument.ts')
+const documentModule = new Module(documentPath, module)
+documentModule.paths = module.paths
+documentModule._compile(transformSync(require('node:fs').readFileSync(documentPath, 'utf8'), {
+  loader: 'ts', format: 'cjs', target: 'es2024'
+}).code, documentPath)
+const document = documentModule.exports
+protocol.registerSchemesAsPrivileged([{ scheme: 'dsh-app', privileges: {
+  standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true
+} }])
+
 const root = mkdtempSync(join(tmpdir(), 'eleckoi-dsh-client-'))
+app.setPath('userData', root)
+app.on('window-all-closed', () => {})
+let failed = false
 let host
 let window
 const diagnostics = []
 
 async function main() {
-  const { DshDesktopPluginHost } = await import('@eleckoi/desktop-host')
+  const { DshDesktopPluginHost, resolveDshWebFrontendDirectory } = await import('@eleckoi/desktop-host')
   const packageManager = {
     entryPath: join(dirname(require.resolve('pnpm')), 'bin', 'pnpm.mjs'),
     nodeBinPath: join(__dirname, '..', 'apps', 'desktop', 'resources', 'dsh', 'node-bin')
@@ -28,11 +45,28 @@ async function main() {
     onDiagnostic: message => diagnostics.push(`host:${message}`)
   })
   const ready = await host.start()
+  const cookie = await document.authenticateDshClientHost(ready.url)
+  const renderer = resolve('apps/web/dist')
+  const assets = await document.resolveElecKoiClientAssets(renderer)
+  protocol.handle('dsh-app', async request => {
+    const url = new URL(request.url)
+    if (url.pathname.startsWith('/eleckoi/assets/')) return document.serveElecKoiClientAsset(request, renderer)
+    if (document.isDshClientAsset(url.pathname)) return document.serveDshClientAsset(request, resolveDshWebFrontendDirectory())
+    return document.forwardDshClientRequest(request, ready.url, cookie)
+  })
+  ipcMain.handle('eleckoi:dsh-client-boot', () => ({ injections: [...ready.injections,
+    { kind: 'global', name: '__ELECKOI_CLIENT_ASSETS__', value: assets }], streamBaseUrl: new URL(ready.url).origin }))
+  ipcMain.handle('eleckoi:dsh-client-boot-failed', (_event, error) => diagnostics.push(error))
+  ipcMain.handle('dsh-desktop:updates-status', () => ({ phase: 'disabled', currentVersion: app.getVersion(), availableVersion: null, releaseName: null, releaseNotes: null, releaseDate: null, downloadSizeBytes: null, progress: null, message: null }))
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*'] }, (details, callback) => {
+    const headers = Object.fromEntries(Object.entries(details.requestHeaders).map(([key, value]) => [key.toLowerCase(), value]))
+    callback({ requestHeaders: { ...headers, origin: new URL(ready.url).origin, cookie, 'sec-fetch-site': 'same-origin' } })
+  })
   window = new BrowserWindow({
     width: 1280,
     height: 850,
     show: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+    webPreferences: { preload: resolve('apps/desktop/out/preload/preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, offscreen: true, backgroundThrottling: false }
   })
   window.webContents.on('console-message', details => {
     diagnostics.push(`console:${details.level}:${details.message}`)
@@ -40,15 +74,16 @@ async function main() {
   window.webContents.on('did-fail-load', (_event, code, description, url) => {
     diagnostics.push(`load:${code}:${description}:${url}`)
   })
-  await window.loadURL(ready.url)
+  await window.loadURL('dsh-app://app/')
   const deadline = Date.now() + 30_000
-  let body = ''
+  let navigationReady = false
   while (Date.now() < deadline) {
-    body = await window.webContents.executeJavaScript('document.body.innerText')
-    if (body.includes('插件') || body.includes('Plugins')) break
+    navigationReady = await window.webContents.executeJavaScript(`Boolean(document.querySelector('button[aria-label="插件"], button[aria-label="Plugins"]'))`)
+    if (navigationReady) break
     await new Promise(resolve => setTimeout(resolve, 300))
   }
-  if (!body.includes('插件') && !body.includes('Plugins')) {
+  if (!navigationReady) {
+    const body = await window.webContents.executeJavaScript('document.body.innerText')
     throw new Error(`DSH client did not show plugin navigation: ${body.slice(0, 1000)}\n${diagnostics.slice(-100).join('\n')}`)
   }
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(button => button.getAttribute('aria-label') === '插件' || button.getAttribute('aria-label') === 'Plugins')?.click()`)
@@ -65,8 +100,87 @@ async function main() {
     const dark = await window.webContents.executeJavaScript(`document.body.hasAttribute('data-ds-dark-theme')`)
     if (!dark) throw new Error('DSH plugin center did not follow the desktop dark mode.')
   }
+  const waitFor = async (predicate, message) => {
+    const expires = Date.now() + 15_000
+    while (Date.now() < expires) {
+      if (await window.webContents.executeJavaScript(predicate)) return
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    throw new Error(message)
+  }
+  const pluginList = `Boolean(document.querySelector('[data-plugin-group="extensions"]'))`
+  const backSelector = '[data-plugin-panel] header button[aria-label="返回插件"], [data-plugin-panel] header button[aria-label="Back to plugins"]'
+  for (const width of [1280, 800]) {
+    window.setContentSize(width, 850)
+    await waitFor(pluginList, 'DSH official plugin catalog did not render.')
+    const listControls = await window.webContents.executeJavaScript(`(() => {
+      const group = document.querySelector('[data-plugin-group="extensions"]')
+      const more = Array.from(group.querySelectorAll('button')).find(button => ['更多', 'More'].includes(button.innerText.trim()))
+      const add = Array.from(document.querySelectorAll('button')).find(button => ['添加插件', 'Add Plugin'].includes(button.innerText.trim()))
+      if (!more || !add) throw new Error('DSH official list controls are unavailable.')
+      return { moreFont: getComputedStyle(more).fontSize, moreEndPadding: getComputedStyle(more).paddingInlineEnd,
+        addHeight: add.getBoundingClientRect().height, addPadding: getComputedStyle(add).padding, addFont: getComputedStyle(add).fontSize }
+    })()`)
+    if (JSON.stringify(listControls) !== JSON.stringify({ moreFont: '14px', moreEndPadding: '0px', addHeight: 32, addPadding: '0px 12px', addFont: '13px' })) {
+      throw new Error(`DSH official list control styles changed at ${width}px: ${JSON.stringify(listControls)}`)
+    }
+    await window.webContents.executeJavaScript(`(() => {
+      const group = document.querySelector('[data-plugin-group="extensions"]')
+      Array.from(group?.querySelectorAll('button') ?? []).find(button => ['更多', 'More'].includes(button.innerText.trim()))?.click()
+    })()`)
+    await waitFor(`Boolean(document.querySelector(${JSON.stringify(backSelector)}))`, 'DSH official experimental plugin back control did not render.')
+    const result = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(backSelector)})
+      const svg = button.querySelector('svg')
+      const buttonRect = button.getBoundingClientRect(), iconRect = svg.getBoundingClientRect()
+      return { width: buttonRect.width, height: buttonRect.height, padding: getComputedStyle(button).padding,
+        iconWidth: iconRect.width, iconHeight: iconRect.height,
+        centered: Math.abs(buttonRect.left + buttonRect.width / 2 - iconRect.left - iconRect.width / 2) < 0.5 }
+    })()`)
+    if (JSON.stringify(result) !== JSON.stringify({ width: 28, height: 28, padding: '0px', iconWidth: 20, iconHeight: 20, centered: true })) {
+      throw new Error(`DSH official back control was resized at ${width}px: ${JSON.stringify(result)}`)
+    }
+    if (width === 1280 && process.env.ELECKOI_PLUGIN_BACK_SCREENSHOT) {
+      await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+      writeFileSync(process.env.ELECKOI_PLUGIN_BACK_SCREENSHOT, (await window.webContents.capturePage()).toPNG())
+    }
+    await window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(backSelector)}).click()`)
+    await waitFor(pluginList, 'DSH official back action did not return to the plugin list.')
+  }
+  window.setContentSize(1280, 850)
+  for (const width of [1280, 800]) {
+    window.setContentSize(width, 850)
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    await window.webContents.executeJavaScript(`document.querySelector('[data-plugin-package="@deepseek-ai/dsh-experimental-agent-team-profile"] button')?.click()`)
+    await waitFor(`Boolean(document.querySelector('[data-plugin-detail="@deepseek-ai/dsh-experimental-agent-team-profile"]'))`, 'Team detail did not open.')
+    const report = await window.webContents.executeJavaScript(`(() => {
+      const detail = document.querySelector('[data-plugin-detail="@deepseek-ai/dsh-experimental-agent-team-profile"]')
+      const elements = { title: detail.querySelector('h3'), back: detail.querySelector('button[aria-label]'), icon: detail.querySelector('button[aria-label] svg') }
+      const measure = () => Object.fromEntries(Object.entries(elements).map(([name, element]) => {
+        const css = getComputedStyle(element), range = document.createRange()
+        range.selectNodeContents(element)
+        return [name, { fontSize: css.fontSize, fontFamily: css.fontFamily, fontWeight: css.fontWeight, lineHeight: css.lineHeight,
+          ...(name === 'icon' ? { width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height } : { textWidth: range.getBoundingClientRect().width }) }]
+      }))
+      const local = measure()
+      const sheet = document.querySelector('link[data-eleckoi-styles]').sheet
+      try { sheet.disabled = true; return { local, official: measure() } }
+      finally { sheet.disabled = false }
+    })()`)
+    if (JSON.stringify(report.local) !== JSON.stringify(report.official)) throw new Error(`Plugin detail typography differs from the official styles at ${width}px: ${JSON.stringify(report)}`)
+    if (width === 1280 && process.env.ELECKOI_PLUGIN_DETAIL_SCREENSHOT) {
+      await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+      writeFileSync(process.env.ELECKOI_PLUGIN_DETAIL_SCREENSHOT, (await window.webContents.capturePage()).toPNG())
+    }
+    await window.webContents.executeJavaScript(`document.querySelector('[data-plugin-detail="@deepseek-ai/dsh-experimental-agent-team-profile"] button[aria-label]').click()`)
+    await waitFor(pluginList, 'Plugin detail did not return to its list.')
+  }
+  window.setContentSize(1280, 850)
+  process.stdout.write('Plugin detail back label, icon and title match the official font, size, weight and text width at 1280px and 800px.\n')
+  process.stdout.write('DSH official back arrow is 20px in its 28px control, list action styles and return navigation passed at 1280px and 800px.\n')
+  const actionDeadline = Date.now() + 15_000
   let addEnabled = false
-  while (Date.now() < deadline) {
+  while (Date.now() < actionDeadline) {
     addEnabled = await window.webContents.executeJavaScript(`Boolean(Array.from(document.querySelectorAll('button')).find(button => (button.innerText.trim() === '添加插件' || button.innerText.trim() === 'Add Plugin') && !button.disabled))`)
     if (addEnabled) break
     await new Promise(resolve => setTimeout(resolve, 300))
@@ -74,7 +188,7 @@ async function main() {
   if (!addEnabled) throw new Error('DSH add-plugin button remained disabled.')
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(button => button.innerText.trim() === '添加插件' || button.innerText.trim() === 'Add Plugin').click()`)
   let installDialog = ''
-  while (Date.now() < deadline) {
+  while (Date.now() < actionDeadline) {
     installDialog = await window.webContents.executeJavaScript('document.body.innerText')
     if ((installDialog.includes('插件安装引导') || installDialog.includes('Plugin installation guide'))
       && (installDialog.includes('安装源') || installDialog.includes('Registry'))) break
@@ -136,26 +250,84 @@ async function main() {
     if (remained) throw new Error(`DSH UI did not remove ${bundle}.`)
     process.stdout.write(`DSH official client installed, enabled and uninstalled ${bundle} through its UI.\n`)
   }
+  if (!installSpec) {
+    const closed = await window.webContents.executeJavaScript(`(() => {
+      const close = document.querySelector('[role="dialog"] button[aria-label="关闭"], [role="dialog"] button[aria-label="Close"]')
+      close?.click()
+      return Boolean(close)
+    })()`)
+    if (!closed) throw new Error('Add-plugin dialog close control is unavailable.')
+    const closeDeadline = Date.now() + 5_000
+    while (Date.now() < closeDeadline) {
+      if (!await window.webContents.executeJavaScript(`Boolean(document.querySelector('[role="dialog"]'))`)) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    if (await window.webContents.executeJavaScript(`Boolean(document.querySelector('[role="dialog"]'))`)) throw new Error('Add-plugin dialog remained open.')
+  }
   const configOpened = await window.webContents.executeJavaScript(`(() => {
-    const card = document.querySelector('[data-plugin-item]')
+    const card = document.querySelector('[data-plugin-item="web-search"]')
     const button = card?.querySelector('button')
     button?.click()
     return Boolean(button)
   })()`)
   if (!configOpened) throw new Error('DSH official plugin configuration entry is unavailable.')
-  const configured = await window.webContents.executeJavaScript(`Boolean(document.querySelector('[data-plugin-item-detail] [data-plugin-config]'))`)
-  if (!configured) throw new Error('DSH official plugin configuration page did not render.')
+  const webDeadline = Date.now() + 15_000
+  let configured = false
+  while (Date.now() < webDeadline) {
+    configured = await window.webContents.executeJavaScript(`Boolean(document.querySelector('[data-plugin-item-detail="web-search"] #plugin-config-web-search-max-uses'))`)
+    if (configured) break
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  if (!configured) throw new Error('DSH official Messages search configuration page did not render.')
+  const switched = await window.webContents.executeJavaScript(`(() => {
+    const control = document.querySelector('[role="switch"][aria-label="启用新版 Web 搜索 API"], [role="switch"][aria-label="Use the new Web Search API"]')
+    control?.click()
+    return Boolean(control && !control.disabled)
+  })()`)
+  if (!switched) throw new Error('DSH official Search API switch is unavailable.')
+  configured = false
+  while (Date.now() < webDeadline) {
+    configured = await window.webContents.executeJavaScript(`Boolean(document.querySelector('[data-plugin-item-detail="web-search"] #plugin-config-web-search-count'))`)
+    if (configured) break
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  if (!configured) throw new Error('DSH official Search API settings did not replace the Messages fields.')
   const screenshotPath = process.env.ELECKOI_PLUGIN_CLIENT_SCREENSHOT
-  if (screenshotPath) writeFileSync(screenshotPath, (await window.webContents.capturePage()).toPNG())
+  if (screenshotPath) {
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    writeFileSync(screenshotPath, (await window.webContents.capturePage()).toPNG())
+  }
   process.stdout.write('DSH official client rendered plugin navigation, add dialog, guide, package source and configuration in Electron.\n')
 }
 
 main().catch(error => {
   process.stderr.write(`${error.stack ?? error}\n${diagnostics.slice(-100).join('\\n')}\\n`)
-  process.exitCode = 1
+  failed = true
 }).finally(async () => {
-  window?.destroy()
-  await host?.close()
-  rmSync(root, { recursive: true, force: true })
-  app.exit(process.exitCode ?? 0)
+  try {
+    if (window && !window.isDestroyed()) await window.loadURL('about:blank')
+    window?.destroy()
+    await host?.close()
+    protocol.unhandle('dsh-app')
+  } finally {
+    const cleaner = spawn(process.execPath, ['-e', `(${cleanupAfterExit.toString()})()`, String(process.pid), root], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, detached: true, windowsHide: true, stdio: 'ignore'
+    })
+    cleaner.unref()
+    app.exit(failed ? 1 : 0)
+  }
 })
+
+async function cleanupAfterExit() {
+  const { resolve, sep, basename } = require('node:path')
+  const target = resolve(process.argv[2])
+  if (!target.startsWith(resolve(require('node:os').tmpdir()) + sep) || !basename(target).startsWith('eleckoi-dsh-client-')) return
+  const pid = Number(process.argv[1])
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    try { process.kill(pid, 0) } catch (error) {
+      if (error.code === 'ESRCH') require('node:fs').rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+      return
+    }
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+}

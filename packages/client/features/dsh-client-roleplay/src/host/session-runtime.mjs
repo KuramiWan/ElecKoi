@@ -1,3 +1,4 @@
+import { renderRequestEjs } from './regex-ejs.mjs'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -213,7 +214,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         instructions: sessionInstructions({ model, conversationContext }) || null,
         currentPromptText: conversationContext.currentPromptText ?? text
       })
-      return { model, messages, dryRun: true }
+      return { model, messages: await renderRequestEjs(messages, { conversationId, variables: runtime.variableContext ? JSON.parse(runtime.variableContext.stateJson) : null }), dryRun: true }
     },
     currentOperation(conversationId) {
       const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)

@@ -1,3 +1,5 @@
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { LlmAdapter, createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
@@ -42,6 +44,8 @@ async function fixture({ root, sessionId = 'result-owner', stream } = {}) {
   cleanups.push(() => ctx.fiber.dispose())
   ctx.provide('sessionQuery', { readSession: vi.fn() })
   for (const plugin of [LlmRuntime, SessionStore, SessionProjectionRegistry, SystemPrompt, Tools, AgentRegistry, TokenMeter]) await ctx.plugin(plugin)
+  await ctx.plugin(LocalFileSystem, { cwd: root })
+  await ctx.plugin(WorkingDirectory, { defaultDirectory: root })
   await ctx.plugin(ToolResultStore, { root, cleanupPeriodDays: 0 })
   await ctx.plugin(spillPolicy, { maxInlineTokens: 12_500, exemptTools: ['eleckoi_read_uploaded_file'], pagedTools: Object.values(RESULT_READERS) })
   ctx.provide('eleckoiProductData', { commitConversationRuntime: vi.fn() })
@@ -107,6 +111,91 @@ async function profileFixture(platform, existingRoot) {
 }
 
 describe('Shipped Host tool-result composition', () => {
+  it.each(['desktop', 'android'])('%s edits every opening and its variable binding through the Studio model loop and resumes saved results', async platform => {
+    const f = await profileFixture(platform), { ctx, root } = f, data = ctx.eleckoiProductData
+    const characterId = 'synthetic-opening-author'
+    data.createCharacter({ id: characterId, name: '合成开场编辑目标' })
+    const config = data.readVariableConfig(characterId), variableVersionId = 'synthetic-opening-variables'
+    data.saveVariableConfig(characterId, { ...config, versions: [...config.versions, { ...config.versions[0], id: variableVersionId, name: '合成绑定版本' }] })
+    const indexes = [0, 5_000, 10_000], library = data.readSettingLibrary(characterId)
+    const normal = { ...emptyEntry('synthetic-retained-setting'), title: '合成普通条目', content: '合成原正文' }
+    const seeded = data.saveSettingLibrary(characterId, { ...library, entries: [...library.entries.map(entry => entry.kind === 'opening' ? {
+      ...entry, enabled: true, defaultOpeningMessageId: 'synthetic-opening-5000',
+      openingMessages: Array.from({ length: 10_001 }, (_, index) => ({ id: `synthetic-opening-${index}`, title: `合成开场-${index}`,
+        content: `他在开场-${index}。${indexes.includes(index) ? '合成长正文他𠮷'.repeat(20_001) : ''}末尾他-${index}`,
+        variableVersionId: config.activeVersionId, initialVariableStateJson: JSON.stringify({ synthetic: index }) })),
+    } : entry), normal] })
+    const opening = seeded.entries.find(entry => entry.kind === 'opening'), desired = opening.openingMessages.map((message, index) => ({ ...message,
+      content: message.content.replaceAll('他', '她'),
+      variableVersionId: index === 5_000 ? '' : indexes.includes(index) ? variableVersionId : message.variableVersionId,
+      initialVariableStateJson: index === 5_000 ? '{"synthetic":33}' : message.initialVariableStateJson,
+    }))
+    const studio = await ctx.eleckoiCreatorStudioRuntime.create(characterId)
+    const agent = (await ctx.sessionController.resolveAgent(studio.sessionId)).agent
+    const spills = [], requests = []
+    const saveText = ctx.spillStore.saveText.bind(ctx.spillStore)
+    const save = vi.spyOn(ctx.spillStore, 'saveText').mockImplementation(async input => {
+      const ref = await saveText(input); spills.push({ ref, original: input.content }); return ref
+    })
+    const toolValue = request => JSON.parse(request.messages.findLast(message => message.role === 'tool').content[0].text)
+    let step = 0
+    f.setStream(async function* (request) {
+      requests.push(request)
+      let args
+      if (step === 0) args = { capability_id: 'variables.list', arguments: {} }
+      if (step === 1) {
+        expect(toolValue(request).value.versions).toContainEqual({ id: variableVersionId, name: '合成绑定版本' })
+        args = { capability_id: 'settings.read', arguments: { id: opening.id } }
+      }
+      if (step === 2 || step === 4) {
+        const spill = spills.at(-1)
+        expect(request.messages.findLast(message => message.role === 'tool').content[0].text).toContain(spill.ref.locator)
+        args = { result: { file_path: spill.ref.locator, limit: Buffer.byteLength(spill.original) } }
+      }
+      if (step === 3 || step === 5) {
+        const page = toolValue(request)
+        expect(page).toMatchObject({ kind: 'tool_result_page', next_offset: null })
+        const value = JSON.parse(page.content).value
+        const actual = step === 3 ? value : value[0]
+        const expected = step === 3 ? opening.openingMessages : desired
+        expect(JSON.stringify(actual.openingMessages) === JSON.stringify(expected)).toBe(true)
+        for (const index of indexes) expect(actual.openingMessages[index].content.endsWith(`末尾${step === 3 ? '他' : '她'}-${index}`)).toBe(true)
+        if (step === 3) args = { capability_id: 'settings.update_many', arguments: { updates: [
+          { id: opening.id, changes: { openingMessages: desired, defaultOpeningMessageId: desired.at(-1).id } },
+          { id: normal.id, changes: { content: '合成修改后的普通正文' } },
+        ] } }
+        else expect(value[1]).toMatchObject({ id: normal.id, content: '合成修改后的普通正文' })
+      }
+      yield { type: 'block-start', index: 0, blockType: args ? 'tool-call' : 'text' }
+      yield { type: 'block-end', index: 0, block: args ? { type: 'tool-call', id: `synthetic-opening-call-${step++}`, name: 'eleckoi_call_capability', arguments: JSON.stringify(args) }
+        : { type: 'text', text: '合成全部开场及绑定已修改' } }
+      yield { type: 'finish', reason: { kind: args ? 'tool-calls' : 'stop' } }
+    })
+    await ctx.sessionController.prompt({ sessionId: agent.id, requestId: 'synthetic-opening-edit', mode: 'queue', content: [{ type: 'text', text: '合成全部开场与变量绑定编辑' }] }, new AbortController().signal)
+    await agent.whenIdle()
+    expect(agent.session.snapshotEvents().findLast(event => event.type === 'turn/end').data.reason).toEqual({ kind: 'completed' })
+    expect(requests).toHaveLength(6)
+    expect(save).toHaveBeenCalledTimes(2)
+    save.mockRestore()
+    const saved = data.readSettingLibrary(characterId)
+    expect(JSON.stringify(saved.entries.find(entry => entry.kind === 'opening').openingMessages) === JSON.stringify(desired)).toBe(true)
+    const chat = data.createConversation({ metadata: { characterId } })
+    expect(chat.messages[0].content === desired.at(-1).content).toBe(true)
+    expect(chat.messages[0].openingOptions.at(-1).variableVersionId).toBe(variableVersionId)
+    const wire = await captureSerializedRequest('deepseek_messages', requests.at(-1))
+    expect(JSON.stringify(wire)).toContain('末尾她-10000')
+    await ctx.sessions.flush(agent.session)
+    await ctx.fiber.dispose()
+    const reopened = await profileFixture(platform, root)
+    await reopened.ctx.eleckoiCreatorStudioRuntime.open(studio.sessionId)
+    expect(JSON.stringify(reopened.ctx.eleckoiProductData.readSettingLibrary(characterId)) === JSON.stringify(saved)).toBe(true)
+    const restored = (await reopened.ctx.sessionController.resolveAgent(studio.sessionId)).agent
+    const result = await restored.ctx.tools.execute({ callId: 'synthetic-opening-restored-receipt', name: 'eleckoi_call_capability',
+      arguments: { result: { file_path: spills[1].ref.locator, limit: Buffer.byteLength(spills[1].original) } }, agent: restored, signal: new AbortController().signal })
+    expect(result.isError).not.toBe(true)
+    expect(JSON.parse(result.content[0].text).content === spills[1].original).toBe(true)
+  }, 120_000)
+
   it('replaces the store in the retained SDK composition using the official patch semantics', () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-sdk-result-profile-'))
     cleanups.push(() => {
@@ -494,7 +583,7 @@ describe('Complete tool-result access', { timeout: 30_000 }, () => {
       }
     }
     await f.ctx.plugin(SyntheticRuntime)
-    const stop = f.handle.agent.ctx.tools.presentAs('both')
+    const stop = f.handle.agent.ctx.tools.presentAs('ptc')
     cleanups.push(stop)
     f.handle.agent.ctx.tools.register(defineTool({ name: 'eleckoi_glob_setting_files', description: '合成程序数据源', parameters: {},
       output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }, execute: () => original }))

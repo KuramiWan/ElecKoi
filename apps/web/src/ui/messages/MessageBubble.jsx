@@ -1,5 +1,5 @@
 import { SystemBarOverlay } from '../ui/SystemBarOverlay.jsx';
-import { useRenderedDisplay } from '../../modules/displayTemplates/index.js';
+import { useRegexEjsDisplay } from '../../modules/regex/index.js';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { faChevronLeft, faChevronRight } from "@fortawesome/free-solid-svg-icons";
@@ -126,9 +126,9 @@ function SettledRichPresentation({ message, presentation, renderMarkdown, fallba
     })}</div>;
 }
 
-function MessageBubbleComponent({ message = {}, displayTemplates, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onRegenerateImage, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {
+function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode = "roleplay", avatarShape = "portrait", spacingAfter, floorNumber, showRoleplayTimestamp = true, showRoleplayFloor = true, isLatestAssistant = true, onOpenProcess, onPinAvatar, onSelectOpening, onEdit, onRegenerate, onRegenerateImage, onOpenFile, pluginActions, pluginAfter, renderMessageContent, loadImage }) {
   const { role, content, pending = false } = message;
-  const renderedDisplay = useRenderedDisplay(message, message.displayContent ?? content ?? '', displayTemplates);
+  const renderedDisplay = useRegexEjsDisplay(message, message.displayContent ?? content ?? '');
   const displayContent = renderedDisplay.content;
   const isUser = role === "user";
   const editableContent = !isUser && message.generatedImageAttachments?.length ? message.displayContent ?? content : content;
@@ -348,10 +348,10 @@ function MessageBubbleComponent({ message = {}, displayTemplates, avatar, pinSrc
         /><div><button type="button" onClick={() => { setDraft(editableContent || ''); setEditing(false); }}>取消</button><button type="button" className="primary" onClick={saveEdit}>保存</button></div></div> : liveProcess ? <AgentProcessStatus presentation={liveProcess} onClick={openProcess} /> : displayContent ? <div ref={markdownRef} className="bubble markdown-message">
           {!isUser && message.generatedImageAttachments?.length ? generatedImageSegments(markdownTonePresentation.markdown, message.generatedImageAttachments, pending).map((segment, index) => segment.type === 'images'
             ? <ChatImageGallery key={`images-${index}`} images={segment.images} conversationId={message.conversationId} agentMessage={layoutMode === 'agent'} loadImage={loadImage} onRegenerateImage={onRegenerateImage} />
-            : <MessagePresentation key={`text-${index}`} message={message} content={segment.content} streaming={pending} renderMessageContent={renderMessageContent} />) : <MessagePresentation
+            : <MessagePresentation key={`text-${index}`} message={message} content={segment.content} streaming={pending || renderedDisplay.pending} renderMessageContent={renderMessageContent} />) : <MessagePresentation
             message={message}
             content={markdownTonePresentation.markdown}
-            streaming={pending}
+            streaming={pending || renderedDisplay.pending}
             renderMessageContent={renderMessageContent}
           />}
         </div> : null}

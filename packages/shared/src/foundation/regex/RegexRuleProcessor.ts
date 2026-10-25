@@ -7,6 +7,7 @@ import type {
 } from '@shared/contracts/regex/schemas'
 import { ELECKOI_FAILURE_CODES } from '../../contracts/errors/codes.js'
 import { completedRichDocumentAssemblyRanges, hasOpenRichDocumentAssembly } from '@shared/foundation/richMessage'
+import { REGEX_EJS_START, REGEX_EJS_END } from './RegexEjsMarkers'
 import { DesktopError } from '../DesktopError.js'
 
 interface ParsedPattern {
@@ -98,7 +99,10 @@ function applyRule(text: string, rule: RegexRule, replacementDecorator?: (replac
     return text
   }
   const trimStrings = (rule.trimStrings ?? []).map(value => expand(value))
-  const replacementForMatch = (match: RegExpExecArray) => expand(replacementFor(match, rule.replacement, trimStrings))
+  const replacementForMatch = (match: RegExpExecArray) => {
+    const replacement = expand(replacementFor(match, rule.replacement, trimStrings))
+    return rule.replacement.includes('<%') ? REGEX_EJS_START + replacement + REGEX_EJS_END : replacement
+  }
   const sourceOffset = options.position?.offset
   let projectedOffset: number | undefined
   let cursor = 0

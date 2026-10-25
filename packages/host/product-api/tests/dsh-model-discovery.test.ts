@@ -23,15 +23,15 @@ describe('DSH model connection probe', () => {
     resolve.mockResolvedValueOnce(undefined as never);
     await expect(readModelApiKey(owner, 'config-test')).rejects.toThrow('没有已保存');
   });
-  it('reads the official dedicated directory without credentials, network calls, or settings writes', async () => {
+  it('requires credentials and reads the official directory without writing settings', async () => {
     const mutate = vi.fn()
     const set = vi.fn()
     const owner = { settings: { describe: () => [{ ns: 'llm-deepseek', value: { thinking: 'disabled', models: [] } }], mutate },
       credentials: { resolve: async () => undefined, set } } as unknown as Context
-    const models = await discoverDraftModels(owner, { configId: 'deepseek-official', api: 'deepseek_messages', baseURL: 'http://127.0.0.1:1' })
+    await expect(discoverDraftModels(owner, { configId: 'deepseek-official', api: 'deepseek_messages', baseURL: 'http://127.0.0.1:1' })).rejects.toThrow('先配置 DeepSeek API Key')
+    const models = await discoverDraftModels(owner, { configId: 'deepseek-official', api: 'deepseek_messages', baseURL: 'http://127.0.0.1:1', apiKey: 'synthetic-directory-key' })
     expect(models.length).toBeGreaterThan(0)
     expect(models.every(model => model.contextWindow && model.maxTokens)).toBe(true)
-    expect(models.every(model => Object.keys(model.reasoningEfforts || {}).join() === 'off')).toBe(true)
     expect(set).not.toHaveBeenCalled()
     expect(mutate).not.toHaveBeenCalled()
   })

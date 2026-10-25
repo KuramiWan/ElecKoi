@@ -1,8 +1,9 @@
 import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
 import { DesktopError } from "@shared/foundation/DesktopError";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Copy, Play, Trash, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { REGEX_SCOPES, REGEX_TARGETS } from "../model/regexRulesEditing.js";
+import { MarkdownTextareaField } from '../../settingLibraries/index.js';
 import { resolveFailure } from "../../../utils/failureText.js";
 
 function Switch({ checked, onChange, label }) {
@@ -17,9 +18,16 @@ function Switch({ checked, onChange, label }) {
 
 export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLocked = false, onChange, onMoveScope, onClose, onDuplicate, onDelete, onTest }) {
   const [testInput, setTestInput] = useState("");
+  const [testTarget, setTestTarget] = useState('AiOutput');
+  const [testSurface, setTestSurface] = useState('Display');
+  const [testVariables, setTestVariables] = useState('null');
   const [testOutput, setTestOutput] = useState("");
   const [testError, setTestError] = useState("");
   const [testing, setTesting] = useState(false);
+  const testRequest = useRef(null);
+
+  useEffect(() => () => testRequest.current?.abort(), [rule.id, rule.pattern, rule.replacement, rule.targets,
+    rule.enabled, rule.displayOnly, rule.promptOnly, testInput, testTarget, testSurface, testVariables]);
 
   useEffect(() => {
     setTestInput("");
@@ -28,17 +36,22 @@ export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLo
   }, [rule.id]);
 
   async function runTest() {
+    testRequest.current?.abort();
+    const controller = new AbortController(); testRequest.current = controller;
     setTesting(true);
     setTestError("");
     try {
       if (typeof onTest !== "function") throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, "正则测试服务尚未就绪", { what: "正则测试服务" });
-      const result = await onTest(testInput, rule, rule.targets[0] || "AiOutput");
+      const variables = JSON.parse(testVariables);
+      if (variables !== null && (typeof variables !== 'object' || Array.isArray(variables))) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '测试变量必须是 JSON 对象或 null', { field: '测试变量' });
+      const result = await onTest(testInput, rule, testTarget, { surface: testSurface, variablesJson: JSON.stringify(variables) }, controller.signal);
+      if (controller.signal.aborted) return;
       setTestOutput(result.output);
       setTestError(result.validationMessage || "");
     } catch (error) {
-      setTestError(resolveFailure(error, { fallback: "测试失败" }).text);
+      if (!controller.signal.aborted) setTestError(error?.message || "测试失败");
     } finally {
-      setTesting(false);
+      if (testRequest.current === controller) setTesting(false);
     }
   }
 
@@ -46,7 +59,7 @@ export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLo
     if (!rule.runOnEdit || !testInput) return undefined;
     const timeout = window.setTimeout(runTest, 220);
     return () => window.clearTimeout(timeout);
-  }, [rule.pattern, rule.replacement, rule.targets, rule.runOnEdit, testInput]);
+  }, [rule.pattern, rule.replacement, rule.targets, rule.enabled, rule.displayOnly, rule.promptOnly, rule.runOnEdit, testInput, testTarget, testSurface, testVariables]);
 
   function toggleTarget(target) {
     const selected = new Set(rule.targets);
@@ -76,10 +89,8 @@ export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLo
           <span>匹配表达式</span>
           <textarea className="is-code" value={rule.pattern} spellCheck="false" placeholder="/pattern/g" onChange={(event) => onChange({ pattern: event.target.value })} />
         </label>
-        <label className="regex-field">
-          <span>替换为</span>
-          <textarea className="is-code" value={rule.replacement} spellCheck="false" onChange={(event) => onChange({ replacement: event.target.value })} />
-        </label>
+        <MarkdownTextareaField label="替换为" value={rule.replacement} preview={false} code
+          placeholder="文字、HTML 或 EJS" onChange={replacement => onChange({ replacement })} />
 
         <fieldset className="regex-targets">
           <legend>应用于</legend>
@@ -104,7 +115,14 @@ export function RegexRuleInspector({ scope, rule, scopes = REGEX_SCOPES, scopeLo
             <strong>测试</strong>
             <button type="button" onClick={runTest} disabled={testing}><Play size={14} weight="fill" />{testing ? "运行中…" : "运行"}</button>
           </div>
+          <label className="regex-field"><span>测试对象</span><select value={testTarget} onChange={event => setTestTarget(event.target.value)}>
+            {REGEX_TARGETS.map(target => <option key={target.id} value={target.id}>{target.label}</option>)}
+          </select></label>
+          <label className="regex-field"><span>测试范围</span><select value={testSurface} onChange={event => setTestSurface(event.target.value)}>
+            <option value="Display">显示内容</option><option value="Prompt">提示词内容</option><option value="Stored">保存内容</option>
+          </select></label>
           <label className="regex-field"><span>输入</span><textarea value={testInput} onChange={(event) => setTestInput(event.target.value)} /></label>
+          <label className="regex-field"><span>测试变量 JSON</span><textarea className="is-code" spellCheck="false" value={testVariables} onChange={event => setTestVariables(event.target.value)} /></label>
           <label className="regex-field"><span>结果</span><textarea value={testOutput} readOnly /></label>
           {testError ? <p className="regex-test-error" role="alert">{testError}</p> : null}
         </section>

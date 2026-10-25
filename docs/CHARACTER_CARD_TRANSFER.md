@@ -124,6 +124,6 @@
 4. 解包所有 PNG，确认只有一个 `eleckoi-card` 角色卡文本块，且不存在 `chara` / `ccv3`。
 5. 搜索导出 JSON，确认不存在 `chat_background`、`conversation_setting_changes`、`chat_session_variable_states`、聊天记录、用户资料、全局/预设正则。
 
-## EJS显示模板
+## 正则替换中的 EJS
 
-原生 JSON 与 PNG 数据携带 `ejs_display_templates: { enabled, templates }`。每个模板包含稳定 id、唯一 name、enabled、position、pattern、flags、source、delimiter、openDelimiter、closeDelimiter、rmWhitespace；position 为 before/after/replace/partial。导入校验字段、唯一名称和编号，保持引用及顺序，库保持停用，不携带源 ownerId 和 revision。库独立于设定版本。详见 [显示模板教程](plugins/ejs-display-templates.md)。
+EJS 写在现有正则规则的 replacement 中，随 regex_rules 保存和传输；沿用全局、预设和角色的正则作用范围，不再提供独立显示模板字段。运行时数据与语法见 [正则 EJS 教程](plugins/regex-ejs.md)。

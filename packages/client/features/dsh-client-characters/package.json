@@ -29,7 +29,7 @@
   },
   "description": "展示角色列表和资料，提供角色操作入口。",
   "engines": {
-    "dsh": "0.2.0-rc.2"
+    "dsh": "0.2.1-rc.3"
   },
   "eleckoi": {
     "developerInterfaces": [
@@ -145,20 +145,11 @@
         "mode": "replace",
         "scope": "root",
         "relation": "provides"
-      },
-      {
-        "id": "eleckoi.character.editor.displayTemplates",
-        "kind": "ui-slot",
-        "title": "EJS显示模板编辑区",
-        "description": "替换或扩展独立配置入口。",
-        "mode": "replace",
-        "scope": "root",
-        "relation": "provides"
       }
     ]
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/cordis": "4.0.5",
     "@eleckoi/dsh-product-api": "workspace:*"
   }
 }

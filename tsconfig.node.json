@@ -66,7 +66,7 @@
     "packages/host/product-api/src/client/remoteApi.generated.ts",
     "packages/client/features/dsh-client-author/src/generation.ts",
     "packages/client/features/dsh-client-author/src/messages.ts",
-    "packages/client/features/dsh-client-author/src/display-templates.ts",
+    "packages/client/features/dsh-client-author/src/editor-versions.ts",
     "tests/**/*.ts",
     "vitest.config.ts",
     "apps/*/tests/**/*.ts",

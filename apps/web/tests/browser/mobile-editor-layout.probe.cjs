@@ -24,7 +24,7 @@ app.whenReady().then(async () => {
       win.setContentSize(width, 844);
       await wait(`window.innerWidth===${width}`);
       await evaluate(`document.documentElement.dataset.theme='${theme}'; document.body.toggleAttribute('data-ds-dark-theme','${theme}'==='dark'); document.documentElement.dataset.eleckoiMobile='${compact}'`);
-      for (const kind of ['settings', 'variables', 'regex', 'templates', 'scripts']) for (const scope of ['character', 'preset']) {
+      for (const kind of ['settings', 'variables', 'regex', 'scripts']) for (const scope of ['character', 'preset']) {
         const key = `${kind}:${scope}:${compact}`;
         await wait('Boolean(document.querySelector("nav"))');
         await evaluate(`document.querySelector('[data-editor="${key}"]').click()`);

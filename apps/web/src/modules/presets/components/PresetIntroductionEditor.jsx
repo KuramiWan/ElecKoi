@@ -59,6 +59,7 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
   const timelineId = useId();
   const usageEditRef = useRef(null);
   const addRef = useRef(null);
+  const timelineEditRefs = useRef(new Map());
   const busyRef = useRef(false);
   const dirty = isIntroductionDraftDirty(draft);
   const { records, hiddenCount } = visibleTimelineRecords(profile.timeline, expanded, Boolean(draft?.isNew));
@@ -85,8 +86,9 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
   }
   function finish() {
     const trigger = draft?.kind === 'usage' ? usageEditRef : addRef;
+    const recordId = draft?.kind === 'timeline' && !draft.isNew ? draft.value.id : null;
     setDraft(null); setValidation('');
-    requestAnimationFrame(() => trigger.current?.focus());
+    requestAnimationFrame(() => (timelineEditRefs.current.get(recordId) ?? trigger.current)?.focus());
   }
   async function saveDraft() {
     if (!draft || saving || busyRef.current) return false;
@@ -130,6 +132,9 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
             if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') context.open(event, item);
           }}>
           <div className="preset-update-record-heading"><h3>{item.title}</h3>{item.dateLabel ? <span className="preset-update-record-date">{item.dateLabel}</span> : null}
+            <button ref={element => { if (element) timelineEditRefs.current.set(item.id, element); else timelineEditRefs.current.delete(item.id); }}
+              type="button" className="preset-content-button preset-update-edit" aria-label={`编辑更新：${item.title || item.dateLabel || '未命名更新'}`}
+              disabled={saving} onClick={() => openDraft(createTimelineDraft(item))}>编辑</button>
           </div>
           {item.note ? <p>{item.note}</p> : null}
         </article>}

@@ -31,7 +31,7 @@ it('keeps the five mobile actions at the bottom and shares desktop collection ma
       }
     };
     await launch();
-    const { layouts: reports, merges, searches } = JSON.parse(await readFile(reportPath, 'utf8')); expect(reports).toHaveLength(80);
+    const { layouts: reports, merges, searches } = JSON.parse(await readFile(reportPath, 'utf8')); expect(reports).toHaveLength(64);
     expect(searches).toHaveLength(30);
     for (const report of searches) {
       const evidence = JSON.stringify(report);

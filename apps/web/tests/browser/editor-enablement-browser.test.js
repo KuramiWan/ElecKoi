@@ -21,7 +21,7 @@ it('bulk switches actual editor entries and keeps source editing immersive on de
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
     await promisify(execFile)(require('electron'), [resolve('apps/web/tests/browser/editor-enablement.probe.cjs'), htmlPath, reportPath], { env, timeout: 45000, windowsHide: true });
     const reports = JSON.parse(await readFile(reportPath, 'utf8'));
-    expect(reports).toHaveLength(12);
+    expect(reports).toHaveLength(8);
     for (const report of reports) {
       const { before, off, afterSave, restored, itemOff } = report, evidence = JSON.stringify(report);
       expect(before.nameColors.length, evidence).toBeGreaterThan(0);
@@ -36,8 +36,8 @@ it('bulk switches actual editor entries and keeps source editing immersive on de
       expect(restored.itemStates.every(Boolean), evidence).toBe(true);
       expect(itemOff.nameColors.every(color => color === itemOff.muted), evidence).toBe(true);
     }
-    expect(reports[0].immersive).toHaveLength(4);
-    expect(reports[0].sourceActions).toHaveLength(2);
+    expect(reports[0].immersive).toHaveLength(2);
+    expect(reports[0].sourceActions).toHaveLength(0);
     for (const report of reports[0].sourceActions) {
       expect(report.headerTest).toBe(false);
       expect(report.buttons).toHaveLength(2);

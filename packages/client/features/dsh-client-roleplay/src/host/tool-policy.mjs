@@ -74,7 +74,7 @@ const VARIABLE_TOOLS = new Set([
 ])
 const CREATOR_TOOLS = new Set(['eleckoi_list_toolsets', 'eleckoi_describe_toolset', 'eleckoi_call_capability'])
 const WORKSPACE_TOOLS = new Set([
-  'shell_command', 'bash', 'pwsh', 'read', 'edit', 'write', 'exec_command', 'write_stdin', 'apply_patch', 'request_permissions'
+  'shell_command', 'bash', 'pwsh', 'read', 'edit', 'write', 'exec_command', 'write_stdin', 'apply_patch', 'request_permissions', 'working_directory'
 ])
 const WORKFLOW_TOOLS = new Set([
   'todo_write', 'get_goal', 'create_goal', 'update_goal',

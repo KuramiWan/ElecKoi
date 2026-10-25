@@ -10,6 +10,8 @@ describe('DSH character tool policy', () => {
   it('classifies the current desktop tool groups and keeps internal probes', () => {
     expect(classify({ type: 'function', function: { name: 'eleckoi_read_variables' } })).toBe('builtin:variables')
     expect(classify({ type: 'function', function: { name: 'pwsh' } })).toBe('builtin:workspace')
+    expect(classify({ type: 'function', name: 'working_directory' })).toBe('builtin:workspace')
+    expect(filterDeclarations([{ name: 'working_directory' }], ['builtin:workspace'])).toEqual([])
     expect(classify({ type: 'function', function: { name: 'skill' } })).toBe('builtin:workflow')
     expect(classify({ type: 'function', function: { name: 'workflow' } })).toBe('builtin:workflow')
     expect(classify({ type: 'function', function: { name: 'subagent_fork' } })).toBe('builtin:collaboration')

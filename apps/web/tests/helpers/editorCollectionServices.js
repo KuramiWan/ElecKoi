@@ -1,5 +1,4 @@
 import { createScriptItem } from '../../src/modules/scripts/model/scriptEditing.js';
-import { newDisplayTemplate } from '../../src/modules/displayTemplates/DisplayTemplatesPanel.jsx';
 import { createRegexRule } from '../../src/modules/regex/model/regexRulesEditing.js';
 import { withLibraryVersions } from './editorLibraryVersions.js';
 import { withRegexEditor } from './regexEditorModel.js';
@@ -19,10 +18,9 @@ export function editorCollectionService(kind, ownerScope, onSave = () => {}) {
   }
   const documents = Object.fromEntries(Object.entries(owners).map(([scope, id]) => [scope, {
     scope, ownerId: id, enabled: true, revision: 0,
-    ...(kind === 'scripts' ? { variables: {}, trees: [{ ...createScriptItem('script', 'synthetic-item'), name: `合成${scope}条目`, enabled: true }] }
-      : { templates: [{ ...newDisplayTemplate('synthetic-item'), name: `合成${scope}条目`, enabled: true }] }),
+    ...({ variables: {}, trees: [{ ...createScriptItem('script', 'synthetic-item'), name: `合成${scope}条目`, enabled: true }] }),
   }]));
   return withLibraryVersions({ read: async scope => structuredClone(documents[scope]), subscribe: () => () => {}, subscribeChanges: () => () => {},
     saveAll: async drafts => { const result = drafts.map(draft => documents[draft.scope] = { ...draft, revision: draft.revision + 1 }); onSave(result); return result; } },
-  kind === 'scripts' ? 'scripts' : 'displayTemplates');
+  'scripts');
 }

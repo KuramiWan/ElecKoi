@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import { dshClientPlugin } from '../../../../tests/helpers/dshClientPlugin'
 import { SlotCore } from '@deepseek-ai/dsh-client-ui-slots'
-import { OfficialStatsPills, OfficialContextMeter } from '../../../../tests/helpers/officialTrajectory.js'
+import { OfficialActivityPill, OfficialContextMeter } from '../../../../tests/helpers/officialTrajectory.js'
 import { useChatSessions } from '../../src/modules/chat/hooks/useChatSessions.js'
 import { RichMessageFrame } from '../../src/modules/authorFrontend/components/RichMessageFrame.jsx'
 import { detectRichMessagePresentation } from '../../../../packages/shared/src/foundation/richMessage'
@@ -242,11 +242,11 @@ describe('regeneration with the official Session client projection', () => {
       if (name !== 'react') throw new Error(`Unexpected Client dependency: ${name}`)
       return React
     }).apply({ sessions: runtime.sessions, slots, eleckoiConversations: runtime.model })
-    releases.push(slots.register({ name: 'conversation.composer.dock', id: 'stats' }, OfficialStatsPills))
+    releases.push(slots.register({ name: 'conversation.composer.dock', id: 'activity' }, OfficialActivityPill))
     releases.push(slots.register({ name: 'conversation.composer.bar' }, OfficialContextMeter))
     await flush()
     const component = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.dock')
-      .find(entry => entry.options.id === 'dsh:conversation.composer.dock:stats').component
+      .find(entry => entry.options.id === 'dsh:conversation.composer.dock:activity').component
     const bar = slots.entriesOfSlot('eleckoi.roleplay.conversation.composer.bar')[0].component
     const container = document.createElement('div')
     document.body.append(container)
@@ -263,7 +263,7 @@ describe('regeneration with the official Session client projection', () => {
     }
     try {
       await act(async () => { root.render(<Probe />); await flush() })
-      const strip = container.querySelector('[data-composer-stats]')
+      const strip = container.querySelector('[data-composer-stat="activity"]')
       expect(strip).not.toBeNull()
       const previous = container.textContent
       let regenerating
@@ -271,25 +271,25 @@ describe('regeneration with the official Session client projection', () => {
         regenerating = runtime.model.regenerate({ conversationId: 'chat-1', requestId: 'synthetic-stats', eventSeq: 5 })
         await flush()
       })
-      expect(container.querySelector('[data-composer-stats]')).toBe(strip)
+      expect(container.querySelector('[data-composer-stat="activity"]')).toBe(strip)
       if (mode === 'prepare-failed') {
         await act(async () => {
           runtime.rejectPreparation()
           await expect(regenerating).rejects.toThrow('测试回退失败')
         })
-        expect(container.querySelector('[data-composer-stats]')).toBe(strip)
+        expect(container.querySelector('[data-composer-stat="activity"]')).toBe(strip)
         expect(container.textContent).toBe(previous)
         return
       }
       await act(async () => { runtime.completePreparation(); await flush() })
       expect(runtime.readProjection('sessionStats').steps).toBe(0)
       expect(runtime.model.getStatsSnapshot().stats.sessionStats.steps).toBe(3)
-      expect.soft(container.querySelector('[data-composer-stats]')).toBe(strip)
+      expect.soft(container.querySelector('[data-composer-stat="activity"]')).toBe(strip)
       expect.soft(container.textContent).toBe(previous)
       await act(async () => runtime.live('<FINAL>合成新回复'))
-      expect.soft(container.querySelector('[data-composer-stats]')).toBe(strip)
+      expect.soft(container.querySelector('[data-composer-stat="activity"]')).toBe(strip)
       await act(async () => { runtime.complete('<FINAL>合成新回复</FINAL>'); await regenerating })
-      expect(container.querySelector('[data-composer-stats]')).toBe(strip)
+      expect(container.querySelector('[data-composer-stat="activity"]')).toBe(strip)
       expect(strip.textContent).toContain('stats.counts:2,2')
       // A later authoritative zero is accepted once regeneration has settled.
       await act(async () => runtime.updateStats({
@@ -297,7 +297,7 @@ describe('regeneration with the official Session client projection', () => {
         tokenUsage: { uncachedInputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 },
         contextPressure: {},
       }))
-      expect(container.querySelector('[data-composer-stats]')).toBeNull()
+      expect(container.querySelector('[data-composer-stat="activity"]')).toBeNull()
       expect(container.textContent).toBe('')
     } finally {
       await act(async () => root.unmount())

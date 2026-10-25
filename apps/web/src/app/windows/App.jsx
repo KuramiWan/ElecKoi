@@ -44,6 +44,7 @@ function AppContent({ renderWindow, ...windowProps } = {}) {
   }
   if (params.get("view") === "creator-studio") {
     return <CreatorStudioWindow characterCatalog={characters} projectCatalog={creatorStudio} models={models} presetCatalog={presets} rightbar={rightbar}
+      navigation={navigation}
       renderCreatorStudioConversation={windowProps.renderCreatorStudioConversation} />;
   }
 

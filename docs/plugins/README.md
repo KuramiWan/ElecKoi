@@ -5,8 +5,8 @@ ElecKoi 使用 DSH 官方 bundle、Cordis 生命周期和 Web Client Slots 作�
 本文档对应以下固定基准：
 
 - ElecKoi Desktop：`0.2.9`
-- DSH：`0.2.0-rc.2`
-- DSH 提交：`c1b47e41fcd54d20a0f061df28683bfc29ee24e5`
+- DSH：`0.2.1-rc.3`
+- DSH 提交：`1f81c047fc48fa190a683e469daa699857e9afe8`
 - 插件接口与数量：[自动生成的开发接口总表](api-reference.md)
 
 ## 从哪里开始
@@ -29,7 +29,6 @@ ElecKoi 使用 DSH 官方 bundle、Cordis 生命周期和 Web Client Slots 作�
 | [Bundle manifest](manifest.md) | `package.json`、`cordis.patch.yml`、本地化和接口声明格式 |
 | [界面插槽](ui-slots.md) | 界面接入点、组合方式、作用域和 owner props |
 | [服务接口](services.md) | 如何导入公开类型、调用服务和查询接口 |
-| [原生作者 SDK](author-sdk.html) / [仓库教程](author-sdk.md) | 角色脚本、作者页面、变量规则、输入与发送 |
 | [格式导入边界](sdk-compatibility.md) | 外部资料转换、原生数据归属与 HTML 显示资源 |
 | [AI 创作工作室工具](creator-studio-tools.md) | 设定 EJS、变量 Zod、脚本按钮面板与正则显示替换 |
 | [Client 完整参考](api-client.md) | 客户端服务的全部公开方法与参数 |
@@ -67,4 +66,4 @@ pnpm check:plugin-docs
 - 已删除的 `window.eleckoi` 与 Desktop Gateway、页面组件内部 props、DSH 内部注册表和 SQLite schema 都不是第三方插件 API。
 - 公开接口发生不兼容变化时，应提升相应 bundle 版本并同步更新类型、manifest、文档和安装探针。
 
-- [EJS显示模板](ejs-display-templates.md)：AI 消息显示入口、标准语法、片段替换与历史状态。
+- [正则中的 EJS](regex-ejs.md)：替换内容计算、显示与提示词范围、变量快照和网页交互。

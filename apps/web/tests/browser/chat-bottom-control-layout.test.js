@@ -21,14 +21,21 @@ it('keeps official chat controls and extension content on their shared layout tr
         build.onResolve({ filter: /^official-chat-fixture$/ }, () => ({ path: 'official-chat-fixture', namespace: 'chat-fixture' }));
         build.onLoad({ filter: /.*/, namespace: 'chat-fixture' }, () => ({ resolveDir: resolve('.'), contents: `
           import * as React from 'react'; import * as jsxRuntime from 'react/jsx-runtime'; import * as ReactDOM from 'react-dom';
+          import * as virtual from '@tanstack/react-virtual';
           import * as store from '@deepseek-ai/dsh-client-store'; import * as primitives from '@deepseek-ai/dsh-client-ui-primitives';
           let registration; const captureModule = value => { registration = value; };
           ${source.replace('window.__ModuleLoader__.load(', 'captureModule(')
-            .replace('return module.exports;', 'return { ...module.exports, ChatView, chatStyles: css$13 };')}
-          const modules = { react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': ReactDOM,
+            .replace('return module.exports;', 'return { ...module.exports, ChatView, ChatFlow };')}
+          const modules = { '@tanstack/react-virtual': virtual, react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': ReactDOM,
             '@deepseek-ai/dsh-client-store': store, '@deepseek-ai/dsh-client-ui-primitives': primitives };
-          export const { ChatView, chatStyles } = registration.factory(name => { if (!(name in modules)) throw new Error(name); return modules[name]; });
-          const style = document.createElement('style'); style.textContent = chatStyles; document.head.prepend(style);
+          const { ChatView: OfficialChatView, ChatFlow } = registration.factory(name => { if (!(name in modules)) throw new Error(name); return modules[name]; });
+          export function ChatView(props) {
+            return React.createElement(OfficialChatView, { ...props, renderSlot: (name, owner, options) => {
+              if (name !== 'conversation.chat.flow') return props.renderSlot(name, owner, options);
+              return React.createElement('div', { 'data-slot': name, style: { display: 'contents' } }, React.createElement(ChatFlow, { ...props, ...owner,
+                useChatNodeBottom: () => false, useGroupAction: () => React.useRef(null), useGroupHeaderAction() {}, renderFactorySlot: () => null }));
+            } });
+          }
         ` }));
       } }],
     });

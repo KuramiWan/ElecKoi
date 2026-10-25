@@ -1,3 +1,4 @@
+import * as reactVirtual from '@tanstack/react-virtual'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -15,7 +16,7 @@ let registration
 const browser = new Proxy({}, { get: (_target, key) => key === '__ModuleLoader__'
   ? { load: value => { registration = value } }
   : typeof window === 'undefined' ? undefined : window[key] })
-runInNewContext(source.replace('return module.exports;', 'return { ...module.exports, ChatView, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, StatsPills, ManualCompactionNodeView };'), {
+runInNewContext(source.replace('return module.exports;', 'return { ...module.exports, RawChatView: ChatView, ChatFlow, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, ActivityPill, ManualCompactionNodeView };'), {
   window: browser,
   document: typeof document === 'undefined' ? undefined : document,
   HTMLElement: typeof HTMLElement === 'undefined' ? undefined : HTMLElement,
@@ -32,15 +33,25 @@ runInNewContext(source.replace('return module.exports;', 'return { ...module.exp
   get ResizeObserver() { return globalThis.ResizeObserver },
   get matchMedia() { return globalThis.matchMedia },
 })
-const modules = {
+const modules = { '@tanstack/react-virtual': reactVirtual,
   react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': ReactDOM,
   '@deepseek-ai/dsh-client-store': store,
   '@deepseek-ai/dsh-client-ui-primitives': primitives,
 }
-export const { ChatView, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, StatsPills, ManualCompactionNodeView } = registration.factory(name => {
+const { RawChatView, ChatFlow, ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, ActivityPill, ManualCompactionNodeView } = registration.factory(name => {
   if (!(name in modules)) throw new Error(`Unexpected Chat Client dependency: ${name}`)
   return modules[name]
 })
+
+export { ChatReading, ChatViewport, ScrollFollow, TurnNavigator, mergeTurnRailItems, ActivityPill, ManualCompactionNodeView }
+export function ChatView(props) {
+  return React.createElement(RawChatView, { ...props, renderSlot: (name, owner, options) => {
+    if (name !== 'conversation.chat.flow') return props.renderSlot(name, owner, options)
+    return <div data-slot="conversation.chat.flow" style={{ display: 'contents' }}><ChatFlow {...props} {...owner}
+      useChatNodeBottom={() => false} useGroupAction={() => React.useRef(null)} useGroupHeaderAction={() => {}}
+      renderFactorySlot={() => null} /></div>
+  } })
+}
 
 export function chatFixture(sessionId = 'session-test') {
   const listeners = new Set()
@@ -66,7 +77,7 @@ export function chatFixture(sessionId = 'session-test') {
     useConversation: select => select({ views: { grouped: () => state.grouped } }),
     useSessions: select => select({ byId: { [sessionId]: {} } }),
     useProjection: key => key === 'inbox' ? useStateSnapshot().inbox : undefined,
-    usePresentation: select => select({ foldCompletedTurns: false, stepGrouping: 'expanded' }),
+    usePresentation: select => select({ foldCompletedTurns: false, stepGrouping: 'none' }),
     useStore: select => select({ turnProcess: {} }),
     actions: { setTurnProcessOpen() {} },
     t: key => key,
@@ -81,7 +92,7 @@ export function chatFixture(sessionId = 'session-test') {
 }
 
 export function userNode(key, seq, requestId, turn = 1, text = '合成输入') {
-  return { key, kind: 'user', anchorSeq: seq,
+  return { key, kind: 'user', target: 'chat', visibility: 'visible', groupTree: 'input', anchorSeq: seq,
     location: { kind: 'turn', turn: { turn, status: 'closed', data: { get() {} } } },
     data: { kind: 'user', seq, time: 1, content: [{ type: 'text', text }], source: { kind: 'user', rpcId: requestId } } }
 }

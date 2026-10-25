@@ -123,7 +123,7 @@ export interface ConfigurationSnapshot<T> {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:6](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L6)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:5](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L5)
 
 ## ConversationCatalogSnapshot
 
@@ -461,23 +461,6 @@ export interface CreatorStudioSnapshot {
 
 源码：[packages/client/features/dsh-client-creator-studio/src/client/types.ts:46](../../packages/client/features/dsh-client-creator-studio/src/client/types.ts#L46)
 
-## DeepSeekWebSnapshot
-
-```ts
-export interface DeepSeekWebSnapshot {
-    available: boolean;
-    count: number;
-    needContent: boolean;
-    localization: string;
-    apiKeyRef: string;
-    apiKeyConfigured: boolean;
-    apiKeyWritable: boolean;
-    revision?: number;
-}
-```
-
-源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:4](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L4)
-
 ## EditorLibraryVersionModel
 
 ```ts
@@ -488,7 +471,7 @@ export interface EditorLibraryVersionModel<T> {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:8](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L8)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:7](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L7)
 
 ## ElecKoiRegexEditor
 
@@ -504,7 +487,7 @@ export interface ElecKoiRegexEditor {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:217](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L217)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:218](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L218)
 
 ## ModelCatalogSnapshot
 
@@ -608,22 +591,6 @@ export interface PresetDetailSnapshot {
 
 源码：[packages/client/features/dsh-client-presets/src/client/types.ts:5](../../packages/client/features/dsh-client-presets/src/client/types.ts#L5)
 
-## WebConnection
-
-```ts
-export type WebConnection = TavilyConnection | DeepSeekWebConnection;
-```
-
-源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:7](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L7)
-
-## WebCredentialProvider
-
-```ts
-export type WebCredentialProvider = 'tavily' | 'deepseek_api';
-```
-
-源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:6](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L6)
-
 ## WebSearchSettingsPatch
 
 ```ts
@@ -631,14 +598,10 @@ export interface WebSearchSettingsPatch {
     mode?: WebSearchMode;
     fetchMode?: WebFetchMode;
     maxResults?: number;
-    deepseekCount?: number;
-    needContent?: boolean;
-    localization?: string;
-    deepseekKeyRef?: string;
 }
 ```
 
-源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:8](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L8)
+源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:5](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L5)
 
 ## WebSearchSnapshot
 
@@ -647,7 +610,7 @@ export interface WebSearchSnapshot {
     status: 'loading' | 'ready' | 'error';
     mode: WebSearchMode;
     fetchMode: WebFetchMode;
-    deepseek: DeepSeekWebSnapshot;
+    officialDeepSeekAvailable: boolean;
     maxResults: number;
     apiKeyConfigured: boolean;
     apiKeyRef: string;
@@ -659,12 +622,12 @@ export interface WebSearchSnapshot {
 }
 ```
 
-源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:5](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L5)
+源码：[packages/client/features/dsh-client-web-search/src/client/types.ts:4](../../packages/client/features/dsh-client-web-search/src/client/types.ts#L4)
 
 ## 官方和平台类型
 
 官方类型从其对应的 DSH 公开包入口导入；平台类型使用 TypeScript 标准库。
 
-[锁定版本的官方接口目录](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/docs/subsystems/README.zh.md)
+[锁定版本的官方接口目录](https://github.com/deepseek-ai/deepseek-harness/blob/1f81c047fc48fa190a683e469daa699857e9afe8/docs/subsystems/README.zh.md)
 
 `GenerateOptions`、`RemoteStream`、`Session`

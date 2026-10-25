@@ -4,11 +4,11 @@
 
 ## 权威来源
 
-当前仓库锁定 `deepseek-ai/deepseek-harness` `0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。核对架构和行为时使用这个**精确提交**的官方源码，而不是浮动的 `master`、旧版文档或 ElecKoi 的临时实现：
+当前仓库锁定 `deepseek-ai/deepseek-harness` `0.2.1-rc.3`，提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。核对架构和行为时使用这个**精确提交**的官方源码，而不是浮动的 `master`、旧版文档或 ElecKoi 的临时实现：
 
-- [DSH 架构](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/docs/architecture.zh.md)：Cordis、profile、bundle 与插件树。
-- [Web Client 架构](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/docs/subsystems/web-client.zh.md)：Host、Remote、Client model、Slots 与 React。
-- [官方 Desktop](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/apps/desktop/README.zh.md)：Electron 壳、受管 profile、Web Host、客户端资源及插件管理。
+- [DSH 架构](https://github.com/deepseek-ai/deepseek-harness/blob/1f81c047fc48fa190a683e469daa699857e9afe8/docs/architecture.zh.md)：Cordis、profile、bundle 与插件树。
+- [Web Client 架构](https://github.com/deepseek-ai/deepseek-harness/blob/1f81c047fc48fa190a683e469daa699857e9afe8/docs/subsystems/web-client.zh.md)：Host、Remote、Client model、Slots 与 React。
+- [官方 Desktop](https://github.com/deepseek-ai/deepseek-harness/blob/1f81c047fc48fa190a683e469daa699857e9afe8/apps/desktop/README.zh.md)：Electron 壳、受管 profile、Web Host、客户端资源及插件管理。
 
 升级时先锁定同一上游发布批次的提交、包和构建产物，再把上述引用与本仓库的依赖一起更新。不同版本的官方文件不能混作一次架构依据。
 
@@ -23,6 +23,10 @@
 3. 主界面使用官方 Web Client 的模块加载、Cordis 生命周期、Remote、Client model、Slots 和 Renderer。ElecKoi 的页面与角色聊天通过公开的客户端插件合同贡献；第三方插件在其声明的正式扩展位上生效。
 4. 新增产品能力默认进入同版本 DSH 的 Host/Client 插件体系。每项能力都必须说明所有者、持久数据来源、公开扩展点、卸载行为和升级验证。需要 Electron 原生能力或产品独有持久数据时，先对照官方 Desktop/Host 的归属方式；无法纳入官方合同的例外必须有具体理由、明确边界和 ADR，不得把现有目录当作永久理由。
 5. 不把“使用 Cordis”或“安装后出现在插件列表”当作架构对齐的证明。必须验证实际会话、界面、启停卸载、重启恢复及第三方插件效果。
+
+产品页面的 Vite 入口共用官方 Web Client 已注册的 React、React DOM 与 UI Primitives 实例，只生成导出绑定，不再次打包基础控件及其 CSS。插件专用样式保留官方的层叠顺序；返回按钮、组合按钮等控件的尺寸与内边距由同版本官方组件及样式决定。
+
+产品壳承接被替换的 `ui-layout` 入口时，其主题 DOM 投影必须与同版本 `theme-presenter.ts` 一致：读取 `ThemeSnapshot.fontSizes` 和 `fontFamilies` 中的 `text / code / terminal`，同步和释放各角色的正式 CSS 变量；不得继续读取旧的单值 `fontSize` 快照字段。全局字体使用官方 `--dsw-font-family`，插件页面与聊天统计保留官方的字体继承和次级字号计算。
 
 PC 原生错误对话框与 Android 原生错误页面提供用户插件恢复入口，独立于无法启动的客户端插件树。壳先停止受管 Host，再调用同版本官方 `sanitizeProfile` 备份当前 profile 的 `cordis.patch.yml`，按各应用的内置组合清单恢复启动，并保留当前启用的官方 `OPTIONAL_BUNDLES`；用户安装的包和产品数据保留。客户端加载失败、Host 失败都必须到达这个原生入口，不能只写日志或要求进入尚未启动的插件中心。
 
@@ -48,6 +52,8 @@ Windows 更新控制和 Electron HTTP 空闲超时采用同一锁定提交的官
 
 角色聊天的 Session 引用由 `eleckoiConversations` 在发布已加载消息前准备完成；角色页面通过 `getSessionReference` 直接进入该就绪绑定的官方 Session 作用域，不再次等待异步打开。界面另外持有一份官方显示引用，在切换聊天及同一聊天回退、重新生成的绑定交接期间保留已有界面和输入框，待就绪绑定提交后释放旧引用；退出聊天或卸载页面也释放其引用。Host 删除当前角色或对话并清空目录选择后，页面同步清空本地选择、正文与草稿并关闭所属前端，作废未完成的打开操作；加载中和读取失败仍保留有效的当前选择。回退与重新生成保持原有聊天和 Session ID。模型重试沿正式 `model-retry` 节点的轮次、尝试编号和状态进入 AI 消息的处理过程，正文列表只保留最终失败等必要状态。
 
+右侧栏按官方 `AppFrame` 的归属常驻外壳，独立于主页面的键、错误边界及 Suspense；插件页与聊天往返不重建 `rightbar` 根。各 Session 的右侧栏引用、保留标签和释放继续由官方 `SidebarSessionViews` 管理，不能把右侧栏放进页面加载占位或错误回退中，也不能绕过其引用归属校验。
+
 角色与创作工作室的自定义压缩模板只替换官方压缩请求末尾的摘要指令，保留官方选择的历史消息、工具声明、工具历史、输出上限和取消信号。工具声明仍用于官方请求前缀及历史工具解析；禁止以摘要不执行工具为由删除这些声明。压缩请求仍由同版本官方压缩引擎选区、调用模型、校验及提交摘要；请求失败不能视为压缩成功。
 
 大工具结果沿用同版本官方 `spill-policy` 的 Token 预算与完整文件存储。共用 Host 在官方 `LocalSpillStore` 扩展中为每个结果保存一份小型会话归属凭据，由现有 `eleckoi_read_setting_files`、`eleckoi_read_variables` 和 `eleckoi_call_capability` 的 `result` 参数提供按 UTF-8 字节续读及文字搜索，不新增 AI 工具或独立工具组；完整正文只保存一次，不建立结果索引数据库、不在每次模型请求中追加结果副本。删除聊天时，Host 按正式 Session 日志确定本会话及被一同删除的子会话，使用官方目录编码删除它们的完整结果、归属凭据及结果目录；删除角色卡沿用其关联聊天的同一流程，独立创作工作室会话由自己的删除操作清理。清理失败明确写入错误日志，不阻止聊天或角色卡删除；保留官方启动时按文件年龄回收的机制处理过期残留，不增加清理队列或迁移。结果失效后明确要求重新查询源数据。各入口只读取本工具组在当前会话产生的结果，或正式分叉继承的同组祖先结果；普通业务参数与 result 模式互斥，续读不重复执行原操作；上传文件读取仍使用原有附件授权，不接受结果路径。
@@ -60,12 +66,12 @@ Windows 更新控制和 Electron HTTP 空闲超时采用同一锁定提交的官
 
 ## 数据放在哪里
 
-联网搜索与抓取继续使用官方 `ctx.web` 和现有 `web_search`、`web_fetch` 工具。`@eleckoi/dsh-web-deepseek` 作为已有联网设置 bundle 的 Host 依赖，在独立配置项中注册官方 Search、Fetch API 提供器；PC、Android 共用。提供商分别保存在 profile，参数由 Settings 管理，联网密钥通过独立 Credentials 引用保存，不覆盖模型配置。完整结果、缺失源站状态及精确上游补丁的处理见 [ADR 0039](adr/0039-deepseek-search-fetch.md)。
+联网搜索与抓取使用官方 `ctx.web` 和现有 `web_search`、`web_fetch` 工具。DeepSeek Messages、Search、Fetch 及 HTTP 抓取均沿用锁定官方提供器，只有 Tavily 保留扩展。工具弹窗通过正式插件导航打开 `web-search` 设置项，DeepSeek 密钥和参数只由官方表单及 Settings、Credentials 管理。旧扩展选择在 Loader 挂载前按精确编号退役；原有官方配置与凭据保留。完整输出补丁和退役边界见 [ADR 0039](adr/0039-deepseek-search-fetch.md)。
 
 数据位置由它的权威所有者决定，不以“统一放数据库”为目标：
 
 - DSH 已有正式领域使用 DSH 自己的持久化合同：模型配置使用 settings/profile，密钥使用 `ctx.credentials`，聊天正文使用 Session 日志，bundle 选择使用 profile。
-- DSH 的 [`dsh-storage-sqlite`](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/packages/storage/storage-sqlite/README.zh.md) 是 Host 侧的文档型 KV 后端：每个键保存一行 JSON，配合 `ctx.storageDomain` 提供 schema 校验、持久写入和进程内变更事件。简单、独立且按键读写的新增 Host 状态应优先评估这套正式合同。
+- DSH 的 [`dsh-storage-sqlite`](https://github.com/deepseek-ai/deepseek-harness/blob/1f81c047fc48fa190a683e469daa699857e9afe8/packages/storage/storage-sqlite/README.zh.md) 是 Host 侧的文档型 KV 后端：每个键保存一行 JSON，配合 `ctx.storageDomain` 提供 schema 校验、持久写入和进程内变更事件。简单、独立且按键读写的新增 Host 状态应优先评估这套正式合同。
 - ElecKoi 的角色关系、聊天索引等关系型产品数据，在领域迁入 DSH Host 后由 Host Repository 独占 SQLite 写入；Client 和 Electron Main 不直接写。
 - 创作项目、导出文件和其他以目录为产品形态的数据保存在用户选择的文件目录；Host 只维护对应文件索引，不复制进 SQLite。
 - 页面加载状态、当前选择和生成中的临时状态留在 Client 内存，除非存在明确的重启恢复需求。
@@ -82,4 +88,22 @@ Windows 更新控制和 Electron HTTP 空闲超时采用同一锁定提交的官
 4. Main 只保留窗口、资源协议、更新与 Host 进程管理；新业务进入 DSH Host/Client，现有数据库由 `@eleckoi/dsh-product-data` 独占。
 5. 以真实官方/第三方插件验收安装、启用、界面效果、停用、卸载、会话恢复和上游批次升级。当前临时插件探针已覆盖安装、中文元数据、真实角色卡编辑入口、重启、停用、启用和卸载。
 
-当前 `pnpm check:architecture` 检查目录、进程边界，并阻止已删除的 Desktop Gateway 业务桥回流；它仍不能代替真实 Host、Session 与插件生命周期验收。旧的 [桌面架构说明](history/ARCHITECTURE.md) 仅作历史索引。
+当前 `pnpm check:architecture` 检查目录、进程边界，并阻止已删除的 Desktop Gateway 业务桥回流；它仍不能代替真实 Host、Session 与插件生命周期验收。旧的 [桌面架构说明](history/ARCHITECTURE.md) 和私有知识库中的《ElecKoi Desktop 架构最终总纲》仅作历史索引。
+
+## 0.2.1-rc.3 对齐
+
+当前批次同步 Cordis 4.0.5、DSH 0.2.1-rc.3、pi-ai 1.1.0 与官方 Desktop 使用的 Electron 44.7.0；依赖均锁定精确版本。角色聊天将根视图、正文 flow 与用户／输出图片分开的公开 Slots 映射到产品座位，保留官方滚动和 motion 合同。Remote 的进程内调用必须提供显式 Peer，并装配官方 RemoteAccessService。桌面及 Android Host 的启动自检使用短生命周期的 owner Peer，检查完成即释放；不改变网络调用的身份与授权。新版 `working_directory` 工具随现有工作区工具组启停，不新增工具组。
+
+插件目录和安装详情采用官方 official、availability、installTarget、source 字段；不以包名前缀猜测官方身份。停用、安装和重启沿用官方生命周期。已停止发布的 schedule bundle、invariants 和 in-process subagent driver 不再声明。产品组合按用户要求停用 schedule 服务与 ui-schedule，不提供自动化任务入口、编辑、触发和 AI 提醒工具。
+
+既有输入重新生成、忽略型产品记录、旧 Session 系统头恢复、完整工具续读和采样参数的版本补丁保留，精确退役条件记在 pnpm-workspace.yaml 的每个补丁入口。SDK 的打开已存在会话使用官方显式 resume，删除旧 create 失败后自动 resume 的补丁。不新增产品数据库迁移，不改写用户日志来绕过官方重复调用校验。
+
+生成的 Client Remote 元数据使用官方 `remote-info` 纯运行模块，随产品客户端入口一起构建，不要求浏览器模块加载器另外提供该子路径。通用视图与专用角色 flow 分别拥有自己的子 Slots，避免重复声明。
+
+新版官方 API-key 模型目录按凭据状态提供条目；ElecKoi 的模型读取入口明确报告缺少密钥，不把无条目视作读取成功。读取不写入设置或凭据。
+
+上一批次（0.2.1-rc.2）验证记录：完整 JS／TS 回归 306 个文件、2006 项通过；后续角色 flow 归属修正通过 6 项专项回归，实际 Electron 的官方网页搜索页面、深浅主题、12 个官方可选组合启停及冷启动恢复、桌面更新流程通过。实际 Host 已验证原生存储、冷会话模型选择及角色／聊天删除，普通角色聊天发送、失败恢复、冷启动和连续重新生成检查通过；富消息完整切换未新增验收结论。Android 仅同步共用源码和锁定清单，不代表更新归档、APK 或真机验收。
+
+0.2.1-rc.3 新增的插件入口通过官方 entry-customization 和公开 actions Slots 接入侧栏、角色聊天与创作工作室；右侧栏直接使用官方新版。产品侧栏的子槽位由侧栏所属 renderSlot 调用，聊天标题沿用各自 Session 投影座位。未新增数据库迁移；已有精确版本补丁随整批依赖重新核对并应用。
+
+本批次实际桌面检查覆盖三处更多菜单、创建插件草稿不自动发送、普通聊天失败恢复／冷启动／连续重新生成及右侧栏、工作室连续新建与插件页往返。显式 layout.selectPanel(null) 按官方合同打开 conversation，初始产品消息页继续由独立的 messages 选择提供；工作室只切换中央内容，右侧栏常驻。32 项正式组合与完整结果续读集成通过；UI 分组先通过 164 个文件，余下 3 个文件的旧 Hook fixture 更新后 14 项复核通过，后续导航 9 项、工作室 5 项通过。未生成安装包或 Android 资源。

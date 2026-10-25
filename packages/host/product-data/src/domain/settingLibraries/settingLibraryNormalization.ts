@@ -12,7 +12,7 @@ export const OPENING_ENTRY_ID = 'fixed-opening-assistant'
 
 const now = (): string => new Date().toISOString()
 
-function openingEntry(source: SettingLibraryEntry | undefined, timestamp: string): SettingLibraryEntry {
+function openingEntry(source: SettingLibraryEntry | undefined, timestamp: string, active: boolean): SettingLibraryEntry {
   const messages = source?.openingMessages.length ? source.openingMessages : [{
     id: 'opening-default', title: '默认开场', content: source?.content ?? '', initialVariableStateJson: ''
   }]
@@ -29,7 +29,7 @@ function openingEntry(source: SettingLibraryEntry | undefined, timestamp: string
     keywordIgnoreCase: true, keywordWholeWord: false, keywordRecursionDepth: 0,
     triggerMode: 'always', position: null, promptPositionId: '', insertRole: 'assistant',
     order: 1, viewOrder: 0, groupViewOrder: 0, treeViewOrder: 0,
-    createdAt: source?.createdAt || timestamp, updatedAt: timestamp
+    createdAt: source?.createdAt || timestamp, updatedAt: active ? timestamp : source?.updatedAt || timestamp
   }
 }
 
@@ -80,7 +80,7 @@ function normalizedVersion(source: SettingLibraryVersion, active: boolean, times
     treeViewOrder: group.treeViewOrder || index + 1, createdAt: group.createdAt || timestamp,
     updatedAt: active ? timestamp : group.updatedAt || timestamp
   }))
-  const opening = openingEntry(source.entries.find((entry) => entry.id === OPENING_ENTRY_ID || entry.kind === 'opening'), timestamp)
+  const opening = openingEntry(source.entries.find((entry) => entry.id === OPENING_ENTRY_ID || entry.kind === 'opening'), timestamp, active)
   const entries = [opening, ...source.entries.filter((entry) => entry.id !== OPENING_ENTRY_ID && entry.kind !== 'opening').map((entry, index) => ({
     ...entry, title: entry.title.trim(), groupId: entry.groupId.trim(),
     agentSelectionHint: entry.agentSelectionHint,

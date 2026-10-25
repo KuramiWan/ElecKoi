@@ -1,9 +1,8 @@
 import { z } from 'zod'
 import { scriptFilePathSchema, scriptTreeSchema, scriptLibrarySchema } from '../scripts/schemas'
-import { displayTemplateSchema, displayTemplateLibrarySchema } from '../displayTemplates/schemas'
 import { regexRuleSchema } from '../regex/schemas'
 
-export const editorLibraryKindSchema = z.enum(['scripts', 'displayTemplates', 'regex'])
+export const editorLibraryKindSchema = z.enum(['scripts', 'regex'])
 export const editorLibraryAddressSchema = z.strictObject({
   kind: editorLibraryKindSchema,
   scope: z.enum(['global', 'character', 'preset']),
@@ -43,11 +42,6 @@ export const scriptVersionContentSchema = z.strictObject({
   const result = scriptLibrarySchema.safeParse({ enabled: content.enabled, trees: content.trees, variables: content.variables, scope: 'global', ownerId: '', revision: 0 })
   if (!result.success) result.error.issues.forEach(issue => context.addIssue({ code: 'custom', path: issue.path, message: issue.message }))
 })
-export const displayVersionContentSchema = z.strictObject({ enabled: z.boolean(), templates: z.array(displayTemplateSchema).max(100) })
-  .superRefine((content, context) => {
-    const result = displayTemplateLibrarySchema.safeParse({ ...content, scope: 'global', ownerId: '', revision: 0 })
-    if (!result.success) result.error.issues.forEach(issue => context.addIssue({ code: 'custom', path: issue.path, message: issue.message }))
-  })
 export const regexVersionContentSchema = z.strictObject({ enabled: z.boolean().default(true), rules: z.array(regexRuleSchema) }).superRefine((content, context) => {
   const ids = new Set<string>()
   for (const rule of content.rules) {
@@ -59,7 +53,6 @@ export const regexVersionContentSchema = z.strictObject({ enabled: z.boolean().d
 export function decodeEditorVersionContent(kind: EditorLibraryKind, content: string) {
   const input: unknown = JSON.parse(content)
   if (kind === 'scripts') return scriptVersionContentSchema.parse(input)
-  if (kind === 'displayTemplates') return displayVersionContentSchema.parse(input)
   return regexVersionContentSchema.parse(input)
 }
 

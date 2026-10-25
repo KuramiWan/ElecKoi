@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RegexRulesPanel } from '../../src/modules/regex/components/RegexRulesPanel.jsx';
-import { DisplayTemplatesPanel, newDisplayTemplate } from '../../src/modules/displayTemplates/DisplayTemplatesPanel.jsx';
 import { ScriptLibrariesPanel } from '../../src/modules/scripts/components/ScriptLibrariesPanel.jsx';
 import { createScriptItem } from '../../src/modules/scripts/model/scriptEditing.js';
 import { createRegexRule } from '../../src/modules/regex/model/regexRulesEditing.js';
@@ -30,15 +29,14 @@ function service(kind, ownerScope) {
   }
   const documents = Object.fromEntries(Object.entries(owners).map(([scope, id]) => [scope, {
     scope, ownerId: id, enabled: true, revision: 0,
-    ...(kind === 'scripts' ? { variables: {}, trees: [{ ...createScriptItem('folder', 'synthetic-folder'), enabled: true,
-      scripts: [{ ...createScriptItem('script', 'synthetic-script'), name: '合成脚本', enabled: true }] }] }
-      : { templates: [{ ...newDisplayTemplate('synthetic-template'), name: '合成模板', enabled: true }] }),
+    ...({ variables: {}, trees: [{ ...createScriptItem('folder', 'synthetic-folder'), enabled: true,
+      scripts: [{ ...createScriptItem('script', 'synthetic-script'), name: '合成脚本', enabled: true }] }] }),
   }]));
   return withLibraryVersions({ read: async scope => structuredClone(documents[scope]), subscribe: () => () => {}, subscribeChanges: () => () => {},
     saveAll: async drafts => { const result = drafts.map(draft => documents[draft.scope] = { ...draft, revision: draft.revision + 1 }); saved(); return result; } },
-  kind === 'scripts' ? 'scripts' : 'displayTemplates');
+  'scripts');
 }
-const services = Object.fromEntries(['character', 'preset'].flatMap(scope => ['regex', 'templates', 'scripts'].map(kind => [`${kind}:${scope}`, service(kind, scope)])));
+const services = Object.fromEntries(['character', 'preset'].flatMap(scope => ['regex', 'scripts'].map(kind => [`${kind}:${scope}`, service(kind, scope)])));
 function Fixture() {
   const [address, setAddress] = useState({ kind: 'regex', scope: 'character' });
   const { kind, scope } = address, ownerId = `synthetic-${scope}`, model = services[`${kind}:${scope}`];
@@ -48,9 +46,7 @@ function Fixture() {
     <span id="text-reference" style={{ color: 'var(--text)' }} />
     <span id="muted-reference" style={{ color: 'var(--muted)' }} />
     <main key={`${kind}:${scope}`} data-current={`${kind}:${scope}`} style={{ height: 'calc(100vh - 48px)' }}>
-      {kind === 'regex' ? <RegexRulesPanel {...props} regexRules={model} />
-        : kind === 'scripts' ? <ScriptLibrariesPanel {...props} scriptLibraries={model} />
-          : <DisplayTemplatesPanel scope={scope} ownerId={ownerId} displayTemplates={model} />}
+      {kind === 'regex' ? <RegexRulesPanel {...props} regexRules={model} /> : <ScriptLibrariesPanel {...props} scriptLibraries={model} />}
     </main>
   </>;
 }

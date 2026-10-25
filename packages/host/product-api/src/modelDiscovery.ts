@@ -67,7 +67,7 @@ async function draftKey(owner: Context, input: ModelDiscoveryInput): Promise<str
 /** Read the dedicated directory or discover a draft without persisting it. */
 export async function discoverDraftModels(owner: Context, input: ModelDiscoveryInput): Promise<ModelDiscoveryResult[]> {
   if (input.builtinProvider && input.builtinProvider !== input.configId) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '内置提供商必须使用目录中的 Provider ID。', { field: 'configId' })
-  const key = input.builtinProvider ? '' : await draftKey(owner, input)
+  const key = input.builtinProvider && input.builtinProvider !== 'deepseek-official' ? '' : await draftKey(owner, input)
   const ctx = new Context()
   const provider = 'eleckoi-discovery-probe'
   try {
@@ -89,6 +89,7 @@ export async function discoverDraftModels(owner: Context, input: ModelDiscoveryI
       }))
     }
     if (input.api === 'deepseek_messages') {
+      if (!key) throw productFailure(ELECKOI_FAILURE_CODES.modelConfigInvalid, 'DSH 官方模型目录要求先配置 DeepSeek API Key。', { field: 'DeepSeek API Key' })
       const settings = owner.settings.describe().find(row => row.ns === 'llm-deepseek')?.value as deepSeek.Options | undefined
       await ctx.plugin(deepSeek, { apiKeyEnv: 'PROBE_API_KEY', baseURL: input.baseURL,
         ...(settings?.thinking === undefined ? {} : { thinking: settings.thinking }),

@@ -1,3 +1,8 @@
 - insert:
     - id: eleckoi-client-shell
       name: '@eleckoi/dsh-client-shell'
+
+- id: schedule
+  disabled: true
+- id: ui-schedule
+  disabled: true

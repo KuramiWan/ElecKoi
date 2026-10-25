@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import { creatorCapabilities, creatorToolsets } from '../src/domain/creatorStudio/capabilities'
 import { VARIABLE_INITIALIZATION_OBJECT_ID } from '../../../shared/src/contracts/variables/schemas'
+import { OPENING_ENTRY_ID } from '../src/domain/settingLibraries/index'
 
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.unstubAllEnvs() })
@@ -24,6 +25,106 @@ async function fixture() {
 }
 
 describe('Creator authoring matches the native setting, schema, script and regex contracts', { timeout: 30_000 }, () => {
+  it('writes every primary and alternate opening, preserves bindings and versions, and reopens the complete card', async () => {
+    const f = await fixture(), library = f.data.readSettingLibrary(f.characterId)
+    const config = f.data.readVariableConfig(f.characterId)
+    const indexes = [0, 5_000, 10_000]
+    const openings = Array.from({ length: 10_001 }, (_, index) => ({
+      id: `synthetic-opening-${index}`, title: `合成开场-${index}`, content: `他在开场-${index}。${indexes.includes(index) ? '合成长正文他𠮷'.repeat(20_000) : ''}末尾他-${index}`,
+      ...(index % 2 ? { variableVersionId: config.activeVersionId } : {}), initialVariableStateJson: JSON.stringify({ synthetic: index }),
+    }))
+    const seed = f.data.saveSettingLibrary(f.characterId, { ...library,
+      entries: library.entries.map(entry => entry.kind === 'opening' ? { ...entry, enabled: true, openingMessages: openings, defaultOpeningMessageId: openings[5_000]!.id } : entry),
+      versions: [...library.versions, { ...library.versions[0]!, id: 'synthetic-unchanged-version', name: '合成历史版本' }],
+    })
+    const normal = f.call('settings.create', { title: '合成普通设定', content: '合成原正文' })
+    const other = f.data.saveSettingLibrary('synthetic-other-character', f.data.readSettingLibrary('synthetic-other-character'))
+    const desired = seed.entries.find(entry => entry.kind === 'opening')!.openingMessages.map(opening => ({ ...opening, content: opening.content.replaceAll('他', '她') }))
+    const updated = f.call('settings.update_many', { updates: [
+      { id: OPENING_ENTRY_ID, changes: { openingMessages: desired } }, { id: normal.id, changes: { content: '合成修改后的普通正文' } },
+    ] })
+    expect(updated[0].id).toBe(OPENING_ENTRY_ID)
+    expect(JSON.stringify(updated[0].openingMessages) === JSON.stringify(desired)).toBe(true)
+    expect(updated[0].defaultOpeningMessageId).toBe(openings[5_000]!.id)
+    expect(updated[0].content === desired[5_000]!.content).toBe(true)
+    expect(updated[1]).toMatchObject({ id: normal.id, content: '合成修改后的普通正文' })
+    for (const index of indexes) expect(updated[0].openingMessages[index].content.endsWith(`末尾她-${index}`)).toBe(true)
+    expect(f.data.readSettingLibrary('synthetic-other-character')).toEqual(other)
+    const saved = f.data.readSettingLibrary(f.characterId)
+    expect(saved.activeVersionId).toBe(seed.activeVersionId)
+    expect(saved.versions.find(version => version.id === 'synthetic-unchanged-version')).toEqual(seed.versions.find(version => version.id === 'synthetic-unchanged-version'))
+    expect(JSON.stringify(saved.versions.find(version => version.id === saved.activeVersionId)!.entries.find(entry => entry.kind === 'opening')!.openingMessages) === JSON.stringify(desired)).toBe(true)
+    const chat = f.data.createConversation({ metadata: { characterId: f.characterId } })
+    expect(chat.messages[0]!.content === desired[5_000]!.content).toBe(true)
+    expect(chat.messages[0]!.selectedOpeningId).toBe(desired[5_000]!.id)
+    expect(chat.messages[0]!.openingOptions).toHaveLength(desired.length)
+    for (const format of ['json', 'png'] as const) {
+      const exported = f.data.exportCharacter(f.characterId, format)
+      const preview = f.data.prepareCharacterImports([{ displayName: exported.fileName, mimeType: exported.mimeType, base64: exported.base64 }], 'eleckoi')
+      const imported = f.data.commitCharacterImports(preview.token).importedCharacterIds[0]!
+      expect(JSON.stringify(f.data.readSettingLibrary(imported).entries.find(entry => entry.kind === 'opening')!.openingMessages) === JSON.stringify(desired)).toBe(true)
+    }
+    await f.ctx.fiber.dispose()
+    const reopened = new Context(); cleanups.push(() => reopened.fiber.dispose()); await reopened.plugin(productDataPlugin)
+    expect(reopened.eleckoiProductData.readSettingLibrary(f.characterId)).toEqual(saved)
+  }, 60_000)
+
+  it('updates the default opening directly, supports adding and removing alternates, and rolls back invalid mixed edits', async () => {
+    const f = await fixture(), opening = f.call('settings.read', { id: OPENING_ENTRY_ID })
+    const initial = opening.openingMessages[0]
+    f.call('settings.update', { id: opening.id, changes: { content: '合成主开场白', enabled: true } })
+    let current = f.call('settings.read', { id: opening.id })
+    expect(current).toMatchObject({ content: '合成主开场白', openingMessages: [{ ...initial, content: '合成主开场白' }] })
+    const alternate = { id: 'synthetic-alternate', title: '合成备用', content: '合成备用正文', initialVariableStateJson: '' }
+    f.call('settings.update', { id: opening.id, changes: { openingMessages: [...current.openingMessages, alternate], defaultOpeningMessageId: alternate.id } })
+    current = f.call('settings.read', { id: opening.id })
+    expect(current).toMatchObject({ content: alternate.content, defaultOpeningMessageId: alternate.id })
+    const normal = f.call('settings.create', { title: '合成普通设定', content: '合成普通原文' }), saved = f.data.readSettingLibrary(f.characterId)
+    for (const changes of [
+      { openingMessages: [{ ...alternate, variableVersionId: 'synthetic-missing-variable-version' }] },
+      { openingMessages: [alternate, alternate] }, { openingMessages: [] },
+      { defaultOpeningMessageId: 'synthetic-missing-opening' },
+      { openingMessages: [alternate], content: '合成冲突正文' },
+    ]) {
+      expect(() => f.call('settings.update_many', { updates: [{ id: normal.id, changes: { content: '合成不应保存' } }, { id: opening.id, changes }] })).toThrow()
+      expect(f.data.readSettingLibrary(f.characterId)).toEqual(saved)
+    }
+    f.call('settings.update', { id: opening.id, changes: { openingMessages: [alternate], content: alternate.content } })
+    f.call('settings.update', { id: opening.id, changes: { content: '' } })
+    expect(f.call('settings.read', { id: opening.id })).toMatchObject({ openingMessages: [{ ...alternate, content: '' }], content: '', defaultOpeningMessageId: alternate.id })
+  })
+
+  it('changes and clears opening variable-version bindings and writes initial state used by new conversations', async () => {
+    const f = await fixture()
+    f.call('variables.create', { title: 'synthetic', objectId: '', enabled: true, type: 'number', defaultValue: '11', description: '', updateRule: '', readMode: 'required', order: 1, treeViewOrder: 1 })
+    const config = f.data.readVariableConfig(f.characterId)
+    const secondVersionId = 'synthetic-opening-variable-version'
+    f.data.saveVariableConfig(f.characterId, { ...config, versions: [...config.versions,
+      { ...config.versions[0]!, id: secondVersionId, name: '合成备用变量版本', variables: config.variables.map(variable => ({ ...variable, defaultValue: '22' })) },
+    ] })
+    expect(f.call('variables.list')).toMatchObject({ activeVersionId: config.activeVersionId, versions: [...config.versions.map(({ id, name }) => ({ id, name })), { id: secondVersionId, name: '合成备用变量版本' }] })
+    const opening = f.call('settings.read', { id: OPENING_ENTRY_ID })
+    const message = { ...opening.openingMessages[0], content: '合成绑定开场', variableVersionId: config.activeVersionId, initialVariableStateJson: '{"synthetic":11}' }
+    f.call('settings.update', { id: opening.id, changes: { enabled: true, openingMessages: [message] } })
+    f.call('settings.update', { id: opening.id, changes: { openingMessages: [{ ...message, variableVersionId: secondVersionId }] } })
+    let saved = f.call('settings.read', { id: opening.id })
+    expect(saved.openingMessages[0]).toMatchObject({ variableVersionId: secondVersionId, initialVariableStateJson: '{"synthetic":11}' })
+    const bound = f.data.createConversation({ metadata: { characterId: f.characterId } })
+    expect(JSON.parse(bound.messages[0]!.variableStateJson)).toEqual({ synthetic: 22 })
+    expect(bound.messages[0]!.openingOptions![0]!.variableVersionId).toBe(secondVersionId)
+    expect(JSON.parse(bound.messages[0]!.openingOptions![0]!.initialVariableStateJson)).toEqual({ synthetic: 22 })
+    f.call('settings.update', { id: opening.id, changes: { openingMessages: [{ ...saved.openingMessages[0], variableVersionId: '', initialVariableStateJson: '{"synthetic":33}' }] } })
+    saved = f.call('settings.read', { id: opening.id })
+    expect(saved.openingMessages[0]).toMatchObject({ variableVersionId: '', initialVariableStateJson: '{"synthetic":33}' })
+    const unbound = f.data.createConversation({ metadata: { characterId: f.characterId } })
+    expect(JSON.parse(unbound.messages[0]!.variableStateJson)).toEqual({ synthetic: 33 })
+    expect(unbound.messages[0]!.openingOptions![0]).toMatchObject({ variableVersionId: config.activeVersionId, initialVariableStateJson: '{"synthetic":33}' })
+    expect(f.data.readConversationDetails(bound.conversation.id).messages[0]!.openingOptions).toEqual(bound.messages[0]!.openingOptions)
+    await f.ctx.fiber.dispose()
+    const reopened = new Context(); cleanups.push(() => reopened.fiber.dispose()); await reopened.plugin(productDataPlugin)
+    expect(reopened.eleckoiProductData.readSettingLibrary(f.characterId).entries.find(entry => entry.kind === 'opening')!.openingMessages).toEqual(saved.openingMessages)
+  })
+
   it('saves and reopens every object in a variable configuration larger than one SQL parameter budget', async () => {
     const f = await fixture(), config = f.data.readVariableConfig(f.characterId)
     const objects = Array.from({ length: 10_001 }, (_, index) => ({
@@ -116,72 +217,9 @@ describe('Creator authoring matches the native setting, schema, script and regex
     expect(f.data.readVariableConfig(f.characterId).variables).toEqual([])
   })
 
-  it('authors independent display libraries with explicit preset ownership, partial updates and revision conflicts', async () => {
-    const f = await fixture(), preset = f.data.readAgentPresetCatalog().activePresetIds.roleplay
-    const target = { scope: 'preset', presetId: preset }
-    const empty = f.call('displayTemplates.read', target)
-    const created = f.call('displayTemplates.create', { target, expectedRevision: empty.revision, template: {
-      name: 'Synthetic display', position: 'after', pattern: '', flags: '', source: '<%= getvar("score") %>',
-    } })
-    expect(created.template.enabled).toBe(false)
-    const updated = f.call('displayTemplates.update', { target, id: created.template.id, expectedRevision: created.revision, changes: { source: '<p><%= rawContent %></p>' } })
-    expect(updated.template.name).toBe('Synthetic display')
-    expect(() => f.call('displayTemplates.update', { target, id: created.template.id, expectedRevision: created.revision, changes: { enabled: true } })).toThrow('重新读取')
-    expect(() => f.call('displayTemplates.read', { scope: 'preset' })).toThrow()
-    expect(f.data.readDisplayTemplates('preset', preset).templates).toEqual([updated.template])
-    expect(f.data.readDisplayTemplates('character', f.characterId).templates).toEqual([])
-    const configured = f.call('displayTemplates.configure', { target, expectedRevision: updated.revision, enabled: true, orderedIds: [created.template.id] })
-    expect(configured.enabled).toBe(true)
-    expect(configured.templates.every((template: any) => template.enabled)).toBe(true)
-    const global = f.call('displayTemplates.read', { scope: 'global' })
-    expect(global).toMatchObject({ scope: 'global', ownerId: '', revision: 0 })
-    const savedGlobal = f.call('displayTemplates.configure', { target: { scope: 'global' }, expectedRevision: global.revision, enabled: true })
-    expect(f.data.readDisplayTemplates('global', '')).toEqual(savedGlobal)
-    expect(() => f.call('displayTemplates.read', { scope: 'global', presetId: preset })).toThrow()
-    const settings = f.data.readSettingLibrary(f.characterId)
-    expect(JSON.stringify(settings)).not.toContain('Synthetic display')
-    const scripts = f.call('presetScripts.read', { presetId: preset })
-    const saved = f.call('presetScripts.save', { presetId: preset, expectedRevision: scripts.revision, enabled: false, variables: { score: 1 }, trees: scripts.trees })
-    expect(f.data.readScriptLibrary('preset', preset)).toEqual(saved)
-    expect(() => f.call('presetScripts.save', { presetId: preset, expectedRevision: scripts.revision, enabled: false, variables: {}, trees: [] })).toThrow('重新读取')
-  })
-  it.each(['global', 'character', 'preset'] as const)('bulk configures every %s display template and keeps sort-only changes independent', async scope => {
-    const f = await fixture(), presetId = f.data.readAgentPresetCatalog().activePresetIds.roleplay
-    const target = scope === 'preset' ? { scope, presetId } : { scope }
-    let library = f.call('displayTemplates.read', target)
-    for (const example of creatorToolsets.find(toolset => toolset.id === 'displayTemplates')!.examples) {
-      f.call('displayTemplates.create', { target, expectedRevision: library.revision, template: example.template })
-      library = f.call('displayTemplates.read', target)
-    }
-    expect(library.templates.every((template: any) => !template.enabled)).toBe(true)
-    library = f.call('displayTemplates.configure', { target, expectedRevision: library.revision, enabled: true })
-    expect(library.enabled).toBe(true)
-    expect(library.templates.every((template: any) => template.enabled)).toBe(true)
-    f.call('displayTemplates.update', { target, expectedRevision: library.revision, id: library.templates[0].id, changes: { enabled: false } })
-    library = f.call('displayTemplates.read', target)
-    const previous = library.templates
-    const sorted = f.call('displayTemplates.configure', { target, expectedRevision: library.revision, orderedIds: previous.map((template: any) => template.id).reverse() })
-    expect(sorted.templates).toEqual([...previous].reverse())
-    const before = f.call('displayTemplates.read', target)
-    expect(() => f.call('displayTemplates.configure', { target, expectedRevision: before.revision, orderedIds: [before.templates[0].id, before.templates[0].id] })).toThrow()
-    expect(() => f.call('displayTemplates.configure', { target, expectedRevision: library.revision, enabled: false })).toThrow('重新读取')
-    expect(f.call('displayTemplates.read', target)).toEqual(before)
-    const off = f.call('displayTemplates.configure', { target, expectedRevision: before.revision, enabled: false })
-    expect(off.enabled).toBe(false)
-    expect(off.templates.every((template: any) => !template.enabled)).toBe(true)
-  })
-  it('does not advertise or accept removed display parameters', async () => {
-    const f = await fixture(), target = { scope: 'character' }
-    const create = f.operations.find(operation => operation.id === 'displayTemplates.create')!
-    const fields = (create.inputSchema.properties as any).template.properties
-    expect(Object.keys(fields).sort()).toEqual(['name', 'position', 'pattern', 'flags', 'source'].sort())
-    expect(fields.position.enum).toEqual(['before', 'after', 'replace'])
-    const template = { name: '合成模板', position: 'after', pattern: '', flags: '', source: '' }
-    for (const extra of [{ delimiter: '%' }, { rmWhitespace: true }, { position: 'partial' }]) {
-      expect(() => f.call('displayTemplates.create', { target, expectedRevision: 0, template: { ...template, ...extra } })).toThrow()
-    }
-    expect(f.call('displayTemplates.read', target).templates).toEqual([])
-  })
+
+
+
   it('saves empty disabled script drafts and refuses to enable them without altering valid data', async () => {
     const f = await fixture()
     const draft = f.call('scripts.create', { expectedRevision: 0, name: '合成空白草稿', content: '' })
@@ -273,10 +311,10 @@ describe('Creator authoring matches the native setting, schema, script and regex
     } })
     const before = f.data.readRegexRules(f.characterId)
     const preview = (surface: string, depth = 0, isEdit = false) => f.call('regex.test', { text: '<meter>25</meter>', rule: created.rule, target: 'AiOutput', surface, depth, isEdit })
-    expect(preview('Display')).toMatchObject({ output: '<div>数值：25</div>', changed: true })
-    expect(preview('Prompt')).toMatchObject({ output: '<meter>25</meter>', appliesToSurface: false })
-    expect(preview('Display', 3).changed).toBe(false)
-    expect(preview('Display', 0, true).changed).toBe(false)
+    expect(await preview('Display')).toMatchObject({ output: '<div>数值：25</div>', changed: true })
+    expect(await preview('Prompt')).toMatchObject({ output: '<meter>25</meter>', appliesToSurface: false })
+    expect((await preview('Display', 3)).changed).toBe(false)
+    expect((await preview('Display', 0, true)).changed).toBe(false)
     expect(() => f.call('regex.update', { id: created.rule.id, expectedRevision: created.revision, changes: { pattern: '/(/g' } })).toThrow()
     expect(f.data.readRegexRules(f.characterId)).toEqual(before)
     const changed = f.call('regex.update', { id: created.rule.id, expectedRevision: created.revision, changes: { replacement: '<p>$1</p>' } })

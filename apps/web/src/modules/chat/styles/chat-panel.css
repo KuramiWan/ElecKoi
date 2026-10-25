@@ -165,12 +165,14 @@
   position: relative;
   z-index: 1;
   display: flex;
+  align-items: flex-start;
+  min-height: 25px;
   gap: 36px;
   margin-top: 10px;
   padding-left: 8px;
 }
 
-.chat-header-tabs button {
+.chat-header-tabs [role="tab"] {
   position: relative;
   padding: 0 0 9px;
   border: 0;
@@ -182,7 +184,7 @@
   cursor: pointer;
 }
 
-.chat-header-tabs button::after {
+.chat-header-tabs [role="tab"]::after {
   position: absolute;
   right: 0;
   bottom: -1px;
@@ -193,11 +195,11 @@
   content: "";
 }
 
-.chat-header-tabs button[aria-selected="true"] {
+.chat-header-tabs [role="tab"][aria-selected="true"] {
   color: var(--dsw-alias-state-business-primary, var(--blue));
 }
 
-.chat-header-tabs button[aria-selected="true"]::after {
+.chat-header-tabs [role="tab"][aria-selected="true"]::after {
   background: var(--dsw-alias-state-business-primary, var(--blue));
 }
 
@@ -396,21 +398,21 @@
   --dsh-chat-flow-gap: 0px;
 }
 
-.message-area [data-chat-column] > [data-chat-flow-key] {
+.message-area [data-chat-column] > :is([data-slot="conversation.chat.flow"], [data-slot="eleckoi.roleplay.chat.flow"]) > [data-chat-flow-key] {
   --dsh-chat-flow-gap: 0px;
 }
 
 /* Product message rows own their reading layout. Every other official flow
    item shares one content seat, including nodes contributed by plugins.
    Align the flow item because slot outlet anchors use display: contents. */
-.message-area [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
+.message-area [data-chat-column] > :is([data-slot="conversation.chat.flow"], [data-slot="eleckoi.roleplay.chat.flow"]) > [data-chat-flow-key]:not(:has(.message-flow)) {
   box-sizing: border-box;
   width: min(var(--chat-composer-card-max-width), 100%);
   margin-inline: auto;
   padding-inline: var(--chat-horizontal-padding, 16px);
 }
 
-.message-area.layout-roleplay [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
+.message-area.layout-roleplay [data-chat-column] > :is([data-slot="conversation.chat.flow"], [data-slot="eleckoi.roleplay.chat.flow"]) > [data-chat-flow-key]:not(:has(.message-flow)) {
   width: min(calc(var(--chat-reading-width) + 2 * var(--chat-roleplay-side-rail)), 100%);
   padding-inline: var(--chat-roleplay-side-rail);
 }
@@ -2721,7 +2723,7 @@ button.chat-file-card:hover { border-color: var(--blue); }
     scrollbar-gutter: auto;
   }
 
-  .message-area.layout-roleplay [data-chat-column] > [data-chat-flow-key]:not(:has(.message-flow)) {
+  .message-area.layout-roleplay [data-chat-column] > :is([data-slot="conversation.chat.flow"], [data-slot="eleckoi.roleplay.chat.flow"]) > [data-chat-flow-key]:not(:has(.message-flow)) {
     padding-inline-end: var(--chat-horizontal-padding, 10px);
   }
 

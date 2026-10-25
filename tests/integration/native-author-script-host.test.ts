@@ -1,3 +1,6 @@
+import { clientBundlePath } from '../support/client-bundle.js'
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
+import { ownerPeer } from '../support/owner-peer.js'
 import * as Cordis from '@deepseek-ai/cordis'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -72,17 +75,18 @@ async function runtime() {
   ctx.provide('eleckoiProductData', data as any); ctx.provide('eleckoiVariableProcessing', processor)
   ctx.provide('eleckoiConversationChanges', { publish } as any)
   ctx.provide('eleckoiCharacterConfigurationChanges', { publish } as any)
+  await ctx.plugin(RemoteAccessService)
   await ctx.plugin(TypertGatewayService); await ctx.plugin(ElecKoiAuthorVariablesApi); await ctx.plugin(ElecKoiAuthorScriptsApi)
   cleanups.push(async () => { processor.close(); unregister(); await ctx.fiber.dispose() })
   const controller = () => new AbortController()
-  const read = () => ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorScripts', method: 'read', args: { conversationId: 'synthetic-chat' } })
-  const set = (state: unknown, signal = controller().signal) => ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorVariables', method: 'setState', args: { conversationId: 'synthetic-chat', stateJson: JSON.stringify(state) }, signal })
+  const read = () => ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorScripts', method: 'read', args: { conversationId: 'synthetic-chat' } })
+  const set = (state: unknown, signal = controller().signal) => ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorVariables', method: 'setState', args: { conversationId: 'synthetic-chat', stateJson: JSON.stringify(state) }, signal })
   return { ctx, data, processor, libraries, read, set, save, publish,
     get state() { return JSON.parse(current) }, set schema(value: string) { schema = value },
     library(scope: ScriptLibrary['scope']) { return libraries.get(JSON.stringify([scope, scope === 'global' ? '' : scope === 'character' ? characterId : presetId]))! },
     async open(version = ctx.eleckoiAuthorScriptsApi.read('synthetic-chat').version) {
       const abort = controller(), inbox = new Inbox<NativeAuthorRuleReply>()
-      const stream = await ctx.typertGateway.stream({ namespace: 'eleckoiAuthorScripts', method: 'connect',
+      const stream = await ctx.typertGateway.stream({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorScripts', method: 'connect',
         args: { conversationId: 'synthetic-chat', version }, signal: abort.signal, uplink: inbox })
       const iterator = stream[Symbol.asyncIterator]()
       const ready = await iterator.next()
@@ -163,7 +167,7 @@ describe('native author script Host', () => {
     await client.plugin(TypertRegistry)
     const call = vi.fn(async (_base: string, endpoint: string, payload: any, signal: AbortSignal) => {
       const [namespace, method] = endpoint.split('/')
-      try { return { ok: true, value: await r.ctx.typertGateway.invoke({ namespace: namespace!, method: method!, args: payload.args, signal }) } }
+      try { return { ok: true, value: await r.ctx.typertGateway.invoke({ peer: ownerPeer(r.ctx), namespace: namespace!, method: method!, args: payload.args, signal }) } }
       catch (error) { return { ok: false, error: { code: 'gateway/internal', message: String(error), details: {} } } }
     })
     const open = vi.fn(async function* (_base: string, endpoint: string, payload: any, signal: AbortSignal, uplink: AsyncIterable<unknown>) {
@@ -172,12 +176,12 @@ describe('native author script Host', () => {
         try { yield* feed } finally { feed.close() }
       } else {
         const [namespace, method] = endpoint.split('/')
-        yield* await r.ctx.typertGateway.stream({ namespace: namespace!, method: method!, args: payload.args, signal, uplink })
+        yield* await r.ctx.typertGateway.stream({ peer: ownerPeer(r.ctx), namespace: namespace!, method: method!, args: payload.args, signal, uplink })
       }
     })
     client.provide('connection', { rpc: { call, open }, registerGenerationSource: () => () => {}, start: () => ({ stop() {} }) } as any)
     let registration: any
-    runInNewContext(readFileSync(require.resolve('@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
+    runInNewContext(readFileSync(clientBundlePath(require, '@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
       window: { __ModuleLoader__: { load(value: any) { registration = value } } },
       crypto: globalThis.crypto, AbortController, AbortSignal, Error, Object, setTimeout, clearTimeout,
     })
@@ -266,7 +270,7 @@ describe('native author script Host', () => {
     }])
     expect(c.channel.ready.value).toMatchObject({ kind: 'ready' })
     // A merge retains the before-stage preparation while the proposed value changes.
-    const result = await r.ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorVariables', method: 'merge',
+    const result = await r.ctx.typertGateway.invoke({ peer: ownerPeer(r.ctx), namespace: 'eleckoiAuthorVariables', method: 'merge',
       args: { conversationId: 'synthetic-chat', stateJson: '{"value":4}' }, signal: new AbortController().signal })
     expect(JSON.parse(result as string)).toEqual({ value: 5, prepared: true, derived: 8, finalized: true })
     expect(c.stages).toEqual(['before', 'after', 'afterSchema']); expect(r.save).toHaveBeenCalledTimes(1)

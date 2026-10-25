@@ -2,7 +2,7 @@
 
 # Host 完整服务参考
 
-DSH 基准：`0.2.0-rc.2`，提交 `c1b47e41fcd54d20a0f061df28683bfc29ee24e5`。
+DSH 基准：`0.2.1-rc.3`，提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -354,14 +354,6 @@ Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/hos
 
 ```ts cordis-catalog
 /**
- * 读取共享全局或明确所属角色、预设的显示模板，结果不进入 Agent 设定目录。
- * @param scope - 全局、角色或预设归属。
- * @param ownerId - 全局使用空字符串，其他归属使用明确编号。
- * @returns 完整显示模板库及保存版本。
- */
-@Remote readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary
-
-/**
  * 读取明确归属的命名配置版本，脚本归档只在需要编辑版本时读取。
  * @param address - 类型、作用域与所属编号；全局使用空所属编号。
  * @returns 当前版本、命名版本正文和并发修改标识。
@@ -374,27 +366,6 @@ Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/hos
  * @returns 保存后的配置文档和版本；冲突时保留原数据。
  */
 @Remote saveEditorLibraries(request: EditorLibrarySaveRequest): EditorLibrarySaveResult
-
-/**
- * 按读取版本保存显示模板并通知已有聊天重新显示。
- * @param library - 保留读取 revision 的完整库。
- * @returns 已接受的库及递增版本。
- */
-@Remote saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary
-
-/**
- * 在同一事务中保存编辑器修改的全局和所属显示模板。
- * @param libraries - 修改后的库及各自 revision；归属不得重复。
- * @returns 与输入顺序相同的保存结果；任一冲突时全部回滚。
- */
-@Remote saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[]
-
-/**
- * 返回全局、当前扮演预设及指定角色的显示模板，各库保持独立归属。
- * @param characterId - 聊天绑定角色编号。
- * @returns 全局、预设、角色顺序排列的库。
- */
-@Remote displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection
 
 /**
  * 订阅变更通知；连接后首先收到刷新标记，取消信号结束此异步流。
@@ -600,12 +571,14 @@ Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/hos
  * @param text - 本次输入或待测试文本。
  * @param rule - 待测试规则。
  * @param target - 规则作用的内容类别。
+ * @param options - 测试范围、变量快照 JSON、深度与编辑场景。
+ * @param signal - 关闭编辑器或取消测试时结束计算。
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
-@Remote testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget): RegexRuleTestResult
+@Remote testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget, options?: { surface?: 'Display' | 'Prompt' | 'Stored'; variablesJson?: string; depth?: number; isEdit?: boolean }, signal?: AbortSignal): Promise<RegexRuleTestResult>
 ```
 
-Types: [CharacterConfigurationChange](types-host.md#characterconfigurationchange) · [DisplayTemplateLibrary](types-host.md#displaytemplatelibrary) · [DisplayTemplateScope](types-host.md#displaytemplatescope) · [DisplayTemplateSelection](types-host.md#displaytemplateselection) · [EditorLibraryAddress](types-host.md#editorlibraryaddress) · [EditorLibrarySaveRequest](types-host.md#editorlibrarysaverequest) · [EditorLibrarySaveResult](types-host.md#editorlibrarysaveresult) · [EditorLibraryVersions](types-host.md#editorlibraryversions) · [RegexEditorTarget](types-host.md#regexeditortarget) · [RegexRule](types-host.md#regexrule) · [RegexRuleCollection](types-host.md#regexrulecollection) · [RegexRuleEditorCollection](types-host.md#regexruleeditorcollection) · [RegexRuleEditorImportResult](types-host.md#regexruleeditorimportresult) · [RegexRuleImportDocument](types-host.md#regexruleimportdocument) · [RegexRuleImportResult](types-host.md#regexruleimportresult) · [RegexRuleScope](types-host.md#regexrulescope) · [RegexRuleTarget](types-host.md#regexruletarget) · [RegexRuleTestResult](types-host.md#regexruletestresult) · [ScriptLibrary](types-host.md#scriptlibrary) · [ScriptLibraryScope](types-host.md#scriptlibraryscope) · [ScriptWorkspace](types-host.md#scriptworkspace) · [SettingLibrary](types-host.md#settinglibrary) · [SettingLibraryContent](types-host.md#settinglibrarycontent) · [SettingLibraryConversation](types-host.md#settinglibraryconversation) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate) · [VariableConfig](types-host.md#variableconfig)
+Types: [CharacterConfigurationChange](types-host.md#characterconfigurationchange) · [EditorLibraryAddress](types-host.md#editorlibraryaddress) · [EditorLibrarySaveRequest](types-host.md#editorlibrarysaverequest) · [EditorLibrarySaveResult](types-host.md#editorlibrarysaveresult) · [EditorLibraryVersions](types-host.md#editorlibraryversions) · [RegexEditorTarget](types-host.md#regexeditortarget) · [RegexRule](types-host.md#regexrule) · [RegexRuleCollection](types-host.md#regexrulecollection) · [RegexRuleEditorCollection](types-host.md#regexruleeditorcollection) · [RegexRuleEditorImportResult](types-host.md#regexruleeditorimportresult) · [RegexRuleImportDocument](types-host.md#regexruleimportdocument) · [RegexRuleImportResult](types-host.md#regexruleimportresult) · [RegexRuleScope](types-host.md#regexrulescope) · [RegexRuleTarget](types-host.md#regexruletarget) · [RegexRuleTestResult](types-host.md#regexruletestresult) · [ScriptLibrary](types-host.md#scriptlibrary) · [ScriptLibraryScope](types-host.md#scriptlibraryscope) · [ScriptWorkspace](types-host.md#scriptworkspace) · [SettingLibrary](types-host.md#settinglibrary) · [SettingLibraryContent](types-host.md#settinglibrarycontent) · [SettingLibraryConversation](types-host.md#settinglibraryconversation) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate) · [VariableConfig](types-host.md#variableconfig)
 
 Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 
@@ -1326,17 +1299,9 @@ Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-a
  * @returns 已保存的网页抓取提供商。
  */
 @Remote async selectFetch(mode: WebFetchMode): Promise<WebFetchMode>
-
-/**
- * 测试 Search 和 Fetch；产生两次官方 API 调用，不保存临时密钥。
- * @param apiKey - 临时测试密钥；省略时读取已配置的官方凭据。
- * @param signal - 取消测试的信号。
- * @returns Search 和 Fetch 均成功时的连接状态，不包含密钥。
- */
-@Remote async testDeepSeek(apiKey?: string, signal?: AbortSignal): Promise<DeepSeekWebConnection>
 ```
 
-Types: [DeepSeekWebConnection](types-host.md#deepseekwebconnection) · [TavilyConnection](types-host.md#tavilyconnection) · [WebFetchMode](types-host.md#webfetchmode) · [WebSearchMode](types-host.md#websearchmode)
+Types: [TavilyConnection](types-host.md#tavilyconnection) · [WebFetchMode](types-host.md#webfetchmode) · [WebSearchMode](types-host.md#websearchmode)
 
 Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 <!-- END GENERATED cordis-surface -->

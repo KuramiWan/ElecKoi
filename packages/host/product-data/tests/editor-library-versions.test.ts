@@ -1,3 +1,4 @@
+import { restoreEditorSchemaV12 } from './helpers/editorSchemaV12'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -6,13 +7,10 @@ import { restoreLegacyConversationStorage } from './helpers/conversationStorageV
 import { afterEach, describe, expect, it } from 'vitest'
 import { SqliteDatabase } from '../src/storage/sqlite/SqliteDatabase'
 import { createScriptLibraryRepository } from './helpers/scriptLibraryOwners'
-import { DisplayTemplateRepository } from '../src/domain/displayTemplates'
 import { RegexRuleRepository } from '../src/domain/regexRules'
 import { AgentPresetRepository, agentPresetExists } from '../src/domain/agentPresets'
-import { characterExists } from '../src/domain/personas'
 import { EditorLibraryVersionRepository, EditorLibraryVersionsService } from '../src/domain/editorVersions'
 import type { EditorLibraryVersions } from '../../../shared/src/contracts/editorVersions/schemas'
-import { editorLibraryVersionsSchema } from '../../../shared/src/contracts/editorVersions/schemas'
 
 const fixtures: Array<{ directory: string; database: SqliteDatabase }> = []
 afterEach(() => { for (const { directory, database } of fixtures.splice(0)) {
@@ -25,15 +23,12 @@ function fixture() {
   database.open(); fixtures.push({ directory, database })
   const scripts = createScriptLibraryRepository(database), presets = new AgentPresetRepository(database, undefined, scripts)
   presets.ensureInitialized()
-  const templates = new DisplayTemplateRepository(database, { character: characterExists, preset: agentPresetExists })
   const regex = new RegexRuleRepository(database, presets), archiveRoot = join(directory, 'versions')
   const make = () => new EditorLibraryVersionsService(new EditorLibraryVersionRepository(database, archiveRoot, address => {
     if (address.scope !== 'global' && !agentPresetExists(database.db, address.ownerId)) throw new Error('Synthetic owner missing')
-  }), scripts, templates, regex)
-  return { directory, database, scripts, templates, regex, archiveRoot, service: make(), make }
+  }), scripts, regex)
+  return { directory, database, scripts, regex, archiveRoot, service: make(), make }
 }
-const template = (source: string) => ({ id: 'synthetic-template', name: 'Synthetic template', enabled: false, position: 'after' as const,
-  pattern: '', flags: '', source })
 const script = (content: string) => ({ type: 'script' as const, id: 'synthetic-script', name: 'Synthetic script', content, enabled: false,
   info: '', data: {}, button: { enabled: false, buttons: [] }, export_with: { data: true, button: true } })
 function setContent(state: EditorLibraryVersions, content: object) {
@@ -53,11 +48,12 @@ describe('complete editor configuration versions', () => {
     f.database.native.prepare("UPDATE editor_library_versions SET stateJson=? WHERE kind='regex'").run(JSON.stringify(oldState))
     const beforePresets = f.database.native.prepare('SELECT * FROM agent_presets').all()
     const beforeRules = f.database.native.prepare('SELECT * FROM global_regex_rules').all()
+    restoreEditorSchemaV12(f.database.native)
     f.database.native.exec('DROP TABLE regex_libraries')
     f.database.close()
     for (let attempt = 0; attempt < 2; attempt++) {
       f.database.open(); f.service = f.make()
-      expect(f.database.native.pragma('user_version', { simple: true })).toBe(12)
+      expect(f.database.native.pragma('user_version', { simple: true })).toBe(13)
       expect(f.database.native.prepare('SELECT * FROM agent_presets').all()).toEqual(beforePresets)
       expect(f.database.native.prepare('SELECT * FROM global_regex_rules').all()).toEqual(beforeRules)
       expect(f.database.native.prepare('SELECT * FROM regex_libraries').all()).toEqual([])
@@ -79,6 +75,7 @@ describe('complete editor configuration versions', () => {
     invalid.versions[0].content = JSON.stringify({ enabled: 'invalid', rules: [] })
     const invalidJson = JSON.stringify(invalid)
     f.database.native.prepare("UPDATE editor_library_versions SET stateJson=? WHERE kind='regex'").run(invalidJson)
+    restoreEditorSchemaV12(f.database.native)
     f.database.native.exec('DROP TABLE regex_libraries'); f.database.close()
     expect(() => f.database.open()).toThrow('正则版本整体启停无效')
     const native = new Database(join(f.directory, 'product.sqlite'))
@@ -108,17 +105,17 @@ describe('complete editor configuration versions', () => {
     f.service.save({ kind: 'regex', documents: [JSON.stringify({ ...f.regex.readEditor(target), agentPresetEnabled: true })], versions: [enabled] })
     expect(f.regex.readEditor(target).agentPresetEnabled).toBe(true)
   }, 30_000)
-  it('adds display and full version storage in one v11 to v12 upgrade and survives a disk reopen', () => {
+  it('upgrades v11 to the current regex and script version storage and survives a disk reopen', () => {
     const f = fixture(); f.database.close()
     const legacy = new Database(join(f.directory, 'product.sqlite'))
     restoreLegacyConversationStorage(legacy)
-    legacy.exec('DROP TABLE editor_library_versions; DROP TABLE display_template_libraries')
+    legacy.exec('DROP TABLE editor_library_versions; DROP TABLE IF EXISTS display_template_libraries')
     legacy.pragma('user_version=11'); const before = legacy.prepare('SELECT * FROM agent_presets').all(); legacy.close()
     for (let index = 0; index < 2; index++) {
       f.database.open()
-      expect(f.database.native.pragma('user_version', { simple: true })).toBe(12)
+      expect(f.database.native.pragma('user_version', { simple: true })).toBe(13)
       expect(f.database.native.prepare('SELECT * FROM agent_presets').all()).toEqual(before)
-      expect(f.database.native.prepare('SELECT * FROM display_template_libraries').all()).toEqual([])
+      expect(f.database.native.prepare("SELECT 1 FROM sqlite_master WHERE name='display_template_libraries'").get()).toBeUndefined()
       expect(f.database.native.prepare('SELECT * FROM editor_library_versions').all()).toEqual([])
       expect(f.database.native.pragma('foreign_key_check')).toEqual([])
       expect(f.database.native.pragma('integrity_check', { simple: true })).toBe('ok')
@@ -126,23 +123,7 @@ describe('complete editor configuration versions', () => {
     }
   }, 30_000)
 
-  it('switches full EJS source versions across restart and rejects stale names atomically', () => {
-    const f = fixture(), read = () => f.service.read({ kind: 'displayTemplates', scope: 'global', ownerId: '' })
-    const save = (state: EditorLibraryVersions, templates = JSON.parse(state.versions.find(item => item.id === state.activeVersionId)!.content).templates) =>
-      f.service.save({ kind: 'displayTemplates', documents: [JSON.stringify({ ...f.templates.get('global', ''), templates })], versions: [state] }).versions[0]!
-    let state = save(setContent(read(), { enabled: false, templates: [template('<p>First</p>')] }))
-    const stale = structuredClone(state)
-    state = save({ ...state, activeVersionId: 'second', versions: [...state.versions, { id: 'second', name: '第二版', content: JSON.stringify({ enabled: false, templates: [template('<p>Second</p>')] }) }] })
-    expect(() => save(stale)).toThrow('其他窗口更新')
-    expect(f.templates.get('global', '').templates[0]!.source).toBe('<p>Second</p>')
-    f.database.close(); f.database.open(); f.service = f.make()
-    state = f.service.read({ kind: 'displayTemplates', scope: 'global', ownerId: '' })
-    expect(state.versions.map(item => item.name)).toEqual(['默认版本', '第二版'])
-    save({ ...state, activeVersionId: 'default' })
-    expect(f.templates.get('global', '').templates[0]!.source).toBe('<p>First</p>')
-    expect(() => save(setContent(read(), { enabled: false, templates: [template('<p>Different</p>')] }), [template('<p>Mismatch</p>')])).toThrow('不一致')
-    expect(f.templates.get('global', '').templates[0]!.source).toBe('<p>First</p>')
-  }, 30_000)
+
 
   it('restores script source and binary resources without storing script text in SQL', () => {
     const f = fixture(), read = () => f.service.read({ kind: 'scripts', scope: 'global', ownerId: '' })
@@ -179,10 +160,7 @@ describe('complete editor configuration versions', () => {
     expect(f.database.native.prepare('SELECT * FROM editor_library_versions').all()).toEqual([])
   }, 30_000)
 
-  it('refuses an inactive duplicate template instead of saving an unusable version', () => {
-    const f = fixture(), state = f.service.read({ kind: 'displayTemplates', scope: 'global', ownerId: '' })
-    expect(() => editorLibraryVersionsSchema.parse({ ...state, versions: [...state.versions, { id: 'bad', name: '无效版', content: JSON.stringify({ enabled: false, templates: [template('a'), template('b')] }) }] })).toThrow('重复')
-  })
+
   it('bounds immutable archives across repeated saves and collects an aborted snapshot on restart', () => {
     const f = fixture(), address = { kind: 'scripts' as const, scope: 'global' as const, ownerId: '' }
     const save = (number: number) => {

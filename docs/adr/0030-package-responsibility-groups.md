@@ -16,11 +16,11 @@
 4. `packages/shared/` 是原 `@eleckoi/product-shared` 包的新位置，直接包含 `package.json` 和 `src/contracts`、`src/foundation`，不额外增加同名包目录。
 5. 示例包进入 `packages/examples/`；`packages/sdk/` 与 `packages/compatibility/` 继续按现有职责组织。
 6. 目录位置不决定 npm 包身份。所有现有 `package.json.name`、exports、版本、Cordis 服务名、Remote 命名空间、bundle/profile 标识及应用数据路径保持原样。只更新源码位置、相对引用、工作区声明、构建与检查入口。
-7. Android 采用共享 Node Host 运行方式，从当前正式数据模型的空数据基线开始；不采用旧 Android Room 数据导入与为其保留旧字段的兼容实现。PC 数据与既有升级迁移不受此决定影响。
+7. Android 采用 PR 的共享 Node Host 运行方式，从当前正式数据模型的空数据基线开始；不采用旧 Android Room 数据导入与为其保留旧字段的兼容实现。PC 数据与既有升级迁移不受此决定影响。
 8. 锁定版本的 Cordis 目录投影补丁按官方 `PackageModel.root` 和包身份识别源码，不依赖目录层数；生成后核对公开服务完整性，防止目录变深时静默丢失声明。见 [ADR 0023](0023-official-plugin-api-reference.md)。
 
 ## 实施与验证
 
-整理目录时同步更新路径引用、包发现、架构检查与文档。校验包身份和数据库定义未改变，并执行桌面测试、构建和 Host/Client 启动检查。Android 运行环境的接入见 [ADR 0031](0031-android-local-node-host.md)。
+先整理开发工作树的现有目录，更新路径引用、包发现、架构检查与文档。校验包身份和数据库定义未改变，执行桌面测试、构建和 Host/Client 启动检查，再由用户实际启动验收。Android 接入、PR 合并和公开工作树同步分别在后续阶段执行。
 
 目录依据：[锁定工作区](https://github.com/deepseek-ai/deepseek-harness/blob/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/pnpm-workspace.yaml)、[官方 Client 分组](https://github.com/deepseek-ai/deepseek-harness/tree/c1b47e41fcd54d20a0f061df28683bfc29ee24e5/packages/client)。

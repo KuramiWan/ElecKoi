@@ -319,8 +319,8 @@ window.__ModuleLoader__.load({
         return this.request('exportRegexRules', characterId, ruleIds)
       }
 
-      test(text, rule, target) {
-        return this.request('testRegexRule', text, rule, target)
+      test(text, rule, target, options, signal) {
+        return this.request('testRegexRule', text, rule, target, options, signal)
       }
 
       start() {
@@ -491,70 +491,6 @@ window.__ModuleLoader__.load({
       }
     }
 
-    class DisplayTemplatesModel extends CharacterConfigurationModel {
-      constructor(bridge) {
-        super(bridge, 'displayTemplates', 'readDisplayTemplates', 'saveDisplayTemplates', null, (value, address) => {
-          const [scope, ownerId] = JSON.parse(address)
-          if (scope === 'selection') {
-            if (!value || value.characterId !== ownerId || !Array.isArray(value.libraries) || value.libraries.length !== 3
-              || value.libraries[0]?.scope !== 'global' || value.libraries[0]?.ownerId !== ''
-              || value.libraries[1]?.scope !== 'preset' || !value.libraries[1]?.ownerId
-              || value.libraries[2]?.scope !== 'character' || value.libraries[2]?.ownerId !== ownerId
-              || value.libraries.some(library => typeof library.enabled !== 'boolean' || !Array.isArray(library.templates)
-                || !Number.isSafeInteger(library.revision) || library.revision < 0)) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '显示模板组合归属不匹配。', { what: '显示模板组合归属' })
-            const previous = this.getSnapshot(address).value
-            if (previous?.characterId === value.characterId && previous.libraries.every((library, index) =>
-              library.scope === value.libraries[index].scope && library.ownerId === value.libraries[index].ownerId
-                && library.revision === value.libraries[index].revision)) return previous
-          } else if (!value || value.scope !== scope || value.ownerId !== ownerId || !Array.isArray(value.templates)
-            || typeof value.enabled !== 'boolean' || !Number.isSafeInteger(value.revision) || value.revision < 0) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '显示模板配置归属或格式不正确。', { what: '显示模板配置' })
-          return value
-        })
-      }
-      request(method, address, value) {
-        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示模板客户端模型已关闭。', { what: '显示模板客户端模型' })
-        const [scope, ownerId] = JSON.parse(address)
-        if (method === 'saveDisplayTemplates') return this.bridge.request(method, [value])
-        return scope === 'selection' ? this.bridge.request('displayTemplatesForCharacter', [ownerId])
-          : this.bridge.request(method, [scope, ownerId])
-      }
-      start() {
-        this.stopEvents = this.bridge.subscribe(change => {
-          if (change?.kind === 'snapshot' || change?.kind === 'configuration'
-            && ['displayTemplates', 'agentPresets'].includes(change.domain)) this.refreshLoaded()
-        })
-      }
-      async saveAll(libraries) {
-        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, '显示模板客户端模型已关闭。', { what: '显示模板客户端模型' })
-        const addresses = libraries.map(library => JSON.stringify([library.scope, library.ownerId]))
-        const generations = addresses.map(address => this.nextGeneration(address))
-        const values = await this.bridge.request('saveDisplayTemplateLibraries', [libraries])
-        if (!Array.isArray(values) || values.length !== libraries.length) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '显示模板保存结果不完整。', { what: '显示模板保存结果' })
-        return values.map((value, index) => {
-          const saved = this.validate(value, addresses[index])
-          if (!this.disposed && this.generations.get(addresses[index]) === generations[index]) this.publish('configuration', addresses[index], { status: 'ready', value: saved, error: '' })
-          return saved
-        })
-      }
-    }
-
-    function displayTemplateService(model, bridge) {
-      const key = (scope, ownerId) => JSON.stringify([scope, ownerId])
-      return {
-        versions: editorVersionsService(model, bridge, 'displayTemplates', document => key(document.scope, document.ownerId)),
-        read: (scope, ownerId) => model.read(key(scope, ownerId)),
-        save: library => model.save(key(library.scope, library.ownerId), library),
-        saveAll: libraries => model.saveAll(libraries),
-        getSnapshot: (scope, ownerId) => model.getSnapshot(key(scope, ownerId)),
-        readSelection: characterId => model.read(key('selection', characterId)),
-        getSelectionSnapshot: characterId => model.getSnapshot(key('selection', characterId)),
-        subscribe: listener => model.subscribe((_kind, address, snapshot) => {
-          const [scope, ownerId] = JSON.parse(address)
-          listener(scope, ownerId, snapshot)
-        }),
-      }
-    }
-
     function apply(ctx) {
       const bridge = new CharacterConfigurationBridge(ctx.remote)
       const settingLibraries = new SettingLibrariesModel(bridge)
@@ -572,19 +508,16 @@ window.__ModuleLoader__.load({
       const regexEditors = new RegexEditorsModel(bridge)
       regexRules.editor = (scope, ownerId) => regexEditors.editor(scope, ownerId)
       const scripts = new ScriptLibrariesModel(bridge)
-      const displayTemplates = new DisplayTemplatesModel(bridge)
       ctx.provide('eleckoiSettingLibraries', settingLibraries)
       ctx.provide('eleckoiVariables', variables)
       ctx.provide('eleckoiRegexRules', regexRules)
       ctx.provide('eleckoiScriptLibraries', scriptLibraryService(scripts, bridge))
-      ctx.provide('eleckoiDisplayTemplates', displayTemplateService(displayTemplates, bridge))
       ctx.effect(() => {
         settingLibraries.start()
         variables.start()
         regexRules.start()
         regexEditors.start()
         scripts.start()
-        displayTemplates.start()
         bridge.start()
         const stopReset = ctx.on('connection/reset', () => {
           settingLibraries.refreshLoaded()
@@ -592,7 +525,6 @@ window.__ModuleLoader__.load({
           regexRules.refreshLoaded()
           regexEditors.refreshLoaded()
           scripts.refreshLoaded()
-          displayTemplates.refreshLoaded()
         })
         return () => {
           stopReset()
@@ -602,7 +534,6 @@ window.__ModuleLoader__.load({
           regexRules.dispose()
           regexEditors.dispose()
           scripts.dispose()
-          displayTemplates.dispose()
         }
       }, 'eleckoi: character configuration models')
     }

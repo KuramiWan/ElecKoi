@@ -130,8 +130,8 @@ try {
   if (!document.includes('<html')) throw new Error('DSH client boot document was not served')
   const schema = productSchema()
   const tableCount = schema.objects.filter(row => row.type === 'table').length
-  if (schema.version !== 12 || tableCount !== 47) {
-    throw new Error(`Product schema contract mismatch: ${tableCount} tables, user_version ${schema.version}; expected 47 tables and user_version 12`)
+  if (schema.version !== 13 || tableCount !== 46) {
+    throw new Error(`Product schema contract mismatch: ${tableCount} tables, user_version ${schema.version}; expected 46 tables and user_version 13`)
   }
   await remoteCall(ready, cookie, 'eleckoiCompatibility/capabilities', {}, 404)
   await remoteCall(ready, cookie, 'eleckoiAuthorPlugins/capabilities', {}, 404)

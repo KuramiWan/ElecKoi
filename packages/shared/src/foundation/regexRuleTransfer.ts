@@ -84,7 +84,7 @@ function decodeDocument(source: string, fallbackScope: RegexRuleScope): ScopedRe
         trimStrings: (value.trimStrings ?? value.trim_strings ?? []) as string[],
         minDepth: (value.minDepth ?? value.min_depth ?? null) as number | null,
         maxDepth: (value.maxDepth ?? value.max_depth ?? null) as number | null,
-        substituteRegex: Number(value.substituteRegex ?? 0) as 0 | 1 | 2
+        substituteRegex: Number(value.substituteRegex ?? value.substitute_regex ?? 0) as 0 | 1 | 2
       }
     })
   })

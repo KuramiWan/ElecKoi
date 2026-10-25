@@ -1,3 +1,6 @@
+import { clientBundlePath } from '../support/client-bundle.js'
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
+import { ownerPeer } from '../support/owner-peer.js'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -138,9 +141,10 @@ async function nativeHost() {
   const unregister = ctx.typert.register(TYPERT as TypertContribution)
   const data = { frontendProjects: () => f.repository }
   ctx.provide('eleckoiProductData', data as any)
+  await ctx.plugin(RemoteAccessService)
   await ctx.plugin(TypertGatewayService); await ctx.plugin(ElecKoiAuthorFrontendsApi)
   cleanups.push(async () => { unregister(); await ctx.fiber.dispose() })
-  const call = async (method: string, args: Record<string, unknown>) => ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorFrontends', method, args })
+  const call = async (method: string, args: Record<string, unknown>) => ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorFrontends', method, args })
   return { ...f, ctx, data, call }
 }
 
@@ -150,16 +154,16 @@ describe('native frontend Remote and resources', () => {
     await client.plugin(TypertRegistry)
     const call = vi.fn(async (_base: string, endpoint: string, payload: any, signal: AbortSignal) => {
       const [namespace, method] = endpoint.split('/')
-      try { return { ok: true, value: await f.ctx.typertGateway.invoke({ namespace: namespace!, method: method!, args: payload.args, signal }) } }
+      try { return { ok: true, value: await f.ctx.typertGateway.invoke({ peer: ownerPeer(f.ctx), namespace: namespace!, method: method!, args: payload.args, signal }) } }
       catch (error) { return { ok: false, error: { code: 'gateway/internal', message: error instanceof Error ? error.message : String(error), details: {} } } }
     })
     const open = vi.fn(async function* (_base: string, endpoint: string, payload: any, signal: AbortSignal) {
       const [namespace, method] = endpoint.split('/')
-      yield* await f.ctx.typertGateway.stream({ namespace: namespace!, method: method!, args: payload.args, signal })
+      yield* await f.ctx.typertGateway.stream({ peer: ownerPeer(f.ctx), namespace: namespace!, method: method!, args: payload.args, signal })
     })
     client.provide('connection', { rpc: { call, open }, registerGenerationSource: () => () => {}, start: () => ({ stop() {} }) } as any)
     let registration: any
-    runInNewContext(readFileSync(require.resolve('@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
+    runInNewContext(readFileSync(clientBundlePath(require, '@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
       window: { __ModuleLoader__: { load(value: any) { registration = value } } }, crypto: globalThis.crypto,
       AbortController, AbortSignal, Error, Object, setTimeout, clearTimeout,
     })
@@ -210,9 +214,10 @@ describe('native frontend Remote and resources', () => {
     const unregister = ctx.typert.register(TYPERT as TypertContribution)
     cleanups.push(async () => { unregister(); await ctx.fiber.dispose() })
     await ctx.plugin(productDataPlugin)
-    await ctx.plugin(TypertGatewayService)
+    await ctx.plugin(RemoteAccessService)
+  await ctx.plugin(TypertGatewayService)
     await ctx.plugin(ElecKoiAuthorFrontendsApi)
-    const created = await ctx.typertGateway.invoke({ namespace: 'eleckoiAuthorFrontends', method: 'importProject',
+    const created = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiAuthorFrontends', method: 'importProject',
       args: { owner: app, input: { html: 'Synthetic production-owned frontend' } } }) as any
     expect(ctx.eleckoiProductData.frontendProjects().readFile(app, created.selectedProjectId).content).toBe('Synthetic production-owned frontend')
     expect(existsSync(join(f.directory, 'author-plugins', 'registry.sqlite'))).toBe(false)
@@ -223,7 +228,7 @@ describe('native frontend Remote and resources', () => {
 
   it('uses the actual generated Gateway codec without a compatibility service and emits compact scoped notifications', async () => {
     const f = await nativeHost(), abort = new AbortController()
-    const stream = await f.ctx.typertGateway.stream({ namespace: 'eleckoiAuthorFrontends', method: 'changes', args: { owner: app }, signal: abort.signal })
+    const stream = await f.ctx.typertGateway.stream({ peer: ownerPeer(f.ctx), namespace: 'eleckoiAuthorFrontends', method: 'changes', args: { owner: app }, signal: abort.signal })
     const iterator = stream[Symbol.asyncIterator]()
     expect((await iterator.next()).value).toEqual({ kind: 'snapshot', revision: 0 })
     const created = await f.call('importProject', { owner: app, input: { html: 'Synthetic native page', project: { extra: { nested: [1, true, null] } }, manifest: { config: { count: 2 } } } }) as any

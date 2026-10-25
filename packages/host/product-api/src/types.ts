@@ -3,7 +3,7 @@ export interface ElecKoiHostStatus {
   protocolVersion: 1
 }
 
-export type EditorLibraryKind = 'scripts' | 'displayTemplates' | 'regex'
+export type EditorLibraryKind = 'scripts' | 'regex'
 export interface EditorLibraryAddress { kind: EditorLibraryKind; scope: 'global' | 'character' | 'preset'; ownerId: string }
 export interface EditorLibraryVersions extends EditorLibraryAddress {
   revision: number
@@ -14,24 +14,6 @@ export interface EditorLibraryVersions extends EditorLibraryAddress {
 export interface EditorLibrarySaveRequest { kind: EditorLibraryKind; documents: string[]; versions: EditorLibraryVersions[] }
 export interface EditorLibrarySaveResult { documents: string[]; versions: EditorLibraryVersions[] }
 
-export type DisplayTemplateScope = 'global' | 'character' | 'preset'
-export interface DisplayTemplate {
-  id: string
-  name: string
-  enabled: boolean
-  position: 'before' | 'after' | 'replace'
-  pattern: string
-  flags: string
-  source: string
-}
-export interface DisplayTemplateLibrary {
-  scope: DisplayTemplateScope
-  ownerId: string
-  enabled: boolean
-  revision: number
-  templates: DisplayTemplate[]
-}
-export interface DisplayTemplateSelection { characterId: string; libraries: DisplayTemplateLibrary[] }
 
 
 export type ScriptLibraryScope = 'global' | 'character' | 'preset'
@@ -206,7 +188,7 @@ export type CharacterConfigurationChange =
   | { kind: 'snapshot' }
   | {
       kind: 'configuration'
-      domain: 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts' | 'displayTemplates'
+      domain: 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts'
       characterId?: string
     }
 
@@ -349,15 +331,8 @@ export interface AuthorConversationState {
   settingLibrary: ConversationRuntimeSettingLibrary | null
 }
 
-export type WebSearchMode = 'provider_native' | 'tavily' | 'deepseek_api'
-export type WebFetchMode = 'http' | 'deepseek_api'
-
-export interface DeepSeekWebConnection {
-  ok: true
-  provider: 'deepseek_api'
-  search: true
-  fetch: true
-}
+export type WebSearchMode = 'provider_native' | 'tavily' | 'deepseek_search_api'
+export type WebFetchMode = 'http' | 'deepseek_fetch_api'
 
 export interface TavilyConnection {
   ok: true
@@ -979,12 +954,8 @@ export interface ElecKoiProductDataStore {
   importRegexEditor(collection: RegexRuleEditorCollection, fallbackScope: RegexRuleScope, documents: RegexRuleImportDocument[]): RegexRuleEditorImportResult
   exportRegexEditor(target: RegexEditorTarget, ruleIds: string[]): { fileName: string; json: string }
   readScriptLibrary(scope: ScriptLibraryScope, ownerId: string): ScriptLibrary
-  readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary
-  saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary
-  saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[]
   readEditorLibraryVersions(address: EditorLibraryAddress): EditorLibraryVersions
   saveEditorLibraries(request: EditorLibrarySaveRequest): EditorLibrarySaveResult
-  displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection
   saveScriptLibrary(library: ScriptLibrary): ScriptLibrary
   updateScriptSettings(scope: ScriptLibraryScope, ownerId: string, scriptId: string, target: 'script' | 'library', values: Record<string, unknown>, expectedRevision: number): ScriptLibrary
   saveScriptLibraries(libraries: ScriptLibrary[]): ScriptLibrary[]
@@ -996,7 +967,7 @@ export interface ElecKoiProductDataStore {
     expectedRevision: number
   ): RegexRuleImportResult
   exportRegexRules(characterId: string, ruleIds: string[]): { fileName: string; json: string }
-  testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget): RegexRuleTestResult
+  testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget, options?: { surface?: 'Display' | 'Prompt' | 'Stored'; variablesJson?: string; depth?: number; isEdit?: boolean }, signal?: AbortSignal): Promise<RegexRuleTestResult>
   readAgentPresetCatalog(): AgentPresetCatalog
   readAgentPreset(presetId: string): AgentPreset
   updateAgentPresetEntries(presetId: string, updates: SettingLibraryEntryUpdate[]): SettingLibraryEntry[]

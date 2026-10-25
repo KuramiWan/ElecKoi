@@ -1,3 +1,6 @@
+import { clientBundlePath } from '../support/client-bundle.js'
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
+import { ownerPeer } from '../support/owner-peer.js'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { runInNewContext } from 'node:vm'
@@ -36,10 +39,11 @@ async function runtime() {
   ctx.provide('eleckoiProductData', data as any)
   ctx.provide('eleckoiVariableProcessing', processor)
   ctx.provide('eleckoiConversationChanges', { publish } as any)
+  await ctx.plugin(RemoteAccessService)
   const gateway = ctx.plugin(TypertGatewayService), variables = ctx.plugin(ElecKoiAuthorVariablesApi)
   await gateway; await variables
   const page = new JSDOM('<!doctype html><body></body>', { url: 'http://localhost/' })
-  const invoke = (method: string, args: Record<string, unknown>, requestSignal = signal()) => ctx.typertGateway.invoke({
+  const invoke = (method: string, args: Record<string, unknown>, requestSignal = signal()) => ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
     namespace: 'eleckoiAuthorVariables', method, args, signal: requestSignal,
   })
   const client = new Cordis.Context()
@@ -64,7 +68,7 @@ async function runtime() {
   client.provide('connection', { rpc: { call, open: vi.fn(async function* () {}) },
     registerGenerationSource: () => () => {}, start: () => ({ stop() {} }) } as any)
   let registration: { factory(load: (name: string) => unknown): Cordis.Plugin }
-  runInNewContext(readFileSync(require.resolve('@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
+  runInNewContext(readFileSync(clientBundlePath(require, '@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
     window: { __ModuleLoader__: { load(value: typeof registration) { registration = value } } },
     crypto: globalThis.crypto, AbortController: page.window.AbortController, AbortSignal: page.window.AbortSignal,
     Error, setTimeout, clearTimeout,

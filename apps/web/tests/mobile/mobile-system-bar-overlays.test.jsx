@@ -22,7 +22,7 @@ function bridge() {
   const appearances = [];
   const style = document.createElement('style'); style.id = 'synthetic-portal-css';
   style.textContent = 'body > [role="presentation"],body > [role="dialog"][aria-modal="true"] { position:fixed;inset:0;z-index:1000 }'
-    + 'body > [role="presentation"] > [aria-hidden="true"],body > [role="dialog"][aria-modal="true"] > [aria-hidden="true"] { position:absolute;inset:0;background-color:rgba(0,0,0,0.25) }';
+    + 'body > [role="presentation"] > [aria-hidden="true"],body > [role="dialog"][aria-modal="true"] > div > [aria-hidden="true"] { position:absolute;inset:0;background-color:rgba(0,0,0,0.25) }';
   document.head.append(style);
   const app = document.createElement('div'); app.id = 'eleckoi-root';
   app.innerHTML = '<main class="mobile-shell" style="--mobile-system-bar-bg:#ffffff"></main>';

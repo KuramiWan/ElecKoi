@@ -23,7 +23,7 @@ function conversationGroups(items) {
   return [...groups];
 }
 
-export function CreatorStudioSimplePage({ characterCatalog, model, models, presetCatalog, renderConversation, rightbar, onBack }) {
+export function CreatorStudioSimplePage({ characterCatalog, model, models, presetCatalog, renderConversation, rightbar, onBack, nativePanel, onReturnToConversation }) {
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot);
   const characters = useSyncExternalStore(characterCatalog.subscribe, characterCatalog.getSnapshot);
   const [collapsed, setCollapsed] = useState(false), [query, setQuery] = useState('');
@@ -88,7 +88,7 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
     style={rightbarLayout.shellStyle} data-rightbar-dragging={rightbarLayout.dragging || undefined}>
     <header className="creator-simple-titlebar" data-tauri-drag-region>
       <div className="creator-simple-titlebar-sidebar" data-tauri-drag-region>
-        <button type="button" aria-label="返回工作室入口" title="返回工作室入口" onClick={onBack}><ArrowLeft size={18} /></button>
+        <button type="button" aria-label={nativePanel ? '返回工作室对话' : '返回工作室入口'} title={nativePanel ? '返回工作室对话' : '返回工作室入口'} onClick={nativePanel ? onReturnToConversation : onBack}><ArrowLeft size={18} /></button>
         <img src={logoIcon} alt="" draggable="false" /><strong>AI 创作工作室</strong>
         <button type="button" className="creator-simple-sidebar-toggle" aria-label={collapsed ? '展开对话列表' : '收起对话列表'} title={collapsed ? '展开对话列表' : '收起对话列表'}
           aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}><DshPanelLeftIcon size={19} /></button>
@@ -127,12 +127,14 @@ export function CreatorStudioSimplePage({ characterCatalog, model, models, prese
         </footer>}
       </aside>}
       <section className="creator-simple-content" aria-label="工作室对话">
+        {nativePanel ? nativePanel : <>
         <FailureAlert failure={error || state.error} className="creator-simple-error" />
         {state.reference ? renderConversation({ reference: state.reference, component: CreatorStudioConversation,
           props: { model, models, presetCatalog, creating: busy, editing: state.editingSessionId === state.active?.sessionId, title: active?.title || '新对话',
             onCreate: create, onSelectCharacter: () => setPicker(true), onError: setError } }) : <div className="creator-simple-loading">
           {busy || state.status === 'loading' ? <span role="status">加载对话…</span> : <button type="button" onClick={() => void perform(() => model.restoreRecent())}>重试</button>}
         </div>}
+        </>}
       </section>
       <div className="creator-simple-rightbar">
         {rightbar?.render({ width: rightbarLayout.width, viewportWidth: rightbarLayout.viewportWidth, canShow: rightbarLayout.canShow })}

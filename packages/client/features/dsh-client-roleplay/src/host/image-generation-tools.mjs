@@ -1,28 +1,37 @@
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
+import { scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope'
 import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { capturedImageResult, IMAGE_EVENT, parseImagePrompts, prepareIllustration } from './generated-image-result.mjs'
 
 export const name = 'eleckoi-image-generation-tools'
-export const inject = ['llm', 'sessions', 'settings', 'eleckoiImageGeneration', 'eleckoiSessionEditor']
+export const inject = ['agents', 'llm', 'sessions', 'settings', 'eleckoiImageGeneration', 'eleckoiSessionEditor']
 export const Config = z.object({ configId: z.string().min(1) })
 
 /** Capture the text command while the same model response continues streaming its final body. */
 export function apply(ctx, config) {
   Config.parse(config)
+  const ownerScope = scopeOf(ctx)
+  if (ownerScope === undefined) throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, '自动配图插件必须挂载在正式预设或 Agent 作用域中。', { what: '自动配图插件作用域' })
+  const owns = sessionId => {
+    const agent = ctx.agents.get(sessionId)
+    return agent && scopeChainOf(scopeOf(agent.ctx)).includes(ownerScope)
+  }
   const positions = new Map(), submitted = new Set(), jobs = new Set()
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
   const disposePosition = ctx.on('session/event', (session, event) => {
+    if (!owns(session.id)) return
     if (event.type === 'step/start') positions.set(session.id, event.data)
     if (event.type === 'turn/end') { positions.delete(session.id); submitted.delete(session.id) }
   })
   const disposeStream = ctx.on('llm/stream', async function* (options, next) {
-    if (!isAgentLoopRequest(options)) { yield* next(); return }
+    if (!isAgentLoopRequest(options) || !owns(options.sessionId)) { yield* next(); return }
     const session = ctx.sessions.get(options.sessionId)
+    if (!session) { yield* next(); return }
     const snapshot = readSessionSnapshot(snapshotRoot, options.sessionId)
-    if (!session || snapshot.toolModelConfigIds?.['builtin:auto-illustration'] !== config.configId) { yield* next(); return }
+    if (snapshot.toolModelConfigIds?.['builtin:auto-illustration'] !== config.configId) { yield* next(); return }
     const state = prepareIllustration(ctx.settings, snapshot)
     if (!state || submitted.has(session.id)) { yield* next(); return }
     const position = positions.get(session.id)

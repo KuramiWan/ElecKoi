@@ -1,3 +1,5 @@
+import * as zod from 'zod'
+import * as reactVirtual from '@tanstack/react-virtual'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
@@ -9,7 +11,7 @@ import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
 import * as slots from '@deepseek-ai/dsh-client-ui-slots'
 import * as cordis from '@deepseek-ai/cordis'
 
-const modules = {
+const modules = { zod, '@tanstack/react-virtual': reactVirtual,
   react: React, 'react/jsx-runtime': jsxRuntime, 'react-dom': ReactDOM,
   '@deepseek-ai/dsh-client-store': store,
   '@deepseek-ai/dsh-client-ui-primitives': primitives,
@@ -33,16 +35,17 @@ function loadClient(name, exposed = '') {
   })
 }
 
-const conversation = loadClient('dsh-client-ui-conversation', ', ConversationNodeAssembler, inspectSystemPrompt, inspectRequestPrompt, ContextMeter')
+const conversation = loadClient('dsh-client-ui-conversation', ', ConversationNodeAssembler, ConversationEventRegistry, inspectSystemPrompt, inspectRequestPrompt, ContextMeter')
 const trajectory = loadClient('dsh-client-ui-trajectory')
 
 export function officialTrajectoryFixture() {
-  const definitions = new Map()
+  const events = new conversation.ConversationEventRegistry(new cordis.Context())
+  const definitions = events.definitions
   const views = new Map()
   trajectory.apply({
     effect() {}, locale: { bind: () => key => key },
     uiConversation: {
-      events: { register: definition => definitions.set(definition.kind, definition) },
+      events,
       views: { register: definition => views.set(definition.target, definition) },
       inspectSystemPrompt: conversation.inspectSystemPrompt,
       inspectRequestPrompt: conversation.inspectRequestPrompt,
@@ -50,7 +53,7 @@ export function officialTrajectoryFixture() {
     uiSession: { provide() {} }, slots: { inject() {} },
   })
   const engine = new conversation.ConversationNodeAssembler(
-    { entries: () => [...definitions.values()], fallbackEntry: () => undefined },
+    events,
     { entries: () => [...views.values()] },
   )
   engine.activateTarget('trajectory')
@@ -76,26 +79,24 @@ export function officialTrajectoryFixture() {
 
 export const trajectoryAssistantDefinition = officialTrajectoryFixture().definitions.get('trajectory-assistant-step')
 
-export const OfficialStatsPills = loadClient('dsh-client-ui-chat', ', StatsPills').StatsPills
+export const OfficialActivityPill = loadClient('dsh-client-ui-chat', ', ActivityPill').ActivityPill
 export const OfficialContextMeter = conversation.ContextMeter
 
 export function officialChatFixture() {
   const chat = loadClient('dsh-client-ui-chat', ', registerConversationNodes')
-  const definitions = new Map()
+  const events = new conversation.ConversationEventRegistry(new cordis.Context())
+  const definitions = events.definitions
   const views = new Map()
   let fallback
   chat.registerConversationNodes({ uiConversation: {
-    events: {
-      register: definition => definitions.set(definition.kind, definition),
-      registerFallback: definition => { fallback = definition },
-    },
+    events,
     views: { register: definition => views.set(definition.target, definition) },
     groups: { register() {} },
     inspectSystemPrompt: conversation.inspectSystemPrompt,
     inspectRequestPrompt: conversation.inspectRequestPrompt,
   } })
   const engine = new conversation.ConversationNodeAssembler(
-    { entries: () => [...definitions.values()], fallbackEntry: () => fallback },
+    events,
     { entries: () => [...views.values()] },
   )
   engine.activateTarget('chat')

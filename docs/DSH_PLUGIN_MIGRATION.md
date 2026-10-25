@@ -1,6 +1,6 @@
 # ElecKoi 插件归属与接入清单
 
-本清单对照仓库锁定的 DSH `0.2.0-rc.2`（`c1b47e41fcd54d20a0f061df28683bfc29ee24e5`）。架构基准见 [DSH 桌面架构](DSH_DESKTOP_ARCHITECTURE.md)，当前跨端与数据边界决策见 [ADR 0017](adr/0017-dsh-remote-replaces-desktop-gateway.md)。
+本清单对照仓库锁定的 DSH `0.2.1-rc.3`（`1f81c047fc48fa190a683e469daa699857e9afe8`）。架构基准见 [DSH 桌面架构](DSH_DESKTOP_ARCHITECTURE.md)，当前跨端与数据边界决策见 [ADR 0017](adr/0017-dsh-remote-replaces-desktop-gateway.md)。
 
 ## 只有一个对外插件系统
 
@@ -14,7 +14,7 @@
 
 | 分组 | 内容 |
 | --- | --- |
-| DSH 官方插件 | `@deepseek-ai/*` 官方包和官方固定插件项 |
+| DSH 官方插件 | 官方目录标记为 `official` 的包和官方固定插件项 |
 | ElecKoi 内置插件 | ElecKoi 随客户端提供的角色、预设、模型、用户资料、角色聊天等能力、Tavily 组合包，以及本版本由 ElecKoi 打过兼容补丁的 DSH 包 |
 | 用户安装插件 | 用户通过 DSH 插件管理器安装的其他 bundle，包括第三方 ElecKoi 扩展 |
 
@@ -30,7 +30,7 @@ DSH 设置中的官方“内置插件”页继续保留一份完整运行清单�
 
 ## 当前内置插件
 
-同一锁定版本的四个官方可选 bundle（智能体团队、自动授权审查、自动化任务、语音输入）由桌面 Host 安装依赖直接携带，按官方 `OPTIONAL_BUNDLES` 合同显示在插件页，初始不选入 profile。启停继续通过官方插件管理器保存和装配，已有用户选择保持不变。
+同一锁定版本的官方可选 bundle 由桌面 Host 安装依赖直接携带，按当前 `OPTIONAL_BUNDLES` 合同显示在插件页，初始不选入 profile。启停继续通过官方插件管理器保存和装配。自动化任务已不属于官方可选 bundle，产品组合另按用户要求停用 schedule 与 ui-schedule，不提供自动化入口或任务触发。
 
 | 中文名称 | 实际插件包 | 职责 |
 | --- | --- | --- |

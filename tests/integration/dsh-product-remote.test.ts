@@ -1,3 +1,5 @@
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
+import { ownerPeer } from '../support/owner-peer.js'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -371,7 +373,8 @@ describe('ElecKoi DSH Remote contract', () => {
       await ctx.plugin(TypertRegistry)
       unregister = ctx.typert.register(TYPERT as TypertContribution)
       await ctx.plugin(productDataPlugin)
-      await ctx.plugin(TypertGatewayService)
+      await ctx.plugin(RemoteAccessService)
+  await ctx.plugin(TypertGatewayService)
       await ctx.plugin(ElecKoiSystemApi)
 
       expect(ctx.get('eleckoiCompatibilityApi', false)).toBeUndefined()
@@ -380,10 +383,10 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(ctx.get('eleckoiAuthorScriptsApi', false)).toBeDefined()
       expect(ctx.get('eleckoiAuthorFrontendsApi', false)).toBeDefined()
 
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCreatorStudio', method: 'list', args: {}
       })).toEqual({ items: [] })
-      const created = await ctx.typertGateway.invoke({
+      const created = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCreatorStudio',
         method: 'create',
         args: { input: { name: '纯文件项目', mode: 'blank', parentDirectory: projectParent } }
@@ -391,7 +394,7 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(created.items).toHaveLength(1)
       expect(existsSync(join(created.items[0]!.rootPath, 'project.eleckoi.json'))).toBe(true)
       expect(existsSync(process.env.ELECKOI_DATABASE_PATH)).toBe(false)
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCreatorStudio',
         method: 'delete',
         args: { projectId: created.items[0]!.id }
@@ -596,7 +599,8 @@ describe('ElecKoi DSH Remote contract', () => {
         }
       })
       await ctx.plugin(productDataPlugin)
-      await ctx.plugin(TypertGatewayService)
+      await ctx.plugin(RemoteAccessService)
+  await ctx.plugin(TypertGatewayService)
       await ctx.plugin(ElecKoiSystemApi)
 
       const display = ctx.eleckoiProductData.prepareDisplayUi({
@@ -610,14 +614,14 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(wallpaper.image).toMatch(/^eleckoi-media:\/\/asset\/v1\//)
       expect(existsSync(new LocalMediaStore(mediaRoot).pathForReference(wallpaper.image)!)).toBe(true)
 
-      const status = await ctx.typertGateway.invoke({
+      const status = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiSystem',
         method: 'status',
         args: {}
       })
       expect(status).toEqual({ architecture: 'dsh-remote', protocolVersion: 1 })
 
-      const createdConversation = await ctx.typertGateway.invoke({
+      const createdConversation = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'create',
         args: {
@@ -638,7 +642,7 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(createdConversation.runtimeSessionId).toBe(createdConversation.conversation.id)
       expect(createdSessionIds).toContain(createdConversation.runtimeSessionId)
 
-      const exportedArchive = await ctx.typertGateway.invoke({
+      const exportedArchive = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'exportArchive',
         args: { conversationId: createdConversation.conversation.id }
@@ -649,7 +653,7 @@ describe('ElecKoi DSH Remote contract', () => {
         snapshot: { conversationId: createdConversation.conversation.id },
         sessionLogs: [{ header: { id: createdConversation.runtimeSessionId } }]
       })
-      const importedConversationId = await ctx.typertGateway.invoke({
+      const importedConversationId = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'importArchive',
         args: { characterId: 'character-1', json: exportedArchive }
@@ -665,7 +669,7 @@ describe('ElecKoi DSH Remote contract', () => {
           content: [{ type: 'file', attachment: { attachmentId: `sha256:${digest}`, name: '资料.txt', bytes: 2 } }]
         }
       }]
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'revealFile',
         args: {
@@ -697,7 +701,7 @@ describe('ElecKoi DSH Remote contract', () => {
         },
         { type: 'turn/end', seq: 4, data: { turn: 1, reason: { kind: 'completed' } } }
       ]
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'editMessage',
         args: { conversationId: createdConversation.conversation.id, eventSeq: 3, role: 'assistant', content: '修改后的回答' }
@@ -709,7 +713,7 @@ describe('ElecKoi DSH Remote contract', () => {
         content: '修改后的回答'
       })
 
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'deleteMessagesFrom',
         args: { conversationId: createdConversation.conversation.id, eventSeq: 3, role: 'assistant' }
@@ -722,7 +726,7 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(restoredTurns.at(-1)).toBe(1)
       expect(appendedMessages).toHaveLength(0)
 
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'regenerateMessage',
         args: {
@@ -732,7 +736,7 @@ describe('ElecKoi DSH Remote contract', () => {
           replacementMessage: '替换后的问题'
         }
       })
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'startRegeneration',
         args: { conversationId: createdConversation.conversation.id, requestId: 'new-request', cancelled: false }
@@ -769,7 +773,7 @@ describe('ElecKoi DSH Remote contract', () => {
         },
         { type: 'turn/end', seq: 8, data: { turn: 2, reason: { kind: 'completed' } } }
       ]
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'deleteMessagesFrom',
         args: { conversationId: createdConversation.conversation.id, eventSeq: 7, role: 'assistant' }
@@ -777,7 +781,7 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(rewoundTurns.at(-1)).toEqual({ sessionId: createdConversation.runtimeSessionId, fromTurn: 2 })
       expect(appendedMessages).not.toContainEqual(expect.objectContaining({ role: 'user' }))
 
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'regenerateMessage',
         args: {
@@ -786,7 +790,7 @@ describe('ElecKoi DSH Remote contract', () => {
           requestId: 'request-before-turn-start'
         }
       })
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'startRegeneration',
         args: { conversationId: createdConversation.conversation.id, requestId: 'request-before-turn-start', cancelled: false }
@@ -810,7 +814,7 @@ describe('ElecKoi DSH Remote contract', () => {
           data: { id: 'queued-user-message', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '尚未开始的第二问' }] }
         }
       ]
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'regenerateMessage',
         args: {
@@ -819,7 +823,7 @@ describe('ElecKoi DSH Remote contract', () => {
           requestId: 'request-queued-before-next-turn'
         }
       })
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'startRegeneration',
         args: { conversationId: createdConversation.conversation.id, requestId: 'request-queued-before-next-turn', cancelled: false }
@@ -827,7 +831,7 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(rewoundTurns.at(-1)).toEqual({ sessionId: createdConversation.runtimeSessionId, fromTurn: 2 })
       expect(regeneratedMessages.at(-1)).toBe('queued-user-message')
 
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'delete',
         args: { conversationId: createdConversation.conversation.id }
@@ -846,7 +850,7 @@ describe('ElecKoi DSH Remote contract', () => {
       }
 
       rejectNextSession = true
-      await expect(ctx.typertGateway.invoke({
+      await expect(ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'create',
         args: { input: { title: '应回滚的聊天' } }
@@ -859,13 +863,13 @@ describe('ElecKoi DSH Remote contract', () => {
         rollbackReader.close()
       }
 
-      const persona = await ctx.typertGateway.invoke({
+      const persona = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiPersona',
         method: 'read',
         args: {}
       }) as PersonaProfile
       expect(persona.user_name).toBe('你')
-      const savedPersona = await ctx.typertGateway.invoke({
+      const savedPersona = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiPersona',
         method: 'save',
         args: {
@@ -891,29 +895,29 @@ describe('ElecKoi DSH Remote contract', () => {
         reader.close()
       }
 
-      const settingLibrary = await ctx.typertGateway.invoke({
+      const settingLibrary = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'readSettingLibrary',
         args: { characterId: 'character-1' }
       }) as SettingLibrary
       expect(settingLibrary.characterId).toBe('character-1')
-      const regexEditor = await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'readRegexEditor',
+      const regexEditor = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method: 'readRegexEditor',
         args: { target: { scope: 'character', ownerId: 'character-1' } } }) as RegexRuleEditorCollection
       expect(regexEditor).toMatchObject({ globalEnabled: true, characterEnabled: true })
-      const disabledRegex = await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'saveRegexEditor',
+      const disabledRegex = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method: 'saveRegexEditor',
         args: { collection: { ...regexEditor, globalEnabled: false, characterEnabled: false } } }) as RegexRuleEditorCollection
       expect(disabledRegex).toMatchObject({ globalEnabled: false, characterEnabled: false })
-      const runtimeRegex = await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'readRegexRules',
+      const runtimeRegex = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method: 'readRegexRules',
         args: { characterId: 'character-1' } }) as RegexRuleCollection
       expect(runtimeRegex).toMatchObject({ globalEnabled: false, characterEnabled: false })
-      await ctx.typertGateway.invoke({ namespace: 'eleckoiCharacterConfiguration', method: 'saveRegexEditor',
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method: 'saveRegexEditor',
         args: { collection: { ...disabledRegex, globalEnabled: true, characterEnabled: true } } })
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'saveSettingLibrary',
         args: { characterId: 'character-1', library: { ...settingLibrary, name: 'Remote 设定库' } }
       })
-      const currentSettingLibrary = await ctx.typertGateway.invoke({
+      const currentSettingLibrary = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'readSettingLibrary',
         args: { characterId: 'character-1' }
@@ -931,7 +935,7 @@ describe('ElecKoi DSH Remote contract', () => {
           defaultOpeningMessageId: ''
         }]
       }
-      await expect(ctx.typertGateway.invoke({
+      await expect(ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration', method: 'saveConversationSettingLibrary',
         args: { characterId: 'character-1', conversationId: 'conversation-1', library: conversationLibrary }
       })).rejects.toThrow('只有设定修改工具成功提交变更')
@@ -940,40 +944,40 @@ describe('ElecKoi DSH Remote contract', () => {
       ctx.eleckoiProductData.commitConversationRuntime('conversation-1', undefined,
         JSON.stringify({ ...projectedLibrary, entries: [...projectedLibrary.entries, conversationLibrary.entries.at(-1)!] }),
         settingRuntime.settingLibraryBaseline)
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'saveConversationSettingLibrary',
         args: { characterId: 'character-1', conversationId: 'conversation-1', library: conversationLibrary }
       })
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'readConversationSettingLibraries',
         args: { characterId: 'character-1' }
       })).toEqual([expect.objectContaining({ sessionId: 'conversation-1' })])
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'saveConversationSettingLibraryVersion',
         args: { characterId: 'character-1', conversationId: 'conversation-1', name: '聊天版本' }
       })
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'resetConversationSettingLibrary',
         args: { characterId: 'character-1', conversationId: 'conversation-1' }
       })
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'readConversationSettingLibraries',
         args: { characterId: 'character-1' }
       })).toEqual([])
 
-      const variableConfig = await ctx.typertGateway.invoke({
+      const variableConfig = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'readVariableConfig',
         args: { characterId: 'character-1' }
       }) as VariableConfig
       expect(variableConfig.characterId).toBe('character-1')
       const schemaCode = 'export type State = Record<string, never>'
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'saveVariableConfig',
         args: {
@@ -989,18 +993,18 @@ describe('ElecKoi DSH Remote contract', () => {
         }
       })
 
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'readSettingLibrary',
         args: { characterId: 'character-1' }
       })).toEqual(expect.objectContaining({ name: 'Remote 设定库' }))
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacterConfiguration',
         method: 'readVariableConfig',
         args: { characterId: 'character-1' }
       })).toEqual(expect.objectContaining({ name: 'Remote 变量', schemaCode }))
 
-      const presetCatalog = await ctx.typertGateway.invoke({
+      const presetCatalog = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiAgentPresets',
         method: 'catalog',
         args: {}
@@ -1008,12 +1012,12 @@ describe('ElecKoi DSH Remote contract', () => {
       expect(presetCatalog.activePresetIds.roleplay).toBeTruthy()
       expect(presetCatalog.presets).toContainEqual(expect.objectContaining({ id: presetCatalog.activePresetIds.roleplay }))
 
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCreatorStudio',
         method: 'list',
         args: {}
       })).toEqual({ items: [] })
-      const created = await ctx.typertGateway.invoke({
+      const created = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCreatorStudio',
         method: 'create',
         args: {
@@ -1022,21 +1026,21 @@ describe('ElecKoi DSH Remote contract', () => {
       }) as { items: Array<{ id: string; rootPath: string }> }
       expect(created.items).toHaveLength(1)
       expect(existsSync(join(created.items[0]!.rootPath, 'project.eleckoi.json'))).toBe(true)
-      expect(await ctx.typertGateway.invoke({
+      expect(await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCreatorStudio',
         method: 'delete',
         args: { projectId: created.items[0]!.id }
       })).toEqual({ items: [] })
       expect(existsSync(created.items[0]!.rootPath)).toBe(false)
 
-      const characterCollection = await ctx.typertGateway.invoke({
+      const characterCollection = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacters',
         method: 'list',
         args: {}
       }) as { items: Array<Record<string, unknown> & { id: string; persona: Record<string, unknown> }> }
       const currentCharacter = characterCollection.items.find(item => item.id === 'character-1')!
       const image = (content: string) => `data:image/png;base64,${Buffer.from(content).toString('base64')}`
-      const updatedCharacters = await ctx.typertGateway.invoke({
+      const updatedCharacters = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacters',
         method: 'update',
         args: {
@@ -1058,20 +1062,20 @@ describe('ElecKoi DSH Remote contract', () => {
         assistant_cover: expect.stringMatching(/^eleckoi-media:\/\//)
       })
 
-      await ctx.typertGateway.invoke({
+      await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacters',
         method: 'create',
         args: { character: { ...currentCharacter, id: 'character-2', name: 'Synthetic Character Two',
           persona: { ...currentCharacter.persona, assistant_name: 'Synthetic Character Two' } } }
       })
-      const otherConversation = await ctx.typertGateway.invoke({
+      const otherConversation = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiConversations',
         method: 'create',
         args: { input: { title: 'Synthetic Other Chat', metadata: { characterId: 'character-2' } } }
       }) as { conversation: { id: string }; runtimeSessionId: string }
       const artifactsBeforeDeletion = removedArtifacts.length
       rejectNextDeletion = true
-      await expect(ctx.typertGateway.invoke({
+      await expect(ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacters',
         method: 'delete',
         args: { characterIds: ['character-1'] }
@@ -1084,7 +1088,7 @@ describe('ElecKoi DSH Remote contract', () => {
         .filter(item => item.metadata.characterId === 'character-1').map(item => item.id)
       const conversationChanges = vi.spyOn(ctx.eleckoiConversationChanges, 'publish')
       const configurationChanges = vi.spyOn(ctx.eleckoiCharacterConfigurationChanges, 'publish')
-      const remainingCharacters = await ctx.typertGateway.invoke({
+      const remainingCharacters = await ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
         namespace: 'eleckoiCharacters',
         method: 'delete',
         args: { characterIds: ['character-1'] }

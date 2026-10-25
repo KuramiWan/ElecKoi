@@ -9,7 +9,7 @@
 - [统一编辑器与完整配置版本](adr/0037-editor-collections-and-versions.md)：主界面多选、管理弹窗与版本数据合同。
 - [聊天运行状态存储](adr/0038-conversation-runtime-state.md)：变量和分支设定的历史边界、回退及单文件归档。
 
-- [独立 EJS显示模板](adr/0036-ejs-display-templates.md)：角色与预设的显示模板、数据归属和渲染时机。
+- [EJS 归入正则替换](adr/0036-ejs-display-templates.md)：正则替换中的 EJS、数据范围和执行时机；[使用教程](plugins/regex-ejs.md)。
 
 - [Android 更新检查](adr/0035-android-update-checks.md)：应用身份、平台发布识别、后台通知和原生壳边界。
 

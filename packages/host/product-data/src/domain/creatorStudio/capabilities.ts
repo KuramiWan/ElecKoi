@@ -3,13 +3,12 @@ import { z } from 'zod'
 import { parse } from '@babel/parser'
 import type { Context } from '@deepseek-ai/cordis'
 import { emptyEntry, OPENING_ENTRY_ID } from '../settingLibraries/index'
-import { settingLibraryAgentReadStrategySchema, settingLibraryEntryChangesSchema, settingLibraryGroupSchema } from '@shared/contracts/settingLibrary/schemas'
+import { settingLibraryAgentReadStrategySchema, settingLibraryEntryChangesSchema, settingLibraryGroupSchema, settingLibraryOpeningMessageSchema } from '@shared/contracts/settingLibrary/schemas'
 import { variableItemConfigSchema, variableObjectConfigSchema, VARIABLE_INITIALIZATION_OBJECT_ID } from '@shared/contracts/variables/schemas'
 import { regexRuleEditorCollectionSchema, regexRuleSchema, regexRuleSurfaceSchema, regexRuleTargetSchema } from '@shared/contracts/regex/schemas'
 import { scriptLibrarySchema, scriptSchema, scriptFolderSchema, type ScriptLibrary, type ScriptTree } from '@shared/contracts/scripts/schemas'
-import { displayTemplateLibrarySchema, displayTemplateSchema, displayTemplateScopeSchema } from '@shared/contracts/displayTemplates/schemas'
 import { editorLibraryKindSchema, editorLibrarySaveRequestSchema } from '@shared/contracts/editorVersions/schemas'
-import { ruleAppliesToSurface, transformWithRegexRules, validateRegexRule } from '@shared/foundation/regex/RegexRuleProcessor'
+import { ruleAppliesToSurface, validateRegexRule } from '@shared/foundation/regex/RegexRuleProcessor'
 import { loadVariableSchema } from '../variables/index'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
@@ -65,7 +64,7 @@ export interface CreatorCapability {
   id: string; toolsetId: string; title: string; effect: 'read' | 'write'
   target: 'selected-character' | 'new-character' | 'explicit-scope'
   inputSchema: Record<string, unknown>
-  execute(characterId: string, input: unknown): unknown
+  execute(characterId: string, input: unknown, signal?: AbortSignal): unknown
 }
 
 /** Permanent character authoring operations. The target identity comes from the Session. */
@@ -76,12 +75,13 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     if (!data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
     return characterId
   }
-  function operation<T extends z.ZodType>(toolsetId: string, name: string, title: string, effect: 'read' | 'write', schema: T, execute: (characterId: string, input: z.output<T>) => unknown, target: CreatorCapability['target'] = 'selected-character') {
+  function operation<T extends z.ZodType>(toolsetId: string, name: string, title: string, effect: 'read' | 'write', schema: T, execute: (characterId: string, input: z.output<T>, signal?: AbortSignal) => unknown, target: CreatorCapability['target'] = 'selected-character') {
     catalog.push({ id: `${toolsetId}.${name}`, toolsetId, title, effect, target,
       inputSchema: z.toJSONSchema(schema, { unrepresentable: 'throw' }) as Record<string, unknown>,
-      execute(characterId, input) {
+      execute(characterId, input, signal) {
+        signal?.throwIfAborted()
         if (target === 'selected-character' && !data.readCharacters().items.some(item => item.id === characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '所选角色已不存在，请重新选择角色。', { what: '所选角色' })
-        return execute(characterId, schema.parse(input))
+        return execute(characterId, schema.parse(input), signal)
       } })
   }
   operation('character', 'create', '新建空角色并设为当前工作室编辑目标', 'write', z.object({
@@ -111,19 +111,49 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     assertSettingFormat(entry)
     return find(data.saveSettingLibrary(characterId, { ...library, entries: [...library.entries, entry] }).entries, entry.id)
   })
-  const settingUpdate = z.object({ id, changes: settingChanges }).strict()
+  const settingUpdateChanges = settingChanges.safeExtend({
+    openingMessages: z.array(settingLibraryOpeningMessageSchema.strict()).describe('完整主开场及备用开场列表。每项的标题、正文、变量版本绑定 variableVersionId 和初始变量 initialVariableStateJson 均可修改；variableVersionId 为空字符串表示取消绑定。先 read，保留未要求修改的项目、编号、顺序及其他字段。').optional(),
+    defaultOpeningMessageId: id.describe('主开场白的准确编号，必须存在于 openingMessages。').optional(),
+  })
+  const settingUpdate = z.object({ id, changes: settingUpdateChanges }).strict()
   const updateSettings = (characterId: string, updates: z.output<typeof settingUpdate>[]) => {
     const library = data.readSettingLibrary(characterId)
     if (new Set(updates.map(item => item.id)).size !== updates.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '同一批修改的设定编号不能重复。', { field: 'entries' })
+    const changed = new Map<string, typeof library.entries[number]>()
     for (const input of updates) {
       const entry = find(library.entries, input.id)
-      if (entry.kind === 'opening') throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '开场白请在角色编辑页修改。', { field: 'opening' })
-      assertSettingFormat({ ...entry, ...defined(input.changes) })
+      const patch = defined(input.changes)
+      if (entry.kind === 'opening') {
+        const unsupported = Object.keys(patch).filter(key => !['content', 'openingMessages', 'defaultOpeningMessageId', 'enabled'].includes(key))
+        if (unsupported.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `开场白条目使用固定的分类和显示配置，不能修改这些设定字段：${unsupported.join('、')}`, { what: '开场白条目的设定字段', expected: '固定分类和显示配置' })
+        let messages = (patch.openingMessages ?? entry.openingMessages).map(defined)
+        if (!messages.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '开场白列表不能为空；清空正文请将 content 设为空字符串。', { field: '开场白列表' })
+        if (new Set(messages.map(message => message.id)).size !== messages.length) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '开场白编号不能重复。', { what: '开场白编号' })
+        const defaultId = patch.defaultOpeningMessageId ?? entry.defaultOpeningMessageId
+        const primary = find(messages, defaultId)
+        if (patch.content !== undefined) {
+          if (patch.openingMessages && primary.content !== patch.content) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'content 与 openingMessages 中主开场白的正文不一致。', { field: '主开场白正文' })
+          messages = messages.map(message => message.id === defaultId ? { ...message, content: patch.content! } : message)
+        }
+        changed.set(entry.id, { ...entry, ...patch, openingMessages: messages, defaultOpeningMessageId: defaultId,
+          content: find(messages, defaultId).content })
+      } else {
+        if (patch.openingMessages !== undefined || patch.defaultOpeningMessageId !== undefined) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, 'openingMessages 和 defaultOpeningMessageId 只适用于开场白条目。', { what: '普通设定条目的开场白字段', expected: '开场白条目' })
+        const { openingMessages: _openings, defaultOpeningMessageId: _defaultOpening, ...normalPatch } = patch
+        const next = { ...entry, ...normalPatch }
+        assertSettingFormat(next)
+        changed.set(entry.id, next)
+      }
+    }
+    // Opening configuration shares the native editor's complete save validation, including variable-version bindings.
+    if ([...changed.values()].some(entry => entry.kind === 'opening')) {
+      const saved = data.saveSettingLibrary(characterId, { ...library, entries: library.entries.map(entry => changed.get(entry.id) ?? entry) })
+      return updates.map(input => find(saved.entries, input.id))
     }
     return data.updateSettingLibraryEntries(characterId, updates.map(input => ({ id: input.id, changes: defined(input.changes) })))
   }
-  operation('settings', 'update', '修改设定条目', 'write', settingUpdate, (characterId, input) => updateSettings(characterId, [input]))
-  operation('settings', 'update_many', '在同一事务批量修改设定条目、启停或关键词匹配', 'write',
+  operation('settings', 'update', '修改设定条目或主开场白、备用开场白', 'write', settingUpdate, (characterId, input) => updateSettings(characterId, [input]))
+  operation('settings', 'update_many', '在同一事务批量修改设定、开场白、启停或关键词匹配', 'write',
     z.object({ updates: z.array(settingUpdate).min(1) }).strict(), (characterId, input) => updateSettings(characterId, input.updates))
   operation('settings', 'remove', '删除设定条目', 'write', entity, (characterId, input) => {
     const library = data.readSettingLibrary(characterId)
@@ -164,7 +194,8 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
   }
   operation('variables', 'list', '列出变量和变量组', 'read', empty, characterId => {
     const config = data.readVariableConfig(characterId)
-    return { objects: config.objects, variables: config.variables.map(({ id, title, objectId, type, enabled, readMode, defaultValue }) => ({ id, title, objectId, type, enabled, readMode, defaultValue })), schemaCode: config.schemaCode, initialStateJson: config.initialStateJson }
+    return { objects: config.objects, variables: config.variables.map(({ id, title, objectId, type, enabled, readMode, defaultValue }) => ({ id, title, objectId, type, enabled, readMode, defaultValue })), schemaCode: config.schemaCode, initialStateJson: config.initialStateJson,
+      activeVersionId: config.activeVersionId, versions: config.versions.map(({ id, name }) => ({ id, name })) }
   })
   operation('variables', 'read', '读取变量配置', 'read', entity, (characterId, input) => find(data.readVariableConfig(characterId).variables, input.id))
   operation('variables', 'create', '新增变量', 'write', mutableVariable.strict(), (characterId, input) => {
@@ -320,12 +351,21 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     return { revision: saved.revision, rule: find(saved.characterRules, rule.id) }
   })
   operation('regex', 'test', '预览正则在指定范围的替换（不保存）', 'read', z.object({ text: z.string(), rule: regexRuleSchema.strict(), target: regexRuleTargetSchema,
-    surface: regexRuleSurfaceSchema, depth: z.number().int().nonnegative().optional(), isEdit: z.boolean().optional(),
-  }).strict(), (_characterId, input) => {
+    variables: z.record(z.string(), z.json()).nullable().optional(), surface: regexRuleSurfaceSchema, depth: z.number().int().nonnegative().optional(), isEdit: z.boolean().optional(),
+  }).strict(), (_characterId, input, signal) => {
     assertRegex(input.rule)
     const appliesToSurface = ruleAppliesToSurface(input.rule, input.surface, input.target)
-    const output = appliesToSurface ? transformWithRegexRules(input.text, [input.rule], input.target, defined({ depth: input.depth, isEdit: input.isEdit })) : input.text
-    return { output, changed: output !== input.text, appliesToSurface }
+    const { trimStrings, minDepth, maxDepth, substituteRegex, ...required } = input.rule
+    const rule = { ...required, ...(trimStrings === undefined ? {} : { trimStrings }),
+      ...(minDepth === undefined ? {} : { minDepth }), ...(maxDepth === undefined ? {} : { maxDepth }),
+      ...(substituteRegex === undefined ? {} : { substituteRegex }) }
+    return data.testRegexRule(input.text, rule, input.target, { surface: input.surface,
+      ...(input.variables === undefined ? {} : { variablesJson: JSON.stringify(input.variables) }),
+      ...(input.depth === undefined ? {} : { depth: input.depth }), ...(input.isEdit === undefined ? {} : { isEdit: input.isEdit }),
+    }, signal).then(result => {
+      if (result.validationMessage) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, result.validationMessage, { field: '正则规则' })
+      return { output: result.output, changed: result.output !== input.text, appliesToSurface }
+    })
   })
   operation('regex', 'remove', '删除角色正则规则', 'write', z.object({ id, expectedRevision: revision }).strict(), (characterId, input) => {
     const collection = data.readRegexRules(characterId)
@@ -333,63 +373,27 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     const saved = data.saveRegexRules(characterId, { ...collection, characterRules: collection.characterRules.filter(item => item.id !== input.id) }, input.expectedRevision)
     return { removedId: input.id, revision: saved.revision }
   })
-  const templateTarget = z.object({ scope: displayTemplateScopeSchema, presetId: id.optional() }).strict().superRefine((input, context) => {
+  const templateTarget = z.object({ scope: z.enum(['global', 'character', 'preset']), presetId: id.optional() }).strict().superRefine((input, context) => {
     if (input.scope === 'preset' && !input.presetId || input.scope !== 'preset' && input.presetId !== undefined) {
-      context.addIssue({ code: 'custom', message: '预设模板必须提供明确 presetId，角色及全局模板不得提供 presetId。' })
+      context.addIssue({ code: 'custom', message: '预设配置必须提供明确 presetId，角色及全局配置不得提供 presetId。' })
     }
   })
-  const templateFields = z.object({ ...displayTemplateSchema.shape }).omit({ id: true })
   operation('editorVersions', 'read', '读取共享全局、当前角色或明确预设的完整命名配置版本', 'read',
     z.object({ kind: editorLibraryKindSchema, target: templateTarget }).strict(), (characterId, input) => data.readEditorLibraryVersions({
       kind: input.kind, scope: input.target.scope, ownerId: input.target.scope === 'global' ? '' : input.target.scope === 'preset' ? input.target.presetId! : requireCharacterTarget(characterId),
     }), 'explicit-scope')
-  operation('editorVersions', 'save', '原子保存正则、脚本或 EJS显示模板及命名版本', 'write', editorLibrarySaveRequestSchema,
+  operation('editorVersions', 'save', '原子保存正则或脚本及命名版本', 'write', editorLibrarySaveRequestSchema,
     (characterId, input) => {
       const targets = input.documents.map(document => {
         const parsed: unknown = JSON.parse(document)
         return input.kind === 'regex' ? regexRuleEditorCollectionSchema.parse(parsed).target
-          : input.kind === 'scripts' ? scriptLibrarySchema.parse(parsed) : displayTemplateLibrarySchema.parse(parsed)
+          : scriptLibrarySchema.parse(parsed)
       })
       if (targets.some(target => target.scope === 'character') || input.versions.some(version => version.scope === 'character')) requireCharacterTarget(characterId)
       for (const version of input.versions) if (version.scope === 'character' && version.ownerId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '配置版本不属于当前编辑角色。', { what: '其它角色的配置版本' })
       for (const target of targets) if (target.scope === 'character' && target.ownerId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '配置不属于当前编辑角色。', { what: '其它角色的配置' })
       return data.saveEditorLibraries(input)
     }, 'explicit-scope')
-  const readTemplates = (characterId: string, target: z.output<typeof templateTarget>, expected?: number) => {
-    const library = data.readDisplayTemplates(target.scope, target.scope === 'global' ? '' : target.scope === 'preset' ? target.presetId! : requireCharacterTarget(characterId))
-    if (expected !== undefined && library.revision !== expected) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '显示模板已被修改，请重新读取后合并修改。', { what: '显示模板' })
-    return library
-  }
-  operation('displayTemplates', 'read', '读取共享全局、当前角色或明确预设的 EJS显示模板库', 'read', templateTarget,
-    (characterId, target) => readTemplates(characterId, target), 'explicit-scope')
-  operation('displayTemplates', 'create', '新增默认停用的 EJS显示模板', 'write', z.object({ target: templateTarget, expectedRevision: revision,
-    template: templateFields.omit({ enabled: true }).strict() }).strict(), (characterId, input) => {
-    const library = readTemplates(characterId, input.target, input.expectedRevision)
-    const template = displayTemplateSchema.parse({ ...input.template, id: randomUUID(), enabled: false })
-    const saved = data.saveDisplayTemplates({ ...library, templates: [...library.templates, template] })
-    return { revision: saved.revision, template: find(saved.templates, template.id) }
-  }, 'explicit-scope')
-  operation('displayTemplates', 'update', '部分修改模板名称、AI 消息显示方式、匹配表达式、EJS 源码或条目开关', 'write', z.object({ target: templateTarget, id,
-    expectedRevision: revision, changes: changes(templateFields) }).strict(), (characterId, input) => {
-    const library = readTemplates(characterId, input.target, input.expectedRevision)
-    const template = displayTemplateSchema.parse({ ...find(library.templates, input.id), ...defined(input.changes) })
-    const saved = data.saveDisplayTemplates({ ...library, templates: library.templates.map(item => item.id === template.id ? template : item) })
-    return { revision: saved.revision, template: find(saved.templates, template.id) }
-  }, 'explicit-scope')
-  operation('displayTemplates', 'remove', '按编号删除单个显示模板', 'write', z.object({ target: templateTarget, id, expectedRevision: revision }).strict(), (characterId, input) => {
-    const library = readTemplates(characterId, input.target, input.expectedRevision)
-    find(library.templates, input.id)
-    const saved = data.saveDisplayTemplates({ ...library, templates: library.templates.filter(item => item.id !== input.id) })
-    return { removedId: input.id, revision: saved.revision }
-  }, 'explicit-scope')
-  operation('displayTemplates', 'configure', '批量启停显示模板库及全部模板，或按明确编号排序', 'write', z.object({ target: templateTarget, expectedRevision: revision,
-    enabled: z.boolean().optional(), orderedIds: z.array(id).optional() }).strict().refine(value => value.enabled !== undefined || value.orderedIds !== undefined, '修改不能为空。'), (characterId, input) => {
-    const library = readTemplates(characterId, input.target, input.expectedRevision)
-    if (input.orderedIds && (input.orderedIds.length !== library.templates.length || new Set(input.orderedIds).size !== library.templates.length)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '排序必须包含本库每个模板编号且只出现一次。', { field: 'orderedIds' })
-    const ordered = input.orderedIds ? input.orderedIds.map(id => find(library.templates, id)) : library.templates
-    const templates = input.enabled === undefined ? ordered : ordered.map(template => ({ ...template, enabled: input.enabled! }))
-    return data.saveDisplayTemplates({ ...library, templates, ...(input.enabled === undefined ? {} : { enabled: input.enabled }) })
-  }, 'explicit-scope')
   operation('presetScripts', 'read', '读取明确预设的原生脚本库', 'read', z.object({ presetId: id }).strict(), (_characterId, input) => data.readScriptLibrary('preset', input.presetId), 'explicit-scope')
   operation('presetScripts', 'save', '按读取版本保存明确预设的原生脚本和设置', 'write', z.object({ presetId: id, expectedRevision: revision,
     enabled: z.boolean(), variables: z.record(z.string(), z.json()), trees: z.array(z.union([scriptSchema, scriptFolderSchema])) }).strict(), (_characterId, input) => {

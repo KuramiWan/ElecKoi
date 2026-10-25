@@ -45,7 +45,7 @@
   & .setting-library-save-button { height: 36px; border-radius: 8px; }
 }
 
-/* 脚本、正则与显示模板使用连续面板，分区标题位于面板外。 */
+/* 脚本与正则使用连续面板，分区标题位于面板外。 */
 .editor-sidebar-layout .editor-collection-continuous {
   --editor-collection-entry: #ffffff;
   --editor-collection-outline: #e6e9ee;

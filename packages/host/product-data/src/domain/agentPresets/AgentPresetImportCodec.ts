@@ -8,7 +8,6 @@ import { defaultRoleplayPlanSettings, roleplayPlanSettingsSchema } from '@shared
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 import { decodePortableScriptLibrary, type PortableScriptLibrary } from '@product-data/domain/scripts'
-import { decodePortableDisplayTemplates, type PortableDisplayTemplates } from '@shared/contracts/displayTemplates/schemas'
 import type {
   AgentPreset,
   AgentPresetImportDocument,
@@ -43,7 +42,6 @@ const positions = new Set<NonNullable<SettingLibraryEntry['position']>>([
   'instructions', 'insert_point_1', 'insert_point_2', 'insert_point_3', 'insert_point_4', 'insert_point_5'
 ])
 export interface DecodedAgentPresetImport {
-  displayTemplates?: PortableDisplayTemplates
   scriptLibrary?: PortableScriptLibrary
   preset: AgentPreset
   source: AgentPresetImportSource
@@ -81,7 +79,6 @@ export interface AgentPresetTransferVersion extends AgentPresetTransferContent {
 }
 
 export interface AgentPresetEncodeOptions {
-  displayTemplates?: PortableDisplayTemplates
   scriptLibrary?: PortableScriptLibrary
   authorAvatar?: AgentPresetTransferAvatar
   versions?: AgentPresetTransferVersion[]
@@ -139,7 +136,6 @@ export function encodeElecKoiAgentPreset(preset: AgentPreset, options: AgentPres
         trees: options.scriptLibrary.trees, variables: options.scriptLibrary.variables, enabled: options.scriptLibrary.enabled,
         files: options.scriptLibrary.files ?? []
       } } : {}),
-      ...(options.displayTemplates ? { ejs_display_templates: options.displayTemplates } : {}),
       ...content,
       versions: (options.versions ?? []).map((version) => ({
         id: version.id,
@@ -211,7 +207,6 @@ function decodeElecKoi(document: AgentPresetImportDocument, bytes: Uint8Array, p
   return {
     source: 'eleckoi',
     ...(value.script_library === undefined ? {} : { scriptLibrary: decodePortableScriptLibrary(value.script_library) }),
-    ...(value.ejs_display_templates === undefined ? {} : { displayTemplates: decodePortableDisplayTemplates(value.ejs_display_templates) }),
     ...(authorAvatarBase64 ? { authorAvatarBase64 } : {}),
     ...(authorAvatarMediaType ? { authorAvatarMediaType } : {}),
     versions,
@@ -326,7 +321,9 @@ function contentToPortable(content: AgentPresetTransferContent): JsonObject {
     regex_rules: content.regexRules.map((rule) => ({
       id: rule.id, name: rule.name, pattern: rule.pattern, replacement: rule.replacement,
       targets: rule.targets, enabled: rule.enabled, display_only: rule.displayOnly,
-      prompt_only: rule.promptOnly, run_on_edit: rule.runOnEdit, order: rule.order
+      prompt_only: rule.promptOnly, run_on_edit: rule.runOnEdit, order: rule.order,
+      trim_strings: rule.trimStrings ?? [], min_depth: rule.minDepth ?? null,
+      max_depth: rule.maxDepth ?? null, substitute_regex: rule.substituteRegex ?? 0
     })),
     prompt_positions: content.promptPositions.map((position) => ({
       id: position.id, name: position.name, anchor: position.anchor, side: position.side, order: position.order,

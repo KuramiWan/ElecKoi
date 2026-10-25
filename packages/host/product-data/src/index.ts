@@ -1,3 +1,4 @@
+import { renderRegexEjs } from './regex-ejs'
 import { dirname, isAbsolute, join } from 'node:path'
 export type { GeneratedImageFrame, ChatUserImageAttachment } from '@shared/contracts/entities/chat'
 export { normalizeNovelAiImageSettings, NOVELAI_IMAGE_PROVIDER, AUTO_ILLUSTRATION_TOOL_GROUP, DEFAULT_NOVELAI_COMPILER_INSTRUCTION, MAX_STORY_IMAGES } from '@shared/contracts/agent/novelAiImageSettings'
@@ -16,12 +17,9 @@ import { ScriptLibraryRepository } from '@product-data/domain/scripts'
 import { agentPresetExists } from '@product-data/domain/agentPresets'
 import { characterExists } from '@product-data/domain/personas'
 import type { ScriptLibrary, ScriptLibraryScope } from '@shared/contracts/scripts/schemas'
-import type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from '@shared/contracts/displayTemplates/schemas'
-import { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
 import { EditorLibraryVersionRepository, EditorLibraryVersionsService } from '@product-data/domain/editorVersions'
 import type { EditorLibraryAddress, EditorLibraryVersions, EditorLibrarySaveRequest, EditorLibrarySaveResult } from '@shared/contracts/editorVersions/schemas'
 export type { EditorLibraryAddress, EditorLibraryVersions, EditorLibrarySaveRequest, EditorLibrarySaveResult } from '@shared/contracts/editorVersions/schemas'
-export type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from '@shared/contracts/displayTemplates/schemas'
 export type { ScriptLibrary, ScriptLibraryScope, ScriptTree } from '@shared/contracts/scripts/schemas'
 export { decodeScriptLibrary } from '@product-data/domain/scripts'
 import { ConversationArchiveRepository, ConversationRepository, ConversationStateRepository, MessageDisplayProjector, MessageRepository } from '@product-data/domain/conversations'
@@ -50,6 +48,7 @@ import { buildVariableViewerTimeline } from '@shared/foundation/variables/viewer
 import { mvuMessageDisplayCompatibility } from '@eleckoi/compatibility-mvu'
 import {
   rulesForSurface,
+  ruleAppliesToSurface,
   transformCollectionSurface,
   transformWithRegexRules,
   validateRegexRule
@@ -188,7 +187,6 @@ class ProductDataStore {
   private frontends: FrontendProjectRepository | undefined
   private presets: AgentPresetRepository | undefined
   private scripts: ScriptLibraryRepository | undefined
-  private displayTemplates: DisplayTemplateRepository | undefined
   private editorVersions: EditorLibraryVersionsService | undefined
   private regexRules: RegexRuleRepository | undefined
   private store: HostSqliteStore | undefined
@@ -254,13 +252,12 @@ class ProductDataStore {
       const presets = new AgentPresetRepository(store, media, this.scripts)
       presets.ensureInitialized()
       this.presets = presets
-      this.displayTemplates = new DisplayTemplateRepository(store, { character: characterExists, preset: agentPresetExists })
       this.regexRules = new RegexRuleRepository(store, presets)
       const versionRepository = new EditorLibraryVersionRepository(store, join(dirname(this.scripts.files.root), 'author-script-versions'), address => {
         if (address.scope === 'character' && !characterExists(store.db, address.ownerId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '配置版本所属角色不存在。', { what: '角色' })
         if (address.scope === 'preset' && !agentPresetExists(store.db, address.ownerId)) throw new DesktopError(ELECKOI_FAILURE_CODES.agentPresetNotFound, '配置版本所属预设不存在。', { what: '预设' })
       })
-      this.editorVersions = new EditorLibraryVersionsService(versionRepository, this.scripts, this.displayTemplates, this.regexRules)
+      this.editorVersions = new EditorLibraryVersionsService(versionRepository, this.scripts, this.regexRules)
       this.transfers = new CharacterTransferService(
         store,
         this.characters,
@@ -1016,35 +1013,6 @@ class ProductDataStore {
     return this.scripts!.get(scope, ownerId)
   }
 
-  readDisplayTemplates(scope: DisplayTemplateScope, ownerId: string): DisplayTemplateLibrary {
-    this.databaseRepositories()
-    return this.displayTemplates!.get(scope, ownerId)
-  }
-
-  saveDisplayTemplates(library: DisplayTemplateLibrary): DisplayTemplateLibrary {
-    this.databaseRepositories()
-    return this.editorVersions!.transaction(() => {
-      const saved = this.displayTemplates!.save(library)
-      this.editorVersions!.sync({ kind: 'displayTemplates', scope: saved.scope, ownerId: saved.ownerId })
-      return saved
-    })
-  }
-
-  saveDisplayTemplateLibraries(libraries: DisplayTemplateLibrary[]): DisplayTemplateLibrary[] {
-    this.databaseRepositories()
-    return this.editorVersions!.transaction(() => {
-      const saved = this.displayTemplates!.saveAll(libraries)
-      for (const library of saved) this.editorVersions!.sync({ kind: 'displayTemplates', scope: library.scope, ownerId: library.ownerId })
-      return saved
-    })
-  }
-
-  displayTemplatesForCharacter(characterId: string): DisplayTemplateSelection {
-    this.databaseRepositories()
-    const presetId = this.requirePresets().catalog().activePresetIds.roleplay
-    return { characterId, libraries: [this.displayTemplates!.get('global', ''), this.displayTemplates!.get('preset', presetId), this.displayTemplates!.get('character', characterId)] }
-  }
-
   readScriptWorkspace(scope: ScriptLibraryScope, ownerId: string) {
     this.databaseRepositories()
     return this.scripts!.workspace(scope, ownerId)
@@ -1104,14 +1072,17 @@ class ProductDataStore {
     return this.requireRegexRules().export(characterId, ruleIds)
   }
 
-  testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget): {
-    output: string
-    validationMessage: string | null
-  } {
-    return {
-      output: transformWithRegexRules(text, [rule], target),
-      validationMessage: validateRegexRule(rule)
-    }
+  async testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget, options: { surface?: 'Display' | 'Prompt' | 'Stored'; variablesJson?: string; depth?: number; isEdit?: boolean } = {}, signal?: AbortSignal): Promise<{ output: string; validationMessage: string | null }> {
+    const validationMessage = validateRegexRule(rule)
+    if (validationMessage) return { output: text, validationMessage }
+    const surface = options.surface ?? 'Display'
+    if (!ruleAppliesToSurface(rule, surface, target)) return { output: text, validationMessage: null }
+    const content = transformWithRegexRules(text, [rule], target, options)
+    try {
+      const output = await renderRegexEjs({ content, rawContent: text, surface, variables: options.variablesJson === undefined ? null : JSON.parse(options.variablesJson),
+        message: { id: 'regex-test', conversationId: '', role: target === 'UserInput' ? 'user' : 'assistant', status: 'complete', content: text } }, signal)
+      return { output, validationMessage: null }
+    } catch (error) { return { output: content, validationMessage: error instanceof Error ? error.message : String(error) } }
   }
 
   readAgentPresetCatalog(): AgentPresetCatalog {
@@ -1238,7 +1209,6 @@ class ProductDataStore {
     this.frontends = undefined
     this.presets = undefined
     this.scripts = undefined
-    this.displayTemplates = undefined
     this.editorVersions = undefined
     this.regexRules = undefined
     this.store = undefined

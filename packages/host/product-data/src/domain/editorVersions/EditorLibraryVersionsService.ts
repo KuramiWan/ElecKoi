@@ -1,15 +1,13 @@
 import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
-import { editorLibraryAddressSchema, editorLibrarySaveRequestSchema, scriptVersionContentSchema, displayVersionContentSchema,
+import { editorLibraryAddressSchema, editorLibrarySaveRequestSchema, scriptVersionContentSchema,
   regexVersionContentSchema, type EditorLibraryAddress, type EditorLibraryVersions, type EditorLibrarySaveRequest, type EditorLibrarySaveResult } from '@shared/contracts/editorVersions/schemas'
 import { scriptLibrarySchema } from '@shared/contracts/scripts/schemas'
-import { displayTemplateLibrarySchema } from '@shared/contracts/displayTemplates/schemas'
 import { regexRuleEditorCollectionSchema } from '@shared/contracts/regex/schemas'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 import type { ScriptLibraryRepository } from '@product-data/domain/scripts'
 import { decodeScriptFiles } from '@product-data/domain/scripts'
-import type { DisplayTemplateRepository } from '@product-data/domain/displayTemplates'
 import type { RegexRuleRepository } from '@product-data/domain/regexRules'
 import { EditorLibraryVersionRepository } from './index'
 
@@ -17,7 +15,7 @@ const addressKey = (address: EditorLibraryAddress) => JSON.stringify([address.ki
 
 export class EditorLibraryVersionsService {
   constructor(private readonly versions: EditorLibraryVersionRepository, private readonly scripts: ScriptLibraryRepository,
-    private readonly templates: DisplayTemplateRepository, private readonly regex: RegexRuleRepository) {}
+    private readonly regex: RegexRuleRepository) {}
 
   capture(addressInput: EditorLibraryAddress): { content: string; resourceRevision: string } {
     const address = editorLibraryAddressSchema.parse(addressInput)
@@ -27,10 +25,6 @@ export class EditorLibraryVersionsService {
       const after = this.scripts.workspace(address.scope, address.ownerId).version
       if (before !== after) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '脚本资源在读取版本期间发生变化，请重新读取。', { what: '脚本资源' })
       return { content: JSON.stringify({ ...portable, files: portable.files ?? [] }), resourceRevision: after }
-    }
-    if (address.kind === 'displayTemplates') {
-      const { enabled, templates } = this.templates.get(address.scope, address.ownerId)
-      return { content: JSON.stringify({ enabled, templates }), resourceRevision: '' }
     }
     return { content: JSON.stringify({ enabled: this.regex.scopeEnabled(address.scope, address.ownerId), rules: this.regex.readScope(address.scope, address.ownerId) }), resourceRevision: '' }
   }
@@ -52,7 +46,6 @@ export class EditorLibraryVersionsService {
     return this.versions.transaction(() => this.scripts.transaction(db => {
       const documents = request.documents.map(content => JSON.parse(content) as unknown)
       const parsed = request.kind === 'scripts' ? documents.map(document => scriptLibrarySchema.parse(document))
-        : request.kind === 'displayTemplates' ? documents.map(document => displayTemplateLibrarySchema.parse(document))
         : documents.map(document => regexRuleEditorCollectionSchema.parse(document))
       if (request.kind === 'regex' && parsed.length !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '正则版本保存必须对应一个明确编辑器。', { field: 'documents' })
       const allowed = new Set<string>()
@@ -102,15 +95,6 @@ export class EditorLibraryVersionsService {
             this.scripts.replaceResourcesInTransaction(library.scope, library.ownerId, active.files)
           }
           result.push(JSON.stringify(saved))
-        } else if (request.kind === 'displayTemplates') {
-          const library = displayTemplateLibrarySchema.parse(document), current = this.templates.get(library.scope, library.ownerId)
-          if (current.revision !== library.revision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '显示模板已更新，请重新读取后保存。', { what: '显示模板' })
-          const version = request.versions.find(item => item.scope === library.scope && item.ownerId === library.ownerId)
-          if (version) {
-            const active = displayVersionContentSchema.parse(JSON.parse(version.versions.find(item => item.id === version.activeVersionId)!.content))
-            if (!isDeepStrictEqual(active, { enabled: library.enabled, templates: library.templates })) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '当前显示模板版本与编辑内容不一致。', { what: '当前显示模板版本与编辑内容' })
-          }
-          result.push(JSON.stringify(isDeepStrictEqual(current, library) ? current : this.templates.save(library)))
         } else {
           const library = regexRuleEditorCollectionSchema.parse(document), current = this.regex.readEditor(library.target)
           if (current.revision !== library.revision || current.ownerRevision !== library.ownerRevision) throw new DesktopError(ELECKOI_FAILURE_CODES.conflictStaleRevision, '正则配置已更新，请重新读取后保存。', { what: '正则配置' })

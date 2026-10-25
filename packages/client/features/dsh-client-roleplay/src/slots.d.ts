@@ -65,6 +65,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       hookContext: SlotMap['conversation.chat.node']['hookContext']
       inject: SlotMap['conversation.chat.node']['inject']
     }
+    'eleckoi.roleplay.chat.flow': {
+      kind: 'single'
+      scope: 'session'
+      owner: SlotMap['conversation.chat.flow']['owner']
+      hookContext: SlotMap['conversation.chat.flow']['hookContext']
+      inject: SlotMap['conversation.chat.flow']['inject']
+    }
+    'eleckoi.roleplay.chat.user.images': {
+      kind: 'single'
+      scope: 'session'
+      owner: MessageImagesOwnerProps
+    }
     'eleckoi.roleplay.chat.images': {
       kind: 'single'
       scope: 'session'

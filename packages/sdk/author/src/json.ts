@@ -1,7 +1,7 @@
 import { AuthorApiError } from './errors'
 
 /** Validate before serialization so unsupported authored values cannot disappear silently. */
-export function serializeAuthorJsonObject(state: unknown, framePrototypes: unknown[], code = 'INVALID_RULE_STATE'): string {
+export function serializeAuthorJsonValue(state: unknown, framePrototypes: unknown[], code = 'INVALID_PARAMS'): string {
   const prototypes = new Set([Object.prototype, null, ...framePrototypes]), ancestors = new Set<object>()
   const check = (value: unknown) => {
     if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number' && Number.isFinite(value)) return
@@ -24,6 +24,10 @@ export function serializeAuthorJsonObject(state: unknown, framePrototypes: unkno
     }
     ancestors.delete(value)
   }
-  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new AuthorApiError(code, '数据必须是 JSON 对象')
   check(state); return JSON.stringify(state)
+}
+
+export function serializeAuthorJsonObject(state: unknown, framePrototypes: unknown[], code = 'INVALID_RULE_STATE'): string {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new AuthorApiError(code, '数据必须是 JSON 对象')
+  return serializeAuthorJsonValue(state, framePrototypes, code)
 }

@@ -25,7 +25,7 @@
   },
   "description": "读取、保存并更新设定库、变量、正则和分支设定。",
   "engines": {
-    "dsh": "0.2.0-rc.2"
+    "dsh": "0.2.1-rc.3"
   },
   "eleckoi": {
     "developerInterfaces": [
@@ -106,29 +106,11 @@
           "test",
           "editor"
         ]
-      },
-      {
-        "id": "eleckoiDisplayTemplates",
-        "kind": "service",
-        "title": "EJS显示模板服务",
-        "description": "按全局、角色或预设归属读写显示模板，原子保存已修改的库并刷新已有消息。",
-        "mode": "call",
-        "scope": "client",
-        "relation": "provides",
-        "members": [
-          "read",
-          "save",
-          "getSnapshot",
-          "readSelection",
-          "getSelectionSnapshot",
-          "subscribe",
-          "saveAll"
-        ]
       }
     ]
   },
   "dependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/cordis": "4.0.5",
     "@eleckoi/dsh-product-api": "workspace:*"
   }
 }

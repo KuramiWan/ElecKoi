@@ -106,6 +106,8 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
     const renderSidebarContent = (renderSidebarSlot) => <SidebarContent
           activeSection={chat.activeSection}
           navigationItems={navigation?.items}
+          renderEntryActions={navigation?.hasSidebarEntryActions && renderSidebarSlot
+            ? onDismiss => navigation.renderSidebarEntryActions(renderSidebarSlot, onDismiss) : undefined}
           renderSidebarSlot={renderSidebarSlot}
           profileActive={chat.activeSection === "settings" && settingsPage === "profile"}
           onSectionChange={changeActiveSection}
@@ -140,13 +142,6 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
           />
           <div className="main-panel-content">{mainPanel}</div>
         </section>
-        <div className="dsh-rightbar-column">
-          {rightbar?.render?.({
-            width: rightbarLayout.width,
-            viewportWidth: rightbarLayout.viewportWidth,
-            canShow: rightbarLayout.canShow,
-          })}
-        </div>
         {overlays}
       </>
     );
@@ -233,6 +228,13 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
             {windowLayout}
           </Suspense>
         </MainPageErrorBoundary>
+        <div className="dsh-rightbar-column">
+          {rightbar?.render?.({
+            width: rightbarLayout.width,
+            viewportWidth: rightbarLayout.viewportWidth,
+            canShow: rightbarLayout.canShow,
+          })}
+        </div>
       </MainPageContext.Provider>
       {!sidePanelLayout.sidePanelCollapsed && !isPluginPanel ? (
         <SidePanelResizeHandle

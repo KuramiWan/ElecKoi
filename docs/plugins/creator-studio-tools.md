@@ -6,6 +6,8 @@
 
 工作室保留 DSH 原生 Session 上下文，包括历史用户消息、回复、推理块、工具调用、结果和 Provider replay state；退出重进恢复同一会话。不套用角色扮演的历史裁剪。请求只追加当前创作预设与编辑目标，上下文压缩仍遵循 DSH 和所选模型的正式合同。重新生成替换选定输入所在回合及之后的事件，保留同一 Session 与输入身份，旧过程不会作为额外完成回合残留。
 
+角色对话与工作室的请求处理按正式 Agent 作用域隔离。自动配图只处理所属预设或 Agent 的请求，在读取角色运行快照前检查归属；工作室不依赖角色快照文件。模型请求失败只结束当前轮次，工作室列表仍可删除该会话、新建或打开其他会话。打开、选择目标和消息编辑后的恢复使用官方 `resolveAgent`，保留原 Session 身份，不调用新建入口替代恢复。
+
 创作预设内置「自动压缩摘要模板」，保留创作目标、编辑对象编号、已保存修改与未完成事项；现有预设和命名版本缺少该条目时自动补齐，已有自定义内容与启停状态保留。自动压缩与添加面板中的「压缩」指令共用该模板和所用模型的思考档位，模板不进入普通创作请求。停用模板后使用 DSH 默认摘要要求；压缩的输出预算独立于普通回复。摘要通过正式 Session 压缩事件保存，退出重进继续使用；失败保留原上下文并记录原因。
 
 ## 查询与修改
@@ -19,29 +21,16 @@
 | `variables` | `list`、`read`、`create`、`update`、`remove`、`create_object`、`update_object`、`remove_object`、`update_schema`、`validate_schema` |
 | `scripts` | `list`、`read`、`create`、`update`、`remove`、`create_folder`、`update_folder`、`remove_folder`、`move`、`configure` |
 | `regex` | `list`、`read`、`create`、`update`、`remove`、`test` |
-| `displayTemplates` | `read`、`create`、`update`、`remove`、`configure`；明确指定 global、character 或 preset |
 | `presetScripts` | `read`、`save`；明确提供 presetId |
-| `editorVersions` | `read`、`save`；原子保存正则、脚本、显示模板与完整命名版本 |
+| `editorVersions` | `read`、`save`；原子保存正则、脚本与完整命名版本 |
 
 操作完整编号由领域和操作组成，例如 `scripts.create`。编号精确匹配；更新只发送要改的字段。脚本与正则写入携带最近 `list/read` 返回的 `expectedRevision`，冲突后重新读取并合并。脚本和正则操作只编辑当前角色库，不改共享全局库或预设库。
 
 角色的 `group` 是所属分组名称，空字符串表示未分组；`settings.update_group` 修改设定库文件夹名称、上级或排序；`variables.update_object` 修改变量组。三者按各自的准确归属和编号操作。文件夹与变量组的 remove 操作删除整棵子树及其中条目，不用于重命名；变量运行配置保留，父级不存在或形成循环时不保存。
 
-模板和配置版本的 `scope="global"`、`scope="preset"` 可以在未选择角色时操作，preset 必须给出准确 presetId；`scope="character"` 仍绑定当前编辑角色。版本保存中的角色文档与版本 ownerId 必须属于该角色，不能通过提交其他编号改变编辑目标。
+配置版本的 `scope="global"`、`scope="preset"` 可以在未选择角色时操作，preset 必须给出准确 presetId；`scope="character"` 仍绑定当前编辑角色。版本保存中的角色文档与版本 ownerId 必须属于该角色，不能通过提交其他编号改变编辑目标。
 
-## EJS 显示模板
-
-显示模板只处理完整 AI 消息的界面，不参与设定注入或角色扮演请求。先 `displayTemplates.read`，写入时携带读取的 `expectedRevision`。`create` 的 template 包含 `name`、`position`、`pattern`、`flags`、`source`，工具生成编号并默认停用；新建源码可留空。`update` 只提交要改的字段，条目开关用 `enabled`。
-
-| `position` | 界面名称 | 匹配参数 |
-| --- | --- | --- |
-| `before` | AI 消息开头 | pattern、flags 留空 |
-| `after` | AI 消息末尾 | pattern、flags 留空 |
-| `replace` | 替换 AI 消息片段 | pattern 写表达式正文，flags 单独填写，例如 g |
-
-使用标准 `<% ... %>` 语法，保留源码空白，不提供语法符号、自动空白裁剪或共用模板参数。模板读取 `rawContent`、处理后的 `content`、消息身份及历史变量快照；替换模式还提供 `match`、`captures`、`groups`、`index`。显示模板没有设定库的 `getwi`，计算阶段也没有作者 SDK；生成 HTML 中的交互脚本才使用 SDK。详见 [EJS 显示模板](ejs-display-templates.md)。
-
-`configure({target, expectedRevision, enabled})` 与界面分组标题开关一致，批量启停库及全部模板。只提供 `orderedIds` 则仅排序，必须包含库内全部准确编号且不重复；单独启停条目使用 update。SDK 的 `displayTemplates.save` 保存作者提交的完整状态，不隐式批量改写。界面的源码区提供沉浸编辑和单模板测试；创作工具当前没有显示模板运行测试操作。
+正则的 replacement 可填写 EJS；regex.test 统一测试最终结果，可提供 variables。执行范围、语法及示例见 [正则中的 EJS](regex-ejs.md)。
 
 ## 设定读取与 EJS
 
@@ -54,6 +43,10 @@
 ```
 
 关闭关键词匹配时将该字段设回 `normal`，关键词内容和其他条件保留。批量修改同步当前设定版本，任一编号、格式或保存失败整批回滚。
+
+主开场白和备用开场白也通过 `settings.read/update/update_many` 编辑。先用 `settings.list` 获取 `kind="opening"` 的准确条目编号；单独修改 `content` 会更新当前主开场正文。`openingMessages` 接收完整列表，可以新增、修改、删除、调整顺序，并修改每项的标题、正文、`variableVersionId` 变量版本绑定及 `initialVariableStateJson` 初始变量；未要求修改的项目和字段应保留。`defaultOpeningMessageId` 指定主开场，删除原主开场时必须同时给出有效的新编号。
+
+变量绑定可以改为当前角色已有的准确变量版本编号，也可以填空字符串取消绑定。`variables.list` 返回 `activeVersionId` 和各版本的 `id/name`，用于查询可选绑定。绑定时新对话使用所绑定版本的初始变量；未绑定时使用开场初始变量，留空则使用当前变量版本。修改原稿不会重写已有对话中的开场与变量。固定开场容器沿用角色编辑器的分类和显示配置，清空正文使用空字符串。
 
 | 用途 | `dynamicMode` | `contentMode` | 限制 |
 | --- | --- | --- | --- |

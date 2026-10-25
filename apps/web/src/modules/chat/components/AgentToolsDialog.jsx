@@ -163,7 +163,7 @@ function ToolDetail({
       onOpen={onOpenSubagentSettings}
       onNotify={onNotify}
     /> : null}
-    {group.id === 'builtin:web' ? <div className="agent-tool-web-config"><WebSearchSettings /></div> : <>
+    {group.id === 'builtin:web' ? <div className="agent-tool-web-config"><WebSearchSettings onOpenPluginSettings={onOpenSubagentSettings} /></div> : <>
       {group.id === 'builtin:roleplay-workflow' ? <RoleplayPlanEditor
         value={roleplayPlan}
         saving={savingRoleplayPlan}

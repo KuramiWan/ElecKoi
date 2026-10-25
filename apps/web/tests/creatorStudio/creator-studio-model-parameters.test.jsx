@@ -28,6 +28,7 @@ function fixture() {
     useSession: select => select(session), useInput: select => select({}), useSessionStatus: select => select(new Map()),
     useProjection: key => key === 'modelSelection' ? projection : null, useInspectCall: select => select({}), useStore: select => select({ view: 'chat' }),
     useConversationViews: select => select([{ id: 'chat', label: '对话' }, { id: 'trajectory', label: '轨迹' }]),
+    useEntryPins: select => select([]), useEntryActions: select => select(false), setPinned: vi.fn(),
     actions: {}, openView: vi.fn(), selectView: vi.fn(), renderHeaderSlot: () => null,
     renderSlot: (name, owner) => name === 'eleckoi.creator-studio.composer.bar' ? owner.modelAccessory : null,
     renderSlotChain: (_name, _owner, options) => options.fallback };

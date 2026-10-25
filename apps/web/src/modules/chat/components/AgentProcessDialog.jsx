@@ -1,5 +1,5 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { OfficialMarkdown } from '../../../ui/messages/OfficialMarkdown.jsx';
 import { DshCloseIcon } from '../../../ui/icons/dshComposerIcons.jsx';
@@ -10,6 +10,9 @@ import { delegatedProcessItems } from '../model/agentProcessHierarchy.js';
 import { AgentProcessIcon } from './AgentProcessIcon.jsx';
 import { useBottomSheetDismiss } from '../../../ui/hooks/useBottomSheetDismiss.js';
 import { isProcessTimingRunning, processDurationText } from '../model/agentProcessTiming.js';
+import { useRegexEjsDisplay } from '../../regex/index.js';
+
+const ProcessMessageContext = createContext(null);
 
 export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed', onClose }) {
   const { overlayRef, sheetRef: dialogRef, closing, dismiss } = useBottomSheetDismiss(onClose);
@@ -79,7 +82,7 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
     setSelectedGroupId(block.id);
   };
 
-  return createPortal(<SystemBarOverlay ref={overlayRef} className="agent-process-backdrop" data-sheet-closing={closing || undefined} role="presentation" onMouseDown={dismiss}>
+  return createPortal(<ProcessMessageContext.Provider value={message}><SystemBarOverlay ref={overlayRef} className="agent-process-backdrop" data-sheet-closing={closing || undefined} role="presentation" onMouseDown={dismiss}>
     <section ref={dialogRef} className="agent-process-dialog" tabIndex={-1} role="dialog" aria-modal="true" aria-label={showingDetails ? '详情' : '处理过程'} onMouseDown={(event) => event.stopPropagation()}>
       <header>
         {showingDetails ? <button type="button" className="agent-process-back" onClick={goBack} aria-label="返回">{isMobilePresentation() ? <AgentProcessIcon name="arrow-back" size={24} /> : <MessageChevronLeftIcon />}</button> : <span />}
@@ -111,7 +114,7 @@ export function AgentProcessDialog({ message, reasoningDisplayMode = 'collapsed'
             onSelectBlock={selectOverviewBlock}
           />}
     </section>
-  </SystemBarOverlay>, document.body);
+  </SystemBarOverlay></ProcessMessageContext.Provider>, document.body);
 }
 
 function ProcessOverview({ blocks, hasFinal, imagePrompts, scrollPositions, onSelectBlock }) {
@@ -206,6 +209,10 @@ function reasoningDisplayText(item) {
 }
 
 function ReasoningOverview({ block, displayMode }) {
+  const message = useContext(ProcessMessageContext);
+  const rendered = useRegexEjsDisplay({ ...message, role: 'assistant', content: block.item.detail || block.item.summary || '',
+    pending: block.item.status === 'running', status: block.item.status === 'running' ? 'streaming' : 'complete' }, block.text);
+  const text = rendered.content;
   const [visibleLines, setVisibleLines] = useState(8);
   const [hasHiddenLines, setHasHiddenLines] = useState(false);
   const textRef = useRef(null);
@@ -218,7 +225,7 @@ function ReasoningOverview({ block, displayMode }) {
       return;
     }
     setHasHiddenLines(element.scrollHeight > element.clientHeight + 1);
-  }, [block.text, expandAll, visibleLines]);
+  }, [text, expandAll, visibleLines]);
 
   return <section className="agent-process-reasoning">
     <div className="agent-process-reasoning-title">
@@ -227,17 +234,18 @@ function ReasoningOverview({ block, displayMode }) {
       </span>
       <strong>{block.item.status === 'running' ? '正在思考' : '思考过程'}</strong>
     </div>
-    {block.text ? <div className="agent-process-reasoning-body">
+    {text ? <div className="agent-process-reasoning-body">
       <p
         ref={textRef}
         className={expandAll ? '' : 'is-clamped'}
         style={expandAll ? undefined : { '--reasoning-visible-lines': visibleLines }}
-      >{block.text.trim()}</p>
+      >{text.trim()}</p>
       {!expandAll && (hasHiddenLines || visibleLines > 8) ? <div className="agent-process-reasoning-actions">
         {hasHiddenLines ? <button type="button" onClick={() => setVisibleLines((lines) => lines + 10)}>展示更多…</button> : null}
         {visibleLines > 8 ? <button type="button" className="secondary" onClick={() => setVisibleLines(8)}>收起</button> : null}
       </div> : null}
     </div> : null}
+    {rendered.error ? <pre className="script-execution-error" role="alert">{rendered.error}</pre> : null}
   </section>;
 }
 

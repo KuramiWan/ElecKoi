@@ -1,3 +1,5 @@
+import { hasRegexEjsOutput } from '@eleckoi/dsh-product-data/regex'
+import { renderRequestEjs } from './regex-ejs.mjs'
 import { createSystemMessage, freezeMessage, isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { transformReasoningPrompt } from '@eleckoi/dsh-product-data'
 import { createHash } from 'node:crypto'
@@ -44,10 +46,24 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
     const inputs = inputState.inputs
     const inputIndex = currentUser ? inputs.findIndex(input => input.messageId === currentUser.id) : -1
     if (currentUser && inputIndex < 0) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, '实际模型请求的用户输入不在 Session 投影中。', { what: '这次请求的用户输入' })
-    previews.capture(session, { ...options, messages }, projection.plan, {
-      ...executionStep, round: currentUser ? inputIndex + 1 : null
-    })
-    return agentCtx.llm.stream({ ...options, messages })
+    const step = { ...executionStep, round: currentUser ? inputIndex + 1 : null }
+    if (!messages.some(message => message.content.some(block => ['text', 'reasoning'].includes(block.type) && hasRegexEjsOutput(block.text)))) {
+      previews.capture(session, { ...options, messages }, projection.plan, step)
+      return agentCtx.llm.stream({ ...options, messages })
+    }
+    return (async function* () {
+      let variables = null
+      if (messages.some(message => message.content.some(block => ['text', 'reasoning'].includes(block.type) && hasRegexEjsOutput(block.text)))) {
+        if (snapshot.variablesEnabled) {
+          const state = JSON.parse(readFileSync(snapshot.variableStateFile, 'utf8'))
+          if (!state.enabled || !state.state || typeof state.state !== 'object' || Array.isArray(state.state)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '本次请求变量快照无效。', { what: '本次请求变量快照' })
+          variables = state.state
+        }
+      }
+      const rendered = await renderRequestEjs(messages, { conversationId: snapshot.conversationId, variables }, options.signal)
+      previews.capture(session, { ...options, messages: rendered }, projection.plan, step)
+      yield* agentCtx.llm.stream({ ...options, messages: rendered })
+    })()
   })
   return () => { disposeRequestProjection(); disposeStep() }
 }

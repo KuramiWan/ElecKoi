@@ -96,6 +96,11 @@ describe('ElecKoi DSH client navigation', () => {
       expect(slots.entriesOfSlot('sidebar')[0]?.options.registrant).toBe('@eleckoi/dsh-client-shell')
       layout.selectPanel(null)
       expect(layout.panelInfo.getSnapshot()).toEqual({ activePanelId: null, windowPanelId: 'conversation' })
+    } else {
+      layout.selectPanel(null)
+      expect(layout.panelInfo.getSnapshot().activePanelId).toBe('conversation')
+      layout.selectPanel('messages')
+      expect(layout.panelInfo.getSnapshot().activePanelId).toBeNull()
     }
     layout.openRightbar(true, false)
     expect(layout.rightbarInfo.getSnapshot()).toMatchObject({

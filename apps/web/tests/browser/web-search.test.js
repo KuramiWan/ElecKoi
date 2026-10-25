@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 import { browserThemeCss } from '../helpers/browserTheme.js';
 const require = createRequire(import.meta.url);
 const { build } = createRequire(require.resolve('vite/package.json'))('esbuild');
-it('keeps DeepSeek controls usable in desktop/mobile themes and submits the separate credential', async () => {
+it('opens official DeepSeek settings with no duplicate form and preserves Tavily in desktop/mobile themes', async () => {
   const directory = await mkdtemp(resolve(tmpdir(), 'eleckoi-web-search-'));
   try {
     await build({ entryPoints: ['apps/web/tests/browser/web-search.fixture.jsx'], outfile: resolve(directory, 'fixture.js'), bundle: true, format: 'iife', jsx: 'automatic', alias: { '@shared': resolve('packages/shared/src') }, loader: { '.woff2': 'file', '.woff': 'file', '.ttf': 'file' }, logLevel: 'silent' });
@@ -23,9 +23,11 @@ it('keeps DeepSeek controls usable in desktop/mobile themes and submits the sepa
       expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewport);
       for (const control of layout.controls) { expect(control.left).toBeGreaterThanOrEqual(0); expect(control.right).toBeLessThanOrEqual(layout.viewport); }
     }
-    expect(result.calls).toContainEqual({ needContent: true });
-    expect(result.calls).toContainEqual({ credentialProvider: 'deepseek_api' });
+    expect(result.officialOnly).toEqual({ inputs: 0, search: ['DeepSeek', 'Tavily'], buttons: 2, fetch: 0 });
+    expect(result.calls).toContainEqual({ open: 'web-search' });
+    expect(result.calls).toContainEqual({ closed: true });
+    expect(result.calls).toContainEqual({ credentialProvider: 'tavily' });
     expect(result.cleared).toBe(true);
-    expect(result.message).toContain('Search 和 Fetch 均连接正常');
+    expect(result.message).toContain('API Key 已保存');
   } finally { const child = relative(tmpdir(), directory); if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Unexpected cleanup target'); await rm(directory, { recursive: true, force: true, maxRetries: 3 }); }
 }, 45000);

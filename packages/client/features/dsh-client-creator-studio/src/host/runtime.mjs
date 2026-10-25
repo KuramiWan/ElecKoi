@@ -33,9 +33,9 @@ export async function installCreatorStudioRuntime(ctx) {
     return { inspection, state: resolveCreatorStudioSelection(creatorStudioStateSchema.parse(event.data), ctx.eleckoiProductData.readCharacters().items) }
   }
   const reopenAfterMessageEdit = async (sessionId, inspection, state) => {
-    await ctx.sessionController.create({ sessionId, cwd: inspection.meta.cwd, agentPreset: inspection.meta.agentPreset })
-    const agent = ctx.agents.get(sessionId)
-    if (!agent) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'AI 创作工作室 Agent 未完成恢复。', { what: 'AI 创作工作室 Agent' })
+    const resolved = await ctx.sessionController.resolveAgent(sessionId)
+    if ('error' in resolved) throw resolved.error
+    const { agent } = resolved
     const events = agent.session.snapshotEvents()
     const current = events.findLast(event => event.type === CREATOR_STUDIO_EVENT)?.data
     if (current?.presetId !== state.presetId || current?.characterId !== state.characterId) {
@@ -87,8 +87,9 @@ export async function installCreatorStudioRuntime(ctx) {
       return { sessionId: String(sessionId), presetId: preset.id, characterId }
     },
     async open(sessionId) {
-      const { inspection, state } = await readState(sessionId)
-      await ctx.sessionController.create({ sessionId, cwd: inspection.meta.cwd, agentPreset: inspection.meta.agentPreset })
+      const { state } = await readState(sessionId)
+      const resolved = await ctx.sessionController.resolveAgent(sessionId)
+      if ('error' in resolved) throw resolved.error
       return { sessionId, ...state }
     },
     async rename(sessionId, title) {

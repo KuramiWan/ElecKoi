@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { PresetProfileHeader } from '../../src/modules/presets/components/PresetProfileHeader.jsx';
 import { PresetIntroductionEditor } from '../../src/modules/presets/components/PresetIntroductionEditor.jsx';
+import { EditorPresentationContext } from '../../src/ui/ui/EditorPresentationContext.jsx';
 
 vi.stubGlobal('React', React);
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -76,6 +77,60 @@ describe('preset profile grouping', () => {
 });
 
 describe('preset introduction regions', () => {
+  it.each([false, true])('edits an existing record directly and reopens the saved record without adding a duplicate (compact=%s)', async compact => {
+    const original = [
+      { id: 'synthetic-latest', title: '合成新版记录', dateLabel: '2026-10-18', note: '合成新版内容' },
+      { id: 'synthetic-earlier', title: '合成旧版记录', dateLabel: '2026-10-09', note: '合成旧版内容' },
+    ];
+    let stored = { ...preset.profile, timeline: original };
+    const saves = vi.fn();
+    function Editor() {
+      const [profile, setProfile] = React.useState(stored);
+      return <EditorPresentationContext.Provider value={{ compact }}><PresetIntroductionEditor
+        preset={{ ...preset, profile }} saving={false} error="" onClearError={() => {}}
+        onSaveProfile={async patch => { saves(patch); stored = { ...profile, ...patch }; setProfile(stored); return true; }}
+      /></EditorPresentationContext.Provider>;
+    }
+    const { container, root } = await mount(<Editor />);
+    await act(() => container.querySelector('[aria-label="编辑更新：合成旧版记录"]').click());
+    expect(container.querySelector('[aria-label="更新标题"]').value).toBe('合成旧版记录');
+    for (const [label, value] of [['更新标题', '修订后的合成旧版记录'], ['更新日期', '2026-10-10'], ['更新内容', '修订后的合成内容']]) {
+      await act(() => {
+        const field = container.querySelector(`[aria-label="${label}"]`);
+        Object.getOwnPropertyDescriptor(field.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(field, value);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+    await act(() => container.querySelector('button[type="submit"]').click());
+    expect(saves).toHaveBeenCalledTimes(1);
+    expect(stored.timeline).toEqual([original[0], { ...original[1], title: '修订后的合成旧版记录', dateLabel: '2026-10-10', note: '修订后的合成内容' }]);
+    expect(original[1].note).toBe('合成旧版内容');
+    await act(() => root.render(null));
+    await act(() => root.render(<Editor />));
+    expect(container.querySelectorAll('.preset-update-record')).toHaveLength(2);
+    expect(container.querySelector('[aria-label="更新记录：修订后的合成旧版记录"]').textContent).toContain('修订后的合成内容');
+  });
+
+  it('keeps a failed existing-record edit available and cancels without changing saved content', async () => {
+    const timeline = [{ id: 'synthetic-record', title: '合成更新', dateLabel: '2026-10-18', note: '合成原文' }];
+    const onSaveProfile = vi.fn(async () => false);
+    const { container } = await mount(<PresetIntroductionEditor preset={{ ...preset, profile: { ...preset.profile, timeline } }}
+      saving={false} error="" onClearError={() => {}} onSaveProfile={onSaveProfile} />);
+    await act(() => container.querySelector('[aria-label="编辑更新：合成更新"]').click());
+    await act(() => {
+      const field = container.querySelector('[aria-label="更新内容"]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, '合成待保存内容');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(() => container.querySelector('button[type="submit"]').click());
+    expect(container.querySelector('[aria-label="更新内容"]').value).toBe('合成待保存内容');
+    expect(onSaveProfile).toHaveBeenCalledTimes(1);
+    await act(() => container.querySelector('.preset-content-composer button[type="button"]').click());
+    expect(container.querySelector('.preset-content-composer')).toBeNull();
+    expect(container.querySelector('.preset-update-record p').textContent).toBe('合成原文');
+    expect(timeline).toHaveLength(1);
+  });
+
   it('contains the empty state and add action in the same update region', async () => {
     const { container } = await mount(<PresetIntroductionEditor preset={preset} saving={false} error="" onClearError={() => {}} onSaveProfile={async () => true} />);
     const region = container.querySelector('section[aria-label="更新记录"]');

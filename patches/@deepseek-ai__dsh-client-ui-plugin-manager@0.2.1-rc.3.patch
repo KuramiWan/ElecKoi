@@ -1,0 +1,27 @@
+diff --git a/lib/client.js b/lib/client.js
+index 329f0118..116b9913 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -884,6 +884,7 @@ window.__ModuleLoader__.load({
+ 				...bundle.source === void 0 ? {} : { source: bundle.source },
+ 				...bundle.description === void 0 ? {} : { description: bundle.description },
+ 				...bundle.meta === void 0 ? {} : { meta: bundle.meta },
++				...bundle.developerInterfaces === void 0 ? {} : { developerInterfaces: bundle.developerInterfaces },
+ 				...bundle.readOnlyReason === void 0 ? {} : { readOnlyReason: bundle.readOnlyReason },
+ 				...bundle.error === void 0 ? {} : { error: bundle.error }
+ 			};
+@@ -3880,1 +3881,1 @@
+-			const listed = state.packages.filter((pkg) => !BUILTIN_PROFILE_BUNDLES.has(pkg.name) && (pkg.installed || pkg.official || pkg.error !== void 0));
++			const listed = state.packages.filter((pkg) => !BUILTIN_PROFILE_BUNDLES.has(pkg.name));
+diff --git a/lib/types/client/manager-store.d.ts b/lib/types/client/manager-store.d.ts
+index 686a1be3..35cbf90e 100644
+--- a/lib/types/client/manager-store.d.ts
++++ b/lib/types/client/manager-store.d.ts
+@@ -61,6 +61,7 @@ export interface PackageRow {
+ }
+ /** One bundle as the page shows it: the Host's bundle joined with the entries its rows run as. */
+ export interface PackageView {
++    readonly developerInterfaces?: BundleInfo['developerInterfaces'];
+     readonly name: string;
+     /** Official catalog identity is independent of installation and selection. */
+     readonly official: boolean;

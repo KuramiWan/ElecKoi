@@ -47,6 +47,7 @@
 .preset-update-step.is-latest > .preset-update-record { background: var(--preset-latest-surface); border-color: color-mix(in srgb, var(--blue) 16%, var(--line)); }
 .preset-update-record-heading { display: flex; align-items: center; gap: 8px 16px; }
 .preset-update-record-heading h3 { flex: 1; min-width: 0; margin: 0; font-size: 16px; line-height: 1.6; font-weight: 600; overflow-wrap: anywhere; }
+.preset-update-edit { flex: none; }
 .preset-update-record-date { flex: none; max-width: 35%; color: var(--preset-secondary); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .preset-update-record p { margin: 4px 0 0; color: var(--preset-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .preset-updates-empty { display: grid; min-height: 112px; place-items: center; padding: 16px; color: var(--preset-secondary); text-align: center; }
@@ -121,7 +122,7 @@
   .preset-update-node { left: 0; }
   .preset-update-record { padding: 14px 16px; }
   .preset-update-record-heading { flex-wrap: wrap; gap: 4px 8px; }
-  .preset-update-record-heading h3 { flex-basis: calc(100% - 40px); }
+  .preset-update-record-heading h3 { flex-basis: 0; }
   .preset-update-record-date { order: 2; flex-basis: 100%; max-width: none; }
   .preset-content-composer .preset-content-composer-date { flex-basis: 100%; }
   .preset-content-composer-footer { flex-wrap: wrap; }

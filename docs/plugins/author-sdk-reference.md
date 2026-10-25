@@ -95,6 +95,43 @@ getLibrarySettings(): Promise<AuthorScriptSettings>;
 setLibrarySettings(values: Record<string, unknown>, expectedRevision: number): Promise<AuthorScriptSettings>;
 ```
 
+## scripts
+
+### scripts.list
+
+查询当前聊天运行脚本的明确身份及已登记操作
+
+作用域：当前页面绑定的原生服务。权限标识：`script.read`。
+
+```ts
+/** Lists running scripts and their explicitly registered actions in this chat. */
+list(): Promise<{
+    items: AuthorScriptEndpoint[];
+}>;
+```
+
+### scripts.registerHandler
+
+运行脚本登记自定义操作及处理函数，返回撤回函数
+
+作用域：仅运行脚本。本地函数操作，不经过通用方法请求。
+
+```ts
+/** Running script only; each action has exactly one handler within that script. */
+registerHandler(action: string, handler: (context: AuthorScriptRequestContext) => AuthorScriptData | Promise<AuthorScriptData>): () => void;
+```
+
+### scripts.request
+
+调用当前聊天指定脚本的操作并等待结果
+
+作用域：当前页面绑定的原生服务。权限标识：`scripts.call`。
+
+```ts
+/** Calls one exact script and action. Use null when no data is needed. */
+request(target: AuthorScriptIdentity, action: string, data: AuthorScriptData): Promise<AuthorScriptData>;
+```
+
 ## ui
 
 ### ui.registerButton
@@ -563,28 +600,6 @@ updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSetti
 updateEntries(updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>;
 ```
 
-## displayTemplates
-
-### displayTemplates.read
-
-读取共享全局、所属角色或当前扮演预设的 EJS显示模板
-
-作用域：当前页面绑定的原生服务。权限标识：`display_templates.read`。
-
-```ts
-read(scope: 'global' | 'character' | 'preset'): Promise<AuthorDisplayTemplateLibrary>;
-```
-
-### displayTemplates.save
-
-按读取版本保存 EJS显示模板并刷新已有消息
-
-作用域：当前页面绑定的原生服务。权限标识：`display_templates.write`。
-
-```ts
-save(library: AuthorDisplayTemplateLibrary): Promise<AuthorDisplayTemplateLibrary>;
-```
-
 ## editorVersions
 
 ### editorVersions.read
@@ -600,7 +615,7 @@ read(kind: AuthorEditorLibraryVersions['kind'], scope: AuthorEditorLibraryVersio
 
 ### editorVersions.save
 
-原子保存正则、脚本或 EJS显示模板的配置及命名版本
+原子保存正则或脚本的配置及命名版本
 
 作用域：当前页面绑定的原生服务。权限标识：`editor_versions.write`。
 
@@ -1297,37 +1312,6 @@ export interface AuthorContext {
 }
 ```
 
-### AuthorDisplayTemplate
-
-```ts
-/** 显示模板是持久作者配置，计算结果只属于消息显示。 */
-export interface AuthorDisplayTemplate {
-    id: string;
-    name: string;
-    enabled: boolean;
-    /** before / after 在 AI 消息开头 / 末尾添加结果；replace 替换匹配片段。 */
-    position: 'before' | 'after' | 'replace';
-    /** replace 使用表达式正文，不包含 /.../g 外壳。 */
-    pattern: string;
-    /** replace 的独立正则标志，例如 g。 */
-    flags: string;
-    /** 标准 <% ... %> EJS 源码，保留空白；新建时可为空。 */
-    source: string;
-}
-```
-
-### AuthorDisplayTemplateLibrary
-
-```ts
-export interface AuthorDisplayTemplateLibrary {
-    scope: 'global' | 'character' | 'preset';
-    ownerId: string;
-    enabled: boolean;
-    revision: number;
-    templates: AuthorDisplayTemplate[];
-}
-```
-
 ### AuthorEditorLibrarySaveResult
 
 ```ts
@@ -1342,7 +1326,7 @@ export interface AuthorEditorLibrarySaveResult {
 ```ts
 /** 完整命名版本；content 是对应配置类型的 JSON，脚本版本包含源码及资源，正则版本包含整体 enabled 与 rules。 */
 export interface AuthorEditorLibraryVersions {
-    kind: 'scripts' | 'displayTemplates' | 'regex';
+    kind: 'scripts' | 'regex';
     scope: 'global' | 'character' | 'preset';
     ownerId: string;
     revision: number;
@@ -1615,6 +1599,49 @@ export interface AuthorScriptButton {
 }
 ```
 
+### AuthorScriptCaller
+
+```ts
+export interface AuthorScriptCaller {
+    surface: AuthorSurface | 'script' | 'script-panel';
+    conversationId: string;
+    messageId: string;
+    script: AuthorScriptIdentity | null;
+    projectId?: string;
+    entryFile?: string;
+    view?: string;
+}
+```
+
+### AuthorScriptData
+
+```ts
+export type AuthorScriptData = null | boolean | number | string | AuthorScriptData[] | {
+    [key: string]: AuthorScriptData;
+};
+```
+
+### AuthorScriptEndpoint
+
+```ts
+export interface AuthorScriptEndpoint {
+    identity: AuthorScriptIdentity;
+    name: string;
+    actions: string[];
+}
+```
+
+### AuthorScriptIdentity
+
+```ts
+export interface AuthorScriptIdentity {
+    scope: 'global' | 'character' | 'preset';
+    /** Shared global scripts use the empty string. Other owners are explicit IDs. */
+    ownerId: string;
+    scriptId: string;
+}
+```
+
 ### AuthorScriptPanel
 
 ```ts
@@ -1642,6 +1669,18 @@ export interface AuthorScriptProgramContext {
     scope: 'global' | 'character' | 'preset';
     ownerId: string;
     scriptId: string;
+}
+```
+
+### AuthorScriptRequestContext
+
+```ts
+export interface AuthorScriptRequestContext {
+    /** Use this invocation's API; requests do not join a pending variable-rule candidate. */
+    api: ElecKoiAuthorApi;
+    signal: AbortSignal;
+    readonly caller: AuthorScriptCaller;
+    data: AuthorScriptData;
 }
 ```
 
@@ -1964,6 +2003,16 @@ export interface ElecKoiAuthorApi {
         getLibrarySettings(): Promise<AuthorScriptSettings>;
         setLibrarySettings(values: Record<string, unknown>, expectedRevision: number): Promise<AuthorScriptSettings>;
     };
+    readonly scripts: {
+        /** Lists running scripts and their explicitly registered actions in this chat. */
+        list(): Promise<{
+            items: AuthorScriptEndpoint[];
+        }>;
+        /** Running script only; each action has exactly one handler within that script. */
+        registerHandler(action: string, handler: (context: AuthorScriptRequestContext) => AuthorScriptData | Promise<AuthorScriptData>): () => void;
+        /** Calls one exact script and action. Use null when no data is needed. */
+        request(target: AuthorScriptIdentity, action: string, data: AuthorScriptData): Promise<AuthorScriptData>;
+    };
     readonly ui: {
         /** Running script only. IDs are unique within that script, not across scopes. */
         registerButton(button: AuthorScriptButton): () => void;
@@ -2071,10 +2120,6 @@ export interface ElecKoiAuthorApi {
         updateEntry(id: string, changes: AuthorSettingEntryChanges): Promise<AuthorSettingLibraryEntry>;
         /** Atomically edits the character's ordinary entries and active version, leaving story overrides unchanged. */
         updateEntries(updates: AuthorSettingEntryUpdate[]): Promise<AuthorSettingLibraryEntry[]>;
-    };
-    readonly displayTemplates: {
-        read(scope: 'global' | 'character' | 'preset'): Promise<AuthorDisplayTemplateLibrary>;
-        save(library: AuthorDisplayTemplateLibrary): Promise<AuthorDisplayTemplateLibrary>;
     };
     readonly editorVersions: {
         /** 角色作用域固定为本页角色；预设作用域固定为当前扮演预设。 */

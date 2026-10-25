@@ -1,5 +1,5 @@
-const { app, BrowserWindow, ipcMain, protocol, session, webFrameMain } = require('electron')
-const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = require('node:fs')
+const { app, BrowserWindow, ipcMain, nativeTheme, protocol, session, webFrameMain } = require('electron')
+const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { dirname, join, resolve } = require('node:path')
 const { spawn } = require('node:child_process')
@@ -144,6 +144,36 @@ async function main() {
     }
     throw new Error(`${label}: ${(await window.webContents.executeJavaScript('document.body.innerText')).slice(0, 1600)}\n${errors.join('\n')}`)
   }
+  if (process.argv.includes('--studio-rightbar-check')) {
+    await window.loadURL('dsh-app://app/?view=creator-studio')
+    await waitFor(`Boolean(document.querySelector('.creator-studio-development-enter'))`, 'Creator Studio entry did not render')
+    await window.webContents.executeJavaScript(`document.querySelector('.creator-studio-development-enter').click()`)
+    let previousSession
+    for (let index = 0; index < 4; index += 1) {
+      await waitFor(`Boolean(document.querySelector('[data-sidebar-right-expand]')) && Boolean(document.querySelector('[data-sidebar-right-panel]')) && !document.querySelector('.creator-simple-new')?.disabled`, 'Studio sidebar did not bind a conversation')
+      const sessionId = await window.webContents.executeJavaScript(`document.querySelector('[data-sidebar-right-panel]').dataset.sidebarRightSession`)
+      if (sessionId === previousSession) throw new Error('Studio did not switch the right sidebar Session')
+      await window.webContents.executeJavaScript(`document.querySelector('[data-sidebar-right-expand]').click()`)
+      await waitFor(`Boolean(document.querySelector('[data-sidebar-right-panel][data-sidebar-right-open]'))`, 'Studio right sidebar did not open')
+      await window.webContents.executeJavaScript(`document.querySelector('[data-sidebar-right-toggle]').click()`)
+      await waitFor(`!document.querySelector('[data-sidebar-right-panel][data-sidebar-right-open]')`, 'Studio right sidebar did not close')
+      previousSession = sessionId
+      if (index < 3) {
+        await window.webContents.executeJavaScript(`document.querySelector('.creator-simple-new').click()`)
+        await waitFor(`document.querySelector('[data-sidebar-right-panel]')?.dataset.sidebarRightSession !== ${JSON.stringify(sessionId)}`, 'Studio sidebar Session did not advance')
+      }
+    }
+    await window.webContents.executeJavaScript(`document.querySelector('[data-plugin-entry-more="conversation"]').click()`)
+    await waitFor(`Array.from(document.querySelectorAll('[role="menuitem"]')).some(button => button.innerText.includes('浏览更多插件'))`, 'Studio did not render official plugin menu actions')
+    await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.innerText.includes('浏览更多插件')).click()`)
+    await waitFor(`Boolean(document.querySelector('[data-plugin-panel]'))`, 'Studio menu did not open the official plugin panel')
+    await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="返回工作室对话"]').click()`)
+    await waitFor(`Boolean(document.querySelector('.creator-simple-conversation [data-composer-input]'))`, 'Studio did not return to its conversation after browsing plugins')
+    const failures = errors.filter(error => /Sidebar Session|Slot entry crashed|TypeError/.test(error))
+    if (failures.length) throw new Error('Studio right sidebar lifecycle failed: ' + failures.join('\n'))
+    process.stdout.write('Creator Studio right sidebar opened and closed across four new conversations; its official plugin menu opened and returned.\n')
+    return
+  }
   await waitFor(`document.querySelector('.side-panel-brand .eleckoi-wordmark')`, 'ElecKoi shell did not render')
   if (updateProbe) {
     await updateProbe.run({ window, waitFor, errors })
@@ -192,6 +222,12 @@ async function main() {
       if (!button) throw new Error('Plugin navigation did not render')
       button.click()
     })()`)
+    await waitFor(`document.querySelector('[data-plugin-group="extensions"], [data-plugin-group="more"]') !== null`, 'Official plugin catalog did not render')
+    await window.webContents.executeJavaScript(`(() => {
+      const group = document.querySelector('[data-plugin-group="extensions"]')
+      const more = Array.from(group?.querySelectorAll('button') ?? []).find(button => ['更多', 'More'].includes(button.innerText.trim()))
+      more?.click()
+    })()`)
     await waitFor(`${JSON.stringify(OPTIONAL_BUNDLES)}.every(name => {
       const card = document.querySelector('[data-plugin-package="' + name + '"]')
       return card?.getAttribute('data-plugin-status') === ${JSON.stringify(expectedEnabled ? 'running' : 'disabled')}
@@ -217,7 +253,7 @@ async function main() {
       await waitFor(`document.querySelector('[data-plugin-package="' + ${JSON.stringify(name)} + '"]')?.getAttribute('data-plugin-status') === 'disabled'`, 'Official plugin switch did not disable ' + name)
     }
     if (process.env.ELECKOI_CLIENT_PROBE_SCREENSHOT) writeFileSync(process.env.ELECKOI_CLIENT_PROBE_SCREENSHOT, (await window.webContents.capturePage()).toPNG())
-    process.stdout.write('All four official optional plugin cards, UI switches and cold restart selection passed.\n')
+    process.stdout.write(`All ${OPTIONAL_BUNDLES.length} official optional plugin cards, UI switches and cold restart selection passed.\n`)
     return
   }
   if (!chatOnlyMode) {
@@ -314,11 +350,162 @@ async function main() {
   await waitFor(`Array.from(document.querySelectorAll('.conversation-main b')).some(node => node.innerText === ${JSON.stringify(conversationLabel)})`, 'Synthetic conversation did not appear')
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.conversation-main b')).find(node => node.innerText === ${JSON.stringify(conversationLabel)}).click()`)
   await waitFor(`document.querySelector('[data-composer-input][contenteditable="true"]') !== null`, 'Synthetic conversation did not open')
+  if (process.argv.includes('--header-layout-check')) {
+    const results = []
+    for (const theme of ['light', 'dark']) for (const width of [1440, 900]) {
+      nativeTheme.themeSource = theme
+      window.setSize(width, width === 1440 ? 1000 : 760)
+      await new Promise(resolve => setTimeout(resolve, 150))
+      const geometry = await window.webContents.executeJavaScript(`(async () => {
+      const measure = () => {
+        const rect = selector => {
+          const node = document.querySelector(selector), box = node.getBoundingClientRect(), css = getComputedStyle(node);
+          return { top: box.top, bottom: box.bottom, width: box.width, height: box.height, paddingTop: css.paddingTop, gridRows: css.gridTemplateRows };
+        };
+        return Object.fromEntries(['.chat-header', '.chat-header-title-row', '.chat-header h1', '.chat-header-preset', '.chat-header-actions', '.chat-header-tabs', '.chat-header-tabs [role="tab"]', '[data-plugin-entry-more="conversation"]'].map(selector => [selector, rect(selector)]));
+      };
+      const menu = document.querySelector('[data-plugin-entry-more="conversation"]');
+      const host = menu.parentElement;
+      const before = measure(), hostStyle = host.style.display;
+      host.style.display = 'none';
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const withoutMenu = measure();
+      host.style.display = hostStyle;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return { before, withoutMenu, background: getComputedStyle(document.querySelector('.chat-panel')).backgroundColor,
+        iconWidth: menu.querySelector('svg').getBoundingClientRect().width,
+        sidebarIconWidth: document.querySelector('[data-plugin-entry-more="sidebar"] svg').getBoundingClientRect().width };
+      })()`)
+      const menuSelector = '[data-plugin-entry-more="conversation"]'
+      for (const [selector, box] of Object.entries(geometry.before)) {
+        if (selector === menuSelector) continue
+        const original = geometry.withoutMenu[selector]
+        if (Math.abs(box.top - original.top) > 0.5 || Math.abs(box.height - original.height) > 0.5) {
+          throw new Error('Plugin menu displaced the existing header: ' + JSON.stringify({ theme, width, selector, box, original }))
+        }
+      }
+      if (geometry.before[menuSelector].height !== 22 || geometry.before[menuSelector].width !== 22 || geometry.iconWidth !== 13 || geometry.sidebarIconWidth !== 25) {
+        throw new Error('Plugin menu does not match the official control dimensions: ' + JSON.stringify(geometry))
+      }
+      results.push({ theme, width, background: geometry.background, titleInset: geometry.before['.chat-header h1'].top - geometry.before['.chat-header'].top,
+        headerHeight: geometry.before['.chat-header'].height, tabHeight: geometry.before['.chat-header-tabs'].height })
+      if (process.env.ELECKOI_CLIENT_PROBE_SCREENSHOT && width === 1440) {
+        const path = process.env.ELECKOI_CLIENT_PROBE_SCREENSHOT.replace(/\.png$/, '-' + theme + '.png')
+        writeFileSync(path, (await window.webContents.capturePage()).toPNG())
+      }
+    }
+    if (results[0].background === results[2].background) throw new Error('Header check did not exercise both themes')
+    process.stdout.write('Plugin menu preserved header geometry in both themes and widths: ' + JSON.stringify(results) + '\n')
+    window.setSize(1440, 1000)
+    if (!process.argv.includes('--rc3-check')) return
+  }
+  if (process.argv.includes('--rc3-check')) {
+    if (await window.webContents.executeJavaScript(`Boolean(document.querySelector('button[aria-label="自动化任务"]'))`)) throw new Error('Automation navigation unexpectedly remained enabled')
+    const checkMenu = async selector => {
+      await waitFor(`Boolean(document.querySelector(${JSON.stringify(selector)}))`, 'Official plugin menu launcher did not render: ' + selector)
+      await window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(selector)}).click()`)
+      await waitFor(`Array.from(document.querySelectorAll('[role="menuitem"]')).some(button => button.innerText.includes('浏览更多插件')) && Array.from(document.querySelectorAll('[role="menuitem"]')).some(button => button.innerText.includes('创建你的插件'))`, 'Official entry menu actions did not render')
+      await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.innerText.includes('浏览更多插件')).click()`)
+      await waitFor(`Boolean(document.querySelector('[data-plugin-panel]'))`, 'Official menu did not open the plugin catalog')
+      await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="消息"]').click()`)
+      await waitFor(`Boolean(document.querySelector('[data-composer-input]'))`, 'Conversation did not restore after browsing plugins')
+    }
+    await checkMenu('[data-plugin-entry-more="sidebar"]')
+    await checkMenu('[data-plugin-entry-more="conversation"]')
+    await window.webContents.executeJavaScript(`document.querySelector('[data-sidebar-right-expand]').click()`)
+    await checkMenu('[data-sidebar-right-guide] button[aria-label="更多工具"]')
+    mkdirSync(hostOptions.workspaceRoot, { recursive: true })
+    await remoteCall('workspace/create', { request: { path: hostOptions.workspaceRoot } })
+    await window.webContents.executeJavaScript(`document.querySelector('[data-plugin-entry-more="sidebar"]').click()`)
+    await waitFor(`Array.from(document.querySelectorAll('[role="menuitem"]')).some(button => button.innerText.includes('创建你的插件'))`, 'Plugin creation action did not render')
+    await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.innerText.includes('创建你的插件')).click()`)
+    await waitFor(`Array.from(document.querySelectorAll('[data-composer-input]')).some(input => input.textContent.includes('创建一个带左侧栏入口的 DSH 插件。'))`, 'Official plugin creation did not initialize the Creator draft')
+    if (modelRequests !== 0) throw new Error('Creating a plugin draft unexpectedly requested a model')
+    const failures = errors.filter(error => /Sidebar Session|Slot entry crashed|TypeError/.test(error))
+    if (failures.length) throw new Error(failures.join('\n'))
+    process.stdout.write('DSH rc.3 sidebar, conversation and rightbar menus browsed official plugins; plugin creation initialized its unsent draft; automation navigation was absent.\n')
+    return
+  }
+  if (process.argv.includes('--web-search-check')) {
+    const catalog = await remoteCall('eleckoiAgentPresets/catalog', {})
+    const preset = await remoteCall('eleckoiAgentPresets/read', { presetId: catalog.activePresetIds.roleplay })
+    await remoteCall('eleckoiAgentPresets/save', { preset: { ...preset, toolGroups: preset.toolGroups.map(group => group.id === 'builtin:web' ? { ...group, included: true, enabled: true } : group) }, expectedRegexRules: preset.regexRules })
+    const openTools = async () => {
+      await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="扮演菜单"]').click()`)
+      await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('[role="menuitem"]')).find(button => button.innerText.trim() === '工具').click()`)
+      await waitFor(`Boolean(Array.from(document.querySelectorAll('.agent-tool-open')).find(button => button.innerText.includes('联网搜索')))`, 'Web tool did not render')
+      await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.agent-tool-open')).find(button => button.innerText.includes('联网搜索')).click()`)
+      await waitFor(`Boolean(document.querySelector('.web-search-config'))`, 'Web configuration did not load')
+    }
+    await openTools()
+    const choices = await window.webContents.executeJavaScript(`({search:[...document.querySelectorAll('[aria-label="搜索方式"] strong')].map(node => node.innerText),buttons:document.querySelectorAll('.web-search-config button').length,fetch:document.querySelectorAll('[aria-label="网页抓取方式"]').length,inputs:document.querySelectorAll('.web-search-config input').length})`)
+    if (JSON.stringify(choices) !== JSON.stringify({ search: ['DeepSeek', 'Tavily'], buttons: 2, fetch: 0, inputs: 0 })) throw new Error('Web settings must have only two provider cards: ' + JSON.stringify(choices))
+    if (process.env.ELECKOI_CLIENT_PROBE_SCREENSHOT) {
+      await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+      writeFileSync(process.env.ELECKOI_CLIENT_PROBE_SCREENSHOT, (await window.webContents.capturePage()).toPNG())
+    }
+    await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.web-search-mode button')).find(button => button.querySelector('strong')?.innerText === 'Tavily').click()`)
+    await waitFor(`Boolean(document.querySelector('[aria-label="Tavily API Key"]'))`, 'Tavily configuration did not remain available')
+    if (await remoteCall('eleckoiWebSearch/selection', {}) !== 'tavily') throw new Error('Tavily selection did not save')
+    const openDeepSeek = async () => {
+      await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.web-search-mode button')).find(button => button.querySelector('strong')?.innerText === 'DeepSeek').click()`)
+      await waitFor(`Boolean(document.querySelector('[data-plugin-item-detail="web-search"]')) && !document.querySelector('.agent-tools-content')`, 'DeepSeek card did not directly open official settings and close the tool dialog')
+    }
+    const saveOfficial = async () => {
+      await waitFor(`Array.from(document.querySelectorAll('[data-plugin-item-detail="web-search"] button')).some(button => button.innerText === '保存' && !button.disabled)`, 'Official web settings did not become editable')
+      await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('[data-plugin-item-detail="web-search"] button')).find(button => button.innerText === '保存').click()`)
+      await waitFor(`Array.from(document.querySelectorAll('[data-plugin-item-detail="web-search"] button')).some(button => button.innerText === '保存' && button.disabled)`, 'Official web settings did not finish saving')
+    }
+    const returnToTools = async () => {
+      await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="消息"]').click()`)
+      await waitFor(`Boolean(document.querySelector('[data-composer-input]'))`, 'Conversation did not return from official settings')
+      await openTools()
+      await waitFor(`document.querySelector('[aria-label="搜索方式"] button[aria-pressed="true"] strong')?.innerText === 'DeepSeek'`, 'Tool dialog did not reflect the official saved settings')
+    }
+    await openDeepSeek()
+    if (await remoteCall('eleckoiWebSearch/selection', {}) !== 'tavily') throw new Error('Opening DeepSeek settings unexpectedly changed the saved provider')
+    await window.webContents.executeJavaScript(`document.querySelector('[data-plugin-item-detail="web-search"] [role="switch"]').click()`)
+    await saveOfficial()
+    if (await remoteCall('eleckoiWebSearch/selection', {}) !== 'deepseek_search_api' || await remoteCall('eleckoiWebSearch/fetchSelection', {}) !== 'deepseek_fetch_api') throw new Error('Official Search API selection did not save')
+    await returnToTools()
+    await openDeepSeek()
+    await window.webContents.executeJavaScript(`document.querySelector('[data-plugin-item-detail="web-search"] [role="switch"]').click()`)
+    await saveOfficial()
+    if (await remoteCall('eleckoiWebSearch/selection', {}) !== 'provider_native' || await remoteCall('eleckoiWebSearch/fetchSelection', {}) !== 'http') throw new Error('Official Messages selection did not save')
+    await returnToTools()
+    if (errors.length) throw new Error(errors.join('\n'))
+    process.stdout.write('Web tool showed only DeepSeek/Tavily cards, opened official settings directly from DeepSeek, and reflected both official search modes after saving.\n')
+    return
+  }
+  const checkRightbar = async label => {
+    await waitFor(`Boolean(document.querySelector('[data-sidebar-right-expand]'))`, 'Right sidebar expand control did not render: ' + label)
+    await window.webContents.executeJavaScript(`document.querySelector('[data-sidebar-right-expand]').click()`)
+    await waitFor(`Boolean(document.querySelector('[data-sidebar-right-panel][data-sidebar-right-open]'))`, 'Right sidebar did not open: ' + label)
+    await window.webContents.executeJavaScript(`document.querySelector('[data-sidebar-right-toggle]').click()`)
+    await waitFor(`!document.querySelector('[data-sidebar-right-panel][data-sidebar-right-open]') && Boolean(document.querySelector('[data-sidebar-right-expand]'))`, 'Right sidebar did not close: ' + label)
+    const failures = errors.filter(error => /Sidebar Session|Slot entry crashed in .rightbar/.test(error))
+    if (failures.length) throw new Error('Right sidebar lifecycle failed: ' + failures.join('\n'))
+    process.stdout.write('Right sidebar opened and closed: ' + label + '\n')
+  }
+  if (process.argv.includes('--rightbar-check')) {
+    await checkRightbar('initial conversation')
+    await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="插件"]').click()`)
+    await waitFor(`Boolean(document.querySelector('[data-plugin-panel]'))`, 'Plugin panel did not open during sidebar navigation check')
+    await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="消息"]').click()`)
+    await waitFor(`Boolean(document.querySelector('[data-composer-input]'))`, 'Conversation did not return from plugin panel')
+    await checkRightbar('returned from plugin panel')
+  }
   await window.webContents.executeJavaScript(`document.querySelector('[data-composer-input]').focus()`)
   await window.webContents.insertText('Synthetic input')
   await waitFor(`document.querySelector('button[aria-label="发送消息"]')?.disabled === false`, 'Send did not enable')
   await window.webContents.executeJavaScript(`document.querySelector('button[aria-label="发送消息"]').click()`)
-  await waitFor(`document.body.innerText.includes('Synthetic payment rejection') && !document.querySelector('button[aria-label="停止生成"]') && !document.body.innerText.includes('深度求索中')`, 'Failed model request left the composer running')
+  await waitFor(`Boolean(document.querySelector('button[aria-label="查看处理过程：生成失败"]')) && !document.querySelector('button[aria-label="停止生成"]') && !document.body.innerText.includes('深度求索中')`, 'Failed model request did not settle with a terminal notice')
+  const failureArchive = JSON.parse(await remoteCall('eleckoiConversations/exportArchive', { conversationId: created.conversation.id }))
+  if (modelRequests !== 1 || !failureArchive.sessionLogs.some(log => log.events.some(event =>
+    event.type === 'turn/end' && event.data.reason?.kind === 'error'
+    && event.data.reason.error.code === 'PI_AI_ERROR' && event.data.reason.error.message.includes('Synthetic payment rejection')))) {
+    throw new Error('Payment failure did not retain the official provider error in its Session: ' + JSON.stringify({ modelRequests, reasons: failureArchive.sessionLogs.flatMap(log => log.events.filter(event => event.type === 'turn/end').map(event => event.data.reason)) }))
+  }
   await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('button')).find(button => button.innerText.trim() === '关闭')?.click()`)
   await window.webContents.executeJavaScript(`document.querySelector('[data-composer-input]').focus()`)
   await window.webContents.insertText('Synthetic retry')
@@ -335,12 +522,38 @@ async function main() {
   await window.loadURL('dsh-app://app/')
   await waitFor(`document.body.innerText.includes('Synthetic recovered reply')`, 'Cold restart did not restore the conversation')
   await waitFor(`document.querySelector('.chat-model-trigger-label')?.innerText === 'example-model'`, 'Cold restart did not restore the model selection')
-  await waitFor(`document.querySelector('[data-composer-stats]') !== null`, 'Cold restart did not restore official composer statistics')
+  await waitFor(`document.querySelector('[data-composer-dock]') !== null`, 'Cold restart did not restore official composer statistics')
+  if (process.argv.includes('--rightbar-check')) await checkRightbar('cold restored conversation')
+  const statsTypography = await window.webContents.executeJavaScript(`(() => {
+    const controls = Array.from(document.querySelectorAll('[data-composer-stat]'))
+    if (!controls.length) throw new Error('Official statistics controls are unavailable')
+    const original = document.body.style.getPropertyValue('--dsh-content-font-size')
+    if (original !== '14px') throw new Error('Default content font was overwritten: ' + original)
+    const sheet = document.querySelector('link[data-eleckoi-styles]').sheet
+    const measure = () => controls.map(element => ({ stat: element.dataset.composerStat, fontSize: getComputedStyle(element).fontSize,
+      family: getComputedStyle(element).fontFamily, iconWidth: element.querySelector('svg').getBoundingClientRect().width }))
+    const reports = []
+    try {
+      for (const [textSize, statSize] of [[14, '12px'], [21, '18px']]) {
+        document.body.style.setProperty('--dsh-content-font-size', textSize + 'px')
+        const local = measure()
+        sheet.disabled = true
+        const official = measure()
+        sheet.disabled = false
+        if (local.some(row => row.fontSize !== statSize || row.iconWidth !== 14) || JSON.stringify(local) !== JSON.stringify(official)) {
+          throw new Error('Statistics typography differs from the official styles: ' + JSON.stringify({ textSize, local, official }))
+        }
+        reports.push({ textSize, statSize })
+      }
+    } finally { sheet.disabled = false; document.body.style.setProperty('--dsh-content-font-size', original) }
+    return reports
+  })()`)
+  process.stdout.write('Official statistics typography follows content font settings: ' + JSON.stringify(statsTypography) + '\n')
   await window.webContents.executeJavaScript(`(() => {
-    const root = document.querySelector('[data-composer-stats]')
+    const root = document.querySelector('[data-composer-dock]')
     const failures = []
     const inspect = () => {
-      const current = document.querySelector('[data-composer-stats]')
+      const current = document.querySelector('[data-composer-dock]')
       if (!current) failures.push('Statistics disappeared')
       else if (current !== root) failures.push('Statistics row was replaced')
       else if (!current.textContent.trim()) failures.push('Statistics became empty')
@@ -381,6 +594,7 @@ async function main() {
     return window.__eleckoiStatsProbe.failures
   })()`)
   if (statsFailures.length) throw new Error(`Regeneration composer statistics flickered: ${statsFailures.join(', ')}`)
+  if (process.argv.includes('--rightbar-check')) await checkRightbar('regenerated conversation')
   if (process.argv.includes('--regeneration-check')) {
     const failures = await window.webContents.executeJavaScript(`(() => {
       window.__eleckoiRegenerationProbe.observer.disconnect();
@@ -408,6 +622,7 @@ async function main() {
       await window.webContents.executeJavaScript(`Array.from(document.querySelectorAll('.conversation-main b')).find(node => node.innerText === ${JSON.stringify(label)}).click()`)
       await waitFor(`document.querySelector('.chat-header h1')?.innerText === ${JSON.stringify(label)} && document.querySelector('[data-composer-input]')`, 'Conversation switch did not restore the composer')
       await new Promise(resolve => setTimeout(resolve, 150))
+      if (process.argv.includes('--rightbar-check')) await checkRightbar('switched to ' + label)
     }
     const handoffFailures = await window.webContents.executeJavaScript(`(() => {
       window.__eleckoiHandoffProbe.observer.disconnect(); return window.__eleckoiHandoffProbe.failures;

@@ -1,3 +1,4 @@
+import { ownerPeer } from '../tests/support/owner-peer.js'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -88,7 +89,7 @@ try {
   assert.equal(tavilyPackage.developerInterfaces[0].relation, 'contributes')
   developerInterfaceCount += tavilyPackage.developerInterfaces.length
   assert.equal(developerInterfaceCount, expectedDeveloperInterfaceCount)
-  const selectSearch = mode => running.ctx.typertGateway.invoke({
+  const selectSearch = mode => running.ctx.typertGateway.invoke({ peer: ownerPeer(running.ctx),
     namespace: 'eleckoiWebSearch', method: 'select', args: { mode }
   })
   await selectSearch('tavily')

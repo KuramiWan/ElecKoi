@@ -1,6 +1,6 @@
 /** 完整命名版本；content 是对应配置类型的 JSON，脚本版本包含源码及资源，正则版本包含整体 enabled 与 rules。 */
 export interface AuthorEditorLibraryVersions {
-  kind: 'scripts' | 'displayTemplates' | 'regex'
+  kind: 'scripts' | 'regex'
   scope: 'global' | 'character' | 'preset'
   ownerId: string
   revision: number

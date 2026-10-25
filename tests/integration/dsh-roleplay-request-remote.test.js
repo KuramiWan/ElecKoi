@@ -1,3 +1,4 @@
+import { clientBundlePath } from '../support/client-bundle.js'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { runInNewContext } from 'node:vm'
@@ -45,7 +46,7 @@ describe('request preview through the official Client Remote', () => {
         rpc: { call, open },
         registerGenerationSource: () => () => {}, start: () => ({ stop() {} }),
       })
-      await ctx.plugin(clientPlugin(require.resolve('@deepseek-ai/dsh-api-gateway/client'), { '@deepseek-ai/cordis': Cordis }))
+      await ctx.plugin(clientPlugin(clientBundlePath(require, '@deepseek-ai/dsh-api-gateway/client'), { '@deepseek-ai/cordis': Cordis }))
       await ctx.remote.$mount(TYPERT_REMOTE)
       const client = clientPlugin(new URL('../../packages/client/features/dsh-client-conversations/src/client.js', import.meta.url),
         dshClientRequire, true)

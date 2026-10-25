@@ -46,7 +46,7 @@ export function apply(ctx, config) {
       } })))
     disposers.push(ctx.tools.register(defineTool({ name: 'eleckoi_call_capability', description: '执行已发现的创作操作；普通调用必须同时提供 capability_id 与 arguments。角色操作使用菜单当前选择的编辑目标；未选择角色不影响普通对话、全局配置和明确 presetId 的预设配置。可以新建空角色作为编辑目标。参数必须符合已查询的输入结构。创作工具结果溢出时，只传 result 按提示续读全文或搜索，不重新执行创作操作。',
       parameters: { capability_id: { type: 'string' }, arguments: { type: 'object', additionalProperties: true }, result: resultReadParameter }, output,
-      execute(args, exec) {
+      async execute(args, exec) {
         exec.signal.throwIfAborted()
         if (!exec.agent) throw productFailure(ELECKOI_FAILURE_CODES.internal, '创作操作缺少调用会话。', { what: '创作操作的调用会话' })
         const state = readState(exec.agent)
@@ -55,7 +55,8 @@ export function apply(ctx, config) {
         const operation = capabilities.find(item => item.id === args.capability_id)
         if (!operation) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `未知创作操作：${args.capability_id}`, { what: '创作操作' })
         if (operation.target === 'selected-character' && !state.characterId) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, '请先在 AI 创作工作室菜单中选择角色，或通过 character.create 新建空角色。', { what: '在 AI 创作工作室菜单中选择编辑角色' })
-        const value = operation.execute(state.characterId, args.arguments)
+        const value = await operation.execute(state.characterId, args.arguments, exec.signal)
+        exec.signal.throwIfAborted()
         let changedCharacterId = state.characterId
         if (operation.target === 'new-character') {
           if (typeof value?.id !== 'string' || !ctx.eleckoiProductData.readCharacters().items.some(item => item.id === value.id)) {

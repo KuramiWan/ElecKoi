@@ -1,5 +1,4 @@
 import type { Context } from '@deepseek-ai/cordis'
-import type { DisplayTemplateLibrary, DisplayTemplateScope, DisplayTemplateSelection } from '@eleckoi/dsh-product-api/types'
 import type { EditorLibraryVersions } from '@eleckoi/dsh-product-api/types'
 import type { SettingLibrary, SettingLibraryConversation, VariableConfig, RegexRule, RegexRuleCollection, RegexRuleEditorCollection, RegexRuleEditorImportResult, RegexRuleScope, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleTestResult, RegexRuleTarget, ScriptLibrary, ScriptLibraryScope } from '@eleckoi/dsh-product-api/types'
 
@@ -208,9 +207,11 @@ export interface ElecKoiRegexRules {
    * @param text - 待处理文本。
    * @param rule - 待测试的正则规则。
    * @param target - 正则规则作用的内容类别。
+   * @param options - 测试范围、变量快照 JSON、深度与编辑场景。
+   * @param signal - 关闭编辑器或取消测试时结束计算。
    * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。
    */
-  test(text: string, rule: RegexRule, target: RegexRuleTarget): Promise<RegexRuleTestResult>
+  test(text: string, rule: RegexRule, target: RegexRuleTarget, options?: { surface?: 'Display' | 'Prompt' | 'Stored'; variablesJson?: string; depth?: number; isEdit?: boolean }, signal?: AbortSignal): Promise<RegexRuleTestResult>
 }
 
 /** 只读写全局及指定归属的正则编辑服务。 */
@@ -299,62 +300,12 @@ export interface ElecKoiScriptLibraries {
   activePreset(): Promise<{ id: string; name: string }>
 }
 
-/** 按角色或预设管理独立显示模板，通过配置事件刷新聊天与编辑页。 */
-export interface ElecKoiDisplayTemplates {
-  versions: EditorLibraryVersionModel<DisplayTemplateLibrary>
-  /**
-   * 读取明确归属的库。
-   * @param scope - 全局、角色或预设。
-   * @param ownerId - 所属编号；全局为空字符串。
-   * @returns 库及保存版本。
-   */
-  read(scope: DisplayTemplateScope, ownerId: string): Promise<DisplayTemplateLibrary>
-  /**
-   * 比较读取版本并保存库。
-   * @param library - 完整库及读取版本。
-   * @returns 已保存库。
-   */
-  save(library: DisplayTemplateLibrary): Promise<DisplayTemplateLibrary>
-  /**
-   * 原子保存各个已修改的显示模板库。
-   * @param libraries - 不重复的归属及各自读取版本。
-   * @returns 按输入顺序返回的保存结果，任一冲突全部回滚。
-   */
-  saveAll(libraries: DisplayTemplateLibrary[]): Promise<DisplayTemplateLibrary[]>
-  /**
-   * 取得页面当前缓存状态。
-   * @param scope - 全局、角色或预设。
-   * @param ownerId - 所属编号；全局为空字符串。
-   * @returns 不可变状态快照。
-   */
-  getSnapshot(scope: DisplayTemplateScope, ownerId: string): ConfigurationSnapshot<DisplayTemplateLibrary>
-  /**
-   * 读取聊天需要的全局、预设和角色库。
-   * @param characterId - 角色编号。
-   * @returns 按计算顺序排列的组合。
-   */
-  readSelection(characterId: string): Promise<DisplayTemplateSelection>
-  /**
-   * 取得组合当前状态。
-   * @param characterId - 角色编号。
-   * @returns 组合状态。
-   */
-  getSelectionSnapshot(characterId: string): ConfigurationSnapshot<DisplayTemplateSelection>
-  /**
-   * 监听库及组合状态。
-   * @param listener - 收到准确归属和新状态的函数。
-   * @returns 撤回函数。
-   */
-  subscribe(listener: (scope: DisplayTemplateScope | 'selection', ownerId: string, snapshot: ConfigurationSnapshot<DisplayTemplateLibrary | DisplayTemplateSelection>) => void): () => void
-}
-
 declare module '@deepseek-ai/cordis' {
   interface Context {
     eleckoiSettingLibraries: ElecKoiSettingLibraries
     eleckoiVariables: ElecKoiVariables
     eleckoiRegexRules: ElecKoiRegexRules
     eleckoiScriptLibraries: ElecKoiScriptLibraries
-    eleckoiDisplayTemplates: ElecKoiDisplayTemplates
   }
 }
 

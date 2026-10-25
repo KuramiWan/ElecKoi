@@ -1,3 +1,4 @@
+import { clientBundlePath } from '../../../../../../tests/support/client-bundle.js'
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
@@ -16,7 +17,7 @@ async function client(call) {
     await ctx.plugin(TypertRegistry);
     ctx.provide('connection', { rpc: { call, open: vi.fn(async function* () {}) }, registerGenerationSource: () => () => {}, start: () => ({ stop() {} }) });
     let gateway;
-    runInNewContext(readFileSync(require.resolve('@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
+    runInNewContext(readFileSync(clientBundlePath(require, '@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
       window: { __ModuleLoader__: { load: value => { gateway = value; } } },
       crypto: globalThis.crypto, AbortController, AbortSignal, Error, setTimeout, clearTimeout,
     });

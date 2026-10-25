@@ -1,3 +1,6 @@
+import { clientBundlePath } from '../support/client-bundle.js'
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
+import { ownerPeer } from '../support/owner-peer.js'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
@@ -46,6 +49,7 @@ async function harness() {
   const changes = new CharacterConfigurationChangeFeed(), publish = vi.spyOn(changes, 'publish')
   ctx.provide('eleckoiCharacterConfigurationChanges', changes)
   cleanups.push(() => changes.close())
+  await ctx.plugin(RemoteAccessService)
   await ctx.plugin(TypertGatewayService); await ctx.plugin(ElecKoiCharacterConfigurationApi)
   await ctx.plugin(ElecKoiAgentPresetsApi)
   const data = ctx.eleckoiProductData
@@ -76,14 +80,14 @@ async function harness() {
     const [namespace, method] = endpoint.split('/')
     const controller = new AbortController(), cancel = () => controller.abort(signal.reason)
     if (signal.aborted) controller.abort(signal.reason); else signal.addEventListener('abort', cancel, { once: true })
-    try { return { ok: true, value: await ctx.typertGateway.invoke({ namespace: namespace!, method: method!, args: payload.args, signal: controller.signal }) } }
+    try { return { ok: true, value: await ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: namespace!, method: method!, args: payload.args, signal: controller.signal }) } }
     catch (error) { return { ok: false, error: { code: 'gateway/internal', message: error instanceof Error ? error.message : String(error), details: {} } } }
     finally { signal.removeEventListener('abort', cancel) }
   })
   client.provide('connection', { rpc: { call, open: vi.fn(async function* () {}) },
     registerGenerationSource: () => () => {}, start: () => ({ stop() {} }) } as any)
   let registration: any
-  runInNewContext(readFileSync(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
+  runInNewContext(readFileSync(clientBundlePath(createRequire(import.meta.url), '@deepseek-ai/dsh-api-gateway/client'), 'utf8'), {
     window: { __ModuleLoader__: { load(value: any) { registration = value } } }, crypto: globalThis.crypto,
     AbortController: page.window.AbortController, AbortSignal: page.window.AbortSignal, Error, Object, setTimeout, clearTimeout,
   })
@@ -98,7 +102,7 @@ async function harness() {
   runtime.mountDocument(page.window, id, '')
   cleanups.push(async () => { await runtime.dispose(); page.window.close() })
   const api = page.window.ElecKoi as ElecKoiAuthorApi
-  const invoke = (method: string, args: Record<string, unknown>, signal = new AbortController().signal) => ctx.typertGateway.invoke({
+  const invoke = (method: string, args: Record<string, unknown>, signal = new AbortController().signal) => ctx.typertGateway.invoke({ peer: ownerPeer(ctx),
     namespace: 'eleckoiCharacterConfiguration', method, args, signal,
   })
   return { ctx, client, data, id, sibling, unbound, path, directory, runtime, api, invoke, call, publish, preset, otherPreset,
@@ -109,39 +113,8 @@ async function harness() {
 }
 
 describe('native author setting library', () => {
-  it('rolls back both EJS libraries on an owner conflict while preserving shared globals', async () => {
-    const r = await harness(), global = r.data.readDisplayTemplates('global', ''), character = r.data.readDisplayTemplates('character', 'synthetic-character')
-    const accepted = r.data.saveDisplayTemplates({ ...character, enabled: true })
-    await expect(r.invoke('saveDisplayTemplateLibraries', { libraries: [{ ...global, enabled: true }, character] })).rejects.toThrow('重新读取')
-    expect(r.data.readDisplayTemplates('global', '')).toEqual(global)
-    expect(r.data.readDisplayTemplates('character', character.ownerId)).toEqual(accepted)
-    const saved = await r.invoke('saveDisplayTemplateLibraries', { libraries: [{ ...global, enabled: true }, { ...accepted, enabled: false }] })
-    expect(saved).toEqual([expect.objectContaining({ scope: 'global', ownerId: '', revision: 1, enabled: true }),
-      expect.objectContaining({ scope: 'character', ownerId: character.ownerId, revision: 2, enabled: false })])
-  }, 30_000)
-  it('reads and saves display templates through the real Typert SDK with current owners and visible conflicts', async () => {
-    const r = await harness(), character = await r.api.displayTemplates.read('character'), preset = await r.api.displayTemplates.read('preset')
-    const global = await r.api.displayTemplates.read('global')
-    expect(global.ownerId).toBe('')
-    const savedGlobal = await r.api.displayTemplates.save({ ...global, enabled: true })
-    expect(r.data.readDisplayTemplates('global', '')).toEqual(savedGlobal)
-    await expect(r.api.displayTemplates.save({ ...savedGlobal, ownerId: 'synthetic-invalid-owner' })).rejects.toMatchObject({ code: 'CONTEXT_MISMATCH' })
-    expect(character.ownerId).toBe('synthetic-character')
-    expect(preset.ownerId).toBe(r.preset.id)
-    const capabilities = await r.api.app.getCapabilities()
-    expect(capabilities.map(item => item.method)).toEqual(expect.arrayContaining(['displayTemplates.read', 'displayTemplates.save']))
-    const saved = await r.api.displayTemplates.save({ ...preset, enabled: true, templates: [{ id: 'synthetic-template', name: 'Synthetic template', enabled: true,
-      position: 'after', pattern: '', flags: '', source: '<p><%= rawContent %></p>' }] })
-    expect(saved.revision).toBe(preset.revision + 1)
-    expect(r.data.readDisplayTemplates('preset', r.preset.id)).toEqual(saved)
-    expect(r.publish).toHaveBeenLastCalledWith({ kind: 'configuration', domain: 'displayTemplates' })
-    await expect(r.api.displayTemplates.save(preset)).rejects.toThrow('重新读取')
-    await expect(r.api.displayTemplates.save({ ...character, ownerId: 'synthetic-other-character' })).rejects.toMatchObject({ code: 'CONTEXT_MISMATCH' })
-    r.data.setActiveAgentPreset(r.otherPreset.id)
-    await expect(r.api.displayTemplates.save(saved)).rejects.toMatchObject({ code: 'CONTEXT_MISMATCH' })
-    expect((await r.api.displayTemplates.read('preset')).ownerId).toBe(r.otherPreset.id)
-    expect(r.data.readDisplayTemplates('character', 'synthetic-other-character').revision).toBe(0)
-  }, 30000)
+
+
   it('exposes exactly the formal mutable entry fields', () => {
     expect([...AUTHOR_SETTING_ENTRY_MUTABLE_FIELDS].sort()).toEqual(Object.keys(settingLibraryEntryChangesSchema.shape).sort())
   })
@@ -381,7 +354,7 @@ describe('native author setting library', () => {
     await expect(r.invoke('replaceSettingLibraryContent', { characterId: initial.characterId, library: initial }, abort.signal)).rejects.toThrow()
     const updates = [{ id: 'synthetic-entry', changes: { enabled: false } }]
     await expect(r.invoke('updateSettingLibraryEntries', { characterId: initial.characterId, updates }, abort.signal)).rejects.toThrow()
-    await expect(r.ctx.typertGateway.invoke({ namespace: 'eleckoiAgentPresets', method: 'updateEntries',
+    await expect(r.ctx.typertGateway.invoke({ peer: ownerPeer(r.ctx), namespace: 'eleckoiAgentPresets', method: 'updateEntries',
       args: { presetId: r.preset.id, updates }, signal: abort.signal })).rejects.toThrow()
     await expect(r.invoke('updateSettingLibraryEntries', { characterId: 'synthetic-missing-character', updates })).rejects.toThrow('找不到')
     const callsBefore = r.call.mock.calls.length

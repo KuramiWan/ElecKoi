@@ -25,6 +25,7 @@ async function mount(initialView = 'chat', Component = MobileCreatorStudioConver
     useSession: select => select({ running: false, blank: false }), useInput: select => select({}), useSessionStatus: select => select(new Map()),
     useProjection: () => null, useInspectCall: select => select(inspectCall), useStore: select => select(useSyncExternalStore(subscribe, snapshot)),
     useConversationViews: select => select(useSyncExternalStore(subscribe, tabSnapshot)),
+    useEntryPins: select => select([]), useEntryActions: select => select(false), setPinned: vi.fn(),
     actions: { completeViewRequest }, openView, selectView: id => openView(id),
     renderHeaderSlot: name => name.endsWith('.corner') ? <button data-sidebar-right-expand="" aria-label="展开右侧栏">侧栏</button> : null,
     renderSlot, renderSlotChain: (_name, _owner, options) => options.fallback };

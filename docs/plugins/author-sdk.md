@@ -27,9 +27,8 @@ export default ({ api }) => {
 
 ## 输入与发送
 
-EJS显示模板生成 AI 消息界面，模板计算与 SDK 交互分开。角色与预设都有独立入口，各显示共享全局库及自身所属库；原生脚本也可通过 `displayTemplates.read/save` 管理绑定库；具体语法、历史变量快照、片段替换及示例见 [EJS显示模板](ejs-display-templates.md)。
 
-正则、EJS显示模板及脚本的分组标题开关批量设置整个库及全部条目：开启全部启用，关闭全部停用，包含搜索隐藏的条目、脚本文件夹和子脚本；条目开关仍可单独修改，修改后统一保存。运行时要求库、条目及所属文件夹均启用，停用的名称置灰。SDK 保存提交调用者提供的完整配置，不自动改写条目状态；需要批量启停时同时设置库与全部条目的 `enabled`。`editorVersions.read/save` 管理完整命名版本，正则 content 为 `{enabled,rules}`，显示模板为 `{enabled,templates}`，脚本包含 `{enabled,trees,variables,files}`；版本恢复包含整体开关。正则配置正文使用 `globalEnabled`、`agentPresetEnabled`、`characterEnabled` 表达对应归属的整体状态，编辑入口仅提交全局与自身归属。
+正则及脚本的分组标题开关批量设置整个库及全部条目：开启全部启用，关闭全部停用，包含搜索隐藏的条目、脚本文件夹和子脚本；条目开关仍可单独修改，修改后统一保存。运行时要求库、条目及所属文件夹均启用，停用的名称置灰。SDK 保存提交调用者提供的完整配置，不自动改写条目状态；需要批量启停时同时设置库与全部条目的 `enabled`。`editorVersions.read/save` 管理完整命名版本，正则 content 为 `{enabled,rules}`，脚本包含 `{enabled,trees,variables,files}`；版本恢复包含整体开关。正则配置正文使用 `globalEnabled`、`agentPresetEnabled`、`characterEnabled` 表达对应归属的整体状态，编辑入口仅提交全局与自身归属。
 
 `input.set(text)` 只填写实际输入框；`input.append(text)` 追加，`input.clear()` 清空。`input.send()` 请求官方输入框提交当前草稿和附件，返回 `{ submitted }`，不是 AI 完成回执。
 
@@ -88,6 +87,8 @@ AI 使用现有变量工具，作者使用 SDK，两者共用变量处理服务�
 
 ## 脚本按钮与作者面板
 
+消息前端与脚本的自定义调用见下方「前端调用脚本」：菜单按钮与消息网页里的按钮可以调用同一个脚本操作。
+
 聊天的扮演菜单提供“脚本”展开项，只列出当前运行程序实际注册的按钮。角色配置仍管理源码、启停和“显示脚本按钮”总开关；原生按钮由代码注册，不从旧按钮名称或排列顺序推断回调。不同库或脚本可以使用相同按钮编号，同一脚本重复编号会报告冲突。
 
 ```js
@@ -112,6 +113,47 @@ export default ({ api }) => {
 `ui.openPanel({ id, title, html })` 返回 Promise；成功说明已接受显示，不表示面板代码执行完成。HTML 必须显式声明原生版本，面板代码等待 `window.ElecKoiReady` 后调用 SDK。相对脚本、图片与样式按所属脚本入口文件解析，支持普通辅助文件；当前只显示一个作者面板，新面板替换旧面板。面板提供所属脚本的 `script` 设置接口，但不能再次注册后台规则或聊天按钮。`ui.closePanel(id)` 只关闭调用者所属脚本且编号相同的面板，未匹配返回 `{ closed: false }`。
 
 关闭弹窗结束该页面 SDK，不停用后台脚本；停用脚本、修改程序或切换聊天则撤回旧按钮并关闭旧面板。新聊天启动自己的可用脚本，全局脚本仍可使用，但旧页面不能误写新聊天。按钮执行中拒绝重复点击；作者失败显示在菜单并可再次执行，不把整个原生脚本运行状态变成启动失败。面板加载失败显示原因，提供重新加载和关闭。作者外部副作用不能被强制回滚。
+
+## 前端调用脚本
+
+消息网页、正则 EJS 输出的原生网页、角色或应用前端、脚本面板都可调用当前聊天的运行脚本。无需把命令塞进剧情变量或聊天正文；EJS 计算阶段本身没有 SDK，调用写在输出 HTML 的页面脚本中。
+
+后台脚本在启动时登记明确操作。处理函数获得本次 `api`、`signal`、请求数据 `data` 和实际来源 `caller`；业务调用使用这次的 API：
+
+```js
+export default ({ api }) => {
+  return api.scripts.registerHandler('fill-draft', async ({ api, signal, data, caller }) => {
+    if (typeof data !== 'string') throw new Error('请提供要填写的文字');
+    signal.throwIfAborted();
+    const result = await api.input.set(data);
+    return { text: result.text, messageId: caller.messageId };
+  });
+};
+```
+
+前端按钮取得 SDK 后，按作者约定的完整脚本身份发起调用：
+
+```js
+const api = await window.ElecKoiReady;
+const { characterId } = await api.context.current();
+const target = { scope: 'character', ownerId: characterId, scriptId: 'my-draft-script' };
+document.querySelector('#fill-draft').onclick = async () => {
+  try {
+    const result = await api.scripts.request(target, 'fill-draft', '继续探索');
+    document.querySelector('output').textContent = `已填写：${result.text}`;
+  } catch (error) {
+    document.querySelector('output').textContent = `${error.code}: ${error.message}`;
+  }
+};
+```
+
+`my-draft-script` 必须是实际保存的脚本编号。`scripts.list()` 返回 `{items: [{identity, name, actions}]}`，可用于让用户明确选择目标，再把选中项的 `identity` 传给 request；不得取同名、第一个或最后一个脚本作为猜测目标。全局身份的 ownerId 固定为空字符串，角色和预设身份使用各自明确编号。`caller` 由运行服务填写，包含聊天、消息编号、页面类型及脚本或项目来源，不能由请求数据伪造。登记函数只向正在运行的脚本开放，普通消息和面板不能冒充另一个脚本登记操作。
+
+数据与返回值支持完整 JSON：对象、数组、字符串、有限数字、布尔和 null。无参数或无结果时明确使用 null；undefined、函数、循环引用、特殊对象及会丢失属性的值会报错，不截断或静默删除。重复登记、未就绪、目标不存在、未登记操作和处理失败有独立错误原因。每次请求独立等待结果，不因按钮名称相同、显示按钮被隐藏或窗口数量而改变目标。
+
+页面关闭、聊天切换、脚本停用或更新、处理函数撤回都会取消进行中的调用；处理函数应在异步操作后检查 signal，并始终使用本次回调 API。处理完成后不能继续使用该调用 API。此通道只属于当前客户端的实时运行状态，不会落库、进入模型提示词或在重开后重放；已经成功保存的数据不会因后续取消自动回滚，也不自动重试可能已执行的操作。关闭脚本面板不会停止仍启用的后台程序。
+
+可导入示例的角色脚本还登记了 `calculate-score`：目标 scriptId 为 `example-score-rule`，传入 `{score: 12}` 可得到按脚本倍率计算的积分结果，不修改剧情变量。示例步骤见 [原生作者示例](../../packages/examples/native-author/README.md)。
 
 ## 当前变量接口
 

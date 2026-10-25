@@ -58,7 +58,9 @@ window.__ModuleLoader__.load({
     }
     const bridgedChatChildren = Object.freeze({
       'conversation.chat.node': 'eleckoi.roleplay.chat.node',
-      'conversation.message.images': 'eleckoi.roleplay.chat.images',
+      'conversation.chat.flow': 'eleckoi.roleplay.chat.flow',
+      'conversation.chat.user.images': 'eleckoi.roleplay.chat.user.images',
+      'conversation.chat.message.images': 'eleckoi.roleplay.chat.images',
       'conversation.chat.before': 'eleckoi.roleplay.chat.before',
       'conversation.chat.pending-input': 'eleckoi.roleplay.chat.pending-input'
     })
@@ -104,13 +106,21 @@ window.__ModuleLoader__.load({
       }, { fallback: React.createElement(matched.component, props) })
     }
 
-    function RoleplayConversationHeader({ matched, useConversationViews, useStore, selectView }) {
+    function RoleplayConversationHeader({ matched, useConversationViews, useStore, selectView, useEntryPins, useEntryActions, setPinned, renderSlot }) {
       const tabs = useConversationViews(value => value)
+      const unpinned = useEntryPins(value => value)
+      const hasEntryActions = useEntryActions(value => value)
       const selectedId = useStore(state => state.view)
       const active = tabs.find(tab => tab.id === selectedId) ?? tabs.find(tab => tab.id === 'chat')
       return matched.props.renderRoleplaySlot('eleckoi.roleplay.session.body', {
         matched,
-        navigation: { tabs, activeView: active?.id, selectView }
+        navigation: {
+          tabs: tabs.filter(tab => !unpinned.includes(tab.id)), activeView: active?.id, selectView,
+          renderEntryActions: hasEntryActions ? onDismiss => renderSlot(viewSeatName('conversation.session.header.views.actions'), {
+            entries: tabs.filter(tab => unpinned.includes(tab.id)).map(tab => ({ id: tab.id, label: tab.label, pinned: false, active: tab.id === active?.id })),
+            onOpen: selectView, onPinnedChange: setPinned, onDismiss
+          }) : undefined
+        }
       }, { fallback: React.createElement(matched.component, matched.props) })
     }
 
@@ -203,7 +213,7 @@ window.__ModuleLoader__.load({
                 renderSlot: (name, owner, renderOptions) => ownerProps.renderSlot(viewSeatName(name), owner, renderOptions),
                 renderSlotChain: (name, owner, renderOptions) => ownerProps.renderSlotChain(viewSeatName(name), owner, renderOptions),
               })
-              if (source === 'conversation.composer.dock' && entry.options.id === 'stats') {
+              if (source === 'conversation.composer.dock' && ['activity', 'usage'].includes(entry.options.id)) {
                 const display = useDisplayStats(ownerProps)
                 const adjustment = ownerProps.useProjection('eleckoiHistoryStatsAdjustment')
                 const identities = ownerProps.useProjection('eleckoiInputContinuations')
@@ -229,13 +239,14 @@ window.__ModuleLoader__.load({
                 }
                 return React.createElement(entry.component, { ...props, useProjection: display.useProjection, renderSlot })
               }
-              if (source !== 'conversation.view') return React.createElement(entry.component, ownerProps)
-              if (options.entryId === 'chat') {
+              if (source !== 'conversation.view' && source !== 'conversation.chat.flow') return React.createElement(entry.component, ownerProps)
+              if (options.entryId === 'chat' || source === 'conversation.chat.flow') {
                 const { renderChatNode, renderPendingInput, before, ...props } = ownerProps
                 const identities = props.useProjection('eleckoiInputContinuations')
                 const roundIndex = React.useMemo(() => createInputRoundIndex(identities), [identities])
                 const presentTurnNavigation = React.useCallback(navigation => presentChatTurnNavigation(navigation, roundIndex), [roundIndex])
                 const renderSlot = React.useCallback((name, owner, renderOptions) => {
+                  if (name === 'conversation.chat.flow') return props.renderSlot(bridgedChatChildren[name], { ...owner, renderChatNode, renderPendingInput, before }, renderOptions)
                   if (name === 'conversation.chat.before') return props.renderSlot(bridgedChatChildren[name], owner, {
                     ...renderOptions, fallback: before ?? null
                   })
@@ -251,9 +262,9 @@ window.__ModuleLoader__.load({
                 // Roleplay owns process disclosure in its trajectory dialog.
                 // Keep the actual Turn seat visible throughout its lifecycle.
                 const usePresentation = React.useCallback(selector => props.usePresentation(policy => selector({
-                  ...policy, foldCompletedTurns: false, stepGrouping: 'expanded'
+                  ...policy, foldCompletedTurns: false, stepGrouping: 'none'
                 })), [props.usePresentation])
-                return React.createElement(entry.component, { ...props, renderSlot, usePresentation, presentTurnNavigation })
+                return React.createElement(entry.component, { ...props, flowSlotName: bridgedChatChildren['conversation.chat.flow'], renderSlot, usePresentation, presentTurnNavigation })
               }
               const { component, ...props } = ownerProps
               const renderSlot = (name, owner) => name === 'conversation.trajectory.images'
@@ -303,7 +314,7 @@ window.__ModuleLoader__.load({
                     projectConversationSeat(name, viewSeatName(name), { bridgeChildren: true })
                   }
                 }
-                if (options.entryId === 'chat' && entry.children) {
+                if (!options.bridgeChildren && (options.entryId === 'chat' || source === 'conversation.chat.flow') && entry.children) {
                   registrationOptions.children = Object.fromEntries(Object.entries(entry.children)
                     .map(([name, spec]) => [bridgedChatChildren[name] || name, spec]))
                 }
@@ -354,11 +365,13 @@ window.__ModuleLoader__.load({
             'eleckoi.roleplay.conversation.plan-review.actions': { kind: 'list', scope: 'session' },
             'eleckoi.roleplay.trajectory.images': { kind: 'single', scope: 'session' },
             'eleckoi.roleplay.trajectory': { kind: 'single', scope: 'session' },
-            'eleckoi.roleplay.chat': { kind: 'single', scope: 'session' }
+            'eleckoi.roleplay.chat': { kind: 'single', scope: 'session' },
+            'eleckoi.roleplay.chat.images': { kind: 'single', scope: 'session' },
+            'eleckoi.roleplay.chat.user.images': { kind: 'single', scope: 'session' }
           }
         }, RoleplaySessionView))
         projectConversationSeat('conversation.session.header', 'eleckoi.roleplay.session.header', {
-          winnerOnly: true, component: RoleplayConversationHeader
+          winnerOnly: true, component: RoleplayConversationHeader, bridgeChildren: true
         })
         projectConversationSeat('conversation.session', 'eleckoi.roleplay.session.body', {
           winnerOnly: true, component: RoleplayConversationBody, bridgeChildren: true
@@ -389,7 +402,9 @@ window.__ModuleLoader__.load({
         projectConversationSeat('conversation.view', 'eleckoi.roleplay.trajectory', { entryId: 'trajectory' })
         projectConversationSeat('conversation.view', 'eleckoi.roleplay.chat', { entryId: 'chat' })
         projectConversationSeat('conversation.chat.node', 'eleckoi.roleplay.chat.node', { leafOnly: true })
-        projectConversationSeat('conversation.message.images', 'eleckoi.roleplay.chat.images')
+        projectConversationSeat('conversation.chat.flow', 'eleckoi.roleplay.chat.flow')
+        projectConversationSeat('conversation.chat.user.images', 'eleckoi.roleplay.chat.user.images')
+        projectConversationSeat('conversation.chat.message.images', 'eleckoi.roleplay.chat.images')
         projectConversationSeat('conversation.chat.before', 'eleckoi.roleplay.chat.before')
         projectConversationSeat('conversation.chat.pending-input', 'eleckoi.roleplay.chat.pending-input')
       }

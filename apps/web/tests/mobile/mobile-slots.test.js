@@ -82,7 +82,7 @@ describe('Android composition with the shared PC sidebar and locked DSH slots', 
       await ctx.plugin({ name: 'synthetic-root', apply(owner) {
         new renderer.SlotRegistry(owner);
         owner.reflect.provide('locale', { register: () => () => {}, subscribe: () => () => {} });
-        owner.reflect.provide('theme', { getTheme: () => ({ active: { colorScheme: 'light', tokens: {} }, fontSize: 15 }) });
+        owner.reflect.provide('theme', { getTheme: () => ({ active: { colorScheme: 'light', tokens: {} }, fontSizes: { text: 15, code: 14, terminal: 13 }, fontFamilies: { text: '', code: '', terminal: '' } }) });
         for (const name of shell.inject.filter(name => !['slots', 'locale', 'theme'].includes(name))) owner.reflect.provide(name, {});
       } });
       await ctx.plugin(shell);

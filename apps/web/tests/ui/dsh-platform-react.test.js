@@ -56,3 +56,28 @@ it('bundles dnd-kit against the production DSH platform and shares its React DOM
   expect(calls).toBe(1)
   expect(value).toBe(42)
 }, 30_000)
+
+it('shares the DSH primitive instances without bundling a second copy of their styles', async () => {
+  const entryId = '\0test-dsh-primitives-platform'
+  const platformPlugin = webConfig.plugins.find(plugin => plugin.name === 'eleckoi-dsh-platform-react')
+  const result = await build({
+    configFile: false, root: webConfig.root, logLevel: 'silent',
+    plugins: [platformPlugin, {
+      name: 'test-dsh-primitives-entry',
+      resolveId: source => source === entryId ? entryId : null,
+      load: id => id === entryId ? "export * from '@deepseek-ai/dsh-client-ui-primitives';" : null
+    }],
+    build: { write: false, minify: false, rollupOptions: {
+      preserveEntrySignatures: 'strict', input: entryId,
+      output: { format: 'iife', name: 'PrimitivePlatformProbe', exports: 'named' }
+    } }
+  })
+  expect(result.output.filter(item => item.type === 'asset' && item.fileName.endsWith('.css'))).toHaveLength(0)
+  const chunk = result.output.find(item => item.type === 'chunk' && item.isEntry)
+  expect(chunk.exports).toEqual(expect.arrayContaining(['Button', 'Modal', 'IconChevronLeftOutlineMedium']))
+  expect(Object.keys(chunk.modules).filter(id => id.endsWith('.css'))).toHaveLength(0)
+  const primitives = Object.fromEntries(chunk.exports.map(name => [name, {}]))
+  const runtime = { __ELECKOI_DSH_PLATFORM__: { primitives } }
+  runInNewContext(chunk.code, runtime)
+  for (const name of chunk.exports) expect(runtime.PrimitivePlatformProbe[name], name).toBe(primitives[name])
+}, 30_000)
