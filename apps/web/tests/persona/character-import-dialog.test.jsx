@@ -24,7 +24,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function prepare(importable) {
+async function prepare(importable, files = [new File(['{}'], 'synthetic-card.json', { type: 'application/json' })]) {
   const onImported = vi.fn(async () => {});
   const onPrepare = vi.fn(async () => ({ token: 'synthetic-import', items: [{
     id: 'item-1', name: 'Synthetic card', summary: 'Synthetic summary', imageAvailable: false,
@@ -37,14 +37,24 @@ async function prepare(importable) {
     .find(button => button.textContent.includes('酒馆角色卡')).click());
   const input = container.querySelector('input[type=file]');
   Object.defineProperty(input, 'files', { configurable: true,
-    value: [new File(['{}'], 'synthetic-card.json', { type: 'application/json' })] });
+    value: files });
   await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
-  expect(onPrepare).toHaveBeenCalledWith('sillytavern', [{ displayName: 'synthetic-card.json',
-    mimeType: 'application/json', base64: 'e30=' }]);
+  expect(onPrepare).toHaveBeenCalledWith('sillytavern', files.map(file => ({ displayName: file.name,
+    mimeType: 'application/json', base64: 'e30=' })));
   return { button: container.querySelector('footer .primary'), onImported };
 }
 
 describe('character import warnings', () => {
+  it('passes every selected file and its reported size beyond the former count and byte ceilings', async () => {
+    const files = Array.from({ length: 101 }, (_, index) => {
+      const file = new File(['{}'], `synthetic-card-${index}.json`, { type: 'application/json' });
+      Object.defineProperty(file, 'size', { value: 64 * 1024 * 1024 + 1 });
+      return file;
+    });
+    const { button } = await prepare(true, files);
+    expect(button.disabled).toBe(false);
+  });
+
   it('shows a conversion warning while allowing the valid card to import', async () => {
     const { button, onImported } = await prepare(true);
     expect(container.querySelector('.character-import-warning').textContent)

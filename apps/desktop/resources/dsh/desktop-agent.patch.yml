@@ -7,9 +7,20 @@
 - id: attachment-local
   config:
     dshHome: !!js process.env.DSH_HOME
-    maxImageBytes: 20971520
-    maxImagesPerMessage: 4
-    maxMessageImageBytes: 20971520
+    maxImageBytes: !!js Number.MAX_SAFE_INTEGER
+    maxImagesPerMessage: !!js Number.MAX_SAFE_INTEGER
+    maxMessageImageBytes: !!js Number.MAX_SAFE_INTEGER
+    maxImagePixels: !!js Number.MAX_SAFE_INTEGER
+    maxImageDimension: !!js Number.MAX_SAFE_INTEGER
+
+- id: connection
+  config:
+    maxRequestBodyBytes: !!js Math.ceil(Number.MAX_SAFE_INTEGER * 4 / 3) + 1048576
+
+- id: web-fetch-http
+  config:
+    maxResponseBytes: !!js Number.MAX_SAFE_INTEGER
+    maxBodyChars: !!js Number.MAX_SAFE_INTEGER
 
 - id: session-persistence-jsonl
   config:

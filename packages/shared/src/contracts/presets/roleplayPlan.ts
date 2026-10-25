@@ -10,9 +10,9 @@ function compactSteps(steps: string[]): string[] {
 }
 
 export const roleplayPlanSettingsSchema = z.object({
-  steps: z.array(z.string().max(2_000)).max(20)
+  steps: z.array(z.string())
     .transform(compactSteps)
-    .pipe(z.array(z.string().min(1).max(2_000)).min(1).max(20))
+    .pipe(z.array(z.string().min(1)).min(1))
 })
 
 export type RoleplayPlanSettings = z.output<typeof roleplayPlanSettingsSchema>

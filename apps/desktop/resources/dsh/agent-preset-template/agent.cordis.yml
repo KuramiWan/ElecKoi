@@ -4,7 +4,8 @@
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
   config:
-    maxBytes: 65536
+    maxBytes: 9007199254740991
+    maxSourceBytes: 9007199254740991
 
 - id: uploaded-file-tools
   name: __ELECKOI_UPLOADED_FILE_TOOLS_PLUGIN__
@@ -26,7 +27,7 @@
     search: true
     fetch: true
     searchMaxResults: 0
-    searchMaxQueries: 3
+    searchMaxQueries: 9007199254740991
     searchTimeoutMs: 35000
     fetchTimeoutMs: 30000
     fetchMaxOutputChars: 0
@@ -59,7 +60,7 @@
     toolName: subagent
     backgroundMode: one-shot
     enableRunInBackground: false
-    maxDepth: 2
+    maxDepth: 9007199254740991
     modelSelectionSettings: true
 
 - id: tool-subagent-fork
@@ -69,7 +70,7 @@
     toolName: subagent_fork
     backgroundMode: one-shot
     enableRunInBackground: false
-    maxDepth: 2
+    maxDepth: 9007199254740991
 # ELECKOI:collaboration:END
 
 # ELECKOI:roleplay-workflow:BEGIN

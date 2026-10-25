@@ -6,7 +6,7 @@ export const inject = ['tools']
 
 export function apply(ctx, config = {}) {
   const steps = Array.isArray(config.steps)
-    ? config.steps.map((step) => String(step).trim()).filter(Boolean).slice(0, 20)
+    ? config.steps.map((step) => String(step).trim()).filter(Boolean)
     : []
   return ctx.tools.register(defineTool({
     name: 'update_roleplay_plan',

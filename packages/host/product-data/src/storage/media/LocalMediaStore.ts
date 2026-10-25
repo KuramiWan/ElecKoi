@@ -14,7 +14,6 @@ import { DesktopError } from '@shared/foundation/DesktopError'
 import { LOCAL_MEDIA_SCHEME } from '@shared/foundation/mediaReference'
 
 const REFERENCE_PREFIX = `${LOCAL_MEDIA_SCHEME}://asset/v1/`
-const MAX_IMAGE_BYTES = 64 * 1024 * 1024
 const HASH_PATTERN = /^[a-f0-9]{64}$/
 const SLOT_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
 const FILE_PATTERN = /^([a-f0-9]{64})\.(png|jpg|webp|gif)$/
@@ -168,8 +167,8 @@ function decodeImageDataUrl(value: string): DecodedImage {
   if (!extension) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '仅支持 PNG、JPEG、WebP 和 GIF 图片。', { what: '图片格式', expected: 'PNG、JPEG、WebP 或 GIF' })
   const encoded = match[2]!.replace(/\s+/g, '')
   const bytes = Buffer.from(encoded, 'base64')
-  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
-    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '图片数据无效或超过 64 MB。', { what: '图片数据' })
+  if (!bytes.length || bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '图片数据无效。', { what: '图片数据' })
   }
   return { bytes, extension }
 }

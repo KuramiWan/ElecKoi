@@ -148,7 +148,7 @@ export function readDshTrajectory(
   const eligible = beforeIndex === undefined
     ? projected.records
     : projected.records.filter((record) => record.index < beforeIndex)
-  const limit = Math.max(1, Math.min(1_000, options.limit ?? 400))
+  const limit = Math.max(1, options.limit ?? 400)
   const start = Math.max(0, eligible.length - limit)
   const records = eligible.slice(start)
   return {

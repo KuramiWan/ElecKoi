@@ -9,6 +9,20 @@ import { assertVariableJson, describeVariableRuleFailure, loadVariableSchema } f
 import { BROWSER_LIBRARY_VERSIONS } from '../../../client/features/dsh-client-html-resources/src/browser-libraries.js'
 
 describe('author variable schema runtime', () => {
+  it('retains all validation issues and full authored messages through the Remote diagnostic shape', () => {
+    const text = 'Synthetic diagnostic '.repeat(501) + 'tail-marker'
+    try { loadVariableSchema(`z.object({}).superRefine((_value, ctx) => { for (let index = 0; index < 1001; index++) ctx.addIssue({ code: 'custom', path: ['field-' + index], message: ${JSON.stringify(text)} }); })`).parse({}) }
+    catch (error) {
+      const failure = describeVariableRuleFailure(error)
+      expect(failure.issues).toHaveLength(1001)
+      for (const index of [0, 500, 1000]) expect(failure.issues?.[index]?.message).toBe(text)
+      expect(failure.detail).toContain('field-1000')
+      expect(describeVariableRuleFailure({ variableRuleFailure: failure })).toEqual(failure)
+      return
+    }
+    throw new Error('Expected authored validation failure')
+  })
+
   it('uses the same pinned Zod version as the bundled author browser runtime', () => {
     const require = createRequire(resolve('packages/host/product-data/package.json'))
     expect(require('zod/package.json').version).toBe(BROWSER_LIBRARY_VERSIONS.zod)
@@ -89,11 +103,11 @@ describe('author variable schema runtime', () => {
     expect(() => assertVariableJson(circular)).toThrow('循环')
   })
 
-  it('bounds both schema construction and transformation execution', () => {
-    expect(() => loadVariableSchema('const Schema = (() => { while (true) {} })();')).toThrow('timed out')
-    const runtime = loadVariableSchema('z.object({}).transform(() => { while (true) {} })')
-    expect(() => runtime.parse({})).toThrow('timed out')
-  }, 5000)
+  it('allows authored schema construction and transforms to finish beyond one second', () => {
+    const runtime = loadVariableSchema('const until = Date.now() + 1100; while (Date.now() < until) {}\nconst Schema = z.object({ text: z.string() }).transform(value => { const until = Date.now() + 1100; while (Date.now() < until) {} return value; });')
+    const input = { text: 'synthetic text '.repeat(10001) }
+    expect(runtime.parse(input)).toEqual(input)
+  }, 15000)
 
   it('retains valid transported rule failures without undefined optional fields', () => {
     const variableRuleFailure = { error_stage: 'execution', detail: 'Synthetic rule failure', issues: undefined, issues_truncated: undefined }

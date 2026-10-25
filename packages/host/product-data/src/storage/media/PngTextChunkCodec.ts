@@ -2,8 +2,8 @@ import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 
 const PNG_SIGNATURE = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-const MAX_PNG_BYTES = 96 * 1024 * 1024
-const MAX_CHUNK_BYTES = 96 * 1024 * 1024
+// PNG defines a chunk length as an unsigned 31-bit value.
+const MAX_CHUNK_BYTES = 0x7fffffff
 
 interface PngChunk {
   type: string
@@ -53,12 +53,10 @@ function writePngChunks(chunks: PngChunk[], values: ReadonlyMap<string, string>)
     output.push(encodeChunk(chunk.type, chunk.data))
   }
   const result = concat(output)
-  if (result.length > MAX_PNG_BYTES) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'PNG 文件不能超过 96 MB', { field: 'size' })
   return result
 }
 
 function parsePng(bytes: Uint8Array): PngChunk[] {
-  if (bytes.length > MAX_PNG_BYTES) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'PNG 图片不能超过 96 MB', { field: 'size' })
   if (!isPng(bytes)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '这不是 PNG 图片', { what: '图片格式' })
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const decoder = new TextDecoder('ascii')

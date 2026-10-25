@@ -82,6 +82,16 @@ function harness() {
 }
 
 describe('DSH Client author conversation bridge', () => {
+  it('accepts long text, more than twenty images and bursts without an added author API quota', async () => {
+    const { invoke, send } = harness();
+    const text = 'Synthetic author text '.repeat(50001) + 'tail-marker';
+    const attachments = Array.from({ length: 25 }, (_, index) => ({ type: 'image', mediaType: 'image/png', data: 'YQ==', name: `image-${index}` }));
+    expect(await invoke('chat.send', { text, attachments })).toMatchObject({ ok: true });
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ text, images: expect.any(Array) }));
+    expect(send.mock.calls.at(-1)[0].images).toHaveLength(25);
+    const replies = await Promise.all(Array.from({ length: 151 }, () => invoke('app.getInfo')));
+    expect(replies.every(reply => reply.ok)).toBe(true);
+  });
   it('reads projected messages and writes variables through the conversation Remote model', async () => {
     const { invoke, replaceAuthorVariableState } = harness();
     expect(await invoke('messages.current')).toMatchObject({ ok: true, result: {

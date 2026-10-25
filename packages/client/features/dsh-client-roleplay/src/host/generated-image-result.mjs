@@ -1,14 +1,14 @@
 import { z } from 'zod'
-import { normalizeNovelAiImageSettings, NOVELAI_IMAGE_PROVIDER, AUTO_ILLUSTRATION_TOOL_GROUP, DEFAULT_NOVELAI_COMPILER_INSTRUCTION, MAX_STORY_IMAGES } from '@eleckoi/dsh-product-data'
+import { normalizeNovelAiImageSettings, NOVELAI_IMAGE_PROVIDER, AUTO_ILLUSTRATION_TOOL_GROUP, DEFAULT_NOVELAI_COMPILER_INSTRUCTION } from '@eleckoi/dsh-product-data'
 import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
 export const IMAGE_EVENT = 'eleckoi/illustration'
 export const IMAGE_PROMPT_OPEN = '<ACTION_CALL name="generate_image">'
 export const IMAGE_PROMPT_CLOSE = '</ACTION_CALL>'
-const frameSchema = z.object({ id: z.number().int().min(1), prompt: z.string().trim().min(1).max(8000),
-  negative_prompt: z.string().max(2000), after_paragraph: z.number().int().min(0).optional(),
+const frameSchema = z.object({ id: z.number().int().min(1), prompt: z.string().trim().min(1),
+  negative_prompt: z.string(), after_paragraph: z.number().int().min(0).optional(),
   seed: z.number().int().min(0).max(4294967295).optional() }).strict()
-const argsSchema = z.object({ frames: z.array(frameSchema).min(1).max(MAX_STORY_IMAGES) }).strict()
+const argsSchema = z.object({ frames: z.array(frameSchema).min(1) }).strict()
 
 /** Parse the complete declared image command before the current final-body boundary. */
 export function parseImagePrompts(text) {

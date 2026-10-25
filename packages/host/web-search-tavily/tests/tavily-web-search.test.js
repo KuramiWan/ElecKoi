@@ -6,6 +6,21 @@ afterEach(() => {
 });
 
 describe('Tavily DSH web provider', () => {
+  it('uses the full official result-count range and preserves large returned content', async () => {
+    let provider;
+    apply({ web: { registerSearchProvider(value) { provider = value; } }, get: () => ({ resolve: async () => ({ value: 'synthetic-key' }) }) }, {
+      apiKeyEnv: { get: () => 'TAVILY_API_KEY' }, maxResults: { get: () => 20 },
+    });
+    const content = 'Synthetic result '.repeat(200001) + 'tail-marker';
+    const request = vi.fn(async () => new Response(JSON.stringify({ results: [{ title: 'Synthetic result', url: 'https://example.com', content }] })));
+    vi.stubGlobal('fetch', request);
+    const result = await provider.search({ query: 'synthetic', maxResults: 20 });
+    expect(JSON.parse(request.mock.calls[0][1].body).max_results).toBe(20);
+    expect(result.sources[0].snippet).toBe(content);
+    await provider.search({ query: 'synthetic', maxResults: 0 });
+    expect(JSON.parse(request.mock.calls[1][1].body).max_results).toBe(0);
+  });
+
   it('registers into ctx.web and returns normalized safe sources', async () => {
     let provider;
     let key = 'synthetic-first-key';

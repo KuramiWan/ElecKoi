@@ -47,7 +47,7 @@ window.__ModuleLoader__.load({
 
       normalizeSettings(value) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return { maxResults: 5, apiKeyEnv: TAVILY_API_KEY_REF }
-        const maxResults = Number.isInteger(value.maxResults) && value.maxResults >= 1 && value.maxResults <= 8
+        const maxResults = Number.isInteger(value.maxResults) && value.maxResults >= 0 && value.maxResults <= 20
           ? value.maxResults : 5
         const apiKeyEnv = typeof value.apiKeyEnv === 'string' && value.apiKeyEnv.trim()
           ? value.apiKeyEnv.trim() : TAVILY_API_KEY_REF
@@ -108,8 +108,8 @@ window.__ModuleLoader__.load({
           this.unwrap(await this.remote.eleckoiWebSearch.select(nextMode), '保存搜索方式失败。')
         }
         if (nextMaxResults !== undefined && nextMaxResults !== this.snapshot.maxResults) {
-          if (!Number.isInteger(nextMaxResults) || nextMaxResults < 1 || nextMaxResults > 8) {
-            throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Tavily 返回结果数量必须在 1 到 8 之间。', { field: 'maxResults' })
+          if (!Number.isInteger(nextMaxResults) || nextMaxResults < 0 || nextMaxResults > 20) {
+            throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, 'Tavily API 返回结果数量必须在 0 到 20 之间。', { field: 'maxResults' })
           }
           this.unwrap(await this.remote.settings.mutate(SETTINGS_NAMESPACE, [{
             op: 'set', path: ['maxResults'], value: nextMaxResults

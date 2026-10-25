@@ -4,7 +4,7 @@ export const creatorProjectModeSchema = z.enum(['blank', 'existing'])
 
 export const creatorProjectSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1).max(80),
+  name: z.string().min(1),
   mode: creatorProjectModeSchema,
   rootPath: z.string().min(1),
   sourceCharacterId: z.string(),

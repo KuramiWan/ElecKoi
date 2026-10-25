@@ -390,7 +390,7 @@ export function UserProfileSettings({ persona, onUpdateUserProfile, renderUserPr
         <div className="profile-settings-fields">
           <label className="profile-settings-name">
             <span>名字</span>
-            <input value={name} maxLength={32} onChange={(event) => setName(event.target.value)} />
+            <input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <div className="profile-settings-actions">
             {message ? <span className={message === "已保存" ? "success" : "error"}>{message}</span> : null}

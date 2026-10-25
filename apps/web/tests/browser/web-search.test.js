@@ -25,6 +25,7 @@ it('opens official DeepSeek settings with no duplicate form and preserves Tavily
     }
     expect(result.officialOnly).toEqual({ inputs: 0, search: ['DeepSeek', 'Tavily'], buttons: 2, fetch: 0 });
     expect(result.calls).toContainEqual({ open: 'web-search' });
+    expect(result.calls, JSON.stringify({ count: result.countSnapshot, message: result.message })).toContainEqual({ maxResults: 20 });
     expect(result.calls).toContainEqual({ closed: true });
     expect(result.calls).toContainEqual({ credentialProvider: 'tavily' });
     expect(result.cleared).toBe(true);

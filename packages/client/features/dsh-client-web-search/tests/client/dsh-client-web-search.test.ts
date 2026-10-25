@@ -45,6 +45,17 @@ function harness() {
 }
 
 describe('DSH web search Client model', () => {
+  it.each([0, 20])('persists and reopens the official Tavily count %i without replacing it with five', async count => {
+    const { remote, model, cleanup } = harness()
+    try {
+      remote.settings.describe.mockImplementation(() => ok({ writable: true, namespaces: [{ ns: 'web-search-tavily', revision: 4, value: { apiKeyEnv: 'CUSTOM_SEARCH_KEY', maxResults: count } }] }))
+      await model.refresh()
+      expect(model.getSnapshot().maxResults).toBe(count)
+      await model.update({ maxResults: count === 0 ? 20 : 0 })
+      expect(remote.settings.mutate).toHaveBeenCalledWith('web-search-tavily', [{ op: 'set', path: ['maxResults'], value: count === 0 ? 20 : 0 }], 4)
+    } finally { cleanup() }
+  })
+
   it('selects official providers without editing DeepSeek settings or credentials', async () => {
     const { remote, model, cleanup } = harness()
     try {

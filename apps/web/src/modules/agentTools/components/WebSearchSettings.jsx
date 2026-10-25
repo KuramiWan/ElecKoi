@@ -1,8 +1,6 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { CheckCircle, Eye, EyeSlash, SpinnerGap, Trash } from '../../../ui/icons/interfaceIcons.jsx';
 import { useWebSearchModel } from '../model/WebSearchContext.jsx';
-
-const RESULT_COUNTS = [3, 5, 8];
 
 export function WebSearchSettings({ onBeforeOpenPluginSettings, onOpenPluginSettings }) {
   const model = useWebSearchModel();
@@ -12,6 +10,17 @@ export function WebSearchSettings({ onBeforeOpenPluginSettings, onOpenPluginSett
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [resultCount, setResultCount] = useState(String(settings.maxResults ?? 5));
+  useEffect(() => setResultCount(String(settings.maxResults ?? 5)), [settings.maxResults]);
+
+  function commitResultCount() {
+    const count = Number(resultCount);
+    if (!resultCount.trim() || !Number.isInteger(count) || count < 0 || count > 20) {
+      setError('Tavily API 返回结果数量必须在 0 到 20 之间。');
+      return;
+    }
+    if (count !== settings.maxResults) void update({ maxResults: count });
+  }
 
   async function update(patch) {
     if (settings.status !== 'ready' || busy) return;
@@ -112,7 +121,6 @@ export function WebSearchSettings({ onBeforeOpenPluginSettings, onOpenPluginSett
           name="tavily-api-key"
           autoComplete="off"
           value={apiKey}
-          maxLength={2048}
           placeholder={settings.apiKeyConfigured ? '已保存，填写可替换' : '填写 Tavily API Key'}
           aria-label="Tavily API Key"
           disabled={!settings.apiKeyWritable || Boolean(busy)}
@@ -138,9 +146,9 @@ export function WebSearchSettings({ onBeforeOpenPluginSettings, onOpenPluginSett
 
     {settings.mode === 'tavily' ? <fieldset className="web-search-config-fieldset">
       <legend>返回结果</legend>
-      <div className="web-search-results" role="group" aria-label="返回结果数量">
-        {RESULT_COUNTS.map((count) => <button type="button" disabled={!settings.writable || Boolean(busy)} aria-pressed={settings.maxResults === count} key={count} onClick={() => update({ maxResults: count })}>{count} 条</button>)}
-      </div>
+      <label className="web-search-option"><span>条数</span><input type="number" min="0" max="20" step="1" aria-label="返回结果数量" disabled={!settings.writable || Boolean(busy)}
+        value={resultCount} onChange={(event) => setResultCount(event.target.value)} onBlur={commitResultCount}
+        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); } }} /></label>
     </fieldset> : null}
 
     {notice || error ? <div className={`web-search-config-message${error ? ' is-error' : ''}`} role={error ? 'alert' : 'status'}>{notice || error}</div> : null}

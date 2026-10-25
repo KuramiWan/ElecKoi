@@ -228,33 +228,3 @@ export async function routeAuthorApiRequest(
     return JSON.stringify({ id: requestId, ok: false, error: { code: known.code, message: known.message } })
   }
 }
-
-export type AuthorBridgeRejectionCode = 'BRIDGE_REQUEST_TOO_LARGE' | 'BRIDGE_BUSY' | 'BRIDGE_RATE_LIMITED'
-
-export class AuthorBridgeRequestGate {
-  private readonly acceptedAt: number[] = []
-  private inFlight = 0
-
-  constructor(
-    private readonly maxRequestBytes = 32 * 1024 * 1024,
-    private readonly maxInFlight = 8,
-    private readonly maxRequestsPerWindow = 120,
-    private readonly windowMillis = 10_000,
-    private readonly clockMillis: () => number = Date.now
-  ) {}
-
-  tryAcquire(request: string): AuthorBridgeRejectionCode | null {
-    if (new TextEncoder().encode(request).byteLength > this.maxRequestBytes) return 'BRIDGE_REQUEST_TOO_LARGE'
-    const now = this.clockMillis()
-    while (this.acceptedAt.length && now - (this.acceptedAt[0] ?? now) >= this.windowMillis) this.acceptedAt.shift()
-    if (this.acceptedAt.length >= this.maxRequestsPerWindow) return 'BRIDGE_RATE_LIMITED'
-    if (this.inFlight >= this.maxInFlight) return 'BRIDGE_BUSY'
-    this.acceptedAt.push(now)
-    this.inFlight += 1
-    return null
-  }
-
-  release(): void {
-    if (this.inFlight > 0) this.inFlight -= 1
-  }
-}

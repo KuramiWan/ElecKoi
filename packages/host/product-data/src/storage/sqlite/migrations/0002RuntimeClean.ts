@@ -250,11 +250,13 @@ function readSubagentSelection(value: unknown): { configId: string; model: strin
   return { configId: source.configId, model: source.model }
 }
 
+// RETIRE WHEN: support for databases preceding schema v2 is dropped and their
+// complete upgrade path is removed; remove both plan readers with this migration.
 function readRoleplayPlan(value: unknown): string[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设角色扮演计划无效，无法整理。', { what: '预设角色扮演计划' })
   const steps = (value as Record<string, unknown>).steps
-  if (!Array.isArray(steps) || steps.length < 1 || steps.length > 20
-    || steps.some((step) => typeof step !== 'string' || !step.trim() || step.length > 2_000)) {
+  if (!Array.isArray(steps) || steps.length < 1
+    || steps.some((step) => typeof step !== 'string' || !step.trim())) {
     throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '预设角色扮演计划无效，无法整理。', { what: '预设角色扮演计划' })
   }
   return steps as string[]
@@ -318,7 +320,7 @@ function planStepsFromEntry(raw: string): string[] {
   const content = (value as Record<string, unknown>).content
   if (typeof content !== 'string') throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '旧角色扮演计划正文无效，无法整理。', { what: '旧角色扮演计划正文' })
   const steps = content.split(/\r?\n/).map((step) => step.trim()).filter(Boolean)
-  if (steps.length < 1 || steps.length > 20 || steps.some((step) => step.length > 2_000)) {
+  if (steps.length < 1) {
     throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, '旧角色扮演计划无法完整转换，拒绝截断。', { what: '旧角色扮演计划' })
   }
   return steps

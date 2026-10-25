@@ -382,7 +382,7 @@ function CreateProjectDialog({ characters, projectCatalog, onClose, onCreated })
 
         <label className="creator-studio-form-field">
           <span>项目名称</span>
-          <input ref={nameRef} value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="未命名项目" />
+          <input ref={nameRef} value={name} onChange={(event) => setName(event.target.value)} placeholder="未命名项目" />
         </label>
 
         {mode === "existing" ? <label className="creator-studio-form-field">

@@ -1,6 +1,5 @@
 import { SystemBarOverlay } from '../../../ui/ui/SystemBarOverlay.jsx';
 import { createPortal } from "react-dom";
-import { CHAT_IMAGE_LIMITS } from "@shared/contracts/agent/imageLimits";
 
 export function ChatDropOverlay({ disabled }) {
   return createPortal(
@@ -18,9 +17,6 @@ export function ChatDropOverlay({ disabled }) {
         <div className="chat-image-drop-title">
           {disabled ? "当前无法添加文件或图片" : "文件或图片拖动到此处即可添加"}
         </div>
-        {!disabled && <div className="chat-image-drop-description">
-          图片限制：最多 {CHAT_IMAGE_LIMITS.maxImagesPerMessage} 张，每张 20MB
-        </div>}
       </div>
     </SystemBarOverlay>,
     document.body,

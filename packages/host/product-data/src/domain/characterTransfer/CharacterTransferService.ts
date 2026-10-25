@@ -72,9 +72,6 @@ export class CharacterTransferService {
       this.portableAsset('avatar.square', string(persona.assistant_square)),
       this.portableAsset('avatar.portrait', string(persona.assistant_cover))
     ].filter((asset): asset is PortableAsset => !!asset)
-    if (assets.reduce((total, asset) => total + asset.bytes.length, 0) > 48 * 1024 * 1024) {
-      throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色图片总大小不能超过 48 MB', { field: 'size' })
-    }
     const packageData = {
       character: {
         name: string(character.name, string(persona.assistant_name, '未命名角色')),
@@ -145,7 +142,6 @@ export class CharacterTransferService {
 
   prepare(files: CharacterImportFile[], source: CharacterImportSource): CharacterImportPreview {
     if (!files.length) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请至少选择一张角色卡', { what: '选择至少一张角色卡' })
-    if (files.length > 50) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '一次最多导入 50 张角色卡', { field: 'files' })
     const items = files.map((file, index): PreparedItem => {
       let imageAvailable = false
       try {
@@ -308,7 +304,6 @@ function decodeInput(base64: string): Uint8Array {
   if (!normalized) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡文件为空', { field: 'file' })
   const bytes = Buffer.from(normalized, 'base64')
   if (!bytes.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡文件为空', { field: 'file' })
-  if (bytes.length > 96 * 1024 * 1024) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡不能超过 96 MB', { field: 'size' })
   return bytes
 }
 
@@ -354,7 +349,7 @@ function boolean(value: unknown): boolean {
 }
 
 const RESERVED_FILE_STEMS = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
-/** 名字过长会被文件系统拒绝，也会顶破契约的 fileName.max(260)，这里留足扩展名与序号的空间。 */
+/** 导出文件名采用简短前缀；完整角色名始终写入导出内容。 */
 const MAX_FILE_STEM_LENGTH = 80
 
 /**
@@ -377,7 +372,7 @@ function safeExportFileStem(name: string): string {
 async function writeUniqueExportFile(directory: string, fileName: string, bytes: Buffer): Promise<string> {
   const extension = extname(fileName)
   const stem = extension.length > 0 ? fileName.slice(0, -extension.length) : fileName
-  for (let index = 1; index <= 1000; index += 1) {
+  for (let index = 1; ; index += 1) {
     const candidateName = index === 1 ? fileName : `${stem} (${index})${extension}`
     const target = join(directory, candidateName)
     let file: FileHandle
@@ -397,9 +392,8 @@ async function writeUniqueExportFile(directory: string, fileName: string, bytes:
       throw cause
     }
   }
-  throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '导出目录中的同名文件过多。', { what: '导出文件' })
 }
 
 function exportFailureMessage(cause: unknown, fallback: string): string {
-  return (cause instanceof Error ? cause.message : fallback).slice(0, 500)
+  return cause instanceof Error ? cause.message : fallback
 }

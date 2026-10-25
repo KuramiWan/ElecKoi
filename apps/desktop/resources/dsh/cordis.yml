@@ -13,15 +13,20 @@
 - id: spill-policy
   config:
     maxInlineTokens: 12500
-    exemptTools: [eleckoi_read_uploaded_file]
-    pagedTools: [eleckoi_read_setting_files, eleckoi_read_variables, eleckoi_call_capability]
+    pagedTools: [eleckoi_read_setting_files, eleckoi_read_variables, eleckoi_call_capability, eleckoi_read_uploaded_file]
 
 - id: attachment-local
   config:
     dshHome: !!js process.env.DSH_HOME
-    maxImageBytes: 20971520
-    maxImagesPerMessage: 4
-    maxMessageImageBytes: 20971520
+    maxImageBytes: !!js Number.MAX_SAFE_INTEGER
+    maxImagesPerMessage: !!js Number.MAX_SAFE_INTEGER
+    maxMessageImageBytes: !!js Number.MAX_SAFE_INTEGER
+    maxImagePixels: !!js Number.MAX_SAFE_INTEGER
+    maxImageDimension: !!js Number.MAX_SAFE_INTEGER
+
+- id: connection
+  config:
+    maxRequestBodyBytes: !!js Math.ceil(Number.MAX_SAFE_INTEGER * 4 / 3) + 1048576
 
 - id: session-persistence-jsonl
   config:
@@ -65,9 +70,8 @@
 
 - id: web-fetch-http
   config:
-    maxUrlLength: 2048
-    maxResponseBytes: 5000000
-    maxBodyChars: 100000
+    maxResponseBytes: !!js Number.MAX_SAFE_INTEGER
+    maxBodyChars: !!js Number.MAX_SAFE_INTEGER
     timeoutMs: 35000
     maxRedirects: 5
 

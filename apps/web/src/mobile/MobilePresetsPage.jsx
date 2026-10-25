@@ -76,7 +76,6 @@ function MobilePresetLibrary() {
     const file = event.target.files?.[0]; event.target.value = '';
     if (!file) return;
     await run(async () => {
-      if (file.size > 64 * 1024 * 1024) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '预设文件不能超过 64 MB', { field: '预设文件大小' });
       const result = await catalogModel.import(importSource.current, { displayName: file.name, mimeType: file.type, base64: await fileBase64(file) }, purpose);
       open(result.preset.id);
     });

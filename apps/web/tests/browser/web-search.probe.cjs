@@ -21,11 +21,20 @@ app.whenReady().then(async () => {
     await run(`[...document.querySelectorAll('.web-search-mode button')].find(n=>n.querySelector('strong')?.textContent==='DeepSeek').click()`);
     await run(`[...document.querySelectorAll('.web-search-mode button')].find(n=>n.textContent.startsWith('Tavily')).click()`);
     await new Promise(resolve => setTimeout(resolve, 30));
+    await run(`(() => { const n=document.querySelector('[aria-label="返回结果数量"]');n.focus();n.select(); })()`);
+    await win.webContents.insertText('2');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    await win.webContents.insertText('0');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const countSnapshot = await run(`({value:document.querySelector('[aria-label="返回结果数量"]').value})`);
+    // This hidden test window has no OS focus; emit the field's focusout explicitly.
+    await run(`(() => { const n=document.querySelector('[aria-label="返回结果数量"]');n.blur();n.dispatchEvent(new FocusEvent('focusout',{bubbles:true})); })()`);
+    await new Promise(resolve => setTimeout(resolve, 30));
     await run(`const n=document.querySelector('[aria-label="Tavily API Key"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(n,'synthetic-key');n.dispatchEvent(new Event('input',{bubbles:true}));`);
     await new Promise(resolve => setTimeout(resolve, 30));
     await run(`[...document.querySelectorAll('button')].find(n=>n.textContent==='保存并测试').click()`);
     await new Promise(resolve => setTimeout(resolve, 50));
-    writeFileSync(report, JSON.stringify({ layouts, officialOnly, calls: await run('window.webSearchFixture.calls'), message: await run('document.body.textContent'), cleared: await run(`document.querySelector('[aria-label="Tavily API Key"]').value===''`) }));
+    writeFileSync(report, JSON.stringify({ layouts, officialOnly, countSnapshot, calls: await run('window.webSearchFixture.calls'), message: await run('document.body.textContent'), cleared: await run(`document.querySelector('[aria-label="Tavily API Key"]').value===''`) }));
     win.destroy(); app.exit(0);
   } catch (error) { console.error(error); app.exit(1); }
 });

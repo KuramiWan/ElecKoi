@@ -72,7 +72,7 @@ async function fixture(existing, { productionTemplate = false, stream } = {}) {
   await ctx.plugin(LocalFileSystem, { cwd: root })
   await ctx.plugin(WorkingDirectory, { defaultDirectory: root })
   await ctx.plugin(ToolResultStore, { root: join(root, 'tool-results'), cleanupPeriodDays: 0 })
-  await ctx.plugin(spillPolicy, { maxInlineTokens: 12_500, exemptTools: ['eleckoi_read_uploaded_file'], pagedTools: ['eleckoi_read_setting_files', 'eleckoi_read_variables', RESULT_READER] })
+  await ctx.plugin(spillPolicy, { maxInlineTokens: 12_500, pagedTools: ['eleckoi_read_setting_files', 'eleckoi_read_variables', RESULT_READER, 'eleckoi_read_uploaded_file'] })
   await ctx.plugin(FileUploads)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(productDataPlugin)
@@ -131,6 +131,40 @@ async function fixture(existing, { productionTemplate = false, stream } = {}) {
 }
 
 describe('Creator studio uploaded-file composition', { timeout: 30_000 }, () => {
+  it('recovers a complete large upload through its original reader under the formal spill policy', async () => {
+    const body = 'Synthetic uploaded text 😀'.repeat(10001) + 'tail-marker'
+    let f, ref, offset = 0, recovered = '', finished = false
+    f = await fixture(undefined, { productionTemplate: true, stream: async function* (request, step) {
+      if (step > 2) {
+        const page = JSON.parse(request.messages.at(-1).content[0].text)
+        expect(page.kind).toBe('tool_result_page')
+        recovered += page.content; offset = page.next_offset
+        if (offset === null) {
+          expect(JSON.parse(recovered).content).toBe(body)
+          finished = true
+          yield { type: 'block-start', index: 0, blockType: 'text' }
+          yield { type: 'block-end', index: 0, block: { type: 'text', text: 'Synthetic upload recovered' } }
+          yield { type: 'finish', reason: { kind: 'stop' } }; return
+        }
+      }
+      let args
+      if (step === 1) {
+        const surface = await f.ctx.sessionQuery.readSurface(request.sessionId)
+        const file = surface.events.findLast(event => event.type === 'user/message' && event.data.source.kind === 'user').data.content.find(part => part.type === 'file').attachment
+        args = { file_path: file.attachmentId }
+      } else args = { result: { file_path: ref.locator, offset, limit: 100003 } }
+      yield { type: 'block-start', index: 0, blockType: 'tool-call' }
+      yield { type: 'block-end', index: 0, block: { type: 'tool-call', id: `synthetic-upload-read-${step}`, name: 'eleckoi_read_uploaded_file', arguments: JSON.stringify(args) } }
+      yield { type: 'finish', reason: { kind: 'tool-calls' } }
+    } })
+    const originalSave = f.ctx.spillStore.saveText.bind(f.ctx.spillStore)
+    const save = vi.spyOn(f.ctx.spillStore, 'saveText').mockImplementation(async input => { ref = await originalSave(input); return ref })
+    await f.sendFile(f.opened.sessionId, { content: body })
+    expect(finished).toBe(true)
+    expect(save).toHaveBeenCalledTimes(1)
+    save.mockRestore()
+  })
+
   it.each([101, 1_001, 10_001])('recovers the complete %i-entry catalog and large bodies through the real Studio composition', async count => {
     let stage = 0, waiting, nextOffset = 0, recovered = '', expected, entries
     const refs = []

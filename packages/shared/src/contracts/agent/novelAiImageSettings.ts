@@ -2,7 +2,6 @@ import { z } from 'zod'
 
 export const NOVELAI_IMAGE_PROVIDER = 'novelai_image'
 export const AUTO_ILLUSTRATION_TOOL_GROUP = 'builtin:auto-illustration'
-export const MAX_STORY_IMAGES = 24
 export const NOVELAI_SAMPLERS = [
   { id: 'k_dpmpp_2m', label: 'DPM++ 2M' },
   { id: 'k_euler_ancestral', label: 'Euler Ancestral' },
@@ -27,18 +26,18 @@ Write negative_prompt as comma-separated English tags for relevant defects and u
 Fill prompt and negative_prompt inside each frame of the native generate_image tool arguments. Keep the required frame count and order, and set after_paragraph to the corresponding final-body paragraph position, starting at 0.`
 
 export const novelAiImageSettingsSchema = z.object({
-  width: z.number().int().min(512, '宽度需要在 512 到 2048 之间。').max(2048).default(832),
-  height: z.number().int().min(512, '高度需要在 512 到 2048 之间。').max(2048).default(1216),
-  steps: z.number().int().min(1, '步数需要在 1 到 50 之间。').max(50).default(28),
-  scale: z.number().min(0.1, '提示词相关性需要在 0.1 到 10 之间。').max(10).default(5),
+  width: z.number().int().positive().default(832),
+  height: z.number().int().positive().default(1216),
+  steps: z.number().int().positive().default(28),
+  scale: z.number().nonnegative().default(5),
   sampler: z.enum(NOVELAI_SAMPLERS.map(item => item.id)).default('k_euler_ancestral'),
   automaticImageCount: z.boolean().default(false),
-  fixedImageCount: z.number().int().min(1).max(MAX_STORY_IMAGES).default(1),
-  automaticImageMin: z.number().int().min(1).max(MAX_STORY_IMAGES).default(1),
-  automaticImageMax: z.number().int().min(1).max(MAX_STORY_IMAGES).default(6),
-  promptCompilerInstruction: z.string().max(8000).default(''),
-  promptPrefix: z.string().max(4000).default(''),
-  negativePrompt: z.string().max(2000).default('')
+  fixedImageCount: z.number().int().min(1).default(1),
+  automaticImageMin: z.number().int().min(1).default(1),
+  automaticImageMax: z.number().int().min(1).default(6),
+  promptCompilerInstruction: z.string().default(''),
+  promptPrefix: z.string().default(''),
+  negativePrompt: z.string().default('')
 }).passthrough().refine(value => !value.automaticImageCount || value.automaticImageMin <= value.automaticImageMax, {
   message: '分镜最少数量不能大于最多数量。', path: ['automaticImageMax']
 })

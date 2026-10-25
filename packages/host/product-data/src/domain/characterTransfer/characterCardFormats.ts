@@ -16,12 +16,8 @@ import { DesktopError } from '@shared/foundation/DesktopError'
 
 type JsonObject = Record<string, unknown>
 
-const MAX_INPUT_BYTES = 96 * 1024 * 1024
-const MAX_EXPANDED_BYTES = 96 * 1024 * 1024
-const MAX_ATTACHMENTS_BYTES = 48 * 1024 * 1024
 
 export function decodeCharacterCard(bytes: Uint8Array, source: 'eleckoi' | 'sillytavern'): DecodedCharacterCard {
-  if (bytes.length > MAX_INPUT_BYTES) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色卡不能超过 96 MB', { field: 'size' })
   return source === 'sillytavern' ? decodeSillyTavern(bytes) : decodeElecKoi(bytes)
 }
 
@@ -241,7 +237,7 @@ export function encodePortableCharacterPayload(value: PortableCharacterPackage):
 
 export function decodePortablePackage(encoded: string): PortableCharacterPackage {
   let expanded: Buffer
-  try { expanded = gunzipSync(Buffer.from(encoded, 'base64'), { maxOutputLength: MAX_EXPANDED_BYTES }) }
+  try { expanded = gunzipSync(Buffer.from(encoded, 'base64')) }
   catch (error) { throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'ElecKoi 角色卡数据损坏', { what: 'ElecKoi 角色卡数据' }) }
   const root = parseJsonObject(expanded.toString('utf8'), 'ElecKoi 角色卡数据损坏')
   return decodePortableRoot(root)
@@ -252,11 +248,10 @@ function decodePortableRoot(root: JsonObject): PortableCharacterPackage {
   if (root.version !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '暂不支持这个角色卡版本', { what: '角色卡版本', expected: '1' })
   const character = portableCharacter(record(root.character) ?? {})
   const assets = objectList(root.assets).map((asset) => ({
-    key: string(asset.key).slice(0, 80),
-    mediaType: string(asset.media_type).slice(0, 80),
+    key: string(asset.key),
+    mediaType: string(asset.media_type),
     bytes: decodeBase64(string(asset.data), '角色卡附件损坏')
   }))
-  if (assets.reduce((total, asset) => total + asset.bytes.length, 0) > MAX_ATTACHMENTS_BYTES) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色附件总大小不能超过 48 MB', { field: 'attachments' })
   return {
     character,
     assets,

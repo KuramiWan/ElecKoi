@@ -132,6 +132,8 @@ export function PresetIntroductionEditor({ preset, editorRef, saving, error, onC
             if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') context.open(event, item);
           }}>
           <div className="preset-update-record-heading"><h3>{item.title}</h3>{item.dateLabel ? <span className="preset-update-record-date">{item.dateLabel}</span> : null}
+            <button type="button" className="preset-content-button is-danger" aria-label={`删除更新：${item.title || item.dateLabel || '未命名更新'}`}
+              disabled={saving} onClick={() => requestLeave(() => { onClearError(); setDeleting(item); })}>删除</button>
             <button ref={element => { if (element) timelineEditRefs.current.set(item.id, element); else timelineEditRefs.current.delete(item.id); }}
               type="button" className="preset-content-button preset-update-edit" aria-label={`编辑更新：${item.title || item.dateLabel || '未命名更新'}`}
               disabled={saving} onClick={() => openDraft(createTimelineDraft(item))}>编辑</button>

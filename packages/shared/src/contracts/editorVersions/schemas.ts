@@ -20,7 +20,7 @@ export const editorLibraryVersionsSchema = z.strictObject({
   revision: z.number().int().nonnegative(),
   resourceRevision: z.string().regex(/^(?:[a-f0-9]{64})?$/),
   activeVersionId: z.string().min(1),
-  versions: z.array(z.strictObject({ id: z.string().min(1).max(120), name: z.string().trim().min(1), content: z.string() })).min(1),
+  versions: z.array(z.strictObject({ id: z.string().min(1), name: z.string().trim().min(1), content: z.string() })).min(1),
 }).superRefine((library, context) => {
   const address = editorLibraryAddressSchema.safeParse({ kind: library.kind, scope: library.scope, ownerId: library.ownerId })
   if (!address.success) context.addIssue({ code: 'custom', path: ['ownerId'], message: '配置版本归属与作用域不匹配。' })

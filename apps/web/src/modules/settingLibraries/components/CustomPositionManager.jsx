@@ -27,6 +27,7 @@ import {
 } from '../model/customPositions.js';
 import '../styles/custom-positions.css';
 import { useEditorPresentation, useEditorSubpage } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
 
 const FIXED_POSITION_ICONS = {
   instructions: PushPin,
@@ -75,7 +76,7 @@ function PositionDragPreview({ position, selected }) {
   </div>;
 }
 
-function SortablePositionRow({ row, index, total, selected, reducedMotion, onSelect, onEdit, onDelete, onMoveByKeyboard }) {
+function SortablePositionRow({ row, index, total, selected, reducedMotion, menuOpen, onSelect, onOpenMenu, onMoveByKeyboard }) {
   const custom = row.type === 'custom';
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: row.key,
@@ -111,12 +112,8 @@ function SortablePositionRow({ row, index, total, selected, reducedMotion, onSel
       }}
     ><DotsSixVertical size={20} /></button>
     <button type="button" className="setting-position-guide-main" onClick={onSelect}><strong>{row.position.name || '未命名位置'}</strong>{selected ? <span>当前</span> : null}</button>
-    <details className="setting-position-more" name="custom-position-actions" onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
-    }}>
-      <summary aria-label={'管理位置：' + row.position.name} title="管理位置"><DotsThree size={20} weight="bold" /></summary>
-      <div><button type="button" onClick={(event) => { event.currentTarget.closest('details').open = false; onEdit(); }}><NotePencil size={16} />重命名</button><button type="button" className="is-danger" onClick={(event) => { event.currentTarget.closest('details').open = false; onDelete(); }}><Trash size={16} />删除</button></div>
-    </details>
+    <button type="button" className="setting-position-more" aria-label={'管理位置：' + row.position.name}
+      title="管理位置" aria-haspopup="menu" aria-expanded={menuOpen} onClick={onOpenMenu}><DotsThree size={20} weight="bold" /></button>
   </article>;
 }
 
@@ -162,6 +159,7 @@ export function CustomPositionManager({ entry, positions, entries, onChange, onB
   const [draft, setDraft] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [activeKey, setActiveKey] = useState('');
+  const context = useEditorContextMenu();
   const addRef = useRef(null);
   const guideRef = useRef(null);
   const reducedMotion = useReducedSortMotion();
@@ -249,7 +247,7 @@ export function CustomPositionManager({ entry, positions, entries, onChange, onB
       modifiers={DRAG_MODIFIERS}
       autoScroll={{ canScroll: (element) => element === guideRef.current, threshold: { x: 0, y: 0.12 }, acceleration: 6, interval: 10 }}
       accessibility={{ screenReaderInstructions: DRAG_INSTRUCTIONS, announcements }}
-      onDragStart={({ active }) => setActiveKey(active.id)}
+      onDragStart={({ active }) => { context.close(); setActiveKey(active.id); }}
       onDragEnd={finishDrag}
       onDragCancel={() => setActiveKey('')}
     >
@@ -266,14 +264,19 @@ export function CustomPositionManager({ entry, positions, entries, onChange, onB
               if (!entry || entry.promptPositionId === row.position.id) return;
               onChange(positions, entries.map((item) => item.id === entry.id ? { ...item, position: row.position.anchor, promptPositionId: row.position.id } : item));
             }}
-            onEdit={() => edit(row.position)}
-            onDelete={() => setDeleting(row.position)}
+            menuOpen={context.menu?.target.id === row.position?.id}
+            onOpenMenu={(event) => context.open(event, row.position)}
             onMoveByKeyboard={moveByKeyboard}
           />)}
         </SortableContext>
       </div>
       {typeof document === 'undefined' ? overlay : createPortal(overlay, document.getElementById('eleckoi-root') || document.body)}
     </DndContext>
+
+    {context.menu ? <EditorContextMenu menu={context.menu} label="位置操作" onClose={context.close} actions={[
+      { label: '重命名', icon: NotePencil, run: () => edit(context.menu.target) },
+      { label: '删除', icon: Trash, danger: true, run: () => setDeleting(context.menu.target) },
+    ]} /> : null}
 
     {draft ? <PositionNameDialog draft={draft} existing={positions.some((position) => position.id === draft.id)} onChange={setDraft} onCancel={() => setDraft(null)} onSave={saveDraft} /> : null}
     {deleting ? <DeletePositionDialog position={deleting} affected={affected} onCancel={() => setDeleting(null)} onConfirm={() => {

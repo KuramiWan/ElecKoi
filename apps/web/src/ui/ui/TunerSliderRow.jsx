@@ -1,7 +1,7 @@
 import { MinusIcon, PlusIcon, ResetIcon } from "../icons/openSourceIcons.jsx";
 
 function clamp(value, minimum, maximum) {
-  return Math.min(Math.max(Number(value), minimum), maximum);
+  return Math.min(Math.max(Number(value), minimum), maximum ?? Infinity);
 }
 
 export function TunerSliderRow({ label, value, min, max, step = 1, suffix = "", precision, defaultValue, onChange }) {
@@ -38,7 +38,7 @@ export function TunerSliderRow({ label, value, min, max, step = 1, suffix = "", 
           <ResetIcon size={17} weight="bold" />
         </button>
       </div>
-      <input
+      {Number.isFinite(max) && <input
         className="tuner-slider"
         type="range"
         aria-label={`${label}滑杆`}
@@ -48,7 +48,7 @@ export function TunerSliderRow({ label, value, min, max, step = 1, suffix = "", 
         value={safeValue}
         style={{ "--tuner-progress": `${progress}%` }}
         onChange={(event) => onChange(Number(event.target.value))}
-      />
+      />}
     </div>
   );
 }

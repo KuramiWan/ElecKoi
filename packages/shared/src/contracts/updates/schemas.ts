@@ -23,12 +23,12 @@ export const updateStatusSchema = z.object({
   phase: updatePhaseSchema,
   currentVersion: z.string().min(1),
   availableVersion: z.string().min(1).nullable(),
-  releaseName: z.string().max(200).nullable(),
+  releaseName: z.string().nullable(),
   releaseNotes: z.string().nullable(),
-  releaseDate: z.string().max(100).nullable(),
+  releaseDate: z.string().nullable(),
   downloadSizeBytes: z.number().nonnegative().nullable(),
   progress: updateProgressSchema.nullable(),
-  message: z.string().max(300).nullable(),
+  message: z.string().nullable(),
   failedOperation: z.enum(['check', 'download', 'install']).optional()
 })
 

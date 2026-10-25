@@ -58,7 +58,7 @@ export const chatLayoutProfileSchema = z.object({
   paragraph_spacing: z.number().min(0).max(24)
 })
 
-export const RICH_MESSAGE_FLOOR_RANGE = { min: 1, max: 100, defaultValue: 10 } as const
+export const RICH_MESSAGE_FLOOR_RANGE = { min: 1, defaultValue: 10 } as const
 
 export const chatDisplayPreferencesSchema = z.object({
   layout: chatLayoutModeSchema,
@@ -66,8 +66,8 @@ export const chatDisplayPreferencesSchema = z.object({
   generation_stats_enabled: z.boolean(),
   roleplay_timestamps_enabled: z.boolean().default(true),
   roleplay_message_floors_enabled: z.boolean().default(true),
-  rich_message_limit_enabled: z.boolean().default(true),
-  rich_message_floor_limit: z.number().int().min(RICH_MESSAGE_FLOOR_RANGE.min).max(RICH_MESSAGE_FLOOR_RANGE.max).default(RICH_MESSAGE_FLOOR_RANGE.defaultValue),
+  rich_message_limit_enabled: z.boolean().default(false),
+  rich_message_floor_limit: z.number().int().min(RICH_MESSAGE_FLOOR_RANGE.min).default(RICH_MESSAGE_FLOOR_RANGE.defaultValue),
   text_colors: chatTextColorsSchema,
   profiles: z.object({
     social: chatLayoutProfileSchema,
@@ -89,7 +89,7 @@ export const DEFAULT_CHAT_DISPLAY_PREFERENCES: ChatDisplayPreferences = {
   generation_stats_enabled: true,
   roleplay_timestamps_enabled: true,
   roleplay_message_floors_enabled: true,
-  rich_message_limit_enabled: true,
+  rich_message_limit_enabled: false,
   rich_message_floor_limit: RICH_MESSAGE_FLOOR_RANGE.defaultValue,
   text_colors: { ...DEFAULT_CHAT_TEXT_COLORS },
   profiles: {

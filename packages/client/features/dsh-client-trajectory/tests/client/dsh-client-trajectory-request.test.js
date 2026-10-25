@@ -4,6 +4,7 @@ import { adaptTrajectorySnapshot } from '../../../../../../apps/web/src/modules/
 import { deriveTrajectoryLayout } from '../../src/client/layout.ts'
 import { inputContinuationsProjection } from '../../../dsh-client-roleplay/src/host/input-continuations-projection.mjs'
 import { zh } from '../../src/client/locales.ts'
+import { registerTrajectoryToolDefinition } from '../../src/client/trajectory-tool-definition.ts'
 
 function event(type, seq, data) {
   return { type, seq, time: seq * 10, data }
@@ -33,6 +34,26 @@ function context(state, matches, start) {
 }
 
 describe('DSH trajectory assistant request evidence', () => {
+  it('projects every nested tool call beyond 256 levels while refusing a cycle', () => {
+    let definition
+    registerTrajectoryToolDefinition({ uiConversation: { events: { register(value) { definition = value } } } })
+    const start = match(event('tool/call', 0, { callId: 'root', name: 'synthetic', arguments: '{}', turn: 1, step: 1 }))
+    let state = definition.start(context(undefined, [], start), start)
+    for (let index = 1; index <= 1001; index++) {
+      state = definition.update(context(state, [], start), match(event('tool/ptc-dispatch-start', index, {
+        rootCallId: 'root', parentCallId: index === 1 ? 'root' : `child-${index - 1}`, subCallId: `child-${index}`, name: 'synthetic', arguments: {},
+      })))
+    }
+    expect(definition.update(context(state, [], start), match(event('tool/ptc-dispatch-start', 1002, {
+      rootCallId: 'root', parentCallId: 'child-1001', subCallId: 'root', name: 'invalid-cycle', arguments: {},
+    })))).toBe(state)
+    const node = definition.buildViewNode(context(state, [], start))
+    let call = node.data.root, depth = 0
+    while (call.subCalls.length) { call = call.subCalls[0]; depth++ }
+    expect(depth).toBe(1001)
+    expect(call.callId).toBe('child-1001')
+  })
+
   it('does not invent a failed request for a closed bootstrap-only step', () => {
     const start = match(event('step/start', 1, { turn: 1, step: 1 }))
     const initial = trajectoryAssistantDefinition.start(

@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { apply as applyRoleplayPlanTool } from '../../../../../../apps/desktop/resources/dsh/roleplay-plan-tool.mjs'
 
 describe('DSH roleplay plan tool', () => {
+  it('declares and executes every long author task beyond the former twenty-item ceiling', async () => {
+    let definition
+    const steps = Array.from({ length: 101 }, (_, index) => `Synthetic task ${index}: ${'text '.repeat(501)}tail-${index}`)
+    applyRoleplayPlanTool({ tools: { register(value) { definition = value; return () => {}; } } }, { steps })
+    expect(definition.description).toContain(steps.at(-1))
+    const result = await definition.execute({ plan: steps.map(step => ({ step, status: 'pending' })) })
+    expect(result.plan.map(item => item.step)).toEqual(steps)
+  })
+
   it('stays registered when the active preset has no plan steps', async () => {
     let definition
     applyRoleplayPlanTool({

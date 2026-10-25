@@ -2,7 +2,6 @@ import {
   AUTHOR_API_STAGE,
   AUTHOR_API_VERSION,
   AuthorApiError,
-  AuthorBridgeRequestGate,
   AUTHOR_EVENT_NAMES,
   authorApiDefinitions,
   applyAuthorVariablePatch,
@@ -19,12 +18,6 @@ import {
   characterCardMacroValues,
   resolveCharacterCardMacrosInJson,
 } from '@shared/foundation/characterCardMacros';
-
-const bridgeErrors = {
-  BRIDGE_REQUEST_TOO_LARGE: '作者 API 请求过大',
-  BRIDGE_BUSY: '作者 API 同时请求过多',
-  BRIDGE_RATE_LIMITED: '作者 API 请求过于频繁',
-};
 
 const supportedMethods = new Set([
   'app.getInfo', 'app.getCapabilities', 'context.current',
@@ -43,15 +36,6 @@ const supportedMethods = new Set([
   'audio.setSettings', 'input.get', 'input.set', 'input.append', 'input.clear', 'input.send',
   'events.list',
 ]);
-
-const gates = new Map();
-
-function requestId(rawRequest) {
-  try {
-    const value = JSON.parse(rawRequest);
-    return value && typeof value === 'object' && typeof value.id === 'string' ? value.id : '';
-  } catch { return ''; }
-}
 
 function parsedJson(source) {
   try { return JSON.parse(source || '{}'); } catch { return {}; }
@@ -225,7 +209,7 @@ function publicTrajectory(conversationId, runtimeThreadId, snapshot, params) {
     ? params.beforeIndex : records.length + 1;
   const eligible = records.filter((record) => record.index < beforeIndex);
   const limit = Number.isInteger(params.limit) && params.limit > 0
-    ? Math.min(200, params.limit) : 200;
+    ? params.limit : 200;
   const start = Math.max(0, eligible.length - limit);
   const page = eligible.slice(start);
   const times = records.map((record) => record.timeMillis).filter(Number.isSafeInteger);
@@ -243,7 +227,7 @@ function publicTrajectory(conversationId, runtimeThreadId, snapshot, params) {
 
 function sendImages(value) {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 20) throw new AuthorApiError('INVALID_PARAMS', '每条消息最多发送 20 张图片');
+  if (!Array.isArray(value)) throw new AuthorApiError('INVALID_PARAMS', '消息图片必须是数组');
   const supported = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
   return value.map((item) => {
     const input = jsonObject(item, '消息附件格式不正确');
@@ -254,7 +238,7 @@ function sendImages(value) {
     }
     if (!data) throw new AuthorApiError('INVALID_PARAMS', '图片附件内容不能为空');
     return { mediaType, data, ...(typeof input.name === 'string' && input.name.trim()
-      ? { name: input.name.trim().slice(0, 255) } : {}) };
+      ? { name: input.name.trim() } : {}) };
   });
 }
 
@@ -383,7 +367,7 @@ async function invokeMethod(context, method, params) {
       const id = typeof params.id === 'string' ? params.id.trim() : '';
       if (!id) throw new AuthorApiError('INVALID_PARAMS', '消息 id 不能为空');
       if (typeof params.text !== 'string') throw new AuthorApiError('INVALID_PARAMS', '消息正文必须是文本');
-      if (params.text.length > 1_000_000) throw new AuthorApiError('INVALID_PARAMS', '消息正文过长');
+
       const target = targetMessage(details, id);
       const updated = target.id === 'opening'
         ? await conversations.updateOpening(conversationId, params.text)
@@ -412,7 +396,7 @@ async function invokeMethod(context, method, params) {
       if (method === 'messages.editAndRegenerate' && !replacementMessage) {
         throw new AuthorApiError('INVALID_PARAMS', '修改后的消息不能为空');
       }
-      if (replacementMessage?.length > 100_000) throw new AuthorApiError('INVALID_PARAMS', '修改后的消息过长');
+
       const requestIdValue = crypto.randomUUID();
       const result = await conversations.regenerate({ conversationId, eventSeq: user.sessionEventSeq,
         requestId: requestIdValue, replacementMessage });
@@ -454,7 +438,7 @@ async function invokeMethod(context, method, params) {
       const text = typeof params.text === 'string' ? params.text.trim() : '';
       const images = sendImages(params.attachments);
       if (!text && images.length === 0) throw new AuthorApiError('INVALID_PARAMS', '发送内容和图片不能同时为空');
-      if (text.length > 100_000) throw new AuthorApiError('INVALID_PARAMS', '发送内容过长');
+
       const requestIdValue = crypto.randomUUID();
       const result = await conversations.send({ conversationId, text, images, requestId: requestIdValue });
       return { accepted: true, conversationId, runId: details.runtimeSessionId,
@@ -542,21 +526,6 @@ async function invokeMethod(context, method, params) {
 }
 
 export async function routeAuthorConversationRequest(rawRequest, context) {
-  const gateKey = `${context.bridgeKey}:${context.conversationId}:${context.messageId}`;
-  let gate = gates.get(gateKey);
-  if (gate) gates.delete(gateKey);
-  else {
-    gate = new AuthorBridgeRequestGate();
-    if (gates.size >= 1_024) gates.delete(gates.keys().next().value);
-  }
-  gates.set(gateKey, gate);
-  const rejection = gate.tryAcquire(rawRequest);
-  if (rejection) return JSON.stringify({ id: requestId(rawRequest), ok: false,
-    error: { code: rejection, message: bridgeErrors[rejection] } });
-  try {
-    return await routeAuthorApiRequest(rawRequest, characterConversationPermissions,
-      (method, params) => invokeMethod(context, method, params));
-  } finally {
-    gate.release();
-  }
+  return routeAuthorApiRequest(rawRequest, characterConversationPermissions,
+    (method, params) => invokeMethod(context, method, params));
 }

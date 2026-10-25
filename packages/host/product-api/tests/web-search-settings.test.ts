@@ -26,12 +26,13 @@ describe('Tavily Host connection test', () => {
     await expect(testTavilyConnection('synthetic-key')).rejects.toThrow('[REDACTED]')
   })
 
-  it('rejects oversized responses and propagates cancellation', async () => {
-    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response('{}', {
-      status: 200, headers: { 'content-length': String(3 * 1024 * 1024) }
+  it('accepts complete large responses and propagates cancellation', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ key: { usage: 12, limit: 100 },
+      account: { current_plan: 'Project' }, extra: 'Synthetic content '.repeat(200001) }), {
+      status: 200
     }))
     vi.stubGlobal('fetch', request)
-    await expect(testTavilyConnection('synthetic-key')).rejects.toThrow('超过安全上限')
+    await expect(testTavilyConnection('synthetic-key')).resolves.toEqual({ ok: true, plan: 'Project', used: 12, limit: 100 })
     const abort = new AbortController()
     abort.abort()
     request.mockImplementation(async (_input, init) => { init?.signal?.throwIfAborted(); throw new Error('unreachable') })

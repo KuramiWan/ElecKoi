@@ -23,7 +23,6 @@ export function RoleplayPlanEditor({ value, onChange, onSave, saving = false }) 
   }
 
   function add() {
-    if (steps.length >= 20) return;
     const next = [...steps];
     next.splice(terminalIndex, 0, '');
     onChange({ steps: next });
@@ -33,7 +32,7 @@ export function RoleplayPlanEditor({ value, onChange, onSave, saving = false }) 
     <section className="roleplay-plan-editor" aria-label="角色扮演固定任务">
       <div className="roleplay-plan-heading">
         <h3>固定任务</h3>
-        <button type="button" onClick={add} disabled={steps.length >= 20}><Plus size={15} />添加任务</button>
+        <button type="button" onClick={add}><Plus size={15} />添加任务</button>
       </div>
       <ol className="roleplay-plan-list">
         {steps.map((step, index) => {
@@ -42,7 +41,6 @@ export function RoleplayPlanEditor({ value, onChange, onSave, saving = false }) 
             <span className="roleplay-plan-number" aria-hidden="true">{index + 1}</span>
             <textarea
               rows={2}
-              maxLength={2000}
               value={step}
               aria-label={`第 ${index + 1} 项任务`}
               onChange={(event) => replace(index, event.target.value)}

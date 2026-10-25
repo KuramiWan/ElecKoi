@@ -70,6 +70,26 @@ function harness() {
   return { agentPresets, database, repository }
 }
 
+it('imports long replacements and saves ten thousand global, character and version rows without a SQL parameter ceiling', () => {
+  const { repository, database } = harness()
+  const initial = repository.get('card-a')
+  const large = 'Synthetic EJS text '.repeat(500001) + 'tail-marker'
+  const imported = repository.import('card-a', 'Character', [{ displayName: 'synthetic-large.json',
+    json: JSON.stringify([{ scriptName: 'Synthetic EJS', findRegex: '/synthetic/g', replaceString: large, scope: 'Character' }]) }], initial.revision)
+  expect(imported.collection.characterRules[0]?.replacement).toBe(large)
+  const current = imported.collection
+  const rules = Array.from({ length: 10001 }, (_, index) => rule({ id: `synthetic-rule-${index}`, replacement: `value-${index}`, enabled: false }))
+  const versions = Array.from({ length: 10001 }, (_, index) => ({ id: `synthetic-version-${index}`, name: `Version ${index}`,
+    globalEnabledIds: [], agentPresetEnabledIds: [], characterEnabledIds: [] }))
+  const saved = repository.save('card-a', { ...current, globalRules: rules, characterRules: rules.map(item => ({ ...item, id: `character-${item.id}` })), versions, activeVersionId: versions[0]!.id }, current.revision)
+  database.close(); database.open()
+  const reopened = repository.get('card-a')
+  expect(reopened.globalRules).toEqual(saved.globalRules)
+  expect(reopened.characterRules).toEqual(saved.characterRules)
+  expect(reopened.versions).toEqual(saved.versions)
+  for (const index of [0, 5000, 10000]) expect(reopened.characterRules[index]?.replacement).toBe(`value-${index}`)
+}, 60000)
+
 const EMPTY_PRESET_REGEX_REVISION = '0'.repeat(64)
 
 describe('regex processor', () => {

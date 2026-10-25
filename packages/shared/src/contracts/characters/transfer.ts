@@ -5,9 +5,9 @@ export const characterImportSourceSchema = z.enum(['eleckoi', 'sillytavern'])
 export const characterExportFormatSchema = z.enum(['png', 'json'])
 
 export const characterImportFileSchema = z.object({
-  displayName: z.string().min(1).max(260),
-  mimeType: z.string().max(120),
-  base64: z.string().min(1).max(132 * 1024 * 1024)
+  displayName: z.string().min(1),
+  mimeType: z.string(),
+  base64: z.string().min(1)
 }).strict()
 
 export const characterImportPreviewItemSchema = z.object({
@@ -32,22 +32,22 @@ export const characterImportResultSchema = z.object({
 }).strict()
 
 export const characterExportResultSchema = z.object({
-  fileName: z.string().min(1).max(260),
+  fileName: z.string().min(1),
   mimeType: z.enum(['image/png', 'application/json']),
-  base64: z.string().min(1).max(132 * 1024 * 1024)
+  base64: z.string().min(1)
 }).strict()
 
 export const characterExportBatchResultSchema = z.object({
   canceled: z.boolean(),
-  directory: z.string().max(520),
+  directory: z.string(),
   written: z.array(z.object({
     characterId: z.string().min(1),
-    fileName: z.string().min(1).max(260)
-  }).strict()).max(50),
+    fileName: z.string().min(1)
+  }).strict()),
   failures: z.array(z.object({
     characterId: z.string().min(1),
-    message: z.string().min(1).max(500)
-  }).strict()).max(50)
+    message: z.string().min(1)
+  }).strict())
 }).strict()
 
 export type CharacterImportSource = z.infer<typeof characterImportSourceSchema>

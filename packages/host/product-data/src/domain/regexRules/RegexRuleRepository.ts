@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import type {
   RegexRule,
   RegexRuleCollection,
@@ -133,6 +133,22 @@ function ruleRow(rule: RegexRule, sortIndex: number) {
   }
 }
 
+function ruleParameters() {
+  return {
+    id: sql.placeholder('id'), name: sql.placeholder('name'), pattern: sql.placeholder('pattern'),
+    replacement: sql.placeholder('replacement'), targetsJson: sql.placeholder('targetsJson'),
+    enabled: sql.placeholder('enabled'), displayOnly: sql.placeholder('displayOnly'),
+    promptOnly: sql.placeholder('promptOnly'), runOnEdit: sql.placeholder('runOnEdit'),
+    sortIndex: sql.placeholder('sortIndex'), optionsJson: sql.placeholder('optionsJson'),
+  }
+}
+
+function insertCharacterRules(db: ElecKoiDatabase, characterId: string, rules: RegexRule[]): void {
+  if (!rules.length) return
+  const insert = db.insert(characterRegexRules).values({ characterId, ...ruleParameters() }).prepare()
+  rules.forEach((rule, index) => insert.run(ruleRow(rule, index)))
+}
+
 export class RegexRuleRepository {
   constructor(
     private readonly store: ElecKoiSqliteStore,
@@ -239,8 +255,7 @@ export class RegexRuleRepository {
       if (target.scope === 'preset') this.agentPresetRegexes.replaceRegexRules(target.ownerId, normalized.agentPresetRules, db)
       else {
         db.delete(characterRegexRules).where(eq(characterRegexRules.characterId, target.ownerId)).run()
-        if (normalized.characterRules.length) db.insert(characterRegexRules).values(normalized.characterRules.map((rule, sortIndex) => ({
-          characterId: target.ownerId, ...ruleRow(rule, sortIndex) }))).run()
+        insertCharacterRules(db, target.ownerId, normalized.characterRules)
       }
       const activeVersionId = normalized.activeVersionId
       db.insert(regexState).values({ singletonId: 1, activeVersionId: activeVersionId || null, revision: current.revision + 1 })
@@ -343,12 +358,7 @@ export class RegexRuleRepository {
       normalized.agentPresetEnabled ?? this.scopeEnabled('preset', normalized.agentPresetId, db))
     this.agentPresetRegexes.replaceActiveRegexRules(normalized.agentPresetRules, db)
     db.delete(characterRegexRules).where(eq(characterRegexRules.characterId, characterId)).run()
-    if (normalized.characterRules.length > 0) {
-      db.insert(characterRegexRules).values(normalized.characterRules.map((rule, sortIndex) => ({
-        characterId,
-        ...ruleRow(rule, sortIndex)
-      }))).run()
-    }
+    insertCharacterRules(db, characterId, normalized.characterRules)
     db.insert(regexState).values({
       singletonId: 1,
       activeVersionId: normalized.activeVersionId || null,
@@ -414,18 +424,17 @@ export class RegexRuleRepository {
   private persistShared(db: ElecKoiDatabase, collection: Pick<RegexRuleCollection, 'globalRules' | 'versions'>): void {
     db.delete(globalRegexRules).run()
     if (collection.globalRules.length > 0) {
-      db.insert(globalRegexRules).values(collection.globalRules.map(ruleRow)).run()
+      const insert = db.insert(globalRegexRules).values(ruleParameters()).prepare()
+      collection.globalRules.forEach((rule, index) => insert.run(ruleRow(rule, index)))
     }
     db.delete(regexEnablementVersions).run()
     if (collection.versions.length > 0) {
-      db.insert(regexEnablementVersions).values(collection.versions.map((version, sortIndex) => ({
-        id: version.id,
-        name: version.name,
-        sortIndex,
-        globalEnabledIdsJson: JSON.stringify(version.globalEnabledIds),
-        agentPresetEnabledIdsJson: JSON.stringify(version.agentPresetEnabledIds),
-        characterEnabledIdsJson: JSON.stringify(version.characterEnabledIds)
-      }))).run()
+      const insert = db.insert(regexEnablementVersions).values({ id: sql.placeholder('id'), name: sql.placeholder('name'),
+        sortIndex: sql.placeholder('sortIndex'), globalEnabledIdsJson: sql.placeholder('globalEnabledIdsJson'),
+        agentPresetEnabledIdsJson: sql.placeholder('agentPresetEnabledIdsJson'), characterEnabledIdsJson: sql.placeholder('characterEnabledIdsJson') }).prepare()
+      collection.versions.forEach((version, sortIndex) => insert.run({ id: version.id, name: version.name, sortIndex,
+        globalEnabledIdsJson: JSON.stringify(version.globalEnabledIds), agentPresetEnabledIdsJson: JSON.stringify(version.agentPresetEnabledIds),
+        characterEnabledIdsJson: JSON.stringify(version.characterEnabledIds) }))
     }
   }
 

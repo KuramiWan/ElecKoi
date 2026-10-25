@@ -26,10 +26,10 @@ beforeEach(() => {
 
 function recordMask(event) { maskEvents.push(event.detail); }
 afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; document.body.replaceChildren(); document.removeEventListener('eleckoi:system-bar-mask', recordMask); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-async function mount(page = 'character', initialRoute = { kind: 'root' }) {
+async function mount(page = 'character', initialRoute = { kind: 'root' }, characters = samples) {
   function Harness() {
     const [route, setRoute] = useState(initialRoute);
-    const [collection, setCollection] = useState({ items: structuredClone(samples), groups: ['分组甲', '分组乙'], active_character_id: 'character-a' });
+    const [collection, setCollection] = useState({ items: structuredClone(characters), groups: ['分组甲', '分组乙'], active_character_id: 'character-a' });
     view = { route, routeBusy: false, scrollPositions: new Map(), guardRef: { current: null }, characters: { exportCharacters: vi.fn() },
       openDrawer: vi.fn(), pushRoute: setRoute, replaceRoute: setRoute, goBack: () => setRoute({ kind: 'root' }), openCharacterConversation: start,
       registerBackHandler: callback => { backHandlers.push(callback); return () => { backHandlers = backHandlers.filter(item => item !== callback); }; },
@@ -53,6 +53,18 @@ async function input(value) {
 }
 
 describe('Android character and preset library contracts', () => {
+  it('selects more than fifty export cards individually and through select all', async () => {
+    const characters = Array.from({ length: 101 }, (_, index) => ({ id: `synthetic-card-${index}`, name: `Synthetic card ${index}`, group: '', persona: {} }));
+    await mount('character', { kind: 'root' }, characters);
+    await click('角色操作');
+    await click('导出角色卡');
+    for (const character of characters.slice(0, 51)) await click(character.name);
+    expect(document.querySelectorAll('.mobile-character-card[aria-pressed=true]')).toHaveLength(51);
+    await click('全选');
+    expect(document.querySelectorAll('.mobile-character-card[aria-pressed=true]')).toHaveLength(101);
+    expect(document.querySelector('.mobile-inline-error')).toBeNull();
+  });
+
   it('uses a single portrait through the official slot and keeps actions outside the long introduction scroll', async () => {
     await mount('character', { kind: 'character-profile', characterId: 'character-a' });
     expect(document.querySelector('.character-deck')).toBeNull();

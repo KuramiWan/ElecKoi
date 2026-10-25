@@ -5,22 +5,18 @@ import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 
 const fileSchema = z.strictObject({ path: scriptFilePathSchema, data: z.string() })
-const MAX_FILES_BYTES = 48 * 1024 * 1024
 export type PortableScriptLibrary = Pick<ScriptLibrary, 'trees' | 'variables' | 'enabled'> & {
   files?: Array<z.infer<typeof fileSchema>>
 }
 
 export function decodeScriptFiles(value: unknown): NonNullable<PortableScriptLibrary['files']> {
   const files = z.array(fileSchema).parse(value), paths = new Set<string>()
-  let bytes = 0
   for (const file of files) {
     const key = process.platform === 'win32' ? file.path.toLowerCase() : file.path
     if (paths.has(key)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, `脚本附件路径重复：${file.path}`, { what: '脚本附件路径', path: file.path })
     paths.add(key)
     const body = Buffer.from(file.data, 'base64')
     if (body.toString('base64') !== file.data) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, `脚本附件内容损坏：${file.path}`, { what: '脚本附件内容', path: file.path })
-    bytes += body.byteLength
-    if (bytes > MAX_FILES_BYTES) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '脚本附件总大小不能超过 48 MB。', { field: 'files' })
   }
   return files
 }

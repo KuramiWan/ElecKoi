@@ -85,8 +85,7 @@ export function MobileCharactersPage() {
     </MobileHeader>
     {selection && <MobileSelectionHeader title="选择角色" summary={`${selectedIds.length} 张`} busy={busy} onCancel={cancelSelection} onAll={() => {
       const ids = [...new Set([...selectedIds, ...visible.map(item => item.id)])];
-      if (selection === 'export' && ids.length > 50) setError('一次最多导出 50 张角色卡');
-      else setSelectedIds(ids);
+      setSelectedIds(ids);
     }}>
       {selection === 'export' && <select aria-label="导出格式" value={format} disabled={busy} onChange={event => setFormat(event.target.value)}><option value="png">PNG</option><option value="json">JSON</option></select>}
       <button type="button" className={selection === 'delete' ? 'is-destructive' : 'is-confirm'} disabled={busy || !selectedIds.length} onClick={() => selection === 'delete' ? setDeleteOpen(true) : finishSelection()}>{selection === 'delete' ? '删除' : '导出'}</button>
@@ -97,8 +96,7 @@ export function MobileCharactersPage() {
       if (!selection) { chat.selectCharacter(item.id); view.pushRoute({ kind: 'character-profile', characterId: item.id }); return; }
       if (busy) return;
       if (selectedIds.includes(item.id)) setSelectedIds(selectedIds.filter(id => id !== item.id));
-      else if (selection !== 'export' || selectedIds.length < 50) setSelectedIds([...selectedIds, item.id]);
-      else setError('一次最多导出 50 张角色卡');
+      else setSelectedIds([...selectedIds, item.id]);
     }} />
     {error && <p className="mobile-inline-error" role="alert">{error}</p>}
     {deleteOpen && <MobileConfirm title="删除角色？" onClose={() => setDeleteOpen(false)} busy={busy} onConfirm={finishSelection} error={error}>确认删除已选的 {selectedIds.length} 张角色卡？</MobileConfirm>}

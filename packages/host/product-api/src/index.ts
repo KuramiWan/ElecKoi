@@ -555,8 +555,7 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
     conversationId: string,
     messages: ConversationMessageDisplayInput[]
   ): ConversationMessageDisplayResult[] {
-    if (!Array.isArray(messages) || messages.length > 200) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的消息数量无效。', { what: '待显示的消息' })
-    let totalLength = 0
+    if (!Array.isArray(messages)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的消息数量无效。', { what: '待显示的消息' })
     for (const message of messages) {
       if (!message || typeof message.id !== 'string' || !message.id
         || (message.role !== 'user' && message.role !== 'assistant')
@@ -566,7 +565,6 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
         || typeof message.createdAt !== 'string') {
         throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的消息格式无效。', { what: '待显示的消息' })
       }
-      totalLength += message.content.length + message.variableStateJson.length
       if (message.reasoning !== undefined) {
         if (message.role !== 'assistant' || !Array.isArray(message.reasoning)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的推理格式无效。', { what: '待显示的推理' })
         const ids = new Set<string>()
@@ -575,11 +573,9 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
             throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的推理格式无效。', { what: '待显示的推理' })
           }
           ids.add(item.id)
-          totalLength += item.text.length
         }
       }
     }
-    if (totalLength > 4 * 1024 * 1024) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '待显示的消息内容过大。', { what: '待显示的消息内容' })
     return this.productData.projectConversationMessages(conversationId, messages)
   }
 
@@ -682,7 +678,6 @@ export class ElecKoiConversationsApi extends TypertRemoteService {
    */
   @Remote
   async importArchive(characterId: string, json: string): Promise<string> {
-    if (json.length > 100_000_000) throw productFailure(ELECKOI_FAILURE_CODES.inputInvalid, '聊天记录文件过大。', { field: 'size' })
     const first = json.split(/\r?\n/).find(line => line.trim())
     let tavernHeader = false
     try {

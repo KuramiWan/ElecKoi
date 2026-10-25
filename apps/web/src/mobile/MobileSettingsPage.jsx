@@ -63,7 +63,7 @@ function ProfileEditor({ owner, onBack }) {
       <button type="button" className="mobile-profile-avatar" aria-label="管理头像" disabled={owner.saving} onClick={owner.onManageAvatars}>
         <Avatar src={owner.profile.avatars.circle} name={owner.profile.name || '你'} />
       </button>
-      <div className="mobile-settings-card mobile-settings-field"><label><span>名字</span><input aria-label="名字" maxLength={32} disabled={owner.saving} value={owner.profile.name} onChange={event => owner.onChange({ name: event.target.value })} /></label></div>
+      <div className="mobile-settings-card mobile-settings-field"><label><span>名字</span><input aria-label="名字" disabled={owner.saving} value={owner.profile.name} onChange={event => owner.onChange({ name: event.target.value })} /></label></div>
     </div>
     <UnsavedChangesDialog open={Boolean(pending)} title="保存用户资料？" description="用户资料尚未保存。" saving={owner.saving} error={owner.message === '已保存' ? '' : owner.message}
       onCancel={() => setPending(null)} onDiscard={() => { const action = pending; setPending(null); action?.(); }}

@@ -92,9 +92,9 @@ export const agentPresetSchema = z.object({
 })
 
 export const agentPresetImportDocumentSchema = z.object({
-  displayName: z.string().min(1).max(260),
-  mimeType: z.string().max(120),
-  base64: z.string().min(1).max(90 * 1024 * 1024)
+  displayName: z.string().min(1),
+  mimeType: z.string(),
+  base64: z.string().min(1)
 }).strict()
 
 export const agentPresetImportSourceSchema = z.enum(['eleckoi', 'sillytavern'])

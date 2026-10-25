@@ -62,8 +62,9 @@ describe('NAI preset illustration', () => {
 
   it('rejects invalid saved parameters and reversed automatic ranges', () => {
     expect(novelAiImageSettingsError({ automaticImageCount: true, automaticImageMin: 4, automaticImageMax: 2 })).toContain('不能大于');
-    expect(() => normalizeNovelAiImageSettings({ fixedImageCount: 25 })).toThrow();
-    expect(() => normalizeNovelAiImageSettings({ steps: 51 })).toThrow();
+    expect(normalizeNovelAiImageSettings({ fixedImageCount: 25 }).fixedImageCount).toBe(25);
+    expect(normalizeNovelAiImageSettings({ steps: 51 }).steps).toBe(51);
+    expect(() => normalizeNovelAiImageSettings({ steps: 0 })).toThrow();
     expect(() => normalizeNovelAiImageSettings({ sampler: 'unknown' })).toThrow();
   });
 

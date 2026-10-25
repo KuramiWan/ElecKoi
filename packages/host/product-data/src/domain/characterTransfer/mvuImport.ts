@@ -104,7 +104,7 @@ function projectState(state: JsonObject, schema: z.ZodType | undefined, rules: M
     const description = node?.description ?? structural?.description ?? ''
     const updateRule = rules.get(JSON.stringify(path)) ?? ''
     if (childObject) {
-      checkKey(key, 40)
+      checkKey(key)
       const id = `object-${randomUUID()}`
       objects.push({ id, name: key, parentId, enabled: true, description, updateRule, dynamicKey,
         order, treeViewOrder: order, createdAt: '', updatedAt: '' })
@@ -125,7 +125,7 @@ function projectState(state: JsonObject, schema: z.ZodType | undefined, rules: M
         }
       } else visit(childObject, node, id, path)
     } else {
-      checkKey(key, 60)
+      checkKey(key)
       variables.push({ id: `variable-${randomUUID()}`, title: key, objectId: parentId, enabled: true,
         type: valueType(value), defaultValue: typeof value === 'string' ? value : JSON.stringify(value),
         description, updateRule, readMode: 'on_demand', order, treeViewOrder: order, createdAt: '', updatedAt: '' })
@@ -154,7 +154,7 @@ function parseStateObject(source: string): JsonObject {
 function parseYaml(source: string): unknown {
   const document = parseDocument(source, { merge: true, uniqueKeys: true })
   if (document.errors.length) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, document.errors.map(error => error.message).join('; '), { what: '变量初始化内容的 YAML' })
-  return document.toJS({ maxAliasCount: 64 }) as unknown
+  return document.toJS({ maxAliasCount: -1 }) as unknown
 }
 
 function applyOpeningPatch(seed: JsonObject, source: string): JsonObject {
@@ -247,8 +247,8 @@ function valueType(value: unknown): VariableValueType {
   throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '变量值不是受支持的 JSON 类型。', { what: '变量值的类型', expected: 'JSON 类型' })
 }
 
-function checkKey(key: string, limit: number): void {
-  if (!key || key !== key.trim() || key.length > limit) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `变量键无法由当前原生配置完整表示（长度限制 ${limit}）。`, { field: 'key' })
+function checkKey(key: string): void {
+  if (!key || key !== key.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '变量键不能为空或包含首尾空格。', { field: 'key' })
 }
 
 function unfence(source: string): string { return source.trim().replace(/^```(?:yaml|yml|json|json5)?\s*\n/i, '').replace(/\n```\s*$/, '').trim() }

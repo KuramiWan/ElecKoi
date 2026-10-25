@@ -212,5 +212,5 @@ function safeDirectoryName(name: string): string {
   if (!sanitized || WINDOWS_RESERVED_NAME.test(sanitized)) {
     throw new DesktopError(DESKTOP_ERROR_CODES.INVALID_REQUEST, '项目名称无法用于本地目录。')
   }
-  return sanitized.slice(0, 80)
+  return sanitized
 }

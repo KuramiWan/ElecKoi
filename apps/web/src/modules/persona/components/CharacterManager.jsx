@@ -10,7 +10,6 @@ import { CharacterImportDialog } from "./CharacterImportDialog.jsx";
 import { ALL_CHARACTERS, characterGroup, characterName } from "./characterUtils.js";
 
 const CHARACTER_ARTWORK_RATIOS = [0.76, 0.68, 0.84, 0.72];
-const MAX_EXPORT_SELECTION = 50;
 
 export function characterArtworkAspectRatio(index) {
   return CHARACTER_ARTWORK_RATIOS[index % CHARACTER_ARTWORK_RATIOS.length];
@@ -200,10 +199,6 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
       setSelectedIds(selectedIds.filter((id) => id !== characterId));
       return;
     }
-    if (exportFormat && selectedIds.length >= MAX_EXPORT_SELECTION) {
-      setError(`一次最多导出 ${MAX_EXPORT_SELECTION} 张。`);
-      return;
-    }
     setError(null);
     setSelectedIds([...selectedIds, characterId]);
   }
@@ -237,10 +232,8 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
 
   function selectAllVisible() {
     const merged = [...new Set([...selectedIds, ...visibleCharacters.map((character) => character.id)])];
-    setSelectedIds(merged.slice(0, MAX_EXPORT_SELECTION));
-    setError(merged.length > MAX_EXPORT_SELECTION
-      ? `一次最多导出 ${MAX_EXPORT_SELECTION} 张，已保留原有勾选并添加至上限。`
-      : "");
+    setSelectedIds(merged);
+    setError(null);
   }
 
   function clearSelection() {
@@ -249,10 +242,6 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
 
   async function confirmExport() {
     if (!selectedIds.length || exporting) return;
-    if (selectedIds.length > MAX_EXPORT_SELECTION) {
-      setError(`一次最多导出 ${MAX_EXPORT_SELECTION} 张。`);
-      return;
-    }
     setError(null);
     setExportNotice("");
     setExporting(true);

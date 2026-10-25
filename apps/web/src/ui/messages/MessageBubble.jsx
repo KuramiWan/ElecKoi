@@ -382,7 +382,7 @@ function MessageBubbleComponent({ message = {}, avatar, pinSrc, name, layoutMode
         <SystemBarOverlay className="opening-jump-backdrop" onPointerDown={() => closePageJump()}>
           <form ref={jumpDialogRef} className="opening-jump-dialog" role="dialog" aria-modal="true" aria-labelledby="opening-jump-title" onPointerDown={(event) => event.stopPropagation()} onSubmit={submitPageJump}>
             <h2 id="opening-jump-title">跳转开场白</h2>
-            <label>页码（1–{options.length}）<input type="number" min="1" max={options.length} step="1" value={pageInput} onChange={(event) => setPageInput(event.target.value.replace(/\D/g, '').slice(0, 5))} inputMode="numeric" autoFocus aria-invalid={Boolean(pageInput) && !requestedPageValid} aria-describedby={pageInput && !requestedPageValid ? "opening-jump-error" : undefined} /></label>
+            <label>页码（1–{options.length}）<input type="number" min="1" max={options.length} step="1" value={pageInput} onChange={(event) => setPageInput(event.target.value.replace(/\D/g, ''))} inputMode="numeric" autoFocus aria-invalid={Boolean(pageInput) && !requestedPageValid} aria-describedby={pageInput && !requestedPageValid ? "opening-jump-error" : undefined} /></label>
             {pageInput && !requestedPageValid ? <small id="opening-jump-error">请输入 1 到 {options.length}</small> : null}
             <div><button type="button" onClick={() => closePageJump()}>取消</button><button type="submit" className="primary" disabled={!openingEnabled || !requestedPageValid}>跳转</button></div>
           </form>

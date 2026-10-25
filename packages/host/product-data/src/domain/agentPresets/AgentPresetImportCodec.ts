@@ -27,8 +27,6 @@ const ELECKOI_FORMAT_VERSION = 2
 const ELECKOI_PNG_PRESET_KEY = 'eleckoi_agent_preset'
 const SILLY_TAVERN_GLOBAL_PROMPT_ORDER_ID = '100001'
 const SILLY_TAVERN_PROMPT_GROUP_ID = 'tavern-preset-prompts'
-const MAX_INPUT_BYTES = 64 * 1024 * 1024
-const MAX_AVATAR_BYTES = 8 * 1024 * 1024
 const FALLBACK_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 const avatarMediaTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
@@ -494,8 +492,8 @@ function emptyEntry(id: string, timestamp: string): SettingLibraryEntry {
 function decodeInput(base64: string): Uint8Array {
   const normalized = base64.trim().replace(/\s+/g, '')
   const bytes = Buffer.from(normalized, 'base64')
-  if (!bytes.length || bytes.length > MAX_INPUT_BYTES || bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) {
-    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '预设文件数据无效或超过 64 MB。', { field: 'data' })
+  if (!bytes.length || bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '预设文件数据无效。', { field: 'data' })
   }
   return bytes
 }
@@ -503,8 +501,8 @@ function decodeInput(base64: string): Uint8Array {
 function validateEmbeddedAvatar(base64: string): void {
   const normalized = base64.replace(/\s+/g, '')
   const bytes = Buffer.from(normalized, 'base64')
-  if (!bytes.length || bytes.length > MAX_AVATAR_BYTES || bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) {
-    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '预设卡作者头像已损坏或超过 8 MB。', { what: '预设卡作者头像', field: 'author_avatar' })
+  if (!bytes.length || bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '预设卡作者头像已损坏。', { what: '预设卡作者头像', field: 'author_avatar' })
   }
 }
 

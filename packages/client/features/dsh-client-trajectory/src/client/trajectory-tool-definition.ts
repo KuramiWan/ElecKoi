@@ -11,7 +11,6 @@ import { trajectoryNode } from './trajectory-definition-common.ts'
 /* jscpd:ignore-start -- Target-owned Definitions intentionally keep their event
  * state machines independent; see ../../../../../.agents/notes/implemented/
  * architecture/2026-08-09-client-conversation-node-assembly.md. */
-const MAX_DEPTH = 256
 
 type ToolCallBlock = StartedToolCall | ToolResultNode
 
@@ -116,26 +115,22 @@ function childResult(
 function acceptsEdge(state: ToolState, parent: string, child: string): boolean {
   if (parent === child || state.parents.has(child)) return false
   let cursor: string | undefined = parent
-  let parentDepth = 0
   const ancestors = new Set<string>()
   while (cursor !== undefined) {
     if (cursor === child || ancestors.has(cursor)) return false
     ancestors.add(cursor)
-    parentDepth++
     cursor = state.parents.get(cursor)
   }
-  const pending = [{ callId: child, depth: 1 }]
+  const pending = [child]
   const descendants = new Set<string>()
-  let subtreeDepth = 0
   for (const candidate of pending) {
-    if (descendants.has(candidate.callId)) return false
-    descendants.add(candidate.callId)
-    subtreeDepth = Math.max(subtreeDepth, candidate.depth)
-    for (const nested of state.children.get(candidate.callId) ?? []) {
-      pending.push({ callId: nested, depth: candidate.depth + 1 })
+    if (descendants.has(candidate)) return false
+    descendants.add(candidate)
+    for (const nested of state.children.get(candidate) ?? []) {
+      pending.push(nested)
     }
   }
-  return parentDepth + subtreeDepth <= MAX_DEPTH
+  return true
 }
 
 function updateDispatch(state: ToolState, match: ConversationMatch): ToolState {
@@ -175,33 +170,34 @@ function projectCall(
   state: ToolState,
   callId: string,
   interruptedAt: { seq: number; time: number } | undefined,
-  visited = new Set<string>(),
-  depth = 1,
 ): ToolCallBlock | undefined {
-  const block = state.calls.get(callId)
-  if (block === undefined) return undefined
-  if (visited.has(callId) || depth > MAX_DEPTH) return { ...block, subCalls: [] }
-  const nextVisited = new Set(visited)
-  nextVisited.add(callId)
-  const subCalls = (state.children.get(callId) ?? [])
-    .flatMap((childId) => {
-      const child = projectCall(state, childId, interruptedAt, nextVisited, depth + 1)
+  const projected = new Map<string, ToolCallBlock>()
+  const pending = [{ id: callId, complete: false }]
+  const visited = new Set<string>()
+  while (pending.length) {
+    const current = pending.pop()!
+    const block = state.calls.get(current.id)
+    if (block === undefined) continue
+    if (!current.complete) {
+      if (visited.has(current.id)) continue
+      visited.add(current.id)
+      pending.push({ id: current.id, complete: true })
+      for (const id of [...state.children.get(current.id) ?? []].reverse()) pending.push({ id, complete: false })
+      continue
+    }
+    const subCalls = (state.children.get(current.id) ?? []).flatMap(id => {
+      const child = projected.get(id)
       return child === undefined ? [] : [child]
     })
-  if ('kind' in block || interruptedAt === undefined) return { ...block, subCalls }
-  return {
-    kind: 'tool-result',
-    seq: interruptedAt.seq - 0.8,
-    time: interruptedAt.time,
-    callId: block.callId,
-    ...block.parentCallId === undefined ? {} : { parentCallId: block.parentCallId },
-    call: { name: block.name, argsRaw: block.argsRaw },
-    callTime: block.time,
-    content: [],
-    isError: true,
-    error: { name: 'Interrupted', code: 'interrupted' },
-    subCalls,
+    projected.set(current.id, 'kind' in block || interruptedAt === undefined ? { ...block, subCalls } : {
+      kind: 'tool-result', seq: interruptedAt.seq - 0.8, time: interruptedAt.time,
+      callId: block.callId,
+      ...block.parentCallId === undefined ? {} : { parentCallId: block.parentCallId },
+      call: { name: block.name, argsRaw: block.argsRaw }, callTime: block.time,
+      content: [], isError: true, error: { name: 'Interrupted', code: 'interrupted' }, subCalls,
+    })
   }
+  return projected.get(callId)
 }
 
 function fallbackState(context: ConversationNodeContext<ToolState>): ToolState | undefined {

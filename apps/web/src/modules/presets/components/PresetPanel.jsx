@@ -203,10 +203,6 @@ export function PresetListPanel() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (file.size > 64 * 1024 * 1024) {
-      setImportError('预设文件不能超过 64 MB');
-      return;
-    }
     runGuarded(async () => {
       setImporting(true);
       setImportError('');

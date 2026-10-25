@@ -166,7 +166,7 @@ export function canvasHistoryReducer(state, action) {
   if (action.type === "commit") {
     const next = typeof action.next === "function" ? action.next(state.present) : action.next;
     if (next === state.present) return state;
-    return { past: [...state.past, state.present].slice(-50), present: next, future: [] };
+    return { past: [...state.past, state.present], present: next, future: [] };
   }
   if (action.type === "move-live") {
     return {
@@ -190,15 +190,15 @@ export function canvasHistoryReducer(state, action) {
     const previous = state.present.map((node) => node.id === action.nodeId
       ? { ...node, x: action.fromX, y: action.fromY }
       : node);
-    return { past: [...state.past, previous].slice(-50), present: state.present, future: [] };
+    return { past: [...state.past, previous], present: state.present, future: [] };
   }
   if (action.type === "undo" && state.past.length) {
     const previous = state.past[state.past.length - 1];
-    return { past: state.past.slice(0, -1), present: previous, future: [state.present, ...state.future].slice(0, 50) };
+    return { past: state.past.slice(0, -1), present: previous, future: [state.present, ...state.future] };
   }
   if (action.type === "redo" && state.future.length) {
     const next = state.future[0];
-    return { past: [...state.past, state.present].slice(-50), present: next, future: state.future.slice(1) };
+    return { past: [...state.past, state.present], present: next, future: state.future.slice(1) };
   }
   return state;
 }

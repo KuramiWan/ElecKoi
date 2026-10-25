@@ -13,8 +13,8 @@ export interface VariableSchemaRuntime {
 export type VariableRuleStage = 'schema' | 'input' | 'validation' | 'execution' | 'output'
 const remoteFailure = z.object({
   error_stage: z.enum(['schema', 'input', 'validation', 'execution', 'output']),
-  detail: z.string().max(8000),
-  issues: z.array(z.object({ path: z.string(), code: z.string(), message: z.string().max(1000) })).max(64).optional(),
+  detail: z.string(),
+  issues: z.array(z.object({ path: z.string(), code: z.string(), message: z.string() })).optional(),
   issues_truncated: z.boolean().optional(),
 }).strict()
 
@@ -41,17 +41,17 @@ export function describeVariableRuleFailure(error: unknown): {
     }
   }
   const cause = error instanceof VariableRuleError ? error.cause : error
-  const detail = (error instanceof Error ? error.message : String(error)).slice(0, 8000)
+  const detail = error instanceof Error ? error.message : String(error)
   return {
     error_stage: error instanceof VariableRuleError ? error.stage : 'execution',
     detail,
     ...(cause instanceof z.ZodError ? {
-      issues: cause.issues.slice(0, 64).map(issue => ({
+      issues: cause.issues.map(issue => ({
         path: issue.path.length ? '/' + issue.path.map(part => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/') : '',
         code: issue.code,
-        message: issue.message.slice(0, 1000),
+        message: issue.message,
       })),
-      issues_truncated: cause.issues.length > 64,
+      issues_truncated: false,
     } : {}),
   }
 }
@@ -136,7 +136,7 @@ function createVariableSchema(source: string): VariableSchemaRuntime {
     } else statements.push(source.slice(statement.start!, statement.end!))
   }
   const context = createContext(bindings, { codeGeneration: { strings: false, wasm: false } })
-  const schema: unknown = new Script(`(() => {\n${statements.join('\n')}\nreturn ${result};\n})()`).runInContext(context, { timeout: 1000 })
+  const schema: unknown = new Script(`(() => {\n${statements.join('\n')}\nreturn ${result};\n})()`).runInContext(context)
   if (!(schema instanceof z.ZodType)) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '变量规则没有返回当前支持的 Zod Schema。', { what: '变量规则返回的 Zod Schema' })
   const prototypes = new Set([Object.prototype, null, new Script('Object.prototype').runInContext(context)])
   context.__schema = schema
@@ -149,7 +149,7 @@ function createVariableSchema(source: string): VariableSchemaRuntime {
       context.__state = structuredClone(value)
       try {
         let parsed: unknown
-        try { parsed = evaluate.runInContext(context, { timeout: 1000 }) }
+        try { parsed = evaluate.runInContext(context) }
         catch (error) { throw ruleFailure(error instanceof z.ZodError ? 'validation' : 'execution', error) }
         try {
           assertVariableJson(parsed, prototypes)

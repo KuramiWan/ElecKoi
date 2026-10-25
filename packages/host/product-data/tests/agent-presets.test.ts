@@ -7,6 +7,7 @@ import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 import { readPngText } from '@eleckoi/dsh-product-data/media'
 import { SqliteDatabase } from '../src/storage/sqlite/SqliteDatabase'
 import { agentPresetSchema } from '../../../shared/src/contracts/presets/schemas'
+import { emptyEntry } from '../src/domain/settingLibraries/index'
 
 const databases: SqliteDatabase[] = []
 const directories: string[] = []
@@ -38,6 +39,37 @@ function importDocument(value: unknown, displayName = 'preset.json') {
 }
 
 describe('agent preset repository', () => {
+  it.each([101, 1001, 10001])('preserves %i prompts, long tasks and update records through save and database reopen', count => {
+    const repository = harness()
+    repository.ensureInitialized()
+    const initial = repository.active()
+    const body = 'Synthetic author content '.repeat(501) + 'tail-marker'
+    const important = [0, Math.floor(count / 2), count - 1]
+    const input = agentPresetSchema.parse({ ...initial,
+      roleplayPlan: { steps: Array.from({ length: count }, (_, index) => `${index}:${important.includes(index) ? body : 'task'}`) },
+      entries: [...initial.entries, ...Array.from({ length: count }, (_, index) => ({ ...emptyEntry(`synthetic-bulk-${index}`),
+        title: `Synthetic prompt ${index}`, content: important.includes(index) ? body : `content-${index}` }))],
+      profile: { ...initial.profile, usageInstructions: body, timeline: Array.from({ length: count }, (_, index) => ({
+        id: `synthetic-update-${index}`, title: `Synthetic update ${index}`, dateLabel: '2026-10-25', note: important.includes(index) ? body : 'note',
+      })) },
+      regexRules: [{ id: 'synthetic-ejs', name: 'Synthetic EJS', pattern: '/test/g', replacement: `<% /* ${body} */ %><%= "tail-marker" %>`,
+        enabled: true, displayOnly: true, promptOnly: false, runOnEdit: false, order: 0, targets: ['AiOutput'] }],
+    })
+    const saved = repository.save(input, initial.regexRules)
+    const database = databases.at(-1)!
+    database.close(); database.open()
+    const reopened = repository.get(saved.id)
+    expect(reopened.entries.filter(entry => entry.id.startsWith('synthetic-bulk-'))).toHaveLength(count)
+    expect(reopened.roleplayPlan.steps).toEqual(input.roleplayPlan.steps)
+    expect(reopened.profile).toEqual(input.profile)
+    expect(reopened.regexRules).toEqual(input.regexRules)
+    for (const index of important) expect(reopened.entries.find(entry => entry.id === `synthetic-bulk-${index}`)?.content).toBe(body)
+    const removed = repository.save({ ...reopened, profile: { ...reopened.profile, timeline: [] } }, reopened.regexRules)
+    database.close(); database.open()
+    expect(repository.get(removed.id).profile.timeline).toEqual([])
+    expect(repository.get(removed.id).entries).toEqual(reopened.entries)
+  }, 60000)
+
   it('accepts extra editor fields without saving them into preset data', () => {
     const repository = harness()
     repository.ensureInitialized()

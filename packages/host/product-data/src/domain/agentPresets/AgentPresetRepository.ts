@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   AGENT_TOOL_GROUPS,
@@ -955,8 +955,8 @@ function portableAvatar(reference: string, mediaAssets?: LocalMediaStore): {
     bytes = readFileSync(path)
     encoded = bytes.toString('base64')
   }
-  if (!bytes.length || bytes.length > 8 * 1024 * 1024 || bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
-    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '预设作者头像已损坏或超过 8 MB。', { what: '预设作者头像' })
+  if (!bytes.length || bytes.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.mediaInvalid, '预设作者头像已损坏。', { what: '预设作者头像' })
   }
   return { transfer: { mediaType, base64: encoded }, bytes }
 }
@@ -1065,22 +1065,28 @@ function presetToolGroups(includedIds: ReadonlySet<string>, enabledIds: Readonly
 
 function replaceEntries(db: ElecKoiDatabase, presetId: string, entries: SettingLibraryEntry[]): void {
   db.delete(agentPresetEntries).where(eq(agentPresetEntries.presetId, presetId)).run()
-  if (entries.length) db.insert(agentPresetEntries).values(entries.map((entry, sortIndex) => ({
-    presetId,
-    entryId: entry.id,
-    sortIndex,
-    payloadJson: JSON.stringify(entry)
-  }))).run()
+  if (entries.length) {
+    const insert = db.insert(agentPresetEntries).values({
+      presetId,
+      entryId: sql.placeholder('entryId'),
+      sortIndex: sql.placeholder('sortIndex'),
+      payloadJson: sql.placeholder('payloadJson')
+    }).prepare()
+    entries.forEach((entry, sortIndex) => insert.run({ entryId: entry.id, sortIndex, payloadJson: JSON.stringify(entry) }))
+  }
 }
 
 function replaceGroups(db: ElecKoiDatabase, presetId: string, groups: SettingLibraryGroup[]): void {
   db.delete(agentPresetGroups).where(eq(agentPresetGroups.presetId, presetId)).run()
-  if (groups.length) db.insert(agentPresetGroups).values(groups.map((group, sortIndex) => ({
-    presetId,
-    groupId: group.id,
-    sortIndex,
-    payloadJson: JSON.stringify(group)
-  }))).run()
+  if (groups.length) {
+    const insert = db.insert(agentPresetGroups).values({
+      presetId,
+      groupId: sql.placeholder('groupId'),
+      sortIndex: sql.placeholder('sortIndex'),
+      payloadJson: sql.placeholder('payloadJson')
+    }).prepare()
+    groups.forEach((group, sortIndex) => insert.run({ groupId: group.id, sortIndex, payloadJson: JSON.stringify(group) }))
+  }
 }
 
 function replaceVersionEntries(db: ElecKoiDatabase, presetId: string, versionId: string, entries: SettingLibraryEntry[]): void {
@@ -1088,13 +1094,16 @@ function replaceVersionEntries(db: ElecKoiDatabase, presetId: string, versionId:
     eq(agentPresetVersionEntries.presetId, presetId),
     eq(agentPresetVersionEntries.versionId, versionId)
   )).run()
-  if (entries.length) db.insert(agentPresetVersionEntries).values(entries.map((entry, sortIndex) => ({
-    presetId,
-    versionId,
-    entryId: entry.id,
-    sortIndex,
-    payloadJson: JSON.stringify(entry)
-  }))).run()
+  if (entries.length) {
+    const insert = db.insert(agentPresetVersionEntries).values({
+      presetId,
+      versionId,
+      entryId: sql.placeholder('entryId'),
+      sortIndex: sql.placeholder('sortIndex'),
+      payloadJson: sql.placeholder('payloadJson')
+    }).prepare()
+    entries.forEach((entry, sortIndex) => insert.run({ entryId: entry.id, sortIndex, payloadJson: JSON.stringify(entry) }))
+  }
 }
 
 function replaceVersionGroups(db: ElecKoiDatabase, presetId: string, versionId: string, groups: SettingLibraryGroup[]): void {
@@ -1102,13 +1111,16 @@ function replaceVersionGroups(db: ElecKoiDatabase, presetId: string, versionId: 
     eq(agentPresetVersionGroups.presetId, presetId),
     eq(agentPresetVersionGroups.versionId, versionId)
   )).run()
-  if (groups.length) db.insert(agentPresetVersionGroups).values(groups.map((group, sortIndex) => ({
-    presetId,
-    versionId,
-    groupId: group.id,
-    sortIndex,
-    payloadJson: JSON.stringify(group)
-  }))).run()
+  if (groups.length) {
+    const insert = db.insert(agentPresetVersionGroups).values({
+      presetId,
+      versionId,
+      groupId: sql.placeholder('groupId'),
+      sortIndex: sql.placeholder('sortIndex'),
+      payloadJson: sql.placeholder('payloadJson')
+    }).prepare()
+    groups.forEach((group, sortIndex) => insert.run({ groupId: group.id, sortIndex, payloadJson: JSON.stringify(group) }))
+  }
 }
 
 function parseObject(raw: string, label: string): Record<string, unknown> {

@@ -64,10 +64,10 @@ export function modelParameterState(form, activeProviderId) {
       || !Object.keys(activeModelOption.reasoningEfforts).some((effort) => effort !== "off")
     );
   const parameterError = activeModelOption && (
-    (activeModelOption.contextWindowTokens != null && (activeModelOption.contextWindowTokens < 4096 || activeModelOption.contextWindowTokens > 4_000_000))
-    || (activeModelOption.autoCompactTokenLimit != null && (activeModelOption.autoCompactTokenLimit < 1024 || activeModelOption.autoCompactTokenLimit > effectiveContextWindow))
-    || (activeModelOption.maxOutputTokens != null && (activeModelOption.maxOutputTokens < 1 || activeModelOption.maxOutputTokens > 4_000_000))
-    || (activeModelOption.temperature != null && (activeModelOption.temperature < 0 || activeModelOption.temperature > 2))
+    (activeModelOption.contextWindowTokens != null && (!Number.isSafeInteger(activeModelOption.contextWindowTokens) || activeModelOption.contextWindowTokens < 1))
+    || (activeModelOption.autoCompactTokenLimit != null && (!Number.isSafeInteger(activeModelOption.autoCompactTokenLimit) || activeModelOption.autoCompactTokenLimit < 1 || activeModelOption.autoCompactTokenLimit > effectiveContextWindow))
+    || (activeModelOption.maxOutputTokens != null && (!Number.isSafeInteger(activeModelOption.maxOutputTokens) || activeModelOption.maxOutputTokens < 1))
+    || (activeModelOption.temperature != null && (!Number.isFinite(activeModelOption.temperature) || activeModelOption.temperature < 0))
     || (activeModelOption.topP != null && (activeModelOption.topP < 0 || activeModelOption.topP > 1))
     || reasoningProfileError
     || (Array.isArray(activeModelOption.inputModalities) && activeModelOption.inputModalities.length === 0)

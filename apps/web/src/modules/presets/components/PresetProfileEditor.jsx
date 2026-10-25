@@ -41,10 +41,6 @@ export function PresetProfileEditor({ preset, dirty, saving, error, onChange, on
     const file = event.target.files?.[0] || null;
     event.target.value = '';
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) {
-      setImageError('图片不能超过 8 MB');
-      return;
-    }
     setImageError('');
     setCropFile(file);
   }

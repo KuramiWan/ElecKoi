@@ -13,15 +13,16 @@ import {
 } from "../../src/modules/appearance/preferences/chatDisplay.js";
 
 describe("chat display preferences", () => {
-  it("defaults rich message limits to ten AI floors and validates a bounded whole count", () => {
+  it("keeps rich message limits opt-in and accepts authored positive floor counts", () => {
     const defaults = DEFAULT_CHAT_DISPLAY_PREFERENCES;
-    expect(defaults.rich_message_limit_enabled).toBe(true);
+    expect(defaults.rich_message_limit_enabled).toBe(false);
     expect(defaults.rich_message_floor_limit).toBe(10);
     const { rich_message_limit_enabled, rich_message_floor_limit, ...saved } = defaults;
-    expect(chatDisplayPreferencesSchema.parse(saved)).toMatchObject({ rich_message_limit_enabled: true, rich_message_floor_limit: 10 });
+    expect(chatDisplayPreferencesSchema.parse(saved)).toMatchObject({ rich_message_limit_enabled: false, rich_message_floor_limit: 10 });
     expect(chatDisplayPreferencesSchema.parse({ ...defaults, rich_message_limit_enabled: false, rich_message_floor_limit: 6 }))
       .toMatchObject({ rich_message_limit_enabled: false, rich_message_floor_limit: 6 });
-    for (const limit of [0, 101, 1.5, Infinity]) {
+    for (const limit of [101, 1001, 10001]) expect(chatDisplayPreferencesSchema.parse({ ...defaults, rich_message_limit_enabled: true, rich_message_floor_limit: limit }).rich_message_floor_limit).toBe(limit);
+    for (const limit of [0, 1.5, Infinity]) {
       expect(chatDisplayPreferencesSchema.safeParse({ ...defaults, rich_message_floor_limit: limit }).success).toBe(false);
     }
   });

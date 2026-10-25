@@ -83,6 +83,20 @@ function assertWorkspace(scripts: ScriptLibraryRepository, scope: 'character' | 
 }
 
 describe('native script file transfer', () => {
+  it('imports and persists every character beyond the former fifty-card batch ceiling', () => {
+    const f = setup()
+    f.characters.create({ id: 'synthetic-source', name: 'Synthetic source', persona: { assistant_name: 'Synthetic source' } })
+    const document = f.transfer.export('synthetic-source', 'json')
+    const preview = f.transfer.prepare(Array.from({ length: 101 }, (_, index) => ({ ...input(document), displayName: `synthetic-card-${index}.json` })), 'eleckoi')
+    expect(preview.items).toHaveLength(101)
+    expect(preview.items.every(item => item.importable)).toBe(true)
+    const result = f.transfer.commit(preview.token)
+    expect(result.failedMessages).toEqual([])
+    expect(result.importedCharacterIds).toHaveLength(101)
+    f.database.close(); f.database.open()
+    const characters = f.characters.get().items
+    for (const index of [0, 50, 100]) expect(characters.some(item => item.id === result.importedCharacterIds[index])).toBe(true)
+  }, 60000)
 
 
 

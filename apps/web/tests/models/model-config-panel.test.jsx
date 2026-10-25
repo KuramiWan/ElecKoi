@@ -3,7 +3,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModelConfigPanel } from '../../src/modules/models/components/ModelConfigPanel.jsx';
-import { initialConfigForProvider } from '../../src/modules/models/model/modelConfigDraft.js';
+import { initialConfigForProvider, modelParameterState } from '../../src/modules/models/model/modelConfigDraft.js';
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 vi.stubGlobal('React', React);
@@ -20,6 +20,14 @@ afterEach(async () => {
 });
 const draft = () => ({ id: 'config-example', provider: 'custom', name: 'Example', model: '', model_options: [],
   api_format: 'chat_completions', api_key: '', base_url: 'https://models.example/v1', custom_headers: {} });
+
+it('accepts explicit model token settings without universal four-million or minimum-window cutoffs', () => {
+  const state = values => modelParameterState({ ...draft(), model: 'synthetic', model_options: [{ id: 'synthetic', ...values }] }, 'custom');
+  expect(state({ contextWindowTokens: 8000001, maxOutputTokens: 6000001, autoCompactTokenLimit: 64, temperature: 3 }).parameterError).toBeFalsy();
+  expect(state({ contextWindowTokens: 512, autoCompactTokenLimit: 32 }).parameterError).toBeFalsy();
+  expect(state({ contextWindowTokens: 512, autoCompactTokenLimit: 513 }).parameterError).toBe(true);
+  expect(state({ maxOutputTokens: Infinity }).parameterError).toBe(true);
+});
 const layout = ({ sidePanel, mainPanel, overlays }) => <>{sidePanel}{mainPanel}{overlays}</>;
 const button = text => [...container.querySelectorAll('button')].find(element => element.textContent.trim() === text);
 const field = text => [...container.querySelectorAll('label')].find(element => element.textContent.trim().startsWith(text))?.querySelector('input,select');

@@ -2,8 +2,6 @@ import { randomInt } from 'node:crypto'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
-const RESPONSE_LIMIT = 32 * 1024 * 1024
-const ERROR_LIMIT = 64 * 1024
 
 // 「确实不处理」的具名声明：语义见 packages/shared/src/foundation/swallowedFailure.ts。
 // 本文件是独立 bundle 的源，运行时取不到那个包，所以就地定义（同名同义，空函数）。
@@ -32,13 +30,12 @@ export function createNovelAiImageGeneration(ctx) {
       for (const frame of frames) {
         signal.throwIfAborted()
         try {
-          const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(180000)])
           const seed = frame.seed ?? randomInt(0, 4294967296)
           const payload = novelAiRequest(entry.model.trim(), settings, frame, seed)
-          const response = await fetch(base, { method: 'POST', redirect: 'error', signal: requestSignal,
+          const response = await fetch(base, { method: 'POST', redirect: 'error', signal,
             headers: { ...entry.custom_headers, Authorization: `Bearer ${key}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-          const body = await readBody(response, response.ok ? RESPONSE_LIMIT : ERROR_LIMIT)
-          if (!response.ok) throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, `NovelAI 生图失败（HTTP ${response.status}）：${body.replaceAll(key, '[已隐藏]').slice(0, 600)}`, { operation: 'request', what: 'NovelAI 生图接口' })
+          const body = await readBody(response)
+          if (!response.ok) throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, `NovelAI 生图失败（HTTP ${response.status}）：${body.replaceAll(key, '[已隐藏]')}`, { operation: 'request', what: 'NovelAI 生图接口' })
           let result
           try { result = JSON.parse(body) } catch { throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, 'NovelAI 返回的生图结果不是合法 JSON。', { what: 'NovelAI 返回的生图结果' }) }
           if (!Array.isArray(result.images) || result.images.length !== 1) throw productFailure(ELECKOI_FAILURE_CODES.mediaInvalid, 'NovelAI 没有返回本次请求的唯一图片。', { what: 'NovelAI 返回的图片' })
@@ -79,16 +76,13 @@ export function novelAiRequest(model, settings, frame, seed) {
   } }
 }
 
-async function readBody(response, limit) {
+async function readBody(response) {
   if (!response.body) throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, 'NovelAI 返回了空响应。', { operation: 'request', what: 'NovelAI 生图响应' })
   const chunks = [], reader = response.body.getReader()
-  let size = 0
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      size += value.byteLength
-      if (size > limit) throw productFailure(ELECKOI_FAILURE_CODES.netOperationFailed, 'NovelAI 响应超过大小限制。', { operation: 'request', what: 'NovelAI 生图响应' })
       chunks.push(value)
     }
     return Buffer.concat(chunks).toString('utf8')

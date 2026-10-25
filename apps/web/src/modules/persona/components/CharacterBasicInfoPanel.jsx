@@ -139,7 +139,6 @@ export function CharacterBasicInfoPanel({ character, dirty, saving, error, saveN
           <Input
             aria-labelledby="character-name-label"
             value={name}
-            maxLength={80}
             showClear
             size="large"
             disabled={saving}
@@ -182,7 +181,6 @@ export function CharacterBasicInfoPanel({ character, dirty, saving, error, saveN
           <TextArea
             aria-labelledby="character-profile-label"
             value={profile}
-            maxCount={2000}
             placeholder="请输入内容..."
             resize="none"
             showCounter

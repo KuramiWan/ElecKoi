@@ -51,8 +51,8 @@ export const regexRuleCollectionSchema = z.object({
 })
 
 export const regexRuleImportDocumentSchema = z.object({
-  displayName: z.string().min(1).max(260),
-  json: z.string().max(8 * 1024 * 1024)
+  displayName: z.string().min(1),
+  json: z.string()
 }).strict()
 
 export const regexRuleImportResultSchema = z.object({

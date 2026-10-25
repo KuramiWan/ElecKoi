@@ -190,9 +190,9 @@ function statusFromInfo(
     phase,
     currentVersion,
     availableVersion: info.version,
-    releaseName: cleanSingleLine(info.releaseName ?? null, 200),
+    releaseName: cleanSingleLine(info.releaseName ?? null),
     releaseNotes: normalizeReleaseNotes(info.releaseNotes),
-    releaseDate: cleanSingleLine(info.releaseDate, 100),
+    releaseDate: cleanSingleLine(info.releaseDate),
     downloadSizeBytes: downloadSize(info),
     progress: null,
     message
@@ -217,10 +217,10 @@ export function normalizeReleaseNotes(notes: UpdateInfo['releaseNotes']): string
   return plain
 }
 
-function cleanSingleLine(value: string | null, maxLength: number): string | null {
+function cleanSingleLine(value: string | null): string | null {
   if (value === null) return null
   const cleaned = value.replace(/\s+/g, ' ').trim()
-  return cleaned ? cleaned.slice(0, maxLength) : null
+  return cleaned || null
 }
 
 function decodeBasicHtmlEntities(value: string): string {
@@ -241,5 +241,5 @@ function updateErrorMessage(message: string): string {
   if (message.includes('ENOENT') && /(?:^|[/\\])app-update\.yml(?:$|['\"])/.test(message)) {
     return '安装包缺少更新配置（app-update.yml），请重新安装修复后的版本。'
   }
-  return (`更新失败：${message}`).slice(0, 300)
+  return `更新失败：${message}`
 }

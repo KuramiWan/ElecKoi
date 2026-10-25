@@ -53,15 +53,15 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
       <div className="model-parameter-grid">
         <label>
           <span>上下文窗口 <small>{compact ? `= ${compactTokens(effectiveContextWindow)}` : `自动 ${automaticContextWindow.toLocaleString()}`}</small></span>
-          <input type="number" min="4096" max="4000000" disabled={!form.model} value={activeModelOption?.contextWindowTokens ?? ""} onChange={(event) => onChange({ contextWindowTokens: optionalNumber(event.target.value) })} placeholder={String(automaticContextWindow)} />
+          <input type="number" min="1" disabled={!form.model} value={activeModelOption?.contextWindowTokens ?? ""} onChange={(event) => onChange({ contextWindowTokens: optionalNumber(event.target.value) })} placeholder={String(automaticContextWindow)} />
         </label>
         <label>
           <span>自动压缩阈值 <small>{compact ? `= ${compactTokens(activeModelOption?.autoCompactTokenLimit ?? Math.floor(effectiveContextWindow * 0.8))} · ${activeModelOption?.autoCompactTokenLimit == null ? '占上下文 80%' : '自定义'}` : '默认占上下文 80%'}</small></span>
-          <input type="number" min="1024" max={effectiveContextWindow} disabled={!form.model} value={activeModelOption?.autoCompactTokenLimit ?? ""} onChange={(event) => onChange({ autoCompactTokenLimit: optionalNumber(event.target.value) })} placeholder={`${compact ? '自动 ' : ''}${Math.floor(effectiveContextWindow * 0.8)}`} />
+          <input type="number" min="1" max={effectiveContextWindow} disabled={!form.model} value={activeModelOption?.autoCompactTokenLimit ?? ""} onChange={(event) => onChange({ autoCompactTokenLimit: optionalNumber(event.target.value) })} placeholder={`${compact ? '自动 ' : ''}${Math.floor(effectiveContextWindow * 0.8)}`} />
         </label>
         <label>
           <span>单次最大输出 <small>{compact && activeModelOption?.maxOutputTokens != null ? `= ${compactTokens(activeModelOption.maxOutputTokens)}` : '留空由上游决定'}</small></span>
-          <input type="number" min="1" max="4000000" disabled={!form.model} value={activeModelOption?.maxOutputTokens ?? ""} onChange={(event) => onChange({ maxOutputTokens: optionalNumber(event.target.value) })} placeholder="自动" />
+          <input type="number" min="1" disabled={!form.model} value={activeModelOption?.maxOutputTokens ?? ""} onChange={(event) => onChange({ maxOutputTokens: optionalNumber(event.target.value) })} placeholder="自动" />
         </label>
         <label>
           <span>推理强度 <small>当前请求</small></span>
@@ -70,8 +70,8 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
           </select>
         </label>
         <label>
-          <span>温度 <small>{compact ? '留空不发送' : '0–2'}</small></span>
-          <input type="number" min="0" max="2" step="0.01" disabled={!form.model} value={activeModelOption?.temperature ?? ""} onChange={(event) => onChange({ temperature: optionalNumber(event.target.value) })} placeholder={compact ? '留空' : '上游默认'} />
+          <span>温度 <small>留空不发送</small></span>
+          <input type="number" min="0" step="0.01" disabled={!form.model} value={activeModelOption?.temperature ?? ""} onChange={(event) => onChange({ temperature: optionalNumber(event.target.value) })} placeholder={compact ? '留空' : '上游默认'} />
         </label>
         <label>
           <span>Top P <small>{compact ? '留空不发送' : '0–1'}</small></span>
@@ -117,7 +117,7 @@ export function ModelParametersSection({ form, activeModelOption, automaticConte
           </fieldset>
         ) : null}
       </div>
-      {parameterError ? <p className="model-parameter-error">上下文需为 4,096–4,000,000；压缩不能超过上下文；输出需为 1–4,000,000；温度为 0–2，Top P 为 0–1；已声明推理能力时至少选择一个非关闭档位。</p> : null}
+      {parameterError ? <p className="model-parameter-error">上下文、压缩阈值和输出需为正整数；压缩不能超过上下文；温度需为非负数，Top P 为 0–1；已声明推理能力时至少选择一个非关闭档位。</p> : null}
       {activeModelOption?.inputModalities?.length === 0 && <p className="model-parameter-error">至少选择一种输入能力。</p>}
     </section>
   );

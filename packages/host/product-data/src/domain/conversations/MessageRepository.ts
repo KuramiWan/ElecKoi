@@ -14,7 +14,7 @@ export class MessageRepository {
   constructor(private readonly store: ElecKoiSqliteStore) {}
 
   pageMetadata(conversationId: string, beforeSequence?: number, limit = 50) {
-    const size = Math.max(1, Math.min(200, Math.trunc(limit)))
+    const size = Math.max(1, Math.trunc(limit))
     const placements = this.store.native.prepare(`SELECT p.sequence FROM agent_branch_turns p
       JOIN agent_conversations c ON c.activeBranchId=p.branchId WHERE c.id=? AND p.sequence<?
       ORDER BY p.sequence DESC LIMIT ?`).all(conversationId, beforeSequence ?? Number.MAX_SAFE_INTEGER, size + 1) as Array<{ sequence: number }>

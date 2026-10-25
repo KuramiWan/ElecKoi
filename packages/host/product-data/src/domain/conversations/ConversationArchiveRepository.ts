@@ -25,7 +25,7 @@ export interface ConversationArchiveSnapshot {
 }
 
 function rows(value: unknown): Row[] {
-  if (!Array.isArray(value) || value.length > 200000) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天记录数据格式不正确。', { what: '聊天记录' })
+  if (!Array.isArray(value)) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '聊天记录数据格式不正确。', { what: '聊天记录' })
   return value.map((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)
       || Object.values(item).some((cell) => cell !== null && typeof cell !== 'string' && typeof cell !== 'number')) {

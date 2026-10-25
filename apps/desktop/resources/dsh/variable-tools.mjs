@@ -12,12 +12,6 @@ import {
 } from './runtime-plugin-failure.mjs'
 
 const fixedObjectId = 'fixed-variable-initialization-object'
-const defaultCollectionPageSize = 20
-const maximumCollectionPageSize = 100
-const defaultTextPageSize = 4_000
-const maximumTextPageSize = 8_000
-const maximumInlineValueChars = 4_000
-const maximumPageChars = 12_000
 export const name = 'eleckoi-variable-tools'
 export const inject = ['tools', 'eleckoiVariableProcessing']
 
@@ -141,14 +135,14 @@ function grepTool() {
 function readTool(ctx) {
   return defineTool({
     name: 'eleckoi_read_variables',
-    description: '按 JSON Pointer 读取当前回合变量，给出当前值、默认值、说明和完整更新规则。对象和数组按子项分页，长文本按字符分页；分页项会返回可继续读取的精确子路径，避免把大型变量整体写入会话日志。每轮先用变量 Glob 获取 required_variables 并读取这些必读变量；上轮读取不能代替本轮状态。修改前应先读并遵守作者规则。变量工具结果溢出时，只传 result 按提示续读全文或搜索结果文件。',
+    description: '按 JSON Pointer 读取当前回合变量，给出当前值、默认值、说明和完整更新规则。默认返回完整值，也可显式按子项或字符分页；大结果按溢出提示通过本入口续读。每轮先用变量 Glob 获取 required_variables 并读取这些必读变量；上轮读取不能代替本轮状态。修改前应先读并遵守作者规则。变量工具结果溢出时，只传 result 按提示续读全文或搜索结果文件。',
     parameters: {
       paths: { type: 'array', items: { type: 'string' }, description: '普通读取必填：一个或多个完整变量 JSON Pointer 路径；与 result 二选一。可使用分页结果返回的精确子路径继续读取。' },
       result: resultReadParameter,
       offset: { type: 'integer', description: '对象或数组的子项起始位置，默认 0。' },
-      limit: { type: 'integer', description: '对象或数组每页最多返回的子项数，默认 20，最大 100。' },
+      limit: { type: 'integer', description: '可选的本页子项数；省略时返回其余全部子项。' },
       char_offset: { type: 'integer', description: '长文本的字符起始位置，默认 0。' },
-      char_limit: { type: 'integer', description: '长文本每页最多返回的字符数，默认 4000，最大 8000。' },
+      char_limit: { type: 'integer', description: '可选的本页字符数；省略时返回其余完整文本。' },
     },
     output: outputDefinition(),
     async execute(args, exec) {
@@ -161,9 +155,9 @@ function readTool(ctx) {
       const catalog = variableCatalog(bridge)
       const options = {
         offset: nonnegativeInteger(args.offset, 0),
-        limit: boundedInteger(args.limit, defaultCollectionPageSize, 1, maximumCollectionPageSize),
+        limit: args.limit === undefined ? undefined : positiveInteger(args.limit),
         charOffset: nonnegativeInteger(args.char_offset, 0),
-        charLimit: boundedInteger(args.char_limit, defaultTextPageSize, 1, maximumTextPageSize),
+        charLimit: args.char_limit === undefined ? undefined : positiveInteger(args.char_limit),
       }
       const resolved = paths.map((path) => {
         const entry = catalogEntryForPath(catalog, path)
@@ -204,7 +198,7 @@ function patchTool(processing) {
       operations: {
         type: 'array',
         required: true,
-        description: '按顺序执行的 1 到 200 项变量补丁。',
+        description: '按顺序执行的非空变量补丁列表。',
         items: {
           type: 'object',
           additionalProperties: false,
@@ -219,7 +213,7 @@ function patchTool(processing) {
     output: outputDefinition(),
     async execute(args, exec) {
       const bridgeFile = variableBridgeFor(exec)
-      if (!args.operations.length || args.operations.length > 200) return failure('invalid_arguments', 'operations 必须包含 1 到 200 项。')
+      if (!args.operations.length) return failure('invalid_arguments', 'operations 不能为空。')
       const bridge = readBridge(bridgeFile)
       if (!bridge.enabled) return {
         status: 'ok', applied_operations: 0, paths: [], state_unchanged: true
@@ -497,15 +491,15 @@ function catalogEntryForPath(catalog, path) {
 function pageVariableValue(result, path, options) {
   if (!result.present) return null
   const value = result.value
-  if (typeof value === 'string' && (value.length > maximumInlineValueChars || options.charOffset > 0)) {
-    const text = value.slice(options.charOffset, options.charOffset + options.charLimit)
+  if (typeof value === 'string' && (options.charLimit !== undefined || options.charOffset > 0)) {
+    const text = value.slice(options.charOffset, options.charLimit === undefined ? undefined : options.charOffset + options.charLimit)
     const nextOffset = options.charOffset + text.length
     return {
       kind: 'text_page',
       text,
       total_chars: value.length,
       char_offset: options.charOffset,
-      char_limit: options.charLimit,
+      ...(options.charLimit === undefined ? {} : { char_limit: options.charLimit }),
       returned_chars: text.length,
       has_more: nextOffset < value.length,
       ...(nextOffset < value.length ? { next_char_offset: nextOffset } : {}),
@@ -518,23 +512,14 @@ function pageVariableValue(result, path, options) {
       : null
   if (pairs === null) return value
 
-  const selected = pairs.slice(options.offset, options.offset + options.limit)
-  const entries = []
-  let outputChars = 0
-  for (const pair of selected) {
-    const childPath = `${path}/${encodePointer(pair.key)}`
-    const item = pagedEntry(pair.key, childPath, pair.value)
-    const itemChars = JSON.stringify(item).length
-    if (entries.length > 0 && outputChars + itemChars > maximumPageChars) break
-    entries.push(item)
-    outputChars += itemChars
-  }
+  const selected = pairs.slice(options.offset, options.limit === undefined ? undefined : options.offset + options.limit)
+  const entries = selected.map(pair => ({ key: pair.key, path: `${path}/${encodePointer(pair.key)}`, value: pair.value }))
   const nextOffset = options.offset + entries.length
   return {
     kind: Array.isArray(value) ? 'array_page' : 'object_page',
     total: pairs.length,
     offset: options.offset,
-    limit: options.limit,
+    ...(options.limit === undefined ? {} : { limit: options.limit }),
     returned: entries.length,
     has_more: nextOffset < pairs.length,
     ...(nextOffset < pairs.length ? { next_offset: nextOffset } : {}),
@@ -542,27 +527,13 @@ function pageVariableValue(result, path, options) {
   }
 }
 
-function pagedEntry(key, path, value) {
-  const serialized = JSON.stringify(value)
-  if (serialized.length <= maximumInlineValueChars) return { key, path, value }
-  const childCount = Array.isArray(value) ? value.length : isObject(value) ? Object.keys(value).length : undefined
-  return {
-    key,
-    path,
-    value_omitted: true,
-    value_type: inferredType(value),
-    value_chars: serialized.length,
-    ...(childCount === undefined ? {} : { child_count: childCount }),
-    read_hint: '再次调用 eleckoi_read_variables 并把此 path 放入 paths。',
-  }
-}
-
 function nonnegativeInteger(value, fallback) {
   return Number.isInteger(value) && value >= 0 ? value : fallback
 }
 
-function boundedInteger(value, fallback, minimum, maximum) {
-  return Math.max(minimum, Math.min(maximum, Number.isInteger(value) ? value : fallback))
+function positiveInteger(value) {
+  if (!Number.isSafeInteger(value) || value < 1) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.inputInvalid, '分页数量必须是正整数。', { field: 'limit' })
+  return value
 }
 
 function valueAtSegments(root, segments) {

@@ -360,7 +360,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   }
   function requestVersion() {
     setManagerOpen(false);
-    setNameDialog({ type: 'version', title: '保存为设定版本', label: '版本名称', value: versionName(selectedItem), confirmLabel: '保存', maxLength: 60 });
+    setNameDialog({ type: 'version', title: '保存为设定版本', label: '版本名称', value: versionName(selectedItem), confirmLabel: '保存' });
   }
   function requestReset() {
     setManagerOpen(false);
@@ -558,7 +558,6 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
           label: "版本名称",
           value: versionName(selectedItem),
           confirmLabel: "保存",
-          maxLength: 60,
         })}><Copy size={15} />另存版本</button>}
         {!compact && <button type="button" className="dynamic-settings-danger-action" title="清空分支设定" aria-label="清空分支设定" disabled={saving} onClick={() => setResetTarget({
           title: "清空这段对话的分支设定？",
@@ -581,7 +580,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
                 <div className="setting-library-popover" role="menu">
                   <button type="button" role="menuitem" onClick={() => {
                     setAddMenuOpen(false);
-                    setNameDialog({ type: "group", title: "新建文件夹", label: "文件夹名称", value: "新建文件夹", confirmLabel: "创建", parentId: targetGroupId(), maxLength: 80 });
+                    setNameDialog({ type: "group", title: "新建文件夹", label: "文件夹名称", value: "新建文件夹", confirmLabel: "创建", parentId: targetGroupId() });
                   }}><SETTING_LIBRARY_CREATE_ICONS.group size={16} />文件夹</button>
                   <button type="button" role="menuitem" onClick={() => createEntry("standard")}><SETTING_LIBRARY_CREATE_ICONS.entry size={16} />设定</button>
                   <button type="button" role="menuitem" onClick={() => createEntry("reference")}><SETTING_LIBRARY_CREATE_ICONS.reference size={16} />EJS引用设定</button>
@@ -659,7 +658,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
             onEdit={() => setEditing(true)} onMove={() => startTransfer('cut')} onPaste={pasteSelection}
             onCancel={() => setClipboard(null)} onDelete={requestDeleteSelected}
             createItems={[
-              { label: '文件夹', Icon: SETTING_LIBRARY_CREATE_ICONS.group, run: () => setNameDialog({ type: 'group', title: '新建文件夹', label: '文件夹名称', value: '新建文件夹', confirmLabel: '创建', parentId: targetGroupId(), maxLength: 80 }) },
+              { label: '文件夹', Icon: SETTING_LIBRARY_CREATE_ICONS.group, run: () => setNameDialog({ type: 'group', title: '新建文件夹', label: '文件夹名称', value: '新建文件夹', confirmLabel: '创建', parentId: targetGroupId() }) },
               { label: '设定', Icon: SETTING_LIBRARY_CREATE_ICONS.entry, run: () => createEntry('standard') },
               { label: 'EJS引用设定', Icon: SETTING_LIBRARY_CREATE_ICONS.reference, run: () => createEntry('reference') },
             ]} moreItems={canDeleteSelected ? [
@@ -670,7 +669,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
             <div className="setting-library-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" onMouseDown={(event) => event.stopPropagation()}>
               {contextMenu.kind === "background" || contextMenu.kind === "group" ? (
                 <>
-                  <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setNameDialog({ type: "group", title: "新建文件夹", label: "文件夹名称", value: "新建文件夹", confirmLabel: "创建", parentId: contextMenu.parentId, maxLength: 80 }); }}><SETTING_LIBRARY_CREATE_ICONS.group size={15} />新建文件夹</button>
+                  <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setNameDialog({ type: "group", title: "新建文件夹", label: "文件夹名称", value: "新建文件夹", confirmLabel: "创建", parentId: contextMenu.parentId }); }}><SETTING_LIBRARY_CREATE_ICONS.group size={15} />新建文件夹</button>
                   <button type="button" role="menuitem" onClick={() => createEntry("standard", contextMenu.parentId)}><SETTING_LIBRARY_CREATE_ICONS.entry size={15} />新建设定</button>
                   <button type="button" role="menuitem" onClick={() => createEntry("reference", contextMenu.parentId)}><SETTING_LIBRARY_CREATE_ICONS.reference size={15} />新建 EJS引用设定</button>
                 </>

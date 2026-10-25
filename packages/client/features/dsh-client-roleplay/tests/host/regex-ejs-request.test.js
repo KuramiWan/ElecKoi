@@ -9,6 +9,16 @@ import { renderRequestEjs } from '../../src/host/regex-ejs.mjs';
 import { renderRegexEjs } from '@eleckoi/dsh-product-data/regex';
 
 describe('regex EJS actual request computation', () => {
+  it('preserves multi-megabyte EJS source and its entire evaluated request content', async () => {
+    const text = 'Synthetic long literal '.repeat(100001) + 'tail-marker';
+    const source = `<!-- eleckoi:regex-ejs:start --><%- ${JSON.stringify(text)} %><!-- eleckoi:regex-ejs:end -->`;
+    const message = createUserMessage({ content: [{ type: 'text', text: source }], source: { kind: 'user' } });
+    const output = await renderRequestEjs([message], { conversationId: 'synthetic-large-ejs' });
+    expect(output[0].content[0].text).toBe(text);
+    expect(output[0].id).toBe(message.id);
+    expect(message.content[0].text).toBe(source);
+  }, 30000);
+
   it('finishes EJS before the real llm/stream submission and captures the same evaluated request', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-regex-ejs-'));
     let dispose;

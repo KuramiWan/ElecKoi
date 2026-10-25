@@ -152,7 +152,7 @@ describe("DSH character variable tools", () => {
     expect(read.variables.map((item) => item.path)).toEqual(found.paths.slice(0, 20));
   });
 
-  it("pages large object values and exposes exact child paths without logging the full state", async () => {
+  it("respects explicit pages without omitting the complete child values", async () => {
     const runtime = await tools({ mapMarkerCount: 60 });
     const readTool = runtime.byName.get("eleckoi_read_variables");
     const first = await readTool.execute({ paths: ["/地图标记"], limit: 10 });
@@ -160,18 +160,39 @@ describe("DSH character variable tools", () => {
     expect(first.variables[0].current).toMatchObject({
       kind: "object_page", total: 60, offset: 0, limit: 10, returned: 10, has_more: true, next_offset: 10,
     });
-    expect(JSON.stringify(first).length).toBeLessThan(30_000);
     const child = first.variables[0].current.entries[0];
-    expect(child).toMatchObject({ path: "/地图标记/marker-0", value_omitted: true });
+    expect(child.path).toBe("/地图标记/marker-0");
+    expect(child.value.description).toBe('地点说明 0 '.repeat(900));
 
     const detail = await readTool.execute({ paths: [child.path], limit: 2 });
     expect(detail.variables[0]).toMatchObject({ configured_path: "/地图标记" });
     expect(detail.variables[0].current).toMatchObject({ kind: "object_page", total: 3, returned: 2, has_more: true });
-    expect(JSON.stringify(detail).length).toBeLessThan(20_000);
+    expect(detail.variables[0].current.entries.find(item => item.key === 'description').value).toBe(child.value.description);
 
     const description = await readTool.execute({ paths: [`${child.path}/description`], char_limit: 500 });
     expect(description.variables[0].current).toMatchObject({ kind: "text_page", char_offset: 0, char_limit: 500, returned_chars: 500, has_more: true });
     expect(description.variables[0].current.text).toHaveLength(500);
+  });
+
+  it('reads all object children by default and does not clamp a requested page above one hundred', async () => {
+    const runtime = await tools({ mapMarkerCount: 101 });
+    const read = runtime.byName.get('eleckoi_read_variables');
+    const full = await read.execute({ paths: ['/地图标记'] });
+    const explicit = await read.execute({ paths: ['/地图标记'], limit: 1001 });
+    for (const result of [full, explicit]) {
+      expect(result.variables[0].current).toMatchObject({ returned: 101, has_more: false });
+      for (const index of [0, 50, 100]) expect(result.variables[0].current.entries[index].value.description).toBe(`地点说明 ${index} `.repeat(900));
+    }
+    const text = await read.execute({ paths: ['/地图标记/marker-100/description'], char_limit: 10001 });
+    expect(text.variables[0].current.text).toBe('地点说明 100 '.repeat(900));
+  });
+
+  it('commits more than two hundred variable operations in their original order', async () => {
+    const runtime = await tools();
+    const operations = Array.from({ length: 1001 }, (_, index) => ({ op: 'replace', path: '/状态/称呼', value: `Synthetic ${index}` }));
+    const result = await runtime.byName.get('eleckoi_apply_variable_patch').execute({ operations });
+    expect(result).toMatchObject({ status: 'ok', applied_operations: 1001 });
+    expect(JSON.parse(readFileSync(runtime.file, 'utf8')).state.状态.称呼).toBe('Synthetic 1000');
   });
 
   it("commits valid patches to the bridge and rejects Zod-invalid changes atomically", async () => {
