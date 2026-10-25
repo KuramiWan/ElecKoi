@@ -1,5 +1,6 @@
+import { runtimeContextsFor } from '../helpers/runtime-contexts.js';
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SqliteDatabase } from "../../packages/host/product-data/src/storage/sqlite/SqliteDatabase";
@@ -52,20 +53,14 @@ function baseVariableConfig() {
   return { characterId: "synthetic-card", ...version, activeVersionId: version.id, versions: [version] };
 }
 function settingTools(entries = []) {
-  const root = temp(), file = join(root, "state.json"), snapshots = join(root, "snapshots"), id = "synthetic-audit-session";
+  const id = "synthetic-audit-session";
   const library = { characterId: "synthetic-card", groups: [], entries };
-  writeFileSync(file, JSON.stringify({ enabled: true, library, history: [], variableState: {} }));
-  mkdirSync(snapshots);
-  writeFileSync(join(snapshots, `${id}.json`), JSON.stringify({
-    conversationId: "synthetic-chat",
-    settingStateFile: file,
-    settingLibraryEnabled: true,
-    settingLibraryBaseline: { source: library, projected: library }
-  }));
-  vi.stubEnv("ELECKOI_SESSION_SNAPSHOT_ROOT", snapshots);
+  const contexts = runtimeContextsFor(id, { settings: { enabled: true, library, history: [], variableState: {} },
+    settingLibraryBaseline: { source: library, projected: library } });
   const definitions = [];
   const commit = vi.fn();
   applySettingTools({
+    eleckoiRuntimeContexts: contexts,
     tools: { register(def) {
       definitions.push(def);
       return () => {
@@ -75,7 +70,7 @@ function settingTools(entries = []) {
     eleckoiCharacterConfigurationChanges: { publish() {
     } }
   });
-  return { file, commit, run: (name, args) => definitions.find((def) => def.name === name).execute(args, { agent: { session: { id } } }) };
+  return { state: () => contexts.get(id).settings, commit, run: (name, args) => definitions.find((def) => def.name === name).execute(args, { agent: { session: { id } } }) };
 }
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -170,7 +165,7 @@ describe("complete authored content across requests, imports, and persistence", 
     const tools = settingTools(), hint = "h".repeat(600) + "\nZ", content = "b".repeat(5e4) + "Z";
     const result = await tools.run("eleckoi_apply_setting_patch", { operation: "write_file", path: "Synthetic setting", content, selection_hint: hint });
     expect(result.status).toBe("ok");
-    const bridge = JSON.parse(readFileSync(tools.file, "utf8"));
+    const bridge = tools.state();
     expect(bridge.library.entries[0].agentSelectionHint).toBe(hint);
     expect((await tools.run("eleckoi_read_setting_files", { paths: ["Synthetic setting"] })).files[0].content).toBe(content);
   });
@@ -182,24 +177,24 @@ describe("complete authored content across requests, imports, and persistence", 
     expect(glob.files.map((file) => file.path)).toEqual([prefix + "A", prefix + "B"]);
     expect((await tools.run("eleckoi_read_setting_files", { paths: [prefix + "A"] })).files[0].content).toBe("Synthetic A");
     expect((await tools.run("eleckoi_apply_setting_patch", { operation: "write_file", path: prefix + "B", content: "Synthetic updated" })).status).toBe("ok");
-    const saved = JSON.parse(readFileSync(tools.file, "utf8")).library.entries;
+    const saved = tools.state().library.entries;
     expect(saved.map((e) => [e.title, e.content])).toEqual([[prefix + "A", "Synthetic A"], [prefix + "B", "Synthetic updated"]]);
   });
   it("updates an existing virtual file without replacing its authored title with the path spelling", async () => {
     const tools = settingTools([{ ...emptyEntry('synthetic-punctuation', stamp), title: 'Synthetic: title', content: 'Synthetic original' }]);
     const listing = await tools.run('eleckoi_glob_setting_files', {});
     expect((await tools.run('eleckoi_apply_setting_patch', { operation: 'write_file', path: listing.files[0].path, content: 'Synthetic changed' })).status).toBe('ok');
-    const saved = JSON.parse(readFileSync(tools.file, 'utf8')).library.entries[0];
+    const saved = tools.state().library.entries[0];
     expect(saved.title).toBe('Synthetic: title');
     expect(saved.content).toBe('Synthetic changed');
   });
   it("rejects ambiguous sanitized paths before reading or mutating either setting", async () => {
     const tools = settingTools(["Synthetic:a", "Synthetic_a"].map((title, i) => ({ ...emptyEntry(`synthetic-${i}`, stamp), title, content: `Synthetic ${i}` })));
-    const before = readFileSync(tools.file, "utf8");
+    const before = JSON.stringify(tools.state());
     await expect(tools.run("eleckoi_read_setting_files", { paths: ["Synthetic_a"] })).rejects.toThrow("\u8DEF\u5F84\u4E0D\u552F\u4E00");
     const write = await tools.run("eleckoi_apply_setting_patch", { operation: "write_file", path: "Synthetic_a", content: "Synthetic changed" });
     expect(write.status).not.toBe("ok");
-    expect(readFileSync(tools.file, "utf8")).toBe(before);
+    expect(JSON.stringify(tools.state())).toBe(before);
     expect(tools.commit).not.toHaveBeenCalled();
   });
   it("imports complete variable names with the exact original state path", () => {

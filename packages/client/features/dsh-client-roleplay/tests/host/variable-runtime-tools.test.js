@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { runtimeContextsFor } from '../../../../../../tests/helpers/runtime-contexts.js';
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -23,13 +24,12 @@ afterEach(() => {
 async function tools({ extraCount = 0, mapMarkerCount = 0, configured = true, logger } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-variable-tools-"));
   directories.push(directory);
-  const file = join(directory, "state.json");
   const extraNames = Array.from({ length: extraCount }, (_, index) => `指标${index}`);
   const mapMarkers = Object.fromEntries(Array.from({ length: mapMarkerCount }, (_, index) => [
     `marker-${index}`,
     { title: `地点 ${index}`, description: `地点说明 ${index} `.repeat(900), image: `https://example.invalid/${index}.webp` },
   ]));
-  writeFileSync(file, JSON.stringify(configured ? {
+  const bridge = configured ? {
     enabled: true,
     config: {
       initialState: {
@@ -51,26 +51,22 @@ async function tools({ extraCount = 0, mapMarkerCount = 0, configured = true, lo
       状态: { 好感度: 10, 称呼: "朋友" },
       ...(mapMarkerCount ? { 地图标记: mapMarkers } : {}),
     },
-  } : { enabled: false, config: null, state: {} }, null, 2));
+  } : { enabled: false, config: null, state: {} };
   const sessionId = "variable-tool-test-session";
-  const snapshotRoot = join(directory, "session-snapshots");
-  mkdirSync(snapshotRoot);
-  writeFileSync(join(snapshotRoot, `${sessionId}.json`), JSON.stringify({
-    conversationId: "variable-tool-test-chat",
-    variableStateFile: file,
-    variablesEnabled: configured,
-  }));
-  process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
+  const contexts = runtimeContextsFor(sessionId, { variables: bridge });
   const registered = [];
   const processing = new ElecKoiVariableProcessing(null);
   applyVariableTools({
+    eleckoiRuntimeContexts: contexts,
     eleckoiVariableProcessing: processing,
     tools: { register: (definition) => { registered.push(definition); return () => undefined; } },
     ...(logger ? { logger } : {}),
   });
   const execution = { agent: { session: { id: sessionId } } };
   return {
-    file,
+    contexts,
+    state: () => contexts.get(sessionId).variables,
+    replace: value => { contexts.get(sessionId).variables = value; },
     sessionId,
     processing,
     byName: new Map(registered.map((definition) => [definition.name, {
@@ -95,10 +91,10 @@ describe("DSH character variable tools", () => {
 
   it("preserves a search match at the end of a long single-line variable value", async () => {
     const runtime = await tools();
-    const bridge = JSON.parse(readFileSync(runtime.file, "utf8"));
+    const bridge = runtime.state();
     const content = "合成正文𠮷😀".repeat(20_001) + "末尾关键词";
     bridge.state.状态.称呼 = content;
-    writeFileSync(runtime.file, JSON.stringify(bridge));
+    runtime.replace(bridge);
     const result = await runtime.byName.get("eleckoi_grep_variables").execute({ pattern: "末尾关键词", glob: "状态/称呼", output_mode: "content" });
     expect(result.matches).toHaveLength(1);
     expect(result.matches[0].text).toContain(content);
@@ -192,7 +188,7 @@ describe("DSH character variable tools", () => {
     const operations = Array.from({ length: 1001 }, (_, index) => ({ op: 'replace', path: '/状态/称呼', value: `Synthetic ${index}` }));
     const result = await runtime.byName.get('eleckoi_apply_variable_patch').execute({ operations });
     expect(result).toMatchObject({ status: 'ok', applied_operations: 1001 });
-    expect(JSON.parse(readFileSync(runtime.file, 'utf8')).state.状态.称呼).toBe('Synthetic 1000');
+    expect(runtime.state().state.状态.称呼).toBe('Synthetic 1000');
   });
 
   it("commits valid patches to the bridge and rejects Zod-invalid changes atomically", async () => {
@@ -200,12 +196,12 @@ describe("DSH character variable tools", () => {
     const patch = runtime.byName.get("eleckoi_apply_variable_patch");
     const accepted = await patch.execute({ operations: [{ op: "delta", path: "/状态/好感度", value: 5 }] });
     expect(accepted).toMatchObject({ status: "ok", applied_operations: 1 });
-    expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态.好感度).toBe(15);
+    expect(runtime.state().state.状态.好感度).toBe(15);
 
     const rejected = await patch.execute({ operations: [{ op: "replace", path: "/状态/好感度", value: 101 }] });
     expect(rejected).toMatchObject({ status: "validation_error", state_unchanged: true });
     expect(rejected).toMatchObject({ error_stage: "validation", issues: [{ path: "/状态/好感度", code: "too_big" }] });
-    expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态.好感度).toBe(15);
+    expect(runtime.state().state.状态.好感度).toBe(15);
 
     const stripped = await patch.execute({ operations: [{
       op: "replace",
@@ -214,25 +210,25 @@ describe("DSH character variable tools", () => {
     }] });
     expect(stripped).toMatchObject({ status: "normalization_conflict", state_unchanged: true });
     expect(stripped.paths).toContain("/状态/未声明字段");
-    expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态).toEqual({ 好感度: 15, 称呼: "朋友" });
+    expect(runtime.state().state.状态).toEqual({ 好感度: 15, 称呼: "朋友" });
   });
 
   it("returns an invalid attempt to the caller and accepts a corrected attempt without replaying successful changes", async () => {
     const runtime = await tools();
     const patch = runtime.byName.get("eleckoi_apply_variable_patch");
-    const original = readFileSync(runtime.file, "utf8");
+    const original = JSON.stringify(runtime.state());
     const failure = await patch.execute({ operations: [{ op: "delta", path: "/状态/好感度", value: 100 }] });
     expect(failure).toMatchObject({ status: "validation_error", state_unchanged: true,
       error_stage: "validation", issues: [{ path: "/状态/好感度", code: "too_big" }] });
-    expect(readFileSync(runtime.file, "utf8")).toBe(original);
+    expect(JSON.stringify(runtime.state())).toBe(original);
     const accepted = await patch.execute({ operations: [{ op: "delta", path: "/状态/好感度", value: 5 }] });
     expect(accepted).toMatchObject({ status: "ok", applied_operations: 1 });
-    expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态.好感度).toBe(15);
+    expect(runtime.state().state.状态.好感度).toBe(15);
   });
 
   it.each(["validation", "afterSchema"])("delivers %s feedback to the next model request and completes a corrected call in the same Agent turn", async failureStage => {
     const runtime = await tools();
-    const original = readFileSync(runtime.file, "utf8");
+    const original = JSON.stringify(runtime.state());
     let calculations = 0;
     if (failureStage === "afterSchema") runtime.processing.register({ open: () => ({
       async apply(stage, state) {
@@ -258,7 +254,7 @@ describe("DSH character variable tools", () => {
           expect(value).toMatchObject(failureStage === "validation"
             ? { status: "validation_error", state_unchanged: true, issues: [{ path: "/状态/好感度", code: "too_big" }] }
             : { status: "rule_error", state_unchanged: true, error_stage: "execution", detail: "Synthetic post-schema rule failure" });
-          expect(readFileSync(runtime.file, "utf8")).toBe(original);
+          expect(JSON.stringify(runtime.state())).toBe(original);
         }
         if (step <= 2) {
           const id = ToolCallId(step === 1 ? "invalid-attempt" : "corrected-attempt");
@@ -283,6 +279,7 @@ describe("DSH character variable tools", () => {
       await ctx.plugin(AgentLoop, { agents: [] });
       ctx.llm.registerAdapter(["synthetic"], new Adapter());
       ctx.provide("eleckoiVariableProcessing", runtime.processing);
+      ctx.provide("eleckoiRuntimeContexts", runtime.contexts);
       applyVariableTools(ctx);
       const handle = await ctx.agents.create({ sessionId: SessionId(runtime.sessionId),
         agentOptions: { provider: "synthetic", model: "synthetic" } });
@@ -293,9 +290,9 @@ describe("DSH character variable tools", () => {
       expect(events.filter(event => event.type === "tool/result")).toHaveLength(2);
       expect(events.filter(event => event.type === "turn/start")).toHaveLength(1);
       expect(events.at(-1)).toMatchObject({ type: "turn/end", data: { reason: { kind: "completed" } } });
-      expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态.好感度).toBe(15);
+      expect(runtime.state().state.状态.好感度).toBe(15);
       if (failureStage === "afterSchema") {
-        expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态.称呼).toBe("熟人");
+        expect(runtime.state().state.状态.称呼).toBe("熟人");
         expect(calculations).toBe(2);
       }
     } finally { await ctx.fiber.dispose(); }
@@ -307,19 +304,19 @@ describe("DSH character variable tools", () => {
     ["z.object({}).transform(() => ({ value: NaN }))", "output"],
   ])("reports author rule failures as tool results without changing state: %s", async (schemaCode, stage) => {
     const runtime = await tools();
-    const bridge = JSON.parse(readFileSync(runtime.file, "utf8"));
+    const bridge = runtime.state();
     bridge.config.schemaCode = schemaCode;
-    writeFileSync(runtime.file, JSON.stringify(bridge));
-    const original = readFileSync(runtime.file, "utf8");
+    runtime.replace(bridge);
+    const original = JSON.stringify(runtime.state());
     await expect(runtime.byName.get("eleckoi_apply_variable_patch").execute({
       operations: [{ op: "delta", path: "/状态/好感度", value: 5 }],
     })).resolves.toMatchObject({ status: "rule_error", error_stage: stage, state_unchanged: true });
-    expect(readFileSync(runtime.file, "utf8")).toBe(original);
+    expect(JSON.stringify(runtime.state())).toBe(original);
   });
 
   it("awaits author calculations before accepting a patch and exposes a failed attempt for retry", async () => {
     const runtime = await tools();
-    const original = readFileSync(runtime.file, "utf8");
+    const original = JSON.stringify(runtime.state());
     const trace = [];
     runtime.processing.register({ open: () => ({
       async apply(stage, state, before) {
@@ -336,10 +333,29 @@ describe("DSH character variable tools", () => {
     await expect(patch.execute({ operations: [{ op: "delta", path: "/状态/好感度", value: 20 }] })).resolves.toMatchObject({
       status: "rule_error", error_stage: "execution", detail: "Synthetic author increment constraint", state_unchanged: true,
     });
-    expect(readFileSync(runtime.file, "utf8")).toBe(original);
+    expect(JSON.stringify(runtime.state())).toBe(original);
     await expect(patch.execute({ operations: [{ op: "delta", path: "/状态/好感度", value: 5 }] })).resolves.toMatchObject({ status: "ok" });
-    expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态).toEqual({ 好感度: 15, 称呼: "熟人" });
+    expect(runtime.state().state.状态).toEqual({ 好感度: 15, 称呼: "熟人" });
     expect(trace).toEqual(["before", "after", "closed", "before", "after", "afterSchema", "closed"]);
+  });
+
+  it('rejects a suspended patch when a newer shared variable state commits first', async () => {
+    const runtime = await tools();
+    let entered, resume;
+    const waiting = new Promise(resolve => { entered = resolve; });
+    const released = new Promise(resolve => { resume = resolve; });
+    runtime.processing.process = async ({ before, apply }) => {
+      const patched = apply(structuredClone(before));
+      entered();
+      await released;
+      return { state: patched, patched };
+    };
+    const pending = runtime.byName.get('eleckoi_apply_variable_patch').execute({ operations: [{ op: 'delta', path: '/状态/好感度', value: 5 }] });
+    await waiting;
+    runtime.replace({ ...runtime.state(), state: { 状态: { 好感度: 30, 称呼: '新状态' } } });
+    resume();
+    await expect(pending).resolves.toMatchObject({ status: 'state_conflict', state_unchanged: true });
+    expect(runtime.state().state.状态).toEqual({ 好感度: 30, 称呼: '新状态' });
   });
 
   it("logs one searchable coded line at the failure exit and still throws", async () => {
@@ -366,6 +382,6 @@ describe("DSH character variable tools", () => {
       message: "path 包含无效的 JSON Pointer 转义",
       details: { field: "path" },
     });
-    expect(JSON.parse(readFileSync(runtime.file, "utf8")).state.状态.好感度).toBe(10);
+    expect(runtime.state().state.状态.好感度).toBe(10);
   });
 });

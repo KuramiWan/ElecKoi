@@ -67,5 +67,6 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     eleckoiRequestPreviews: import('./host/request-preview.mjs').RequestPreviewStore
+    eleckoiRuntimeContexts: import('./host/runtime-contexts.mjs').RuntimeContexts
   }
 }

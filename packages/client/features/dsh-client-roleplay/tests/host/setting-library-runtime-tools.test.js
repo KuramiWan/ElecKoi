@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { runtimeContextsFor } from '../../../../../../tests/helpers/runtime-contexts.js';
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,10 +29,7 @@ afterEach(() => {
 async function tools({ extraEntries = [], history = [], variableState = {}, liveVariableState = false, configured = true, commit, logger } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "eleckoi-setting-library-tools-"));
   directories.push(directory);
-  const file = join(directory, "state.json");
-  const variableFile = join(directory, "variables.json");
-  if (liveVariableState) writeFileSync(variableFile, JSON.stringify({ enabled: true, state: variableState }));
-  writeFileSync(file, JSON.stringify(configured ? {
+  const bridge = configured ? {
     enabled: true,
     library: {
       characterId: 'synthetic-character',
@@ -49,23 +47,14 @@ async function tools({ extraEntries = [], history = [], variableState = {}, live
     },
     history,
     variableState,
-  } : { enabled: false, library: null, frozenLibrary: null, history: [] }, null, 2));
+  } : { enabled: false, library: null, frozenLibrary: null, history: [] };
   const sessionId = "setting-tool-test-session";
-  const snapshotRoot = join(directory, "session-snapshots");
-  mkdirSync(snapshotRoot);
-  writeFileSync(join(snapshotRoot, `${sessionId}.json`), JSON.stringify({
-    conversationId: 'synthetic-chat',
-    settingLibraryBaseline: { source: JSON.parse(readFileSync(file, 'utf8')).library,
-      projected: JSON.parse(readFileSync(file, 'utf8')).library },
-    settingStateFile: file,
-    settingLibraryEnabled: configured,
-    ...(liveVariableState ? { variableStateFile: variableFile, variablesEnabled: true } : {}),
-  }));
-  process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
+  const contexts = runtimeContextsFor(sessionId, { settings: bridge, variables: { enabled: liveVariableState, state: variableState }, settingLibraryBaseline: { source: bridge.library, projected: bridge.library } });
   const registered = [];
   const commitConversationRuntime = vi.fn(commit || (() => {}));
   const publish = vi.fn();
   applySettingLibraryTools({
+    eleckoiRuntimeContexts: contexts,
     tools: { register: (definition) => { registered.push(definition); return () => undefined; } },
     eleckoiProductData: { commitConversationRuntime },
     eleckoiCharacterConfigurationChanges: { publish },
@@ -73,8 +62,10 @@ async function tools({ extraEntries = [], history = [], variableState = {}, live
   });
   const execution = { agent: { session: { id: sessionId } } };
   return {
-    file,
-    variableFile,
+    contexts,
+    state: () => contexts.get(sessionId).settings,
+    replace: value => { contexts.get(sessionId).settings = value; },
+    updateVariables: state => { contexts.get(sessionId).variables = { enabled: true, state }; },
     commitConversationRuntime,
     publish,
     byName: new Map(registered.map((definition) => [definition.name, {
@@ -323,7 +314,7 @@ describe("DSH character setting-library tools", () => {
     expect(result.files).toHaveLength(count);
     expect(result.files.map(item => item.content)).toEqual(entries.map(item => item.content));
     expect(JSON.parse(definition.output.render({}, result)[0].text)).toEqual(result);
-    expect(JSON.parse(readFileSync(runtime.file, "utf8")).runtimeResolution.visibleEntryIds).toHaveLength(count + 2);
+    expect(runtime.state().runtimeResolution.visibleEntryIds).toHaveLength(count + 2);
   }, 60_000);
 
   it("honors scan depths above 1000 and recursive matches above ten rounds inside a large library", async () => {
@@ -381,7 +372,7 @@ describe("DSH character setting-library tools", () => {
     await expect(patch.execute({ operation: "move_directory", path: "世界/支线", destination: "资料/支线" }))
       .resolves.toMatchObject({ status: "ok", destination: "资料/支线" });
 
-    const afterMove = JSON.parse(readFileSync(runtime.file, "utf8"));
+    const afterMove = runtime.state();
     const movedEntry = afterMove.library.entries.find((item) => item.title === "气候");
     expect(movedEntry.content).toBe("暴雨。");
 
@@ -390,7 +381,7 @@ describe("DSH character setting-library tools", () => {
     await expect(patch.execute({ operation: "delete_directory", path: "资料" }))
       .resolves.toMatchObject({ status: "ok", operation: "delete_directory" });
 
-    const finalState = JSON.parse(readFileSync(runtime.file, "utf8"));
+    const finalState = runtime.state();
     expect(finalState.library.entries.some((item) => item.title === "气候")).toBe(false);
     expect(finalState.library.groups.some((group) => group.name === "资料")).toBe(false);
   });
@@ -419,12 +410,12 @@ describe("DSH character setting-library tools", () => {
 
   it('rolls back rejected persistence without publishing a phantom branch', async () => {
     const runtime = await tools({ commit: () => { throw new Error('synthetic transaction failure'); } });
-    const before = readFileSync(runtime.file, 'utf8');
+    const before = JSON.stringify(runtime.state());
     const result = await runtime.byName.get('eleckoi_apply_setting_patch').execute({
       operation: 'write_file', path: '偏好', content: '喜欢茶。'
     });
     expect(result).toMatchObject({ status: 'change_rejected', state_unchanged: true });
-    expect(readFileSync(runtime.file, 'utf8')).toBe(before);
+    expect(JSON.stringify(runtime.state())).toBe(before);
     expect(runtime.publish).not.toHaveBeenCalled();
     const found = await runtime.byName.get('eleckoi_glob_setting_files').execute({});
     expect(found.files.some(file => file.path === '偏好')).toBe(false);
@@ -433,7 +424,7 @@ describe("DSH character setting-library tools", () => {
   it('does not persist reads, no-op writes, existing directories or invalid edits', async () => {
     const runtime = await tools();
     const patch = runtime.byName.get('eleckoi_apply_setting_patch');
-    const before = readFileSync(runtime.file, 'utf8');
+    const before = JSON.stringify(runtime.state());
     await runtime.byName.get('eleckoi_glob_setting_files').execute({});
     await expect(patch.execute({ operation: 'write_file', path: '世界/城市/港口', content: '港口终年多雾。' }))
       .resolves.toMatchObject({ status: 'ok', changed: false });
@@ -444,7 +435,7 @@ describe("DSH character setting-library tools", () => {
     expect(runtime.commitConversationRuntime).not.toHaveBeenCalled();
     expect(runtime.publish).not.toHaveBeenCalled();
     // Search may resolve a cache, but no setting entry is changed.
-    expect(JSON.parse(readFileSync(runtime.file, 'utf8')).library).toEqual(JSON.parse(before).library);
+    expect(runtime.state().library).toEqual(JSON.parse(before).library);
   });
 
   it("treats a hidden timeline configured for Agent reading as a readable setting", async () => {
@@ -686,7 +677,7 @@ describe("DSH character setting-library tools", () => {
     const before = await glob.execute({});
     expect(before.required_entries.map((item) => item.path)).toEqual(["世界/总览"]);
 
-    writeFileSync(runtime.variableFile, JSON.stringify({ enabled: true, state: { 剧情: { 章节: 2 } } }));
+    runtime.updateVariables({ 剧情: { 章节: 2 } });
     const after = await glob.execute({});
     expect(after.required_entries.map((item) => item.path)).toEqual(["世界/总览", "章节控制器"]);
     const read = await runtime.byName.get("eleckoi_read_setting_files").execute({ paths: ["章节控制器"] });
@@ -696,7 +687,7 @@ describe("DSH character setting-library tools", () => {
   it("rejects invalid edits and unsafe paths without changing persisted state", async () => {
     const runtime = await tools();
     const patch = runtime.byName.get("eleckoi_apply_setting_patch");
-    const before = readFileSync(runtime.file, "utf8");
+    const before = JSON.stringify(runtime.state());
 
     await expect(patch.execute({ operation: "edit_file", path: "世界/总览", old_string: "不存在", new_string: "改写" }))
       .resolves.toMatchObject({ status: "change_rejected", state_unchanged: true });
@@ -706,7 +697,7 @@ describe("DSH character setting-library tools", () => {
       .resolves.toMatchObject({ status: "change_rejected", state_unchanged: true });
     await expect(patch.execute({ operation: "edit_file", path: "世界/总览", old_string: "晴天", new_string: "晴天" }))
       .resolves.toMatchObject({ status: "change_rejected", state_unchanged: true });
-    expect(readFileSync(runtime.file, "utf8")).toBe(before);
+    expect(JSON.stringify(runtime.state())).toBe(before);
   });
 
   it("matches Android no-op and path-conflict semantics", async () => {

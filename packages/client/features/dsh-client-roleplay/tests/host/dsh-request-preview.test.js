@@ -1,3 +1,4 @@
+import { runtimeContextsFor } from '../../../../../../tests/helpers/runtime-contexts.js'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,11 +33,11 @@ describe('actual request previews retained only by the running Host', { timeout:
   it('captures actual official-loop dispatches, keeps edited and regenerated requests distinct, and restores no previews from disk', async () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-live-preview-'))
     cleanups.push(() => rmSync(root, { recursive: true, force: true }))
-    const contextFile = join(root, 'context.json')
+    const contexts = runtimeContextsFor('synthetic-loop')
     const sessionId = SessionId('synthetic-loop')
     const write = (instruction, prompt) => {
-      writeFileSync(contextFile, JSON.stringify({ historyMode: 'prefix', history: [{ role: 'assistant', content: '合成开场' }], currentPromptText: prompt }))
-      writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({ model: { systemPrompt: instruction }, contextFile }))
+      contexts.get(sessionId).conversationContext = { historyMode: 'prefix', history: [{ role: 'assistant', content: '合成开场' }], currentPromptText: prompt }
+      writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({ model: { systemPrompt: instruction } }))
     }
     write('合成指令一', '合成处理后的输入一')
     const ctx = new Context()
@@ -46,6 +47,7 @@ describe('actual request previews retained only by the running Host', { timeout:
     await ctx.plugin(JsonlSessionPersistence, { root: join(root, 'sessions'), compression: 'none' })
     await ctx.plugin(AgentLoop, { agents: [] })
     const previews = store()
+    ctx.provide('eleckoiRuntimeContexts', contexts)
     installConversationContext(ctx, root, sessionId, previews)
     const dispatched = []
     class Adapter extends LlmAdapter {

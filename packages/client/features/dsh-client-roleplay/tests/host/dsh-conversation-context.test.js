@@ -1,3 +1,4 @@
+import { runtimeContextsFor } from '../../../../../../tests/helpers/runtime-contexts.js'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -156,15 +157,15 @@ describe('DSH conversation context', () => {
     const root = mkdtempSync(join(tmpdir(), 'eleckoi-product-history-request-'))
     const sessionId = 'session-product-history-request'
     const requestContextFile = join(root, 'request-context.jsonl')
-    const contextFile = join(root, 'conversation-context.json')
-    writeFileSync(contextFile, JSON.stringify({
+
+    const contexts = runtimeContextsFor(sessionId, { conversationContext: {
         currentPromptText: '当前问题（已处理）',
         history: [
           { role: 'user', content: '上一问' },
           { role: 'assistant', content: '上一答' }
         ]
-    }))
-    writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({ model: { systemPrompt: '' }, contextFile }))
+    } })
+    writeFileSync(join(root, `${sessionId}.json`), JSON.stringify({ model: { systemPrompt: '' }, }))
     const nativeMessages = [
       message('assistant', '上一轮思考', { kind: 'model', provider: 'test', model: 'test' }),
       {
@@ -211,6 +212,7 @@ describe('DSH conversation context', () => {
         return vi.fn()
       })
     }
+    agentCtx.eleckoiRuntimeContexts = contexts
     const previews = { capture: vi.fn() }; const dispose = installConversationContext(agentCtx, root, sessionId, previews)
     listeners.get('session/event')(session, { type: 'step/start', data: { turn: 2, step: 1 } })
     const options = markAgentLoopRequest({

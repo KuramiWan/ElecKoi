@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -84,26 +85,26 @@ describe('MVU imported state persistence', () => {
     expect(JSON.parse(context.stateJson)).toEqual({
       status: { energy: 12, label: '  label  ' }, members: { two: { energy: 3, note: null } }, total: 3,
     })
-    const file = join(f.directory, 'variables.json')
+
     const snapshotRoot = join(f.directory, 'snapshots')
     mkdirSync(snapshotRoot)
     process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot
-    writeFileSync(file, JSON.stringify({ enabled: true, config: {
+    const variableState = { enabled: true, config: {
       initialState: JSON.parse(context.initialStateJson), schemaCode: context.schemaCode,
       objects: context.objects, variables: context.variables,
-    }, state: JSON.parse(context.stateJson) }))
-    writeFileSync(join(snapshotRoot, `${conversationId}.json`), JSON.stringify({ conversationId, variableStateFile: file, variablesEnabled: true }))
+    }, state: JSON.parse(context.stateJson) }
+    const contexts = runtimeContextsFor(conversationId, { variables: variableState })
     const tools = new Map<string, { execute(args: unknown, execution: unknown): Promise<any> }>()
-    applyVariableTools({ eleckoiVariableProcessing: new ElecKoiVariableProcessing({} as any), tools: { register(definition: any) { tools.set(definition.name, definition); return () => {} } } })
+    applyVariableTools({ eleckoiRuntimeContexts: contexts, eleckoiVariableProcessing: new ElecKoiVariableProcessing({} as any), tools: { register(definition: any) { tools.set(definition.name, definition); return () => {} } } })
     const execution = { agent: { session: { id: conversationId } } }
     const patch = tools.get('eleckoi_apply_variable_patch')!
     expect(await patch.execute({ operations: [{ op: 'delta', path: '/members/two/energy', value: 5 }] }, execution)).toMatchObject({ status: 'ok' })
-    const accepted = JSON.parse(readFileSync(file, 'utf8')).state
+    const accepted = contexts.get(conversationId).variables.state
     expect(accepted.members.two).toEqual({ energy: 8, note: null })
     expect(accepted.total).toBe(8)
     expect(await patch.execute({ operations: [{ op: 'replace', path: '/status/energy', value: 21 }] }, execution))
       .toMatchObject({ status: 'validation_error', state_unchanged: true })
-    expect(JSON.parse(readFileSync(file, 'utf8')).state).toEqual(accepted)
+    expect(contexts.get(conversationId).variables.state).toEqual(accepted)
     f.states.replaceCurrent(conversationId, JSON.stringify(accepted))
     const selectedVersionId = f.variables.forConversation(conversationId, f.characterId).activeVersionId
     f.database.close()

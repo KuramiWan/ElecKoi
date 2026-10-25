@@ -1,6 +1,7 @@
+import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
 import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
 import { ownerPeer } from '../support/owner-peer.js'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -192,6 +193,7 @@ async function fixture(withOpening = true, { failPreparation = false,
   await ctx.plugin(SessionController, {})
   await ctx.plugin(sessionEditPlugin)
   let preparationCount = 0
+  ctx.provide('eleckoiRuntimeContexts', runtimeContextsFor(conversationId))
   cleanups.push(installRoleplaySessionRuntime(ctx, {
     registerForSession: async () => undefined,
     prepareForSession: async () => undefined,
@@ -212,17 +214,17 @@ async function fixture(withOpening = true, { failPreparation = false,
   return { ctx, env, conversationId, userEvent, sessionRoot, followed, select, flush, getAgent: () => agent }
 }
 
-function contextBridge(f) {
-  return JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId,
-    'eleckoi-conversation-context.json'), 'utf8'))
-}
-
-function settingBridge(f) {
-  return JSON.parse(readFileSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId,
-    'eleckoi-setting-library-state.json'), 'utf8'))
-}
+function contextBridge(f) { return f.ctx.eleckoiRuntimeContexts.get(f.conversationId).conversationContext }
+function settingBridge(f) { return f.ctx.eleckoiRuntimeContexts.get(f.conversationId).settings }
 
 describe('old chat request preparation', { timeout: 30_000 }, () => {
+  it('releases the prepared in-memory context when Session creation fails', async () => {
+    const f = await fixture()
+    f.ctx.sessionController.create = async () => { throw new Error('Synthetic Session creation failure') }
+    await expect(f.ctx.eleckoiRoleplaySessions.create(f.conversationId)).rejects.toThrow('Synthetic Session creation failure')
+    expect(f.ctx.eleckoiRuntimeContexts.has(f.conversationId)).toBe(false)
+  })
+
   it('stores one native completed boundary across multiple assistant messages without using reply rows or retired files', async () => {
     const f = await fixture(false, { native: true, multipleSteps: true })
     const data = f.ctx.eleckoiProductData
@@ -234,8 +236,8 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
     data.replaceConversationVariableState(f.conversationId, '{"score":20}')
     writeSessionSnapshot(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, f.conversationId, {
       conversationId: f.conversationId, operationId: 'native-completion', variablesEnabled: false,
-      generationVariableStateJson: '{"score":20}'
     })
+    f.ctx.eleckoiRuntimeContexts.get(f.conversationId).generationVariableStateJson = '{"score":20}'
     f.ctx.sessions.flush = async () => { await f.flush(); return true }
     f.ctx.eleckoiConversationLifecycle.begin({ operationId: 'native-completion', conversationId: f.conversationId,
       runtimeSessionId: f.conversationId, turn: 1 })
@@ -378,8 +380,8 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
     data.replaceConversationVariableState(f.conversationId, '{"score":10}')
     writeSessionSnapshot(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, f.conversationId, {
       conversationId: f.conversationId, operationId, variablesEnabled: false,
-      generationVariableStateJson: '{"score":10}'
     })
+    f.ctx.eleckoiRuntimeContexts.get(f.conversationId).generationVariableStateJson = '{"score":10}'
     f.ctx.sessions.flush = async () => { await f.flush(); return true }
     f.ctx.eleckoiConversationLifecycle.begin({ operationId, conversationId: f.conversationId,
       runtimeSessionId: f.conversationId, turn: 1 })
@@ -404,7 +406,7 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
     expect(readDshSessionLog(f.sessionRoot, f.conversationId).events).toEqual(before)
   })
 
-  it('writes the visible conversation history into the setting library bridge', async () => {
+  it('keeps visible conversation history in the Host setting context', async () => {
     const f = await fixture(true, { finalReply: true })
     await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, '合成新输入')
     expect(settingBridge(f).history).toEqual([
@@ -413,6 +415,26 @@ describe('old chat request preparation', { timeout: 30_000 }, () => {
       { role: 'assistant', content: 'Synthetic reply' },
       { role: 'user', content: '合成新输入' }
     ])
+  })
+
+  it('prepares growing inputs without writing settings, variables or history into intermediate files or metadata', async () => {
+    const f = await fixture(true, { finalReply: true })
+    const sizes = []
+    for (const length of [100, 10_000, 100_000]) {
+      const input = '合成运行上下文'.repeat(length) + '末尾关键词'
+      await f.ctx.eleckoiRoleplaySessions.preparePrompt(f.conversationId, input)
+      expect(settingBridge(f).history.at(-1).content).toBe(input)
+      expect(contextBridge(f).currentUserInput).toBe(input)
+      const metadata = readFileSync(join(f.env.ELECKOI_SESSION_SNAPSHOT_ROOT, `${f.conversationId}.json`), 'utf8')
+      expect(metadata).not.toContain('末尾关键词')
+      expect(JSON.parse(metadata)).not.toHaveProperty('settingLibraryBaseline')
+      expect(JSON.parse(metadata)).not.toHaveProperty('generationVariableStateJson')
+      sizes.push(Buffer.byteLength(metadata))
+      for (const name of ['eleckoi-setting-library-state.json', 'eleckoi-variable-state.json', 'eleckoi-conversation-context.json']) {
+        expect(existsSync(join(f.env.ELECKOI_SESSION_BRIDGE_ROOT, f.conversationId, name))).toBe(false)
+      }
+    }
+    expect(new Set(sizes).size).toBe(1)
   })
 
   it.each(['new-input', 'edit-input', 'regenerate'])('keeps the correct setting history after deleting an assistant reply: %s', async action => {

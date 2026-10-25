@@ -3,7 +3,6 @@ import { renderRequestEjs } from './regex-ejs.mjs'
 import { createSystemMessage, freezeMessage, isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
 import { transformReasoningPrompt } from '@eleckoi/dsh-product-data'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
 import { INPUT_CONTINUATIONS_PROJECTION } from './input-continuations-projection.mjs'
@@ -14,14 +13,14 @@ export const name = 'eleckoi-conversation-context'
 export const projectionPlugin = 'eleckoi-request-projection'
 
 /** Install product-owned prompt contributions for every root turn. */
-export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId, previews, settings) {
+export function installConversationContext(agentCtx, snapshotRoot, sourceSessionId, previews, settings, runtimeContexts = agentCtx.eleckoiRuntimeContexts) {
   let executionStep
   const disposeStep = agentCtx.on('session/event', (session, event) => {
     if (session.id === sourceSessionId && event.type === 'step/start') executionStep = event.data
   })
   const read = () => {
     const snapshot = readSessionSnapshot(snapshotRoot, sourceSessionId)
-    const conversationContext = JSON.parse(readFileSync(snapshot.contextFile, 'utf8'))
+    const conversationContext = runtimeContexts.get(sourceSessionId).conversationContext
     return { ...snapshot, conversationContext }
   }
   const disposeRequestProjection = agentCtx.on('llm/stream', (options, next) => {
@@ -55,7 +54,7 @@ export function installConversationContext(agentCtx, snapshotRoot, sourceSession
       let variables = null
       if (messages.some(message => message.content.some(block => ['text', 'reasoning'].includes(block.type) && hasRegexEjsOutput(block.text)))) {
         if (snapshot.variablesEnabled) {
-          const state = JSON.parse(readFileSync(snapshot.variableStateFile, 'utf8'))
+          const state = runtimeContexts.get(sourceSessionId).variables
           if (!state.enabled || !state.state || typeof state.state !== 'object' || Array.isArray(state.state)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '本次请求变量快照无效。', { what: '本次请求变量快照' })
           variables = state.state
         }

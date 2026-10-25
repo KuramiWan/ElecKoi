@@ -1,6 +1,7 @@
+import { runtimeContextsFor } from '../../../../../../tests/helpers/runtime-contexts.js'
 import { describe, expect, it } from 'vitest';
 import { createUserMessage, markAgentLoopRequest } from '@deepseek-ai/dsh-llm';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installConversationContext } from '../../src/host/conversation-context.mjs';
@@ -23,15 +24,14 @@ describe('regex EJS actual request computation', () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-regex-ejs-'));
     let dispose;
     try {
-      const sessionId = 'synthetic-session', contextFile = join(directory, 'context.json'), variableStateFile = join(directory, 'variables.json');
+      const sessionId = 'synthetic-session';
       const template = '<!-- eleckoi:regex-ejs:start -->Score <%= await Promise.resolve(getvar("score")) %><!-- eleckoi:regex-ejs:end -->';
-      writeFileSync(contextFile, JSON.stringify({ currentPromptText: template }));
-      writeFileSync(variableStateFile, JSON.stringify({ enabled: true, state: { score: 12 } }));
-      writeSessionSnapshot(directory, sessionId, { conversationId: 'synthetic-chat', contextFile, variableStateFile, variablesEnabled: true });
+      const contexts = runtimeContextsFor(sessionId, { conversationContext: { currentPromptText: template }, variables: { enabled: true, state: { score: 12 } } });
+      writeSessionSnapshot(directory, sessionId, { conversationId: 'synthetic-chat', variablesEnabled: true });
       const original = createUserMessage({ content: [{ type: 'text', text: 'Synthetic original' }], source: { kind: 'user' } });
       const session = { deriveMessages: () => [original] }, listeners = new Map();
       let sent, captured;
-      dispose = installConversationContext({ on: (event, handler) => { listeners.set(event, handler); return () => listeners.delete(event); },
+      dispose = installConversationContext({ eleckoiRuntimeContexts: contexts, on: (event, handler) => { listeners.set(event, handler); return () => listeners.delete(event); },
         sessions: { get: () => session }, sessionProjections: { stateOf: () => ({ inputs: [{ messageId: original.id }] }) },
         llm: { stream: async function* (options) { sent = options; yield { type: 'synthetic-accepted' }; } },
       }, directory, sessionId, { capture: (_session, options) => { captured = options; } });

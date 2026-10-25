@@ -76,30 +76,16 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       || mountedPresetRevision !== requestedPreset.revision
     const historySession = creating ? ctx.sessions.get(runtime.runtimeSessionId)
       : await requireIdleSession(ctx, runtime.runtimeSessionId)
-    const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
-    mkdirSync(sessionRoot, { recursive: true })
     const nextTurn = initialTurn ?? (creating ? 1 : await nextSessionTurn(ctx, runtime.runtimeSessionId))
     const operationId = creating ? undefined : randomUUID()
     ctx.eleckoiProductData.recordRuntimeBeforeTurn(conversationId, runtime.runtimeSessionId, nextTurn)
-    const variableStateFile = join(sessionRoot, 'eleckoi-variable-state.json')
-    const settingStateFile = join(sessionRoot, 'eleckoi-setting-library-state.json')
-    const contextFile = join(sessionRoot, 'eleckoi-conversation-context.json')
-    writeVariableBridge(variableStateFile, runtime.variableContext)
-    writeSettingBridge(
-      settingStateFile,
+    ctx.eleckoiRuntimeContexts.prepare(runtime.runtimeSessionId, runtime,
+      visibleDialogueHistory(historySession?.deriveMessages() ?? [], retainedInputMessageId),
       runtime.conversationContext.currentPromptText ?? text,
-      runtime.conversationContext,
-      visibleDialogueHistory(historySession?.deriveMessages() ?? [], retainedInputMessageId)
-    )
-    writeContextBridge(
-      contextFile,
-      runtime.conversationContext.currentPromptText ?? text,
-      runtime.conversationContext
-    )
+      ctx.eleckoiProductData.snapshotConversationRuntime(conversationId).variableStateJson)
     writeSessionSnapshot(snapshotRoot, runtime.runtimeSessionId, {
       conversationId,
       ...(operationId ? { operationId } : {}),
-      generationVariableStateJson: ctx.eleckoiProductData.snapshotConversationRuntime(conversationId).variableStateJson,
       runtimeThreadId: runtime.runtimeSessionId,
       mountedPresetId,
       mountedPresetRevision,
@@ -108,12 +94,8 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         pendingPresetRevision: requestedPreset.revision
       } : {}),
       model: mainModel,
-      variableStateFile,
-      settingStateFile,
-      contextFile,
       variablesEnabled: runtime.variableContext !== undefined,
       settingLibraryEnabled: runtime.conversationContext.settingLibrary !== undefined,
-      settingLibraryBaseline: runtime.settingLibraryBaseline,
       disabledToolGroupIds: effectiveToolPolicy.disabledGroupIds,
       toolModelConfigIds: structuredClone(runtime.agentPreset.toolModelConfigIds || {}),
       roleplayPlanSteps: runtime.agentPreset.roleplayPlan.steps,
@@ -181,16 +163,21 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     },
     async create(conversationId) {
       const prepared = await prepare(conversationId, '', true)
-      await presetRegistrar.registerForSession(prepared.runtimeSessionId)
-      const created = await ctx.sessionController.create({
-        sessionId: prepared.runtimeSessionId,
-        cwd: workspaceRoot,
-        agentPreset: prepared.presetId
-      })
-      if (created.sessionId !== prepared.runtimeSessionId) {
-        throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'DSH Session 标识与聊天记录不一致。', { what: 'DSH Session 标识' })
+      try {
+        await presetRegistrar.registerForSession(prepared.runtimeSessionId)
+        const created = await ctx.sessionController.create({
+          sessionId: prepared.runtimeSessionId,
+          cwd: workspaceRoot,
+          agentPreset: prepared.presetId
+        })
+        if (created.sessionId !== prepared.runtimeSessionId) {
+          throw productFailure(ELECKOI_FAILURE_CODES.stateMismatch, 'DSH Session 标识与聊天记录不一致。', { what: 'DSH Session 标识' })
+        }
+        return prepared.runtimeSessionId
+      } catch (error) {
+        ctx.eleckoiRuntimeContexts.forget(prepared.runtimeSessionId)
+        throw error
       }
-      return prepared.runtimeSessionId
     },
     async preparePrompt(conversationId, text, signal, retainedInputMessageId) {
       const prepared = await prepare(conversationId, text, false, signal, undefined, retainedInputMessageId)
@@ -226,15 +213,15 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
       const sessionId = ctx.eleckoiProductData.runtimeSessionId(conversationId)
       const state = ctx.eleckoiProductData.snapshotConversationRuntime(conversationId)
       const history = ctx.eleckoiProductData.captureRuntimeHistory(conversationId)
-      const sessionRoot = join(bridgeRoot, safePathPart(conversationId))
+      const previousContext = ctx.eleckoiRuntimeContexts.has(sessionId) ? ctx.eleckoiRuntimeContexts.get(sessionId) : undefined
       const files = [
-        snapshotPath(snapshotRoot, sessionId),
-        ...['eleckoi-variable-state.json', 'eleckoi-setting-library-state.json', 'eleckoi-conversation-context.json']
-          .map(name => join(sessionRoot, name))
+        snapshotPath(snapshotRoot, sessionId)
       ].map(path => ({ path, content: existsSync(path) ? readFileSync(path) : undefined }))
       const rollback = () => {
         ctx.eleckoiConversationLifecycle.forget(conversationId)
         ctx.eleckoiProductData.restoreRuntimeHistory(conversationId, state, history)
+        if (previousContext) ctx.eleckoiRuntimeContexts.set(sessionId, previousContext)
+        else ctx.eleckoiRuntimeContexts.forget(sessionId)
         for (const file of files) {
           if (file.content === undefined) rmSync(file.path, { force: true })
           else writeAtomically(file.path, file.content)
@@ -273,6 +260,7 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
     async removeArtifacts(conversationId, sessionId) {
       await ctx.eleckoiConversationLifecycle.drain(conversationId)
       ctx.eleckoiConversationLifecycle.forget(conversationId)
+      ctx.eleckoiRuntimeContexts.forgetConversation(conversationId)
       removeSessionSnapshot(snapshotRoot, sessionId)
       rmSync(join(bridgeRoot, safePathPart(conversationId)), { recursive: true, force: true })
       refreshSettingBranches()
@@ -291,15 +279,16 @@ export function installRoleplaySessionRuntime(ctx, presetRegistrar) {
         throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'DSH 完成事件缺少有效轮次。', { what: 'DSH 完成事件的轮次' })
       }
       if (!ctx.eleckoiConversationLifecycle.matches(snapshot.conversationId, snapshot.operationId, turn)) return
+      const runtimeContext = ctx.eleckoiRuntimeContexts.get(session.id)
       ctx.eleckoiConversationLifecycle.track(snapshot.conversationId, snapshot.operationId, async () => {
         try {
-          // 下一次准备先等待本次收尾，桥接文件仍属于当前轮次。
+          // 下一次准备先等待本次收尾，内存状态仍属于当前轮次。
           const variableState = snapshot.variablesEnabled && event.data.reason.kind === 'completed'
-            ? readVariableBridgeState(snapshot.variableStateFile) : undefined
+            ? JSON.stringify(runtimeContext.variables.state) : undefined
           if (!await ctx.sessions.flush(session)) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'DSH Session 没有持久保存服务。', { what: 'DSH Session 持久保存服务' })
           if (event.data.reason.kind === 'completed') {
             ctx.eleckoiProductData.completeConversationRuntime(snapshot.conversationId, session.id, turn,
-              variableState, snapshot.generationVariableStateJson)
+              variableState, runtimeContext.generationVariableStateJson)
           } else if (event.data.reason.kind !== 'aborted') {
             // LLM 的 `LlmFailure` 不是产品失败：折成兜底码 `eleckoi/internal`（与
             // packages/host/product-api/src/client/invalidResponse.ts 的 INTERNAL_FAILURE_CODE 同一个值），
@@ -412,55 +401,6 @@ function removePresetSection(source, section) {
   if (start < 0 || finish < start) throw productFailure(ELECKOI_FAILURE_CODES.lookupNotFound, `DSH 预设模板缺少工具段：${section}`, { what: 'DSH 预设模板里的工具段' })
   return `${source.slice(0, start)}${source.slice(finish + end.length).replace(/^\r?\n/, '')}`
 }
-
-function writeVariableBridge(path, context) {
-  const value = context === undefined
-    ? { enabled: false, config: null, state: {} }
-    : {
-        enabled: true,
-        config: {
-          initialState: parsedObject(context.initialStateJson, '变量初始状态'),
-          schemaCode: context.schemaCode,
-          objects: context.objects,
-          variables: context.variables
-        },
-        state: parsedObject(context.stateJson, '当前变量状态')
-      }
-  writeAtomically(path, `${JSON.stringify(value, null, 2)}\n`)
-}
-
-function writeContextBridge(path, currentUserInput, context) {
-  writeAtomically(path, `${JSON.stringify({ ...context, currentUserInput }, null, 2)}\n`)
-}
-
-/**
- * The setting tools match keywords and EJS chat conditions against this history.
- * Regeneration identifies the retained input by its exact Session message ID; visibleDialogueHistory
- * leaves only that input out, and the setting bridge appends the current input once.
- */
-function writeSettingBridge(path, currentUserInput, context, conversationHistory) {
-  writeAtomically(path, `${JSON.stringify({
-    enabled: context.settingLibrary !== undefined,
-    library: context.settingLibrary ?? null,
-    frozenLibrary: context.settingLibrary ?? null,
-    history: [...(context.history ?? []), ...conversationHistory, { role: 'user', content: currentUserInput }]
-  }, null, 2)}\n`)
-}
-
-function readVariableBridgeState(path) {
-  const bridge = parsedObject(readFileSync(path, 'utf8'), '变量运行时桥接文件')
-  const state = bridge.state
-  if (!state || typeof state !== 'object' || Array.isArray(state)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '变量运行时返回的状态必须是 JSON object。', { what: '变量运行时状态' })
-  return JSON.stringify(state, null, 2)
-}
-
-function parsedObject(raw, label) {
-  let value
-  try { value = JSON.parse(raw) } catch { throw productFailure(ELECKOI_FAILURE_CODES.storageCorrupt, `${label}不是合法 JSON。`, { what: label }) }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `${label}必须是 JSON object。`, { what: label })
-  return value
-}
-
 function readOptionalSnapshot(root, sessionId) {
   try { return readSessionSnapshot(root, sessionId) } catch (error) {
     if (error?.code === 'ENOENT') return undefined

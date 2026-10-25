@@ -11,11 +11,14 @@ import { applyDisabledPolicy } from './tool-policy.mjs'
 import { ACTIVE_RUNTIME_PRESET_ID, installRoleplaySessionRuntime } from './session-runtime.mjs'
 import { refreshSessionModelSnapshot } from './model-selection-migration.mjs'
 import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
+import { RuntimeContexts, restoreRuntimeContext } from './runtime-contexts.mjs'
 
 export const name = 'eleckoi-agent-preset-bridge'
 export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'llm', 'settings', 'sessionController', 'sessions', 'eleckoiConversationLifecycle']
 
 export async function apply(ctx) {
+  const runtimeContexts = new RuntimeContexts()
+  ctx.provide('eleckoiRuntimeContexts', runtimeContexts)
   const snapshotRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
   const presetRoot = process.env.ELECKOI_PRESET_ROOT
   const templatePath = process.env.ELECKOI_PRESET_TEMPLATE_PATH
@@ -59,6 +62,7 @@ export async function apply(ctx) {
   })
   ctx.on('agent/disposed', ({ agent }) => {
     if (sessionHandles.get(agent.id)?.agent === agent) sessionHandles.delete(agent.id)
+    runtimeContexts.forget(agent.id)
   })
   const disposeHandleTracking = installAgentHandleTracking(ctx.agents, (handle) => {
     sessionHandles.set(handle.agent.id, handle)
@@ -173,14 +177,27 @@ export async function apply(ctx) {
         ? inheritSessionSnapshot(snapshotRoot, sourceSessionId, agent.id)
         : await refreshSessionModelSnapshot(ctx, snapshotRoot, agent.id)
       inherited = child
+      if (child) {
+        if (!runtimeContexts.has(sourceSessionId)) {
+          const resolved = await ctx.sessionController.resolveAgent(sourceSessionId)
+          if ('error' in resolved) throw resolved.error
+          restoreRuntimeContext(ctx, resolved.agent.session, readSessionSnapshot(snapshotRoot, sourceSessionId))
+        }
+        runtimeContexts.inherit(sourceSessionId, agent.id)
+      } else {
+        restoreRuntimeContext(ctx, agent.session, snapshot)
+      }
       await registerPreset(snapshot.mountedPresetId)
       if (!child) {
         installRequestConfig(agent.ctx, snapshotRoot, agent.id)
-        installConversationContext(agent.ctx, snapshotRoot, agent.id, ctx.eleckoiRequestPreviews, ctx.settings)
+        installConversationContext(agent.ctx, snapshotRoot, agent.id, ctx.eleckoiRequestPreviews, ctx.settings, runtimeContexts)
       }
       applyDisabledPolicy(agent.ctx, snapshot.disabledToolGroupIds)
     } catch (error) {
-      if (inherited) removeSessionSnapshot(snapshotRoot, agent.id)
+      if (inherited) {
+        removeSessionSnapshot(snapshotRoot, agent.id)
+        runtimeContexts.forget(agent.id)
+      }
       if (error?.code === 'ENOENT') return
       throw error
     }
@@ -189,6 +206,7 @@ export async function apply(ctx) {
     owner => installRoleplaySessionRuntime(owner, presetRegistrar))
   return async () => {
     await disposeRuntime.dispose()
+    runtimeContexts.close()
     disposeHandleTracking()
     await registrationQueue
     await activeRegistration?.dispose()

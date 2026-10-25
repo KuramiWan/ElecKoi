@@ -1,7 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { describeVariableRuleFailure } from '@eleckoi/dsh-product-data/variables'
-import { readSessionSnapshot } from './session-snapshot.mjs'
 import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
 import {
   ELECKOI_FAILURE_CODES,
@@ -13,16 +11,16 @@ import {
 
 const fixedObjectId = 'fixed-variable-initialization-object'
 export const name = 'eleckoi-variable-tools'
-export const inject = ['tools', 'eleckoiVariableProcessing']
+export const inject = ['tools', 'eleckoiVariableProcessing', 'eleckoiRuntimeContexts']
 
 export function apply(ctx) {
   return runRuntimePluginApply(ctx, name, () => {
     const register = (definition) => ctx.tools.register(withRuntimePluginExit(ctx, name, definition))
     return [
-      register(globTool()),
-      register(grepTool()),
+      register(globTool(ctx)),
+      register(grepTool(ctx)),
       register(readTool(ctx)),
-      register(patchTool(ctx.eleckoiVariableProcessing)),
+      register(patchTool(ctx)),
     ]
   })
 }
@@ -34,7 +32,7 @@ function outputDefinition() {
   }
 }
 
-function globTool() {
+function globTool(ctx) {
   return defineTool({
     name: 'eleckoi_glob_variables',
     description: '使用 Glob 查找虚拟变量路径。每轮最终回复前至少调用一次；省略 pattern 和 path，以 ** 一次列出全部变量路径及当前 required_variables。已有完整路径就直接读取；仅需筛选已知变量组时传 path，它会递归搜索子组。同一轮变量结构未变化时不要重复相同搜索。返回真实 JSON Pointer 路径，不返回完整值或规则。required_variables 不受 pattern 或 path 影响，本回合必须逐项读取。',
@@ -44,8 +42,7 @@ function globTool() {
     },
     output: outputDefinition(),
     async execute(args, exec) {
-      const bridgeFile = variableBridgeFor(exec)
-      const bridge = readBridge(bridgeFile)
+      const bridge = readVariables(ctx, exec)
       if (!bridge.enabled) return {
         status: 'ok', pattern: String(args.pattern || '**').trim() || '**', path: '',
         required_variables: [], paths: [], truncated: false, omitted: 0
@@ -71,7 +68,7 @@ function globTool() {
   })
 }
 
-function grepTool() {
+function grepTool(ctx) {
   return defineTool({
     name: 'eleckoi_grep_variables',
     description: '用正则搜索变量路径、类型、默认值、当前值、说明和作者更新规则。找到路径后使用读取工具取得完整信息。required_variables 是本回合必须逐项读取的必读变量。',
@@ -85,10 +82,9 @@ function grepTool() {
     },
     output: outputDefinition(),
     async execute(args, exec) {
-      const bridgeFile = variableBridgeFor(exec)
       const pattern = String(args.pattern || '')
       if (!pattern) return failure('invalid_arguments', 'pattern 不能为空。')
-      const bridge = readBridge(bridgeFile)
+      const bridge = readVariables(ctx, exec)
       if (!bridge.enabled) return {
         status: 'no_matches', pattern, path: '', output_mode: args.output_mode || 'files_with_matches',
         required_variables: [], matches: [], omitted: 0
@@ -147,10 +143,9 @@ function readTool(ctx) {
     output: outputDefinition(),
     async execute(args, exec) {
       if (Object.hasOwn(args, 'result')) return readToolResult(ctx, args, exec, 'variables')
-      const bridgeFile = variableBridgeFor(exec)
       const paths = [...new Set((args.paths || []).filter((path) => typeof path === 'string' && path.startsWith('/')))]
       if (!paths.length) return failure('invalid_arguments', '至少需要读取一个变量路径。')
-      const bridge = readBridge(bridgeFile)
+      const bridge = readVariables(ctx, exec)
       if (!bridge.enabled) return { status: 'ok', variables: [] }
       const catalog = variableCatalog(bridge)
       const options = {
@@ -190,7 +185,8 @@ function readTool(ctx) {
   })
 }
 
-function patchTool(processing) {
+function patchTool(ctx) {
+  const processing = ctx.eleckoiVariableProcessing
   return defineTool({
     name: 'eleckoi_apply_variable_patch',
     description: '修改剧情运行时变量值。支持 replace、delta、insert、remove；path 使用 JSON Pointer。状态只保存当前值，不要用 value/min/max/description/update_rule 包装简单值。作者 Zod 校验失败时状态不改变。',
@@ -212,15 +208,15 @@ function patchTool(processing) {
     },
     output: outputDefinition(),
     async execute(args, exec) {
-      const bridgeFile = variableBridgeFor(exec)
       if (!args.operations.length) return failure('invalid_arguments', 'operations 不能为空。')
-      const bridge = readBridge(bridgeFile)
+      const runtime = ctx.eleckoiRuntimeContexts.get(exec?.agent?.session?.id)
+      const bridge = readVariables(ctx, exec)
       if (!bridge.enabled) return {
         status: 'ok', applied_operations: 0, paths: [], state_unchanged: true
       }
       let next, patched
       try {
-        const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
+        const snapshot = runtime
         if (!snapshot.conversationId || !processing) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Session 缺少受管变量处理服务或聊天归属。', { what: '变量处理服务' })
         const processed = await processing.process({ conversationId: snapshot.conversationId,
           before: bridge.state, schemaCode: bridge.config.schemaCode, signal: exec.signal,
@@ -263,8 +259,9 @@ function patchTool(processing) {
           state_unchanged: true,
         }
       }
-      if (JSON.stringify(readBridge(bridgeFile)) !== JSON.stringify(bridge)) return { ...failure('state_conflict', '处理期间本轮变量已变化，请重新读取后再试。'), state_unchanged: true }
-      writeBridge(bridgeFile, { ...bridge, state: next })
+      exec.signal?.throwIfAborted()
+      if (ctx.eleckoiRuntimeContexts.get(exec?.agent?.session?.id) !== runtime || runtime.variables !== bridge) return { ...failure('state_conflict', '处理期间本轮变量已变化，请重新读取后再试。'), state_unchanged: true }
+      runtime.variables = { ...bridge, state: next }
       return {
         status: 'ok',
         applied_operations: args.operations.length,
@@ -275,8 +272,8 @@ function patchTool(processing) {
   })
 }
 
-function readBridge(bridgeFile) {
-  const value = JSON.parse(readFileSync(bridgeFile, 'utf8'))
+function readVariables(ctx, exec) {
+  const value = ctx.eleckoiRuntimeContexts.get(exec?.agent?.session?.id).variables
   if (!value || typeof value !== 'object' || Array.isArray(value) || !isObject(value.state)) {
     throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '变量运行时尚未准备好。', { what: '变量运行时' })
   }
@@ -286,15 +283,6 @@ function readBridge(bridgeFile) {
   return value
 }
 
-function writeBridge(bridgeFile, value) {
-  writeFileSync(bridgeFile, JSON.stringify(value, null, 2), 'utf8')
-}
-
-function variableBridgeFor(exec) {
-  const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-  if (!snapshot.variableStateFile) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Session 缺少变量运行时文件。', { what: '变量运行时文件' })
-  return snapshot.variableStateFile
-}
 
 function variableCatalog(bridge) {
   const objects = bridge.config.objects.filter((item) => item.id !== fixedObjectId)

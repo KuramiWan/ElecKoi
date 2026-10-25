@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { runtimeContextsFor } from '../../../../../../tests/helpers/runtime-contexts.js'
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:http';
@@ -77,9 +78,9 @@ describe('NAI preset illustration', () => {
     if (order === 'image-first') finishImage();
     const dir = temporary(), snapshotRoot = join(dir, 'snapshots'), sessionId = 'synthetic-image-session';
     process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot;
-    const contextFile = join(dir, 'synthetic-context.json');
-    writeFileSync(contextFile, JSON.stringify({ currentPromptText: '合成场景', history: [] }));
-    const snapshot = { contextFile, model: { systemPrompt: '合成角色指令' }, toolModelConfigIds: { 'builtin:auto-illustration': 'image-a' }, disabledToolGroupIds: [] };
+
+    const contexts = runtimeContextsFor(sessionId, { conversationContext: { currentPromptText: '合成场景', history: [] } });
+    const snapshot = { model: { systemPrompt: '合成角色指令' }, toolModelConfigIds: { 'builtin:auto-illustration': 'image-a' }, disabledToolGroupIds: [] };
     writeSessionSnapshot(snapshotRoot, sessionId, snapshot);
     const entry = { provider: 'novelai_image', model: 'nai-diffusion-4-5-full', base_url: remote.url, credentialRef: 'SYNTHETIC_NAI_KEY', image_settings: { promptPrefix: 'synthetic prefix', negativePrompt: 'synthetic negative' } };
     const ctx = new Context(), requests = [], previews = [];
@@ -121,6 +122,7 @@ describe('NAI preset illustration', () => {
       await ctx.plugin({ name: 'synthetic-settings', apply(settingsCtx) {
         settingsCtx.provide('settings', { describe: () => [{ ns: 'eleckoi-client-models', value: { entries: { 'image-a': entry } } }] });
       } });
+      ctx.provide('eleckoiRuntimeContexts', contexts);
       const images = createNovelAiImageGeneration(ctx); ctx.provide('eleckoiImageGeneration', images);
       ctx.llm.registerAdapter(['synthetic'], new Adapter());
       const handle = await ctx.agents.create({ sessionId: SessionId(sessionId), agentOptions: { provider: 'synthetic', model: 'synthetic' },
@@ -134,7 +136,7 @@ describe('NAI preset illustration', () => {
       ctx.on('session/event', (_session, event) => {
         if (event.type === 'eleckoi/illustration' && event.data.status === 'complete') resultArrived(event);
       });
-      await ctx.plugin({ name: 'synthetic-request-scope', inject: ['llm', 'sessions', 'sessionProjections'], apply(scopedCtx) {
+      await ctx.plugin({ name: 'synthetic-request-scope', inject: ['llm', 'sessions', 'sessionProjections', 'eleckoiRuntimeContexts'], apply(scopedCtx) {
         expect(() => scopedCtx.settings).toThrow('without inject');
         return installConversationContext(scopedCtx, snapshotRoot, sessionId, { capture: (_session, request) => previews.push(request) }, ctx.settings);
       } });

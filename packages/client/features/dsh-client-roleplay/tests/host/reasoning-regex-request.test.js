@@ -1,3 +1,4 @@
+import { runtimeContextsFor } from '../../../../../../tests/helpers/runtime-contexts.js'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,14 +18,14 @@ describe('reasoning regex in the actual roleplay request projection', () => {
   it('applies the real llm/stream contribution before submission and captures the same transformed request without writing to Session', () => {
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-reasoning-request-'));
     try {
-      const sessionId = 'synthetic-session', contextFile = join(directory, 'context.json');
-      writeFileSync(contextFile, JSON.stringify({ historyMode: 'prefix', history: [], reasoningPromptRules: [rule({ promptOnly: false })] }));
-      writeFileSync(join(directory, `${sessionId}.json`), JSON.stringify({ conversationId: 'synthetic-chat', contextFile }));
+      const sessionId = 'synthetic-session';
+      const contexts = runtimeContextsFor(sessionId, { conversationContext: { historyMode: 'prefix', history: [], reasoningPromptRules: [rule({ promptOnly: false })] } });
+      writeFileSync(join(directory, `${sessionId}.json`), JSON.stringify({ conversationId: 'synthetic-chat', }));
       const messages = [user('synthetic-input', 'New input'), assistant('synthetic-step', [{ type: 'reasoning', text: 'SYNTHETIC' },
         { type: 'tool-call', id: 'synthetic-call', name: 'synthetic-tool', arguments: '{}' }])];
       const session = { id: sessionId, deriveMessages: () => messages, append: vi.fn() };
       const listeners = new Map(), capture = vi.fn(), stream = vi.fn(options => options);
-      const dispose = installConversationContext({ on: (type, listener) => { listeners.set(type, listener); return () => listeners.delete(type); },
+      const dispose = installConversationContext({ eleckoiRuntimeContexts: contexts, on: (type, listener) => { listeners.set(type, listener); return () => listeners.delete(type); },
         sessions: { get: () => session }, sessionProjections: { stateOf: () => ({ inputs: [{ messageId: messages[0].id }] }) },
         llm: { stream } }, directory, sessionId, { capture });
       listeners.get('session/event')(session, { type: 'step/start', data: { turn: 1, step: 2 } });

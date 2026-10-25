@@ -1,3 +1,4 @@
+import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -93,19 +94,17 @@ async function fixture({ stream } = {}) {
   ctx.llm.registerAdapter(['synthetic'], new Adapter())
   const input = { operationId: 'synthetic-attempt', conversationId, runtimeSessionId: conversationId, turn: 1 }
   ctx.eleckoiConversationLifecycle.begin(input)
-  const variableStateFile = join(root, 'variables.json')
-  const contextFile = join(root, 'context.json')
+
+
   mkdirSync(join(root, 'eleckoi-active'), { recursive: true })
   writeFileSync(join(root, 'eleckoi-active', 'preset.json'), JSON.stringify({ id: 'eleckoi-active', plugins: [] }))
-  writeFileSync(contextFile, '{}')
   mkdirSync(join(root, conversationId), { recursive: true })
-  writeFileSync(variableStateFile, JSON.stringify({ state: { score: 1 } }))
   writeSessionSnapshot(root, conversationId, { conversationId, operationId: input.operationId,
-    variablesEnabled: true, variableStateFile, contextFile, mountedPresetId: 'eleckoi-active',
-    model: { provider: 'synthetic', model: 'synthetic' },
-    generationVariableStateJson: ctx.eleckoiProductData.snapshotConversationRuntime(conversationId).variableStateJson })
+    variablesEnabled: true, mountedPresetId: 'eleckoi-active',
+    model: { provider: 'synthetic', model: 'synthetic' } })
   const editor = ctx.plugin(sessionEditPlugin)
   await ctx.plugin(roleplayPlugin)
+  ctx.eleckoiRuntimeContexts.set(conversationId, runtimeContextsFor(conversationId, { conversationId, variables: { enabled: true, state: { score: 1 } }, generationVariableStateJson: ctx.eleckoiProductData.snapshotConversationRuntime(conversationId).variableStateJson }).get(conversationId))
   await editor
   await vi.waitFor(() => {
     expect(ctx.get('eleckoiSessionEditor')).toBeDefined()
@@ -226,6 +225,9 @@ describe('official Session and product save boundary', { timeout: 30_000 }, () =
 
   it('waits for official Session persistence before committing variables and retains them after reopening', async () => {
     const f = await fixture()
+    f.ctx.on('session/event', (session, event) => {
+      if (event.type === 'turn/end') f.ctx.eleckoiRuntimeContexts.forget(session.id)
+    })
     let release
     const gate = new Promise(resolve => { release = resolve })
     let entered

@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,7 +10,6 @@ import { LocalMediaStore } from '@eleckoi/dsh-product-data/media'
 import { SettingLibraryRepository } from '../../packages/host/product-data/src/domain/settingLibraries/SettingLibraryRepository'
 import { emptyEntry } from '../../packages/host/product-data/src/domain/settingLibraries/settingLibraryNormalization'
 import { apply as applySettingLibraryTools } from '../../apps/desktop/resources/dsh/setting-library-tools.mjs'
-import { writeSessionSnapshot } from '../../packages/client/features/dsh-client-roleplay/src/host/session-snapshot.mjs'
 
 const directories = []
 const connections = []
@@ -48,18 +48,14 @@ describe('persisted tool-created branch settings', () => {
     const baseline = { source, projected: structuredClone(source) }
     const directory = mkdtempSync(join(tmpdir(), 'eleckoi-setting-commit-'))
     directories.push(directory)
-    const bridgePath = join(directory, 'settings.json')
-    writeFileSync(bridgePath, JSON.stringify({ enabled: true, library: source, frozenLibrary: source }))
-    const previousRoot = process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
-    process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = directory
-    writeSessionSnapshot(directory, 'synthetic-session', {
-      conversationId: chat, settingStateFile: bridgePath, settingLibraryBaseline: baseline
-    })
+    const contexts = runtimeContextsFor('synthetic-session', { conversationId: chat,
+      settings: { enabled: true, library: source, frozenLibrary: source, history: [] }, settingLibraryBaseline: baseline })
     let patch
     let glob
     let read
     let notifications = 0
     applySettingLibraryTools({
+      eleckoiRuntimeContexts: contexts,
       tools: { register(tool) {
         if (tool.name === 'eleckoi_apply_setting_patch') patch = tool
         if (tool.name === 'eleckoi_glob_setting_files') glob = tool
@@ -102,8 +98,7 @@ describe('persisted tool-created branch settings', () => {
       repository.restoreConversationRuntimeState(chat, '[]')
       expect(repository.conversationLibrary('card-a', chat)).toBeUndefined()
     } finally {
-      if (previousRoot === undefined) delete process.env.ELECKOI_SESSION_SNAPSHOT_ROOT
-      else process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = previousRoot
+      contexts.close()
     }
   }, 30_000)
 

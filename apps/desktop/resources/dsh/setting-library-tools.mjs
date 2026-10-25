@@ -1,7 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { readSessionSnapshot } from './session-snapshot.mjs'
 import { requiredSettingCache } from './required-setting-cache.mjs'
 import { readToolResult, resultReadParameter } from '@eleckoi/dsh-client-roleplay/host/tool-result-access.mjs'
 import {
@@ -13,7 +11,7 @@ import {
 } from './runtime-plugin-failure.mjs'
 
 export const name = 'eleckoi-setting-library-tools'
-export const inject = ['tools', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
+export const inject = ['tools', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges', 'eleckoiRuntimeContexts']
 
 const requiredEntriesReadInstruction = '搜索结果的 required_entries 是本回合必读清单（固定必读及关键词、EJS 条件触发项），不受 pattern、path 或 files/matches 是否命中影响。若非空，回复用户前必须调用 eleckoi_read_setting_files，把本轮尚未读取或已失效的 path 一次传入 paths；已读取且正文未变化的条目无需重复读取，仅搜索不算读取。即使固定必读项标记为 cached_reference、正文已在前置缓存设定区，也必须读取，用工具回执的编号和标题核对前置正文。'
 
@@ -21,15 +19,15 @@ export function apply(ctx) {
   return runRuntimePluginApply(ctx, name, () => {
     const register = (definition) => ctx.tools.register(withRuntimePluginExit(ctx, name, definition))
     return [
-      register(globTool()),
-      register(grepTool()),
+      register(globTool(ctx)),
+      register(grepTool(ctx)),
       register(readTool(ctx)),
       register(patchTool(ctx))
     ]
   })
 }
 
-function globTool() {
+function globTool(ctx) {
   return defineTool({
     name: 'eleckoi_glob_setting_files',
     description: `按 Glob 查找当前对话可读取的虚拟设定文件。需要本轮必读清单时，省略 pattern 和 path，以 ** 一次列出全部当前可读路径及 required_entries。已有完整路径就直接读取；仅需筛选已知目录时传 path，它会递归搜索子目录。同一轮目录和条件未变化时不要重复相同搜索，变化后可重新搜索。返回完整路径、标题和作者注释，不返回正文。路径使用 / 分隔且不带 .md 后缀。${requiredEntriesReadInstruction}`,
@@ -39,10 +37,9 @@ function globTool() {
     },
     output: output(),
     async execute(args, exec) {
-      const bridgeFile = settingBridgeFor(exec)
-      const bridge = readBridge(bridgeFile, exec)
+      const bridge = readSettings(ctx, exec)
       if (!bridge.enabled) return { status: 'ok', path: '', required_entries: [], files: [] }
-      const catalog = await runtimeCatalogOf(bridge, bridgeFile)
+      const catalog = await currentCatalog(ctx, exec)
       const scope = normalizePath(args.path || '', true)
       if (scope === null || !directoryExists(catalog, scope)) return fail('invalid_path', 'path 必须是当前虚拟设定库中真实存在的目录。')
       let matcher
@@ -58,7 +55,7 @@ function globTool() {
   })
 }
 
-function grepTool() {
+function grepTool(ctx) {
   return defineTool({
     name: 'eleckoi_grep_setting_files',
     description: `用正则搜索当前对话虚拟设定文件的路径、读取提示和正文。${requiredEntriesReadInstruction}`,
@@ -71,11 +68,10 @@ function grepTool() {
     },
     output: output(),
     async execute(args, exec) {
-      const bridgeFile = settingBridgeFor(exec)
       if (!String(args.pattern || '')) return fail('invalid_arguments', 'pattern 不能为空。')
-      const bridge = readBridge(bridgeFile, exec)
+      const bridge = readSettings(ctx, exec)
       if (!bridge.enabled) return { status: 'no_matches', required_entries: [], matches: [] }
-      const catalog = await runtimeCatalogOf(bridge, bridgeFile)
+      const catalog = await currentCatalog(ctx, exec)
       const scope = normalizePath(args.path || '', true)
       if (scope === null || !directoryExists(catalog, scope)) return fail('invalid_path', 'path 必须是当前虚拟设定库中真实存在的目录。')
       let expression, pathMatcher
@@ -111,12 +107,11 @@ function readTool(ctx) {
     output: output(),
     async execute(args, exec) {
       if (Object.hasOwn(args, 'result')) return readToolResult(ctx, args, exec, 'settings')
-      const bridgeFile = settingBridgeFor(exec)
       const paths = [...new Set((args.paths || []).map((path) => normalizePath(path, false)).filter(Boolean))]
       if (!paths.length) return fail('invalid_arguments', '至少需要读取一个文件。')
-      const bridge = readBridge(bridgeFile, exec)
+      const bridge = readSettings(ctx, exec)
       if (!bridge.enabled) return { status: 'ok', files: [] }
-      const catalog = await runtimeCatalogOf(bridge, bridgeFile)
+      const catalog = await currentCatalog(ctx, exec)
       const byPath = new Map(catalog.entries.map((entry) => [entry.path, entry]))
       const missing = paths.filter((path) => !byPath.has(path))
       if (missing.length) return { ...fail('not_found', '存在当前虚拟设定库没有的路径，请重新使用 Glob 或 Grep。'), paths: missing }
@@ -159,28 +154,25 @@ function patchTool(ctx) {
     },
     output: output(),
     async execute(args, exec) {
-      const bridgeFile = settingBridgeFor(exec)
-      const bridge = readBridge(bridgeFile, exec)
+      const state = ctx.eleckoiRuntimeContexts.get(exec.agent?.session?.id)
+      const bridge = readSettings(ctx, exec)
       if (!bridge.enabled) return { status: 'ok', scope: 'current_conversation', changed: false }
-      const original = readFileSync(bridgeFile, 'utf8')
-      let bridgeWritten = false
       try {
         exec.signal?.throwIfAborted()
-        const result = applyOperation(bridge.library, args)
+        const library = structuredClone(bridge.library)
+        const result = applyOperation(library, args)
         if (!result.changed) return { status: 'ok', scope: 'current_conversation', ...result }
-        const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec.agent?.session?.id)
+        const snapshot = state
         if (!snapshot.conversationId || !snapshot.settingLibraryBaseline) {
           throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前对话缺少设定持久化上下文。', { what: '设定持久化上下文' })
         }
-        delete bridge.runtimeResolution
-        writeBridge(bridgeFile, bridge)
-        bridgeWritten = true
         ctx.eleckoiProductData.commitConversationRuntime(
           snapshot.conversationId,
           undefined,
-          JSON.stringify(bridge.library),
+          JSON.stringify(library),
           snapshot.settingLibraryBaseline
         )
+        state.settings = { ...bridge, library, runtimeResolution: undefined }
         // Notification failure must not turn a committed change into a failed tool result.
         try {
           ctx.eleckoiCharacterConfigurationChanges.publish({
@@ -192,7 +184,6 @@ function patchTool(ctx) {
         }
         return { status: 'ok', scope: 'current_conversation', ...result }
       } catch (error) {
-        if (bridgeWritten) writeFileSync(bridgeFile, original, 'utf8')
         // 边界④：被拒的修改也走统一出口落一行诊断（码 + 开发者文案 + 详情 + 操作名），再按工具结果返回。
         const failure = recordRuntimePluginFailure(ctx, name, String(args.operation || 'apply_setting_patch'), error)
         return { ...fail('change_rejected', failure.message), state_unchanged: true }
@@ -356,7 +347,15 @@ function isFixedEntry(entry) {
     || ['opening', 'history_compaction'].includes(entry.kind)
 }
 
-async function runtimeCatalogOf(bridge, bridgeFile) {
+async function currentCatalog(ctx, exec) {
+  while (true) {
+    const state = readSettings(ctx, exec)
+    const catalog = await runtimeCatalogOf(state)
+    if (readSettings(ctx, exec) === state) return catalog
+  }
+}
+
+async function runtimeCatalogOf(bridge) {
   const catalog = catalogOf(bridge.library)
   const original = catalogOf(bridge.frozenLibrary || bridge.library)
   catalog.requiredCache = requiredSettingCache(bridge.frozenLibrary || bridge.library)
@@ -399,7 +398,6 @@ async function runtimeCatalogOf(bridge, bridgeFile) {
       .map((entry) => [entry.raw.id, entry.resolvedReferences]))
   }
   bridge.runtimeResolution = resolution
-  writeBridge(bridgeFile, bridge)
   return applyRuntimeResolution(catalog, resolution)
 }
 
@@ -756,27 +754,17 @@ function assertMutableEntry(entry) {
   }
 }
 
-function readBridge(bridgeFile, exec) {
-  const bridge = JSON.parse(readFileSync(bridgeFile, 'utf8'))
+function readSettings(ctx, exec) {
+  const state = ctx.eleckoiRuntimeContexts.get(exec?.agent?.session?.id)
+  let bridge = state.settings
   if (!bridge || typeof bridge !== 'object' || Array.isArray(bridge)) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '设定库运行时尚未准备好。', { what: '设定库运行时' })
   if (!bridge.enabled) return bridge
   if (!bridge.library) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库运行时配置不正确。', { what: '设定库运行时配置' })
-  const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-  if (snapshot.variablesEnabled && snapshot.variableStateFile) {
-    const variableBridge = JSON.parse(readFileSync(snapshot.variableStateFile, 'utf8'))
-    const currentState = objectValue(variableBridge.state)
-    if (JSON.stringify(bridge.variableState) !== JSON.stringify(currentState)) {
-      bridge.variableState = currentState
-      delete bridge.runtimeResolution
-    }
+  const currentState = state.variables.state
+  if (bridge.variableState !== currentState) {
+    bridge = state.settings = { ...bridge, variableState: currentState, runtimeResolution: undefined }
   }
   return bridge
-}
-function writeBridge(bridgeFile, value) { writeFileSync(bridgeFile, JSON.stringify(value, null, 2), 'utf8') }
-function settingBridgeFor(exec) {
-  const snapshot = readSessionSnapshot(process.env.ELECKOI_SESSION_SNAPSHOT_ROOT, exec?.agent?.session?.id)
-  if (!snapshot.settingStateFile) throw runtimePluginFailure(ELECKOI_FAILURE_CODES.lifecycleNotReady, '当前 Session 缺少设定库运行时文件。', { what: '设定库运行时文件' })
-  return snapshot.settingStateFile
 }
 function output() { return { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] } }
 function requiredFiles(catalog) { return catalog.entries.filter((entry) => entry.readStrategy === 'required' || entry.promotedToRequiredThisTurn === true).map((entry) => summary(entry, catalog)) }

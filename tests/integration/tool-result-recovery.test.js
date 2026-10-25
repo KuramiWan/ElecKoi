@@ -1,3 +1,4 @@
+import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { Context } from '@deepseek-ai/cordis'
@@ -51,6 +52,7 @@ async function fixture({ root, sessionId = 'result-owner', stream } = {}) {
   ctx.provide('eleckoiProductData', { commitConversationRuntime: vi.fn() })
   ctx.provide('eleckoiCharacterConfigurationChanges', { publish: vi.fn() })
   ctx.provide('eleckoiVariableProcessing', new ElecKoiVariableProcessing(null))
+  ctx.provide('eleckoiRuntimeContexts', runtimeContextsFor('synthetic-unprepared'))
   await ctx.plugin(settingTools)
   await ctx.plugin(variableTools)
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -392,14 +394,13 @@ describe('Complete tool-result access', { timeout: 30_000 }, () => {
     const entries = Array.from({ length: count }, (_, index) => ({ ...emptyEntry(`synthetic-setting-${index}`), title: `合成设定-${String(index).padStart(4, '0')}`,
       content: `完整正文与末尾关键词-${index}`, agentReadStrategy: 'normal' }))
     const library = { characterId: 'synthetic-character', groups: [], entries }
-    const settingFile = join(f.root, 'setting-state.json'), variableFile = join(f.root, 'variable-state.json')
-    writeFileSync(settingFile, JSON.stringify({ enabled: true, library, history: [], variableState: {} }))
     const variables = Array.from({ length: count }, (_, index) => ({ id: `synthetic-variable-${index}`, title: `合成指标-${String(index).padStart(4, '0')}`,
       objectId: '', enabled: true, type: 'number', defaultValue: '0', description: `合成说明-${index}`, updateRule: `完整更新规则-${index}`, readMode: 'required' }))
     const state = Object.fromEntries(variables.map(variable => [variable.title, 0]))
-    writeFileSync(variableFile, JSON.stringify({ enabled: true, config: { initialState: state, schemaCode: '', objects: [], variables }, state }))
-    writeFileSync(join(snapshotRoot, `${f.handle.agent.session.id}.json`), JSON.stringify({ conversationId: 'synthetic-chat',
-      settingStateFile: settingFile, settingLibraryEnabled: true, settingLibraryBaseline: { source: library, projected: library }, variableStateFile: variableFile, variablesEnabled: true }))
+    f.ctx.eleckoiRuntimeContexts.set(f.handle.agent.session.id, runtimeContextsFor(f.handle.agent.session.id, {
+      settings: { enabled: true, library, history: [] }, variables: { enabled: true, config: { initialState: state, schemaCode: '', objects: [], variables }, state },
+      settingLibraryBaseline: { source: library, projected: library }
+    }).get(f.handle.agent.session.id))
     args = toolName.includes('grep') ? { pattern: toolName.endsWith('variables') ? '合成指标' : '合成设定' }
       : toolName.includes('read') ? { paths: toolName.endsWith('variables') ? variables.map(variable => `/${variable.title}`) : entries.map(entry => entry.title) } : {}
     f.ctx.on('tools/post-execute', async (exec, result, next) => { if (exec.name === toolName && !Object.hasOwn(exec.arguments, 'result')) original = result.content[0].text; return next() })

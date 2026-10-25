@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
@@ -83,18 +84,17 @@ describe('opening variable version bindings', () => {
     f.variables.save('synthetic-character', { ...config, ...config.versions[0]!, activeVersionId: 'variant-a' })
     expect(context().schemaCode).toContain('.max(100)')
 
-    const file = join(f.directory, 'variables.json')
     const snapshotRoot = join(f.directory, 'snapshots')
     mkdirSync(snapshotRoot)
     process.env.ELECKOI_SESSION_SNAPSHOT_ROOT = snapshotRoot
     const selected = context()
-    writeFileSync(file, JSON.stringify({ enabled: true, config: {
+    const variableState = { enabled: true, config: {
       initialState: JSON.parse(selected.initialStateJson), schemaCode: selected.schemaCode,
       objects: selected.objects, variables: selected.variables,
-    }, state: JSON.parse(selected.stateJson) }))
-    writeFileSync(join(snapshotRoot, `${id}.json`), JSON.stringify({ conversationId: id, variableStateFile: file, variablesEnabled: true }))
+    }, state: JSON.parse(selected.stateJson) }
+    const contexts = runtimeContextsFor(id, { variables: variableState })
     const tools = new Map<string, { execute(args: unknown, execution: unknown): Promise<any> }>()
-    applyVariableTools({ eleckoiVariableProcessing: new ElecKoiVariableProcessing({} as any),
+    applyVariableTools({ eleckoiRuntimeContexts: contexts, eleckoiVariableProcessing: new ElecKoiVariableProcessing({} as any),
       tools: { register(definition: any) { tools.set(definition.name, definition); return () => {} } } })
     const execution = { agent: { session: { id } } }
     const patch = tools.get('eleckoi_apply_variable_patch')!

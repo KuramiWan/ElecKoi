@@ -2,13 +2,22 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import { productFailure, ELECKOI_FAILURE_CODES } from '@eleckoi/dsh-product-api'
 
+// RETIRE WHEN: all supported upgrade sources have regenerated their Session
+// configuration without file-backed turn data. Remove this projection and its
+// read/write calls together; do not restore the retired runtime fields.
+const retiredRuntimeFields = new Set([
+  'variableStateFile', 'settingStateFile', 'contextFile', 'conversationContext',
+  'settingLibraryBaseline', 'generationVariableStateJson'
+])
+const configuration = value => Object.fromEntries(Object.entries(value).filter(([key]) => !retiredRuntimeFields.has(key)))
+
 export function readSessionSnapshot(root, sessionId) {
   if (!root) throw productFailure(ELECKOI_FAILURE_CODES.statePrecondition, 'ELECKOI_SESSION_SNAPSHOT_ROOT is required', { what: '配置必需的运行环境变量' })
   const value = JSON.parse(readFileSync(snapshotPath(root, sessionId), 'utf8'))
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, `Invalid ElecKoi Session snapshot: ${sessionId}`, { what: '会话快照' })
   }
-  return value
+  return configuration(value)
 }
 
 export function writeSessionSnapshot(root, sessionId, value) {
@@ -17,7 +26,7 @@ export function writeSessionSnapshot(root, sessionId, value) {
   const path = snapshotPath(root, sessionId)
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
   try {
-    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
+    writeFileSync(temporary, `${JSON.stringify(configuration(value), null, 2)}\n`, { encoding: 'utf8', flag: 'wx' })
     renameSync(temporary, path)
   } finally {
     rmSync(temporary, { force: true })
