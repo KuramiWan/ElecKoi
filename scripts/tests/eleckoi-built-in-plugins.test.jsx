@@ -130,7 +130,7 @@ describe('ElecKoi built-in bundle details', () => {
         });
         const node = document.createElement('div'); document.body.append(node);
         const root = createRoot(node);
-        const name = '@test/shipped-bundle';
+        const name = '@eleckoi/dsh-client-characters';
         let view = { kind: 'list' }, state = { ...initialState, status: 'ready', packages: [{ name,
                 enabled: true, installed: false, official: false, availability: 'installation', optional: false, rows: [], overrides: [], meta: { title: '合成插件' } }] };
         const render = () => root.render(React.createElement(page, {
@@ -154,6 +154,74 @@ describe('ElecKoi built-in bundle details', () => {
             expect(node.querySelector('[role="switch"]').getAttribute('aria-checked')).toBe('true');
         } finally { await act(async () => root.unmount()); node.remove(); }
     });
+    it('keeps five product cards below experimental plugins, reserves Installed for users, and returns through each More list', async () => {
+        let plugin, page, initialState;
+        runInNewContext(readFileSync(createRequire(import.meta.url).resolve('@deepseek-ai/dsh-client-ui-plugin-manager/client'), 'utf8'), {
+            window: { __ModuleLoader__: { load: value => { plugin = value; } } },
+        });
+        const dependencies = { react: React, 'react-dom': ReactDom, 'react/jsx-runtime': Jsx,
+            '@deepseek-ai/dsh-client-ui-primitives': primitives, '@deepseek-ai/dsh-client-ui-slots': Slots,
+            '@deepseek-ai/dsh-client-store': Store };
+        plugin.factory(name => dependencies[name]).apply({
+            effect: () => {}, locale: { bind: () => () => '', resolveText: value => value }, configForms: { describe: () => ({}) },
+            slots: { inject: (_name, register) => { const result = register(); if (result?.next) result.next(); },
+                register: (options, component) => { if (options.name === 'main') { page = component; initialState = options.inject().hooks.pluginManager.getSnapshot(); } return () => {}; } },
+        });
+        const makePackage = (name, options = {}) => ({ name, enabled: true, installed: false, official: false,
+            availability: 'installation', optional: false, rows: [{ rowId: 'synthetic-row', entryId: `entry:${name}`,
+                moduleName: name, enabled: true, phase: 'active' }], overrides: [], meta: { title: name }, ...options });
+        const userNames = ['@test/user-plugin', '@eleckoi/user-installed-synthetic', '@test/missing-user-plugin'];
+        const experimental = '@deepseek-ai/dsh-experimental-agent-team-profile';
+        let view = { kind: 'list' };
+        let state = { ...initialState, status: 'ready', packages: [
+            ...[...bundles].reverse().map(name => makePackage(name)),
+            makePackage(experimental, { official: true, optional: true }),
+            ...userNames.map((name, index) => makePackage(name, { installed: true, availability: index === 2 ? 'missing' : 'profile' })),
+            makePackage('@test/uninstalled-bundle', { availability: 'profile' }),
+        ] };
+        const node = document.createElement('div'); document.body.append(node);
+        const root = createRoot(node);
+        const render = () => root.render(React.createElement(page, {
+            t: key => key, ensure: () => {}, renderSlot: () => null, resolveText: value => value,
+            useConfigurations: select => select({}), configForm: () => {}, usePluginTabs: select => select([]),
+            usePluginManager: select => select(state),
+            useConfigLedger: select => select({ items: [], bundles: new Set(), rows: new Set(bundles.map(name => `${name}#synthetic-row`)) }),
+            useStore: select => select({ view, tab: 'installed' }), actions: { setTab() {}, setView: next => { view = next; render(); } },
+            setEnabled: (name, enabled) => { state = { ...state, packages: state.packages.map(pkg => pkg.name === name ? { ...pkg, enabled } : pkg) }; render(); },
+        }));
+        const cards = group => [...node.querySelectorAll(`[data-plugin-group="${group}"] [data-plugin-package]`)].map(card => card.dataset.pluginPackage);
+        const click = async selector => act(async () => { const button = node.querySelector(selector); expect(button, selector).not.toBeNull(); button.click(); });
+        try {
+            await act(async () => render());
+            expect([...node.querySelectorAll('[data-plugin-group]')].map(group => group.dataset.pluginGroup)).toEqual(['extensions', 'eleckoi', 'bundles']);
+            const featured = ['@eleckoi/dsh-client-characters', '@eleckoi/dsh-client-presets', '@eleckoi/dsh-client-creator-studio', '@eleckoi/dsh-client-models', '@eleckoi/dsh-client-web-search'];
+            expect(cards('eleckoi')).toEqual(featured);
+            expect(cards('bundles')).toEqual(userNames);
+            await click('[data-plugin-group="eleckoi"] [role="switch"]');
+            expect(cards('eleckoi')).toEqual(featured);
+            await click('[data-plugin-group="eleckoi"] button');
+            expect(view).toEqual({ kind: 'eleckoi-more' });
+            expect(new Set(cards('eleckoi-more'))).toEqual(new Set(bundles));
+            const extra = '@eleckoi/dsh-client-author';
+            await click(`[data-plugin-package="${extra}"] button`);
+            expect(view).toEqual({ kind: 'package', name: extra, from: 'eleckoi-more' });
+            expect(node.querySelector('[data-plugin-detail]')).not.toBeNull();
+            await click('[aria-label="configureRow"]');
+            expect(view).toEqual({ kind: 'row', name: extra, rowId: 'synthetic-row', from: 'eleckoi-more' });
+            await click('[aria-label="backToPackage"]');
+            expect(view).toEqual({ kind: 'package', name: extra, from: 'eleckoi-more' });
+            await click('[aria-label="backToPackage"]');
+            expect(view).toEqual({ kind: 'eleckoi-more' });
+            await click('[aria-label="backToList"]');
+            await click('[data-plugin-group="extensions"] button');
+            expect(view).toEqual({ kind: 'more' });
+            expect(cards('more')).toEqual([experimental]);
+            await click(`[data-plugin-package="${experimental}"] button`);
+            await click('[aria-label="backToPackage"]');
+            expect(view).toEqual({ kind: 'more' });
+            expect(cards('more')).toEqual([experimental]);
+        } finally { await act(async () => root.unmount()); node.remove(); }
+    });
     it('publishes shipped bundles even when they are not installed into the user profile', () => {
         let registration;
         let rootComponent;
@@ -162,7 +230,10 @@ describe('ElecKoi built-in bundle details', () => {
         const observable = (value) => ({ subscribe: () => () => { }, getSnapshot: () => value });
         const face = {
             hooks: {
-                pluginManager: observable({ status: 'ready', packages: bundles.map(name => ({ name, installed: false, optional: false, enabled: name !== bundles.at(-1), meta: { title: { zh: name } } })) }),
+                pluginManager: observable({ status: 'ready', packages: [...bundles.map(name => ({ name, installed: false, optional: false, enabled: name !== bundles.at(-1), meta: { title: { zh: name } } })),
+                    { name: '@eleckoi/user-installed-synthetic', installed: true, meta: { title: { zh: '合成用户插件' } } },
+                    { name: '@test/uninstalled-bundle', installed: false, meta: { title: { zh: '合成未安装插件' } } },
+                ] }),
                 configLedger: observable({ items: [] }),
             }, resolveText: (value) => value.zh,
         };
@@ -207,8 +278,9 @@ describe('ElecKoi built-in bundle details', () => {
             const receive = (event) => { published = event.detail; };
             window.addEventListener('eleckoi:dsh-plugins:state', receive);
             const dispose = effects.find(effect => effect.deps?.[1] === slots).run();
-            expect(published.entries.map((entry) => entry.id)).toEqual(bundles);
-            expect(published.entries.every((entry) => entry.kind === 'package' && entry.group === 'eleckoi')).toBe(true);
+            expect(published.entries.map((entry) => entry.id)).toEqual([...bundles, '@eleckoi/user-installed-synthetic']);
+            expect(published.entries.filter(entry => bundles.includes(entry.id)).every((entry) => entry.kind === 'package' && entry.group === 'eleckoi')).toBe(true);
+            expect(published.entries.find(entry => entry.id === '@eleckoi/user-installed-synthetic')?.group).toBe('installed');
             dispose();
             window.removeEventListener('eleckoi:dsh-plugins:state', receive);
         }

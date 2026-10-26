@@ -21,7 +21,7 @@ patchedDependencies:
     hash: b98b93edc0e6bfdc48464fb71c22c63f0c6822a5d10ff00f94deaf4364cc98e0
     path: patches/@deepseek-ai__dsh-client-ui-conversation@0.2.1-rc.3.patch
   '@deepseek-ai/dsh-client-ui-plugin-manager@0.2.1-rc.3':
-    hash: 78ad97618fafca7c72442c0d6ff6094835ce1aa9e3ec9512b1021d6e92eb64c5
+    hash: 807a4be65bb04e55e3e1d6e91ece61b5debd670f3915d0e7059873fb7813600c
     path: patches/@deepseek-ai__dsh-client-ui-plugin-manager@0.2.1-rc.3.patch
   '@deepseek-ai/dsh-client-ui-trajectory@0.2.1-rc.3':
     hash: 49c8b93569819b4112468b273df5ff33a217c6370f6e493a6b8623f178a69dfe
@@ -279,7 +279,7 @@ importers:
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-plugin-manager':
         specifier: 0.2.1-rc.3
-        version: 0.2.1-rc.3(patch_hash=78ad97618fafca7c72442c0d6ff6094835ce1aa9e3ec9512b1021d6e92eb64c5)(@deepseek-ai/cordis@4.0.5)
+        version: 0.2.1-rc.3(patch_hash=807a4be65bb04e55e3e1d6e91ece61b5debd670f3915d0e7059873fb7813600c)(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-plugin-market':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
@@ -1634,7 +1634,7 @@ importers:
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-plugin-manager':
         specifier: 0.2.1-rc.3
-        version: 0.2.1-rc.3(patch_hash=78ad97618fafca7c72442c0d6ff6094835ce1aa9e3ec9512b1021d6e92eb64c5)(@deepseek-ai/cordis@4.0.5)
+        version: 0.2.1-rc.3(patch_hash=807a4be65bb04e55e3e1d6e91ece61b5debd670f3915d0e7059873fb7813600c)(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-plugin-market':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
@@ -3513,7 +3513,7 @@ importers:
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-plugin-manager':
         specifier: 0.2.1-rc.3
-        version: 0.2.1-rc.3(patch_hash=78ad97618fafca7c72442c0d6ff6094835ce1aa9e3ec9512b1021d6e92eb64c5)(@deepseek-ai/cordis@4.0.5)
+        version: 0.2.1-rc.3(patch_hash=807a4be65bb04e55e3e1d6e91ece61b5debd670f3915d0e7059873fb7813600c)(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-plugin-market':
         specifier: 0.2.1-rc.3
         version: 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
@@ -14014,7 +14014,7 @@ snapshots:
     dependencies:
       '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
 
-  '@deepseek-ai/dsh-client-ui-plugin-manager@0.2.1-rc.3(patch_hash=78ad97618fafca7c72442c0d6ff6094835ce1aa9e3ec9512b1021d6e92eb64c5)(@deepseek-ai/cordis@4.0.5)':
+  '@deepseek-ai/dsh-client-ui-plugin-manager@0.2.1-rc.3(patch_hash=807a4be65bb04e55e3e1d6e91ece61b5debd670f3915d0e7059873fb7813600c)(@deepseek-ai/cordis@4.0.5)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.5(@deepseek-ai/cordis-plugin-include@1.0.10)(@deepseek-ai/cordis-plugin-loader@1.0.6)
       '@deepseek-ai/dsh-timeout': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
@@ -16465,7 +16465,7 @@ snapshots:
       '@deepseek-ai/dsh-client-ui-open-in-app': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-permission-presets': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-plan': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
-      '@deepseek-ai/dsh-client-ui-plugin-manager': 0.2.1-rc.3(patch_hash=78ad97618fafca7c72442c0d6ff6094835ce1aa9e3ec9512b1021d6e92eb64c5)(@deepseek-ai/cordis@4.0.5)
+      '@deepseek-ai/dsh-client-ui-plugin-manager': 0.2.1-rc.3(patch_hash=807a4be65bb04e55e3e1d6e91ece61b5debd670f3915d0e7059873fb7813600c)(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-reference': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-renderer': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)
       '@deepseek-ai/dsh-client-ui-schedule': 0.2.1-rc.3(@deepseek-ai/cordis@4.0.5)

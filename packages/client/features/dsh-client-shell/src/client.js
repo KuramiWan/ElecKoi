@@ -232,14 +232,14 @@ window.__ModuleLoader__.load({
         const entries = () => {
           if (!face) return []
           const packages = face.hooks.pluginManager.getSnapshot().packages
-            .filter(pkg => !profileBundles.has(pkg.name))
+            .filter(pkg => !profileBundles.has(pkg.name) && (pkg.official === true || builtInBundles.includes(pkg.name) || eleckoiPackages.has(pkg.name) || pkg.installed))
           const toPackage = pkg => ({
             id: pkg.name,
             kind: 'package',
             name: eleckoiPackages.get(pkg.name)
               || (pkg.meta?.title === undefined ? pkg.name : face.resolveText(pkg.meta.title) || pkg.name),
             icon: pkg.meta?.icon || '',
-            group: pkg.name.startsWith('@eleckoi/') || eleckoiPackages.has(pkg.name) ? 'eleckoi'
+            group: builtInBundles.includes(pkg.name) || eleckoiPackages.has(pkg.name) ? 'eleckoi'
               : pkg.official === true ? 'official'
                 : 'installed'
           })

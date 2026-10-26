@@ -30,7 +30,7 @@ patchedDependencies:
   '@deepseek-ai/dsh-client-ui-chat@0.2.1-rc.3': patches/@deepseek-ai__dsh-client-ui-chat@0.2.1-rc.3.patch
   # RETIRE WHEN: official composer exposes the product accessory and Enter-key controls.
   '@deepseek-ai/dsh-client-ui-conversation@0.2.1-rc.3': patches/@deepseek-ai__dsh-client-ui-conversation@0.2.1-rc.3.patch
-  # RETIRE WHEN: upstream displays product bundle declarations and developer interface metadata.
+  # RETIRE WHEN: upstream supports shipped product groups with featured entries and More navigation, and displays product bundle declarations and developer interface metadata.
   '@deepseek-ai/dsh-client-ui-plugin-manager@0.2.1-rc.3': patches/@deepseek-ai__dsh-client-ui-plugin-manager@0.2.1-rc.3.patch
   # RETIRE WHEN: retained input boundaries and original system baselines are represented without synthetic model failures.
   '@deepseek-ai/dsh-client-ui-trajectory@0.2.1-rc.3': patches/@deepseek-ai__dsh-client-ui-trajectory@0.2.1-rc.3.patch
