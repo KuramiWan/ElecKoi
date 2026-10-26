@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@eleckoi/author-sdk": "workspace:*",
+    "@eleckoi/tavern-frontend": "workspace:*",
     "@eleckoi/compatibility-mvu": "workspace:*",
     "@eleckoi/dsh-client-character-configuration": "workspace:*",
     "@eleckoi/dsh-client-characters": "workspace:*",

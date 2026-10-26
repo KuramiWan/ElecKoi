@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import * as libraries from '@eleckoi/dsh-client-html-resources/browser-libraries';
 import { buildRichMessageHtml } from '../../src/modules/authorFrontend/model/buildRichMessageHtml.js';
@@ -5,7 +6,7 @@ import { buildRichMessageHtml } from '../../src/modules/authorFrontend/model/bui
 const runtime = { assetsBaseUrl: '/eleckoi/html/', sdk: libraries };
 
 describe('shared rich message document', () => {
-  it('loads browser resources without installing external SDK interfaces', () => {
+  it('loads browser resources and holds author scripts for the owning SDK mount', () => {
     const output = buildRichMessageHtml({ source: '<html><head><script>window.cardLoaded=true</script></head><body>card</body></html>' },
       'channel-a', runtime, { messageId: 'message-a', conversationId: 'chat-a' });
     expect(output).not.toContain('Content-Security-Policy');
@@ -17,6 +18,8 @@ describe('shared rich message document', () => {
       expect(output.indexOf(file)).toBeLessThan(output.indexOf('window.cardLoaded'));
     }
     expect(output.indexOf('type="importmap"')).toBeLessThan(output.indexOf('window.cardLoaded'));
+    expect(output).toContain('type="application/eleckoi-frontend-script"');
+    expect(output).toContain('__ElecKoiCompleteSharedDocument');
   });
   it('wraps fragments in a transparent document and retains body-only documents', () => {
     const fragment = buildRichMessageHtml({ source: '<div class="card">card</div>' }, 'channel-b', runtime);

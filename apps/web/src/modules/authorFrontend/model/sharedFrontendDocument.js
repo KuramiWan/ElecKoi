@@ -1,6 +1,7 @@
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
 import { DesktopError } from '@shared/foundation/DesktopError';
 import { installRichDocumentMeasurement } from '@eleckoi/author-sdk';
+import { prepareFrontendCompatibilitySource } from '@eleckoi/tavern-frontend';
 
 const literal = value => JSON.stringify(value).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
 const attr = value => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
@@ -11,7 +12,7 @@ export function injectFrontendHead(source, head) {
   return `<!doctype html><html><head>${head}</head>${/<body\b/i.test(source) ? source : `<body>${source}</body>`}</html>`;
 }
 
-/** Imported HTML gets presentation libraries, but no external author SDK. */
+/** Imported scripts start after their owning page has mounted its native capabilities. */
 export function buildSharedFrontendDocument(source, runtime, { channel, baseUrl, rich = false, context, globalStyles = [], autoHeight = false } = {}) {
   if (!runtime?.assetsBaseUrl || !runtime.sdk) throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, 'HTML 显示资源尚未就绪', { what: 'HTML 显示资源' });
   const sdk = runtime.sdk, libraries = runtime.assetsBaseUrl + 'libraries/';
@@ -29,17 +30,17 @@ export function buildSharedFrontendDocument(source, runtime, { channel, baseUrl,
   const send=(type,payload={})=>parent.postMessage({type,channel,...payload},'*');
   const report=error=>send(${literal(rich ? 'eleckoi:frontend-diagnostic' : 'eleckoi:frontend-error')},{message:error?.message||String(error),stack:error?.stack||''});
   window.ElecKoiFrontendContext=${literal(context ?? null)};
+  Object.defineProperty(window,'__ElecKoiDocumentChannel',{value:channel});
   addEventListener('error',event=>report(event.error||new Error(event.message)));
   addEventListener('error',event=>{if(event.target!==window&&event.target?.tagName)report(new Error('资源加载失败: '+(event.target.src||event.target.href||event.target.tagName)));},true);
   addEventListener('unhandledrejection',event=>report(event.reason));
   window.ElecKoiLibraries={ready:true,versions:${literal(sdk.BROWSER_LIBRARY_VERSIONS)}};
-  const ready=()=>send('eleckoi:frontend-ready');
-  if(document.readyState==='loading')addEventListener('DOMContentLoaded',ready,{once:true});else ready();
+  window.__ElecKoiCompleteSharedDocument=error=>error?send('eleckoi:frontend-error',{message:error?.message||String(error)}):send('eleckoi:frontend-ready');
   ${autoHeight ? `const measureSlot=()=>send('eleckoi:slot-height',{height:Math.ceil(document.body?.getBoundingClientRect().height||0)});
   const watchSlot=()=>{const observer=new ResizeObserver(measureSlot);observer.observe(document.body);addEventListener('pagehide',()=>observer.disconnect(),{once:true});measureSlot();};
   if(document.readyState==='loading')addEventListener('DOMContentLoaded',watchSlot,{once:true});else watchSlot();` : ''}
   ${rich ? `(${installRichDocumentMeasurement.toString()})(window,height=>send('eleckoi:rich-height',{height}));` : ''}
 })();
 </script>`;
-  return injectFrontendHead(String(source || ''), head);
+  return injectFrontendHead(prepareFrontendCompatibilitySource(String(source || '')), head);
 }

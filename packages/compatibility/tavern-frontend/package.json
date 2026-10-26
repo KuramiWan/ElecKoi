@@ -1,0 +1,18 @@
+{
+  "name": "@eleckoi/tavern-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    }
+  },
+  "scripts": { "build": "tsdown", "test": "pnpm --dir ../../.. test:unit packages/compatibility/tavern-frontend/tests" },
+  "dependencies": { "@eleckoi/author-sdk": "workspace:*" },
+  "devDependencies": { "tsdown": "0.16.6", "typescript": "5.9.3" }
+}

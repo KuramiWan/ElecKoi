@@ -1,4 +1,6 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { mountFrontendCompatibility } from '@eleckoi/tavern-frontend';
+import { MainPageContext } from '../../../app/windows/MainPageContext.jsx';
 import { useHtmlResources } from '../../../ui/hooks/useHtmlResources.js';
 import { buildRichMessageHtml } from '../model/buildRichMessageHtml.js';
 import { readAuthorDocumentDeclaration } from '@eleckoi/author-sdk';
@@ -7,6 +9,8 @@ import { FrontendDiagnostics } from './FrontendDiagnostics.jsx';
 import { useRichMessageRenderPermission } from '../hooks/RichMessageRenderContext.jsx';
 
 const minimumHeight = 1;
+const noSubscription = () => () => {};
+const noRuntime = () => null;
 
 function createChannel() {
   return globalThis.crypto?.randomUUID?.() || `rich-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -40,6 +44,10 @@ export function RichMessageFrame(props) {
 
 function SharedMessageFrame({ message, document, rootIndex = 0, onSettled, onHeight, initialHeight }) {
   const { runtime, state } = useHtmlResources();
+  const view = useContext(MainPageContext);
+  const connection = view?.characterConfiguration?.scriptRuntimeConnection;
+  const authorRuntime = useSyncExternalStore(connection?.subscribe || noSubscription, connection?.getSnapshot || noRuntime, noRuntime);
+  const release = useRef(null);
   const frameRef = useRef(null);
   const [height, setHeight] = useState(null);
   const [error, setError] = useState('');
@@ -48,7 +56,7 @@ function SharedMessageFrame({ message, document, rootIndex = 0, onSettled, onHei
   const reportHeight = useRef(onHeight);
   settled.current = onSettled;
   reportHeight.current = onHeight;
-  const channel = useMemo(createChannel, [message.conversationId, message.id, document.contentKey, rootIndex]);
+  const channel = useMemo(createChannel, [message.conversationId, message.id, document.contentKey, rootIndex, authorRuntime]);
   const committedDocument = useMemo(() => ({ source: null }), [channel, document.source, message.id, runtime]);
   const source = useMemo(() => runtime && state.status === 'ready'
     ? buildRichMessageHtml(document, channel, runtime, { messageId: message.id, conversationId: message.conversationId })
@@ -93,15 +101,33 @@ function SharedMessageFrame({ message, document, rootIndex = 0, onSettled, onHei
     window.addEventListener('message', receive);
     return () => {
       window.removeEventListener('message', receive);
+      release.current?.(); release.current = null;
     };
   }, [channel, runtime, source]);
   useLayoutEffect(() => {
     if (state.status === 'error') settled.current?.({ status: 'error', error: state.error });
   }, [state.status, state.error]);
+  const loaded = () => {
+    const page = frameRef.current?.contentWindow;
+    if (!page || page.__ElecKoiDocumentChannel !== channel || release.current) return;
+    const report = failure => {
+      const text = failure?.message || String(failure);
+      setDiagnostics(current => current.includes(text) ? current : [...current, text]);
+    };
+    try {
+      const mount = mountFrontendCompatibility(page,
+        authorRuntime ? () => authorRuntime.mountDocument(page, message.conversationId, message.id) : undefined, report);
+      release.current = mount.dispose;
+      const current = () => release.current === mount.dispose && frameRef.current?.contentWindow === page;
+      void mount.ready.then(() => { if (current()) page.__ElecKoiCompleteSharedDocument(); }, failure => {
+        if (current()) { report(failure); page.__ElecKoiCompleteSharedDocument(failure); }
+      });
+    } catch (failure) { report(failure); page.__ElecKoiCompleteSharedDocument(failure); }
+  };
   if (error || state.status === 'error') return <div className="rich-message-error" role="alert">互动消息加载失败：{error || state.error}</div>;
   if (!source) return <div className="rich-message-loading" role="status">正在加载互动消息…</div>;
-  return <><iframe ref={frameRef} className="rich-message-frame" title="互动消息内容"
-    allow="fullscreen; autoplay; clipboard-read; clipboard-write" loading="eager" srcDoc={source}
+  return <><iframe key={channel} ref={frameRef} name={channel} className="rich-message-frame" title="互动消息内容"
+    allow="fullscreen; autoplay; clipboard-read; clipboard-write" loading="eager" srcDoc={source} onLoad={loaded}
     style={{ height: height === null ? initialHeight ?? (globalThis.CSS?.supports?.('height', '100dvh') ? '100dvh' : '100vh') : `${height}px` }} />
     <FrontendDiagnostics messages={diagnostics} /></>;
 }

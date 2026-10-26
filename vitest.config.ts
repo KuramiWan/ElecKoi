@@ -12,6 +12,7 @@ export default defineConfig({
       '@shared': resolve('packages/shared/src'),
       '@eleckoi/author-sdk/browser': resolve('packages/sdk/author/src/browser.ts'),
       '@eleckoi/author-sdk': resolve('packages/sdk/author/src/index.ts'),
+      '@eleckoi/tavern-frontend': resolve('packages/compatibility/tavern-frontend/src/index.ts'),
       '@eleckoi/compatibility-mvu': resolve('packages/compatibility/mvu/src/index.ts'),
       '@eleckoi/dsh-client-author/runtime': resolve('packages/client/features/dsh-client-author/src/runtime.ts'),
       '@eleckoi/dsh-client-author/audio': resolve('packages/client/features/dsh-client-author/src/audio.ts'),
