@@ -19,6 +19,9 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "paths": {
+      "@eleckoi/tavern-frontend": [
+        "./packages/compatibility/tavern-frontend/dist/index.d.ts"
+      ],
       "@eleckoi/dsh-product-data/frontends": [
         "./packages/host/product-data/src/domain/frontends/index.ts"
       ],

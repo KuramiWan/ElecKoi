@@ -6,6 +6,9 @@
 
 - 消息：`getChatMessages`、`getLastMessageId`、`getCurrentMessageId`，以及只接受 `message_id / message` 的 `setChatMessages`。消息范围是原生 SDK 已加载的历史窗口，编号按该窗口显式映射到稳定消息 ID。历史分页继续使用 `ElecKoi.messages.pageOlder`；调用控制器 `refresh()` 后更新兼容视图。
 - 变量：`getVariables`、`replaceVariables`、`updateVariablesWith`、`insertVariables`、`insertOrAssignVariables`、`deleteVariable`。写入仅用于当前聊天；历史消息变量只读。同步修改保留待提交的内存视图，实际保存通过 SDK，保存失败撤销待提交视图并报告错误；`flush()` 可等待并核对全部待提交操作。
+- 变量面板：`getAllVariables()` 将当前聊天已提交的原生变量完整投影为 `{ stat_data: ... }`；`Mvu.getMvuData()` 使用相同视图，并支持通过 `type: 'message'` 和明确楼层编号读取准确的原生历史。原来的 `getVariables()` 返回格式保持不变。原生变量只有一棵受管状态树，本包不另建或合并全局、角色、脚本变量存储，也不把当前变量冒充缺失的历史。
+- 变量通知：`Mvu.events.VARIABLE_UPDATE_ENDED` 在原生保存通知或生成完成后的读取确认状态变化时触发，参数为更新后、更新前的只读 `stat_data` 视图；重复通知不重复发事件，保存失败不发成功事件。它只通知面板刷新，不接入修改候选的规则钩子，不提供命令解析、额外生成或完整 MVU 引擎。
+- 页面辅助：`waitGlobalInitialized('Mvu')` 等待本页已经挂载的变量读取接口，其他共享全局服务明确不支持；`errorCatched()` 保留函数的接收者、返回结果和失败，并将错误交给现有页面诊断。页面关闭后这些入口一并撤回。
 - 输入：`getInput`、`setInput`、`setInputText`。发送、重新生成及其他原生操作继续使用已安装的 `ElecKoi` SDK，不将独立生成冒充聊天发送。
 - 事件：`eventOn / eventOnce / eventMakeFirst / eventMakeLast / eventRemoveListener / eventClearEvent / eventClearListener / eventClearAll / eventEmit / eventEmitAndWait`。仅映射 SDK 实际提供的消息、生成和音频事件。自定义事件只在本页面传播；没有独立的全局事件或持久化消息总线。
 - 音频：`bgm / ambient` 的已有播放、暂停、列表读取和替换／追加；播放保留已有列表，追加按标题或 URL 去重，进度按正式接口换算为百分比。只使用原生播放器，不安装 TTS 或下载服务；不模拟原生 SDK 没有等价语义的音频模式和启用开关。

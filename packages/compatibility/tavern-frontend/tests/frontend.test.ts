@@ -1,8 +1,9 @@
+// @ts-expect-error The browser test runtime does not publish declarations.
 import { JSDOM } from 'jsdom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installElecKoiAuthorApi } from '@eleckoi/author-sdk/browser'
-import { installTavernFrontend, prepareFrontendCompatibilitySource, activateFrontendCompatibilityScripts, mountFrontendCompatibility } from '../src/index'
-import { NativeAudioRuntime, nativeAudioMethods } from '../../../client/features/dsh-client-author/src/audio'
+import { installTavernFrontend, prepareFrontendCompatibilitySource, activateFrontendCompatibilityScripts, mountFrontendCompatibility } from '@eleckoi/tavern-frontend'
+import { NativeAudioRuntime, nativeAudioMethods } from '@eleckoi/dsh-client-author/audio'
 import { NativeAudioElement } from '../../../../tests/helpers/nativeAudioElement'
 
 const cleanups: Array<() => void> = []
@@ -40,7 +41,7 @@ async function fixture(count = 3, withAudio = false) {
     nativeAudio = new NativeAudioRuntime({ createAudio: () => { const element = new NativeAudioElement(); audioElements.push(element); return element as unknown as HTMLAudioElement },
       emit: event => { for (const listener of listeners.get(event.name) || []) listener(event.payload) }, report: error => { throw error } })
     for (const method of nativeAudioMethods) methods[method] = params => nativeAudio!.invoke(owner, method, params)
-    const prior = methods['events.list']; methods['events.list'] = () => ({ items: [...prior({}).items, 'audio.state.changed', 'audio.time.updated'] })
+    const prior = methods['events.list']!; methods['events.list'] = () => ({ items: [...prior({}).items, 'audio.state.changed', 'audio.time.updated'] })
   }
   const request = vi.fn(async (method: string, params: any) => {
     if (!methods[method]) throw new Error(`Unsupported native method: ${method}`)
@@ -90,6 +91,80 @@ describe('frontend compatibility through the real author SDK dispatcher', () => 
     expect(value.page.getVariables()).toEqual({ score: 3 })
     expect(value.report).toHaveBeenCalled()
   })
+  it('projects any native JSON tree without interpreting its keys or changing native reads', async () => {
+    const value = await fixture()
+    const state = { records: { alpha: { amount: 7, optional: null } }, list: [1, false, 'Synthetic'], stat_data: { kept: true } }
+    await value.sdk.variables.setState(state); await value.controller.refresh()
+    expect(await value.page.waitGlobalInitialized('Mvu')).toBe(value.page.Mvu)
+    expect(value.page.getAllVariables()).toEqual({ stat_data: state })
+    expect(value.page.Mvu.getMvuData()).toEqual({ stat_data: state })
+    expect(value.page.getVariables()).toEqual(state)
+    const detached = value.page.getAllVariables(); detached.stat_data.records.alpha.amount = 99
+    expect(value.state).toEqual(state)
+    expect(value.page.Mvu.getMvuData({ type: 'message', message_id: 0 })).toEqual({ stat_data: { score: 0 } })
+    value.messages[0].variableState = null; await value.controller.refresh()
+    expect(() => value.page.Mvu.getMvuData({ type: 'message', message_id: 0 })).toThrow(/没有历史变量/)
+    expect(() => value.page.Mvu.getMvuData({ type: 'global' })).toThrow(/global/)
+    expect(() => value.page.getAllVariables({ type: 'global' })).toThrow(/参数/)
+    await expect(value.page.waitGlobalInitialized('SyntheticMissingService')).rejects.toThrow(/不支持/)
+    expect(value.page.Mvu.parseMessage).toBeUndefined()
+    expect(value.page.Mvu.replaceMvuData).toBeUndefined()
+  })
+  it('notifies only accepted variable changes, after native refresh, with detached read-only payloads', async () => {
+    const value = await fixture(), listener = vi.fn((after: any) => {
+      expect(value.page.getAllVariables()).toEqual(after)
+      expect(Object.isFrozen(after.stat_data)).toBe(true)
+    })
+    value.page.eventOn(value.page.Mvu.events.VARIABLE_UPDATE_ENDED, listener)
+    await value.sdk.variables.setState({ score: 9, optional: null })
+    value.emit('messages.changed', { conversationId: 'synthetic-chat', reason: 'edited', messageIds: [] })
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+    expect(listener).toHaveBeenLastCalledWith({ stat_data: { score: 9, optional: null } }, { stat_data: { score: 1, nested: { value: 2 } } })
+    value.emit('messages.changed', { conversationId: 'synthetic-chat', reason: 'edited', messageIds: [] })
+    await value.controller.refresh(); await value.controller.flush()
+    expect(listener).toHaveBeenCalledOnce()
+    value.methods['variables.setState'] = () => { throw new Error('Synthetic rejected state') }
+    value.page.replaceVariables({ score: 100 })
+    await expect(value.controller.flush()).rejects.toThrow()
+    expect(listener).toHaveBeenCalledOnce()
+    expect(value.page.getAllVariables()).toEqual({ stat_data: { score: 9, optional: null } })
+  })
+  it('refreshes committed variables on generation completion without polling', async () => {
+    const value = await fixture(), listener = vi.fn()
+    value.page.eventOn(value.page.Mvu.events.VARIABLE_UPDATE_ENDED, listener)
+    await value.sdk.variables.setState({ score: 8 })
+    value.emit('agent.run.finished', { conversationId: 'synthetic-chat', runId: 'synthetic-session', generationId: 'synthetic-generation',
+      turn: 1, reason: 'completed', message: value.messages[1] })
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+    expect(value.page.getAllVariables()).toEqual({ stat_data: { score: 8 } })
+  })
+  it('does not let an older overlapping read overwrite the latest variable view', async () => {
+    const value = await fixture(), listener = vi.fn()
+    value.page.eventOn(value.page.Mvu.events.VARIABLE_UPDATE_ENDED, listener)
+    let complete!: (state: any) => void
+    value.methods['variables.getState'] = vi.fn().mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+      .mockResolvedValue({ revision: 3 })
+    const earlier = value.controller.refresh()
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'))
+    await value.controller.refresh(); complete({ revision: 2 }); await earlier
+    expect(value.page.getAllVariables()).toEqual({ stat_data: { revision: 3 } })
+    expect(listener).toHaveBeenCalledOnce()
+  })
+  it('preserves diagnostic wrapper results, receivers and synchronous or asynchronous failures', async () => {
+    const value = await fixture()
+    const wrapped = value.page.errorCatched(function (this: { offset: number }, number: number) { return this.offset + number })
+    expect(wrapped.call({ offset: 4 }, 2)).toBe(6)
+    expect(() => value.page.errorCatched(() => { throw new Error('Synthetic synchronous failure') })()).toThrow('Synthetic synchronous failure')
+    await expect(value.page.errorCatched(async () => { throw new Error('Synthetic asynchronous failure') })()).rejects.toThrow('Synthetic asynchronous failure')
+    expect(value.report).toHaveBeenCalledTimes(2)
+    const getAll = value.page.getAllVariables, getMvuData = value.page.Mvu.getMvuData, wait = value.page.waitGlobalInitialized
+    value.controller.dispose()
+    expect(() => getAll()).toThrow(/已关闭/)
+    expect(() => getMvuData()).toThrow(/已关闭/)
+    expect(() => wrapped()).toThrow(/已关闭/)
+    await expect(wait('Mvu')).rejects.toThrow(/已关闭/)
+    expect(value.page.Mvu).toBeUndefined()
+  })
   it('delivers stream events without re-reading message history or settings per token', async () => {
     const value = await fixture(), listener = vi.fn()
     value.page.eventOn('stream_token_received', listener)
@@ -112,6 +187,9 @@ describe('frontend compatibility through the real author SDK dispatcher', () => 
     expect(Object.keys(result)).toHaveLength(10001)
     for (const index of [0, 5000, 10000]) expect(result[`synthetic-${index}`].body).toContain(`Synthetic tail ${index}`)
     expect(result['synthetic-10000']).toMatchObject({ keep: true, keyword: 'Synthetic final keyword' })
+    const display = value.page.getAllVariables().stat_data
+    expect(Object.keys(display)).toHaveLength(10001)
+    for (const index of [0, 5000, 10000]) expect(display[`synthetic-${index}`]).toEqual(result[`synthetic-${index}`])
     const library = await value.sdk.settingLibrary.current()
     expect(library).toEqual(value.library)
     expect(value.page.getWorldbook).toBeUndefined()

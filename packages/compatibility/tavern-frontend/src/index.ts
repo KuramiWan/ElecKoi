@@ -4,6 +4,7 @@ import { FrontendEvents, tavernEvents } from './events'
 import { createMessageFunctions, messageIndex, publicMessage } from './messages'
 import { createVariableFunctions } from './variables'
 import { createAudioFunctions } from './audio'
+import { createMvuProjection, createFrontendUtilities } from './mvu'
 
 export { prepareFrontendCompatibilitySource, activateFrontendCompatibilityScripts, mountFrontendCompatibility } from './document'
 export { FrontendCompatibilityError } from './common'
@@ -22,6 +23,7 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
   const descriptors = new Map<string, PropertyDescriptor | undefined>()
   const audio = new Map<AuthorAudioChannel, AuthorAudioState>()
   const capabilities = new Set<string>()
+  let mvu: ReturnType<typeof createMvuProjection> | undefined
   const available = () => {
     if (closed || options.active?.() === false) throw new FrontendCompatibilityError('FRAME_CLOSED', '前端兼容页面已关闭。')
   }
@@ -53,8 +55,10 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
       available()
       if (stamp !== generation) return
     }
+    const previousOwner = context?.conversationId, previousVariables = variables
     capabilities.clear(); currentCapabilities.forEach(method => capabilities.add(method))
     context = owner; messages = pageValue?.items || []; variables = state || {}; character = card || null; presets = catalog
+    if (previousOwner === owner.conversationId && currentCapabilities.has('variables.getState')) mvu?.changed(previousVariables, variables)
   }
   const write = <T>(operation: () => Promise<T>): Promise<T> => {
     available()
@@ -100,18 +104,19 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
         return sdk.messages.setContent(id, text)
       },
     }))
+    const historicalVariables = (id: string | number) => {
+      requireCapability('variables.getState')
+      const message = messages[messageIndex(id, messages)]
+      if (message.variableState === null) throw new FrontendCompatibilityError('VARIABLE_HISTORY_NOT_AVAILABLE', '这条消息没有历史变量。')
+      return copy(message.variableState)
+    }
     add(createVariableFunctions({
       available: () => requireCapability('variables.getState'), state: () => variableStages.at(-1)?.value || variables,
       ownerCheck: () => {
         const owner = context.conversationId
         return async () => { available(); if ((await sdk.context.current()).conversationId !== owner) throw new FrontendCompatibilityError('CONTEXT_CHANGED', '变量修改期间聊天已切换。') }
       },
-      historical: id => {
-        requireCapability('variables.getState')
-        const message = messages[messageIndex(id, messages)]
-        if (message.variableState === null) throw new FrontendCompatibilityError('VARIABLE_HISTORY_NOT_AVAILABLE', '这条消息没有历史变量。')
-        return copy(message.variableState)
-      },
+      historical: historicalVariables,
       stage: value => {
         requireCapability('variables.setState')
         const stage = { value: copy(value), epoch: variableEpoch }; variableStages.push(stage)
@@ -123,6 +128,10 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
         })
       }, track,
     }))
+    mvu = createMvuProjection({ available: () => requireCapability('variables.getState'), chat: () => variables,
+      historical: historicalVariables, publish: (name, after, before) => events.publish(name, after, before) })
+    add({ getAllVariables: mvu.getAllVariables })
+    add(createFrontendUtilities({ available, mvu: () => { requireCapability('variables.getState'); return mvu!.api }, report: options.report }))
     add({
       getIframeName: () => { available(); return page.name },
       getIframeWindow: () => { available(); return page },
@@ -166,6 +175,13 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
         track(refresh().then(() => events.publish(tavernEvents.CHAT_CHANGED, context.conversationId)))
         return
       }
+      if (name === 'agent.run.finished') {
+        track(refresh().then(() => {
+          available(); events.publish(name, copy(payload))
+          events.publish(tavernEvents.GENERATION_ENDED, messages.findIndex(message => message.id === (payload as AuthorEventMap['agent.run.finished']).message?.id))
+        }))
+        return
+      }
       if (name !== 'messages.changed') {
         events.publish(name, copy(payload))
         if (name === 'agent.state.changed' && (payload as AuthorEventMap['agent.state.changed']).state === 'starting') events.publish(tavernEvents.GENERATION_STARTED, 'normal')
@@ -174,8 +190,7 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
           const message = messages.find(item => item.id === output.messageId)
           if (message) message.content = output.accumulated
           events.publish(tavernEvents.STREAM_TOKEN_RECEIVED, output.accumulated)
-        } else if (name === 'agent.run.finished') events.publish(tavernEvents.GENERATION_ENDED, messages.findIndex(message => message.id === (payload as AuthorEventMap['agent.run.finished']).message?.id))
-        else if (name === 'agent.run.cancelled') { events.publish(tavernEvents.GENERATION_STOPPED); events.publish(tavernEvents.GENERATION_ENDED, -1) }
+        } else if (name === 'agent.run.cancelled') { events.publish(tavernEvents.GENERATION_STOPPED); events.publish(tavernEvents.GENERATION_ENDED, -1) }
         return
       }
       const refreshTask = refresh().then(() => {
@@ -199,6 +214,7 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
     install('TavernHelper', Object.freeze(helper))
     install('SillyTavern', Object.freeze({ getContext: () => { available(); return Object.freeze(publicContext) } }))
     install('tavern_events', tavernEvents)
+    install('Mvu', mvu.api)
     const changed = () => {
       track(sdk.context.current().then(current => {
         available()

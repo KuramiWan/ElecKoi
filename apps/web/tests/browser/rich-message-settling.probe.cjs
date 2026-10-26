@@ -41,6 +41,19 @@ app.whenReady().then(async () => {
           || state.heights.some(height => height !== '600px') || state.raw) {
           throw new Error(`Rich presentation did not settle: ${JSON.stringify(reports.at(-1))}`);
         }
+        if (!native) {
+          const value = () => evaluate(`(()=>{const frames=[...document.querySelectorAll('iframe')];return {
+            names:frames.map(frame=>frame.name),values:frames.map(frame=>frame.contentDocument.querySelector('[data-native-variable]')?.textContent || null),
+            diagnostics:document.querySelectorAll('.rich-message-diagnostics').length}})()`);
+          const initial = await value();
+          if (JSON.stringify(initial.values) !== JSON.stringify([null, null, '7']) || initial.diagnostics) throw new Error(`Variable initialization failed: ${JSON.stringify(initial)}`);
+          await evaluate(`window.updateSyntheticVariables({counter:11})`);
+          const updateDeadline = Date.now() + 5000;
+          let updated;
+          do { await pause(); updated = await value(); } while (updated.values[2] !== '11' && Date.now() < updateDeadline);
+          if (JSON.stringify(updated.values) !== JSON.stringify([null, null, '11']) || updated.diagnostics
+            || JSON.stringify(initial.names) !== JSON.stringify(updated.names)) throw new Error(`Variable notification failed: ${JSON.stringify(updated)}`);
+        }
       }
     }
     writeFileSync(reportPath, JSON.stringify(reports));

@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error The browser test runtime does not publish declarations.
 import { JSDOM } from 'jsdom'
 import { ElecKoiAuthorVariablesApi, ElecKoiVariableProcessing } from '@eleckoi/dsh-product-api'
+import { installTavernFrontend } from '@eleckoi/tavern-frontend'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const close of cleanups.splice(0)) await close() })
@@ -24,7 +25,10 @@ async function runtime() {
   const ctx = new Cordis.Context()
   let current = '{"value":2,"nested":{"kept":true}}', initial = '{"value":1}', schemaCode = ''
   const save = vi.fn((_id: string, json: string) => { current = json; return json })
-  const publish = vi.fn()
+  const listeners = new Set<(event: unknown) => void>()
+  const publish = vi.fn(change => {
+    if (change.kind === 'messages') for (const listener of listeners) listener(change)
+  })
   const data = {
     readAuthorConversationState(id: string) {
       if (id !== 'synthetic-chat') throw new Error('Synthetic conversation not found')
@@ -79,13 +83,22 @@ async function runtime() {
   }))
   await client.remote.$mount(TYPERT_REMOTE)
   const bindings = createAuthorVariableBindings(client.remote.eleckoiAuthorVariables, () => 'synthetic-chat')
+  const browserMethods: Record<string, () => unknown> = {
+    'context.current': () => ({ surface: 'message-renderer', scope: 'current-character', conversationId: 'synthetic-chat', messageId: 'synthetic-message' }),
+    'app.getCapabilities': () => [...Object.keys(bindings), ...Object.keys(browserMethods)].map(method => ({ method })),
+    'events.list': () => ({ items: ['messages.changed'] }),
+  }
   const api = installElecKoiAuthorApi(page.window as any, {
     request(method, params, options) {
+      if (Object.hasOwn(browserMethods, method)) return browserMethods[method]!()
       const binding = bindings[method]
       if (!binding) throw new Error('Synthetic native method unavailable')
       return binding(params, options)
     },
-    on() { throw new Error('Synthetic event subscription unavailable') },
+    on(event, listener) {
+      if (event !== 'messages.changed') throw new Error('Synthetic event subscription unavailable')
+      listeners.add(listener); return () => listeners.delete(listener)
+    },
   })
   return { ctx, client, bindings, call, processor, api, invoke, save, publish, window: page.window,
     get state() { return JSON.parse(current) },
@@ -96,6 +109,35 @@ async function runtime() {
 }
 
 describe('native author variable Remote', () => {
+  it('projects all native entries through the generated Remote and notifies only accepted saves', async () => {
+    const r = await runtime(), count = 10001
+    const records = Object.fromEntries(Array.from({ length: count }, (_, index) => [`synthetic-${index}`, {
+      text: `Synthetic start ${index} ${'x'.repeat(256)} Synthetic final keyword ${index}`, count: index, optional: null,
+    }]))
+    r.current = JSON.stringify({ records })
+    r.schema = 'z.object({ records: z.record(z.string(), z.object({ text: z.string(), count: z.number().min(0), optional: z.string().nullable() })) })'
+    const report = vi.fn(), controller = await installTavernFrontend(r.window as any, r.api, { report })
+    cleanups.unshift(async () => controller.dispose())
+    const page = r.window as any, listener = vi.fn()
+    page.eventOn(page.Mvu.events.VARIABLE_UPDATE_ENDED, listener)
+    const initial = page.getAllVariables().stat_data.records
+    expect(Object.keys(initial)).toHaveLength(count)
+    for (const index of [0, 5000, 10000]) expect(initial[`synthetic-${index}`]).toEqual(records[`synthetic-${index}`])
+    await r.api.variables.applyPatch([{ op: 'replace', path: '/records/synthetic-10000/count', value: 9 }])
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+    expect(r.save).toHaveBeenCalledOnce()
+    expect(page.getAllVariables().stat_data.records['synthetic-10000']).toMatchObject({ count: 9, optional: null })
+    expect(page.getAllVariables().stat_data.records['synthetic-10000'].text).toContain('Synthetic final keyword 10000')
+    expect(Object.keys(page.Mvu.getMvuData().stat_data.records)).toHaveLength(count)
+    const after = listener.mock.calls[0]![0]
+    expect(after.stat_data).toEqual(await r.api.variables.getState())
+    await expect(r.api.variables.applyPatch([{ op: 'replace', path: '/records/synthetic-10000/count', value: -1 }]))
+      .rejects.toMatchObject({ message: expect.any(String) })
+    await controller.flush()
+    expect(r.save).toHaveBeenCalledOnce(); expect(listener).toHaveBeenCalledOnce()
+    expect(report).not.toHaveBeenCalled()
+  }, 60000)
+
   it('runs the real SDK through generated Remote without a compatibility service or store', async () => {
     const r = await runtime()
     expect(ElecKoiAuthorVariablesApi.inject.some(name => name.includes('Compatibility'))).toBe(false)
