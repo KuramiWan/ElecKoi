@@ -1,5 +1,5 @@
 import type { AuthorMessage } from '@eleckoi/author-sdk'
-import { copy, fields, record, unsupported } from './common'
+import { copy, fields, record, unsupported, FrontendCompatibilityError } from './common'
 
 export type MessageId = number | string
 export function messageIndex(value: MessageId, messages: readonly AuthorMessage[]): number {
@@ -57,7 +57,7 @@ export function createMessageFunctions(runtime: {
     getCurrentMessageId() {
       runtime.available()
       const index = runtime.messages().findIndex(message => message.id === runtime.currentMessageId())
-      if (index < 0) throw new Error('当前页面没有绑定可用的消息。')
+      if (index < 0) throw new FrontendCompatibilityError('MESSAGE_NOT_AVAILABLE', '当前页面没有绑定可用的消息。')
       return index
     },
   }

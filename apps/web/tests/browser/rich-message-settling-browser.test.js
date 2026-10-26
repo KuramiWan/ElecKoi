@@ -33,6 +33,7 @@ it('commits every rich card without scrolling on first entry and after changing 
       const evidence = JSON.stringify(report);
       expect(report.stages, evidence).toEqual(['false']);
       expect(report.heights, evidence).toEqual(['600px', '600px', '600px']);
+      expect(report.modules, evidence).toEqual(report.native ? [null, null, null] : [null, null, ['first', 'second', 'dom-ready']]);
       expect(report.raw, evidence).toBe(false);
       expect(report.scrollTop, evidence).toBe(0);
     }

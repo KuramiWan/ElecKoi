@@ -19,6 +19,8 @@
 
 `prepareFrontendCompatibilitySource` 使用 HTML 解析器暂停作者的可执行脚本，保留 JSON 和 import map；页面所有者挂载原生 SDK 后调用 `mountFrontendCompatibility`，准备内存快照，再按阻塞、defer/module 与 async 的执行方式启动脚本。初始化失败明确返回页面错误。
 
+内联模块没有 `load` 事件；模块由浏览器的有序队列启动，再通知正文可以显示。模块中的异步任务不阻塞已经存在的 HTML，模块和运行期错误仍通过页面诊断报告。
+
 普通消息 HTML 和未声明原生 SDK 的项目页面使用这个入口。声明 `eleckoi-author-api` 的原生页面继续按原生 `ElecKoiReady` 合同运行。
 
 原生作者插件未启用时，普通 HTML 仍按正常浏览器脚本执行，不安装伪造的 SDK 或同名接口；脚本若调用不存在的接口，沿现有页面诊断报告实际错误。

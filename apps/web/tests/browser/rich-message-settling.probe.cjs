@@ -29,6 +29,7 @@ app.whenReady().then(async () => {
           state = await evaluate(`({
             stages:[...document.querySelectorAll('.rich-message-staging')].map(node=>node.getAttribute('aria-hidden')),
             heights:[...document.querySelectorAll('iframe')].map(frame=>frame.style.height),
+            modules:[...document.querySelectorAll('iframe')].map(frame=>frame.contentWindow.syntheticModuleOrder || null),
             raw:document.body.innerText.includes('[TOP]'),
             scrollTop:document.querySelector('[data-conversation-scroll]')?.scrollTop
           })`);
@@ -36,6 +37,10 @@ app.whenReady().then(async () => {
             && state.heights.every(height => height === '600px') && !state.raw) break;
         } while (Date.now() < deadline);
         reports.push({ width, enabled, native, key, ...state });
+        if (state.stages.length !== 1 || state.stages[0] !== 'false' || state.heights.length !== 3
+          || state.heights.some(height => height !== '600px') || state.raw) {
+          throw new Error(`Rich presentation did not settle: ${JSON.stringify(reports.at(-1))}`);
+        }
       }
     }
     writeFileSync(reportPath, JSON.stringify(reports));

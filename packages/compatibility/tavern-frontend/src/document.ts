@@ -19,15 +19,35 @@ export function prepareFrontendCompatibilitySource(source: string, parser = new 
 /** Release executable scripts only after the SDK-backed compatibility snapshot is ready. */
 export async function activateFrontendCompatibilityScripts(page: Window, active: () => boolean): Promise<void> {
   const deferred: HTMLScriptElement[] = [], asynchronous: Promise<void>[] = []
+  let orderedModules = false
+  const finishModuleQueue = async () => {
+    if (!orderedModules) return
+    orderedModules = false
+    const event = `eleckoi:frontend-module-queue:${page.crypto.randomUUID()}`
+    const marker = page.document.createElement('script')
+    marker.type = 'module'; marker.async = false
+    marker.textContent = `window.dispatchEvent(new Event(${JSON.stringify(event)}))`
+    await new Promise<void>((resolve, reject) => {
+      const clean = () => { page.removeEventListener(event, ready); page.removeEventListener('pagehide', closed); marker.remove() }
+      const ready = () => { clean(); resolve() }
+      const closed = () => { clean(); reject(new FrontendCompatibilityError('FRAME_CLOSED', '前端页面已关闭。')) }
+      page.addEventListener(event, ready, { once: true }); page.addEventListener('pagehide', closed, { once: true })
+      page.document.head.append(marker)
+    })
+  }
   const execute = (inert: HTMLScriptElement): Promise<void> => {
     if (!active()) return Promise.reject(new FrontendCompatibilityError('FRAME_CLOSED', '前端页面已关闭。'))
     const script = page.document.createElement('script')
     for (const attribute of inert.attributes) if (!['type', 'data-eleckoi-original-type'].includes(attribute.name)) script.setAttribute(attribute.name, attribute.value)
     const type = inert.getAttribute('data-eleckoi-original-type') || ''
     if (type) script.type = type
+    const module = type.trim().toLowerCase() === 'module'
+    // Inline modules have no load event. The browser's ordered module queue
+    // preserves evaluation order without waiting for top-level asynchronous work.
+    if (module && !inert.hasAttribute('async')) { script.async = false; orderedModules = true }
     script.textContent = inert.textContent
     if (script.noModule && 'noModule' in script) { inert.remove(); return Promise.resolve() }
-    const result = script.src || type.trim().toLowerCase() === 'module' ? new Promise<void>((resolve, reject) => {
+    const result = script.src && !module ? new Promise<void>((resolve, reject) => {
       script.onload = () => resolve()
       script.onerror = () => reject(new Error(`前端脚本加载失败：${script.src || 'inline module'}`))
     }) : Promise.resolve()
@@ -41,7 +61,11 @@ export async function activateFrontendCompatibilityScripts(page: Window, active:
     else if (module || inert.src && inert.hasAttribute('defer')) deferred.push(inert)
     else await execute(inert)
   }
-  for (const script of deferred) await execute(script)
+  for (const script of deferred) {
+    if (script.getAttribute('data-eleckoi-original-type')?.trim().toLowerCase() !== 'module') await finishModuleQueue()
+    await execute(script)
+  }
+  await finishModuleQueue()
   if (active()) page.document.dispatchEvent(new (page as Window & typeof globalThis).Event('DOMContentLoaded', { bubbles: true }))
   await Promise.all(asynchronous)
   if (active()) {
@@ -62,7 +86,7 @@ export function mountFrontendCompatibility(page: Window & { ElecKoi?: ElecKoiAut
   page.addEventListener('pagehide', dispose, { once: true })
   const ready = (async () => {
     if (mountSdk) {
-      if (!page.ElecKoi) throw new Error('前端兼容需要已安装的 ElecKoi SDK。')
+      if (!page.ElecKoi) throw new FrontendCompatibilityError('HOST_UNAVAILABLE', '前端兼容需要已安装的 ElecKoi SDK。')
       compatibility = await installTavernFrontend(page, page.ElecKoi, { report, active: () => active })
       if (!active) { compatibility.dispose(); return }
     }

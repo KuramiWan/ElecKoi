@@ -7,13 +7,23 @@ import { MessageBubble } from '../../src/ui/messages/MessageBubble.jsx';
 import { MainPageContext } from '../../src/app/windows/MainPageContext.jsx';
 import { RichMessageRenderProvider } from '../../src/modules/authorFrontend/hooks/RichMessageRenderContext.jsx';
 import { decorateRichDisplayReplacement } from '../../../../packages/shared/src/foundation/richMessage';
+import { installElecKoiAuthorApi } from '@eleckoi/author-sdk/browser';
 import '../../src/modules/chat/styles/chat-panel.css';
 
 globalThis.React = React;
 const ready = { status: 'ready', error: '' };
 window.__ElecKoiHtmlResources = { assetsBaseUrl: new URL('./', document.baseURI).href, sdk: libraries,
   getSnapshot: () => ready, subscribe: () => () => {} };
-const runtime = { mountDocument(target) { target.ElecKoi = { api: { version: '0.1.0' } }; return () => {}; } };
+const runtime = { mountDocument(target, conversationId, messageId) {
+  const methods = {
+    'context.current': () => ({ surface: 'message-renderer', scope: 'current-character', conversationId, messageId, characterId: 'synthetic-character' }),
+    'app.getCapabilities': () => Object.keys(methods).map(method => ({ method })),
+    'messages.getPage': () => ({ items: [{ id: messageId, conversationId, role: 'assistant', content: 'Synthetic message', variableState: {} }], hasMore: false }),
+    'events.list': () => ({ items: [] }),
+  };
+  installElecKoiAuthorApi(target, { request: async (method, params) => methods[method](params), on: () => () => {} });
+  return () => target.dispatchEvent(new target.Event('pagehide'));
+} };
 const connection = { getSnapshot: () => runtime, subscribe: () => () => {} };
 const view = { characterConfiguration: { scriptRuntimeConnection: connection } };
 const root = createRoot(document.querySelector('#root'));
@@ -24,7 +34,12 @@ window.renderPresentation = ({ enabled = false, native = false, key = 'first' } 
   message.displayContent = narrative + ['TOP', 'MIDDLE', 'BOTTOM'].map(name => decorateRichDisplayReplacement(
     `<!doctype html><html><head>${native ? '<meta name="eleckoi-author-api" content="0.1.0">' : ''}
     <style>html,body{margin:0;padding:0}.card{height:600px;background:#123456;color:#fff}</style></head>
-    <body><section class="card">Synthetic ${name} card</section></body></html>`)).join('\n');
+    <body><section class="card">Synthetic ${name} card</section>
+    ${!native && name === 'BOTTOM' ? `<script type="module">
+      window.syntheticModuleOrder = ['first'];
+      document.addEventListener('DOMContentLoaded', () => syntheticModuleOrder.push('dom-ready'));
+      await new Promise(() => {});
+    </script><script type="module">syntheticModuleOrder.push('second')</script>` : ''}</body></html>`)).join('\n');
   root.render(<MainPageContext.Provider value={view}><OfficialMarkdownProvider component={MarkdownText}>
     <section className="chat-panel view-chat layout-roleplay" style={{ height: '100vh' }}>
       <div className="chat-conversation-body"><div className="message-area layout-roleplay" data-conversation-scroll="">

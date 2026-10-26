@@ -139,7 +139,7 @@ export async function installTavernFrontend(page: Window, sdk: ElecKoiAuthorApi,
     helper.setInput = helper.setInputText = (text: string) => { requireCapability('input.set'); return sdk.input.set(text) }
     add({
       getPresetNames: () => { requireCapability('presets.list'); return presets!.items.map(item => item.name) },
-      getLoadedPresetName: () => { requireCapability('presets.list'); const selected = presets!.items.find(item => item.id === presets!.activePresetId); if (!selected) throw new Error('当前未选择可用预设。'); return selected.name },
+      getLoadedPresetName: () => { requireCapability('presets.list'); const selected = presets!.items.find(item => item.id === presets!.activePresetId); if (!selected) throw new FrontendCompatibilityError('PRESET_NOT_AVAILABLE', '当前未选择可用预设。'); return selected.name },
     })
     add(createAudioFunctions(sdk, { requireCapability, state: key => audio.get(key)!, accept: state => audio.set(state.channel, copy(state)),
       write, track, baseUrl: page.document.baseURI }))
