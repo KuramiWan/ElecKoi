@@ -317,8 +317,14 @@ export function BugReportDialog({ open, onClose, onNotify }) {
               直接发送
             </button>
           ) : null}
-          {report && !delivery?.relay && delivery?.mailbox ? (
-            <button ref={primaryButtonRef} type="button" className="is-primary" disabled={busy} onClick={sendByMail}>
+          {report && delivery?.mailbox ? (
+            <button
+              ref={delivery.relay ? undefined : primaryButtonRef}
+              type="button"
+              className={delivery.relay ? undefined : "is-primary"}
+              disabled={busy}
+              onClick={sendByMail}
+            >
               {delivery.mailboxName ? `发送到 ${delivery.mailboxName}` : "用邮件发送"}
             </button>
           ) : null}
