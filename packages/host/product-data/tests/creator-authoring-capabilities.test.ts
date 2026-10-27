@@ -28,6 +28,16 @@ async function fixture() {
 }
 
 describe('Creator authoring matches the native setting, schema, script and regex contracts', { timeout: 30_000 }, () => {
+  it.each(['versions', 'activeVersionId', 'characterId'])('rejects unsupported opening field %s before saving', async field => {
+    const f = await fixture(), before = f.data.readCharacterOpenings(f.characterId)
+    const save = vi.spyOn(f.data, 'saveCharacterOpenings')
+    cleanups.push(() => save.mockRestore())
+    const { characterId: _owner, ...value } = before
+    expect(() => f.call('character.save_openings', { ...value, [field]: field === 'versions' ? [] : 'synthetic-unrecognized' })).toThrow()
+    expect(save).not.toHaveBeenCalled()
+    expect(f.data.readCharacterOpenings(f.characterId)).toEqual(before)
+  })
+
   it('writes all independent openings, preserves every alternate and round-trips the complete card', async () => {
     const f = await fixture(), initial = f.data.readCharacterOpenings(f.characterId), config = f.data.readVariableConfig(f.characterId);
     const indexes = [0, 5_000, 10_000];
@@ -319,5 +329,23 @@ describe('Creator authoring matches the native setting, schema, script and regex
     expect(changed.rule.targets).toEqual(['AiOutput'])
     f.call('regex.remove', { id: created.rule.id, expectedRevision: changed.revision })
     expect(f.call('regex.list').rules).toEqual([])
+  })
+  it('saves regex EJS, awaits preview variables, rejects preview errors and preserves source across disk reopen', async () => {
+    const f = await fixture(), collection = f.call('regex.list')
+    const created = f.call('regex.create', { expectedRevision: collection.revision, rule: {
+      name: '合成异步显示', pattern: 'TOKEN', replacement: '<p><%= await Promise.resolve(getvar("score") * 2) %></p>',
+      targets: ['AiOutput'], enabled: true, displayOnly: true, promptOnly: false, runOnEdit: false, order: 0,
+    } })
+    const before = f.data.readRegexRules(f.characterId)
+    const input = { text: 'TOKEN', rule: created.rule, target: 'AiOutput', surface: 'Display' }
+    expect(await f.call('regex.test', { ...input, variables: { score: 12 } })).toEqual({ output: '<p>24</p>', changed: true, appliesToSurface: true })
+    expect(await f.call('regex.test', { ...input, surface: 'Prompt' })).toEqual({ output: 'TOKEN', changed: false, appliesToSurface: false })
+    await expect(f.call('regex.test', input)).rejects.toThrow()
+    await expect(f.call('regex.test', { ...input, rule: { ...created.rule, replacement: '<% if ( %>' } })).rejects.toThrow()
+    expect(f.data.readRegexRules(f.characterId)).toEqual(before)
+    await f.ctx.fiber.dispose()
+    const reopened = new Context(); cleanups.push(() => reopened.fiber.dispose()); await reopened.plugin(productDataPlugin)
+    const read = creatorCapabilities(reopened.eleckoiProductData).find(operation => operation.id === 'regex.read')!
+    expect(read.execute(f.characterId, { id: created.rule.id })).toEqual(created)
   })
 })

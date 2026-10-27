@@ -350,6 +350,10 @@ def verify_workspace_entrypoints(packed, inventory):
 
 
 def add_directory(output, source, prefix, record_name=None):
+    if os.name == "nt":
+        absolute = str(source.resolve())
+        if not absolute.startswith("\\\\?\\"):
+            source = Path("\\\\?\\UNC\\" + absolute[2:] if absolute.startswith("\\\\") else "\\\\?\\" + absolute)
     publication = read_json(REPO / "native/android-runtime/session-publication-lock.json")
     attachment = read_json(REPO / "native/android-runtime/attachment-storage-lock.json")
     android_session = record_name == publication["package"]

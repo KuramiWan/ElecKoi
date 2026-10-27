@@ -9,10 +9,12 @@ export const creatorToolsets = [
     guide: ['先 read 获取准确编号、源码、设置、启停和 revision，save 携带 expectedRevision；完整保存须保留未修改项目及分组。presetId 明确指定归属，不要求先选择角色，不通过目录顺序或名称猜测预设。',
       '脚本使用与角色脚本完全相同的 ElecKoi 原生模块合同和作者 SDK，必须 export default 导出启动函数。启用后在使用此预设的角色聊天运行；预设脚本在预设页配置，角色页只配置角色脚本；两个入口都能修改同一全局脚本库。',
       '保存不会把脚本源码发送给 AI。新建脚本源码留空且停用，可以保存空白草稿；启用脚本前须填写有效的启动函数。整库保存保留其他空白、停用的脚本。其他语法、资源和清理规则见 scripts 能力组。'] },
-  { id: 'character', title: '角色资料', description: '新建空角色，读取和修改当前工作室编辑目标的原稿资料。',
+  { id: 'character', title: '角色资料', description: '新建空角色，读取和修改当前工作室编辑目标的资料与独立开场白。',
     guide: ['可以调用 character.create 提供 name 和可选 group，从零创建空角色并设为当前工作室编辑目标，不要求先选择角色；已有编辑目标时调用新建，也不会修改原角色。',
-      '读取和修改已有资料仍要求当前工作室明确选择角色，先读后改；不能按目录顺序或名称猜测编辑对象。character.update 的 group 是所属角色分组名称，空字符串表示未分组；修改它只调整当前角色归属，保留其他角色和资料。角色是编辑对象，不是工作室要扮演的身份。'] },
-  { id: 'settings', title: '设定库', description: '维护主开场白、备用开场白、文字设定、选读 EJS 控制器、EJS 引用文字和文件夹。',
+      '读取和修改已有资料仍要求当前工作室明确选择角色，先读后改；不能按目录顺序或名称猜测编辑对象。character.update 的 group 是所属角色分组名称，空字符串表示未分组；修改它只调整当前角色归属，保留其他角色和资料。角色是编辑对象，不是工作室要扮演的身份。',
+      '开场白在角色编辑器的独立页面维护，通过 character.read_openings 读取、character.save_openings 保存。保存参数为 enabled、openingMessages、defaultOpeningMessageId；openingMessages 是全部不同开场白的列表，每项包含 id、title、content、可选 variableVersionId 和 initialVariableStateJson，主开场由 defaultOpeningMessageId 指定。保留未修改的其他开场白和字段。开场白没有命名版本，不传 versions 或 activeVersionId，也不传由工作室选择确定的 characterId。',
+      '每条开场白可以分别绑定变量版本，准确编号从 variables.list 的 versions 读取。清空 variableVersionId 可取消绑定，initialVariableStateJson 保存初始变量 JSON；修改开场白不修改设定库，切换设定库版本不改变开场白。'] },
+  { id: 'settings', title: '设定库', description: '维护当前角色的文字设定、选读 EJS 控制器、EJS 引用文字和文件夹。',
     guide: [
       '读取策略只有必读和选读。agentReadStrategy="required" 是必读；"normal" 是选读并关闭关键词匹配；"keyword" 是选读并开启关键词匹配，与编辑器的关键词命中开关相同，不是第三个读取档位。只填写 keywords 不会开启匹配；开启时把 agentReadStrategy 设为 keyword，关闭时设为 normal，保留原关键词和其他条件。',
       'enabled 是条目开关。普通设定 dynamicMode="standard"；triggerMode="agent_tool" 交由设定工具读取，"always" 按插入位置注入。必读正文、always 正文都用 contentMode="plain_text"。',
@@ -21,7 +23,7 @@ export const creatorToolsets = [
       'getvar("组.变量", { defaults: 0 }) 读取当前聊天变量；variables/stat_data 是同一份状态，lastUserMessage 是最近用户正文。只有取回的状态用于判断，不修改它来结算变量。',
       '代码与设定文字可混写，也可分离：分离时先创建 dynamicMode="ejs_reference"、contentMode="plain_text" 的文字条目，再在 EJS 控制器里用 <%- await getwi("文件夹/引用标题") %> 输出它。getwi 只读取已启用的 EJS 引用正文，不执行引用里的模板标记；引用不单独进入 AI 选读目录。',
       'getwi 按准确引用标题或完整设定路径匹配；标题重复时用完整路径。不可引用另一个普通/EJS 控制器，也不要用 EJS 标准 include() 代替本产品的 getwi。',
-      '开场白在角色编辑器的独立页面，通过 character.read_openings 读取、character.save_openings 保存；保留主开场、备用开场、变量版本绑定及初始变量。设定库版本不改变开场白。保存前读取准确编号，修改后完整保留未改字段和其他开场白。',
+      '本组只编辑当前角色的设定条目和文件夹。独立开场白通过 character.read_openings、character.save_openings 管理，设定库版本不改变开场白。',
       '多条设定使用 settings.update_many({updates:[{id,changes},...]}) 在同一事务提交，例如批量开启时每项 changes={agentReadStrategy:"keyword"}。任一编号、格式或保存失败整批不提交。文件夹通过 create_group/update_group/remove_group 管理；update_group 可改 name、parentId、order、treeViewOrder，编号和条目归属不变；remove_group 会删除该文件夹、其子文件夹和条目，不能用于只改名字。',
     ],
     examples: [
@@ -56,7 +58,7 @@ export const creatorToolsets = [
       '源码由 Host 保存到 author-scripts 文件目录，数据库保存文件引用和管理记录。删除脚本清理其源码，不能因此删除别的脚本、全局库或角色前端。',
     ],
     examples: [{ title: '辅助计算与按钮面板', content: 'export default context => {\n  const stopRule = context.api.variables.registerRule({ id: "derive-level", stage: "afterSchema", run(candidate) { candidate.signal.throwIfAborted(); const score = Number(candidate.state.score); if (!Number.isFinite(score)) throw new Error("score 必须是有限数字"); candidate.state.level = Math.floor(score / 10) + 1; } });\n  const stopButton = context.api.ui.registerButton({ id: "help", label: "查看说明", async onClick({ api, signal }) { signal.throwIfAborted(); await api.ui.openPanel({ id: "help", title: "计算说明", html: \'<html><head><meta name="eleckoi-author-api" content="0.1.0"></head><body><p>每十点积分提升一级。</p></body></html>\' }); } });\n  return () => { stopButton(); stopRule(); };\n};' }] },
-  { id: 'regex', title: '正则规则', description: '维护角色正则，并按显示、请求或保存范围预览匹配替换。',
+  { id: 'regex', title: '正则规则', description: '维护角色正则及其中的 EJS 显示模板，并按显示、请求或保存范围预览结果。',
     guide: [
       '只修改当前角色 characterRules，保留 globalRules、agentPresetRules 和其他规则。先 list/read；create 生成编号，update 按编号部分修改，写入携带 expectedRevision。',
       'pattern 可写 /表达式/标志 或表达式正文。g 才替换全部匹配；跨行可用 s 或 [\\s\\S]，不要凭名称猜目标。targets 明确选择 UserInput、AiOutput、SettingContent 或 Reasoning。',
@@ -64,11 +66,11 @@ export const creatorToolsets = [
       '显示 HTML 通常选择 targets=["AiOutput"]、displayOnly=true、promptOnly=false。仅变更显示，不把 HTML 代码发送给模型或改写原始消息。promptOnly=true 用于模型请求处理；两者为 false 是正式保存/显示处理规则。不要把显示替换误当角色前端项目或脚本入口。',
       'runOnEdit=false 时不处理编辑场景；minDepth/maxDepth 限制消息深度，null 表示不限。多个规则按 order 依次执行，后续规则可能处理前一个规则输出。',
       'substituteRegex=0 不展开 pattern 宏，1 展开，2 展开后转义。需要宏时必须有真实宏上下文，测试不伪造它；替换里的 {{match}} 已在捕获阶段处理。',
-      '先 regex.test 传合成 text、target、surface、depth/isEdit，确认匹配和替换结果后再保存。没有匹配与规则不适用是不同结果；语法错误明确报错。',
+      '先 regex.test 传合成 text、target、surface、depth/isEdit；模板使用 getvar 时显式传 variables 合成对象。预览会等待异步 EJS 完成，不保存规则、消息或变量；确认结果后再保存。没有匹配与规则不适用是不同结果；语法错误明确报错。',
       '正则替换完成后计算该范围结果中的 EJS，支持 <% JS %>、<%= HTML 转义 %>、<%- 原样输出 %>、判断、循环和 await。显示侧变量来自该消息历史快照；提示词侧来自本次请求变量快照，缺少快照时 getvar 报错。rawContent/content/message/variables/getvar 提供内容与只读上下文。',
       'HTML 互动消息使用自己的 ElecKoi 作者 SDK 声明与 ElecKoiReady，不能调用酒馆助手全局对象。本阶段不提供角色前端项目操作。',
     ],
     examples: [{ title: '把标签显示为静态 HTML', rule: { name: '展示数值', pattern: '/<meter>(\\d+)<\\/meter>/g', replacement: '<div class="meter">数值：$1</div>', targets: ['AiOutput'], displayOnly: true, promptOnly: false }, text: '<meter>25</meter>' }] },
 ] as const
 
-export const creatorAuthoringInstructions = '创作能力采用当前 ElecKoi 模型与作者 SDK。修改某领域前必须用 eleckoi_describe_toolset 读取该领域 guide/examples 和所需操作 inputSchema，按准确字段执行。设定读取只区分必读与选读；EJS 控制器执行模板，EJS 引用存放文字。Zod 校验与原生脚本规则分别使用对应入口。正则显示替换不等于角色前端项目。本阶段不提供角色前端项目操作。'
+export const creatorAuthoringInstructions = '创作能力采用当前 ElecKoi 模型与作者 SDK。修改某领域前必须用 eleckoi_describe_toolset 读取该领域 guide/examples 和所需操作 inputSchema，按准确字段执行。开场白通过 character.read_openings、character.save_openings 独立维护全部不同开场白。EJS 显示模板写在正则规则的 replacement 中，通过 regex.test 预览。设定读取只区分必读与选读；EJS 控制器执行模板，EJS 引用存放文字。Zod 校验与原生脚本规则分别使用对应入口。本阶段不提供角色前端项目操作。'

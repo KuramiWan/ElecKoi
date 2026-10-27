@@ -81,7 +81,7 @@ export function loadNodeHostConfiguration(configPath: string): NodeHostConfigura
   const runtime = JSON.parse(readFileSync(join(resourceRoot, 'runtime-manifest.json'), 'utf8'))
   const installed = require('@deepseek-ai/dsh/package.json') as { version: string }
   if (runtime.schemaVersion !== 1 || runtime.upstream?.version !== installed.version
-    || runtime.upstream?.commit !== 'c1b47e41fcd54d20a0f061df28683bfc29ee24e5') {
+    || runtime.upstream?.commit !== '1f81c047fc48fa190a683e469daa699857e9afe8') {
     throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, 'Android Host resources do not match the locked DSH installation', { what: 'Android Host 资源清单', expected: '与锁定的 DSH 安装一致' })
   }
   return result

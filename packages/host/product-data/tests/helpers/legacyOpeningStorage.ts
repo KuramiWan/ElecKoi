@@ -3,11 +3,14 @@ import { commonSchemaSql } from '../../src/storage/sqlite/migrations/commonSchem
 
 export const legacyOpeningSchemaSql = commonSchemaSql
   .replace(/^CREATE TABLE IF NOT EXISTS `character_openings`[^\n]*\n/m, '')
+  .replace(/^CREATE TABLE IF NOT EXISTS `global_setting_libraries`[^\n]*\n/m, '')
+  .replace(/^CREATE TABLE IF NOT EXISTS `global_setting_library_state`[^\n]*\n/m, '')
   .replace(', `chatBackground`', ', `showOpening` INTEGER NOT NULL, `chatBackground`')
   .replace(/PRAGMA user_version = \d+;/, 'PRAGMA user_version = 13;')
 
 /** Restore the legacy character opening shape for synthetic historical fixtures. */
 export function restoreLegacyOpeningStorage(database: Database.Database): void {
+  database.exec('DROP TABLE IF EXISTS global_setting_library_state; DROP TABLE IF EXISTS global_setting_libraries;')
   if (!database.prepare("SELECT 1 FROM sqlite_master WHERE name='character_openings'").get()) return
   const rows = database.prepare('SELECT * FROM characters').all() as Record<string, unknown>[]
   const configs = database.prepare('SELECT characterId, configurationJson FROM character_openings').all() as { characterId: string; configurationJson: string }[]

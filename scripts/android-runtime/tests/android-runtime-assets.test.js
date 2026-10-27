@@ -97,6 +97,31 @@ check(lambda archive: (link(archive, '../../wrong'), packager.add_bytes(archive,
 })
 
 describe('Android packaged workspace entrypoints', () => {
+  it('retains dependency resources beyond the Windows ordinary path length in the archive', () => python(String.raw`
+import os, shutil
+with tempfile.TemporaryDirectory() as temporary:
+    source = Path(temporary) / 'source'
+    source.mkdir()
+    extended = Path('\\\\?\\' + str(source.resolve())) if os.name == 'nt' else source
+    first, second = 'synthetic-' + 'a' * 100, 'synthetic-' + 'b' * 100
+    resource = extended / first / second / 'description.md'
+    try:
+        resource.parent.mkdir(parents=True)
+        resource.write_bytes(b'synthetic dependency resource')
+        assert len(str(resource)) > 260
+        output = io.BytesIO()
+        with tarfile.open(fileobj=output, mode='w') as archive:
+            packager.add_directory(archive, source, 'synthetic')
+        output.seek(0)
+        with tarfile.open(fileobj=output) as archive:
+            member = 'synthetic/' + first + '/' + second + '/description.md'
+            assert archive.extractfile(member).read() == b'synthetic dependency resource'
+            assert all('\\' not in entry.name and not entry.name.startswith('/') for entry in archive)
+    finally:
+        assert source.resolve().is_relative_to(Path(temporary).resolve())
+        shutil.rmtree(extended)
+`))
+
   it('rejects a missing runtime subpath in the final archive even when its manifest and main entry exist', () => python(String.raw`
 def verify(include_media):
     output = io.BytesIO()
@@ -121,5 +146,37 @@ except ValueError as error:
     assert 'synthetic-data -> ./lib/media.js' in str(error), str(error)
 else:
     raise AssertionError('Missing runtime module accepted')
+`))
+})
+
+describe('Android locked file publication', () => {
+  it('patches the current locked DSH files and rejects changed source bytes without modifying installed packages', () => python(String.raw`
+import hashlib, subprocess
+upstream = packager.read_json(packager.REPO / 'apps/desktop/resources/dsh/runtime-manifest.json')['upstream']
+for filename, transform in [('session-publication-lock.json', packager.patch_session_publication),
+                            ('attachment-storage-lock.json', packager.patch_attachment_storage)]:
+    lock = packager.read_json(packager.REPO / 'native/android-runtime' / filename)
+    source = packager.REPO / 'node_modules' / lock['package']
+    manifest = packager.read_json(source / 'package.json')
+    assert lock['version'] == manifest['version'] == upstream['version']
+    assert lock['upstreamCommit'] == upstream['commit']
+    original = (source / lock['file']).read_bytes()
+    assert hashlib.sha256(original).hexdigest() == lock['sourceSha256']
+    patched = transform(original)
+    for replacement in lock['replacements']:
+        assert original.count(replacement['before'].encode()) == 1
+        assert replacement['before'].encode() not in patched
+        assert replacement['after'].encode() in patched
+    with tempfile.TemporaryDirectory() as temporary:
+        output = Path(temporary) / 'publication.mjs'
+        output.write_bytes(patched)
+        subprocess.run(['node', '--check', str(output)], check=True, capture_output=True)
+    try:
+        transform(b'// changed source\n' + original)
+    except ValueError as error:
+        assert 'locked package' in str(error)
+    else:
+        raise AssertionError('Unreviewed package bytes accepted')
+    assert (source / lock['file']).read_bytes() == original
 `))
 })

@@ -134,6 +134,28 @@ describe('Shipped Host tool-result composition', () => {
     }))
     const studio = await ctx.eleckoiCreatorStudioRuntime.create(characterId)
     const agent = (await ctx.sessionController.resolveAgent(studio.sessionId)).agent
+    const discover = async (name, args) => {
+      const result = await agent.ctx.tools.execute({ callId: `synthetic-discovery-${name}-${args.toolset_id ?? 'catalog'}`, name, arguments: args,
+        agent, signal: new AbortController().signal })
+      expect(result.isError, JSON.stringify(result)).not.toBe(true)
+      return JSON.parse(result.content[0].text)
+    }
+    const catalog = await discover('eleckoi_list_toolsets', {})
+    expect(catalog.toolsets.find(toolset => toolset.id === 'character').description).toContain('开场白')
+    expect(catalog.toolsets.find(toolset => toolset.id === 'settings').description).not.toContain('开场白')
+    expect(catalog.toolsets.some(toolset => toolset.id === 'displayTemplates')).toBe(false)
+    const characterGuide = await discover('eleckoi_describe_toolset', {
+      toolset_id: 'character', operation_ids: ['character.read_openings', 'character.save_openings'], include_schema: true,
+    })
+    const openingSchema = characterGuide.operations.find(operation => operation.id === 'character.save_openings').inputSchema
+    expect(Object.keys(openingSchema.properties).sort()).toEqual(['defaultOpeningMessageId', 'enabled', 'openingMessages'])
+    expect(openingSchema.additionalProperties).toBe(false)
+    expect(characterGuide.toolset.guide.join('\n')).toContain('character.save_openings')
+    const regexGuide = await discover('eleckoi_describe_toolset', {
+      toolset_id: 'regex', operation_ids: ['regex.create', 'regex.test'], include_schema: true,
+    })
+    expect(regexGuide.toolset.guide.join('\n')).toContain('EJS')
+    expect(regexGuide.operations.find(operation => operation.id === 'regex.test').inputSchema.properties).toHaveProperty('variables')
     const spills = [], requests = []
     const saveText = ctx.spillStore.saveText.bind(ctx.spillStore)
     const save = vi.spyOn(ctx.spillStore, 'saveText').mockImplementation(async input => {

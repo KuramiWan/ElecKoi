@@ -56,10 +56,24 @@ function card(id = 'card-a') {
 const unreleasedGenerationTableSql = 'CREATE TABLE IF NOT EXISTS `conversation_generation_results` (`operationId` TEXT NOT NULL, `conversationId` TEXT NOT NULL, `resultJson` TEXT NOT NULL, PRIMARY KEY(`operationId`), FOREIGN KEY(`conversationId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )'
 
 describe('retired display template storage removal', () => {
+  it.each(['global_setting_libraries', 'global_setting_library_state'])('rejects missing current %s without modifying other records', table => {
+    const { database, characters } = harness()
+    characters.replaceAll({ active_character_id: 'synthetic-character', groups: [], items: [card('synthetic-character')] })
+    database.native.exec(`DROP TABLE ${table}`)
+    const before = productRecords(database.native)
+    const objects = schemaObjects(database.native)
+    expect(() => installSchema(database.native)).toThrow('数据库业务表不完整或包含未知表')
+    expect(productRecords(database.native)).toEqual(before)
+    expect(schemaObjects(database.native)).toEqual(objects)
+    expect(database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
+  })
+
   it('removes only standalone template records from v12 and preserves regex, script and character data across reopen', () => {
     const { database, characters } = harness()
     characters.replaceAll({ active_character_id: 'synthetic-character', groups: [], items: [card('synthetic-character')] })
     restoreEditorSchemaV12(database.native)
+    expect(database.native.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()).toEqual({ count: 47 })
+    expect(database.native.prepare("SELECT name FROM sqlite_master WHERE name IN ('character_openings', 'global_setting_libraries', 'global_setting_library_state')").all()).toEqual([])
     database.native.prepare('INSERT INTO display_template_libraries VALUES (?, ?, ?, ?, ?, ?, ?)').run('global', '', null, null, 1, 2, '[{"id":"synthetic-retired","source":"<%= 12 %>"}]')
     for (const kind of ['regex', 'scripts', 'displayTemplates']) database.native.prepare('INSERT INTO editor_library_versions VALUES (?,?,?,?,?,?,?)').run(kind, 'global', '', null, null, 4, JSON.stringify({ synthetic: kind }))
     const before = productRecords(database.native)
@@ -69,6 +83,8 @@ describe('retired display template storage removal', () => {
     expect(after).toEqual({ ...records, editor_library_versions: versions!.filter((row: any) => row.kind !== 'displayTemplates') })
     expect(database.native.pragma('user_version', { simple: true })).toBe(CURRENT_SCHEMA_VERSION)
     expect(database.native.prepare("SELECT 1 FROM sqlite_master WHERE name='display_template_libraries'").get()).toBeUndefined()
+    expect(database.native.prepare('SELECT * FROM global_setting_libraries').all()).toEqual([])
+    expect(database.native.prepare('SELECT * FROM global_setting_library_state').all()).toEqual([])
     expect(() => database.native.prepare('INSERT INTO editor_library_versions VALUES (?,?,?,?,?,?,?)').run('displayTemplates', 'global', '', null, null, 0, '{}')).toThrow()
     database.close(); database.open()
     expect(productRecords(database.native)).toEqual(after)
@@ -160,7 +176,7 @@ const schemaV7Sql = schemaV10Sql
 function productRecords(database: Database.Database) {
   // Script libraries have separate migration and data-retention assertions.
   // Runtime-state retention has its own exact migration assertions.
-  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('conversation_generation_results', 'script_libraries', 'agent_setting_snapshots', 'conversation_state_snapshots', 'character_openings') ORDER BY name")
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('conversation_generation_results', 'script_libraries', 'agent_setting_snapshots', 'conversation_state_snapshots', 'character_openings', 'global_setting_libraries', 'global_setting_library_state') ORDER BY name")
     .all() as { name: string }[]
   return Object.fromEntries(tables.map(({ name }) => [name,
     (database.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[])
