@@ -34,10 +34,10 @@ app.whenReady().then(async () => {
       const heights = await evaluate(`Array.from(document.querySelectorAll('.rich-message-placeholder'),node=>node.style.minHeight)`);
       await evaluate(`document.querySelector('[data-message="${id}-older-a"] .rich-message-load').click()`);
       await wait('document.querySelectorAll("iframe").length===4');
-      await wait(`window.mounts===${mounts + 1} && counters['${id}-older-a-false']>${after[`${id}-older-a-false`]} && counters['${id}-older-a-true']>${after[`${id}-older-a-true`]}`);
+      await wait(`window.mounts===${mounts + 2} && counters['${id}-older-a-false']>${after[`${id}-older-a-false`]} && counters['${id}-older-a-true']>${after[`${id}-older-a-true`]}`);
       await evaluate(`document.querySelector('[data-message="${id}-older-b"] .rich-message-load').click()`);
       await wait(`document.querySelectorAll('iframe').length===4 && !document.querySelector('[data-message="${id}-older-a"] iframe')`);
-      await wait(`window.mounts===${mounts + 2} && counters['${id}-older-b-false']>${after[`${id}-older-b-false`]} && counters['${id}-older-b-true']>${after[`${id}-older-b-true`]}`);
+      await wait(`window.mounts===${mounts + 4} && counters['${id}-older-b-false']>${after[`${id}-older-b-false`]} && counters['${id}-older-b-true']>${after[`${id}-older-b-true`]}`);
       await evaluate('document.querySelector(".rich-message-stop").click()');
       await wait('document.querySelectorAll("iframe").length===2');
       reports.push({ width, scheme, before, after, heights, id, releasesBefore: releases, releasesAfter: await evaluate('window.releases'),

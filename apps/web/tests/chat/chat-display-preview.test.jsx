@@ -17,7 +17,8 @@ describe("chat display preview", () => {
     expect(render(false)).not.toContain('自动运行楼层数数值');
     const html = render(true);
     expect(html).toContain('aria-label="自动运行楼层数数值"');
-    expect(html).toContain('min="1" max="100" step="1" value="7"');
+    expect(html).toMatch(/aria-label="自动运行楼层数数值" min="1" step="1" value="7"/);
+    expect(html).not.toMatch(/aria-label="自动运行楼层数数值"[^>]* max=/);
   });
   it("uses the active persona without a fixed conversation title", () => {
     const html = renderToStaticMarkup(React.createElement(WithOfficialMarkdown, null,

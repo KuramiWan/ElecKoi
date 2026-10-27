@@ -141,6 +141,7 @@ describe('Android character editor selection and bottom actions', () => {
   });
   it.each(scenarios)('$name saves touch drag order, while scroll gestures and cancelled drags preserve the order', async scenario => {
     const model = await mount(scenario);
+    const persistedOrder = () => scenario.order(model.save.mock.lastCall?.[1] ?? model.getSnapshot().value);
     const rows = [...container.querySelectorAll('[data-reorder-id]')].filter(row => row.textContent.includes('合成条目'));
     rows.forEach((row, index) => vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({ top: index * 50, bottom: index * 50 + 50, height: 50 }));
     vi.useFakeTimers();
@@ -152,7 +153,7 @@ describe('Android character editor selection and bottom actions', () => {
       expect(container.querySelector('[data-reorder-target=after]')).toBeTruthy();
       await act(async () => touchEvent(window, 'touchcancel', 110));
       await act(async () => controller.current.save());
-      expect(scenario.order(model.save.mock.lastCall[1])).toEqual(['entry-0', 'entry-1']);
+      expect(persistedOrder()).toEqual(['entry-0', 'entry-1']);
       await act(async () => { touchEvent(rows[0], 'touchstart', 20); vi.advanceTimersByTime(400); });
       await act(async () => touchEvent(window, 'touchmove', 110));
       await act(async () => touchEvent(window, 'touchend', 110));

@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
+import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
+import { DesktopError } from '@shared/foundation/DesktopError';
 import { BookOpen, CaretRight, Trash } from '../../../ui/icons/interfaceIcons.jsx';
 import { ImportIcon } from '../../../ui/icons/index.jsx';
 import { Button, Menu } from '@deepseek-ai/dsh-client-ui-primitives';
@@ -14,7 +16,7 @@ import { resolveFailure } from '../../../utils/failureText.js';
 
 const empty = { revision: 0, libraries: [] };
 const unavailable = { getSnapshot: () => ({ status: 'ready', value: empty }), read: async () => empty,
-  save: async () => { throw new Error('全局设定库服务不可用。'); }, subscribe: () => () => {} };
+  save: async () => { throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady, '全局设定库服务不可用。', { what: '全局设定库服务' }); }, subscribe: () => () => {} };
 
 export function useGlobalSettingLibraries(model, onSelect) {
   const [selection, setSelection] = useState(null);
@@ -43,7 +45,7 @@ export function useGlobalSettingLibraries(model, onSelect) {
     updateLibrary(id, item => ({ ...item, enabled }));
   }
   function importLibrary(source) {
-    if (!source) throw new Error('请选择要导入的设定库。');
+    if (!source) throw new DesktopError(ELECKOI_FAILURE_CODES.statePrecondition, '请选择要导入的设定库。', { what: '选择要导入的设定库' });
     const timestamp = new Date().toISOString();
     const value = globalSettingLibrarySchema.parse({ id: createId('global-library'),
       name: uniqueName(source.name?.trim() || '导入设定库', new Set(draft.libraryRef.current.libraries.map(item => item.name))),
@@ -84,7 +86,7 @@ export function GlobalSettingLibraryImport({ state, settingLibraries, disabled }
     setBusy(true);
     try {
       const library = await settingLibraries.readUntracked(id);
-      if (!library.versions.some(version => version.id === library.activeVersionId)) throw new Error('来源角色的当前设定库版本不存在。');
+      if (!library.versions.some(version => version.id === library.activeVersionId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, '来源角色的当前设定库版本不存在。', { what: '来源角色的当前设定库版本' });
       if (generation === request.current) { setSource(library); setVersionId(library.activeVersionId); }
     } catch (cause) { if (generation === request.current) setError(resolveFailure(cause, { fallback: '读取来源设定库失败' }).text); }
     finally { if (generation === request.current) setBusy(false); }

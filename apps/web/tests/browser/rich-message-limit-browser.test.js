@@ -28,7 +28,7 @@ it('stops shared and native document timers outside the running floors across de
     for (const report of reports) {
       expect(report.overflow).toBe(false);
       expect(report.heights).toEqual(['64px', '64px', '64px', '64px']);
-      expect(report.releasesAfter - report.releasesBefore).toBe(4);
+      expect(report.releasesAfter - report.releasesBefore).toBe(8);
       for (const native of [false, true]) {
         for (const old of ['older-a', 'older-b']) {
           const key = `${report.id}-${old}-${native}`;

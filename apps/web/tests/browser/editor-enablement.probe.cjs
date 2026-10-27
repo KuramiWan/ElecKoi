@@ -21,11 +21,14 @@ app.whenReady().then(async () => {
     for (const kind of ['regex', 'scripts']) for (const ownerScope of ['character', 'preset']) {
       await wait('Boolean(document.querySelector("nav"))');
       await evaluate(`document.querySelector('[data-editor="${kind}:${ownerScope}"]').click()`);
-      await wait(`document.querySelector('main').dataset.current === '${kind}:${ownerScope}' && document.querySelectorAll('.editor-library-group').length === 2 && document.querySelector('.setting-library-save-button')?.disabled`);
+      await wait(`document.querySelector('main').dataset.current === '${kind}:${ownerScope}' && document.querySelectorAll('.editor-library-group').length === 1 && document.querySelector('.setting-library-save-button')?.disabled`);
       const rowSelector = kind === 'regex' ? '.regex-rule-row' : '.script-list-row';
       const nameSelector = kind === 'regex' ? '.regex-rule-main > span' : '.script-list-name > span';
       for (let groupIndex = 0; groupIndex < 2; groupIndex++) {
-        const select = `document.querySelectorAll('.editor-library-group')[${groupIndex}]`;
+        const label = groupIndex === 0 ? '全局' : ownerScope === 'preset' ? '预设' : '角色';
+        await evaluate(`[...document.querySelectorAll('.editor-scope-tabs [role="tab"]')].find(tab=>tab.textContent.trim()===${JSON.stringify(label)}).click()`);
+        await wait(`[...document.querySelectorAll('.editor-scope-tabs [role="tab"]')].some(tab=>tab.textContent.trim()===${JSON.stringify(label)} && tab.getAttribute('aria-selected')==='true') && document.querySelectorAll('.editor-library-group').length===1`);
+        const select = `document.querySelector('.editor-library-group')`;
         const measure = `(()=>{const group=${select}, palette=getComputedStyle(group);
           document.getElementById('text-reference').style.color=palette.getPropertyValue('--text');
           document.getElementById('muted-reference').style.color=palette.getPropertyValue('--muted');
@@ -55,7 +58,7 @@ app.whenReady().then(async () => {
     for (const kind of ['scripts']) {
       win.setContentSize(1200, 800);
       await evaluate(`document.querySelector('[data-editor="${kind}:character"]').click()`);
-      await wait(`document.querySelector('main').dataset.current === '${kind}:character' && document.querySelectorAll('.editor-library-group').length === 2`);
+      await wait(`document.querySelector('main').dataset.current === '${kind}:character' && document.querySelectorAll('.editor-library-group').length === 1`);
       await evaluate(`document.querySelector('${'.script-list-row.is-nested .script-list-name'}').click()`);
       await wait('Boolean(document.querySelector(".script-inspector .script-source"))');
       for (const [width, height] of [[1200, 800], [400, 760]]) {

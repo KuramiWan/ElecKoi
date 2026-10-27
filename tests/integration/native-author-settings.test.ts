@@ -12,12 +12,13 @@ import TypertRegistry, { type TypertContribution } from '@deepseek-ai/dsh-typert
 import TypertGatewayService from '@deepseek-ai/dsh-api-gateway'
 import { TYPERT } from '@eleckoi/dsh-product-api/typert'
 import { TYPERT_REMOTE } from '@eleckoi/dsh-product-api/remote'
-import { ElecKoiCharacterConfigurationApi, ElecKoiAgentPresetsApi, CharacterConfigurationChangeFeed } from '@eleckoi/dsh-product-api'
+import { ElecKoiCharacterConfigurationApi, ElecKoiAgentPresetsApi, CharacterConfigurationChangeFeed, ProductRecordChangeFeed } from '@eleckoi/dsh-product-api'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import { NativeAuthorClient } from '@eleckoi/dsh-client-author/runtime'
 import type { AuthorSettingLibrary, ElecKoiAuthorApi } from '@eleckoi/author-sdk'
 import { AUTHOR_SETTING_ENTRY_MUTABLE_FIELDS } from '@eleckoi/author-sdk'
 import { settingLibraryEntryChangesSchema } from '../../packages/shared/src/contracts/settingLibrary/schemas'
+import { emptyEntry } from '../../packages/host/product-data/src/domain/settingLibraries/index'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error The browser test runtime does not publish declarations.
 import { JSDOM } from 'jsdom'
@@ -49,6 +50,9 @@ async function harness() {
   const changes = new CharacterConfigurationChangeFeed(), publish = vi.spyOn(changes, 'publish')
   ctx.provide('eleckoiCharacterConfigurationChanges', changes)
   cleanups.push(() => changes.close())
+  const records = new ProductRecordChangeFeed()
+  ctx.provide('eleckoiProductRecordChanges', records)
+  cleanups.push(() => records.close())
   await ctx.plugin(RemoteAccessService)
   await ctx.plugin(TypertGatewayService); await ctx.plugin(ElecKoiCharacterConfigurationApi)
   await ctx.plugin(ElecKoiAgentPresetsApi)
@@ -56,8 +60,8 @@ async function harness() {
   data.createCharacter({ id: 'synthetic-character', name: 'Synthetic character' })
   data.createCharacter({ id: 'synthetic-other-character', name: 'Synthetic other character' })
   const base = data.readSettingLibrary('synthetic-character')
-  const entry = { ...base.entries[0]!, id: 'synthetic-entry', title: 'Synthetic setting', kind: 'normal' as const,
-    content: '{{char}} meets {{user}}', openingMessages: [], defaultOpeningMessageId: '',
+  const entry = { ...emptyEntry('synthetic-entry'), title: 'Synthetic setting', kind: 'normal' as const,
+    content: '{{char}} meets {{user}}', openingMessages: [],
     agentReadStrategy: 'normal' as const, triggerMode: 'agent_tool' as const, enabled: true }
   const alternative = { ...entry, id: 'synthetic-alternative', title: 'Synthetic alternative', enabled: false }
   data.saveSettingLibrary(base.characterId, { ...base, entries: [...base.entries, entry, alternative] })
@@ -158,13 +162,12 @@ describe('native author setting library', () => {
     expect(await r.api.settingLibrary.getEntry('synthetic-alternative')).toMatchObject({ enabled: true })
   }, 30_000)
 
-  it('rejects missing, duplicate, fixed and malformed entry batches without committing part of the group', async () => {
+  it('rejects missing, duplicate, opening and malformed entry batches without committing part of the group', async () => {
     const r = await harness(), initial = (await r.api.settingLibrary.current())!
-    const fixed = initial.entries.find(entry => entry.kind === 'opening')!
     const invalid = [
       [{ id: 'synthetic-entry', changes: { enabled: false } }, { id: 'synthetic-missing', changes: { enabled: true } }],
       [{ id: 'synthetic-entry', changes: { enabled: false } }, { id: 'synthetic-entry', changes: { enabled: true } }],
-      [{ id: 'synthetic-entry', changes: { enabled: false } }, { id: fixed.id, changes: { content: 'Synthetic opening edit' } }],
+      [{ id: 'synthetic-entry', changes: { enabled: false } }, { id: 'synthetic-alternative', changes: { openingMessages: [{ id: 'synthetic-opening', content: 'Synthetic opening edit' }] } }],
       [{ id: 'synthetic-entry', changes: {} }],
       [{ id: 'synthetic-entry', changes: { id: 'synthetic-replacement', enabled: false } }],
       [{ id: 'synthetic-entry', changes: { kind: 'opening' } }],

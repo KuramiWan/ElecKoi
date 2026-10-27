@@ -36,7 +36,7 @@ it.each(['scripts'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind
   expect([...node.querySelectorAll('.mobile-editor-actions [role=toolbar] button')].map(button => button.textContent)).toEqual(['新建', '编辑', '移动', '删除', '更多']);
   expect(node.querySelector('.editor-collection-toolbar').textContent).not.toContain('新建');
   const groups = node.querySelectorAll('.editor-library-group');
-  await act(() => groups[1].querySelector(kind === 'scripts' ? '.script-list-name' : '.editor-library-name').click());
+  await act(() => groups[0].querySelector(kind === 'scripts' ? '.script-list-name' : '.editor-library-name').click());
   expect(node.querySelector('.editor-page-detail')).toBeNull();
   await click('编辑');
   expect(node.querySelector('.script-inspector input').value).toBe(`合成${scope}条目`);
@@ -65,7 +65,7 @@ it.each(['scripts'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind
 it.each(['scripts'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind, scope }))))
   ('$kind $scope opens the selected item on double click while switches and multi-select remain independent', async ({ kind, scope }) => {
     await mount(kind, scope);
-    const names = () => node.querySelectorAll('.editor-library-group')[1].querySelector(kind === 'scripts' ? '.script-list-name' : '.editor-library-name');
+    const names = () => node.querySelectorAll('.editor-library-group')[0].querySelector(kind === 'scripts' ? '.script-list-name' : '.editor-library-name');
     await act(() => names().click());
     expect(node.querySelector('.editor-page-detail')).toBeNull();
     await act(() => {
@@ -74,7 +74,7 @@ it.each(['scripts'].flatMap(kind => ['character', 'preset'].map(scope => ({ kind
     });
     expect(node.querySelector('.script-inspector input').value).toBe(`合成${scope}条目`);
     await click('返回');
-    const control = node.querySelectorAll('.editor-library-group')[1].querySelector('.editor-library-rows input[type=checkbox]');
+    const control = node.querySelectorAll('.editor-library-group')[0].querySelector('.editor-library-rows input[type=checkbox]');
     await act(() => { control.click(); control.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); });
     expect(node.querySelector('.editor-page-detail')).toBeNull();
     await click('多选');
@@ -114,9 +114,9 @@ it.each(['scripts'].flatMap(kind => ['character', 'preset'].flatMap(scope => [fa
     const press = async target => { await act(() => {
       target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); target.click();
     }); };
-    await press(names()[1]);
+    await press(names()[0]);
     expect(directory.querySelectorAll('.is-selected')).toHaveLength(1);
-    await press(names()[1].querySelector('span'));
+    await press(names()[0].querySelector('span'));
     expect(directory.querySelectorAll('.is-selected')).toHaveLength(1);
     if (compact) {
       await click('更多');
@@ -137,7 +137,7 @@ it.each(['scripts'].flatMap(kind => ['character', 'preset'].flatMap(scope => [fa
     await act(async () => expect(await ref.current.save()).toBe(true));
     expect(write).not.toHaveBeenCalled();
     await click('多选');
-    await press(names()[1]);
+    await press(names()[0]);
     expect(directory.querySelector('input.editor-selection-checkbox:checked')).toBeTruthy();
     await press(directory);
     expect(directory.querySelector('input.editor-selection-checkbox:checked')).toBeTruthy();

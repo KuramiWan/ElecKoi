@@ -26,8 +26,8 @@ async function fixture() {
   database.native.prepare(`INSERT INTO characters(
     id,name,avatar,squareImage,coverImage,groupName,orderIndex,groupViewOrder,folder,
     frontendBeautyEnabled,assistantName,assistantAvatar,profileAge,profileSex,profileHeight,
-    profileBirthday,profileLike,showOpening,chatBackground,chatBackgroundOpacity,chatBackgroundBlur,chatBackgroundScrim
-  ) VALUES ('synthetic-character','合成角色','','','','',0,0,'',0,'合成助手','','','','','','',1,'',1,0,0)`).run()
+    profileBirthday,profileLike,chatBackground,chatBackgroundOpacity,chatBackgroundBlur,chatBackgroundScrim
+  ) VALUES ('synthetic-character','合成角色','','','','',0,0,'',0,'合成助手','','','','','','','',1,0,0)`).run()
   const options = [
     { id: 'entry-a', title: '开场一', content: '合成开场一', initialVariableStateJson: '{}' },
     { id: 'entry-b', title: '开场二', content: '合成开场二', initialVariableStateJson: '{}' },

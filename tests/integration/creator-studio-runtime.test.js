@@ -125,7 +125,7 @@ describe('AI creator studio official Agent integration', { timeout: 30_000 }, ()
     const f = await fixture(async function* (options, step) {
       if (step === 2) {
         const listed = resultFor(options, 'synthetic-volume-list')
-        expect(listed.entries).toHaveLength(count + 1)
+        expect(listed.entries).toHaveLength(count)
         expect(listed.entries.map(entry => entry.id)).toEqual(expectedEntries.map(entry => entry.id))
         for (const index of selectedIndexes) {
           expect(listed.entries.find(entry => entry.id === entries[index].id)).toMatchObject({ title: entries[index].title, keywordMatch: true })

@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict')
 const { existsSync, readFileSync, writeFileSync } = require('node:fs')
-const { join } = require('node:path')
+const { join, resolve } = require('node:path')
+const { pathToFileURL } = require('node:url')
 const { tmpdir } = require('node:os')
 
 /** Exercises the built desktop Client against its real isolated Host and local model endpoint. */
@@ -22,8 +23,8 @@ exports.runNativeAuthorScenario = async ({ window, ready, cookie, waitFor, reque
   await call('eleckoiCharacters/create', { character: { id: characterId, name: 'Synthetic native character' } })
   const preset = await call('eleckoiAgentPresets/create', { name: 'Synthetic native preset', libraryGroupId: '', purpose: 'roleplay' })
   const settingLibrary = await call('eleckoiCharacterConfiguration/readSettingLibrary', { characterId })
-  const option = { ...settingLibrary.entries.find(entry => entry.kind === 'opening'), kind: 'normal',
-    openingMessages: [], defaultOpeningMessageId: '', triggerMode: 'always', position: 'instructions',
+  const { createEntryDraft } = await import(pathToFileURL(resolve('apps/web/src/modules/settingLibraries/model/settingLibraryEditing.js')).href)
+  const option = { ...createEntryDraft('', 1, []), triggerMode: 'always', position: 'instructions',
     promptPositionId: '', enabled: true, insertRole: 'system' }
   const chatOptions = [
     { ...option, id: 'synthetic-chat-option-a', title: 'Synthetic chat option A', content: 'Synthetic chat setting option A' },

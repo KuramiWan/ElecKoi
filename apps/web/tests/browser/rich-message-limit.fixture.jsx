@@ -4,6 +4,7 @@ import * as libraries from '@eleckoi/dsh-client-html-resources/browser-libraries
 import { MainPageContext } from '../../src/app/windows/MainPageContext.jsx';
 import { RichMessageFrame } from '../../src/modules/authorFrontend/components/RichMessageFrame.jsx';
 import { RichMessageRenderProvider } from '../../src/modules/authorFrontend/hooks/RichMessageRenderContext.jsx';
+import { mountSyntheticAuthorDocument } from './synthetic-author-document.js';
 import '../../src/modules/chat/styles/chat-panel.css';
 
 globalThis.React = React;
@@ -13,10 +14,10 @@ window.__ElecKoiHtmlResources = { assetsBaseUrl: new URL('./', location.href).hr
 window.counters = {};
 window.releases = 0;
 window.mounts = 0;
-const runtime = { mountDocument(target) {
+const runtime = { mountDocument(target, conversationId, messageId) {
   window.mounts++;
-  target.ElecKoi = { api: { version: '0.1.0' } };
-  return () => { window.releases++; };
+  const release = mountSyntheticAuthorDocument(target, conversationId, messageId);
+  return () => { window.releases++; release(); };
 } };
 const connection = { getSnapshot: () => runtime, subscribe: () => () => {} };
 const view = { characterConfiguration: { scriptRuntimeConnection: connection } };

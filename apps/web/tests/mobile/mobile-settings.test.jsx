@@ -71,6 +71,9 @@ describe('Android settings presentation with shared PC contracts', () => {
     await click('富消息');
     expect(view.settingsPage).toBe('chat:rich');
     expect(container.querySelector('.mobile-settings-preview')).toBeNull();
+    expect(container.querySelector('[role="switch"]').getAttribute('aria-checked')).toBe('false');
+    expect(container.querySelector('[aria-label="自动运行楼层数数值"]')).toBeNull();
+    await click('限制富消息运行楼层');
     expect(container.querySelector('[role="switch"]').getAttribute('aria-checked')).toBe('true');
     expect(container.querySelector('[aria-label="自动运行楼层数数值"]').value).toBe('10');
     await click('自动运行楼层数增加');

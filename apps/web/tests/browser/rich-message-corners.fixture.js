@@ -1,4 +1,6 @@
 import { buildAuthorDocumentSource } from '@eleckoi/author-sdk';
+import { mountFrontendCompatibility } from '@eleckoi/tavern-frontend';
+import { mountSyntheticAuthorDocument } from './synthetic-author-document.js';
 import * as sdk from '@eleckoi/dsh-client-html-resources/browser-libraries';
 import { buildRichMessageHtml } from '../../src/modules/authorFrontend/model/buildRichMessageHtml.js';
 import '../../src/modules/chat/styles/chat-panel.css';
@@ -25,8 +27,15 @@ window.renderCorners = scheme => {
     frame.dataset.native = String(native);
     frame.dataset.authoredScheme = String(authoredScheme);
     frame.style.height = '64px';
-    frame.onload = () => {
-      if (native) frame.contentWindow.__ElecKoiCompleteDocument({ api: { version: '0.1.0' } });
+    frame.onload = async () => {
+      const page = frame.contentWindow;
+      const mountSdk = () => mountSyntheticAuthorDocument(page, 'synthetic-corners', channel);
+      if (native) { mountSdk(); page.__ElecKoiCompleteDocument(page.ElecKoi); }
+      else {
+        const mount = mountFrontendCompatibility(page, mountSdk, error => { throw error; });
+        await mount.ready;
+        page.__ElecKoiCompleteSharedDocument();
+      }
       window.framesReady++;
     };
     frame.srcdoc = native ? buildAuthorDocumentSource(source, channel, true) : buildRichMessageHtml({ source }, channel, runtime);

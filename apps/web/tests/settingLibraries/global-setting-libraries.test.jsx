@@ -189,3 +189,24 @@ it('imports an explicitly selected saved role version and keeps the source indep
   expect(collection.libraries[1].entries[0].content).toBe('合成来源正文');
   expect(source.entries[0].content).toBe('合成来源正文'); expect(roles.save).not.toHaveBeenCalled();
 });
+it('reports a missing source version without importing another version and permits an explicit retry', async () => {
+  const source = normalizeSettingLibrary('synthetic-source', { ...role, characterId: 'synthetic-source',
+    entries: [{ ...emptyEntry('synthetic-source-entry'), title: '合成来源设定', content: '合成来源正文' }] });
+  const before = structuredClone(collection);
+  roles.listCharacters = async () => ({ items: [{ id: 'synthetic-source', name: '合成来源角色' }] });
+  roles.readUntracked = vi.fn().mockResolvedValueOnce({ ...source, activeVersionId: 'synthetic-missing-version' })
+    .mockResolvedValueOnce(structuredClone(source));
+  await switchScope('全局'); await click('导入全局设定库'); await click('从角色设定库');
+  const choose = async () => act(async () => {
+    const select = document.querySelector('.global-library-import-fields select');
+    select.value = 'synthetic-source'; select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await choose();
+  const modal = document.querySelector('.editor-management-modal');
+  expect(modal.querySelector('[role="alert"]').textContent).toBe('找不到来源角色的当前设定库版本。');
+  expect([...modal.querySelectorAll('button')].find(item => item.textContent === '导入').disabled).toBe(true);
+  expect(collection).toEqual(before); expect(globals.save).not.toHaveBeenCalled();
+  await choose(); await click('导入', modal); await click('保存');
+  expect(collection.libraries[1].entries[0].content).toBe('合成来源正文');
+  expect(roles.readUntracked).toHaveBeenCalledTimes(2); expect(roles.save).not.toHaveBeenCalled();
+});
