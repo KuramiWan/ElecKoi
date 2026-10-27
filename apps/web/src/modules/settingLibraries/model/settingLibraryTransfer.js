@@ -105,7 +105,8 @@ function blankFixedEntries(library) {
 function ensureFixedEntries(library, entries) {
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   return [
-    ...blankFixedEntries(library).map((entry) => byId.get(entry.id) || entry),
+    ...blankFixedEntries(library).map((entry) => byId.get(entry.id)
+      || (entry.kind === "opening" ? clone(library.entries.find(item => item.id === entry.id)) : entry)),
     ...entries.filter((entry) => !PINNED_ENTRY_IDS.has(entry.id)),
   ];
 }
@@ -430,7 +431,7 @@ export function serializeSettingLibrary(library) {
     name: current.name,
     list_all_expanded: current.listAllExpanded,
     expanded_group_ids: current.expandedGroupIds,
-    entries: current.entries.map(entryToJson),
+    entries: current.entries.filter(entry => entry.kind !== "opening").map(entryToJson),
     groups: current.groups.map((group) => ({
       id: group.id, name: group.name, parent_id: group.parentId, order: group.order,
       tree_view_order: group.treeViewOrder, created_at: group.createdAt, updated_at: group.updatedAt,

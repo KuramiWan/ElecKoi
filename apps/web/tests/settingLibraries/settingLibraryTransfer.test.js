@@ -117,7 +117,7 @@ describe("setting-library versions and transfer", () => {
     vi.unstubAllGlobals();
   });
 
-  it("preserves native entry, folder, position and opening variable identities through export and version import", () => {
+  it("exports settings separately and preserves character openings when importing them as a version", () => {
     const source = library();
     source.entries = source.entries.map(item => ({ ...item, contentMode: "plain_text" }));
     source.groups = [{ id: "synthetic-folder", name: "合成文件夹", parentId: "", order: 1, treeViewOrder: 1, createdAt: "", updatedAt: "" }];
@@ -129,8 +129,8 @@ describe("setting-library versions and transfer", () => {
     ];
     source.entries[0].defaultOpeningMessageId = "synthetic-opening-b";
     const exported = serializeSettingLibrary(source);
-    expect(JSON.parse(exported).entries[0].opening_messages.map(item => item.variable_version_id))
-      .toEqual(["synthetic-variables-a", "synthetic-variables-b"]);
+    expect(JSON.parse(exported).entries.map(item => item.id)).toEqual(['a']);
+    expect(exported).not.toContain('synthetic-opening');
     const imported = importLibraryAsVersion(source, parseSettingLibraryFile(exported, "eleckoi"));
     expect(imported.activeVersionId).not.toBe(source.activeVersionId);
     expect(imported.entries).toEqual(source.entries);
@@ -139,6 +139,29 @@ describe("setting-library versions and transfer", () => {
     const switched = switchLibraryVersion(imported, "v1");
     expect(switched.entries[1]).toMatchObject({ id: "a", groupId: "synthetic-folder", promptPositionId: "synthetic-position" });
     expect(switched.entries[0].openingMessages).toEqual(source.entries[0].openingMessages);
+  });
+
+  it('preserves every long setting and imports openings explicitly included in an existing v3 file', () => {
+    const source = library();
+    const opening = source.entries[0];
+    opening.enabled = false;
+    opening.openingMessages[0] = { ...opening.openingMessages[0], content: '合成角色开场正文', variableVersionId: 'synthetic-version' };
+    source.entries.push(...Array.from({ length: 10001 }, (_, index) => ({ ...entry(`synthetic-${index}`, `合成设定 ${index}`),
+      content: `${index}：${'合成长正文。'.repeat(200)}末尾关键词` })));
+    const exported = JSON.parse(serializeSettingLibrary(source));
+    expect(exported.entries).toHaveLength(10002);
+    for (const index of [0, 5000, 10000]) expect(exported.entries[index + 1].content).toBe(source.entries[index + 2].content);
+    expect(exported.entries.filter(item => item.content.endsWith('末尾关键词'))).toHaveLength(10001);
+    const legacy = { ...exported, entries: [{ ...exported.entries[0], id: opening.id, kind: 'opening',
+      enabled: opening.enabled, opening_messages: [{ id: 'legacy-opening', title: '合成旧开场', content: '合成旧开场正文',
+        variable_version_id: 'synthetic-legacy-version', initial_variable_state: '{"score":7}' }],
+      default_opening_message_id: 'legacy-opening' }, ...exported.entries] };
+    const imported = importLibraryAsVersion(source, parseSettingLibraryFile(JSON.stringify(legacy), 'eleckoi'));
+    expect(imported.entries[0]).toMatchObject({ enabled: false, defaultOpeningMessageId: 'legacy-opening', openingMessages: [
+      { id: 'legacy-opening', content: '合成旧开场正文', variableVersionId: 'synthetic-legacy-version', initialVariableStateJson: '{"score":7}' },
+    ] });
+    expect(imported.versions.find(item => item.id === 'v1').entries[0].openingMessages).toEqual(opening.openingMessages);
+    expect(imported.entries).toHaveLength(10003);
   });
 
   it("imports a SillyTavern world book into one folder", () => {
@@ -171,7 +194,7 @@ describe("setting-library versions and transfer", () => {
     expect(merged.entries.find(item => item.id === 'a')).toMatchObject({ content: '旧设定正文' });
     expect(merged.entries.find(item => item.title === 'Synthetic keyword')).toMatchObject({ contentMode: 'plain_text', enabled: false });
     const exported = parseSettingLibraryFile(serializeSettingLibrary(imported), 'eleckoi');
-    expect(exported.entries.map(item => item.contentMode)).toEqual(imported.entries.map(item => item.contentMode));
+    expect(exported.entries.map(item => item.contentMode)).toEqual(imported.entries.filter(item => item.kind !== "opening").map(item => item.contentMode));
   });
 
   it("classifies EJS controllers and their getwi references like Android", () => {

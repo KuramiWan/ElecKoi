@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpenText,
+  ChatCircleDots,
   CaretLeft,
   CaretRight,
   BracketsCurly,
@@ -16,7 +17,7 @@ import {
   CharacterBasicInfoPanel,
 } from "../../modules/persona/index.js";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
-import { DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/settingLibraries/index.js";
+import { CharacterOpeningsPanel, DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/settingLibraries/index.js";
 import { VariableConfigPanel } from "../../modules/variables/index.js";
 import { RegexRulesPanel } from "../../modules/regex/index.js";
 import { ScriptLibrariesPanel } from '../../modules/scripts/index.js';
@@ -33,6 +34,7 @@ import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const EDITOR_SECTIONS = [
   { id: "card", label: "基础资料", Icon: IdentificationCard },
+  { id: "openings", label: "角色开场白", Icon: ChatCircleDots },
   { id: "lore", label: "设定库", Icon: BookOpenText },
   { id: "variables", label: "变量", Icon: TreeStructure },
   { id: "regex", label: "正则", Icon: BracketsCurly },
@@ -68,6 +70,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [basicSaveNotice, setBasicSaveNotice] = useState("");
+  const [openingsDirty, setOpeningsDirty] = useState(false);
   const [loreDirty, setLoreDirty] = useState(false);
   const [variablesDirty, setVariablesDirty] = useState(false);
   const [regexDirty, setRegexDirty] = useState(false);
@@ -91,6 +94,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     return registerBackHandler(() => { subpage.back(); return true; });
   }, [compact, subpage, registerBackHandler]);
   const collectionRef = useRef(null);
+  const openingsRef = useRef(null);
   const settingLibraryRef = useRef(null);
   const variableConfigRef = useRef(null);
   const regexRulesRef = useRef(null);
@@ -123,7 +127,9 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
     () => editableCharacterSnapshot(character) !== editableCharacterSnapshot(persistedCharacter),
     [character, persistedCharacter],
   );
-  const dirty = activeSection === "lore"
+  const dirty = activeSection === "openings"
+    ? openingsDirty
+    : activeSection === "lore"
     ? loreDirty
     : activeSection === "variables"
       ? variablesDirty
@@ -216,11 +222,13 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
   }
 
   async function saveCurrentDraft() {
-    if (!["lore", "variables", "regex", 'scripts', 'frontend', "dynamic"].includes(activeSection)) return saveBasicInfo();
+    if (!["openings", "lore", "variables", "regex", 'scripts', 'frontend', "dynamic"].includes(activeSection)) return saveBasicInfo();
     if (saving) return false;
     setSaving(true);
     try {
-      const editor = activeSection === "lore"
+      const editor = activeSection === "openings"
+        ? openingsRef.current
+        : activeSection === "lore"
         ? settingLibraryRef.current
         : activeSection === "variables"
           ? variableConfigRef.current
@@ -232,6 +240,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
               ? frontendRef.current
             : dynamicSettingsRef.current;
       const saved = await editor?.save?.() || false;
+      if (saved && activeSection === "openings") setOpeningsDirty(false);
       if (saved && activeSection === "lore") setLoreDirty(false);
       if (saved && activeSection === "variables") setVariablesDirty(false);
       if (saved && activeSection === "regex") setRegexDirty(false);
@@ -283,7 +292,10 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
 
   function discardAndContinue() {
     const action = pendingAction;
-    if (activeSection === "lore") {
+    if (activeSection === "openings") {
+      openingsRef.current?.discard?.();
+      setOpeningsDirty(false);
+    } else if (activeSection === "lore") {
       settingLibraryRef.current?.discard?.();
       setLoreDirty(false);
     } else if (activeSection === "variables") {
@@ -356,12 +368,20 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         onChange: updateBasicInfo, onCancel: cancelChanges, onSave: saveBasicInfo,
       };
       editorContent = renderCharacterEditorSection?.("card", owner, fallback) ?? fallback;
+    } else if (activeSection === "openings") {
+      const fallback = <CharacterOpeningsPanel ref={openingsRef} characterId={character.id}
+        settingLibraries={characterConfiguration.settingLibraries} variables={characterConfiguration.variables}
+        onDirtyChange={setOpeningsDirty} />;
+      editorContent = renderCharacterEditorSection?.("openings", {
+        characterId: character.id, dirty: openingsDirty, saving,
+        configuration: characterConfiguration.settingLibraries, onDirtyChange: setOpeningsDirty,
+        setController: controller => { openingsRef.current = controller; },
+      }, fallback) ?? fallback;
     } else if (activeSection === "lore") {
       const fallback = <SettingLibraryPanel
         ref={settingLibraryRef}
         characterId={character.id}
         settingLibraries={characterConfiguration.settingLibraries}
-        variables={characterConfiguration.variables}
         onDirtyChange={setLoreDirty}
       />;
       editorContent = renderCharacterEditorSection?.("lore", {
@@ -483,7 +503,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       <section className="character-editor-main-panel">
         {renderHeader ? renderHeader({ character, dirty, saving, save: saveCurrentDraft, subpage, feedback: activeSection === 'card' ? { error: saveError, notice: basicSaveNotice } : feedback }) : <TitleBar splitSurface onClose={requestClose} />}
         <section
-          className={`character-editor-workspace${['lore', 'variables', 'regex', 'scripts'].includes(activeSection) ? ' is-collection-editor' : ''}${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === 'scripts' ? ' is-scripts' : ''}${activeSection === 'frontend' ? ' is-frontend' : ''}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
+          className={`character-editor-workspace${['openings', 'lore', 'variables', 'regex', 'scripts'].includes(activeSection) ? ' is-collection-editor' : ''}${activeSection === "card" ? " is-basic-info" : ""}${activeSection === "lore" ? " is-setting-library" : ""}${activeSection === "variables" ? " is-variable-config" : ""}${activeSection === "regex" ? " is-regex-rules" : ""}${activeSection === 'scripts' ? ' is-scripts' : ''}${activeSection === 'frontend' ? ' is-frontend' : ''}${activeSection === "dynamic" ? " is-dynamic-settings" : ""}`}
           aria-label={activeLabel}
           ref={workspaceRef}
         >

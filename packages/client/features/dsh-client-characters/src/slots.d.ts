@@ -84,6 +84,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'root'
       owner: CharacterEditorCardOwner
     }
+    'eleckoi.character.editor.openings': {
+      kind: 'chain'
+      scope: 'root'
+      owner: CharacterEditorConfigurationOwner
+    }
     'eleckoi.character.editor.lore': {
       kind: 'chain'
       scope: 'root'
@@ -100,10 +105,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       owner: CharacterEditorConfigurationOwner
     }
     'eleckoi.character.editor.scripts': {
-      kind: 'chain'
-      scope: 'root'
-      owner: CharacterEditorConfigurationOwner
-    }
       kind: 'chain'
       scope: 'root'
       owner: CharacterEditorConfigurationOwner

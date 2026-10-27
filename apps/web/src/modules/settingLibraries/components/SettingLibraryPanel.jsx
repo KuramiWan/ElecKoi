@@ -1,6 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
-  ChatCircleDots,
   Code,
   Copy,
   FileText,
@@ -29,7 +28,6 @@ import {
   createEntryDraft,
   createGroupDraft,
   createId,
-  deleteOpening,
   moveTreeNode,
   uniqueName,
 } from "../model/settingLibraryEditing.js";
@@ -41,24 +39,22 @@ import {
   parseNodeKey,
   treeNodes,
 } from "../model/settingLibraryTree.js";
-import { reportFailure, resolveFailure } from "../../../utils/failureText.js";
+import { reportFailure } from "../../../utils/failureText.js";
+
+import { useSettingLibraryDraft } from '../model/useSettingLibraryDraft.js';
 
 const CreateFolderIcon = SETTING_LIBRARY_CREATE_ICONS.group;
 const CreateEntryIcon = SETTING_LIBRARY_CREATE_ICONS.entry;
 const CreateReferenceIcon = SETTING_LIBRARY_CREATE_ICONS.reference;
 
 function nodeIcon(entry) {
-  if (entry?.kind === "opening") return ChatCircleDots;
   if (entry?.contentMode === "ejs") return Code;
   if (entry?.dynamicMode === "ejs_reference") return LinkSimple;
   return FileText;
 }
 
-export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, variables, onDirtyChange }, ref) {
+export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, onDirtyChange }, ref) {
   const { compact } = useEditorPresentation();
-  const [library, setLibrary] = useState(null);
-  const [variableSnapshot, setVariableSnapshot] = useState({ value: null, error: "" });
-  const [persisted, setPersisted] = useState(null);
   const [selectedKey, setSelectedKey] = useState("");
   const [editing, setEditing] = useState(false);
   const [clipboard, setClipboard] = useState(null);
@@ -68,140 +64,31 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const [managerOpen, setManagerOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [saveNotice, setSaveNotice] = useState("");
   const nameInputRef = useRef(null);
-  const libraryRef = useRef(null);
-  const persistedRef = useRef(null);
   const expandedKeysRef = useRef([]);
-  const savePromiseRef = useRef(null);
-  const dirty = useMemo(() => JSON.stringify(library) !== JSON.stringify(persisted), [library, persisted]);
-  const selected = useMemo(() => findSelected(library, selectedKey), [library, selectedKey]);
-  const nodes = useMemo(() => treeNodes(library), [library]);
-  const searchHasResults = useMemo(() => library ? hasSearchResults(library, query) : false, [library, query]);
-
-  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+  const draft = useSettingLibraryDraft({ characterId, settingLibraries, onDirtyChange,
+    onAdopt: loaded => {
+      const expanded = loaded.expandedGroupIds.map(id => nodeKey('group', id));
+      expandedKeysRef.current = expanded;
+      setExpandedKeys(expanded);
+    },
+    prepareSave: snapshot => ({ ...snapshot, listAllExpanded: false,
+      expandedGroupIds: expandedKeysRef.current.map(parseNodeKey).filter(item => item.kind === 'group').map(item => item.id) }),
+  });
+  const { library, setLibrary, persisted, setPersisted, libraryRef, persistedRef,
+    dirty, saving, error, setError, saveNotice, changeLibrary, save, discard } = draft;
+  const settingLibrary = useMemo(() => library ? { ...library, entries: library.entries.filter(entry => entry.kind !== 'opening') } : null, [library]);
+  const selected = useMemo(() => findSelected(settingLibrary, selectedKey), [settingLibrary, selectedKey]);
+  const nodes = useMemo(() => treeNodes(settingLibrary), [settingLibrary]);
+  const searchHasResults = useMemo(() => settingLibrary ? hasSearchResults(settingLibrary, query) : false, [settingLibrary, query]);
 
   useEffect(() => {
     expandedKeysRef.current = expandedKeys;
   }, [expandedKeys]);
-
   useEffect(() => {
-    if (saveNotice !== "saved") return undefined;
-    const timeout = window.setTimeout(() => setSaveNotice(""), 1600);
-    return () => window.clearTimeout(timeout);
-  }, [saveNotice]);
-
-  useEffect(() => {
-    let active = true;
-    setError("");
-    setSaveNotice("");
-    libraryRef.current = null;
-    persistedRef.current = null;
-    setLibrary(null);
-    setPersisted(null);
-    setSelectedKey("");
+    setSelectedKey('');
     setManagerOpen(false);
-    const adopt = (loaded) => {
-      if (!active || savePromiseRef.current || (libraryRef.current && persistedRef.current
-        && JSON.stringify(libraryRef.current) !== JSON.stringify(persistedRef.current))) return;
-      libraryRef.current = loaded;
-      persistedRef.current = loaded;
-      setLibrary(loaded);
-      setPersisted(loaded);
-      const expanded = loaded.expandedGroupIds.map((id) => nodeKey("group", id));
-      expandedKeysRef.current = expanded;
-      setExpandedKeys(expanded);
-    };
-    const stop = settingLibraries.subscribe((kind, id, snapshot) => {
-      if (kind === "configuration" && id === characterId && snapshot.status === "ready") adopt(snapshot.value);
-    });
-    const cached = settingLibraries.getSnapshot(characterId);
-    if (cached.status === "ready") adopt(cached.value);
-    void settingLibraries.read(characterId).catch((cause) => {
-      if (active) setError(resolveFailure(cause, { fallback: "读取设定库失败" }).text);
-    });
-    return () => { active = false; stop(); };
-  }, [characterId, settingLibraries]);
-
-  useEffect(() => {
-    let active = true;
-    setVariableSnapshot({ value: null, error: "" });
-    if (!variables) return undefined;
-    const adopt = (snapshot) => { if (active) setVariableSnapshot(snapshot); };
-    adopt(variables.getSnapshot(characterId));
-    const stop = variables.subscribe((kind, id, snapshot) => {
-      if (kind === "configuration" && id === characterId) adopt(snapshot);
-    });
-    void variables.read(characterId).catch((cause) => {
-      if (active) setVariableSnapshot((current) => ({ ...current, error: cause?.message || "读取变量版本失败" }));
-    });
-    return () => { active = false; stop(); };
-  }, [characterId, variables]);
-
-  function changeLibrary(updater) {
-    setError("");
-    setSaveNotice("");
-    setLibrary((current) => {
-      const next = typeof updater === "function" ? updater(current) : updater;
-      libraryRef.current = next;
-      return next;
-    });
-  }
-
-  async function save() {
-    if (!libraryRef.current) return false;
-    if (savePromiseRef.current) {
-      const inFlight = savePromiseRef.current;
-      const saved = await inFlight;
-      if (savePromiseRef.current === inFlight) savePromiseRef.current = null;
-      if (!saved) return false;
-      if (JSON.stringify(libraryRef.current) !== JSON.stringify(persistedRef.current)) return save();
-      return true;
-    }
-
-    const task = (async () => {
-      const snapshot = libraryRef.current;
-      setSaving(true);
-      setError("");
-      setSaveNotice("");
-      try {
-        const saved = await settingLibraries.save(characterId, {
-          ...snapshot,
-          listAllExpanded: false,
-          expandedGroupIds: expandedKeysRef.current.map(parseNodeKey).filter((item) => item.kind === "group").map((item) => item.id),
-        });
-        persistedRef.current = saved;
-        setPersisted(saved);
-        if (libraryRef.current === snapshot) {
-          libraryRef.current = saved;
-          setLibrary(saved);
-          setSaveNotice("saved");
-        }
-        return true;
-      } catch (cause) {
-        setError(resolveFailure(cause, { fallback: "保存设定库失败" }).text);
-        return false;
-      } finally {
-        setSaving(false);
-      }
-    })();
-
-    savePromiseRef.current = task;
-    try {
-      return await task;
-    } finally {
-      if (savePromiseRef.current === task) savePromiseRef.current = null;
-    }
-  }
-
-  function discard() {
-    libraryRef.current = persistedRef.current;
-    setLibrary(persistedRef.current);
-    setError("");
-    setSaveNotice("");
-  }
+  }, [characterId]);
 
   function requestCloseInspector() {
     if (compact) setEditing(false);
@@ -265,17 +152,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     setSelectedKey(nextKey);
     if (contextMenuAfterSelection) setContextMenu(contextMenuAfterSelection);
   }
-
-  useEffect(() => {
-    function handleSaveShortcut(event) {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLocaleLowerCase() !== "s") return;
-      event.preventDefault();
-      if (dirty && !saving) void save();
-    }
-
-    window.addEventListener("keydown", handleSaveShortcut);
-    return () => window.removeEventListener("keydown", handleSaveShortcut);
-  }, [characterId, dirty, expandedKeys, library, saving]);
 
   useImperativeHandle(ref, () => ({ save, discard }), [library, persisted, expandedKeys, saving]);
 
@@ -357,16 +233,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     setContextMenu(null);
   }
 
-  function askDeleteOpening(message) {
-    setDeleteTarget({
-      kind: "opening",
-      id: selected.value.id,
-      messageId: message.id,
-      title: `删除“${message.title || "未命名开场白"}”？`,
-      message: "这条开场白会从角色设定中移除。",
-    });
-  }
-
   function confirmDelete() {
     if (!deleteTarget) return;
     if (deleteTarget.kind === 'batch') {
@@ -379,11 +245,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       });
       selectNode(''); setDeleteTarget(null); multi.clear(); return;
     }
-    if (deleteTarget.kind === "opening") {
-      updateEntryById(deleteTarget.id, (entry) => deleteOpening(entry, deleteTarget.messageId));
-      setDeleteTarget(null);
-      return;
-    }
     changeLibrary((current) => {
       if (deleteTarget.kind === "entry") return { ...current, entries: current.entries.filter((entry) => entry.id !== deleteTarget.id) };
       const removed = descendants(current.groups, deleteTarget.id);
@@ -393,7 +254,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
         entries: current.entries.filter((entry) => !removed.has(entry.groupId)),
       };
     });
-    selectNode(compact ? "" : nodeKey("entry", "fixed-opening-assistant"));
+    selectNode("");
     setDeleteTarget(null);
   }
 
@@ -531,8 +392,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     <SettingLibraryInspector
       selected={selected}
       library={library}
-      variableVersions={variableSnapshot.value?.versions || []}
-      variableVersionsError={variableSnapshot.error}
       allowCustomPromptPositions={false}
       nameInputRef={nameInputRef}
       SelectedIcon={SelectedIcon}
@@ -542,7 +401,6 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       onUpdateEntry={(entry) => updateEntryById(entry.id, entry)}
       onEntriesChange={(entries) => changeLibrary((current) => ({ ...current, entries }))}
       onOpenEntry={(entryId) => openEditor(nodeKey("entry", entryId))}
-      onRequestDeleteOpening={askDeleteOpening}
       onPromptPositionsChange={(promptPositions, entries = library.entries) => changeLibrary((current) => ({ ...current, promptPositions, entries }))}
     />
   ) : null;

@@ -17,6 +17,7 @@ vi.mock('../../src/modules/appearance/index.js', () => ({ applyAppearanceTheme: 
 vi.mock('../../src/modules/settingLibraries/index.js', () => ({
   DynamicSettingsPanel: () => null,
   SettingLibraryPanel: () => null,
+  CharacterOpeningsPanel: () => null,
 }))
 vi.mock('../../src/modules/variables/index.js', () => ({ VariableConfigPanel: () => null }))
 vi.mock('../../src/modules/regex/index.js', () => ({ RegexRulesPanel: () => null }))
@@ -25,7 +26,9 @@ vi.mock('../../src/app/services/windowControls.js', () => ({
   showCurrentWindow: () => Promise.resolve(),
 }))
 vi.mock('../../src/app/windows/shell/components/TitleBar.jsx', () => ({ TitleBar: () => null }))
-vi.mock('../../src/ui/ui/UnsavedChangesDialog.jsx', () => ({ UnsavedChangesDialog: () => null }))
+vi.mock('../../src/ui/ui/UnsavedChangesDialog.jsx', () => ({ UnsavedChangesDialog: ({ open, onSave, onDiscard, onCancel }) => open ? <div data-testid="unsaved-dialog">
+  <button onClick={onSave}>保存并切换</button><button onClick={onDiscard}>放弃并切换</button><button onClick={onCancel}>留在当前页</button>
+</div> : null }))
 
 import { CharacterEditorWindow } from '../../src/app/windows/CharacterEditorWindow.jsx'
 import { EditorSidebarLayout } from '../../src/ui/ui/EditorSidebarLayout.jsx'
@@ -53,6 +56,39 @@ afterEach(() => {
 })
 
 describe('character editor client extension', () => {
+  it('places openings above settings and routes save, failure and discard to the opening controller', async () => {
+    const character = { id: 'synthetic-character', name: '合成角色', persona: {} };
+    const save = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true), discard = vi.fn();
+    const handoff = vi.fn((section, owner, fallback) => {
+      if (section !== 'openings') return fallback;
+      owner.setController({ save, discard });
+      return <button data-testid="edit-opening" onClick={() => owner.onDirtyChange(true)}>修改合成开场白</button>;
+    });
+    const node = document.createElement('div'); document.body.append(node); const root = createRoot(node);
+    const click = selector => act(async () => node.querySelector(selector).click());
+    try {
+      await act(async () => root.render(<CharacterEditorWindow embeddedCharacterId={character.id}
+        characterCatalog={{ refresh: async () => ({ items: [character] }) }}
+        characterConfiguration={{ settingLibraries: {} }} renderCharacterEditorSection={handoff} />));
+      const labels = [...node.querySelectorAll('.character-editor-navigation button')].map(button => button.getAttribute('aria-label'));
+      expect(labels.slice(0, 3)).toEqual(['基础资料', '角色开场白', '设定库']);
+      await click('[aria-label="角色开场白"]');
+      expect(handoff.mock.lastCall[0]).toBe('openings');
+      await click('[data-testid="edit-opening"]');
+      await click('[aria-label="设定库"]');
+      expect(node.querySelector('[data-testid="unsaved-dialog"]')).toBeTruthy();
+      await act(async () => [...node.querySelectorAll('button')].find(button => button.textContent === '保存并切换').click());
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(node.querySelector('[aria-current="page"]').getAttribute('aria-label')).toBe('角色开场白');
+      await act(async () => [...node.querySelectorAll('button')].find(button => button.textContent === '保存并切换').click());
+      expect(node.querySelector('[aria-current="page"]').getAttribute('aria-label')).toBe('设定库');
+      expect(saveCharacter).not.toHaveBeenCalled();
+      await click('[aria-label="角色开场白"]'); await click('[data-testid="edit-opening"]'); await click('[aria-label="设定库"]');
+      await act(async () => [...node.querySelectorAll('button')].find(button => button.textContent === '放弃并切换').click());
+      expect(discard).toHaveBeenCalledTimes(1);
+      expect(node.querySelector('[aria-current="page"]').getAttribute('aria-label')).toBe('设定库');
+    } finally { await act(async () => root.unmount()); }
+  });
   it('starts expanded and restores both rail states through a fresh preferences Client without changing other preferences or character data', async () => {
     const character = { id: 'synthetic-character', name: '合成角色', persona: {} };
     const catalog = { refresh: async () => ({ items: [character] }), update: saveCharacter };
@@ -129,7 +165,7 @@ describe('character editor client extension', () => {
         characterCatalog={{ refresh: async () => ({ items: [character] }) }} characterConfiguration={{}} />));
       const navigation = node.querySelector('.character-editor-navigation');
       expect([...navigation.querySelectorAll('button')].map(button => button.getAttribute('aria-label')))
-        .toEqual(['基础资料', '设定库', '变量', '正则', '脚本', '前端', '分支设定']);
+        .toEqual(['基础资料', '角色开场白', '设定库', '变量', '正则', '脚本', '前端', '分支设定']);
       const toggle = node.querySelector('.character-editor-sidebar-toggle');
       expect(toggle.getAttribute('aria-label')).toBe('收起侧边栏');
       await act(async () => toggle.click());

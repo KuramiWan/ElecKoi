@@ -1,0 +1,69 @@
+const { app, BrowserWindow } = require('electron');
+const { writeFileSync } = require('node:fs');
+const { dirname, join } = require('node:path');
+const { pathToFileURL } = require('node:url');
+const [htmlPath, reportPath] = process.argv.slice(2);
+app.setPath('userData', join(dirname(htmlPath), 'browser-profile'));
+app.disableHardwareAcceleration();
+app.whenReady().then(async () => {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, backgroundThrottling: false } });
+  const evaluate = async source => {
+    try { return await win.webContents.executeJavaScript(source); }
+    catch (error) { throw new Error(`Browser evaluation failed: ${source}`, { cause: error }); }
+  };
+  const wait = async source => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (await evaluate(source)) return;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    throw new Error(`Timed out: ${source}`);
+  };
+  try {
+    const reports = [];
+    for (const theme of ['light', 'dark']) for (const [width, height] of [[1440, 900], [900, 500], [390, 700]]) {
+      const compact = width === 390;
+      win.setContentSize(width, height);
+      await win.loadURL(`${pathToFileURL(htmlPath).href}${compact ? '?compact' : ''}`);
+      await wait('Boolean(document.querySelector("[data-testid]")) || Boolean(document.querySelector(".character-basic-content"))');
+      await evaluate(`document.documentElement.dataset.theme='${theme}'; document.documentElement.dataset.eleckoiMobile='${compact}';
+        document.body.toggleAttribute('data-ds-dark-theme','${theme}'==='dark'); document.querySelector('button[aria-label="角色开场白"]').click()`);
+      await wait('Boolean(document.querySelector(".setting-library-opening-item"))');
+      await evaluate(`document.fonts.ready`);
+      await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      const layout = await evaluate(`(() => {
+        const panel=document.querySelector('.character-openings-panel'), content=panel.querySelector('.character-openings-content'), buttons=[...panel.querySelectorAll('button')];
+        const measure=node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+        const panelRect=measure(panel);return {panel:panelRect,scrolls:content.scrollHeight>content.clientHeight,
+          toggle:measure(panel.querySelector('[role=switch]')), toggleMinHeight:getComputedStyle(panel.querySelector('[role=switch]')).minHeight,
+          horizontalOverflow:panel.scrollWidth>panel.clientWidth,toolbar:measure(panel.firstElementChild),
+          navigation:[...document.querySelectorAll('.character-editor-navigation button')].map(button=>button.getAttribute('aria-label')),
+          controls:buttons.filter(button=>button.textContent==='新建备用开场白'||button.classList.contains('setting-library-save-button')).map(measure)};
+      })()`);
+      await win.webContents.capturePage(undefined, { stayHidden: true });
+      await new Promise(resolve => setTimeout(resolve, 200));
+      writeFileSync(join(dirname(reportPath), `character-openings-${theme}-${width}.png`), (await win.webContents.capturePage()).toPNG());
+      await evaluate(`[...document.querySelectorAll('button')].find(button=>button.textContent==='新建备用开场白').click()`);
+      await wait('document.querySelectorAll(".setting-library-opening-item").length===2');
+      await evaluate(`(() => {const select=document.querySelector('.setting-library-opening-fields select');select.value='synthetic-variables';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await evaluate(`document.querySelector('.setting-library-save-button').click()`);
+      await wait('window.syntheticSaveCount===1');
+      await wait(`document.querySelector('.setting-library-save-button').disabled && document.querySelector('.setting-library-save-button').textContent==='保存'`);
+      await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      await evaluate(`document.querySelector('button[aria-label="设定库"]').click()`);
+      await wait('Boolean(document.querySelector(".setting-library-layout"))');
+      const settingsSeparated = await evaluate(`!document.querySelector('.setting-library-opening-item')&&!document.querySelector('[role=tree]').textContent.includes('角色开场白')`);
+      await evaluate(`document.querySelector('button[aria-label="角色开场白"]').click()`);
+      await wait('document.querySelectorAll(".setting-library-opening-item").length===2');
+      await evaluate(`document.querySelectorAll('.setting-library-opening-toggle')[1].click()`);
+      const binding = await evaluate(`document.querySelector('.setting-library-opening-fields select').value`);
+      reports.push({ theme, width, height, layout, settingsSeparated, binding });
+    }
+    writeFileSync(reportPath, JSON.stringify(reports)); app.exit(0);
+  } catch (error) {
+    console.error(error);
+    console.error(await evaluate(`JSON.stringify({active:document.querySelector('[aria-current=page]')?.getAttribute('aria-label'),
+      dialogs:[...document.querySelectorAll('[role=alertdialog]')].map(node=>node.textContent),
+      sections:[...document.querySelectorAll('section')].map(node=>node.className),error:document.querySelector('[role=alert]')?.textContent})`));
+    app.exit(1);
+  }
+});

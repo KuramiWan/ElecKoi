@@ -4,7 +4,7 @@
 
 本表从桌面运行清单与各 bundle 的 `package.json.eleckoi.developerInterfaces` 生成。DSH 基准为 `0.2.1-rc.3`，提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。
 
-当前共 **16 个 bundle、105 个开发接口**：64 个界面插槽、18 个服务、0 个事件、2 个贡献点、21 个 Remote 合同。
+当前共 **16 个 bundle、106 个开发接口**：65 个界面插槽、18 个服务、0 个事件、2 个贡献点、21 个 Remote 合同。
 
 接口标题和说明用于插件中心展示；真实调用合同以对应类型导出和实现为准。完整参数、返回值和数据字段见 [Client 参考](api-client.md)、[Host 参考](api-host.md) 与 [Remote 调用声明](api-remote.md)。使用方法见 [界面插槽](ui-slots.md)、[服务接口](services.md) 与 [能力贡献](contributions.md)。
 
@@ -12,7 +12,7 @@
 
 | Bundle | 界面插槽 | 服务 | 事件 | 贡献点 | Remote | 合计 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `@eleckoi/dsh-client-characters` | 10 | 1 | 0 | 0 | 0 | 11 |
+| `@eleckoi/dsh-client-characters` | 11 | 1 | 0 | 0 | 0 | 12 |
 | `@eleckoi/dsh-client-character-configuration` | 0 | 4 | 0 | 0 | 0 | 4 |
 | `@eleckoi/dsh-client-conversations` | 1 | 1 | 0 | 0 | 0 | 2 |
 | `@eleckoi/dsh-client-creator-studio` | 0 | 1 | 0 | 0 | 0 | 1 |
@@ -41,6 +41,7 @@
 | `eleckoi.character.page.list` | 角色列表区域 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换角色列表。 | — |
 | `eleckoi.character.page.profile` | 角色资料区域 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换角色资料展示。 | — |
 | `eleckoi.character.editor.card` | 角色基础资料编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色名称、头像和基础资料编辑。 | — |
+| `eleckoi.character.editor.openings` | 角色开场白编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展主开场白、备用开场白和变量版本绑定编辑。 | — |
 | `eleckoi.character.editor.lore` | 设定库编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色设定库编辑。 | — |
 | `eleckoi.character.editor.variables` | 变量编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色变量编辑。 | — |
 | `eleckoi.character.editor.regex` | 正则编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色正则规则编辑。 | — |

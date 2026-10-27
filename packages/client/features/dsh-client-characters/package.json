@@ -85,6 +85,15 @@
         "relation": "provides"
       },
       {
+        "id": "eleckoi.character.editor.openings",
+        "kind": "ui-slot",
+        "title": "角色开场白编辑",
+        "description": "扩展主开场白、备用开场白和变量版本绑定编辑。",
+        "mode": "replace",
+        "scope": "root",
+        "relation": "provides"
+      },
+      {
         "id": "eleckoi.character.editor.lore",
         "kind": "ui-slot",
         "title": "设定库编辑",

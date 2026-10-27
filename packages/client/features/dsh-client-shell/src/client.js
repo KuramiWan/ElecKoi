@@ -586,6 +586,7 @@ window.__ModuleLoader__.load({
             'eleckoi.character.page.list': { kind: 'chain', scope: 'root' },
             'eleckoi.character.page.profile': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.card': { kind: 'chain', scope: 'root' },
+            'eleckoi.character.editor.openings': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.lore': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.variables': { kind: 'chain', scope: 'root' },
             'eleckoi.character.editor.regex': { kind: 'chain', scope: 'root' },

@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import React, { act, useState } from 'react';
+import React, { act, useState, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OpeningEditor } from '../../src/modules/settingLibraries/components/OpeningEditor.jsx';
 import { BranchSettingsSplitView } from '../../src/modules/settingLibraries/components/BranchSettingsSplitView.jsx';
 import { SettingLibraryPanel } from '../../src/modules/settingLibraries/components/SettingLibraryPanel.jsx';
 import { createEntryDraft } from '../../src/modules/settingLibraries/model/settingLibraryEditing.js';
+import { CharacterOpeningsPanel } from '../../src/modules/settingLibraries/components/CharacterOpeningsPanel.jsx';
+import { normalizeSettingLibrary } from '../../../../packages/host/product-data/src/domain/settingLibraries/settingLibraryNormalization';
 
 vi.stubGlobal('React', React);
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -20,6 +22,49 @@ async function render(component) {
 }
 
 describe('opening configuration editor', () => {
+  it('edits and reopens character openings on a separate page, preserving settings, versions and variable bindings', async () => {
+    let stored = normalizeSettingLibrary('synthetic-character');
+    const setting = { ...createEntryDraft('', 1, []), id: 'synthetic-setting', title: '合成设定', content: '合成长正文。'.repeat(2000) };
+    stored = normalizeSettingLibrary('synthetic-character', { ...stored, entries: [...stored.entries, setting] });
+    const openingBefore = structuredClone(stored.entries.find(entry => entry.kind === 'opening'));
+    const model = { getSnapshot: () => ({ status: 'ready', value: structuredClone(stored) }), subscribe: () => () => {},
+      read: async () => structuredClone(stored), saveViewState: vi.fn(), save: vi.fn(async (_id, draft) => {
+        stored = normalizeSettingLibrary('synthetic-character', draft);
+        return structuredClone(stored);
+      }) };
+    const variables = { getSnapshot: () => ({ status: 'ready', value: { versions: [{ id: 'synthetic-variable-version', name: '合成变量版本' }] } }),
+      read: async () => {}, subscribe: () => () => {} };
+    const controller = createRef();
+    const view = await render(<CharacterOpeningsPanel ref={controller} characterId="synthetic-character" settingLibraries={model} variables={variables} />);
+    try {
+      expect(view.container.querySelectorAll('.setting-library-opening-item')).toHaveLength(1);
+      await act(async () => [...view.container.querySelectorAll('button')].find(button => button.textContent === '新建备用开场白').click());
+      const select = view.container.querySelector('select');
+      await act(async () => { select.value = 'synthetic-variable-version'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+      await act(async () => view.container.querySelector('[role="switch"]').click());
+      model.save.mockRejectedValueOnce(new Error('合成保存失败'));
+      await act(async () => expect(controller.current.save()).resolves.toBe(false));
+      expect(view.container.querySelectorAll('.setting-library-opening-item')).toHaveLength(2);
+      expect(stored.entries.find(entry => entry.kind === 'opening')).toEqual(openingBefore);
+      await act(async () => expect(controller.current.save()).resolves.toBe(true));
+      const savedOpening = structuredClone(stored.entries.find(entry => entry.kind === 'opening'));
+      expect(savedOpening.enabled).toBe(false);
+      expect(savedOpening.openingMessages[1].variableVersionId).toBe('synthetic-variable-version');
+      expect(stored.entries.find(entry => entry.id === setting.id)).toEqual({ ...setting, updatedAt: expect.any(String) });
+      await act(async () => view.root.render(<SettingLibraryPanel characterId="synthetic-character" settingLibraries={model} />));
+      expect([...view.container.querySelectorAll('[role="treeitem"]')].map(node => node.textContent)).toEqual(['合成设定']);
+      expect(view.container.querySelector('.setting-library-opening-editor')).toBeNull();
+      await act(async () => view.root.render(<CharacterOpeningsPanel ref={controller} characterId="synthetic-character" settingLibraries={model} variables={variables} />));
+      expect(view.container.querySelectorAll('.setting-library-opening-item')).toHaveLength(2);
+      await act(async () => view.container.querySelectorAll('.setting-library-opening-toggle')[1].click());
+      expect(view.container.querySelector('select').value).toBe('synthetic-variable-version');
+      await act(async () => view.container.querySelector('[role="switch"]').click());
+      await act(async () => controller.current.discard());
+      expect(view.container.querySelector('[role="switch"]').getAttribute('aria-checked')).toBe('false');
+      expect(stored.entries.find(entry => entry.kind === 'opening')).toEqual(savedOpening);
+    } finally { await view.dispose(); }
+  });
+
   it('binds openings independently and preserves the binding when duplicating an opening', async () => {
     const changed = vi.fn();
     function Harness() {
