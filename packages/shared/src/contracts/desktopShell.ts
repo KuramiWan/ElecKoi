@@ -1,4 +1,11 @@
 import type { DesktopHostFailureNotice } from './errors/ipc'
+import type {
+  BugReportExportRequest,
+  BugReportExportResult,
+  BugReportExternalTarget,
+  BugReportPreview,
+  BugReportPreviewRequest
+} from './bugReport/delivery'
 import type { UpdateInstallResult, UpdateStatus } from './updates/schemas'
 
 /** Main-issued identity for one Electron browser guest reservation. */
@@ -34,7 +41,10 @@ export const DESKTOP_SHELL_IPC = {
   windowControl: 'dsh-desktop:window-control',
   browserAcquire: 'dsh-desktop:browser-acquire',
   browserRelease: 'dsh-desktop:browser-release',
-  browserOpenRequested: 'dsh-desktop:browser-open-requested'
+  browserOpenRequested: 'dsh-desktop:browser-open-requested',
+  bugReportPreview: 'dsh-desktop:bug-report-preview',
+  bugReportExport: 'dsh-desktop:bug-report-export',
+  bugReportOpen: 'dsh-desktop:bug-report-open'
 } as const
 
 /** Narrow desktop-only capabilities exposed by the preload script. */
@@ -52,6 +62,17 @@ export interface DshDesktopProductApi {
     minimize(): Promise<void>
     maximizeToggle(): Promise<void>
     close(): Promise<void>
+  }
+  /**
+   * Bug 报告的三步（ADR 0041）：预览已脱敏的报告、导出到文件、打开一条投递通道。
+   *
+   * 报告只在主进程生成；渲染层拿到的是脱敏后的副本，导出时主进程重新收集，不回写渲染层的版本。
+   * 地址（邮箱 / 仓库）来自发布配置，经 `preview` 一起给渲染层，为空表示该通道不可用。
+   */
+  readonly bugReport?: {
+    preview(request: BugReportPreviewRequest): Promise<BugReportPreview>
+    export(request: BugReportExportRequest): Promise<BugReportExportResult>
+    open(target: BugReportExternalTarget): Promise<void>
   }
   readonly host?: {
     /**

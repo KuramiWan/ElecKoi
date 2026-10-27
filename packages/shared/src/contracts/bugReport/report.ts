@@ -29,8 +29,13 @@ export const BUG_REPORT_MAX_FAILURES = 20
 /** 日志尾最多保留多少行。取最后若干行：崩溃发生在结尾那一段。 */
 export const BUG_REPORT_LOG_TAIL_MAX_LINES = 200
 
-/** 已经支持的平台。签名里的平台段只认这两个值。 */
-export const BUG_REPORT_PLATFORMS = ['windows', 'android'] as const
+/**
+ * 已经支持的平台。
+ *
+ * 产品平台是 Windows 与 Android；`macos` / `linux` 是开发机与将来的发行版——开发机上跑出来的报告
+ * 也要能落进同一个形状，否则本地调试就只能手写一份。
+ */
+export const BUG_REPORT_PLATFORMS = ['windows', 'macos', 'linux', 'android'] as const
 
 /** 平台名。 */
 export type BugReportPlatform = (typeof BUG_REPORT_PLATFORMS)[number]

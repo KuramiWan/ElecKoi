@@ -138,7 +138,7 @@ describe('形状校验', () => {
 
   it('拒收版本不符、平台未知、字段缺失与超量失败', () => {
     expect(isBugReport({ ...BASE_REPORT, schemaVersion: 2 })).toBe(false)
-    expect(isBugReport({ ...BASE_REPORT, environment: { appVersion: '0.2.14', platform: 'linux', arch: 'x64' } })).toBe(false)
+    expect(isBugReport({ ...BASE_REPORT, environment: { appVersion: '0.2.14', platform: 'solaris', arch: 'x64' } })).toBe(false)
     expect(isBugReport({ ...BASE_REPORT, session: { startedAt: '2026-10-27T09:00:00.000Z' } })).toBe(false)
     expect(isBugReport({ ...BASE_REPORT, generatedAt: '  ' })).toBe(false)
     expect(isBugReport({ ...BASE_REPORT, failures: 'eleckoi/x' })).toBe(false)
@@ -311,7 +311,7 @@ describe('issue', () => {
     expect(parseBugReportSignatureComment(`<!-- ${BUG_REPORT_SIGNATURE_MARKER}:{坏 JSON} -->`)).toBeUndefined()
     expect(
       parseBugReportSignatureComment(
-        `<!-- ${BUG_REPORT_SIGNATURE_MARKER}:{"schemaVersion":1,"signature":"a@v1:windows","code":"a","version":"v1","platform":"linux"} -->`
+        `<!-- ${BUG_REPORT_SIGNATURE_MARKER}:{"schemaVersion":1,"signature":"a@v1:windows","code":"a","version":"v1","platform":"solaris"} -->`
       )
     ).toBeUndefined()
   })
