@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
-import { CaretDown, Copy, ListChecks, MagnifyingGlass, NotePencil, Plus, SlidersHorizontal, Trash } from '../icons/interfaceIcons.jsx';
+import { Copy, ListChecks, MagnifyingGlass, NotePencil, Plus, SlidersHorizontal, Trash } from '../icons/interfaceIcons.jsx';
 import { useEditorPresentation } from './EditorPresentationContext.jsx';
 import './editor-collection-controls.css';
 import './editor-collection-material.css';
@@ -20,7 +20,7 @@ export function EditorCollectionToolbar({ query, onQueryChange, placeholder, cre
     </label>
     <div className="editor-collection-actions">
       {!compact && <Menu open={createOpen} portal dense anchor={<Button className="editor-collection-action" variant="outline" icon={<Plus size={16} />} disabled={disabled || selection?.active}
-        aria-label="新建" aria-haspopup="menu" aria-expanded={createOpen} onClick={() => setCreateOpen(value => !value)}>新建<CaretDown size={14} /></Button>}
+        aria-label="新建" aria-haspopup="menu" aria-expanded={createOpen} onClick={() => setCreateOpen(value => !value)}>新建</Button>}
         items={items} onClose={() => setCreateOpen(false)} onSelect={id => { setCreateOpen(false); items.find(item => item.id === id)?.run?.(); }} />}
       {selection && <Button className="editor-collection-action" variant="outline" icon={<ListChecks size={16} />} disabled={disabled}
         aria-label={selection.active ? '完成' : '多选'} aria-pressed={selection.active} onClick={selection.toggle}>{selection.active ? '完成' : '多选'}</Button>}
