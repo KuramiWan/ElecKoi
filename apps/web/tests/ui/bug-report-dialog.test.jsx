@@ -6,6 +6,7 @@
  * 真正的收集与投递在主进程，由 `apps/desktop/tests/bug-report-collection.test.ts` 守着。
  */
 import React from "react";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { CommunityDialog } from "../../src/app/windows/shell/components/CommunityDialog.jsx";
@@ -41,5 +42,14 @@ describe("bug report entry", () => {
 
   it("没有桌面桥时不认为报告功能可用", () => {
     expect(isDesktopBugReportAvailable()).toBe(false);
+  });
+
+  it("发送前能展开看全文（代发没有邮件客户端可看，预览就是唯一的「看见」）", () => {
+    const source = readFileSync(
+      new URL("../../src/app/windows/shell/components/BugReportDialog.jsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("查看将要发送的全文");
+    expect(source).toContain("formatBugReportBody(report, letterOf(delivery))");
   });
 });

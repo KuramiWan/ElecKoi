@@ -276,3 +276,32 @@
     transition-duration: 0.01ms;
   }
 }
+
+.bug-report-preview {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bug-report-preview summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.bug-report-preview summary:hover {
+  color: var(--text);
+}
+
+.bug-report-preview pre {
+  max-height: 220px;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--control-bg);
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 9px;
+  font: 12px/1.55 var(--font-mono, ui-monospace, monospace);
+}

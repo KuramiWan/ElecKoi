@@ -307,6 +307,13 @@ export function BugReportDialog({ open, onClose, onNotify }) {
           <p className="bug-report-loading" role="status">{error ? "报告没准备好。" : "正在收集…"}</p>
         )}
 
+        {report ? (
+          <details className="bug-report-preview">
+            <summary>查看将要发送的全文</summary>
+            <pre>{formatBugReportBody(report, letterOf(delivery))}</pre>
+          </details>
+        ) : null}
+
         {error ? <p className="bug-report-error" role="alert">{error}</p> : null}
         {notice ? <p className="bug-report-notice" role="status">{notice}</p> : null}
         {report && !hasChannel ? (
