@@ -13,10 +13,54 @@
  */
 import type { BugReport } from './report'
 
-/** 两个通道的配置。空字符串 = 该通道未配置。 */
+/** 代发通道能用的托管服务。都是「客户端公开标识」那一类，不需要自己的服务器。 */
+export const BUG_REPORT_RELAY_PROVIDERS = ['web3forms', 'formspree'] as const
+
+/** 代发服务名。 */
+export type BugReportRelayProvider = (typeof BUG_REPORT_RELAY_PROVIDERS)[number]
+
+/**
+ * 代发通道：由第三方托管服务把报告变成一封邮件。
+ *
+ * 它解决的是 `mailto:` 最弱的一环——Windows 上没配默认邮件客户端时，`mailto:` 点了没反应。
+ * 代价写在 ADR 0041：报告经第三方中转，公开标识可被提取，免费额度有限。
+ */
+export interface BugReportRelayConfig {
+  readonly provider: BugReportRelayProvider
+  /** 服务端点（完整 https URL）。 */
+  readonly endpoint: string
+  /** Web3Forms 的 access key；Formspree 用不到，留空。 */
+  readonly accessKey: string
+  /** 邮件里显示的发件人名字。 */
+  readonly fromName?: string
+}
+
+/**
+ * 通道配置。空字符串 = 该通道未配置。
+ *
+ * 邮件目的地可以是一个邮件列表：`mailboxName` 是它在界面上的名字，`subscribeUrl` 让报告人能
+ * 自己跟进（邮件通道没有回执，不订阅就跟丢了）。
+ */
 export interface BugReportDeliveryConfig {
   readonly mailbox: string
+  /** 邮件目的地的显示名，例如列表名；空就用「邮件」。 */
+  readonly mailboxName?: string
+  /** 想跟进这条报告时可以订阅的地址。 */
+  readonly subscribeUrl?: string
   readonly repository: string
+  /** 代发通道；没配就没有这个字段。 */
+  readonly relay?: BugReportRelayConfig
+}
+
+/** 代发请求：与预览同形——主进程重新收集，不相信渲染层回传的报告。 */
+export interface BugReportSendRequest {
+  readonly includeLogTail: boolean
+  readonly notes?: string
+}
+
+/** 代发结果；失败一律抛，`sent` 为真只表示服务返回了 2xx。 */
+export interface BugReportSendResult {
+  readonly sent: boolean
 }
 
 /** 预览请求：要不要带日志尾、用户补的一句话。 */
@@ -85,5 +129,15 @@ export function isBugReportExternalTarget(value: unknown): value is BugReportExt
  * @returns 至少一条通道配好时为 true。
  */
 export function hasBugReportChannel(config: BugReportDeliveryConfig): boolean {
-  return config.mailbox.trim() !== '' || config.repository.trim() !== ''
+  return config.mailbox.trim() !== '' || config.repository.trim() !== '' || config.relay !== undefined
+}
+
+/**
+ * 代发服务名是否认识。
+ *
+ * @param value - 任意值（环境变量或跨进程载荷）。
+ * @returns 是 {@link BUG_REPORT_RELAY_PROVIDERS} 里的一员时为 true。
+ */
+export function isBugReportRelayProvider(value: unknown): value is BugReportRelayProvider {
+  return typeof value === 'string' && (BUG_REPORT_RELAY_PROVIDERS as readonly string[]).includes(value)
 }

@@ -7,7 +7,9 @@ import type {
   BugReportExportResult,
   BugReportExternalTarget,
   BugReportPreview,
-  BugReportPreviewRequest
+  BugReportPreviewRequest,
+  BugReportSendRequest,
+  BugReportSendResult
 } from '@shared/contracts/bugReport/delivery'
 import { hasDesktopIpcFailureMarker, unwrapDesktopIpcResult } from '@shared/foundation/ipcFailure'
 
@@ -92,7 +94,9 @@ function createDesktopProductApi(): DshDesktopProductApi {
       export: (request: BugReportExportRequest) =>
         invokeOrFail<BugReportExportResult>(DESKTOP_SHELL_IPC.bugReportExport, request),
       open: (target: BugReportExternalTarget) =>
-        invokeOrFail<void>(DESKTOP_SHELL_IPC.bugReportOpen, target)
+        invokeOrFail<void>(DESKTOP_SHELL_IPC.bugReportOpen, target),
+      send: (request: BugReportSendRequest) =>
+        invokeOrFail<BugReportSendResult>(DESKTOP_SHELL_IPC.bugReportSend, request)
     }
   }
 }

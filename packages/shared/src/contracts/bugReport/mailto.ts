@@ -31,6 +31,16 @@ export const BUG_REPORT_MAILTO_MAX_LENGTH = 1800
 /** 收件地址的宽松形态校验：有且只有一个 `@`，两边非空，域名里有根点。 */
 export const BUG_REPORT_MAILBOX_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/** 正文里可选择带上的页脚信息（列表名 / 订阅地址）。 */
+export interface BugReportLetterOptions {
+  /** 邮件目的地的显示名，例如列表名。 */
+  readonly mailboxName?: string
+  /** 想跟进时可以订阅的地址。 */
+  readonly subscribeUrl?: string
+  /** `mailto:` 编码后的长度上限；缺省 {@link BUG_REPORT_MAILTO_MAX_LENGTH}。 */
+  readonly maxLength?: number
+}
+
 /** 拼好的邮件三件套。 */
 export interface BugReportMailto {
   /** `mailto:` 链接，已经过长度守卫。 */
@@ -58,7 +68,7 @@ export function isBugReportMailbox(value: string): boolean {
  * @param report - 已脱敏的报告。
  * @returns 纯文本正文；换行用 `\n`，进 URL 时再转 `\r\n`。
  */
-export function formatBugReportBody(report: BugReport): string {
+export function formatBugReportBody(report: BugReport, letter: BugReportLetterOptions = {}): string {
   const lines: string[] = [
     'ElecKoi 故障报告',
     '',
@@ -92,6 +102,8 @@ export function formatBugReportBody(report: BugReport): string {
   }
 
   lines.push('', '——本报告由 ElecKoi 生成，发送前可以自行删改。')
+  const followUp = followUpLine(letter)
+  if (followUp !== '') lines.push(followUp)
   return lines.join('\n')
 }
 
@@ -101,7 +113,7 @@ export function formatBugReportBody(report: BugReport): string {
  * @param report - 报告。
  * @returns 纯文本摘要。
  */
-export function formatBugReportSummary(report: BugReport): string {
+export function formatBugReportSummary(report: BugReport, letter: BugReportLetterOptions = {}): string {
   const codes = report.failures.map((failure) => failure.code)
   return [
     'ElecKoi 故障报告（摘要）',
@@ -112,7 +124,8 @@ export function formatBugReportSummary(report: BugReport): string {
     `上次会话：${report.session.ended ? '正常结束' : '异常结束'}`,
     `失败码：${codes.length === 0 ? '无失败行' : codes.join('、')}`,
     '',
-    '完整报告（含日志尾）请粘贴到本邮件下方；导出方式见应用内的说明。'
+    '完整报告（含日志尾）请粘贴到本邮件下方；导出方式见应用内的说明。',
+    ...(followUpLine(letter) === '' ? [] : ['', followUpLine(letter)])
   ].join('\n')
 }
 
@@ -127,20 +140,35 @@ export function formatBugReportSummary(report: BugReport): string {
 export function buildBugReportMailto(
   report: BugReport,
   mailbox: string,
-  maxLength: number = BUG_REPORT_MAILTO_MAX_LENGTH
+  letter: BugReportLetterOptions = {}
 ): BugReportMailto | undefined {
   const to = mailbox.trim()
   if (!isBugReportMailbox(to)) return undefined
 
+  const maxLength = letter.maxLength ?? BUG_REPORT_MAILTO_MAX_LENGTH
   const subject = bugReportSubject(report)
-  const fullBody = formatBugReportBody(report)
+  const fullBody = formatBugReportBody(report, letter)
   const fullUrl = composeMailto(to, subject, fullBody)
   if (fullUrl.length <= maxLength) {
     return { url: fullUrl, subject, body: fullBody, summarized: false }
   }
 
-  const summary = formatBugReportSummary(report)
+  const summary = formatBugReportSummary(report, letter)
   return { url: composeMailto(to, subject, summary), subject, body: summary, summarized: true }
+}
+
+/**
+ * 页脚里的跟进方式。
+ *
+ * 邮件通道没有回执：发出去就跟丢了。所以目的地是列表时，正文里给一句怎么订阅——报告人想跟进
+ * 就自己加入，不想就不用做任何事。
+ */
+function followUpLine(letter: BugReportLetterOptions): string {
+  const name = letter.mailboxName?.trim() ?? ''
+  const subscribe = letter.subscribeUrl?.trim() ?? ''
+  if (name === '' && subscribe === '') return ''
+  const target = name === '' ? '报告列表' : name
+  return subscribe === '' ? `已投递到 ${target}。` : `已投递到 ${target}；想跟进可以在 ${subscribe} 订阅。`
 }
 
 function composeMailto(to: string, subject: string, body: string): string {

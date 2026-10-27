@@ -26,6 +26,14 @@ export function isDesktopBugReportAvailable() {
   return Boolean(desktopBugReportBridge());
 }
 
+/** 邮件正文里要不要带上列表名与订阅地址。 */
+function letterOf(delivery) {
+  return {
+    ...(delivery?.mailboxName ? { mailboxName: delivery.mailboxName } : {}),
+    ...(delivery?.subscribeUrl ? { subscribeUrl: delivery.subscribeUrl } : {}),
+  };
+}
+
 function bridgeOrFail() {
   const bridge = desktopBugReportBridge();
   if (!bridge) {
@@ -159,17 +167,28 @@ export function BugReportDialog({ open, onClose, onNotify }) {
 
   function sendByMail() {
     return deliver(async (fresh) => {
-      const mailto = buildBugReportMailto(fresh.report, fresh.delivery.mailbox);
+      const mailto = buildBugReportMailto(fresh.report, fresh.delivery.mailbox, letterOf(fresh.delivery));
       if (!mailto) {
         throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, `收件地址不合法：${fresh.delivery.mailbox}`, { field: "mailbox" });
       }
       if (mailto.summarized) {
-        await copyText(formatBugReportBody(fresh.report));
+        await copyText(formatBugReportBody(fresh.report, letterOf(fresh.delivery)));
         setNotice("报告较长，完整内容已复制到剪贴板；打开邮件后粘贴到正文末尾即可。");
       } else {
         setNotice("已打开邮件客户端，检查后发送即可。");
       }
       await bridgeOrFail().open({ kind: "mail", url: mailto.url });
+    });
+  }
+
+  function sendDirectly() {
+    return deliver(async (fresh) => {
+      const noteText = stateRef.current.notes.trim();
+      await bridgeOrFail().send({
+        includeLogTail: stateRef.current.includeLogTail,
+        ...(noteText === "" ? {} : { notes: noteText }),
+      });
+      setNotice(`报告已发送${fresh.delivery.mailboxName ? `到 ${fresh.delivery.mailboxName}` : ""}，谢谢！`);
     });
   }
 
@@ -191,7 +210,7 @@ export function BugReportDialog({ open, onClose, onNotify }) {
 
   function copyReport() {
     return deliver(async (fresh) => {
-      await copyText(formatBugReportBody(fresh.report));
+      await copyText(formatBugReportBody(fresh.report, letterOf(fresh.delivery)));
       setNotice("报告已复制，可以自己发到群里或邮件里。");
     });
   }
@@ -293,9 +312,14 @@ export function BugReportDialog({ open, onClose, onNotify }) {
         ) : null}
 
         <div className="bug-report-actions">
-          {report && delivery?.mailbox ? (
+          {report && delivery?.relay ? (
+            <button ref={primaryButtonRef} type="button" className="is-primary" disabled={busy} onClick={sendDirectly}>
+              直接发送
+            </button>
+          ) : null}
+          {report && !delivery?.relay && delivery?.mailbox ? (
             <button ref={primaryButtonRef} type="button" className="is-primary" disabled={busy} onClick={sendByMail}>
-              用邮件发送
+              {delivery.mailboxName ? `发送到 ${delivery.mailboxName}` : "用邮件发送"}
             </button>
           ) : null}
           {report && delivery?.repository ? (

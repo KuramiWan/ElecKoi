@@ -9,13 +9,38 @@
  * `node` 环境里就能测。分开之后，插件只做接线。
  */
 import type { BugReportEnvironment, BugReportPlatform } from '@shared/contracts/bugReport/report'
-import type { BugReportDeliveryConfig } from '@shared/contracts/bugReport/delivery'
+import type {
+  BugReportDeliveryConfig,
+  BugReportRelayConfig
+} from '@shared/contracts/bugReport/delivery'
+import { isBugReportRelayProvider } from '@shared/contracts/bugReport/delivery'
 
 /** 收件邮箱的环境变量名（发布配置注入）。 */
 export const BUG_REPORT_MAILBOX_ENV = 'ELECKOI_BUG_REPORT_MAILBOX'
 
 /** 收件箱仓库的环境变量名（`owner/name`，发布配置注入）。 */
 export const BUG_REPORT_REPOSITORY_ENV = 'ELECKOI_BUG_REPORT_REPOSITORY'
+
+/** 邮件目的地显示名的环境变量名（例如列表名）。 */
+export const BUG_REPORT_MAILBOX_NAME_ENV = 'ELECKOI_BUG_REPORT_MAILBOX_NAME'
+
+/** 订阅地址的环境变量名（报告正文里给报告人跟进用）。 */
+export const BUG_REPORT_SUBSCRIBE_URL_ENV = 'ELECKOI_BUG_REPORT_SUBSCRIBE_URL'
+
+/** 代发服务名的环境变量名（`web3forms` / `formspree`）。 */
+export const BUG_REPORT_RELAY_PROVIDER_ENV = 'ELECKOI_BUG_REPORT_RELAY_PROVIDER'
+
+/** 代发服务端点的环境变量名（完整 https URL）。 */
+export const BUG_REPORT_RELAY_ENDPOINT_ENV = 'ELECKOI_BUG_REPORT_RELAY_ENDPOINT'
+
+/** 代发服务公开标识的环境变量名（Web3Forms 的 access key）。 */
+export const BUG_REPORT_RELAY_KEY_ENV = 'ELECKOI_BUG_REPORT_RELAY_KEY'
+
+/** 代发邮件发件人显示名的环境变量名。 */
+export const BUG_REPORT_RELAY_FROM_NAME_ENV = 'ELECKOI_BUG_REPORT_RELAY_FROM_NAME'
+
+/** 代发请求的超时：连不上时不能让对话框一直转。 */
+export const BUG_REPORT_RELAY_TIMEOUT_MS = 15000
 
 /** 收集时最多回看多少行日志：够覆盖一次崩溃的现场，又不至于把整天的日志读进内存。 */
 export const BUG_REPORT_LOG_SCAN_LINES = 2000
@@ -29,10 +54,46 @@ export const BUG_REPORT_LOG_SCAN_LINES = 2000
 export function readBugReportDelivery(
   environment: NodeJS.ProcessEnv = process.env
 ): BugReportDeliveryConfig {
+  const mailboxName = textOf(environment, BUG_REPORT_MAILBOX_NAME_ENV)
+  const subscribeUrl = textOf(environment, BUG_REPORT_SUBSCRIBE_URL_ENV)
+  const relay = readRelay(environment)
   return {
-    mailbox: (environment[BUG_REPORT_MAILBOX_ENV] ?? '').trim(),
-    repository: (environment[BUG_REPORT_REPOSITORY_ENV] ?? '').trim()
+    mailbox: textOf(environment, BUG_REPORT_MAILBOX_ENV),
+    repository: textOf(environment, BUG_REPORT_REPOSITORY_ENV),
+    ...(mailboxName === '' ? {} : { mailboxName }),
+    ...(subscribeUrl === '' ? {} : { subscribeUrl }),
+    ...(relay === undefined ? {} : { relay })
   }
+}
+
+/**
+ * 读代发配置。服务名不认识、端点为空都按「没配」处理——宁可少一个按钮，也不要发出一个必然失败的请求。
+ *
+ * @param environment - 环境变量。
+ * @returns 代发配置，或 `undefined`。
+ */
+export function readBugReportRelay(
+  environment: NodeJS.ProcessEnv = process.env
+): BugReportRelayConfig | undefined {
+  return readRelay(environment)
+}
+
+function readRelay(environment: NodeJS.ProcessEnv): BugReportRelayConfig | undefined {
+  const provider = textOf(environment, BUG_REPORT_RELAY_PROVIDER_ENV)
+  if (!isBugReportRelayProvider(provider)) return undefined
+  const endpoint = textOf(environment, BUG_REPORT_RELAY_ENDPOINT_ENV)
+  if (endpoint === '') return undefined
+  const fromName = textOf(environment, BUG_REPORT_RELAY_FROM_NAME_ENV)
+  return {
+    provider,
+    endpoint,
+    accessKey: textOf(environment, BUG_REPORT_RELAY_KEY_ENV),
+    ...(fromName === '' ? {} : { fromName })
+  }
+}
+
+function textOf(environment: NodeJS.ProcessEnv, name: string): string {
+  return (environment[name] ?? '').trim()
 }
 
 /**

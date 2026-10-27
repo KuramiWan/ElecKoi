@@ -4,7 +4,9 @@ import type {
   BugReportExportResult,
   BugReportExternalTarget,
   BugReportPreview,
-  BugReportPreviewRequest
+  BugReportPreviewRequest,
+  BugReportSendRequest,
+  BugReportSendResult
 } from './bugReport/delivery'
 import type { UpdateInstallResult, UpdateStatus } from './updates/schemas'
 
@@ -44,7 +46,8 @@ export const DESKTOP_SHELL_IPC = {
   browserOpenRequested: 'dsh-desktop:browser-open-requested',
   bugReportPreview: 'dsh-desktop:bug-report-preview',
   bugReportExport: 'dsh-desktop:bug-report-export',
-  bugReportOpen: 'dsh-desktop:bug-report-open'
+  bugReportOpen: 'dsh-desktop:bug-report-open',
+  bugReportSend: 'dsh-desktop:bug-report-send'
 } as const
 
 /** Narrow desktop-only capabilities exposed by the preload script. */
@@ -73,6 +76,8 @@ export interface DshDesktopProductApi {
     preview(request: BugReportPreviewRequest): Promise<BugReportPreview>
     export(request: BugReportExportRequest): Promise<BugReportExportResult>
     open(target: BugReportExternalTarget): Promise<void>
+    /** 经托管代发服务直接寄出；没配代发通道时拒绝。 */
+    send(request: BugReportSendRequest): Promise<BugReportSendResult>
   }
   readonly host?: {
     /**

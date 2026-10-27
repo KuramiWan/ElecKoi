@@ -41,7 +41,9 @@ export const LOG_ACTIONS = {
   /** 导出 Bug 报告到文件。 */
   bugReportExport: 'bug-report.export',
   /** 打开报告的一条投递通道（邮件 / issue）。 */
-  bugReportOpen: 'bug-report.open'
+  bugReportOpen: 'bug-report.open',
+  /** 经托管服务代发报告。 */
+  bugReportSend: 'bug-report.send'
 } as const
 
 /** 动作键的联合类型：调用点写错一个字母就是类型错误，而不是一条查不到的日志。 */

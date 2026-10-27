@@ -40,6 +40,8 @@ import {
   isBugReportRepository,
   parseBugReportSignatureComment
 } from '../src/contracts/bugReport/issue'
+import { buildBugReportRelayRequest } from '../src/contracts/bugReport/relay'
+import type { BugReportRelayConfig } from '../src/contracts/bugReport/delivery'
 import {
   REDACTED_EMAIL,
   REDACTED_HOME,
@@ -264,7 +266,7 @@ describe('邮件', () => {
   })
 
   it('摘要也要满足给定的更小上限', () => {
-    const mailto = buildBugReportMailto(BASE_REPORT, 'bugs@eleckoi.test', 60)
+    const mailto = buildBugReportMailto(BASE_REPORT, 'bugs@eleckoi.test', { maxLength: 60 })
     expect(mailto?.summarized).toBe(true)
   })
 
@@ -371,5 +373,68 @@ describe('issue', () => {
   it('摘要也要满足给定的更小上限', () => {
     const link = buildBugReportIssueUrl(BASE_REPORT, { repository: REPOSITORY, maxLength: 60 })
     expect(link?.summarized).toBe(true)
+  })
+})
+
+describe('列表与代发', () => {
+  const LETTER = { mailboxName: 'ElecKoi 报告列表', subscribeUrl: 'https://groups.example/eleckoi' }
+
+  it('正文带上列表名与订阅地址（邮件通道没有回执，跟丢就靠这一句）', () => {
+    const body = formatBugReportBody(BASE_REPORT, LETTER)
+    expect(body).toContain('已投递到 ElecKoi 报告列表')
+    expect(body).toContain('https://groups.example/eleckoi')
+    expect(formatBugReportBody(BASE_REPORT)).not.toContain('已投递到')
+  })
+
+  it('摘要降级后也不丢跟进方式', () => {
+    const summary = formatBugReportSummary(BASE_REPORT, LETTER)
+    expect(summary).toContain('ElecKoi 报告列表')
+    expect(summary).toContain('订阅')
+  })
+
+  it('mailto 把页脚带进去', () => {
+    const mailto = buildBugReportMailto(BASE_REPORT, 'bugs@eleckoi.test', LETTER)
+    expect(mailto).toBeDefined()
+    if (mailto === undefined) return
+    const { body } = mailtoParts(mailto.url)
+    expect(body).toContain('ElecKoi 报告列表')
+  })
+
+  it('Web3Forms：公开标识 + 主题 + 正文', () => {
+    const relay: BugReportRelayConfig = {
+      provider: 'web3forms',
+      endpoint: 'https://api.web3forms.com/submit',
+      accessKey: 'pub-key',
+      fromName: 'ElecKoi 报告'
+    }
+    const request = buildBugReportRelayRequest(relay, BASE_REPORT, LETTER)
+    expect(request).toBeDefined()
+    if (request === undefined) return
+    expect(request.url).toBe('https://api.web3forms.com/submit')
+    expect(request.body.access_key).toBe('pub-key')
+    expect(request.body.subject).toBe(bugReportSubject(BASE_REPORT))
+    expect(request.body.from_name).toBe('ElecKoi 报告')
+    expect(request.body.message).toContain('ElecKoi 报告列表')
+  })
+
+  it('Formspree：用下划线字段，不需要 key', () => {
+    const relay: BugReportRelayConfig = {
+      provider: 'formspree',
+      endpoint: 'https://formspree.io/f/abc123',
+      accessKey: ''
+    }
+    const request = buildBugReportRelayRequest(relay, BASE_REPORT)
+    expect(request?.body._subject).toBe(bugReportSubject(BASE_REPORT))
+    expect(request?.body.message).toContain('ElecKoi 故障报告')
+  })
+
+  it('配置不完整就不给请求（宁可少一个按钮，也不发必然失败的请求）', () => {
+    const https = 'https://api.web3forms.com/submit'
+    expect(buildBugReportRelayRequest(
+      { provider: 'web3forms', endpoint: 'http://insecure.example', accessKey: 'k' }, BASE_REPORT)).toBeUndefined()
+    expect(buildBugReportRelayRequest(
+      { provider: 'web3forms', endpoint: https, accessKey: '   ' }, BASE_REPORT)).toBeUndefined()
+    expect(buildBugReportRelayRequest(
+      { provider: 'formspree', endpoint: 'not-a-url', accessKey: '' }, BASE_REPORT)).toBeUndefined()
   })
 })

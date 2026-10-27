@@ -25,7 +25,12 @@ import {
 } from '../src/main/modules/diagnostics/previousSession'
 import {
   BUG_REPORT_MAILBOX_ENV,
+  BUG_REPORT_MAILBOX_NAME_ENV,
+  BUG_REPORT_RELAY_ENDPOINT_ENV,
+  BUG_REPORT_RELAY_KEY_ENV,
+  BUG_REPORT_RELAY_PROVIDER_ENV,
   BUG_REPORT_REPOSITORY_ENV,
+  BUG_REPORT_SUBSCRIBE_URL_ENV,
   desktopReportEnvironment,
   desktopReportPlatform,
   exportFileName,
@@ -260,6 +265,42 @@ describe('投递配置', () => {
       [BUG_REPORT_MAILBOX_ENV]: '  bugs@eleckoi.test  ',
       [BUG_REPORT_REPOSITORY_ENV]: ' KuramiWan/eleckoi-reports '
     })).toEqual({ mailbox: 'bugs@eleckoi.test', repository: 'KuramiWan/eleckoi-reports' })
+  })
+
+  it('列表名与订阅地址只在配了的时候出现', () => {
+    const plain = readBugReportDelivery({ [BUG_REPORT_MAILBOX_ENV]: 'reports@eleckoi.test' })
+    expect(plain).toEqual({ mailbox: 'reports@eleckoi.test', repository: '' })
+    expect(plain.mailboxName).toBeUndefined()
+
+    const listed = readBugReportDelivery({
+      [BUG_REPORT_MAILBOX_ENV]: 'reports@eleckoi.test',
+      [BUG_REPORT_MAILBOX_NAME_ENV]: ' ElecKoi 报告列表 ',
+      [BUG_REPORT_SUBSCRIBE_URL_ENV]: ' https://groups.example/eleckoi '
+    })
+    expect(listed.mailboxName).toBe('ElecKoi 报告列表')
+    expect(listed.subscribeUrl).toBe('https://groups.example/eleckoi')
+  })
+
+  it('代发通道只在服务名与端点都合法时出现', () => {
+    expect(readBugReportDelivery({}).relay).toBeUndefined()
+    expect(readBugReportDelivery({
+      [BUG_REPORT_RELAY_PROVIDER_ENV]: 'unknown-service',
+      [BUG_REPORT_RELAY_ENDPOINT_ENV]: 'https://example.test/send'
+    }).relay).toBeUndefined()
+    expect(readBugReportDelivery({
+      [BUG_REPORT_RELAY_PROVIDER_ENV]: 'web3forms'
+    }).relay).toBeUndefined()
+
+    const relay = readBugReportDelivery({
+      [BUG_REPORT_RELAY_PROVIDER_ENV]: 'web3forms',
+      [BUG_REPORT_RELAY_ENDPOINT_ENV]: 'https://api.web3forms.com/submit',
+      [BUG_REPORT_RELAY_KEY_ENV]: ' pub-key '
+    }).relay
+    expect(relay).toEqual({
+      provider: 'web3forms',
+      endpoint: 'https://api.web3forms.com/submit',
+      accessKey: 'pub-key'
+    })
   })
 
   it('平台名映射', () => {

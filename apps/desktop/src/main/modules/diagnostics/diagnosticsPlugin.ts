@@ -27,8 +27,10 @@ import {
   type BugReportExportRequest,
   type BugReportExportResult,
   type BugReportPreview,
-  type BugReportPreviewRequest
+  type BugReportPreviewRequest,
+  type BugReportSendResult
 } from '@shared/contracts/bugReport/delivery'
+import { buildBugReportRelayRequest } from '@shared/contracts/bugReport/relay'
 import type { BugReport } from '@shared/contracts/bugReport/report'
 import { assertTrustedDshClientFrame } from '@main/platform/electron/validateSender'
 import { handleDesktopIpcCall } from '@main/platform/electron/desktopIpcHandler'
@@ -37,6 +39,7 @@ import { buildBugReport } from './bugReportCollection'
 import { readPreviousSession, readRecentLogLines } from './previousSession'
 import {
   BUG_REPORT_LOG_SCAN_LINES,
+  BUG_REPORT_RELAY_TIMEOUT_MS,
   desktopReportEnvironment,
   exportFileName,
   readBugReportDelivery
@@ -140,10 +143,41 @@ export const diagnosticsPlugin = {
       }
     })
 
+    handleDesktopIpcCall(DESKTOP_SHELL_IPC.bugReportSend, async (event, request) => {
+      assertSender(event)
+      const parsed = previewRequestOf(request)
+      const relay = delivery.relay
+      if (relay === undefined) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.lifecycleNotReady,
+          '没有配置报告代发通道。', { what: '报告代发通道' })
+      }
+      logAction(appLog, LOG_ACTIONS.bugReportSend, 'start')
+      try {
+        const report = collect(parsed)
+        const relayRequest = buildBugReportRelayRequest(relay, report, {
+          ...(delivery.mailboxName === undefined ? {} : { mailboxName: delivery.mailboxName }),
+          ...(delivery.subscribeUrl === undefined ? {} : { subscribeUrl: delivery.subscribeUrl })
+        })
+        if (relayRequest === undefined) {
+          throw new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidRequest,
+            '报告代发配置不完整：端点必须是 https，Web3Forms 还需要 access key。', {
+              issues: [{ path: 'relay', message: '端点必须是 https，Web3Forms 还需要 access key' }]
+            })
+        }
+        await postRelayRequest(relayRequest.url, relayRequest.body)
+        logAction(appLog, LOG_ACTIONS.bugReportSend, 'success')
+        return { sent: true } satisfies BugReportSendResult
+      } catch (error) {
+        logAction(appLog, LOG_ACTIONS.bugReportSend, 'failure', error)
+        throw error
+      }
+    })
+
     return () => {
       ipcMain.removeHandler(DESKTOP_SHELL_IPC.bugReportPreview)
       ipcMain.removeHandler(DESKTOP_SHELL_IPC.bugReportExport)
       ipcMain.removeHandler(DESKTOP_SHELL_IPC.bugReportOpen)
+      ipcMain.removeHandler(DESKTOP_SHELL_IPC.bugReportSend)
     }
   }
 } satisfies Plugin.Object
@@ -195,6 +229,38 @@ function optionalNotes(fields: Record<string, unknown>): string | undefined {
 function invalidRequest(path: string, message: string): DesktopError {
   return new DesktopError(ELECKOI_FAILURE_CODES.contractInvalidRequest,
     `报告请求不合合同：${path} ${message}。`, { issues: [{ path, message }] })
+}
+
+/**
+ * 把一条代发请求发出去。
+ *
+ * 三种失败都折成 `net/operation-failed`：连不上、超时、服务返回非 2xx。超时必须自己设——
+ * 对话框在等这个 Promise，`fetch` 默认没有超时。
+ *
+ * @param url - 服务端点（已校验 https）。
+ * @param body - 请求体。
+ */
+async function postRelayRequest(url: string, body: Readonly<Record<string, string>>): Promise<void> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), BUG_REPORT_RELAY_TIMEOUT_MS)
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    })
+    if (!response.ok) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.netOperationFailed,
+        `报告代发服务返回 ${response.status}。`, { operation: '发送报告', what: '报告代发服务' })
+    }
+  } catch (error) {
+    if (error instanceof DesktopError) throw error
+    throw new DesktopError(ELECKOI_FAILURE_CODES.netOperationFailed,
+      `报告代发服务不可达：${errorTextOf(error)}`, { operation: '发送报告', what: '报告代发服务' })
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function errorTextOf(error: unknown): string {
