@@ -40,7 +40,7 @@ import {
   isBugReportRepository,
   parseBugReportSignatureComment
 } from '../src/contracts/bugReport/issue'
-import { buildBugReportRelayRequest } from '../src/contracts/bugReport/relay'
+import { bugReportRelayReceipt, buildBugReportRelayRequest } from '../src/contracts/bugReport/relay'
 import type { BugReportRelayConfig } from '../src/contracts/bugReport/delivery'
 import {
   REDACTED_EMAIL,
@@ -426,6 +426,35 @@ describe('列表与代发', () => {
     const request = buildBugReportRelayRequest(relay, BASE_REPORT)
     expect(request?.body._subject).toBe(bugReportSubject(BASE_REPORT))
     expect(request?.body.message).toContain('ElecKoi 故障报告')
+  })
+
+  it('自有 Worker：整份报告进信封，入口不需要密钥', () => {
+    const relay: BugReportRelayConfig = {
+      provider: 'eleckoi-relay',
+      endpoint: 'https://eleckoi-relay.example.workers.dev/report',
+      accessKey: ''
+    }
+    const request = buildBugReportRelayRequest(relay, BASE_REPORT, LETTER)
+    expect(request).toBeDefined()
+    if (request === undefined) return
+    expect(request.url).toBe('https://eleckoi-relay.example.workers.dev/report')
+    const envelope = request.body as {
+      schemaVersion: number
+      report: { failures: { code: string }[] }
+      letter?: { mailboxName?: string; subscribeUrl?: string }
+    }
+    expect(envelope.schemaVersion).toBe(1)
+    expect(envelope.report.failures[0]?.code).toBe('eleckoi/plugin/load-failed')
+    expect(envelope.letter?.mailboxName).toBe('ElecKoi 报告列表')
+    expect(envelope.letter?.subscribeUrl).toBe('https://groups.example/eleckoi')
+  })
+
+  it('回执只从自有 Worker 的响应里取，托管表单服务不给', () => {
+    expect(bugReportRelayReceipt('eleckoi-relay', '{"ok":true,"issue":123}')).toBe('#123')
+    expect(bugReportRelayReceipt('eleckoi-relay', '{"ok":true,"issue":"EL-7"}')).toBe('#EL-7')
+    expect(bugReportRelayReceipt('eleckoi-relay', 'not json')).toBeUndefined()
+    expect(bugReportRelayReceipt('eleckoi-relay', '{"ok":true,"issue":0}')).toBeUndefined()
+    expect(bugReportRelayReceipt('web3forms', '{"issue":123}')).toBeUndefined()
   })
 
   it('配置不完整就不给请求（宁可少一个按钮，也不发必然失败的请求）', () => {

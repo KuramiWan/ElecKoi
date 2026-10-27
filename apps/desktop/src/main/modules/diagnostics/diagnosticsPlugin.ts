@@ -30,7 +30,7 @@ import {
   type BugReportPreviewRequest,
   type BugReportSendResult
 } from '@shared/contracts/bugReport/delivery'
-import { buildBugReportRelayRequest } from '@shared/contracts/bugReport/relay'
+import { bugReportRelayReceipt, buildBugReportRelayRequest } from '@shared/contracts/bugReport/relay'
 import type { BugReport } from '@shared/contracts/bugReport/report'
 import { assertTrustedDshClientFrame } from '@main/platform/electron/validateSender'
 import { handleDesktopIpcCall } from '@main/platform/electron/desktopIpcHandler'
@@ -164,9 +164,13 @@ export const diagnosticsPlugin = {
               issues: [{ path: 'relay', message: '端点必须是 https，Web3Forms 还需要 access key' }]
             })
         }
-        await postRelayRequest(relayRequest.url, relayRequest.body)
+        const responseText = await postRelayRequest(relayRequest.url, relayRequest.body)
+        const receipt = bugReportRelayReceipt(relay.provider, responseText)
         logAction(appLog, LOG_ACTIONS.bugReportSend, 'success')
-        return { sent: true } satisfies BugReportSendResult
+        return {
+          sent: true,
+          ...(receipt === undefined ? {} : { receipt })
+        } satisfies BugReportSendResult
       } catch (error) {
         logAction(appLog, LOG_ACTIONS.bugReportSend, 'failure', error)
         throw error
@@ -239,8 +243,9 @@ function invalidRequest(path: string, message: string): DesktopError {
  *
  * @param url - 服务端点（已校验 https）。
  * @param body - 请求体。
+ * @returns 响应体原文（只有自有 Worker 会给回执，其余服务用不上）。
  */
-async function postRelayRequest(url: string, body: Readonly<Record<string, string>>): Promise<void> {
+async function postRelayRequest(url: string, body: Readonly<Record<string, unknown>>): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), BUG_REPORT_RELAY_TIMEOUT_MS)
   try {
@@ -254,6 +259,7 @@ async function postRelayRequest(url: string, body: Readonly<Record<string, strin
       throw new DesktopError(ELECKOI_FAILURE_CODES.netOperationFailed,
         `报告代发服务返回 ${response.status}。`, { operation: '发送报告', what: '报告代发服务' })
     }
+    return await response.text()
   } catch (error) {
     if (error instanceof DesktopError) throw error
     throw new DesktopError(ELECKOI_FAILURE_CODES.netOperationFailed,

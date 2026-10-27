@@ -21,10 +21,31 @@ import {
   type BugReportRelayConfig
 } from './delivery'
 
+/** 自有 Worker 中转的服务名。 */
+export const BUG_REPORT_RELAY_WORKER_PROVIDER = 'eleckoi-relay'
+
+/** Worker 中转入参的版本号。字段只增不改，Worker 按它收紧校验。 */
+export const BUG_REPORT_RELAY_ENVELOPE_VERSION = 1
+
+/**
+ * 发给自有 Worker 的中转信封。
+ *
+ * 与托管表单那种「一串平铺字段」不同，这里是我们自己的形状：整份已脱敏的报告原样过去，
+ * Worker 再校验、再清洗、再决定落 issue 还是进每日摘要。
+ */
+export interface BugReportRelayEnvelope {
+  readonly schemaVersion: typeof BUG_REPORT_RELAY_ENVELOPE_VERSION
+  readonly report: BugReport
+  readonly letter?: {
+    readonly mailboxName?: string
+    readonly subscribeUrl?: string
+  }
+}
+
 /** 一条可以直接 `fetch` 的请求。 */
 export interface BugReportRelayRequest {
   readonly url: string
-  readonly body: Readonly<Record<string, string>>
+  readonly body: Readonly<Record<string, unknown>>
 }
 
 /**
@@ -43,6 +64,24 @@ export function buildBugReportRelayRequest(
   if (!isBugReportRelayProvider(relay.provider)) return undefined
   if (!isHttpsUrl(relay.endpoint)) return undefined
   if (relay.provider === 'web3forms' && relay.accessKey.trim() === '') return undefined
+
+  if (relay.provider === BUG_REPORT_RELAY_WORKER_PROVIDER) {
+    const name = letter.mailboxName?.trim() ?? ''
+    const subscribe = letter.subscribeUrl?.trim() ?? ''
+    const envelope: BugReportRelayEnvelope = {
+      schemaVersion: BUG_REPORT_RELAY_ENVELOPE_VERSION,
+      report,
+      ...(name === '' && subscribe === '' ? {} : {
+        letter: {
+          ...(name === '' ? {} : { mailboxName: name }),
+          ...(subscribe === '' ? {} : { subscribeUrl: subscribe })
+        }
+      })
+    }
+    // 信封是具名接口，而传输层要的是「可 JSON 序列化的对象」；两者形状一致，只是没有索引签名，
+    // 所以这里转一次。值本身没有变化。
+    return { url: relay.endpoint, body: envelope as unknown as Readonly<Record<string, unknown>> }
+  }
 
   const subject = bugReportSubject(report)
   const message = formatBugReportBody(report, letter)
@@ -75,6 +114,33 @@ export function buildBugReportRelayRequest(
 export function fromNameOf(relay: BugReportRelayConfig): string {
   const name = relay.fromName?.trim() ?? ''
   return name === '' ? 'ElecKoi' : name
+}
+
+/**
+ * 从代发服务的响应里取回执。
+ *
+ * 只有自有 Worker 会给：它回 `{ "ok": true, "issue": 123 }`。托管表单服务回什么不可控，
+ * 一律不给回执——宁可不显示，也不要显示一个编出来的编号。
+ *
+ * @param provider - 代发服务名。
+ * @param responseText - 响应体原文。
+ * @returns `#123` 这样的回执，或 `undefined`。
+ */
+export function bugReportRelayReceipt(
+  provider: string,
+  responseText: string
+): string | undefined {
+  if (provider !== BUG_REPORT_RELAY_WORKER_PROVIDER) return undefined
+  try {
+    const parsed: unknown = JSON.parse(responseText)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+    const issue = (parsed as Record<string, unknown>).issue
+    if (typeof issue === 'number' && Number.isInteger(issue) && issue > 0) return `#${issue}`
+    if (typeof issue === 'string' && issue.trim() !== '') return `#${issue.trim()}`
+    return undefined
+  } catch {
+    return undefined
+  }
 }
 
 function isHttpsUrl(value: string): boolean {

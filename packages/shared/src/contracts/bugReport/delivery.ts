@@ -13,8 +13,14 @@
  */
 import type { BugReport } from './report'
 
-/** 代发通道能用的托管服务。都是「客户端公开标识」那一类，不需要自己的服务器。 */
-export const BUG_REPORT_RELAY_PROVIDERS = ['web3forms', 'formspree'] as const
+/**
+ * 代发通道能用的托管服务。
+ *
+ * `eleckoi-relay` 是自有的 Cloudflare Worker 中转（[ADR 0041](../../../../../docs/adr/0041-bug-report-delivery.md) 决定 10）：
+ * 客户端只认一个端点，后面接 issue 与邮件摘要都是服务端的事。前两个是「客户端公开标识」那一类的
+ * 托管表单服务，`eleckoi-relay` 的入口不需要密钥——防线在服务端的限流与结构校验。
+ */
+export const BUG_REPORT_RELAY_PROVIDERS = ['web3forms', 'formspree', 'eleckoi-relay'] as const
 
 /** 代发服务名。 */
 export type BugReportRelayProvider = (typeof BUG_REPORT_RELAY_PROVIDERS)[number]
@@ -61,6 +67,11 @@ export interface BugReportSendRequest {
 /** 代发结果；失败一律抛，`sent` 为真只表示服务返回了 2xx。 */
 export interface BugReportSendResult {
   readonly sent: boolean
+  /**
+   * 收件方给的回执，例如收件箱 issue 的编号。只有 `eleckoi-relay` 会给——
+   * 报告人看不到私有仓库，但至少知道他那一份被收到了。
+   */
+  readonly receipt?: string
 }
 
 /** 预览请求：要不要带日志尾、用户补的一句话。 */

@@ -184,11 +184,13 @@ export function BugReportDialog({ open, onClose, onNotify }) {
   function sendDirectly() {
     return deliver(async (fresh) => {
       const noteText = stateRef.current.notes.trim();
-      await bridgeOrFail().send({
+      const result = await bridgeOrFail().send({
         includeLogTail: stateRef.current.includeLogTail,
         ...(noteText === "" ? {} : { notes: noteText }),
       });
-      setNotice(`报告已发送${fresh.delivery.mailboxName ? `到 ${fresh.delivery.mailboxName}` : ""}，谢谢！`);
+      const where = fresh.delivery.mailboxName ? `到 ${fresh.delivery.mailboxName}` : "";
+      const receipt = result?.receipt ? `（回执 ${result.receipt}）` : "";
+      setNotice(`报告已发送${where}${receipt}，谢谢！`);
     });
   }
 

@@ -291,6 +291,16 @@ describe('投递配置', () => {
       [BUG_REPORT_RELAY_PROVIDER_ENV]: 'web3forms'
     }).relay).toBeUndefined()
 
+    const worker = readBugReportDelivery({
+      [BUG_REPORT_RELAY_PROVIDER_ENV]: 'eleckoi-relay',
+      [BUG_REPORT_RELAY_ENDPOINT_ENV]: 'https://eleckoi-relay.example.workers.dev/report'
+    }).relay
+    expect(worker).toEqual({
+      provider: 'eleckoi-relay',
+      endpoint: 'https://eleckoi-relay.example.workers.dev/report',
+      accessKey: ''
+    })
+
     const relay = readBugReportDelivery({
       [BUG_REPORT_RELAY_PROVIDER_ENV]: 'web3forms',
       [BUG_REPORT_RELAY_ENDPOINT_ENV]: 'https://api.web3forms.com/submit',
