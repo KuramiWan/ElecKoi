@@ -70,7 +70,7 @@ it('copies full native card data through the strict Remote and preserves indepen
   const sourceOpenings = data.saveCharacterOpenings(sourceId, { ...opening, enabled: true,
     openingMessages: [{ id: 'synthetic-main-opening', title: '合成主开场', content: long, variableVersionId: config.activeVersionId, initialVariableStateJson: '' },
       { id: 'synthetic-backup-opening', title: '合成备用开场', content: '合成备用正文', initialVariableStateJson: '{"synthetic":1}' }],
-    defaultOpeningMessageId: 'synthetic-main-opening', versions: [...opening.versions, { ...opening.versions[0]!, id: 'synthetic-opening-archive', name: '合成开场存档' }] })
+    defaultOpeningMessageId: 'synthetic-main-opening' })
   const scriptPath = data.readScriptWorkspace('character', sourceId).path
   mkdirSync(join(scriptPath, 'helpers')); writeFileSync(join(scriptPath, 'helpers/data.js'), 'export const synthetic = 7;')
   const regex = data.readRegexEditor({ scope: 'character', ownerId: sourceId })

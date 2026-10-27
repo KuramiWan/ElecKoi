@@ -26,6 +26,7 @@ import { DynamicSettingsNameDialog } from "./DynamicSettingsDialogs.jsx";
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
+import { EditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import { useTouchReorder } from '../../../ui/tree/useTouchReorder.js';
 import { BranchSettingsSplitView } from "./BranchSettingsSplitView.jsx";
@@ -417,48 +418,46 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   function openContextMenu(event, row = null) {
     event.preventDefault();
     event.stopPropagation();
-    if (compact) { if (row) setSelectedKey(nodeKey(row.kind, row.value.id)); setEditing(false); return; }
+    if (compact) return;
     setAddMenuOpen(false);
     const kind = row?.kind || "background";
     const id = row?.value?.id || "";
     const parentId = kind === "group" ? id : kind === "entry" ? row.value.groupId || "" : "";
     setContextMenu({
+      trigger: event.currentTarget,
       x: Math.min(event.clientX, window.innerWidth - 220),
       y: Math.min(event.clientY, window.innerHeight - 230),
       kind,
       id,
       parentId,
     });
-    if (row) setSelectedKey(nodeKey(kind, id));
   }
 
-  function requestDeleteSelected() {
-    if (!selected.value) return;
-    if (selected.kind === "entry" && !isEditableEntry(selected.value)) return;
-    const isGroup = selected.kind === "group";
+  function requestDeleteSelected() { requestDelete(selected); }
+
+  function requestDelete(target) {
+    if (!target.value) return;
+    if (target.kind === "entry" && !isEditableEntry(target.value)) return;
+    const isGroup = target.kind === "group";
     setDeleteTarget({
-      title: isGroup ? `删除文件夹“${selected.value.name}”？` : `删除设定“${selected.value.title || "未命名设定"}”？`,
+      title: isGroup ? `删除文件夹“${target.value.name}”？` : `删除设定“${target.value.title || "未命名设定"}”？`,
       message: isGroup
         ? "文件夹及其中设定会从当前对话移除，母设定不会被修改。"
         : "这条设定会从当前对话移除，母设定不会被删除。",
-      kind: selected.kind,
-      id: selected.value.id,
+      kind: target.kind,
+      id: target.value.id,
     });
   }
 
   function confirmDeleteSelected() {
     const target = deleteTarget;
     if (!target) return;
-    changeLibrary((current) => {
-      if (target.kind === "entry") return { ...current, entries: current.entries.filter((entry) => entry.id !== target.id) };
-      const removed = descendants(current.groups, target.id);
-      return {
-        ...current,
-        groups: current.groups.filter((group) => !removed.has(group.id)),
-        entries: current.entries.filter((entry) => !removed.has(entry.groupId)),
-      };
-    });
-    setSelectedKey("");
+    const current = libraryRef.current;
+    const removed = target.kind === 'group' ? descendants(current.groups, target.id) : new Set();
+    const next = { ...current, groups: current.groups.filter(group => !removed.has(group.id)),
+      entries: current.entries.filter(entry => target.kind !== 'entry' || entry.id !== target.id).filter(entry => !removed.has(entry.groupId)) };
+    changeLibrary(next);
+    if (!findSelected(next, selectedKey).value) setSelectedKey('');
     setDeleteTarget(null);
   }
 
@@ -544,7 +543,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
   const editableEntry = selected.kind === "entry" && isEditableEntry(selected.value);
 
   return (
-      <section className="dynamic-settings-detail" aria-label={`分支设定：${selectedItem.title}`} onMouseDown={() => { setAddMenuOpen(false); setContextMenu(null); }}>
+      <section className="dynamic-settings-detail" aria-label={`分支设定：${selectedItem.title}`} onMouseDown={() => setAddMenuOpen(false)}>
       <header className="dynamic-settings-detail-toolbar" onMouseDown={(event) => event.stopPropagation()}>
         <button type="button" className="dynamic-settings-back" aria-label="返回对话列表" onClick={closeConversation}><ArrowLeft size={18} /></button>
         <span className="dynamic-settings-branch-label"><GitBranch size={18} aria-hidden="true" />分支 {branchNumbersRef.current.get(selectedItem.sessionId)}</span>
@@ -600,7 +599,7 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
             onContextMenu={(event) => openContextMenu(event)}
             onMouseDown={(event) => {
               const tree = event.currentTarget;
-              if (event.target !== tree) return;
+              if (event.button !== 0 || event.target !== tree) return;
               const rect = tree.getBoundingClientRect();
               const scrollbarWidth = Math.max(16, tree.offsetWidth - tree.clientWidth + 4);
               if (event.clientX >= rect.right - scrollbarWidth && event.clientX <= rect.right + 2) return;
@@ -665,20 +664,18 @@ export const DynamicSettingsPanel = forwardRef(function DynamicSettingsPanel({ c
               { label: '复制', Icon: Copy, run: () => startTransfer('copy') },
               { label: '重命名', Icon: PencilSimple, run: () => setEditing(true) },
             ] : []} />}
-          {contextMenu ? (
-            <div className="setting-library-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" onMouseDown={(event) => event.stopPropagation()}>
-              {contextMenu.kind === "background" || contextMenu.kind === "group" ? (
-                <>
-                  <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setNameDialog({ type: "group", title: "新建文件夹", label: "文件夹名称", value: "新建文件夹", confirmLabel: "创建", parentId: contextMenu.parentId }); }}><SETTING_LIBRARY_CREATE_ICONS.group size={15} />新建文件夹</button>
-                  <button type="button" role="menuitem" onClick={() => createEntry("standard", contextMenu.parentId)}><SETTING_LIBRARY_CREATE_ICONS.entry size={15} />新建设定</button>
-                  <button type="button" role="menuitem" onClick={() => createEntry("reference", contextMenu.parentId)}><SETTING_LIBRARY_CREATE_ICONS.reference size={15} />新建 EJS引用设定</button>
-                </>
-              ) : null}
-              {contextMenu.kind === "entry" ? <button type="button" role="menuitem" onClick={() => duplicateEntry(contextMenu.id)}><Copy size={15} />复制</button> : null}
-              {contextMenu.kind !== "background" ? <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setSelectedKey(nodeKey(contextMenu.kind, contextMenu.id)); }}><PencilSimple size={15} />重命名</button> : null}
-              {contextMenu.kind !== "background" ? <button type="button" role="menuitem" className="is-destructive" onClick={() => { setContextMenu(null); requestDeleteSelected(); }}><Trash size={15} />删除</button> : null}
-            </div>
-          ) : null}
+          {contextMenu ? <EditorContextMenu menu={contextMenu} label="分支设定操作" onClose={() => setContextMenu(null)} actions={[
+            ...(['background', 'group'].includes(contextMenu.kind) ? [
+              { label: '新建文件夹', icon: SETTING_LIBRARY_CREATE_ICONS.group, run: () => setNameDialog({ type: 'group', title: '新建文件夹', label: '文件夹名称', value: '新建文件夹', confirmLabel: '创建', parentId: contextMenu.parentId }) },
+              { label: '新建设定', icon: SETTING_LIBRARY_CREATE_ICONS.entry, run: () => createEntry('standard', contextMenu.parentId) },
+              { label: '新建 EJS引用设定', icon: SETTING_LIBRARY_CREATE_ICONS.reference, run: () => createEntry('reference', contextMenu.parentId) },
+            ] : []),
+            ...(contextMenu.kind === 'entry' ? [{ label: '复制', icon: Copy, run: () => duplicateEntry(contextMenu.id) }] : []),
+            ...(contextMenu.kind !== 'background' ? [
+              { label: '重命名', icon: PencilSimple, run: () => { setSelectedKey(nodeKey(contextMenu.kind, contextMenu.id)); setEditing(true); } },
+              { label: '删除', icon: Trash, danger: true, run: () => requestDelete(findSelected(library, nodeKey(contextMenu.kind, contextMenu.id))) },
+            ] : []),
+          ].map(action => ({ ...action, disabled: saving }))} /> : null}
         </section>
 
         {selected.value && (!compact || editing) ? <aside className="dynamic-settings-inspector" aria-label="分支设定详情">

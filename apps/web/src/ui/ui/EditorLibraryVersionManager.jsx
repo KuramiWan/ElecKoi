@@ -2,14 +2,14 @@ import { useRef, useState } from 'react';
 import { EditorVersionManager } from './EditorVersionManager.jsx';
 import { resolveFailure } from '../../utils/failureText.js';
 
-export function EditorLibraryVersionManager({ title, versions, ownerScope, ownerLabel, onClose, busy, extraActions = [] }) {
-  const [scope, setScope] = useState(ownerScope), [error, setError] = useState('');
+export function EditorLibraryVersionManager({ title, versions, ownerScope, initialScope = ownerScope, ownerLabel, onClose, busy, extraActions = [] }) {
+  const [scope, setScope] = useState(initialScope), [error, setError] = useState('');
   const input = useRef(null);
   const current = versions.current(scope);
   const run = operation => { try { setError(''); operation(); } catch (cause) { setError(resolveFailure(cause, { fallback: '版本操作失败' }).text); } };
   if (!current) return null;
   return <EditorVersionManager title={title} versions={current.versions} activeVersionId={current.activeVersionId}
-    scopes={[{ id: 'global', label: '全局' }, { id: ownerScope, label: ownerLabel }]} scope={scope} onScopeChange={setScope}
+    scopes={[{ id: ownerScope, label: ownerLabel }, { id: 'global', label: '全局' }]} scope={scope} onScopeChange={setScope}
     onSelect={id => run(() => versions.select(scope, id))} onCopy={name => run(() => versions.create(scope, name, true))}
     onCreate={name => run(() => versions.create(scope, name))} onRename={name => run(() => versions.rename(scope, name))}
     onDelete={() => run(() => versions.remove(scope))} onClose={onClose} busy={busy}

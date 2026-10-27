@@ -496,11 +496,28 @@ window.__ModuleLoader__.load({
       }
     }
 
+    class GlobalSettingLibrariesModel extends CharacterConfigurationModel {
+      constructor(bridge) {
+        super(bridge, 'globalSettingLibraries', 'readGlobalSettingLibraries', 'saveGlobalSettingLibraries', null, value => {
+          if (!value || !Number.isInteger(value.revision) || !Array.isArray(value.libraries)) {
+            throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '全局设定库返回的数据格式不正确。', { what: '全局设定库' })
+          }
+          return value
+        })
+      }
+      // The singleton cache address is internal; no character ID is sent to Remote.
+      request(method, _address, ...args) { return super.request(method, ...args) }
+      read = () => super.read('global')
+      save = value => super.save('global', value)
+      getSnapshot = () => this.snapshots.get('global') || idle
+    }
+
     function apply(ctx) {
       const bridge = new CharacterConfigurationBridge(ctx.remote)
       const settingLibraries = new SettingLibrariesModel(bridge)
+      const globalSettingLibraries = new GlobalSettingLibrariesModel(bridge)
       const openings = new CharacterConfigurationModel(bridge, 'openings', 'readCharacterOpenings', 'saveCharacterOpenings', null, (value, characterId) => {
-        if (!value || value.characterId !== characterId || !Array.isArray(value.openingMessages) || !Array.isArray(value.versions)) {
+        if (!value || value.characterId !== characterId || !Array.isArray(value.openingMessages) || typeof value.enabled !== 'boolean' || typeof value.defaultOpeningMessageId !== 'string') {
           throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '角色开场白返回的数据格式不正确。', { what: '角色开场白配置' })
         }
         return value
@@ -521,12 +538,14 @@ window.__ModuleLoader__.load({
       const scripts = new ScriptLibrariesModel(bridge)
       ctx.provide('eleckoiCharacterOpenings', openings)
       ctx.provide('eleckoiSettingLibraries', settingLibraries)
+      ctx.provide('eleckoiGlobalSettingLibraries', globalSettingLibraries)
       ctx.provide('eleckoiVariables', variables)
       ctx.provide('eleckoiRegexRules', regexRules)
       ctx.provide('eleckoiScriptLibraries', scriptLibraryService(scripts, bridge))
       ctx.effect(() => {
         openings.start()
         settingLibraries.start()
+        globalSettingLibraries.start()
         variables.start()
         regexRules.start()
         regexEditors.start()
@@ -535,6 +554,7 @@ window.__ModuleLoader__.load({
         const stopReset = ctx.on('connection/reset', () => {
           openings.refreshLoaded()
           settingLibraries.refreshLoaded()
+          globalSettingLibraries.refreshLoaded()
           variables.refreshLoaded()
           regexRules.refreshLoaded()
           regexEditors.refreshLoaded()
@@ -545,6 +565,7 @@ window.__ModuleLoader__.load({
           bridge.dispose()
           openings.dispose()
           settingLibraries.dispose()
+          globalSettingLibraries.dispose()
           variables.dispose()
           regexRules.dispose()
           regexEditors.dispose()

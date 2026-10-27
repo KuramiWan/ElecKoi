@@ -1,4 +1,4 @@
-import { createCharacterOpenings, syncCharacterOpeningVersion } from '../../../../packages/shared/src/contracts/characterOpenings/schemas';
+import { createCharacterOpenings, characterOpeningsSchema } from '../../../../packages/shared/src/contracts/characterOpenings/schemas';
 // @vitest-environment jsdom
 import React, { act, useState, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -23,14 +23,14 @@ async function render(component) {
 }
 
 describe('opening configuration editor', () => {
-  it('edits and reopens character openings on a separate page, preserving settings, versions and variable bindings', async () => {
+  it('edits and reopens character openings on a separate page, preserving settings, multiple openings and variable bindings', async () => {
     let stored = createCharacterOpenings('synthetic-character');
     const setting = { ...createEntryDraft('', 1, []), id: 'synthetic-setting', title: '合成设定', content: '合成长正文。'.repeat(2000) };
     const settings = normalizeSettingLibrary('synthetic-character', { ...normalizeSettingLibrary('synthetic-character'), entries: [setting] });
     const openingBefore = structuredClone(stored);
     const model = { getSnapshot: () => ({ status: 'ready', value: structuredClone(stored) }), subscribe: () => () => {},
       read: async () => structuredClone(stored), save: vi.fn(async (_id, draft) => {
-        stored = syncCharacterOpeningVersion(draft);
+        stored = characterOpeningsSchema.parse(draft);
         return structuredClone(stored);
       }) };
     const settingsModel = { getSnapshot: () => ({ status: 'ready', value: settings }), subscribe: () => () => {}, read: async () => settings, saveViewState: vi.fn() };
@@ -40,7 +40,7 @@ describe('opening configuration editor', () => {
     const view = await render(<CharacterOpeningsPanel ref={controller} characterId="synthetic-character" openings={model} variables={variables} />);
     try {
       expect(view.container.querySelectorAll('.setting-library-opening-item')).toHaveLength(1);
-      await act(async () => [...view.container.querySelectorAll('button')].find(button => button.textContent === '新建备用开场白').click());
+      await act(async () => view.container.querySelector('button[aria-label="新建开场白"]').click());
       const select = view.container.querySelector('select');
       await act(async () => { select.value = 'synthetic-variable-version'; select.dispatchEvent(new Event('change', { bubbles: true })); });
       await act(async () => view.container.querySelector('[role="switch"]').click());

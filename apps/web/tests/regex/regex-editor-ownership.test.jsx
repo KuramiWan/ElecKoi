@@ -40,9 +40,10 @@ describe('regex editor isolation and shared globals', () => {
         <div data-editor="preset"><RegexRulesPanel presetId="synthetic-inactive-preset" regexRules={model} ref={refs[1]} /></div>
       </EditorPresentationContext.Provider>));
       const panels = [...node.querySelectorAll('[data-editor]')];
-      expect([...panels[0].querySelectorAll('.editor-library-heading strong')].map(item => item.textContent)).toEqual(['全局正则', '角色正则']);
-      expect([...panels[1].querySelectorAll('.editor-library-heading strong')].map(item => item.textContent)).toEqual(['全局正则', '预设正则']);
+      expect([...panels[0].querySelectorAll('.editor-library-heading strong')].map(item => item.textContent)).toEqual(['角色正则']);
+      expect([...panels[1].querySelectorAll('.editor-library-heading strong')].map(item => item.textContent)).toEqual(['预设正则']);
       for (const panel of panels) {
+        await act(() => [...panel.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === '全局').click());
         await act(() => panel.querySelector('.regex-rule-row').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
         const options = [...panel.querySelector('.regex-inspector select').options].map(item => item.value);
         expect(options).toEqual(panel === panels[0] ? ['Global', 'Character'] : ['Global', 'AgentPreset']);
@@ -52,6 +53,10 @@ describe('regex editor isolation and shared globals', () => {
       await act(async () => expect(await refs[0].current.save()).toBe(true));
       expect(name(1).value).toBe('Synthetic accepted first');
       await type(name(1), 'Synthetic unsaved draft');
+      await act(() => [...panels[1].querySelectorAll('.editor-scope-tabs [role=tab]')].find(tab => tab.textContent === '预设').click());
+      await act(() => [...panels[1].querySelectorAll('.editor-scope-tabs [role=tab]')].find(tab => tab.textContent === '全局').click());
+      await act(() => panels[1].querySelector('.regex-rule-row').dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+      expect(name(1).value).toBe('Synthetic unsaved draft');
       await type(name(0), 'Synthetic accepted second');
       await act(async () => expect(await refs[0].current.save()).toBe(true));
       expect(name(1).value).toBe('Synthetic unsaved draft');

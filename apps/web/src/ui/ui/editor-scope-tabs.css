@@ -1,0 +1,5 @@
+.editor-scope-tabs-bar { flex: 0 0 auto; padding: 0 0 16px; }
+.editor-scope-tabs { width: min(260px, 100%); border-radius: var(--dsw-radius-lg, 12px); background: var(--dsw-alias-bg-module-platform, var(--list)); }
+.editor-scope-tabs > [aria-hidden="true"] { border-color: var(--dsw-alias-border-l3, var(--line-strong)); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-3, var(--chat)); }
+.editor-scope-tabs [role="tab"] { color: var(--dsw-alias-label-secondary, var(--muted)); }
+.editor-scope-tabs [role="tab"][aria-selected="true"] { color: var(--dsw-alias-label-primary, var(--text)); }

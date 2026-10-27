@@ -71,19 +71,19 @@ describe('character editor client extension', () => {
         characterCatalog={{ refresh: async () => ({ items: [character] }) }}
         characterConfiguration={{ openings: {} }} renderCharacterEditorSection={handoff} />));
       const labels = [...node.querySelectorAll('.character-editor-navigation button')].map(button => button.getAttribute('aria-label'));
-      expect(labels.slice(0, 3)).toEqual(['基础资料', '角色开场白', '设定库']);
-      await click('[aria-label="角色开场白"]');
+      expect(labels.slice(0, 3)).toEqual(['基础资料', '开场白', '设定库']);
+      await click('[aria-label="开场白"]');
       expect(handoff.mock.lastCall[0]).toBe('openings');
       await click('[data-testid="edit-opening"]');
       await click('[aria-label="设定库"]');
       expect(node.querySelector('[data-testid="unsaved-dialog"]')).toBeTruthy();
       await act(async () => [...node.querySelectorAll('button')].find(button => button.textContent === '保存并切换').click());
       expect(save).toHaveBeenCalledTimes(1);
-      expect(node.querySelector('[aria-current="page"]').getAttribute('aria-label')).toBe('角色开场白');
+      expect(node.querySelector('[aria-current="page"]').getAttribute('aria-label')).toBe('开场白');
       await act(async () => [...node.querySelectorAll('button')].find(button => button.textContent === '保存并切换').click());
       expect(node.querySelector('[aria-current="page"]').getAttribute('aria-label')).toBe('设定库');
       expect(saveCharacter).not.toHaveBeenCalled();
-      await click('[aria-label="角色开场白"]'); await click('[data-testid="edit-opening"]'); await click('[aria-label="设定库"]');
+      await click('[aria-label="开场白"]'); await click('[data-testid="edit-opening"]'); await click('[aria-label="设定库"]');
       await act(async () => [...node.querySelectorAll('button')].find(button => button.textContent === '放弃并切换').click());
       expect(discard).toHaveBeenCalledTimes(1);
       expect(node.querySelector('[aria-current="page"]').getAttribute('aria-label')).toBe('设定库');
@@ -165,7 +165,7 @@ describe('character editor client extension', () => {
         characterCatalog={{ refresh: async () => ({ items: [character] }) }} characterConfiguration={{}} />));
       const navigation = node.querySelector('.character-editor-navigation');
       expect([...navigation.querySelectorAll('button')].map(button => button.getAttribute('aria-label')))
-        .toEqual(['基础资料', '角色开场白', '设定库', '变量', '正则', '脚本', '前端', '分支设定']);
+        .toEqual(['基础资料', '开场白', '设定库', '变量', '正则', '脚本', '前端', '分支设定']);
       const toggle = node.querySelector('.character-editor-sidebar-toggle');
       expect(toggle.getAttribute('aria-label')).toBe('收起侧边栏');
       await act(async () => toggle.click());

@@ -19,6 +19,31 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
+it('right-clicks preset prompts without opening or replacing the editor and keeps commands addressed to their own prompt', async () => {
+  function Fixture() {
+    const [preset, setPreset] = useState({ id: 'synthetic-preset', name: '合成预设', promptPositions: [], groups: [], expandedGroupIds: [], entries: [
+      { ...createEntryDraft('', 1, []), id: 'first', title: '合成第一提示词' },
+      { ...createEntryDraft('', 2, []), id: 'second', title: '合成第二提示词' },
+    ] });
+    draft = preset;
+    return <PresetPromptEditor preset={preset} onChange={setPreset} />;
+  }
+  await act(async () => root.render(<Fixture />));
+  const rows = () => [...document.querySelectorAll('[role="treeitem"]')];
+  const right = async row => {
+    await act(async () => row.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true })));
+    await act(async () => row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 24 })));
+  };
+  await right(rows()[1]); expect(document.querySelector('[aria-label="设定编辑器"]')).toBeNull();
+  await act(async () => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true, composed: true })));
+  await click(rows()[0]); const inspector = document.querySelector('[aria-label="设定编辑器"]');
+  await right(rows()[1]); expect(document.querySelector('[aria-label="设定编辑器"]')).toBe(inspector);
+  expect(inspector.querySelector('input[placeholder="条目标题/待命名"]').value).toBe('合成第一提示词');
+  await click([...document.querySelectorAll('[role="menuitem"]')].find(item => item.textContent.trim() === '删除'));
+  expect(draft.entries.map(item => item.id)).toEqual(['first']);
+  expect(document.querySelector('[aria-label="设定编辑器"]')).toBe(inspector);
+});
+
 it.each([true, false])('selects, copies and deletes prompt subtrees without duplicating descendants or affecting fixed entries (compact=%s)', async compact => {
   function Fixture() {
     const [preset, setPreset] = useState(() => ({ id: 'synthetic-preset', name: '合成预设', promptPositions: [],

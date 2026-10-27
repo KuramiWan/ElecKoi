@@ -109,7 +109,7 @@ getSnapshot(characterId: string): ConfigurationSnapshot<CharacterOpenings>
 subscribe(listener: (kind: 'configuration', characterId: string, snapshot: ConfigurationSnapshot<CharacterOpenings>) => void): () => void
 
 /**
- * 读取全部开场白及独立版本并更新页面状态。
+ * 读取全部开场白并更新页面状态。
  * @param characterId - 所属角色编号。
  * @returns 完整的角色开场白配置。
  */
@@ -118,7 +118,7 @@ read(characterId: string): Promise<CharacterOpenings>
 /**
  * 保存角色开场白及变量绑定，不修改设定库。
  * @param characterId - 所属角色编号。
- * @param value - 完整开场白配置及独立版本。
+ * @param value - 完整开场白配置。
  * @returns 实际保存后的角色开场白配置。
  */
 save(characterId: string, value: CharacterOpenings): Promise<CharacterOpenings>
@@ -754,6 +754,44 @@ watch(owner: FrontendOwner, listener: (workspace: FrontendWorkspace) => void, on
 ```
 
 Source: [`packages/client/features/dsh-client-author/src/frontends.ts`](../../packages/client/features/dsh-client-author/src/frontends.ts)
+
+<a id="ctxeleckoiglobalsettinglibraries--eleckoiglobalsettinglibraries"></a>
+
+### `ctx.eleckoiGlobalSettingLibraries` — `ElecKoiGlobalSettingLibraries`
+
+独立于角色版本的全局设定库集合。
+
+```ts cordis-catalog
+/**
+ * 取得全局设定库的页面状态。
+ * @returns 当前缓存及读取状态。
+ */
+getSnapshot(): ConfigurationSnapshot<GlobalSettingLibraryCollection>
+
+/**
+ * 订阅全局库变更。
+ * @param listener - 接收新状态的回调。
+ * @returns 取消订阅函数。
+ */
+subscribe(listener: (kind: 'configuration', address: string, snapshot: ConfigurationSnapshot<GlobalSettingLibraryCollection>) => void): () => void
+
+/**
+ * 读取所有全局设定库。
+ * @returns 全局库及并发修改标识。
+ */
+read(): Promise<GlobalSettingLibraryCollection>
+
+/**
+ * 保存全局库内容、启停与删除。
+ * @param value - 草稿及读取时的修改标识。
+ * @returns 实际保存后的集合。
+ */
+save(value: GlobalSettingLibraryCollection): Promise<GlobalSettingLibraryCollection>
+```
+
+Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
+
+Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
 
 <a id="ctxeleckoihtmlresources--eleckoihtmlresources"></a>
 

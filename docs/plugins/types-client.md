@@ -123,7 +123,7 @@ export interface ConfigurationSnapshot<T> {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:5](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L5)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:6](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L6)
 
 ## ConversationCatalogSnapshot
 
@@ -471,7 +471,7 @@ export interface EditorLibraryVersionModel<T> {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:7](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L7)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:34](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L34)
 
 ## ElecKoiRegexEditor
 
@@ -487,7 +487,7 @@ export interface ElecKoiRegexEditor {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:247](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L247)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:274](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L274)
 
 ## ModelCatalogSnapshot
 

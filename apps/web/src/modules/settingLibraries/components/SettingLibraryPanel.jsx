@@ -1,10 +1,10 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { EditorScopeTabs } from '../../../ui/ui/EditorScopeTabs.jsx';
 import {
   Code,
   Copy,
   FileText,
   LinkSimple,
-  MagnifyingGlass,
   PencilSimple,
   Plus,
   SlidersHorizontal,
@@ -13,10 +13,12 @@ import {
 import { DshFolderClosedIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { SETTING_LIBRARY_CREATE_ICONS } from "../../../ui/icons/settingLibraryCreateIcons.jsx";
 import { SettingLibraryManager } from "./SettingLibraryManager.jsx";
+import { GlobalSettingLibrariesDirectory, GlobalSettingLibraryImport, useGlobalSettingLibraries } from './GlobalSettingLibraries.jsx';
 import { ConfirmationDialog, SaveControl } from "./SettingLibraryControls.jsx";
 import { SettingLibraryInspector } from "./SettingLibraryInspector.jsx";
 import { SettingLibraryTree, SettingTreeActionsContext } from "./SettingLibraryTree.jsx";
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
+import { EditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import { EditorCollectionToolbar, EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
@@ -53,12 +55,14 @@ function nodeIcon(entry) {
   return FileText;
 }
 
-export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, onDirtyChange }, ref) {
+export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ characterId, settingLibraries, globalSettingLibraries, onDirtyChange }, ref) {
   const { compact } = useEditorPresentation();
+  const scopePanelId = useId();
+  const [scope, setScope] = useState('character');
   const [selectedKey, setSelectedKey] = useState("");
   const [editing, setEditing] = useState(false);
   const [clipboard, setClipboard] = useState(null);
-  const [expandedKeys, setExpandedKeys] = useState([]);
+  const [roleExpandedKeys, setRoleExpandedKeys] = useState([]);
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -66,25 +70,73 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const [deleteTarget, setDeleteTarget] = useState(null);
   const nameInputRef = useRef(null);
   const expandedKeysRef = useRef([]);
-  const draft = useCharacterConfigurationDraft({ characterId, configuration: settingLibraries, onDirtyChange,
+  const roleExpandedKeysRef = useRef([]);
+  const globals = useGlobalSettingLibraries(globalSettingLibraries, key => { setSelectedKey(key); setEditing(false); setContextMenu(null); });
+  const draft = useCharacterConfigurationDraft({ characterId, configuration: settingLibraries, saveShortcut: false,
     onAdopt: loaded => {
       const expanded = loaded.expandedGroupIds.map(id => nodeKey('group', id));
-      expandedKeysRef.current = expanded;
-      setExpandedKeys(expanded);
+      roleExpandedKeysRef.current = expanded;
+      setRoleExpandedKeys(expanded);
     },
     prepareSave: snapshot => ({ ...snapshot, listAllExpanded: false,
-      expandedGroupIds: expandedKeysRef.current.map(parseNodeKey).filter(item => item.kind === 'group').map(item => item.id) }),
+      expandedGroupIds: roleExpandedKeysRef.current.map(parseNodeKey).filter(item => item.kind === 'group').map(item => item.id) }),
   });
-  const { library, setLibrary, persisted, setPersisted, libraryRef, persistedRef,
-    dirty, saving, error, setError, saveNotice, changeLibrary, save, discard } = draft;
+  const { library: roleLibrary, setLibrary, setPersisted, libraryRef: roleLibraryRef, persistedRef,
+    dirty: roleDirty, saving: roleSaving, error: roleError, saveNotice: roleNotice, changeLibrary: changeRoleLibrary, save: saveRole, discard: discardRole } = draft;
+  const library = scope === 'global' ? globals.library : roleLibrary;
+  const libraryRef = scope === 'global' ? globals.activeLibraryRef : roleLibraryRef;
+  const setError = scope === 'global' ? globals.setError : draft.setError;
+  const activeLibraryId = scope === 'global' ? globals.selection?.libraryId : characterId;
+  const expandedKeys = scope === 'global'
+    ? globals.expandedGroups[activeLibraryId] ?? (library?.listAllExpanded ? library.groups.map(group => nodeKey('group', group.id)) : library?.expandedGroupIds.map(id => nodeKey('group', id)) ?? [])
+    : roleExpandedKeys;
+  expandedKeysRef.current = expandedKeys;
+  function setExpandedKeys(keys) {
+    if (scope === 'global') globals.setExpandedGroups(current => ({ ...current, [activeLibraryId]: keys }));
+    else { roleExpandedKeysRef.current = keys; setRoleExpandedKeys(keys); }
+  }
+  function readLibrary(libraryId = activeLibraryId) {
+    return scope === 'global' ? globals.libraryRef.current?.libraries.find(item => item.id === libraryId) : roleLibraryRef.current;
+  }
+  function changeLibrary(updater, libraryId = activeLibraryId) {
+    if (scope === 'global') globals.updateLibrary(libraryId, updater);
+    else changeRoleLibrary(updater);
+  }
+  function selectTarget(key, libraryId = activeLibraryId) {
+    if (scope === 'global') globals.select(libraryId, key);
+    else selectNode(key);
+  }
+  function withExpandedGroups(value, ids) {
+    const view = { listAllExpanded: false, expandedGroupIds: ids };
+    return scope === 'global' ? { ...value, ...view } : { ...value, ...view,
+      versions: value.versions.map(version => version.id === value.activeVersionId ? { ...version, ...view } : version) };
+  }
+  const dirty = roleDirty || globals.dirty;
+  const saving = roleSaving || globals.saving;
+  const error = roleError || globals.error;
+  const saveNotice = roleNotice || globals.saveNotice;
+  async function save() {
+    if (roleDirty && !await saveRole()) return false;
+    if (globals.dirty && !await globals.save()) return false;
+    return true;
+  }
+  function discard() { discardRole(); globals.discard(); }
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+  useEffect(() => {
+    function shortcut(event) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 's') {
+        event.preventDefault(); if (dirty && !saving) void save();
+      }
+    }
+    window.addEventListener('keydown', shortcut); return () => window.removeEventListener('keydown', shortcut);
+  });
   const settingLibrary = library;
   const selected = useMemo(() => findSelected(settingLibrary, selectedKey), [settingLibrary, selectedKey]);
   const nodes = useMemo(() => treeNodes(settingLibrary), [settingLibrary]);
+  const selectionQuery = scope === 'global' && library?.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()) ? '' : query;
   const searchHasResults = useMemo(() => settingLibrary ? hasSearchResults(settingLibrary, query) : false, [settingLibrary, query]);
 
-  useEffect(() => {
-    expandedKeysRef.current = expandedKeys;
-  }, [expandedKeys]);
+  useEffect(() => { setClipboard(null); setDeleteTarget(null); }, [scope, activeLibraryId]);
   useEffect(() => {
     setSelectedKey('');
     setManagerOpen(false);
@@ -131,29 +183,14 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   }
 
   function applyManagerChange(nextLibrary) {
-    changeLibrary(nextLibrary);
+    changeRoleLibrary(nextLibrary);
     const nextExpanded = nextLibrary.expandedGroupIds.map((id) => nodeKey("group", id));
-    expandedKeysRef.current = nextExpanded;
-    setExpandedKeys(nextExpanded);
+    roleExpandedKeysRef.current = nextExpanded;
+    setRoleExpandedKeys(nextExpanded);
     setSelectedKey("");
   }
 
-  function requestSelection(key, contextMenuAfterSelection = null) {
-    const nextKey = String(key || "");
-    if (!nextKey) {
-      setSelectedKey("");
-      if (contextMenuAfterSelection) setContextMenu(contextMenuAfterSelection);
-      return;
-    }
-    if (nextKey === selectedKey) {
-      if (contextMenuAfterSelection) setContextMenu(contextMenuAfterSelection);
-      return;
-    }
-    setSelectedKey(nextKey);
-    if (contextMenuAfterSelection) setContextMenu(contextMenuAfterSelection);
-  }
-
-  useImperativeHandle(ref, () => ({ save, discard }), [library, persisted, expandedKeys, saving]);
+  useImperativeHandle(ref, () => ({ save, discard }));
 
   function updateEntryById(id, updater) {
     changeLibrary((current) => ({
@@ -175,9 +212,9 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     return "";
   }
 
-  function requestAddNode(kind, parentOverride) {
+  function requestAddNode(kind, parentOverride, libraryId = activeLibraryId) {
     const parentId = parentOverride ?? parentForNewNode();
-    const sourceLibrary = libraryRef.current;
+    const sourceLibrary = readLibrary(libraryId);
     if (!sourceLibrary) return;
     const order = 1 + Math.max(0,
       ...sourceLibrary.groups.filter((group) => group.parentId === parentId).map((group) => group.treeViewOrder),
@@ -197,34 +234,31 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     }
     if (parentId) {
       const parentKey = nodeKey("group", parentId);
-      const nextExpanded = [...new Set([...expandedKeysRef.current, parentKey])];
+      const previousExpanded = scope === 'global' ? globals.expandedGroups[libraryId] ?? sourceLibrary.expandedGroupIds.map(id => nodeKey('group', id)) : expandedKeysRef.current;
+      const nextExpanded = [...new Set([...previousExpanded, parentKey])];
       const nextGroupIds = nextExpanded.map(parseNodeKey).filter((item) => item.kind === "group").map((item) => item.id);
-      expandedKeysRef.current = nextExpanded;
-      setExpandedKeys(nextExpanded);
-      nextLibrary = {
-        ...nextLibrary,
-        listAllExpanded: false,
-        expandedGroupIds: nextGroupIds,
-        versions: nextLibrary.versions.map((version) => version.id === nextLibrary.activeVersionId
-          ? { ...version, listAllExpanded: false, expandedGroupIds: nextGroupIds }
-          : version),
-      };
+      if (scope === 'global') globals.setExpandedGroups(current => ({ ...current, [libraryId]: nextExpanded }));
+      else { expandedKeysRef.current = nextExpanded; setExpandedKeys(nextExpanded); }
+      nextLibrary = withExpandedGroups(nextLibrary, nextGroupIds);
     }
-    changeLibrary(nextLibrary);
+    changeLibrary(nextLibrary, libraryId);
     setMenuOpen(false);
     setContextMenu(null);
+    selectTarget(nextKey, libraryId);
     openEditor(nextKey);
     requestAnimationFrame(() => nameInputRef.current?.select());
   }
 
-  function askDelete(kind, id) {
-    const value = kind === "group" ? library.groups.find((group) => group.id === id) : library.entries.find((entry) => entry.id === id);
+  function askDelete(kind, id, libraryId = activeLibraryId) {
+    const source = readLibrary(libraryId);
+    const value = kind === "group" ? source.groups.find((group) => group.id === id) : source.entries.find((entry) => entry.id === id);
     if (!value || PINNED_ENTRY_IDS.has(id)) return;
     const name = kind === "group" ? value.name : value.title;
     const isReference = kind === "entry" && value.dynamicMode === "ejs_reference";
     setDeleteTarget({
       kind,
       id,
+      libraryId,
       title: kind === "group" ? `删除“${name}”？` : isReference ? "删除这条 EJS引用设定？" : `删除“${name || "未命名设定"}”？`,
       message: kind === "group"
         ? "文件夹内的设定也会一起删除。"
@@ -245,35 +279,32 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       });
       selectNode(''); setDeleteTarget(null); multi.clear(); return;
     }
-    changeLibrary((current) => {
-      if (deleteTarget.kind === "entry") return { ...current, entries: current.entries.filter((entry) => entry.id !== deleteTarget.id) };
-      const removed = descendants(current.groups, deleteTarget.id);
-      return {
-        ...current,
-        groups: current.groups.filter((group) => !removed.has(group.id)),
-        entries: current.entries.filter((entry) => !removed.has(entry.groupId)),
-      };
-    });
-    selectNode("");
+    const current = readLibrary(deleteTarget.libraryId);
+    const removed = deleteTarget.kind === 'group' ? descendants(current.groups, deleteTarget.id) : new Set();
+    const next = { ...current, groups: current.groups.filter(group => !removed.has(group.id)),
+      entries: current.entries.filter(entry => deleteTarget.kind !== 'entry' || entry.id !== deleteTarget.id).filter(entry => !removed.has(entry.groupId)) };
+    changeLibrary(next, deleteTarget.libraryId);
+    if (deleteTarget.libraryId === activeLibraryId && !findSelected(next, selectedKey).value) selectNode('');
     setDeleteTarget(null);
   }
 
-  function duplicateEntry(id) {
-    const source = library.entries.find((entry) => entry.id === id);
+  function duplicateEntry(id, libraryId = activeLibraryId) {
+    const targetLibrary = readLibrary(libraryId);
+    const source = targetLibrary.entries.find((entry) => entry.id === id);
     if (!source || PINNED_ENTRY_IDS.has(id)) return;
     const timestamp = new Date().toISOString();
-    const names = new Set(library.entries.filter((entry) => entry.groupId === source.groupId).map((entry) => entry.title));
+    const names = new Set(targetLibrary.entries.filter((entry) => entry.groupId === source.groupId).map((entry) => entry.title));
     const title = uniqueName(source.title ? `${source.title} 副本` : "新建设定", names);
     const entry = {
       ...source,
       id: createId("setting"),
       title,
-      treeViewOrder: Math.max(0, ...library.entries.filter((item) => item.groupId === source.groupId).map((item) => item.treeViewOrder)) + 1,
+      treeViewOrder: Math.max(0, ...targetLibrary.entries.filter((item) => item.groupId === source.groupId).map((item) => item.treeViewOrder)) + 1,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    changeLibrary((current) => ({ ...current, entries: [...current.entries, entry] }));
-    setSelectedKey(nodeKey("entry", entry.id));
+    changeLibrary((current) => ({ ...current, entries: [...current.entries, entry] }), libraryId);
+    selectTarget(nodeKey("entry", entry.id), libraryId);
     setContextMenu(null);
   }
 
@@ -293,29 +324,16 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     changeLibrary((current) => {
       const next = moveTreeNode(current, moved, destinationParentId, destinationIndex);
       if (!expandedParentKey) return next;
-      return {
-        ...next,
-        listAllExpanded: false,
-        expandedGroupIds: nextGroupIds,
-        versions: next.versions.map((version) => version.id === next.activeVersionId
-          ? { ...version, listAllExpanded: false, expandedGroupIds: nextGroupIds }
-          : version),
-      };
+      return withExpandedGroups(next, nextGroupIds);
     });
   }
 
   function handleExpandedKeysChange(nextKeys) {
     const nextGroupIds = nextKeys.map(parseNodeKey).filter((item) => item.kind === "group").map((item) => item.id);
-    const applyViewState = (value) => value ? {
-      ...value,
-      listAllExpanded: false,
-      expandedGroupIds: nextGroupIds,
-      versions: value.versions.map((version) => version.id === value.activeVersionId
-        ? { ...version, listAllExpanded: false, expandedGroupIds: nextGroupIds }
-        : version),
-    } : value;
+    const applyViewState = value => value ? withExpandedGroups(value, nextGroupIds) : value;
     expandedKeysRef.current = nextKeys;
     setExpandedKeys(nextKeys);
+    if (scope === 'global') return;
     libraryRef.current = applyViewState(libraryRef.current);
     persistedRef.current = applyViewState(persistedRef.current);
     setLibrary((current) => applyViewState(current));
@@ -323,13 +341,14 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     void settingLibraries.saveViewState(characterId, nextGroupIds).catch(error => reportFailure(error, "保存设置库视图状态"))
   }
 
-  function openContextMenu(event, node) {
+  function openContextMenu(event, node, sourceLibrary = library) {
     event.preventDefault();
     event.stopPropagation();
-    if (compact) { selectNode(String(node.key)); return; }
+    if (compact) return;
     setMenuOpen(false);
     if (node.fixed) {
       setContextMenu({
+        trigger: event.currentTarget, libraryId: scope === 'global' ? sourceLibrary.id : activeLibraryId,
         x: Math.min(event.clientX, window.innerWidth - 176),
         y: Math.min(event.clientY, window.innerHeight - 126),
         kind: "background",
@@ -339,22 +358,24 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       return;
     }
     const nextContextMenu = {
+      trigger: event.currentTarget, libraryId: scope === 'global' ? sourceLibrary.id : activeLibraryId,
       x: Math.min(event.clientX, window.innerWidth - 176),
       y: Math.min(event.clientY, window.innerHeight - 190),
       kind: node.nodeKind,
       id: node.recordId,
       parentId: node.nodeKind === "group"
         ? node.recordId
-        : library.entries.find((entry) => entry.id === node.recordId)?.groupId || "",
+        : sourceLibrary.entries.find((entry) => entry.id === node.recordId)?.groupId || "",
     };
-    requestSelection(String(node.key), nextContextMenu);
+    setContextMenu(nextContextMenu);
   }
 
-  function openTreeContextMenu(event) {
+  function openTreeContextMenu(event, sourceLibrary = libraryRef.current) {
     event.preventDefault();
-    if (!libraryRef.current) return;
+    if (!sourceLibrary) return;
     setMenuOpen(false);
     setContextMenu({
+      trigger: event.currentTarget, libraryId: scope === 'global' ? sourceLibrary.id : activeLibraryId,
       x: Math.min(event.clientX, window.innerWidth - 176),
       y: Math.min(event.clientY, window.innerHeight - 126),
       kind: "background",
@@ -375,7 +396,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
 
   const selectedIcon = selected.kind === "group" ? DshFolderClosedIcon : nodeIcon(selected.value);
   const SelectedIcon = selectedIcon || FileText;
-  const multi = useEditorMultiSelect(selectableTreeIds(nodes), characterId);
+  const multi = useEditorMultiSelect(selectableTreeIds(nodes), JSON.stringify([scope, activeLibraryId]));
   function copySelected() {
     const targets = selectedTreeRootIds(nodes, multi.selected).map(parseNodeKey);
     changeLibrary(current => targets.reduce((next, target) => {
@@ -389,6 +410,8 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
     { label: '设定', Icon: CreateEntryIcon, run: () => requestAddNode('entry') },
     { label: 'EJS引用设定', Icon: CreateReferenceIcon, run: () => requestAddNode('reference') }];
   const inspector = !multi.active && selected.value && (!compact || editing) ? (
+    <div className="setting-library-editor" key={JSON.stringify([scope, activeLibraryId])}>
+    {globals.available ? <div className="setting-library-owner-path">{scope === 'global' ? '全局设定库' : '角色设定库'} / {library.name}</div> : null}
     <SettingLibraryInspector
       selected={selected}
       library={library}
@@ -403,6 +426,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       onOpenEntry={(entryId) => openEditor(nodeKey("entry", entryId))}
       onPromptPositionsChange={(promptPositions, entries = library.entries) => changeLibrary((current) => ({ ...current, promptPositions, entries }))}
     />
+    </div>
   ) : null;
 
   return (
@@ -416,12 +440,26 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
       onMouseDown={() => setMenuOpen(false)}
     >
       <div className="setting-library-browser editor-collection-browser">
-        <EditorCollectionToolbar query={query} onQueryChange={setQuery} placeholder="搜索设定" selection={{ ...multi, toggle: () => { multi.toggle(); selectNode(''); setEditing(false); setContextMenu(null); } }} disabled={saving || !library}
+        <EditorCollectionToolbar query={query} onQueryChange={setQuery} placeholder={scope === 'global' ? '搜索全局设定库' : '搜索设定'} selection={{ ...multi, toggle: () => { multi.toggle(); selectNode(''); setEditing(false); setContextMenu(null); } }} disabled={saving || !library}
           createItems={createItems}
-          onManage={() => setManagerOpen(true)} save={<SaveControl dirty={dirty} error={error} notice={saveNotice} saving={saving} onSave={save} />} />
-        <EditorSelectionBar selection={multi} visibleIds={visibleTreeSelectionIds(nodes, query)} disabled={saving} onCopy={copySelected} onDelete={askDeleteBatch} />
+          onManage={scope === 'character' ? () => setManagerOpen(true) : undefined}
+          beforeSave={scope === 'global' ? <GlobalSettingLibraryImport state={globals} settingLibraries={settingLibraries} disabled={saving} /> : null}
+          save={<SaveControl dirty={dirty} error={error} notice={saveNotice} saving={saving} onSave={save} />} />
+        <EditorSelectionBar selection={multi} visibleIds={visibleTreeSelectionIds(nodes, selectionQuery)} disabled={saving} onCopy={copySelected} onDelete={askDeleteBatch} />
 
-        <div className="setting-library-tree editor-sidebar-directory" onMouseDown={handleTreeMouseDown} onContextMenu={openTreeContextMenu}>
+        <div id={scopePanelId} role={globals.available ? 'tabpanel' : undefined} aria-label={scope === 'character' ? '角色设定库' : '全局设定库'} className="setting-library-tree editor-sidebar-directory"
+          onMouseDown={scope === 'character' ? handleTreeMouseDown : undefined} onContextMenu={scope === 'character' ? openTreeContextMenu : undefined}>
+        {globals.available ? <EditorScopeTabs value={scope} panelId={scopePanelId} onChange={next => {
+          setScope(next); setSelectedKey(''); globals.clear(); setEditing(false); setContextMenu(null);
+          if (multi.active) multi.toggle();
+        }} /> : null}
+          {scope === 'global' ? <GlobalSettingLibrariesDirectory state={globals} query={query} disabled={saving} editor={{ compact, selection: multi, selectedKey, clipboard, openEditor, openContextMenu, openTreeContextMenu,
+            moveLibrary: (id, drop) => {
+              const moved = parseNodeKey(drop.dragId), parentId = drop.parentId ? parseNodeKey(drop.parentId).id : '';
+              globals.updateLibrary(id, current => moveTreeNode(current, moved, parentId, drop.destinationIndex));
+              if (drop.expandParentId) globals.setExpandedGroups(current => ({ ...current, [id]: [...new Set([...(current[id] ?? []), drop.expandParentId])] }));
+            } }} /> : <>
+          <div className={globals.available ? 'role-setting-library-container' : undefined}>
           <SettingTreeActionsContext.Provider value={{ openContextMenu, updateEntryById, selection: multi, saving, openEditor: compact && !multi.active ? openEditor : undefined }}>
             <SettingLibraryTree
               key={characterId}
@@ -438,6 +476,8 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
             />
           </SettingTreeActionsContext.Provider>
           {!library ? <p className="setting-library-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p> : !searchHasResults ? <p className="setting-library-empty">没有匹配的设定</p> : null}
+          </div>
+          </>}
         </div>
         {compact && library && !multi.active && <MobileEditorActions label="设定操作" selectionId={selectedKey} busy={saving} createItems={createItems}
           canEdit={Boolean(selected.value)} canModify={Boolean(selected.value) && !PINNED_ENTRY_IDS.has(selected.value.id)}
@@ -454,27 +494,25 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
         <SettingLibraryManager
           characterId={characterId}
           settingLibraries={settingLibraries}
-          library={library}
+          library={roleLibrary}
           onChange={applyManagerChange}
           onClose={() => setManagerOpen(false)}
           onError={setError}
         />
       ) : null}
 
-      {contextMenu ? (
-        <div className="setting-library-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" onMouseDown={(event) => event.stopPropagation()}>
-          {contextMenu.kind === "background" || contextMenu.kind === "group" ? (
-            <>
-              <button type="button" role="menuitem" onClick={() => requestAddNode("group", contextMenu.parentId)}><CreateFolderIcon size={15} />新建文件夹</button>
-              <button type="button" role="menuitem" onClick={() => requestAddNode("entry", contextMenu.parentId)}><CreateEntryIcon size={15} />新建设定</button>
-              <button type="button" role="menuitem" onClick={() => requestAddNode("reference", contextMenu.parentId)}><CreateReferenceIcon size={15} />新建 EJS引用设定</button>
-            </>
-          ) : null}
-          {contextMenu.kind === "entry" ? <button type="button" role="menuitem" onClick={() => duplicateEntry(contextMenu.id)}><Copy size={15} />复制</button> : null}
-          {contextMenu.kind !== "background" ? <button type="button" role="menuitem" onClick={() => { setContextMenu(null); requestAnimationFrame(() => nameInputRef.current?.select()); }}><PencilSimple size={15} />重命名</button> : null}
-          {contextMenu.kind !== "background" ? <button type="button" role="menuitem" className="is-destructive" onClick={() => askDelete(contextMenu.kind, contextMenu.id)}><Trash size={15} />删除</button> : null}
-        </div>
-      ) : null}
+      {contextMenu ? <EditorContextMenu menu={contextMenu} label="设定操作" onClose={() => setContextMenu(null)} actions={[
+        ...(['background', 'group'].includes(contextMenu.kind) ? [
+          { label: '新建文件夹', icon: CreateFolderIcon, run: () => requestAddNode('group', contextMenu.parentId, contextMenu.libraryId) },
+          { label: '新建设定', icon: CreateEntryIcon, run: () => requestAddNode('entry', contextMenu.parentId, contextMenu.libraryId) },
+          { label: '新建 EJS引用设定', icon: CreateReferenceIcon, run: () => requestAddNode('reference', contextMenu.parentId, contextMenu.libraryId) },
+        ] : []),
+        ...(contextMenu.kind === 'entry' ? [{ label: '复制', icon: Copy, run: () => duplicateEntry(contextMenu.id, contextMenu.libraryId) }] : []),
+        ...(contextMenu.kind !== 'background' ? [
+          { label: '重命名', icon: PencilSimple, run: () => { selectTarget(nodeKey(contextMenu.kind, contextMenu.id), contextMenu.libraryId); openEditor(nodeKey(contextMenu.kind, contextMenu.id)); requestAnimationFrame(() => nameInputRef.current?.select()); } },
+          { label: '删除', icon: Trash, danger: true, run: () => askDelete(contextMenu.kind, contextMenu.id, contextMenu.libraryId) },
+        ] : []),
+      ].map(action => ({ ...action, disabled: saving }))} /> : null}
       <ConfirmationDialog target={deleteTarget} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </EditorSidebarLayout>
   );

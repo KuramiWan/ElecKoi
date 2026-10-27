@@ -9,7 +9,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 
 type ConfigurationChange =
   | { kind: 'snapshot' }
-  | { kind: 'configuration'; domain: 'openings' | 'settingLibraries' | 'variables' | 'regexRules' | 'scripts' | 'agentPresets'; characterId?: string }
+  | { kind: 'configuration'; domain: 'openings' | 'settingLibraries' | 'globalSettingLibraries' | 'variables' | 'regexRules' | 'scripts' | 'agentPresets'; characterId?: string }
 
 function configurationChanges() {
   const queue: ConfigurationChange[] = [{ kind: 'snapshot' }]
@@ -60,8 +60,9 @@ describe('DSH ElecKoi character configuration models', () => {
     let previewFailure = false
     let scriptFailure = false
     let openFailure = false
-    let opening = { characterId: 'character-1', openingMessages: [{ id: 'synthetic-opening', content: '合成独立开场' }], versions: [] }
+    let opening = { characterId: 'character-1', enabled: true, defaultOpeningMessageId: 'synthetic-opening', openingMessages: [{ id: 'synthetic-opening', content: '合成独立开场' }] }
     const changes = configurationChanges()
+    let globalCollection = { revision: 0, libraries: [] }
     runInNewContext(source, {
       AbortController,
       window: { __ModuleLoader__: { load: (item: typeof registration) => { registration = item } } }
@@ -83,6 +84,13 @@ describe('DSH ElecKoi character configuration models', () => {
           }
         },
         eleckoiCharacterConfiguration: {
+          readGlobalSettingLibraries: async (...args: unknown[]) => {
+            expect(args).toHaveLength(0); calls.push('query.globals.read'); return { ok: true, value: globalCollection }
+          },
+          saveGlobalSettingLibraries: async (...args: unknown[]) => {
+            expect(args).toHaveLength(1); globalCollection = { ...(args[0] as typeof globalCollection), revision: globalCollection.revision + 1 };
+            return { ok: true, value: globalCollection }
+          },
           readCharacterOpenings: async () => {
             calls.push('query.openings.read')
             return { ok: true, value: opening }
@@ -194,6 +202,12 @@ describe('DSH ElecKoi character configuration models', () => {
       }
     })
     const libraries = services.get('eleckoiSettingLibraries')
+    const globals = services.get('eleckoiGlobalSettingLibraries')
+    await settle()
+    await globals.read(); await globals.save(globalCollection)
+    expect(globals.getSnapshot().value.revision).toBe(1)
+    changes.emit({ kind: 'configuration', domain: 'globalSettingLibraries' }); await settle()
+    expect(calls.filter(name => name === 'query.globals.read')).toHaveLength(2)
     const variables = services.get('eleckoiVariables')
     const regexRules = services.get('eleckoiRegexRules')
     const openings = services.get('eleckoiCharacterOpenings')

@@ -5,6 +5,7 @@
 
 /* 共用工具栏只改变控件外观，保留工具栏布局与内容分割线。 */
 .editor-sidebar-layout .editor-collection-toolbar,
+.character-openings-toolbar.editor-collection-toolbar,
 .mobile-preset-editor .preset-tools-toolbar.editor-collection-toolbar,
 .mobile-character-editor :is(.dynamic-settings-list-toolbar, .dynamic-settings-tree-toolbar).editor-collection-toolbar {
   --text: #242a32;
@@ -158,6 +159,7 @@
 }
 
 :root[data-theme="dark"] .editor-sidebar-layout .editor-collection-toolbar,
+:root[data-theme="dark"] .character-openings-toolbar.editor-collection-toolbar,
 :root[data-theme="dark"] .mobile-preset-editor .preset-tools-toolbar.editor-collection-toolbar,
 :root[data-theme="dark"] .mobile-character-editor :is(.dynamic-settings-list-toolbar, .dynamic-settings-tree-toolbar).editor-collection-toolbar {
   --text: #e5e8ef;

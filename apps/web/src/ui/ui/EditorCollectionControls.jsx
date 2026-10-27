@@ -10,7 +10,7 @@ export function EditorCollectionSurface({ children, grouped = false }) {
 }
 
 export function EditorCollectionToolbar({ query, onQueryChange, placeholder, createItems = [], onManage,
-  selection, disabled = false, save, children }) {
+  selection, disabled = false, beforeSave, save, children }) {
   const [createOpen, setCreateOpen] = useState(false);
   const { compact } = useEditorPresentation();
   const items = createItems.map((item, index) => ({ ...item, id: item.id ?? String(index), icon: item.Icon ? <item.Icon size={16} /> : undefined }));
@@ -24,7 +24,8 @@ export function EditorCollectionToolbar({ query, onQueryChange, placeholder, cre
         items={items} onClose={() => setCreateOpen(false)} onSelect={id => { setCreateOpen(false); items.find(item => item.id === id)?.run?.(); }} />}
       {selection && <Button className="editor-collection-action" variant="outline" icon={<ListChecks size={16} />} disabled={disabled}
         aria-label={selection.active ? '完成' : '多选'} aria-pressed={selection.active} onClick={selection.toggle}>{selection.active ? '完成' : '多选'}</Button>}
-      <Button className="editor-collection-action" variant="outline" icon={<SlidersHorizontal size={16} />} aria-label="管理" disabled={disabled || selection?.active} onClick={onManage}>管理</Button>
+      {onManage && <Button className="editor-collection-action" variant="outline" icon={<SlidersHorizontal size={16} />} aria-label="管理" disabled={disabled || selection?.active} onClick={onManage}>管理</Button>}
+      {beforeSave}
       {save}
       {children}
     </div>

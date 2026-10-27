@@ -375,16 +375,16 @@ Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/hos
 @Remote({ mode: 'stream' }) changes(signal: AbortSignal): AsyncIterable<CharacterConfigurationChange>
 
 /**
- * 读取独立于设定库的角色开场白及全部命名版本。
+ * 读取独立于设定库的角色开场白。
  * @param characterId - 所属角色编号。
- * @returns 当前开场白、备用开场白、变量绑定和独立版本。
+ * @returns 当前开场白、备用开场白及变量绑定。
  */
 @Remote readCharacterOpenings(characterId: string): CharacterOpenings
 
 /**
  * 保存角色独立开场白，不修改任何设定库版本。
  * @param characterId - 所属角色编号。
- * @param value - 完整开场白草稿与独立版本。
+ * @param value - 完整开场白草稿。
  * @returns 实际保存后的角色开场白配置。
  */
 @Remote saveCharacterOpenings(characterId: string, value: CharacterOpenings): CharacterOpenings
@@ -395,6 +395,19 @@ Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/hos
  * @returns 操作结果，结构见返回类型；失败抛出错误。
  */
 @Remote readSettingLibrary(characterId: string): SettingLibrary
+
+/**
+ * 读取独立的全局设定库集合，不属于任何角色版本。
+ * @returns 全局库及并发修改标识。
+ */
+@Remote readGlobalSettingLibraries(): GlobalSettingLibraryCollection
+
+/**
+ * 原子保存全局库的内容、启停和删除；冲突时保留原数据。
+ * @param value - 全局库草稿及读取时的修改标识。
+ * @returns 已保存的全局库集合。
+ */
+@Remote saveGlobalSettingLibraries(value: GlobalSettingLibraryCollection): GlobalSettingLibraryCollection
 
 /**
  * 保存角色设定库的当前内容，保留其他版本与管理设置。
@@ -445,13 +458,13 @@ Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/hos
 @Remote saveScriptLibraries(libraries: ScriptLibrary[]): ScriptLibrary[]
 
 /**
- * 原子导入设定库，旧文件中的开场白保存为独立版本并保持当前开场白不变。
+ * 原子导入设定库，旧文件中的开场白追加为备用开场白并保持当前开场白不变。
  * @param characterId - 所属角色编号。
  * @param library - 已并入导入版本的设定库草稿。
- * @param openingImports - 旧文件明确携带的开场白版本；不包含时传空数组。
+ * @param openingImports - 旧文件明确携带的开场白条目；不包含时传空数组。
  * @returns 实际保存后的设定库；变量绑定无效时整次导入回滚。
  */
-@Remote importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningVersion[]): SettingLibrary
+@Remote importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningMessage[]): SettingLibrary
 
 /**
  * 保存完整角色设定库。
@@ -602,7 +615,7 @@ Source: [`packages/host/product-api/src/author-variables.ts`](../../packages/hos
 @Remote testRegexRule(text: string, rule: RegexRule, target: RegexRuleTarget, options?: { surface?: 'Display' | 'Prompt' | 'Stored'; variablesJson?: string; depth?: number; isEdit?: boolean }, signal?: AbortSignal): Promise<RegexRuleTestResult>
 ```
 
-Types: [CharacterConfigurationChange](types-host.md#characterconfigurationchange) · [CharacterOpeningVersion](types-host.md#characteropeningversion) · [CharacterOpenings](types-host.md#characteropenings) · [EditorLibraryAddress](types-host.md#editorlibraryaddress) · [EditorLibrarySaveRequest](types-host.md#editorlibrarysaverequest) · [EditorLibrarySaveResult](types-host.md#editorlibrarysaveresult) · [EditorLibraryVersions](types-host.md#editorlibraryversions) · [RegexEditorTarget](types-host.md#regexeditortarget) · [RegexRule](types-host.md#regexrule) · [RegexRuleCollection](types-host.md#regexrulecollection) · [RegexRuleEditorCollection](types-host.md#regexruleeditorcollection) · [RegexRuleEditorImportResult](types-host.md#regexruleeditorimportresult) · [RegexRuleImportDocument](types-host.md#regexruleimportdocument) · [RegexRuleImportResult](types-host.md#regexruleimportresult) · [RegexRuleScope](types-host.md#regexrulescope) · [RegexRuleTarget](types-host.md#regexruletarget) · [RegexRuleTestResult](types-host.md#regexruletestresult) · [ScriptLibrary](types-host.md#scriptlibrary) · [ScriptLibraryScope](types-host.md#scriptlibraryscope) · [ScriptWorkspace](types-host.md#scriptworkspace) · [SettingLibrary](types-host.md#settinglibrary) · [SettingLibraryContent](types-host.md#settinglibrarycontent) · [SettingLibraryConversation](types-host.md#settinglibraryconversation) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate) · [VariableConfig](types-host.md#variableconfig)
+Types: [CharacterConfigurationChange](types-host.md#characterconfigurationchange) · [CharacterOpeningMessage](types-host.md#characteropeningmessage) · [CharacterOpenings](types-host.md#characteropenings) · [EditorLibraryAddress](types-host.md#editorlibraryaddress) · [EditorLibrarySaveRequest](types-host.md#editorlibrarysaverequest) · [EditorLibrarySaveResult](types-host.md#editorlibrarysaveresult) · [EditorLibraryVersions](types-host.md#editorlibraryversions) · [GlobalSettingLibraryCollection](types-host.md#globalsettinglibrarycollection) · [RegexEditorTarget](types-host.md#regexeditortarget) · [RegexRule](types-host.md#regexrule) · [RegexRuleCollection](types-host.md#regexrulecollection) · [RegexRuleEditorCollection](types-host.md#regexruleeditorcollection) · [RegexRuleEditorImportResult](types-host.md#regexruleeditorimportresult) · [RegexRuleImportDocument](types-host.md#regexruleimportdocument) · [RegexRuleImportResult](types-host.md#regexruleimportresult) · [RegexRuleScope](types-host.md#regexrulescope) · [RegexRuleTarget](types-host.md#regexruletarget) · [RegexRuleTestResult](types-host.md#regexruletestresult) · [ScriptLibrary](types-host.md#scriptlibrary) · [ScriptLibraryScope](types-host.md#scriptlibraryscope) · [ScriptWorkspace](types-host.md#scriptworkspace) · [SettingLibrary](types-host.md#settinglibrary) · [SettingLibraryContent](types-host.md#settinglibrarycontent) · [SettingLibraryConversation](types-host.md#settinglibraryconversation) · [SettingLibraryEntry](types-host.md#settinglibraryentry) · [SettingLibraryEntryUpdate](types-host.md#settinglibraryentryupdate) · [VariableConfig](types-host.md#variableconfig)
 
 Source: [`packages/host/product-api/src/index.ts`](../../packages/host/product-api/src/index.ts)
 

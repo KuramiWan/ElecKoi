@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { characters, characterOpenings, variableConfigs, variableConfigVersions } from '@product-data/storage/sqlite/schema/common'
 import type { ElecKoiDatabase, ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
-import { characterOpeningsSchema, syncCharacterOpeningVersion, type CharacterOpenings } from '@shared/contracts/characterOpenings/schemas'
+import { characterOpeningsSchema, type CharacterOpenings } from '@shared/contracts/characterOpenings/schemas'
 import { DesktopError } from '@shared/foundation/DesktopError'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 
@@ -14,8 +14,8 @@ export function readCharacterOpenings(characterId: string, db: ElecKoiDatabase):
 }
 
 export function openingVariableVersionIds(characterId: string, db: ElecKoiDatabase): string[] {
-  return [...new Set(readCharacterOpenings(characterId, db).versions.flatMap(version => version.openingMessages
-    .map(message => message.variableVersionId || '').filter(Boolean)))]
+  return [...new Set(readCharacterOpenings(characterId, db).openingMessages
+    .map(message => message.variableVersionId || '').filter(Boolean))]
 }
 
 export class CharacterOpeningRepository {
@@ -35,11 +35,11 @@ export class CharacterOpeningRepository {
   saveInTransaction(characterId: string, input: CharacterOpenings, db: ElecKoiDatabase): CharacterOpenings {
     this.requireCharacter(characterId, db)
     if (input.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '开场白配置与角色不匹配。', { what: '角色开场白配置' })
-    const value = syncCharacterOpeningVersion(input)
+    const value = characterOpeningsSchema.parse(input)
     const ids = new Set(db.select({ id: variableConfigVersions.versionId }).from(variableConfigVersions)
       .where(eq(variableConfigVersions.characterId, characterId)).all().map(row => row.id))
     if (!db.select().from(variableConfigs).where(eq(variableConfigs.characterId, characterId)).get()) ids.add('variable-config-default')
-    for (const version of value.versions) for (const opening of version.openingMessages) {
+    for (const opening of value.openingMessages) {
       if (opening.variableVersionId && !ids.has(opening.variableVersionId)) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound,
         `开场白“${opening.title || '未命名开场白'}”绑定的变量版本不存在。`, { what: '开场白绑定的变量版本' })
     }

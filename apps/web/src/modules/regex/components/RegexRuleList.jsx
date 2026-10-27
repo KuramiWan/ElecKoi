@@ -45,12 +45,10 @@ export function RegexRuleList({
       {scopes.map((scope) => {
         const allRules = rulesForScope(collection, scope.id);
         const visibleRules = allRules.filter(matches);
-        const enabledCount = allRules.filter((rule) => rule.enabled).length;
         const scopeEnabled = collection[scope.enabledKey] !== false;
         return (
           <EditorLibraryGroup className="regex-rule-group" key={scope.id} title={scope.label}
             onContextMenu={event => onContextMenu?.(event, { scopeId: scope.id })}
-            count={`${scopeEnabled ? enabledCount : 0} / ${allRules.length}`}
             actions={!selection?.active && onToggleScope && <RuleSwitch checked={scopeEnabled} label={`启用${scope.label}`} disabled={busy} onChange={enabled => onToggleScope(scope.id, enabled)} />}>
                 {visibleRules.map((rule) => (
                   <div

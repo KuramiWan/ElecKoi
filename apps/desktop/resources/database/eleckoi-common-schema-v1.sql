@@ -179,6 +179,10 @@ CREATE TABLE IF NOT EXISTS `editor_library_versions` (`kind` TEXT NOT NULL, `sco
 
 CREATE TABLE IF NOT EXISTS `regex_libraries` (`scope` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `characterId` TEXT, `presetId` TEXT, `enabled` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`scope`, `ownerId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`presetId`) REFERENCES `agent_presets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , CHECK (`enabled` IN (0, 1)), CHECK ((`scope` = 'global' AND `ownerId` = '' AND `characterId` IS NULL AND `presetId` IS NULL) OR (`scope` = 'character' AND `characterId` IS NOT NULL AND `ownerId` = `characterId` AND `ownerId` <> '' AND `presetId` IS NULL) OR (`scope` = 'preset' AND `presetId` IS NOT NULL AND `ownerId` = `presetId` AND `ownerId` <> '' AND `characterId` IS NULL)));
 
-PRAGMA user_version = 14;
+CREATE TABLE IF NOT EXISTS `global_setting_libraries` (`id` TEXT NOT NULL, `sortIndex` INTEGER NOT NULL, `configurationJson` TEXT NOT NULL, PRIMARY KEY(`id`), CHECK (json_valid(`configurationJson`)));
+
+CREATE TABLE IF NOT EXISTS `global_setting_library_state` (`id` INTEGER NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`id`), CHECK (`id` = 1 AND `revision` >= 0));
+
+PRAGMA user_version = 13;
 
 COMMIT;

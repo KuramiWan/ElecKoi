@@ -1,2 +1,2 @@
 export { SettingLibraryRepository } from './SettingLibraryRepository'
-export { emptyEntry, normalizeSettingLibrary } from './settingLibraryNormalization'
+export { emptyEntry, normalizeSettingLibrary, validateSettingLibraryTree } from './settingLibraryNormalization'

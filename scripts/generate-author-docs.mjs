@@ -158,10 +158,10 @@ async function exampleDocuments(source) {
     variableVersion('example-variables', '从零开始', { score: 0, total: 0, level: 1 }),
     variableVersion('example-advanced-variables', '从十开始', { score: 10, total: 20, level: 2 }),
   ] };
-  const openingVersion = { id: 'example-openings', name: '示例开场白', enabled: true, createdAt: '', updatedAt: '',
+  const characterOpenings = { characterId: 'example-character', enabled: true,
     openingMessages: opening.opening_messages.map(message => ({ id: message.id, title: message.title, content: message.content, variableVersionId: message.variable_version_id, initialVariableStateJson: message.initial_variable_state })), defaultOpeningMessageId: opening.default_opening_message_id };
   const card = { format: 'eleckoi.character-card', version: 2,
-    character_openings: JSON.stringify({ characterId: 'example-character', activeVersionId: openingVersion.id, name: openingVersion.name, enabled: true, openingMessages: openingVersion.openingMessages, defaultOpeningMessageId: openingVersion.defaultOpeningMessageId, versions: [openingVersion] }),
+    character_openings: JSON.stringify(characterOpenings),
     character: { name: '原生 SDK 示例角色', group: 'SDK 示例', opening: frontend, show_opening: true, frontend_beauty_enabled: true }, assets: [],
     setting_library: JSON.stringify({ format: 'eleckoi.setting-library-snapshot', version: 1, active_version_id: 'example-settings', versions: [{ id: 'example-settings', name: '示例设定', entries: [], groups: [], prompt_positions: [], list_all_expanded: true, expanded_group_ids: [] }] }),
     variable_config: JSON.stringify(config),

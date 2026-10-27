@@ -1,5 +1,6 @@
+import { appendCharacterOpeningMessages } from '@shared/foundation/characterOpenings'
 import { CharacterOpeningRepository } from '@product-data/domain/characterOpenings'
-import type { CharacterOpenings, CharacterOpeningVersion } from '@shared/contracts/characterOpenings/schemas'
+import type { CharacterOpenings, CharacterOpeningMessage } from '@shared/contracts/characterOpenings/schemas'
 import { renderRegexEjs } from './regex-ejs'
 import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -32,6 +33,8 @@ import { CreatorProjectRepository } from '@product-data/domain/creatorStudio/Cre
 export { creatorCapabilities, creatorToolsets, creatorAuthoringInstructions } from '@product-data/domain/creatorStudio/capabilities'
 import { FrontendIndex, FrontendProjectRepository } from '@product-data/domain/frontends'
 import { SettingLibraryRepository } from '@product-data/domain/settingLibraries/SettingLibraryRepository'
+import { GlobalSettingLibraryRepository } from '@product-data/domain/globalSettingLibraries'
+import type { GlobalSettingLibraryCollection } from '@shared/contracts/settingLibrary/global'
 import { VariableConfigRepository } from '@product-data/domain/variables/VariableConfigRepository'
 import { VariableStateRepository } from '@product-data/domain/variables/VariableStateRepository'
 import {
@@ -185,6 +188,7 @@ class ProductDataStore {
   private transfers: CharacterTransferService | undefined
   private openings: CharacterOpeningRepository | undefined
   private settingLibraries: SettingLibraryRepository | undefined
+  private globalSettingLibraries: GlobalSettingLibraryRepository | undefined
   private variables: VariableConfigRepository | undefined
   private variableStates: VariableStateRepository | undefined
   private projects: CreatorProjectRepository | undefined
@@ -230,6 +234,7 @@ class ProductDataStore {
       this.personas = new PersonaRepository(store, conversationSync, media)
       this.openings = new CharacterOpeningRepository(store)
       this.settingLibraries = new SettingLibraryRepository(store)
+      this.globalSettingLibraries = new GlobalSettingLibraryRepository(store)
       this.variables = new VariableConfigRepository(store)
       this.variableStates = new VariableStateRepository(store, this.variables)
       this.conversations = new ConversationRepository(
@@ -650,7 +655,7 @@ class ProductDataStore {
     }
     const library = this.settingLibraries!.get(characterId)
     const runtimeLibrary = resolveSettingLibraryCharacterCardMacros(
-      this.settingLibraries!.runtimeContext(conversationId, { characterId }),
+      this.globalSettingLibraries!.merge(this.settingLibraries!.runtimeContext(conversationId, { characterId })),
       macroValues
     )
     return {
@@ -666,6 +671,16 @@ class ProductDataStore {
       },
       settingLibrary: runtimeLibrary ?? null
     }
+  }
+
+  readGlobalSettingLibraries(): GlobalSettingLibraryCollection {
+    this.databaseRepositories()
+    return this.globalSettingLibraries!.get()
+  }
+
+  saveGlobalSettingLibraries(value: GlobalSettingLibraryCollection): GlobalSettingLibraryCollection {
+    this.databaseRepositories()
+    return this.globalSettingLibraries!.save(value)
   }
 
   replaceConversationVariableState(conversationId: string, stateJson: string): string {
@@ -746,7 +761,7 @@ class ProductDataStore {
     const disabledToolGroupIds = options.preset ? disabledAgentPresetToolGroupIds(options.preset) : preset.disabledToolGroupIds()
     const rawSettingLibrary = mergeAgentPresetAndCharacterLibraries(
       options.preset ? projectAgentPresetRuntimeContext(options.preset) : preset.runtimeContext(),
-      this.settingLibraries!.runtimeContext(conversationId, characterBinding)
+      this.globalSettingLibraries!.merge(this.settingLibraries!.runtimeContext(conversationId, characterBinding))
     )
     const macroSettingLibrary = resolveSettingLibraryCharacterCardMacros(rawSettingLibrary, macroValues)
     const settingLibrary = macroSettingLibrary && regexRules
@@ -951,13 +966,13 @@ class ProductDataStore {
   }
 
   // RETIRE WHEN: 停止支持含开场白的 v3 设定库文件后，连同 Remote、Client 分流及对应回归删除。
-  importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningVersion[]): SettingLibrary {
+  importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningMessage[]): SettingLibrary {
     const repositories = this.databaseRepositories()
     return repositories.store.withWriteTx(db => {
       const saved = repositories.settingLibraries.saveInTransaction(characterId, library, db)
       if (openingImports.length) {
         const current = repositories.openings.get(characterId, db)
-        repositories.openings.saveInTransaction(characterId, { ...current, versions: [...current.versions, ...openingImports] }, db)
+        repositories.openings.saveInTransaction(characterId, appendCharacterOpeningMessages(current, openingImports, () => `opening-${randomUUID()}`), db)
       }
       return saved
     })
@@ -1263,6 +1278,7 @@ class ProductDataStore {
     this.transfers = undefined
     this.openings = undefined
     this.settingLibraries = undefined
+    this.globalSettingLibraries = undefined
     this.variables = undefined
     this.variableStates = undefined
     this.projects = undefined

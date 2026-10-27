@@ -33,11 +33,31 @@
         "id": "eleckoiCharacterOpenings",
         "kind": "service",
         "title": "角色开场白服务",
-        "description": "读取、保存和订阅角色独立开场白及命名版本。",
+        "description": "读取、保存和订阅角色的多个独立开场白。",
         "mode": "call",
         "scope": "client",
         "relation": "provides",
-        "members": ["getSnapshot", "subscribe", "read", "save"]
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "read",
+          "save"
+        ]
+      },
+      {
+        "id": "eleckoiGlobalSettingLibraries",
+        "kind": "service",
+        "title": "全局设定库服务",
+        "description": "独立读取、保存、启停和删除全局设定库，不参与角色版本。",
+        "mode": "call",
+        "scope": "client",
+        "relation": "provides",
+        "members": [
+          "getSnapshot",
+          "subscribe",
+          "read",
+          "save"
+        ]
       },
       {
         "id": "eleckoiSettingLibraries",

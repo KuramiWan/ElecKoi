@@ -228,6 +228,16 @@ describe('Shipped Host tool-result composition', () => {
       content: `开始-${index}|${'合成正文𠮷😀'.repeat([0, Math.floor(count / 2), count - 1].includes(index) ? 20_001 : 1)}|末尾关键词-${index}`,
       agentReadStrategy: 'normal' }))
     data.saveSettingLibrary(character.id, { ...library, entries })
+    const globalEntries = entries.map(entry => ({ ...entry, title: `全局${entry.title}`, content: `全局${entry.content}` }))
+    const savedGlobals = data.saveGlobalSettingLibraries({ revision: 0, libraries: [{ id: 'synthetic-shared-library', name: '合成共享库', enabled: true,
+      entries: globalEntries, groups: [], promptPositions: [], expandedGroupIds: [], listAllExpanded: false, createdAt: '', updatedAt: '' },
+      { id: 'synthetic-shared-rules', name: '合成触发规则', enabled: true, groups: [], promptPositions: [], expandedGroupIds: [], listAllExpanded: false, createdAt: '', updatedAt: '',
+        entries: [
+          { ...emptyEntry('synthetic-required'), title: '合成全局必读', content: '合成全局必读标记', agentReadStrategy: 'required' },
+          { ...emptyEntry('synthetic-keyword'), title: '合成全局关键词', content: '合成全局关键词正文', agentReadStrategy: 'keyword', keywords: ['合成'] },
+          { ...emptyEntry('synthetic-reference'), title: '合成全局引用', content: '合成全局引用标记', dynamicMode: 'ejs_reference' },
+          { ...emptyEntry('synthetic-controller'), title: '合成全局控制器', content: '<%- await getwi("全局设定库/合成触发规则/合成全局引用") %>', contentMode: 'ejs', agentReadStrategy: 'normal' },
+        ] }] })
     const config = data.readVariableConfig(character.id)
     const variables = Array.from({ length: count }, (_, index) => ({ id: `synthetic-variable-${index}`, title: `合成变量-${String(index).padStart(5, '0')}`,
       objectId: '', enabled: true, type: 'string', defaultValue: JSON.stringify(`合成变量正文-${index}`),
@@ -238,14 +248,21 @@ describe('Shipped Host tool-result composition', () => {
     const copy = data.duplicateCharacter(character.id)
     expect(copy.collection.items).toHaveLength(2)
     character = copy.collection.items.find(item => item.id === copy.characterId)
+    expect(data.readGlobalSettingLibraries()).toEqual(savedGlobals)
+    expect(data.readSettingLibrary(character.id).entries).toHaveLength(count)
     const chat = await ctx.eleckoiConversationsApi.create({ metadata: { characterId: character.id } })
     const roleplayId = await ctx.eleckoiRoleplaySessions.preparePrompt(chat.conversation.id, '合成大量条目续读')
     const roleplay = (await ctx.sessionController.resolveAgent(roleplayId)).agent
+    const globalCatalog = await roleplay.ctx.tools.execute({ callId: 'synthetic-global-catalog', name: 'eleckoi_glob_setting_files',
+      arguments: { path: '全局设定库/合成触发规则' }, agent: roleplay, signal: new AbortController().signal })
+    expect(globalCatalog.isError).not.toBe(true)
+    expect(JSON.parse(globalCatalog.content[0].text).required_entries.map(item => item.title)).toContain('合成全局关键词')
     const studio = await ctx.eleckoiCreatorStudioRuntime.create(character.id)
     const creator = (await ctx.sessionController.resolveAgent(studio.sessionId)).agent
     const receipts = []
     for (const [agent, toolName, args, keyword] of [
       [roleplay, 'eleckoi_read_setting_files', { paths: entries.map(entry => entry.title) }, '末尾关键词-'],
+      [roleplay, 'eleckoi_read_setting_files', { paths: [...globalEntries.map(entry => `全局设定库/合成共享库/${entry.title}`), '全局设定库/合成触发规则/合成全局控制器'] }, '末尾关键词-'],
       [roleplay, 'eleckoi_read_variables', { paths: variables.map(variable => `/${variable.title}`) }, '合成变量正文-'],
       [creator, 'eleckoi_call_capability', { capability_id: 'settings.list', arguments: {} }, '合成目录-'],
     ]) {
@@ -282,7 +299,7 @@ describe('Shipped Host tool-result composition', () => {
           : { type: 'tool-call', id: `synthetic-profile-call-${step++}`, name: step === 1 ? toolName : reader, arguments: JSON.stringify(parameters) } }
         yield { type: 'finish', reason: { kind: done ? 'stop' : 'tool-calls' } }
       })
-      await ctx.sessionController.prompt({ sessionId: agent.id, requestId: `synthetic-${toolName}`, mode: 'queue',
+      await ctx.sessionController.prompt({ sessionId: agent.id, requestId: `synthetic-${toolName}-${receipts.length}`, mode: 'queue',
         content: [{ type: 'text', text: '合成条目全部续读及末尾关键词查找' }] }, new AbortController().signal)
       await agent.whenIdle()
       expect(recovered.length, JSON.stringify({ trace, ends: agent.session.snapshotEvents().filter(event => event.type === 'turn/end' || event.type === 'assistant/error') })).toBe(original?.length)
@@ -296,6 +313,12 @@ describe('Shipped Host tool-result composition', () => {
       expect(save).toHaveBeenCalledOnce()
       save.mockRestore()
       const wire = await captureSerializedRequest('deepseek_messages', finalRequest)
+      if (agent === roleplay) {
+        expect(finalRequest.messages.some(message => JSON.stringify(message).includes('合成全局必读标记'))).toBe(true)
+        if (args.paths?.includes('全局设定库/合成触发规则/合成全局控制器')) {
+          expect(finalRequest.messages.some(message => JSON.stringify(message).includes('合成全局引用标记'))).toBe(true)
+        }
+      }
       const toolOutputs = finalRequest.messages.filter(message => message.role === 'tool')
         .map(message => message.content.filter(block => block.type === 'text').map(block => block.text).join(''))
       const wireOutputs = wire.messages.flatMap(message => message.content.filter(block => block.type === 'tool_result')
@@ -311,6 +334,7 @@ describe('Shipped Host tool-result composition', () => {
     await Promise.all([ctx.sessions.flush(roleplay.session), ctx.sessions.flush(creator.session)])
     await ctx.fiber.dispose()
     const restarted = await profileFixture(platform, root)
+    expect(restarted.ctx.eleckoiProductData.readGlobalSettingLibraries()).toEqual(savedGlobals)
     await restarted.ctx.eleckoiRoleplaySessions.prepareSessionAccess(chat.conversation.id)
     await restarted.ctx.eleckoiCreatorStudioRuntime.open(studio.sessionId)
     for (const receipt of receipts) {

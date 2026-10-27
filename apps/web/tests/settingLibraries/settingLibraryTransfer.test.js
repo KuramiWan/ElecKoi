@@ -156,9 +156,7 @@ describe("setting-library versions and transfer", () => {
         variable_version_id: 'synthetic-legacy-version', initial_variable_state: '{"score":7}' }],
       default_opening_message_id: 'legacy-opening' }, ...exported.entries] };
     const imported = importLibraryAsVersion(source, parseSettingLibraryFile(JSON.stringify(legacy), 'eleckoi'));
-    expect(imported.openingImports[0]).toMatchObject({ enabled: false, defaultOpeningMessageId: 'legacy-opening', openingMessages: [
-      { id: 'legacy-opening', content: '合成旧开场正文', variableVersionId: 'synthetic-legacy-version', initialVariableStateJson: '{"score":7}' },
-    ] });
+    expect(imported.openingImports).toMatchObject([{ id: 'legacy-opening', content: '合成旧开场正文', variableVersionId: 'synthetic-legacy-version', initialVariableStateJson: '{"score":7}' }]);
     expect(imported.entries.every(entry => entry.kind !== 'opening')).toBe(true);
     expect(imported.entries).toHaveLength(10002);
   });

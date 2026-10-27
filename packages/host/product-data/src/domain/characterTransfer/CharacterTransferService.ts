@@ -1,3 +1,4 @@
+import { decodeLegacyCharacterOpeningVersions } from '@shared/foundation/characterOpenings'
 import { CharacterOpeningRepository } from '@product-data/domain/characterOpenings'
 import { characterOpeningsSchema } from '@shared/contracts/characterOpenings/schemas'
 import { decodeLegacyOpeningSnapshot } from './legacyOpeningSnapshot'
@@ -216,7 +217,11 @@ export class CharacterTransferService {
         if (variables) this.variables.restoreInTransaction(characterId, variables, db)
         if (library) this.settingLibraries.saveInTransaction(characterId, library, db)
         const openingSnapshot = decoded.packageData.characterOpeningsJson
-        const openings = openingSnapshot ? characterOpeningsSchema.parse({ ...JSON.parse(openingSnapshot), characterId })
+        const rawOpenings = openingSnapshot ? JSON.parse(openingSnapshot) : undefined
+        // RETIRE WHEN: 停止支持含开场白 versions 的早期 v2 文件后，删除该旧结构导入分支。
+        const openings = openingSnapshot ? rawOpenings && typeof rawOpenings === 'object' && Object.hasOwn(rawOpenings, 'versions')
+          ? decodeLegacyCharacterOpeningVersions({ ...rawOpenings, characterId }, () => `opening-${randomUUID()}`)
+          : characterOpeningsSchema.parse({ ...rawOpenings, characterId })
           : decoded.openings ? { ...decoded.openings, characterId }
             : decoded.packageData.settingLibraryJson ? decodeLegacyOpeningSnapshot(decoded.packageData.settingLibraryJson, characterId) : undefined
         if (openings) this.openings.saveInTransaction(characterId, openings, db)

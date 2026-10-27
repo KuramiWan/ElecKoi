@@ -1,6 +1,7 @@
 import { ELECKOI_FAILURE_CODES } from "@shared/contracts/errors/codes";
 import { DesktopError } from "@shared/foundation/DesktopError";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { EditorScopeTabs } from '../../../ui/ui/EditorScopeTabs.jsx';
 import { Copy, NotePencil, Plus, Power, Trash } from "../../../ui/icons/interfaceIcons.jsx";
 import { EditorContextMenu, useEditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
@@ -33,8 +34,11 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
   const { compact } = useEditorPresentation();
   const context = useEditorContextMenu();
   const ownerScope = presetId === undefined ? 'character' : 'preset', ownerId = presetId ?? characterId;
+  const [activeScope, setActiveScope] = useState(ownerScope), scopePanelId = useId();
+  useEffect(() => setActiveScope(ownerScope), [ownerScope, ownerId]);
   const editor = useMemo(() => regexRules.editor(ownerScope, ownerId), [regexRules, ownerScope, ownerId]);
   const scopes = useMemo(() => REGEX_SCOPES.filter(scope => scope.id === 'Global' || scope.id === (ownerScope === 'preset' ? 'AgentPreset' : 'Character')), [ownerScope]);
+  const visibleScopes = scopes.filter(scope => scope.id === (activeScope === 'global' ? 'Global' : ownerScope === 'preset' ? 'AgentPreset' : 'Character'));
   const [collection, setCollection] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [selectedId, setSelectedId] = useState("");
@@ -65,7 +69,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
   const dirty = JSON.stringify(collection) !== JSON.stringify(persisted) || libraryVersions.dirty;
   const ruleItems = scopes.flatMap(scope => rulesForScope(collection, scope.id));
   const multi = useEditorMultiSelect(ruleItems.map(rule => rule.id), JSON.stringify([ownerScope, ownerId]));
-  const visibleIds = ruleItems.filter(rule => !query.trim() || [rule.name, rule.pattern, rule.replacement].some(text => text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))).map(rule => rule.id);
+  const visibleIds = visibleScopes.flatMap(scope => rulesForScope(collection, scope.id)).filter(rule => !query.trim() || [rule.name, rule.pattern, rule.replacement].some(text => text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))).map(rule => rule.id);
   const selected = useMemo(() => collection ? findRegexRule(collection, selectedId) : null, [collection, selectedId]);
   useEffect(() => { context.close(); }, [ownerScope, ownerId, saving, multi.active]);
   dirtyRef.current = dirty;
@@ -219,6 +223,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
   function moveSelectedScope(nextScope) {
     if (!selected || nextScope === selected.scope) return;
     changeCollection(moveRegexRuleToScope(collectionRef.current, selected.scope, nextScope, selected.rule.id));
+    setActiveScope(nextScope === 'Global' ? 'global' : ownerScope);
   }
 
   function askDeleteSelected() {
@@ -243,14 +248,14 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
   }
   const contextRule = context.menu?.target.ruleId && rulesForScope(collection, context.menu.target.scopeId).find(rule => rule.id === context.menu.target.ruleId);
   const menuActions = context.menu?.target.ruleId ? contextRule ? ruleActions(contextRule, context.menu.target.scopeId) : []
-    : scopes.filter(scope => !context.menu?.target.scopeId || scope.id === context.menu.target.scopeId)
+    : visibleScopes.filter(scope => !context.menu?.target.scopeId || scope.id === context.menu.target.scopeId)
       .map(scope => ({ label: `新建${scope.label}`, Icon: Plus, run: () => addRule(scope.id) }));
   function openContext(event, target) {
     event.preventDefault(); event.stopPropagation();
     if (!multi.active) context.open(event, target);
   }
 
-  const createItems = scopes.map(scope => ({ label: scope.label, disabled: saving || !libraryVersions.ready, run: () => addRule(scope.id) }));
+  const createItems = visibleScopes.map(scope => ({ label: scope.label, disabled: saving || !libraryVersions.ready, run: () => addRule(scope.id) }));
   return (
     <EditorSidebarLayout className={`regex-layout${multi.active ? ' is-multiselect' : ''}`} aria-label="正则配置" onMouseDown={() => setAddOpen(false)}
       inspectorTitle={selected?.rule.name || '编辑正则'} onCloseInspector={closeEditor}
@@ -274,11 +279,14 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
           onManage={() => setManagerOpen(true)} save={<SaveControl dirty={dirty} error={error || libraryVersions.error} notice={notice} saving={saving} onSave={save} />} />
         <EditorSelectionBar selection={multi} visibleIds={visibleIds} disabled={saving} onCopy={() => { changeCollection(current => duplicateRegexRules(current, [...multi.selected])); multi.clear(); }}
           onDelete={() => setDeleteTarget({ ids: [...multi.selected], title: `删除选中的 ${multi.selected.size} 条正则？`, message: '规则会在保存后删除。' })} />
-        <div className="regex-list-scroll editor-sidebar-directory" onContextMenu={event => openContext(event, {})} onMouseDown={(event) => { if (!event.target.closest(".regex-rule-row")) setSelectedId(""); }}>
+        <div id={scopePanelId} role="tabpanel" aria-label={activeScope === 'global' ? '全局正则' : '角色正则'} className="regex-list-scroll editor-sidebar-directory" onContextMenu={event => openContext(event, {})} onMouseDown={(event) => { if (event.button === 0 && !event.target.closest(".regex-rule-row")) setSelectedId(""); }}>
+        <EditorScopeTabs value={activeScope} ownerValue={ownerScope} ownerLabel={ownerScope === 'preset' ? '预设' : '角色'} panelId={scopePanelId} onChange={next => {
+          setActiveScope(next); setSelectedId(''); setEditing(false); setDraggedId(''); context.close(); if (multi.active) multi.toggle();
+        }} />
           <EditorCollectionSurface grouped>
           {!collection && <p className="regex-loading" role={error ? 'alert' : 'status'}>{error || '正在读取…'}</p>}
           {collection && <RegexRuleList
-            scopes={scopes}
+            scopes={visibleScopes}
             collection={collection}
             selection={multi}
             busy={saving}
@@ -310,6 +318,7 @@ export const RegexRulesPanel = forwardRef(function RegexRulesPanel({ characterId
         <RegexRulesManager
           libraryVersions={libraryVersions}
           ownerScope={ownerScope}
+          initialScope={activeScope}
           busy={saving}
           onClose={() => setManagerOpen(false)}
         />

@@ -35,7 +35,7 @@ import { bestEffort } from "../../utils/swallowedFailure.js";
 
 const EDITOR_SECTIONS = [
   { id: "card", label: "基础资料", Icon: IdentificationCard },
-  { id: "openings", label: "角色开场白", Icon: ChatCircleDots },
+  { id: "openings", label: "开场白", Icon: ChatCircleDots },
   { id: "lore", label: "设定库", Icon: BookOpenText },
   { id: "variables", label: "变量", Icon: TreeStructure },
   { id: "regex", label: "正则", Icon: BracketsCurly },
@@ -383,6 +383,7 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
         ref={settingLibraryRef}
         characterId={character.id}
         settingLibraries={characterConfiguration.settingLibraries}
+        globalSettingLibraries={characterConfiguration.globalSettingLibraries}
         onDirtyChange={setLoreDirty}
       />;
       editorContent = renderCharacterEditorSection?.("lore", {

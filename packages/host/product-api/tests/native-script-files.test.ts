@@ -56,13 +56,13 @@ it('serves registered modules and relative resources through the actual Host, Re
   expect(savedOpenings.openingMessages[0].content).toBe('合成独立开场白')
   expect((await invoke('readSettingLibrary', { characterId: 'synthetic-character' })).entries).toEqual([])
   const settingLibrary = await invoke('readSettingLibrary', { characterId: 'synthetic-character' })
-  const importedOpening = { ...savedOpenings.versions[0], id: 'synthetic-imported-opening', name: '合成导入开场白' }
+  const importedOpening = { ...savedOpenings.openingMessages[0], id: 'synthetic-imported-opening', title: '合成导入开场白' }
   await invoke('importSettingLibrary', { characterId: 'synthetic-character', library: settingLibrary, openingImports: [importedOpening] })
   const imported = await invoke('readCharacterOpenings', { characterId: 'synthetic-character' })
-  expect(imported.activeVersionId).toBe(savedOpenings.activeVersionId)
-  expect(imported.openingMessages).toEqual(savedOpenings.openingMessages)
-  expect(imported.versions.at(-1)).toEqual(importedOpening)
-  const invalid = { ...importedOpening, id: 'synthetic-invalid-opening', openingMessages: [{ ...importedOpening.openingMessages[0], variableVersionId: 'synthetic-missing-variables' }] }
+  expect(imported.defaultOpeningMessageId).toBe(savedOpenings.defaultOpeningMessageId)
+  expect(imported.openingMessages.slice(0, -1)).toEqual(savedOpenings.openingMessages)
+  expect(imported.openingMessages.at(-1)).toEqual(importedOpening)
+  const invalid = { ...importedOpening, id: 'synthetic-invalid-opening', variableVersionId: 'synthetic-missing-variables' }
   await expect(invoke('importSettingLibrary', { characterId: 'synthetic-character', library: { ...settingLibrary, name: '合成不应保存' }, openingImports: [invalid] })).rejects.toThrow('变量版本不存在')
   expect((await invoke('readSettingLibrary', { characterId: 'synthetic-character' })).name).toBe(settingLibrary.name)
   expect(await invoke('readCharacterOpenings', { characterId: 'synthetic-character' })).toEqual(imported)

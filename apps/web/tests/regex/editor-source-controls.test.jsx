@@ -68,7 +68,7 @@ it.each(['regex', 'scripts'].flatMap(kind => ['character', 'preset'].flatMap(sco
     }
     saved.mockClear();
     const render = () => root.render(<EditorPresentationContext.Provider value={{ compact }}>{editor(kind, scope, model, ref)}</EditorPresentationContext.Provider>);
-    const group = () => node.querySelectorAll('.editor-library-group')[1];
+    const group = () => node.querySelector(`.editor-library-group[aria-label="${scope === 'preset' ? '预设' : '角色'}${kind === 'regex' ? '正则' : '脚本'}"]`);
     const header = () => group().querySelector('.editor-library-header input');
     const itemSwitches = () => [...group().querySelectorAll('.editor-library-rows input[type=checkbox]')];
     await act(async () => render());
@@ -85,7 +85,9 @@ it.each(['regex', 'scripts'].flatMap(kind => ['character', 'preset'].flatMap(sco
     expect(header().checked).toBe(false);
     expect(itemSwitches().length).toBeGreaterThan(1);
     expect(itemSwitches().every(input => !input.checked)).toBe(true);
+    await act(() => [...node.querySelectorAll('.editor-scope-tabs [role=tab]')].find(tab => tab.textContent === '全局').click());
     expect(node.querySelectorAll('.editor-library-group')[0].querySelector('.editor-library-header input').checked).toBe(true);
+    await act(() => [...node.querySelectorAll('.editor-scope-tabs [role=tab]')].find(tab => tab.textContent === (scope === 'preset' ? '预设' : '角色')).click());
     await act(() => header().click());
     expect(itemSwitches().every(input => input.checked)).toBe(true);
     await act(async () => expect(await ref.current.save()).toBe(true));

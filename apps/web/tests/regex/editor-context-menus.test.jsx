@@ -20,6 +20,7 @@ const scenarios = [
   { kind: 'scripts', noun: '脚本', directory: '.script-groups', row: '.script-list-row', name: '.script-list-name', inspector: '.script-inspector' },
 ];
 const labels = { global: '全局', character: '角色', preset: '预设' };
+const switchScope = async scope => act(() => [...node.querySelectorAll('.editor-scope-tabs [role=tab]')].find(tab => tab.textContent === labels[scope]).click());
 async function mount(scenario, ownerScope = 'character', empty = false, trees, pendingVersions = false) {
   const ownerId = `synthetic-${ownerScope}`;
   const owners = { global: '', [ownerScope]: ownerId };
@@ -67,9 +68,23 @@ async function action(label) {
 async function save() { await act(async () => node.querySelector('.editor-collection-toolbar .setting-library-save-button').click()); }
 
 describe('editor context menus', () => {
+  it.each(scenarios.flatMap(scenario => ['character', 'preset'].map(ownerScope => ({ ...scenario, ownerScope }))))('$kind $ownerScope right-clicks keep the editor closed or preserve the current editor', async scenario => {
+    const { group } = await mount(scenario, scenario.ownerScope);
+    await rightClick(group(scenario.ownerScope).querySelector(scenario.row));
+    expect(node.querySelector(scenario.inspector)).toBeNull();
+    await act(() => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true, composed: true })));
+    await act(() => group(scenario.ownerScope).querySelector(scenario.name).click());
+    const inspector = node.querySelector(scenario.inspector); expect(inspector).toBeTruthy();
+    const directory = node.querySelector(scenario.directory);
+    await act(() => directory.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true })));
+    await rightClick(directory);
+    expect(node.querySelector(scenario.inspector)).toBe(inspector);
+    expect(node.querySelector('.is-closing')).toBeNull();
+  });
   it.each(scenarios.flatMap(scenario => ['character', 'preset'].map(ownerScope => ({ ...scenario, ownerScope }))))('$kind $ownerScope toggles all item switches with the scope, saves their states and dims disabled entries', async scenario => {
     const { group, write } = await mount(scenario, scenario.ownerScope);
     for (const scope of ['global', scenario.ownerScope]) {
+      await switchScope(scope);
       const headerSwitch = group(scope).querySelector('.editor-library-header input[type="checkbox"]');
       expect(headerSwitch).toBeTruthy();
       const row = () => group(scope).querySelector(scenario.row);
@@ -114,14 +129,15 @@ describe('editor context menus', () => {
     const { write, group } = await mount(scenario, scenario.ownerScope, true);
     await rightClick(node.querySelector(scenario.directory));
     const available = menuLabels();
-    expect(available).toContain(`新建全局${scenario.noun}`);
+    expect(available).not.toContain(`新建全局${scenario.noun}`);
     expect(available).toContain(`新建${labels[scenario.ownerScope]}${scenario.noun}`);
     expect(available.some(label => label.includes(scenario.ownerScope === 'character' ? '预设' : '角色'))).toBe(false);
     for (const [index, scope] of ['global', scenario.ownerScope].entries()) {
+      await switchScope(scope);
       await rightClick(group(scope).querySelector('.editor-library-heading'));
       await action(scenario.kind === 'scripts' ? '新建脚本' : `新建${labels[scope]}${scenario.noun}`);
       expect(group(scope).querySelectorAll(scenario.row)).toHaveLength(1);
-      if (index === 0) expect(group(scenario.ownerScope).querySelectorAll(scenario.row)).toHaveLength(0);
+      if (index === 0) { await switchScope(scenario.ownerScope); expect(group(scenario.ownerScope).querySelectorAll(scenario.row)).toHaveLength(0); await switchScope(scope); }
       await save();
       if (scenario.kind !== 'regex') expect(write.mock.lastCall[0]).toEqual([expect.objectContaining({ scope, ownerId: scope === 'global' ? '' : `synthetic-${scenario.ownerScope}` })]);
     }
@@ -132,15 +148,21 @@ describe('editor context menus', () => {
     const { write, group } = await mount(scenario);
     expect(node.querySelector('.editor-row-menu')).toBeNull();
     await act(() => group('character').querySelector(scenario.name).click());
+    await switchScope('global');
     await rightClick(group('global').querySelector(scenario.row));
     await action('启用');
     expect(group('global').querySelector(scenario.row).querySelector('input[type="checkbox"]').checked).toBe(true);
+    await switchScope('character');
     expect(group('character').querySelector(scenario.row).querySelector('input[type="checkbox"]').checked).toBe(false);
+    await switchScope('global');
     await rightClick(group('global').querySelector(scenario.row));
     await action('复制');
     expect(group('global').querySelectorAll(scenario.row)).toHaveLength(2);
+    await switchScope('character');
     expect(group('character').querySelectorAll(scenario.row)).toHaveLength(1);
+    await switchScope('global');
     expect(group('global').textContent).toContain('合成全局条目');
+    await switchScope('global');
     await rightClick(group('global').querySelector(scenario.row));
     await action('重命名');
     expect(node.querySelector(`${scenario.inspector} input`).value).toBe('合成全局条目');

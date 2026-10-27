@@ -140,7 +140,7 @@ function readTool(ctx) {
 function patchTool(ctx) {
   return defineTool({
     name: 'eleckoi_apply_setting_patch',
-    description: '对当前对话的虚拟设定执行一个结构化文件操作，修改只保存为当前对话差异，不会改动作者原设定。支持 write_file、edit_file、make_directory、move_file、move_directory、delete_file、delete_directory；路径使用 / 分隔且不带 .md 后缀。先用 Glob 或 Read 确认真实路径；一次调用只执行一个操作，失败时不提交。',
+    description: '对当前对话的角色虚拟设定执行一个结构化文件操作，修改只保存为当前对话差异，不会改动作者原设定。全局设定库是共享只读资源，须在全局设定库编辑器修改。支持 write_file、edit_file、make_directory、move_file、move_directory、delete_file、delete_directory；路径使用 / 分隔且不带 .md 后缀。先用 Glob 或 Read 确认真实路径；一次调用只执行一个操作，失败时不提交。',
     parameters: {
       operation: { type: 'string', required: true, enum: ['write_file', 'edit_file', 'make_directory', 'move_file', 'move_directory', 'delete_file', 'delete_directory'], description: '要执行的单个文件操作。' },
       path: { type: 'string', required: true, description: '源文件或目录的完整逻辑路径。' },

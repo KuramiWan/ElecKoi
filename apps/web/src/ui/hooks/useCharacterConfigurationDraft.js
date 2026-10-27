@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { resolveFailure } from '../../utils/failureText.js';
 
-export function useCharacterConfigurationDraft({ characterId, configuration, onDirtyChange, label = '设定库', onAdopt, prepareSave }) {
+export function useCharacterConfigurationDraft({ characterId, configuration, onDirtyChange, label = '设定库', onAdopt, prepareSave, rebaseAfterSave, saveShortcut = true }) {
   const [library, setLibrary] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -10,8 +10,8 @@ export function useCharacterConfigurationDraft({ characterId, configuration, onD
   const libraryRef = useRef(null);
   const persistedRef = useRef(null);
   const savePromiseRef = useRef(null);
-  const callbacks = useRef({ onAdopt, prepareSave });
-  callbacks.current = { onAdopt, prepareSave };
+  const callbacks = useRef({ onAdopt, prepareSave, rebaseAfterSave });
+  callbacks.current = { onAdopt, prepareSave, rebaseAfterSave };
   const dirty = useMemo(() => JSON.stringify(library) !== JSON.stringify(persisted), [library, persisted]);
 
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
@@ -81,6 +81,10 @@ export function useCharacterConfigurationDraft({ characterId, configuration, onD
           libraryRef.current = saved;
           setLibrary(saved);
           setSaveNotice('saved');
+        } else if (callbacks.current.rebaseAfterSave) {
+          const rebased = callbacks.current.rebaseAfterSave(libraryRef.current, saved);
+          libraryRef.current = rebased;
+          setLibrary(rebased);
         }
         return true;
       } catch (cause) {
@@ -104,6 +108,7 @@ export function useCharacterConfigurationDraft({ characterId, configuration, onD
 
   useEffect(() => {
     function handleSaveShortcut(event) {
+      if (!saveShortcut) return;
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLocaleLowerCase() !== 's') return;
       event.preventDefault();
       if (dirty && !saving) void save();

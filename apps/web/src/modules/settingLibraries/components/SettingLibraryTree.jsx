@@ -62,6 +62,7 @@ export function SettingTreeNode({ item, data, itemProps, style, level, isSelecte
             className="setting-library-tree-switch"
             role="switch"
             aria-checked={data.enabled}
+            disabled={actions?.saving}
             aria-label={`${data.enabled ? "停用" : "启用"}${data.label}`}
             onDoubleClick={event => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}

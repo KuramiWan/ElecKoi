@@ -28,14 +28,14 @@ async function fixture() {
 }
 
 describe('Creator authoring matches the native setting, schema, script and regex contracts', { timeout: 30_000 }, () => {
-  it('writes all independent openings, preserves archived versions and round-trips the complete card', async () => {
+  it('writes all independent openings, preserves every alternate and round-trips the complete card', async () => {
     const f = await fixture(), initial = f.data.readCharacterOpenings(f.characterId), config = f.data.readVariableConfig(f.characterId);
     const indexes = [0, 5_000, 10_000];
     const messages = Array.from({ length: 10_001 }, (_, index) => ({ id: `synthetic-opening-${index}`, title: `合成开场-${index}`,
       content: `他在开场-${index}。${indexes.includes(index) ? '合成长正文他𠮷'.repeat(20_000) : ''}末尾他-${index}`,
       ...(index % 2 ? { variableVersionId: config.activeVersionId } : {}), initialVariableStateJson: JSON.stringify({ synthetic: index }) }));
-    const seed = f.data.saveCharacterOpenings(f.characterId, { ...initial, enabled: true, openingMessages: messages,
-      defaultOpeningMessageId: messages[5_000]!.id, versions: [...initial.versions, { ...initial.versions[0]!, id: 'synthetic-archived-version', name: '合成存档版本' }] });
+    f.data.saveCharacterOpenings(f.characterId, { ...initial, enabled: true, openingMessages: messages,
+      defaultOpeningMessageId: messages[5_000]!.id });
     const other = f.data.readCharacterOpenings('synthetic-other-character');
     const settings = f.data.readSettingLibrary(f.characterId);
     const desired = messages.map(message => ({ ...message, content: message.content.replaceAll('他', '她') }));
@@ -44,7 +44,7 @@ describe('Creator authoring matches the native setting, schema, script and regex
     expect(updated.defaultOpeningMessageId).toBe(messages[5_000]!.id);
     expect(f.data.readSettingLibrary(f.characterId)).toEqual(settings);
     expect(f.data.readCharacterOpenings('synthetic-other-character')).toEqual(other);
-    expect(updated.versions.find((version: any) => version.id === 'synthetic-archived-version')).toEqual(seed.versions.find(version => version.id === 'synthetic-archived-version'));
+    expect(Object.hasOwn(updated, 'versions')).toBe(false);
     for (const index of indexes) expect(updated.openingMessages[index].content.endsWith(`末尾她-${index}`)).toBe(true);
     const chat = f.data.createConversation({ metadata: { characterId: f.characterId } });
     expect(chat.messages[0]!.content).toBe(desired[5_000]!.content);
@@ -55,6 +55,19 @@ describe('Creator authoring matches the native setting, schema, script and regex
       const imported = f.data.commitCharacterImports(preview.token).importedCharacterIds[0]!;
       expect(f.data.readCharacterOpenings(imported).openingMessages).toEqual(desired);
     }
+    const earlyCard = JSON.parse(Buffer.from(f.data.exportCharacter(f.characterId, 'json').base64, 'base64').toString('utf8'));
+    const oldSnapshot = { id: 'synthetic-early-current', name: '合成旧结构', enabled: updated.enabled,
+      openingMessages: desired, defaultOpeningMessageId: updated.defaultOpeningMessageId, createdAt: '', updatedAt: '' };
+    earlyCard.character_openings = JSON.stringify({ ...updated, activeVersionId: oldSnapshot.id, name: oldSnapshot.name,
+      versions: [oldSnapshot, { ...oldSnapshot, id: 'synthetic-early-other', openingMessages: [{ ...desired[0]!, content: '合成早期文件中的另一条正文' }], defaultOpeningMessageId: desired[0]!.id }] });
+    const earlyPreview = f.data.prepareCharacterImports([{ displayName: 'synthetic-early-card.json', mimeType: 'application/json',
+      base64: Buffer.from(JSON.stringify(earlyCard)).toString('base64') }], 'eleckoi');
+    const earlyId = f.data.commitCharacterImports(earlyPreview.token).importedCharacterIds[0]!;
+    const recovered = f.data.readCharacterOpenings(earlyId);
+    expect(recovered.openingMessages.slice(0, desired.length)).toEqual(desired);
+    expect(recovered.openingMessages).toHaveLength(desired.length + 1);
+    expect(recovered.openingMessages.at(-1)).toMatchObject({ content: '合成早期文件中的另一条正文' });
+    expect(Object.hasOwn(recovered, 'versions')).toBe(false);
     await f.ctx.fiber.dispose();
     const reopened = new Context(); cleanups.push(() => reopened.fiber.dispose()); await reopened.plugin(productDataPlugin);
     expect(reopened.eleckoiProductData.readCharacterOpenings(f.characterId)).toEqual(updated);

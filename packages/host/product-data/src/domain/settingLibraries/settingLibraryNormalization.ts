@@ -22,7 +22,7 @@ export function emptyEntry(id: string = randomUUID(), timestamp = now()): Settin
   }
 }
 
-function validateTree(groups: SettingLibraryGroup[], entries: SettingLibraryEntry[]): void {
+export function validateSettingLibraryTree(groups: SettingLibraryGroup[], entries: SettingLibraryEntry[]): void {
   const groupsById = new Map(groups.map((group) => [group.id, group]))
   if (groupsById.size !== groups.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '设定库文件夹编号不能重复。', { field: 'groups' })
   if (new Set(entries.map((entry) => entry.id)).size !== entries.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '设定条目编号不能重复。', { field: 'entries' })
@@ -68,7 +68,7 @@ function normalizedVersion(source: SettingLibraryVersion, active: boolean, times
     order: Math.max(1, entry.order), treeViewOrder: entry.treeViewOrder || index + 1,
     createdAt: entry.createdAt || timestamp, updatedAt: active ? timestamp : entry.updatedAt || timestamp
   }))
-  validateTree(groups, entries)
+  validateSettingLibraryTree(groups, entries)
   return {
     ...source, name: source.name.trim(), groups, entries,
     expandedGroupIds: [...new Set(source.expandedGroupIds)].filter((id) => groups.some((group) => group.id === id)),

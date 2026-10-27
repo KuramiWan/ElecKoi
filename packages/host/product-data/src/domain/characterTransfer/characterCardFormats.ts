@@ -1,4 +1,4 @@
-import { createCharacterOpenings, syncCharacterOpeningVersion } from '@shared/contracts/characterOpenings/schemas'
+import { createCharacterOpenings, characterOpeningsSchema } from '@shared/contracts/characterOpenings/schemas'
 import { tavernEntryScanDepth } from '@shared/foundation/tavernWorldBook'
 import { gzipSync, gunzipSync } from 'node:zlib'
 import { randomUUID } from 'node:crypto'
@@ -101,7 +101,7 @@ function convertSillyTavernCard(root: JsonObject): DecodedCharacterCard {
       variableVersionId: variableConversion.openingVersionIds[index] ?? '', initialVariableStateJson: variableConversion.openingStates[index] ?? '' }))
     openingConfig.defaultOpeningMessageId = openingConfig.openingMessages[0]!.id
   }
-  result.openings = syncCharacterOpeningVersion(openingConfig)
+  result.openings = characterOpeningsSchema.parse(openingConfig)
   if (variableConversion.config) result.variableConfig = variableConversion.config
   return result
 }

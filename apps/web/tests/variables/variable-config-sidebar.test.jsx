@@ -40,6 +40,24 @@ async function close(container) {
 }
 
 describe('variable sidebar integration', () => {
+  it('opens only the menu on right-click and preserves the edited group when deleting another variable', async () => {
+    const view = await renderPanel();
+    const row = text => [...view.container.querySelectorAll('[role="treeitem"]')].find(item => item.textContent.includes(text));
+    const right = async text => act(async () => row(text).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 24 })));
+    try {
+      await right('count'); expect(view.container.querySelector('.variable-inspector')).toBeNull();
+      await act(async () => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true, composed: true })));
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+      await select(view.container, '状态组');
+      const inspector = view.container.querySelector('.variable-inspector');
+      await right('count'); expect(view.container.querySelector('.variable-inspector')).toBe(inspector);
+      const action = text => [...document.querySelectorAll('[role="menuitem"]')].find(item => item.textContent.trim() === text);
+      await act(async () => action('删除').click());
+      await act(async () => document.querySelector('[role="alertdialog"] .is-destructive').click());
+      expect(view.container.querySelector('.variable-inspector')).toBe(inspector);
+      expect(row('count')).toBeUndefined(); expect(row('状态组')).toBeTruthy();
+    } finally { await view.dispose(); }
+  });
   it('uses the shared resizable sidebar for variables, groups and runtime configuration while preserving editing and saving', async () => {
     let measuredWidth = 1400;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ width: measuredWidth }));

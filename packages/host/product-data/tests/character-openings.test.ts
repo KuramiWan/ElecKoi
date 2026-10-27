@@ -11,7 +11,8 @@ import { SettingLibraryRepository } from '../src/domain/settingLibraries/Setting
 import { emptyEntry } from '../src/domain/settingLibraries/settingLibraryNormalization'
 import { VariableConfigRepository } from '../src/domain/variables/VariableConfigRepository'
 import { resolveConversationSeed } from '../src/domain/conversations/conversationSeed'
-import { schemaV13Sql } from './helpers/openingSchemaV13'
+import { legacyOpeningSchemaSql } from './helpers/legacyOpeningStorage'
+import { restoreEditorSchemaV12 } from './helpers/editorSchemaV12'
 import { installSchema } from '../src/storage/sqlite/installSchema'
 
 const cleanups: Array<() => void> = []
@@ -39,8 +40,7 @@ it('keeps openings independent through setting version changes, deletion, variab
   expect(f.openings.get(characterId)).toEqual(saved)
   expect(resolveConversationSeed(characterId, f.db.db, f.openings, f.variables)).toMatchObject({ openingText: content, selectedOpeningId: messages[0]!.id,
     openingOptions: [{ content, variableVersionId: f.variables.get(characterId).activeVersionId }, { id: 'synthetic-backup', initialVariableStateJson: '{"score":9}' }] })
-  const independent = { ...saved.versions[0]!, id: 'synthetic-opening-version', name: '合成独立开场版本' }
-  f.openings.save(characterId, { ...saved, name: independent.name, activeVersionId: independent.id, versions: [...saved.versions, independent] })
+  expect(Object.keys(saved).sort()).toEqual(['characterId', 'defaultOpeningMessageId', 'enabled', 'openingMessages'])
   expect(f.settings.get(characterId).activeVersionId).toBe(version.id)
   f.settings.save(characterId, { ...f.settings.get(characterId), entries: [] })
   f.db.close(); f.db.open()
@@ -53,9 +53,9 @@ it('keeps openings independent through setting version changes, deletion, variab
   expect(f.db.native.prepare('SELECT * FROM character_openings').all()).toEqual([])
 }, 30_000)
 
-it('migrates every v13 opening version atomically and retains all settings and selected IDs', () => {
+it('collects every legacy opening into one list and retains all settings and the default opening', () => {
   const f = fixture(); f.db.close()
-  const database = new Database(':memory:'); cleanups.push(() => database.close()); database.exec(schemaV13Sql)
+  const database = new Database(':memory:'); cleanups.push(() => database.close()); database.exec(legacyOpeningSchemaSql); restoreEditorSchemaV12(database)
   database.prepare(`INSERT INTO characters VALUES (${Array.from({ length: 22 }, () => '?').join(',')})`).run(
     'synthetic-character', '合成旧角色', '', '', '', '', 0, 0, '', 0, '合成旧角色', '', '', '', '', '', '', 1, '', 1, 0, 0)
   database.prepare('INSERT INTO setting_libraries VALUES (?, ?, ?, 1, ?, ?, ?)').run('synthetic-character', '合成版本乙', 'version-b', '[]', '[]', '')
@@ -71,7 +71,7 @@ it('migrates every v13 opening version atomically and retains all settings and s
   const rollback = new Database(database.serialize()); cleanups.push(() => rollback.close())
   rollback.prepare("UPDATE setting_entry_contents SET payloadJson=json_set(payloadJson, '$.default_opening_message_id', 'missing') WHERE revisionId='version-b'").run()
   expect(() => installSchema(rollback)).toThrow('主开场白编号必须存在')
-  expect(rollback.pragma('user_version', { simple: true })).toBe(13)
+  expect(rollback.pragma('user_version', { simple: true })).toBe(12)
   expect(rollback.prepare("SELECT 1 FROM sqlite_master WHERE name='character_openings'").get()).toBeUndefined()
   expect(rollback.prepare('SELECT * FROM setting_entry_contents').all()).toHaveLength(2)
   const divergent = new Database(database.serialize()); cleanups.push(() => divergent.close())
@@ -82,14 +82,16 @@ it('migrates every v13 opening version atomically and retains all settings and s
   installSchema(divergent)
   const separated = JSON.parse((divergent.prepare('SELECT configurationJson FROM character_openings').get() as { configurationJson: string }).configurationJson)
   expect(separated.openingMessages[0].content).toBe('合成已保存的当前正文')
-  expect(separated.versions).toHaveLength(3)
-  expect(separated.versions.filter((version: any) => version.id !== 'version-a' && version.id !== 'version-b').map((version: any) => version.openingMessages[0].content)).toEqual(['合成开场1'])
+  expect(separated.openingMessages).toHaveLength(5)
+  expect(separated.openingMessages.filter((message: any) => message.content === '合成开场1')).toHaveLength(1)
+  expect(new Set(separated.openingMessages.map((message: any) => message.id)).size).toBe(5)
   installSchema(database)
-  expect(database.pragma('user_version', { simple: true })).toBe(14)
+  expect(database.pragma('user_version', { simple: true })).toBe(13)
   const value = JSON.parse((database.prepare('SELECT configurationJson FROM character_openings').get() as { configurationJson: string }).configurationJson)
-  expect(value.activeVersionId).toBe('version-b')
+  expect(value.defaultOpeningMessageId).toBe('opening-1')
   expect(value.openingMessages[0]).toMatchObject({ id: 'opening-1', content: '合成开场1', variableVersionId: 'synthetic-variable' })
-  expect(value.versions.map((version: any) => [version.id, version.enabled, version.openingMessages.length])).toEqual([['version-a', false, 2], ['version-b', true, 2]])
+  expect(value.openingMessages.map((message: any) => message.id)).toEqual(['opening-1', 'backup-1', 'opening-0', 'backup-0'])
+  expect(Object.hasOwn(value, 'versions')).toBe(false)
   expect(database.prepare('SELECT * FROM setting_entry_contents').all()).toEqual([])
   expect(database.prepare('SELECT * FROM setting_library_versions').all()).toHaveLength(2)
   expect(database.pragma('foreign_key_check')).toEqual([])

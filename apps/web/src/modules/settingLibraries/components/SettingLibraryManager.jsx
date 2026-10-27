@@ -1,3 +1,4 @@
+import { saveSettingLibraryFile } from '../model/settingLibraryFileSave.js';
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
 import { EditorManagementModal } from '../../../ui/ui/EditorCollectionControls.jsx';
 import { EditorVersionManager } from '../../../ui/ui/EditorVersionManager.jsx';
@@ -115,24 +116,6 @@ function flattenGroups(groups) {
   return result;
 }
 
-async function saveJsonFile(json, suggestedName) {
-  if (typeof window.showSaveFilePicker === "function") {
-    const handle = await window.showSaveFilePicker({
-      suggestedName,
-      types: [{ description: "ElecKoi 设定库", accept: { "application/json": [".json"] } }],
-    });
-    const writer = await handle.createWritable();
-    await writer.write(json);
-    await writer.close();
-    return;
-  }
-  const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = suggestedName;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 export function SettingLibraryManager({ characterId, settingLibraries, library, onChange, onClose, onError }) {
   const [page, setPage] = useState("home");
@@ -230,7 +213,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
     try {
       onError("");
       const safeName = (current.name.trim() || "setting-library").replace(/[\\/:*?"<>|]/g, "-");
-      await saveJsonFile(serializeSettingLibrary({ ...current, versions: [activeVersion] }), `${safeName}.json`);
+      await saveSettingLibraryFile(serializeSettingLibrary({ ...current, versions: [activeVersion] }), `${safeName}.json`);
       setNotice("设定库已导出");
     } catch (cause) {
       if (cause?.name !== "AbortError") onError(resolveFailure(cause, { fallback: "导出设定库失败" }).text);
@@ -242,7 +225,7 @@ export function SettingLibraryManager({ characterId, settingLibraries, library, 
   return (
     <>
         <input ref={fileInputRef} className="setting-library-file-input" type="file" accept=".json,application/json" onChange={handleFile} />
-      {page === "home" ? <EditorVersionManager title="设定库版本管理" versions={current.versions} activeVersionId={current.activeVersionId}
+      {page === "home" ? <EditorVersionManager title="角色设定库版本管理" versions={current.versions} activeVersionId={current.activeVersionId}
         onClose={onClose} notice={notice} onSelect={id => onChange(switchLibraryVersion(current, id))}
         onCopy={name => onChange(createLibraryVersion(current, name, current.activeVersionId))}
         onCreate={name => onChange(createLibraryVersion(current, name, ''))}

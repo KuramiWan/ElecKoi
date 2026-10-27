@@ -245,12 +245,12 @@
         "relation": "provides",
         "members": [
           "readCharacterOpenings",
-            "saveCharacterOpenings",
-            "readSettingLibrary",
+          "saveCharacterOpenings",
+          "readSettingLibrary",
           "replaceSettingLibraryContent",
           "updateSettingLibraryEntries",
           "importSettingLibrary",
-            "saveSettingLibrary",
+          "saveSettingLibrary",
           "saveSettingLibraryViewState",
           "readConversationSettingLibraries",
           "saveConversationSettingLibrary",
@@ -273,7 +273,9 @@
           "importRegexEditor",
           "exportRegexEditor",
           "readEditorLibraryVersions",
-          "saveEditorLibraries"
+          "saveEditorLibraries",
+          "readGlobalSettingLibraries",
+          "saveGlobalSettingLibraries"
         ],
         "owner": "eleckoiCharacterConfiguration"
       },

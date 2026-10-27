@@ -1,3 +1,18 @@
+/** Shared setting libraries are independent of character configuration versions. */
+export interface GlobalSettingLibrary {
+  id: string
+  name: string
+  enabled: boolean
+  entries: SettingLibraryEntry[]
+  groups: SettingLibraryGroup[]
+  promptPositions: SettingLibraryPromptPosition[]
+  listAllExpanded: boolean
+  expandedGroupIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+export interface GlobalSettingLibraryCollection { revision: number; libraries: GlobalSettingLibrary[] }
+
 export interface ElecKoiHostStatus {
   architecture: 'dsh-remote'
   protocolVersion: 1
@@ -188,7 +203,7 @@ export type CharacterConfigurationChange =
   | { kind: 'snapshot' }
   | {
       kind: 'configuration'
-      domain: 'openings' | 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts'
+      domain: 'openings' | 'settingLibraries' | 'globalSettingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts'
       characterId?: string
     }
 
@@ -477,23 +492,11 @@ export interface CharacterOpeningMessage {
   variableVersionId?: string | undefined
   initialVariableStateJson: string
 }
-export interface CharacterOpeningVersion {
-  id: string
-  name: string
-  enabled: boolean
-  openingMessages: CharacterOpeningMessage[]
-  defaultOpeningMessageId: string
-  createdAt: string
-  updatedAt: string
-}
 export interface CharacterOpenings {
   characterId: string
-  activeVersionId: string
-  name: string
   enabled: boolean
   openingMessages: CharacterOpeningMessage[]
   defaultOpeningMessageId: string
-  versions: CharacterOpeningVersion[]
 }
 
 export interface SettingLibraryOpeningMessage {
@@ -966,9 +969,11 @@ export interface ElecKoiProductDataStore {
   readCharacterOpenings(characterId: string): CharacterOpenings
   saveCharacterOpenings(characterId: string, value: CharacterOpenings): CharacterOpenings
   readSettingLibrary(characterId: string): SettingLibrary
+  readGlobalSettingLibraries(): GlobalSettingLibraryCollection
+  saveGlobalSettingLibraries(value: GlobalSettingLibraryCollection): GlobalSettingLibraryCollection
   replaceSettingLibraryContent(characterId: string, library: SettingLibraryContent): SettingLibrary
   updateSettingLibraryEntries(characterId: string, updates: SettingLibraryEntryUpdate[]): SettingLibraryEntry[]
-  importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningVersion[]): SettingLibrary
+  importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningMessage[]): SettingLibrary
   saveSettingLibrary(characterId: string, library: SettingLibrary): SettingLibrary
   saveSettingLibraryViewState(characterId: string, expandedGroupIds: string[]): string[]
   readConversationSettingLibraries(characterId: string): SettingLibraryConversation[]

@@ -9,6 +9,8 @@ import { EditorPresentationContext } from '../../src/ui/ui/EditorPresentationCon
 
 vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 vi.stubGlobal('React', React);
+const switchScope = async (node, scope) => act(() => [...node.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === (scope === 'global' ? '全局' : '角色')).click());
+
 
 describe('native script library status display', () => {
   it('shows scoped runtime status and errors for matching source only, then withdraws them with the service', async () => {
@@ -52,14 +54,19 @@ describe('native script library status display', () => {
       await act(() => document.querySelector('.editor-management-modal [aria-label="关闭"]').click());
       expect(node.textContent).toContain('Synthetic directory open failure');
       expect(services.saveAll).not.toHaveBeenCalled();
+      await switchScope(node, 'global');
       expect(group('global').querySelector('.script-state').textContent).toBe('运行错误');
+      await switchScope(node, 'character');
       expect(group('character').querySelector('.script-state').textContent).toBe('运行中');
       expect(group('preset')).toBeNull();
+      await switchScope(node, 'global');
       await act(async () => group('global').querySelector('.script-list-name').click());
       expect(node.querySelector('.script-inspector [role=alert]').textContent).toBe('Synthetic global startup error');
+      await switchScope(node, 'character');
       await act(async () => group('character').querySelector('.script-list-name').click());
       expect(node.querySelector('.script-inspector [role=alert]')).toBeNull();
       await act(async () => { current = null; connectionListeners.forEach(listener => listener()); });
+      await switchScope(node, 'global');
       expect(group('global').querySelector('.script-state').textContent).toBe('运行环境未就绪');
       expect(listeners.size).toBe(0);
     } finally { await act(async () => root.unmount()); node.remove(); }
@@ -86,7 +93,7 @@ describe('script library editing commands', () => {
     </EditorPresentationContext.Provider>));
     const row = scope => node.querySelector(`[aria-label="${{ global: '全局脚本', character: '角色脚本', preset: '预设脚本' }[scope]}"] .script-list-row`);
     const menu = () => document.querySelector('[role="menu"][aria-label="脚本操作"]');
-    const rightClick = async scope => act(() => row(scope).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 })));
+    const rightClick = async scope => { await switchScope(node, scope); return act(() => row(scope).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 }))); };
     const action = async label => act(() => [...menu().querySelectorAll('button')].find(button => button.textContent === label).click());
     return { node, service, row, menu, rightClick, action, async close() { await act(() => root.unmount()); node.remove(); } };
   }
@@ -111,16 +118,20 @@ describe('script library editing commands', () => {
       await page.rightClick('global'); await page.action('复制');
       const global = page.node.querySelector('[aria-label="全局脚本"]');
       expect(global.querySelectorAll('.script-list-row')).toHaveLength(2);
+      await switchScope(page.node, 'character');
       expect(page.node.querySelector('[aria-label="角色脚本"]').querySelectorAll('.script-list-row')).toHaveLength(1);
       await page.rightClick('global'); await page.action('启用');
       expect(page.row('global').querySelector('input[type="checkbox"]').checked).toBe(true);
+      await switchScope(page.node, 'character');
       await act(() => page.row('character').querySelector('button').click());
       await page.rightClick('global'); await page.action('删除');
       const dialog = document.querySelector('[role="alertdialog"]');
       expect(dialog.textContent).toContain('Synthetic global script');
       await act(() => [...dialog.querySelectorAll('button')].find(button => button.textContent === '删除').click());
+      expect(page.node.querySelector('[aria-label="全局脚本"]').querySelectorAll('.script-list-row')).toHaveLength(1);
+      await switchScope(page.node, 'character');
+      await act(() => page.row('character').querySelector('button').click());
       expect(page.node.querySelector('.script-inspector input').value).toBe('Synthetic character script');
-      expect(global.querySelectorAll('.script-list-row')).toHaveLength(1);
       await act(() => page.node.querySelector('.setting-library-save-button').click());
       expect(page.service.saveAll).toHaveBeenCalledWith([expect.objectContaining({ scope: 'global',
         trees: [expect.objectContaining({ name: 'Synthetic global script 副本' })] })]);
@@ -185,8 +196,10 @@ describe('script library editing commands', () => {
     const page = await mount(false, { character: [createScriptItem('script', 'synthetic-script'), folder] });
     try {
       const transfer = { setData: vi.fn() };
+      await switchScope(page.node, 'global');
       const source = page.row('global').querySelector('.script-list-name');
       await dragEvent(source, 'dragstart', transfer);
+      await switchScope(page.node, 'character');
       await dragEvent(page.row('character'), 'dragover', transfer);
       await dragEvent(page.row('character'), 'drop', transfer);
       await dragTo(page, folder.id, 'nested');

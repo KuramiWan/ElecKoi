@@ -1,6 +1,7 @@
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes';
 import { DesktopError } from '@shared/foundation/DesktopError';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { EditorScopeTabs } from '../../../ui/ui/EditorScopeTabs.jsx';
 import { ArrowDown, ArrowUp, Copy, FileCode, FolderSimple, NotePencil, Plus, Power, Trash, X } from '../../../ui/icons/interfaceIcons.jsx';
 import { DshTriangleRightIcon } from '../../../ui/icons/dshTreeIcons.jsx';
 import { MarkdownTextareaField, SaveControl } from '../../settingLibraries/index.js';
@@ -82,6 +83,8 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
   const { compact } = useEditorPresentation();
   const presetEditor = presetId !== undefined;
   const ownerScope = presetEditor ? 'preset' : 'character', ownerId = presetEditor ? presetId : characterId;
+  const [activeScope, setActiveScope] = useState(ownerScope), scopePanelId = useId();
+  useEffect(() => setActiveScope(ownerScope), [ownerScope, ownerId]);
   const [drafts, setDrafts] = useState({}), [baselines, setBaselines] = useState({}), [buffers, setBuffers] = useState({});
   const [selection, setSelection] = useState(null), [collapsed, setCollapsed] = useState(new Set());
   const [editing, setEditing] = useState(false);
@@ -115,7 +118,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     tree.type === 'folder' ? [{ key, item: tree }, ...tree.scripts.map(item => ({ key, item, parentId: tree.id }))] : [{ key, item: tree }])
     .map(target => ({ ...target, selectionId: JSON.stringify([key, target.item.id]) })));
   const multi = useEditorMultiSelect(scriptTargets.map(target => target.selectionId), JSON.stringify([ownerScope, ownerId]));
-  const visibleTargets = scriptTargets.filter(target => !query.trim() || target.item.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const visibleTargets = scriptTargets.filter(target => drafts[target.key]?.scope === activeScope && (!query.trim() || target.item.name.toLowerCase().includes(query.trim().toLowerCase())));
   const dragEnabled = !saving && !multi.active && !query.trim();
   useEffect(() => { if (!dragEnabled) { setDragged(null); setDropTarget(null); } }, [dragEnabled]);
 
@@ -286,6 +289,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
   const groups = useMemo(() => [{ scope: 'global', ownerId: '', label: '全局脚本' }, presetEditor
     ? { scope: 'preset', ownerId: presetId, label: '预设脚本', name: presetName }
     : { scope: 'character', ownerId: characterId, label: '角色脚本' }], [characterId, presetId, presetName, presetEditor]);
+  const visibleGroups = groups.filter(group => group.scope === activeScope);
   async function openDirectory(group) {
     if (openingDirectory) return;
     setOpeningDirectory(group.scope);
@@ -363,7 +367,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     { label: menuItem.enabled ? '停用' : '启用', icon: Power, run: () => change(context.menu.target.key, library => updateScriptItem(library, menuItem.id, { enabled: !menuItem.enabled })) },
     { label: '删除', icon: Trash, danger: true, run: () => setDeleteTarget({ ...context.menu.target, name: menuItem.name, folder: menuItem.type === 'folder' }) },
   ] : [];
-  const menuActions = context.menu?.target.id ? itemActions : groups
+  const menuActions = context.menu?.target.id ? itemActions : visibleGroups
     .filter(group => !context.menu?.target.key || libraryKey(group.scope, group.ownerId) === context.menu.target.key)
     .flatMap(group => {
       const key = libraryKey(group.scope, group.ownerId), scoped = Boolean(context.menu?.target.key);
@@ -378,7 +382,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     if (!multi.active) context.open(event, target);
   }
   useEffect(() => { context.close(); }, [saving, multi.active]);
-  const mobileCreateItems = groups.flatMap(group => {
+  const mobileCreateItems = visibleGroups.flatMap(group => {
     const key = libraryKey(group.scope, group.ownerId), label = group.scope === 'global' ? '全局' : group.scope === 'preset' ? '预设' : '角色';
     return [{ id: `${group.scope}-script`, label: `${label}脚本`, Icon: FileCode, disabled: !drafts[key] || !versions.ready, run: () => create(key, 'script') },
       { id: `${group.scope}-folder`, label: `${label}文件夹`, Icon: FolderSimple, disabled: !drafts[key] || !versions.ready, run: () => create(key, 'folder') }];
@@ -396,7 +400,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
     feedback={<SaveControl dirty={dirty} saving={saving} error={error || versions.error} notice={notice} onSave={save} />}>
     <div className="script-directory editor-collection-browser editor-collection-material editor-collection-continuous">
       <EditorCollectionToolbar query={query} onQueryChange={setQuery} placeholder="搜索脚本" selection={{ ...multi, toggle: () => { multi.toggle(); setEditing(false); } }} disabled={saving || !versions.ready}
-        createItems={groups.flatMap(group => [
+        createItems={visibleGroups.flatMap(group => [
           { id: `${group.scope}-label`, type: 'label', text: group.label },
           { label: '脚本', Icon: FileCode, run: () => create(libraryKey(group.scope, group.ownerId), 'script') },
           { label: '文件夹', Icon: FolderSimple, run: () => create(libraryKey(group.scope, group.ownerId), 'folder') },
@@ -406,8 +410,12 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
         onDelete={() => setDeleteTarget({ targets: batchTargets().map(target => ({ key: target.key, id: target.item.id })), name: `选中的 ${multi.selected.size} 个项目`, folder: batchTargets().some(target => target.item.type === 'folder') })} />
       {error && <p className="script-panel-error" role="alert">{error}</p>}
       {runtimeState.error && <p className="script-panel-error" role="alert">{runtimeState.error}</p>}
-      <div className="script-groups editor-collection-directory editor-sidebar-directory" onContextMenu={event => openContext(event, {})}
-        onMouseDown={event => { if (!multi.active && !event.target.closest('.script-list-row')) setSelection(null); }}><EditorCollectionSurface grouped>{groups.map(group => {
+      <div id={scopePanelId} role="tabpanel" aria-label={activeScope === 'global' ? '全局脚本' : '角色脚本'} className="script-groups editor-collection-directory editor-sidebar-directory" onContextMenu={event => openContext(event, {})}
+        onMouseDown={event => { if (event.button === 0 && !multi.active && !event.target.closest('.script-list-row')) setSelection(null); }}>
+      <EditorScopeTabs value={activeScope} ownerValue={ownerScope} ownerLabel={presetEditor ? '预设' : '角色'} panelId={scopePanelId} onChange={next => {
+        setActiveScope(next); setSelection(null); setEditing(false); setDragged(null); setDropTarget(null); context.close(); if (multi.active) multi.toggle();
+      }} />
+      <EditorCollectionSurface grouped>{visibleGroups.map(group => {
         const key = libraryKey(group.scope, group.ownerId), library = drafts[key];
         const scriptRow = (item, enabled = true, parentId = '') => {
           if (query.trim() && !item.name.toLowerCase().includes(query.trim().toLowerCase())) return null;
@@ -451,7 +459,7 @@ export const ScriptLibrariesPanel = forwardRef(function ScriptLibrariesPanel({ c
           { label: selectedItem.enabled ? '停用' : '启用', Icon: Power, run: () => change(selection.key, library => updateScriptItem(library, selectedItem.id, { enabled: !selectedItem.enabled })) },
         ] : []} />}
     </div>
-    {managerOpen && versions.ready && <EditorLibraryVersionManager title="脚本版本管理" versions={versions} ownerScope={ownerScope} ownerLabel={presetEditor ? '预设' : '角色卡'} onClose={() => setManagerOpen(false)} busy={saving}
+    {managerOpen && versions.ready && <EditorLibraryVersionManager title="脚本版本管理" versions={versions} ownerScope={ownerScope} initialScope={activeScope} ownerLabel={presetEditor ? '预设' : '角色卡'} onClose={() => setManagerOpen(false)} busy={saving}
       extraActions={[{ label: '打开源码目录', Icon: FolderSimple, disabled: Boolean(openingDirectory), onClick: scope => void openDirectory({ scope, ownerId: scope === 'global' ? '' : ownerId }) }]} />}
     {context.menu && menuActions.length > 0 && <EditorContextMenu menu={context.menu}
       actions={menuActions.map(action => ({ ...action, disabled: action.disabled || saving || !versions.ready }))} label="脚本操作" onClose={context.close} />}

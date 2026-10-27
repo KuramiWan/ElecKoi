@@ -53,7 +53,7 @@ describe('complete editor configuration versions', () => {
     f.database.close()
     for (let attempt = 0; attempt < 2; attempt++) {
       f.database.open(); f.service = f.make()
-      expect(f.database.native.pragma('user_version', { simple: true })).toBe(14)
+      expect(f.database.native.pragma('user_version', { simple: true })).toBe(13)
       expect(f.database.native.prepare('SELECT * FROM agent_presets').all()).toEqual(beforePresets)
       expect(f.database.native.prepare('SELECT * FROM global_regex_rules').all()).toEqual(beforeRules)
       expect(f.database.native.prepare('SELECT * FROM regex_libraries').all()).toEqual([])
@@ -113,7 +113,7 @@ describe('complete editor configuration versions', () => {
     legacy.pragma('user_version=11'); const before = legacy.prepare('SELECT * FROM agent_presets').all(); legacy.close()
     for (let index = 0; index < 2; index++) {
       f.database.open()
-      expect(f.database.native.pragma('user_version', { simple: true })).toBe(14)
+      expect(f.database.native.pragma('user_version', { simple: true })).toBe(13)
       expect(f.database.native.prepare('SELECT * FROM agent_presets').all()).toEqual(before)
       expect(f.database.native.prepare("SELECT 1 FROM sqlite_master WHERE name='display_template_libraries'").get()).toBeUndefined()
       expect(f.database.native.prepare('SELECT * FROM editor_library_versions').all()).toEqual([])

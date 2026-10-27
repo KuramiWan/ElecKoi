@@ -20,18 +20,34 @@ it('keeps the standalone opening editor usable across themes, short windows and 
     await promisify(execFile)(require('electron'), [resolve('apps/web/tests/browser/character-openings.probe.cjs'), htmlPath, reportPath], { env, timeout: 45000, windowsHide: true });
     const reports = JSON.parse(await readFile(reportPath, 'utf8'));
     expect(reports).toHaveLength(6);
-    for (const { width, height, layout, settingsSeparated, binding, independentVersions } of reports) {
-      expect(layout.navigation.slice(0, 3)).toEqual(['基础资料', '角色开场白', '设定库']);
+    for (const { width, height, layout, settingsSeparated, binding, noOpeningVersions } of reports) {
+      expect(layout.navigation.slice(0, 3)).toEqual(['基础资料', '开场白', '设定库']);
       expect(layout.horizontalOverflow).toBe(false);
       expect(layout.toggle.height, JSON.stringify(layout)).toBe(16);
       expect(layout.panel.bottom).toBeLessThanOrEqual(height);
       expect(layout.panel.right).toBeLessThanOrEqual(width);
       for (const control of layout.controls) { expect(control.x).toBeGreaterThanOrEqual(layout.panel.x); expect(control.right).toBeLessThanOrEqual(layout.panel.right); }
+      expect(layout.headingColor[3]).toBe(255);
+      expect(layout.borderColor[3]).toBe(255);
+      expect(layout.title.x-layout.card.x).toBeLessThan(60);
+      expect(Math.max(...layout.headingColor.slice(0, 3).map((value, index) => Math.abs(value-layout.pageColor[index])))).toBeGreaterThanOrEqual(3);
+      expect(Math.max(...layout.headingColor.slice(0, 3).map((value, index) => Math.abs(value-layout.pageColor[index])))).toBeLessThanOrEqual(12);
+      expect(Math.max(...layout.borderColor.slice(0, 3).map((value, index) => Math.abs(value-layout.pageColor[index])))).toBeGreaterThanOrEqual(24);
+      if (width>640) {
+        expect(layout.controls.map(control=>control.height)).toEqual([36,36]);
+        expect(layout.controls[1].x).toBeGreaterThan(layout.controls[0].x);
+        expect(layout.enabled.x).toBeGreaterThan(layout.controls[1].x);
+        expect(layout.enabled.right-layout.controls[0].x).toBeLessThan(320);
+        expect(layout.controls[0].y).toBe(layout.controls[1].y);
+      }
       expect(settingsSeparated).toBe(true);
       expect(binding).toBe('synthetic-variables');
-      expect(independentVersions).toBe(true);
+      expect(noOpeningVersions).toBe(true);
     }
     await mkdir(resolve('output/playwright'), { recursive: true });
     for (const theme of ['light', 'dark']) for (const width of [1440, 900, 390]) await copyFile(resolve(directory, `character-openings-${theme}-${width}.png`), resolve('output/playwright', `character-openings-${theme}-${width}.png`));
+    for (const theme of ['light', 'dark']) await copyFile(resolve(directory, `character-openings-collapsed-${theme}.png`), resolve('output/playwright', `character-openings-collapsed-${theme}.png`));
+    await copyFile(resolve(directory, 'character-openings-toolbar-preview.png'), resolve('output/playwright', 'character-openings-toolbar-preview.png'));
+    await copyFile(resolve(directory, 'character-openings-list-preview.png'), resolve('output/playwright', 'character-openings-list-preview.png'));
   } finally { await rm(directory, { recursive: true, force: true, maxRetries: 3 }); }
 }, 60000);

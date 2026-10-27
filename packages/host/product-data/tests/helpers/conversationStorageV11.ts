@@ -1,4 +1,4 @@
-import { schemaV13Sql, restoreOpeningSchemaV13 } from './openingSchemaV13'
+import { legacyOpeningSchemaSql, restoreLegacyOpeningStorage } from './legacyOpeningStorage'
 import type Database from 'better-sqlite3'
 import { commonSchemaSql } from '../../src/storage/sqlite/migrations/commonSchemaSql'
 import { conversationStatesSql, conversationStatesIndexSql, legacySettingSnapshotsSql } from '../../src/storage/sqlite/migrations/conversationStateStorage'
@@ -10,7 +10,7 @@ export const legacyResponsesSql = commonSchemaSql.match(/CREATE TABLE IF NOT EXI
   .replace(', `runtimeThreadId` TEXT NOT NULL', ', `variableStateJson` TEXT NOT NULL, `runtimeThreadId` TEXT NOT NULL')
   .replace(', PRIMARY KEY(`id`)', ", `storedRegexRulesJson` TEXT NOT NULL DEFAULT '[]', PRIMARY KEY(`id`)")
 
-export const legacyCommonSchemaSql = schemaV13Sql.replace(conversationStatesSql + ';', legacySettingSnapshotsSql + ';')
+export const legacyCommonSchemaSql = legacyOpeningSchemaSql.replace(conversationStatesSql + ';', legacySettingSnapshotsSql + ';')
   .replace(/CREATE TABLE IF NOT EXISTS `editor_library_versions`[^;]+;/, editorLibraryVersionsSql + ';')
   .replace(/PRAGMA user_version = \d+;/, displayTemplatesSql + ';\nPRAGMA user_version = 12;')
   .replace(regexLibrariesSql + ';', '')
@@ -19,7 +19,7 @@ export const legacyCommonSchemaSql = schemaV13Sql.replace(conversationStatesSql 
 
 /** 合成旧结构 fixture；只允许在没有回复和状态历史的测试库中转换。 */
 export function restoreLegacyConversationStorage(database: Database.Database): void {
-  restoreOpeningSchemaV13(database)
+  restoreLegacyOpeningStorage(database)
   if (!database.prepare("SELECT 1 FROM sqlite_master WHERE name='display_template_libraries'").get()) restoreEditorSchemaV12(database)
   database.exec('DROP TABLE IF EXISTS regex_libraries')
   if ((database.prepare('SELECT count(*) AS n FROM agent_responses').get() as { n: number }).n) throw new Error('Fixture already has replies')

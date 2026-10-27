@@ -12,6 +12,32 @@ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
 afterEach(() => { document.body.innerHTML = '' })
 
 describe('automatic chat branch settings', () => {
+  it('right-clicks branch settings without opening or switching the editor and deletes the menu target', async () => {
+    const library = { characterId: 'synthetic-character', name: '合成设定库', entries: [
+      { ...createEntryDraft('', 1, []), id: 'synthetic-first', title: '合成第一条目' },
+      { ...createEntryDraft('', 2, []), id: 'synthetic-second', title: '合成第二条目' },
+    ], groups: [], promptPositions: [], versions: [], activeVersionId: 'main', expandedGroupIds: [], listAllExpanded: false };
+    const item = { sessionId: 'synthetic-chat', title: '合成聊天', characterName: '合成角色', summary: '', updatedAt: '', library };
+    const model = { readConversations: vi.fn().mockResolvedValue([item]), subscribe: () => () => {}, saveConversation: vi.fn().mockResolvedValue(library) };
+    const container = document.createElement('div'); document.body.append(container); const root = createRoot(container);
+    const row = title => [...container.querySelectorAll('[role="treeitem"]')].find(node => node.textContent.includes(title));
+    const right = async title => act(async () => row(title).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 24 })));
+    try {
+      await act(async () => root.render(<DynamicSettingsPanel characterId="synthetic-character" settingLibraries={model} />));
+      await act(async () => container.querySelector('.dynamic-settings-conversation-row').click());
+      await right('合成第二条目'); expect(container.querySelector('.dynamic-settings-inspector')).toBeNull();
+      await act(async () => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true, composed: true })));
+      expect(document.querySelector('[role="menu"]')).toBeNull();
+      await act(async () => row('合成第一条目').click());
+      const inspector = container.querySelector('.dynamic-settings-inspector');
+      await right('合成第二条目'); expect(container.querySelector('.dynamic-settings-inspector')).toBe(inspector);
+      await act(async () => [...document.querySelectorAll('[role="menuitem"]')].find(node => node.textContent.trim() === '删除').click());
+      await act(async () => document.querySelector('[role="alertdialog"] .is-destructive').click());
+      expect(row('合成第二条目')).toBeUndefined(); expect(container.querySelector('.dynamic-settings-inspector')).toBe(inspector);
+      await act(async () => container.querySelector('.setting-library-save-button').click());
+      expect(model.saveConversation.mock.lastCall[2].entries.map(entry => entry.id)).toEqual(['synthetic-first']);
+    } finally { await act(async () => root.unmount()); }
+  });
   it('sizes the chat identity to its content instead of reserving an empty fixed column', () => {
     const css = readFileSync(resolve(process.cwd(), 'apps/web/src/modules/settingLibraries/styles/dynamic-settings.css'), 'utf8')
     const row = css.match(/\.dynamic-settings-conversation-row\s*\{([^}]+)\}/)?.[1]

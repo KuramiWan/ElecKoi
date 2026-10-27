@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { isGlobalSettingRuntimeId } from '@shared/contracts/settingLibrary/global'
 import { and, asc, eq } from 'drizzle-orm'
 import type { SettingLibrary, SettingLibraryEntry, SettingLibraryEntryUpdate, SettingLibraryGroup } from '@shared/contracts/settingLibrary/schemas'
 import { applySettingLibraryEntryUpdates } from '@shared/contracts/settingLibrary/entryUpdates'
@@ -383,6 +384,19 @@ export class SettingLibraryRepository {
     const record = value as Record<string, unknown>
     const entries = settingLibraryEntrySchema.array().parse(record.entries)
     const groups = settingLibraryGroupSchema.array().parse(record.groups)
+    // Shared resources are read in the conversation, authored only through their independent editor.
+    for (const [before, after] of [[baseline.projected.entries, entries], [baseline.projected.groups, groups]] as const) {
+      const protectedBefore = before.filter(item => isGlobalSettingRuntimeId(item.id))
+      const protectedAfter = after.filter(item => isGlobalSettingRuntimeId(item.id))
+      const byId = new Map(protectedAfter.map(item => [item.id, item]))
+      if (protectedBefore.length !== protectedAfter.length || protectedBefore.some(item => JSON.stringify(item) !== JSON.stringify(byId.get(item.id)))) {
+        throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '全局设定库是共享资源，请在全局设定库编辑器修改。', { what: '聊天修改全局设定库', expected: '全局设定库编辑器' })
+      }
+    }
+    if (entries.some(entry => !isGlobalSettingRuntimeId(entry.id) && isGlobalSettingRuntimeId(entry.groupId))
+      || groups.some(group => !isGlobalSettingRuntimeId(group.id) && isGlobalSettingRuntimeId(group.parentId))) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '聊天新增设定不能放入全局设定库。', { what: '聊天修改全局设定库', expected: '角色设定库' })
+    }
     if (!context.characterId || record.characterId !== context.characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '设定库运行时结果与当前角色不匹配。', { what: '设定库运行时结果与角色' })
     if (baseline.source.characterId !== context.characterId || baseline.projected.characterId !== context.characterId) {
       throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '设定库运行时基线与当前角色不匹配。', { what: '设定库运行时基线与角色' })
@@ -403,7 +417,7 @@ export class SettingLibraryRepository {
     for (const id of entryIds) {
       const projected = projectedEntries.get(id)
       const final = finalEntries.get(id)
-      if (isAgentPresetRuntimeId(id)) continue
+      if (isAgentPresetRuntimeId(id) || isGlobalSettingRuntimeId(id)) continue
       const source = sourceEntries.get(id)
       if (!final) {
         if (source && source.kind !== 'normal') continue
@@ -427,7 +441,7 @@ export class SettingLibraryRepository {
     for (const id of groupIds) {
       const projected = projectedGroups.get(id)
       const final = finalGroups.get(id)
-      if (isAgentPresetRuntimeId(id)) continue
+      if (isAgentPresetRuntimeId(id) || isGlobalSettingRuntimeId(id)) continue
       if (!final) {
         if (baseGroups.has(id)) this.writeConversationChange(conversationId, 'group', id, 'delete', null, timestamp, db)
         else this.deleteConversationChange(conversationId, 'group', id, db)

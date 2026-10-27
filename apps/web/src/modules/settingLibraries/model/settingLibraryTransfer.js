@@ -149,8 +149,7 @@ export function importLibraryAsVersion(library, imported) {
     updatedAt: timestamp,
   };
   const result = applyVersion({ ...synced, versions: [...synced.versions, version] }, version);
-  return openingImport ? { ...result, openingImports: [...(synced.openingImports || []), { ...openingImport, id: createId('opening-version'),
-    name: version.name, createdAt: timestamp, updatedAt: timestamp }] } : result;
+  return openingImport ? { ...result, openingImports: [...(synced.openingImports || []), ...openingImport.openingMessages] } : result;
 }
 
 function openingMessageFromJson(value) {
@@ -230,7 +229,7 @@ function parseElecKoiExport(source) {
   if (source.format !== SETTING_LIBRARY_EXPORT_FORMAT || source.version !== SETTING_LIBRARY_EXPORT_VERSION) {
     throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, "这不是当前版本的 ElecKoi 设定库文件。", { what: "设定库文件", expected: "当前版本" });
   }
-  // RETIRE WHEN: 停止支持含固定开场白条目的 v3 设定库文件导入后，删除 openingImport 解码和独立版本导入分支。
+  // RETIRE WHEN: 停止支持含固定开场白条目的 v3 设定库文件导入后，删除 openingImport 解码和开场白追加分支。
   const entries = objectList(source.entries).map(entryFromJson);
   const openings = entries.filter(entry => entry.kind === 'opening' || entry.id === 'fixed-opening-assistant');
   if (openings.length > 1) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库文件包含多个开场白容器。', { what: '设定库文件的开场白' });

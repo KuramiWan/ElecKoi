@@ -4,7 +4,7 @@
 
 本表从桌面运行清单与各 bundle 的 `package.json.eleckoi.developerInterfaces` 生成。DSH 基准为 `0.2.1-rc.3`，提交 `1f81c047fc48fa190a683e469daa699857e9afe8`。
 
-当前共 **16 个 bundle、107 个开发接口**：65 个界面插槽、19 个服务、0 个事件、2 个贡献点、21 个 Remote 合同。
+当前共 **16 个 bundle、108 个开发接口**：65 个界面插槽、20 个服务、0 个事件、2 个贡献点、21 个 Remote 合同。
 
 接口标题和说明用于插件中心展示；真实调用合同以对应类型导出和实现为准。完整参数、返回值和数据字段见 [Client 参考](api-client.md)、[Host 参考](api-host.md) 与 [Remote 调用声明](api-remote.md)。使用方法见 [界面插槽](ui-slots.md)、[服务接口](services.md) 与 [能力贡献](contributions.md)。
 
@@ -13,7 +13,7 @@
 | Bundle | 界面插槽 | 服务 | 事件 | 贡献点 | Remote | 合计 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `@eleckoi/dsh-client-characters` | 11 | 1 | 0 | 0 | 0 | 12 |
-| `@eleckoi/dsh-client-character-configuration` | 0 | 5 | 0 | 0 | 0 | 5 |
+| `@eleckoi/dsh-client-character-configuration` | 0 | 6 | 0 | 0 | 0 | 6 |
 | `@eleckoi/dsh-client-conversations` | 1 | 1 | 0 | 0 | 0 | 2 |
 | `@eleckoi/dsh-client-creator-studio` | 0 | 1 | 0 | 0 | 0 | 1 |
 | `@eleckoi/dsh-client-display-preferences` | 0 | 1 | 0 | 0 | 0 | 1 |
@@ -58,7 +58,8 @@
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `eleckoiCharacterOpenings` | 角色开场白服务 | 服务 | 提供 | `call` | `client` | 读取、保存和订阅角色独立开场白及命名版本。 | `getSnapshot`、`subscribe`、`read`、`save` |
+| `eleckoiCharacterOpenings` | 角色开场白服务 | 服务 | 提供 | `call` | `client` | 读取、保存和订阅角色的多个独立开场白。 | `getSnapshot`、`subscribe`、`read`、`save` |
+| `eleckoiGlobalSettingLibraries` | 全局设定库服务 | 服务 | 提供 | `call` | `client` | 独立读取、保存、启停和删除全局设定库，不参与角色版本。 | `getSnapshot`、`subscribe`、`read`、`save` |
 | `eleckoiSettingLibraries` | 设定库服务 | 服务 | 提供 | `call` | `client` | 读取、保存和订阅角色设定库及对话设定。 | `getSnapshot`、`subscribe`、`read`、`readUntracked`、`save`、`saveViewState`、`getConversationSnapshot`、`readConversations`、`saveConversation`、`resetConversation`、`saveConversationVersion` |
 | `eleckoiVariables` | 角色变量服务 | 服务 | 提供 | `call` | `client` | 读取、保存和订阅角色变量配置。 | `getSnapshot`、`subscribe`、`read`、`readUntracked`、`save`、`saveViewState` |
 | `eleckoiScriptLibraries` | 脚本库服务 | 服务 | 提供 | `call-and-listen` | `client` | 按全局、角色和当前预设归属读取、保存与订阅正式脚本库。 | `getSnapshot`、`read`、`save`、`saveAll`、`subscribe`、`subscribeChanges`、`activePreset`、`openDirectory` |
@@ -244,7 +245,7 @@ ElecKoi 产品能力的 DSH Host Remote 接口。
 | `eleckoiCharacterChangesRemote` | 角色数据变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知角色、分组和当前角色发生变化。 | `changes` |
 | `eleckoiPersonaRemote` | 用户资料数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取并保存用户名称与头像资料。 | `read`、`save` |
 | `eleckoiPersonaChangesRemote` | 用户资料变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知用户资料发生变化。 | `changes` |
-| `eleckoiCharacterConfiguration` | 角色配置数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和保存设定库、变量、正则与全局、角色、预设脚本库。 | `readCharacterOpenings`、`saveCharacterOpenings`、`readSettingLibrary`、`replaceSettingLibraryContent`、`updateSettingLibraryEntries`、`importSettingLibrary`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`readConversationSettingLibraries`、`saveConversationSettingLibrary`、`resetConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`readVariableConfig`、`saveVariableConfig`、`saveVariableConfigViewState`、`readRegexRules`、`saveRegexRules`、`importRegexRules`、`exportRegexRules`、`testRegexRule`、`readScriptLibrary`、`readScriptWorkspace`、`saveScriptLibrary`、`saveScriptLibraries`、`readRegexEditor`、`saveRegexEditor`、`importRegexEditor`、`exportRegexEditor`、`readEditorLibraryVersions`、`saveEditorLibraries` |
+| `eleckoiCharacterConfiguration` | 角色配置数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和保存设定库、变量、正则与全局、角色、预设脚本库。 | `readCharacterOpenings`、`saveCharacterOpenings`、`readSettingLibrary`、`replaceSettingLibraryContent`、`updateSettingLibraryEntries`、`importSettingLibrary`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`readConversationSettingLibraries`、`saveConversationSettingLibrary`、`resetConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`readVariableConfig`、`saveVariableConfig`、`saveVariableConfigViewState`、`readRegexRules`、`saveRegexRules`、`importRegexRules`、`exportRegexRules`、`testRegexRule`、`readScriptLibrary`、`readScriptWorkspace`、`saveScriptLibrary`、`saveScriptLibraries`、`readRegexEditor`、`saveRegexEditor`、`importRegexEditor`、`exportRegexEditor`、`readEditorLibraryVersions`、`saveEditorLibraries`、`readGlobalSettingLibraries`、`saveGlobalSettingLibraries` |
 | `eleckoiCharacterConfigurationChanges` | 角色配置变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知设定库、变量、正则、脚本库和 Agent 预设变化。 | `changes` |
 | `eleckoiAgentPresetsRemote` | Agent 预设数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 管理 Agent 预设、分组及导入导出。 | `catalog`、`read`、`save`、`updateEntries`、`create`、`import`、`export`、`setActive`、`createGroup`、`renameGroup`、`assignGroup`、`deleteGroup`、`delete` |
 | `eleckoiCreatorStudioRemote` | 创作项目数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取、创建和删除创作工作室项目。 | `list`、`create`、`delete` |

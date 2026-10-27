@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { Copy, MagnifyingGlass, PencilSimple, Plus, Scissors, SlidersHorizontal, Trash } from "../../../ui/icons/interfaceIcons.jsx";
 import { ConfirmationDialog, SaveControl } from "../../settingLibraries/index.js";
 import { EditorSidebarLayout } from "../../../ui/ui/EditorSidebarLayout.jsx";
+import { EditorContextMenu } from '../../../ui/ui/EditorContextMenu.jsx';
 import { useEditorPresentation } from '../../../ui/ui/EditorPresentationContext.jsx';
 import { MobileEditorActions } from '../../../ui/ui/MobileEditorActions.jsx';
 import { EditorCollectionToolbar, EditorSelectionBar, useEditorMultiSelect } from '../../../ui/ui/EditorCollectionControls.jsx';
@@ -249,11 +250,11 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
   function openContextMenu(event, node) {
     event.preventDefault();
     event.stopPropagation();
-    if (compact) { selectNode(node.id); return; }
+    if (compact) return;
     setAddOpen(false);
     if (node.fixed) return;
-    setSelectedKey(node.id);
     setContextMenu({
+      trigger: event.currentTarget,
       x: Math.min(event.clientX, window.innerWidth - 180),
       y: Math.min(event.clientY, window.innerHeight - 230),
       kind: node.nodeKind,
@@ -266,7 +267,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
     event.preventDefault();
     if (!configRef.current) return;
     setAddOpen(false);
-    setContextMenu({ x: Math.min(event.clientX, window.innerWidth - 180), y: Math.min(event.clientY, window.innerHeight - 170), kind: "background", id: "", parentId: "" });
+    setContextMenu({ trigger: event.currentTarget, x: event.clientX, y: event.clientY, kind: "background", id: "", parentId: "" });
   }
 
   function askDelete(target) {
@@ -284,8 +285,9 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
       changeConfig(current => targets.reduce((next, target) => deleteVariableNode(next, target), current), false);
       selectNode(''); setDeleteTarget(null); multi.clear(); return;
     }
-    changeConfig((current) => deleteVariableNode(current, deleteTarget), false);
-    selectNode('');
+    const next = deleteVariableNode(configRef.current, deleteTarget);
+    changeConfig(next, false);
+    if (!selectedVariableNode(next, selectedKey).value) selectNode('');
     setDeleteTarget(null);
   }
 
@@ -366,7 +368,7 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
       inspectorTitle={selected.value?.id === VARIABLE_INITIALIZATION_OBJECT_ID ? '变量运行配置' : selected.kind === 'object' ? '编辑变量组' : '编辑变量'}
       onCloseInspector={closeInspector}
       feedback={<SaveControl dirty={dirty} error={error} notice={notice} saving={saving} onSave={save} />}
-      onMouseDown={() => { setAddOpen(false); setContextMenu(null); }}
+      onMouseDown={() => setAddOpen(false)}
       inspector={!multi.active && selected.value && (!compact || editing) ? (
         <VariableConfigInspector
           config={config}
@@ -417,12 +419,19 @@ export const VariableConfigPanel = forwardRef(function VariableConfigPanel({ cha
         <VariableConfigManager config={config} onChange={applyManagerChange} onClose={() => setManagerOpen(false)} onError={setError} />
       ) : null}
 
-      {contextMenu ? (
-        <div className="variable-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu" onMouseDown={(event) => event.stopPropagation()}>
-          {contextMenu.kind === "background" || contextMenu.kind === "object" ? <><button type="button" role="menuitem" onClick={() => addNode("object", contextMenu.parentId)}><VariableGroupIcon size={15} />新建变量组</button><button type="button" role="menuitem" onClick={() => addNode("variable", contextMenu.parentId)}><VariableEntryIcon type="string" size={15} />新建变量</button>{clipboardRef.current ? <button type="button" role="menuitem" onClick={() => paste(contextMenu.parentId)}><Copy size={15} />粘贴</button> : null}</> : null}
-          {contextMenu.kind !== "background" ? <><button type="button" role="menuitem" onClick={() => copyOrCut("copy", { kind: contextMenu.kind, id: contextMenu.id })}><Copy size={15} />复制</button><button type="button" role="menuitem" onClick={() => copyOrCut("cut", { kind: contextMenu.kind, id: contextMenu.id })}><Scissors size={15} />剪切</button><button type="button" role="menuitem" onClick={() => { setContextMenu(null); requestAnimationFrame(() => nameInputRef.current?.select()); }}><PencilSimple size={15} />重命名</button><button type="button" role="menuitem" className="is-destructive" onClick={() => askDelete({ kind: contextMenu.kind, id: contextMenu.id })}><Trash size={15} />删除</button></> : null}
-        </div>
-      ) : null}
+      {contextMenu ? <EditorContextMenu menu={contextMenu} label="变量操作" onClose={() => setContextMenu(null)} actions={[
+        ...(['background', 'object'].includes(contextMenu.kind) ? [
+          { label: '新建变量组', icon: VariableGroupIcon, run: () => addNode('object', contextMenu.parentId) },
+          { label: '新建变量', icon: VariableEntryIcon, run: () => addNode('variable', contextMenu.parentId) },
+          ...(clipboardRef.current ? [{ label: '粘贴', icon: Copy, run: () => paste(contextMenu.parentId) }] : []),
+        ] : []),
+        ...(contextMenu.kind !== 'background' ? [
+          { label: '复制', icon: Copy, run: () => copyOrCut('copy', { kind: contextMenu.kind, id: contextMenu.id }) },
+          { label: '剪切', icon: Scissors, run: () => copyOrCut('cut', { kind: contextMenu.kind, id: contextMenu.id }) },
+          { label: '重命名', icon: PencilSimple, run: () => { openEditor(nodeKey(contextMenu.kind, contextMenu.id)); requestAnimationFrame(() => nameInputRef.current?.select()); } },
+          { label: '删除', icon: Trash, danger: true, run: () => askDelete({ kind: contextMenu.kind, id: contextMenu.id }) },
+        ] : []),
+      ].map(action => ({ ...action, disabled: saving }))} /> : null}
       <ConfirmationDialog target={deleteTarget} confirmLabel="删除" tone="destructive" onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </EditorSidebarLayout>
   );
