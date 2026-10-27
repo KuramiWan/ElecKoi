@@ -15,7 +15,8 @@ import { ChatFileCards } from "../../modules/chat/components/ChatFileCards.jsx";
 import { TurnUsage } from "../../modules/chat/components/TurnUsage.jsx";
 import { liveProcessPresentation, processItemPresentation, shouldShowInlineAgentProcess } from "../../modules/chat/model/agentProcessPresentation.js";
 import { RichMessageFrame } from "../../modules/authorFrontend/index.js";
-import { detectRichMessagePresentation } from "@shared/foundation/richMessage";
+import { detectRichMessagePresentation, isRichMessageMarker } from "@shared/foundation/richMessage";
+import { omitMarkdownComments } from './omitMarkdownComments.js';
 import { finalReplyText } from "@shared/foundation/finalReply";
 import { normalizeMarkdownForRendering } from "./normalizeMarkdownForRendering.js";
 import { prepareMarkdownTextTones, registerMarkdownTextToneHighlights } from "./markdownTextTones.js";
@@ -68,14 +69,15 @@ async function animateOpeningSlide(article, fromX, toX, freezeAtEnd = false) {
 }
 
 function MessagePresentation({ message, content, streaming, renderMessageContent }) {
+  const visibleContent = useMemo(() => omitMarkdownComments(content || '', isRichMessageMarker), [content]);
   const presentation = useMemo(
     () => message.role === "assistant" && !streaming
-      ? detectRichMessagePresentation(content || "", false)
+      ? detectRichMessagePresentation(visibleContent, false)
       : null,
-    [content, message.role, streaming],
+    [visibleContent, message.role, streaming],
   );
   const renderMarkdown = (source, key) => {
-    const markdown = normalizeMarkdownForRendering(source || "");
+    const markdown = normalizeMarkdownForRendering(omitMarkdownComments(source || ""));
     const content = <OfficialMarkdown key={key} content={markdown} streaming={streaming} />;
     if (!renderMessageContent) return content;
     return renderMessageContent({
@@ -87,8 +89,8 @@ function MessagePresentation({ message, content, streaming, renderMessageContent
       streaming,
     }, content);
   };
-  if (message.role !== "assistant") return renderMarkdown(content, "message");
-  if (!presentation) return renderMarkdown(content, "message");
+  if (message.role !== "assistant") return renderMarkdown(visibleContent, "message");
+  if (!presentation) return renderMarkdown(visibleContent, "message");
   const fallback = message.generatedImageAttachments?.length
     ? presentation.parts.filter(part => part.kind === 'markdown').map(part => part.source).join('\n')
     : finalReplyText(message.content || '');

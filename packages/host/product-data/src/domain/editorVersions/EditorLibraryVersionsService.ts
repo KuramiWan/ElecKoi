@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { editorLibraryAddressSchema, editorLibrarySaveRequestSchema, scriptVersionContentSchema,
   regexVersionContentSchema, type EditorLibraryAddress, type EditorLibraryVersions, type EditorLibrarySaveRequest, type EditorLibrarySaveResult } from '@shared/contracts/editorVersions/schemas'
@@ -40,6 +41,24 @@ export class EditorLibraryVersionsService {
   }
 
   transaction<T>(operation: () => T): T { return this.versions.transaction(() => this.scripts.transaction(operation)) }
+
+  copyCharacter(sourceId: string, targetId: string, regexIds: Map<string, string>): void {
+    for (const kind of ['scripts', 'regex'] as const) {
+      const source = this.read({ kind, scope: 'character', ownerId: sourceId });
+      const address = { kind, scope: 'character' as const, ownerId: targetId };
+      const current = this.capture(address);
+      this.versions.save({ ...source, ...address, revision: 0, resourceRevision: current.resourceRevision,
+        versions: source.versions.map(version => {
+          if (kind === 'scripts') return version;
+          const content = regexVersionContentSchema.parse(JSON.parse(version.content));
+          return { ...version, content: JSON.stringify({ ...content, rules: content.rules.map(rule => {
+            if (!regexIds.has(rule.id)) regexIds.set(rule.id, `regex-${randomUUID()}`);
+            return { ...rule, id: regexIds.get(rule.id)! };
+          }) }) };
+        }),
+      }, current.content);
+    }
+  }
 
   save(requestInput: EditorLibrarySaveRequest): EditorLibrarySaveResult {
     const request = editorLibrarySaveRequestSchema.parse(requestInput)

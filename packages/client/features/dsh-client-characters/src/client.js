@@ -106,6 +106,16 @@ window.__ModuleLoader__.load({
         return this.mutate('create', [character], '新建角色失败。')
       }
 
+      async duplicate(characterId) {
+        if (this.disposed) throw productFailure(ELECKOI_FAILURE_CODES.lifecycleDisposed, 'ElecKoi 角色列表已关闭。', { what: 'ElecKoi 角色列表' })
+        const result = unwrapOrFail(await this.remote.eleckoiCharacters.duplicate(characterId), '复制角色卡失败。')
+        if (!result || typeof result.characterId !== 'string' || !result.collection?.items?.some(item => item.id === result.characterId)) {
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '角色副本返回的数据格式不正确。', { what: '角色副本' })
+        }
+        this.adopt(result.collection)
+        return result
+      }
+
       update(character) {
         return this.mutate('update', [character], '保存角色失败。')
       }

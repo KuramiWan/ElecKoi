@@ -9,7 +9,7 @@
 - `ctx.remote.eleckoiAuthorScripts`：`connect`、`getSettings`、`read`、`setSettings`
 - `ctx.remote.eleckoiAuthorVariables`：`applyPatch`、`getConfig`、`getState`、`merge`、`reset`、`setState`
 - `ctx.remote.eleckoiCharacterConfiguration`：`changes`、`exportRegexEditor`、`exportRegexRules`、`importRegexEditor`、`importRegexRules`、`readConversationSettingLibraries`、`readEditorLibraryVersions`、`readRegexEditor`、`readRegexRules`、`readScriptLibrary`、`readScriptWorkspace`、`readSettingLibrary`、`readVariableConfig`、`replaceSettingLibraryContent`、`resetConversationSettingLibrary`、`saveConversationSettingLibrary`、`saveConversationSettingLibraryVersion`、`saveEditorLibraries`、`saveRegexEditor`、`saveRegexRules`、`saveScriptLibraries`、`saveScriptLibrary`、`saveSettingLibrary`、`saveSettingLibraryViewState`、`saveVariableConfig`、`saveVariableConfigViewState`、`testRegexRule`、`updateSettingLibraryEntries`
-- `ctx.remote.eleckoiCharacters`：`changes`、`commitImport`、`create`、`delete`、`discardImport`、`export`、`list`、`prepareImport`、`saveGroups`、`select`、`update`
+- `ctx.remote.eleckoiCharacters`：`changes`、`commitImport`、`create`、`delete`、`discardImport`、`duplicate`、`export`、`list`、`prepareImport`、`saveGroups`、`select`、`update`
 - `ctx.remote.eleckoiConversationModels`：`current`、`select`
 - `ctx.remote.eleckoiConversations`：`authorState`、`changes`、`create`、`delete`、`deleteMessagesFrom`、`details`、`editMessage`、`exportArchive`、`fork`、`importArchive`、`list`、`preparePrompt`、`projectDisplay`、`readGeneratedImage`、`regenerateImage`、`regenerateMessage`、`rename`、`replaceVariableState`、`requestPreview`、`requestPreviews`、`revealFile`、`selectOpening`、`startRegeneration`、`updateOpening`、`variableTimeline`、`waitForGeneration`
 - `ctx.remote.eleckoiCreatorStudio`：`changes`、`create`、`delete`、`list`
@@ -111,6 +111,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     create: (character: CharacterRecord) => Promise<RemoteResult<CharacterCollection>>
     delete: (characterIds: string[]) => Promise<RemoteResult<CharacterCollection>>
     discardImport: (token: string) => Promise<RemoteResult<void>>
+    duplicate: (characterId: string) => Promise<RemoteResult<{ characterId: string; collection: CharacterCollection; }>>
     export: (characterId: string, format: CharacterExportFormat) => Promise<RemoteResult<CharacterExportResult>>
     list: () => Promise<RemoteResult<CharacterCollection>>
     prepareImport: (files: CharacterImportFile[], source: CharacterImportSource) => Promise<RemoteResult<CharacterImportPreview>>
@@ -261,6 +262,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'eleckoiCharacters/create': (character: CharacterRecord) => Promise<RemoteResult<CharacterCollection>>
     'eleckoiCharacters/delete': (characterIds: string[]) => Promise<RemoteResult<CharacterCollection>>
     'eleckoiCharacters/discardImport': (token: string) => Promise<RemoteResult<void>>
+    'eleckoiCharacters/duplicate': (characterId: string) => Promise<RemoteResult<{ characterId: string; collection: CharacterCollection; }>>
     'eleckoiCharacters/export': (characterId: string, format: CharacterExportFormat) => Promise<RemoteResult<CharacterExportResult>>
     'eleckoiCharacters/list': () => Promise<RemoteResult<CharacterCollection>>
     'eleckoiCharacters/prepareImport': (files: CharacterImportFile[], source: CharacterImportSource) => Promise<RemoteResult<CharacterImportPreview>>
@@ -412,6 +414,7 @@ export declare const TYPERT_REMOTE: TypertRemoteInfo<{
   readonly 'eleckoiCharacters/create': TypertRemoteMethod<{ readonly 'character': CharacterRecord }, CharacterCollection>
   readonly 'eleckoiCharacters/delete': TypertRemoteMethod<{ readonly 'characterIds': string[] }, CharacterCollection>
   readonly 'eleckoiCharacters/discardImport': TypertRemoteMethod<{ readonly 'token': string }, void>
+  readonly 'eleckoiCharacters/duplicate': TypertRemoteMethod<{ readonly 'characterId': string }, { characterId: string; collection: CharacterCollection; }>
   readonly 'eleckoiCharacters/export': TypertRemoteMethod<{ readonly 'characterId': string; readonly 'format': CharacterExportFormat }, CharacterExportResult>
   readonly 'eleckoiCharacters/list': TypertRemoteMethod<{  }, CharacterCollection>
   readonly 'eleckoiCharacters/prepareImport': TypertRemoteMethod<{ readonly 'files': CharacterImportFile[]; readonly 'source': CharacterImportSource }, CharacterImportPreview>

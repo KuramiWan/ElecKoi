@@ -1,7 +1,8 @@
 .group-assignment-menu {
   position: fixed;
   z-index: 320;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   width: 212px;
   max-height: min(420px, calc(100vh - 16px));
   padding: 6px;
@@ -16,12 +17,23 @@
 .group-assignment-menu-targets {
   display: grid;
   max-height: 336px;
+  min-height: 0;
   margin-top: 4px;
   padding-top: 4px;
   overflow-y: auto;
   border-top: 1px solid var(--line);
   scrollbar-width: thin;
 }
+
+.group-assignment-menu-actions {
+  display: grid;
+  flex: none;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.group-assignment-menu > button { flex: none; }
 
 .group-assignment-menu button {
   display: grid;

@@ -29,6 +29,12 @@ export interface ElecKoiCharacters {
    */
   create(character: CharacterRecord): Promise<CharacterCollection>
   /**
+   * 复制角色及其专属配置、资源，创建独立副本并刷新目录。
+   * @param characterId - 原角色编号。
+   * @returns 新角色编号和更新后的目录；异步失败会拒绝 Promise。
+   */
+  duplicate(characterId: string): Promise<{ characterId: string; collection: CharacterCollection }>
+  /**
    * 保存角色并更新目录。
    * @param character - 完整角色数据。
    * @returns 操作结果，字段见返回类型；异步失败会拒绝 Promise。

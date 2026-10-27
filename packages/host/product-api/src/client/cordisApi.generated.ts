@@ -169,6 +169,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，字段见返回类型；异步失败会拒绝 Promise。',
       },
       {
+        signature: 'duplicate(characterId: string): Promise<{ characterId: string; collection: CharacterCollection }>',
+        description: '复制角色及其专属配置、资源，创建独立副本并刷新目录。',
+        parameters: [{ name: 'characterId', description: '原角色编号。' }],
+        returns: '新角色编号和更新后的目录；异步失败会拒绝 Promise。',
+      },
+      {
         signature: 'update(character: CharacterRecord): Promise<CharacterCollection>',
         description: '保存角色并更新目录。',
         parameters: [{ name: 'character', description: '完整角色数据。' }],

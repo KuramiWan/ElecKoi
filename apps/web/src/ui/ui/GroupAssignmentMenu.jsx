@@ -1,17 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { CheckIcon } from "../icons/index.jsx";
 import { DshFolderClosedIcon } from "../icons/dshTreeIcons.jsx";
 import { MinusIcon } from "../icons/openSourceIcons.jsx";
 
-export function GroupAssignmentMenu({ x, y, label, currentGroupId = "", groups, onMove }) {
+export function GroupAssignmentMenu({ x, y, label, currentGroupId = "", groups, onMove, actions = [] }) {
   const menuRef = useRef(null);
-  const estimatedHeight = Math.min(420, 20 + (groups.length + 1) * 34);
-  const left = Math.max(8, Math.min(x, window.innerWidth - 220));
-  const top = Math.max(8, Math.min(y, window.innerHeight - estimatedHeight - 8));
-
-  useEffect(() => {
-    menuRef.current?.querySelector("button:not(:disabled)")?.focus();
-  }, []);
+  useLayoutEffect(() => {
+    const menu = menuRef.current, bounds = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - bounds.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - bounds.height - 8))}px`;
+    menu.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
+  }, [x, y]);
 
   function moveFocus(event) {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -34,11 +33,16 @@ export function GroupAssignmentMenu({ x, y, label, currentGroupId = "", groups, 
       className="group-assignment-menu"
       role="menu"
       aria-label={label}
-      style={{ left: `${left}px`, top: `${top}px` }}
+      style={{ left: `${x}px`, top: `${y}px` }}
       onPointerDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
       onKeyDown={moveFocus}
     >
+      {actions.length ? <div className="group-assignment-menu-actions" role="group" aria-label="角色卡操作">
+        {actions.map(({ label: text, icon: Icon, disabled, run }) => <button key={text} type="button" role="menuitem" disabled={disabled} onClick={run}>
+          <Icon /><span>{text}</span>
+        </button>)}
+      </div> : null}
       <button type="button" role="menuitem" disabled={!currentGroupId} onClick={() => void onMove("")}>
         {currentGroupId ? <MinusIcon /> : <CheckIcon />}
         <span>{currentGroupId ? "移出分组" : "未分组"}</span>

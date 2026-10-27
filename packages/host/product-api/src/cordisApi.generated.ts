@@ -509,6 +509,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '操作结果，结构见返回类型；失败抛出错误。',
       },
       {
+        signature: '@Remote duplicate(characterId: string): { characterId: string; collection: CharacterCollection }',
+        description: '复制角色卡及其专属配置和资源，保留原卡并创建独立副本。',
+        parameters: [{ name: 'characterId', description: '原角色编号。' }],
+        returns: '新角色编号和更新后的目录；失败抛出错误。',
+      },
+      {
         signature: '@Remote update(character: CharacterRecord): CharacterCollection',
         description: '更新完整数据并通知相关页面刷新。',
         parameters: [{ name: 'character', description: '完整角色数据。' }],

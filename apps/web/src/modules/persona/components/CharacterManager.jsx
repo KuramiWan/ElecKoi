@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ExportIcon, ImportIcon, PencilIcon, PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
+import { CopyIcon, ExportIcon, ImportIcon, PencilIcon, PlusIcon, TrashIcon } from "../../../ui/icons/index.jsx";
 import { DshSearchField } from "../../../ui/ui/DshSearchField.jsx";
 import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 import { GroupAssignmentMenu } from "../../../ui/ui/GroupAssignmentMenu.jsx";
@@ -15,9 +15,8 @@ export function characterArtworkAspectRatio(index) {
   return CHARACTER_ARTWORK_RATIOS[index % CHARACTER_ARTWORK_RATIOS.length];
 }
 
-export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCharacters, onImportCharacters, onPrepareImports, onDiscardImports, onExportCharacters }) {
+export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCharacters, onImportCharacters, onPrepareImports, onDiscardImports, onExportCharacters, onDuplicateCharacter }) {
   const [selectedGroup, setSelectedGroup] = useState(ALL_CHARACTERS);
-  const [selectedCharacterId, setSelectedCharacterId] = useState(characters.active_character_id || characters.items?.[0]?.id || "");
   const [keyword, setKeyword] = useState("");
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -30,6 +29,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
   const [exportNotice, setExportNotice] = useState("");
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState(null);
+  const [duplicatingIds, setDuplicatingIds] = useState([]);
 
   const groups = useMemo(() => {
     const names = [...new Set((characters.groups || []).map((group) => group.trim()).filter(Boolean))];
@@ -74,11 +74,6 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
   useEffect(() => {
     if (selectedGroup !== ALL_CHARACTERS && !groups.includes(selectedGroup)) setSelectedGroup(ALL_CHARACTERS);
   }, [groups, selectedGroup]);
-
-  useEffect(() => {
-    if ((characters.items || []).some((character) => character.id === selectedCharacterId)) return;
-    setSelectedCharacterId(characters.active_character_id || characters.items?.[0]?.id || "");
-  }, [characters, selectedCharacterId]);
 
   useEffect(() => {
     function closeMenus(event) {
@@ -136,7 +131,6 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
     event.preventDefault();
     event.stopPropagation();
     if (selectionMode) return;
-    setSelectedCharacterId(character.id);
     setGroupMenu(null);
     setCardGroupMenu({ character, x: event.clientX, y: event.clientY });
   }
@@ -151,6 +145,16 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
     } catch (cause) {
       setError(cause ?? "移动角色卡失败，请重试。");
     }
+  }
+
+  async function duplicateCharacter(characterId) {
+    if (duplicatingIds.includes(characterId)) return;
+    setCardGroupMenu(null);
+    setError(null);
+    setDuplicatingIds(current => [...current, characterId]);
+    try { await onDuplicateCharacter(characterId); }
+    catch (cause) { setError(cause ?? '复制角色卡失败，请重试。'); }
+    finally { setDuplicatingIds(current => current.filter(id => id !== characterId)); }
   }
 
   async function saveGroup() {
@@ -404,8 +408,7 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
                   authorAvatar={persona?.user_avatar || ""}
                   selectable={selectionMode}
                   selected={selectedSet.has(character.id)}
-                  onClick={selectionMode ? toggleSelected : setSelectedCharacterId}
-                  onDoubleClick={selectionMode ? undefined : openCharacterEditorWindow}
+                  onClick={selectionMode ? toggleSelected : openCharacterEditorWindow}
                   onContextMenu={selectionMode ? undefined : openCardGroupMenu}
                 />
               ))}
@@ -430,10 +433,14 @@ export function CharacterManager({ characters, persona, onSaveGroups, onDeleteCh
         <GroupAssignmentMenu
           x={cardGroupMenu.x}
           y={cardGroupMenu.y}
-          label={`移动${characterName(cardGroupMenu.character)}到分组`}
+          label={`${characterName(cardGroupMenu.character)}的操作`}
           currentGroupId={characterGroup(cardGroupMenu.character)}
           groups={groups.map((group) => ({ id: group, name: group }))}
           onMove={moveCharacterToGroup}
+          actions={[
+            { label: '编辑角色卡', icon: PencilIcon, run: () => { setCardGroupMenu(null); openCharacterEditorWindow(cardGroupMenu.character.id); } },
+            { label: '复制角色卡', icon: CopyIcon, disabled: duplicatingIds.includes(cardGroupMenu.character.id), run: () => void duplicateCharacter(cardGroupMenu.character.id) },
+          ]}
         />
       ) : null}
 

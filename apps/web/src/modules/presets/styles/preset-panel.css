@@ -1039,6 +1039,7 @@
   align-content: start;
   gap: 14px;
   min-height: 0;
+  padding: 4px 4px 16px;
   overflow-y: auto;
 }
 

@@ -77,14 +77,14 @@ export class CharacterRepository {
     return this.get()
   }
 
-  createInTransaction(character: CharacterRecord, database: ElecKoiDatabase): void {
+  createInTransaction(character: CharacterRecord, database: ElecKoiDatabase, applyDefaults = true): void {
     if (!character.id.trim()) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '角色编号不能为空。', { field: 'id' })
     if (database.select({ id: characters.id }).from(characters).where(eq(characters.id, character.id)).get()) {
       throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '角色编号已经存在。', { what: '角色编号' })
     }
     const state = database.select().from(characterMeta).where(eq(characterMeta.id, 'default')).get()
     const existing = database.select({ id: characters.id }).from(characters).all()
-    const nextCharacter = string(character.chatBackground)
+    const nextCharacter = !applyDefaults || string(character.chatBackground)
       ? character
       : { ...character, chatBackground: string(this.defaultChatBackground()) }
     this.saveCard(nextCharacter, existing.length, database)

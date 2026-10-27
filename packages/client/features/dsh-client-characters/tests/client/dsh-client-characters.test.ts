@@ -50,12 +50,14 @@ describe('DSH ElecKoi character client model', () => {
       subscribe: (listener: () => void) => () => void
       refresh: () => Promise<Collection>
       select: (id: string) => Promise<Collection>
+      duplicate: (id: string) => Promise<{ characterId: string; collection: Collection }>
     } | undefined
     const remote = {
       eleckoiCharacters: {
         changes: (signal?: AbortSignal) => changeFeed.open(signal),
         list: vi.fn(() => new Promise<{ ok: true; value: Collection }>(resolve => pending.push(resolve))),
-        select: vi.fn(async (id: string) => ({ ok: true as const, value: collection(id) }))
+        select: vi.fn(async (id: string) => ({ ok: true as const, value: collection(id) })),
+        duplicate: vi.fn(async (_id: string) => ({ ok: true as const, value: { characterId: 'copied', collection: collection('copied') } })),
       }
     }
     const changeFeed = recordChanges()
@@ -89,7 +91,14 @@ describe('DSH ElecKoi character client model', () => {
     expect(remote.eleckoiCharacters.select).toHaveBeenCalledWith('saved')
     expect(catalog.getSnapshot().collection.active_character_id).toBe('saved')
     expect(notifications).toBe(1)
+    expect((await catalog.duplicate('saved')).characterId).toBe('copied')
+    expect(remote.eleckoiCharacters.duplicate).toHaveBeenCalledWith('saved')
+    expect(catalog.getSnapshot().collection.active_character_id).toBe('copied')
+    remote.eleckoiCharacters.duplicate.mockRejectedValueOnce(new Error('Synthetic duplication failure'))
+    await expect(catalog.duplicate('saved')).rejects.toThrow('Synthetic duplication failure')
+    expect(catalog.getSnapshot().collection.active_character_id).toBe('copied')
     cleanup()
+    await expect(catalog.duplicate('saved')).rejects.toMatchObject({ code: 'eleckoi/lifecycle/disposed' })
     expect(changeFeed.isStopped()).toBe(true)
   })
 })

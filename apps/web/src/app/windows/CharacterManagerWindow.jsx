@@ -98,6 +98,7 @@ export function CharacterManagerWindow({ characterCatalog, personaModel, renderC
     onPrepareImports: (source, files) => characterCatalog.prepareImport(source, files),
     onDiscardImports: (token) => characterCatalog.discardImport(token),
     onExportCharacters: exportCharacters,
+    onDuplicateCharacter: (id) => characterCatalog.duplicate(id),
   };
   const managerFallback = <CharacterManager
     characters={characters}
@@ -108,6 +109,7 @@ export function CharacterManagerWindow({ characterCatalog, personaModel, renderC
     onPrepareImports={(source, files) => characterCatalog.prepareImport(source, files)}
     onDiscardImports={(token) => characterCatalog.discardImport(token)}
     onExportCharacters={exportCharacters}
+    onDuplicateCharacter={(id) => characterCatalog.duplicate(id)}
   />;
 
   return (

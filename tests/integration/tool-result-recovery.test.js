@@ -217,12 +217,12 @@ describe('Shipped Host tool-result composition', () => {
     expect(store[0].name).toMatch(/tool-result-store\.mjs$/)
   })
 
-  it.each(['desktop', 'android'])('%s recovers all three tool groups through its actual profile and saved presets', async platform => {
+  it.each(['desktop', 'android'])('%s recovers all three tool groups through its actual profile, copied cards and saved presets', async platform => {
     const f = await profileFixture(platform), { ctx, root } = f
     expect(typeof ctx.spillStore.readResult).toBe('function')
     expect(ctx.spillStore.root).toBe(join(root, 'home', 'tool-results'))
     const count = 10_001, data = ctx.eleckoiProductData
-    const character = data.createCharacter({ id: 'synthetic-profile-character', name: '合成编辑目标' }).items[0]
+    let character = data.createCharacter({ id: 'synthetic-profile-character', name: '合成编辑目标' }).items[0]
     const library = data.readSettingLibrary(character.id)
     const entries = Array.from({ length: count }, (_, index) => ({ ...emptyEntry(`synthetic-profile-${index}`),
       title: `合成目录-${String(index).padStart(5, '0')}`,
@@ -236,6 +236,9 @@ describe('Shipped Host tool-result composition', () => {
       order: index + 1, treeViewOrder: index, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }))
     data.saveVariableConfig(character.id, { ...config, variables,
       initialStateJson: JSON.stringify(Object.fromEntries(variables.map((variable, index) => [variable.title, `合成变量正文-${index}`]))) })
+    const copy = data.duplicateCharacter(character.id)
+    expect(copy.collection.items).toHaveLength(2)
+    character = copy.collection.items.find(item => item.id === copy.characterId)
     const chat = await ctx.eleckoiConversationsApi.create({ metadata: { characterId: character.id } })
     const roleplayId = await ctx.eleckoiRoleplaySessions.preparePrompt(chat.conversation.id, '合成大量条目续读')
     const roleplay = (await ctx.sessionController.resolveAgent(roleplayId)).agent

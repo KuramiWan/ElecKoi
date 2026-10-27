@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import type {
   RegexRule,
@@ -181,6 +181,19 @@ export class RegexRuleRepository {
     }
     const collection = this.readEditor({ scope, ownerId })
     return scope === 'preset' ? collection.agentPresetRules : collection.characterRules
+  }
+
+  copyCharacter(sourceId: string, targetId: string): Map<string, string> {
+    const source = this.readEditor({ scope: 'character', ownerId: sourceId });
+    const target = this.readEditor({ scope: 'character', ownerId: targetId });
+    const ids = new Map(source.characterRules.map(rule => [rule.id, `regex-${randomUUID()}`]));
+    this.saveEditor({ ...target, characterEnabled: source.characterEnabled,
+      characterRules: source.characterRules.map(rule => ({ ...rule, id: ids.get(rule.id)! })),
+      versions: target.versions.map(version => ({ ...version,
+        characterEnabledIds: (source.versions.find(item => item.id === version.id)?.characterEnabledIds ?? []).map(id => ids.get(id)!),
+      })),
+    });
+    return ids;
   }
 
   readEditor(targetInput: RegexEditorTarget, db: ElecKoiDatabase = this.store.db): RegexRuleEditorCollection {

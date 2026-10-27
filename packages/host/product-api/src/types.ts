@@ -926,6 +926,7 @@ export interface ElecKoiProductDataStore {
   restoreConversationRuntime(conversationId: string, snapshot: ConversationRuntimeStateSnapshot): void
   readCharacters(): CharacterCollection
   createCharacter(character: CharacterRecord): CharacterCollection
+  duplicateCharacter(characterId: string): { characterId: string; collection: CharacterCollection }
   updateCharacter(character: CharacterRecord): CharacterCollection
   selectCharacter(characterId: string): CharacterCollection
   saveCharacterGroups(groups: string[], assignments: CharacterGroupAssignment[]): CharacterCollection

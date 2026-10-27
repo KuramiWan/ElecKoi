@@ -1,4 +1,5 @@
 import { renderRegexEjs } from './regex-ejs'
+import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, join } from 'node:path'
 export type { GeneratedImageFrame, ChatUserImageAttachment } from '@shared/contracts/entities/chat'
 export { normalizeNovelAiImageSettings, NOVELAI_IMAGE_PROVIDER, AUTO_ILLUSTRATION_TOOL_GROUP, DEFAULT_NOVELAI_COMPILER_INSTRUCTION } from '@shared/contracts/agent/novelAiImageSettings'
@@ -832,6 +833,36 @@ class ProductDataStore {
 
   createCharacter(character: CharacterRecord): CharacterCollection {
     return this.withPrimaryOpenings(this.databaseRepositories().characters.create(character))
+  }
+
+  duplicateCharacter(sourceId: string): { characterId: string; collection: CharacterCollection } {
+    const { characters, settingLibraries, variables } = this.databaseRepositories();
+    const collection = characters.get();
+    const source = collection.items.find(item => item.id === sourceId);
+    if (!source) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '找不到要复制的角色卡。', { what: '角色卡' });
+    const characterId = `character-${randomUUID()}`;
+    const names = new Set(collection.items.map(item => item.name));
+    const baseName = `${source.name}（副本）`;
+    let name = baseName;
+    for (let suffix = 2; names.has(name); suffix++) name = `${source.name}（副本 ${suffix}）`;
+    const library = settingLibraries.get(sourceId), config = variables.get(sourceId);
+    const scriptLibrary = this.scripts!.portable('character', sourceId);
+    try {
+      this.frontendProjects().copyCharacterOwner(sourceId, characterId, copyFrontends => this.editorVersions!.transaction(() => {
+        this.scripts!.transaction(db => {
+          characters.createInTransaction({ ...source, id: characterId, name }, db, false);
+          variables.restoreInTransaction(characterId, { ...config, characterId }, db);
+          settingLibraries.saveInTransaction(characterId, { ...library, characterId }, db);
+          const scripts = this.scripts!.importInTransaction('character', characterId, scriptLibrary, db);
+          this.scripts!.saveInTransaction({ ...scripts, enabled: scriptLibrary.enabled }, db);
+          const regexIds = this.regexRules!.copyCharacter(sourceId, characterId);
+          this.editorVersions!.copyCharacter(sourceId, characterId, regexIds);
+          copyFrontends();
+        });
+      }));
+      characters.commitMediaChanges();
+    } catch (error) { characters.rollbackMediaChanges(); throw error; }
+    return { characterId, collection: this.readCharacters() };
   }
 
   updateCharacter(character: CharacterRecord): CharacterCollection {

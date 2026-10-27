@@ -37,7 +37,7 @@
 
 | ID | 名称 | 类型 | 关系 | 模式 | 作用域 | 说明 | 公开成员/所属合同 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `eleckoiCharacters` | 角色目录服务 | 服务 | 提供 | `call` | `client` | 读取并维护角色目录，支持角色、分组、导入与导出操作。 | `getSnapshot`、`subscribe`、`refresh`、`create`、`update`、`select`、`saveGroups`、`delete`、`prepareImport`、`commitImport`、`discardImport`、`exportCharacters` |
+| `eleckoiCharacters` | 角色目录服务 | 服务 | 提供 | `call` | `client` | 读取并维护角色目录，支持角色复制、分组、导入与导出操作。 | `getSnapshot`、`subscribe`、`refresh`、`create`、`duplicate`、`update`、`select`、`saveGroups`、`delete`、`prepareImport`、`commitImport`、`discardImport`、`exportCharacters` |
 | `eleckoi.character.page.list` | 角色列表区域 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换角色列表。 | — |
 | `eleckoi.character.page.profile` | 角色资料区域 | 界面插槽 | 提供 | `replace` | `root` | 包装或替换角色资料展示。 | — |
 | `eleckoi.character.editor.card` | 角色基础资料编辑 | 界面插槽 | 提供 | `replace` | `root` | 扩展角色名称、头像和基础资料编辑。 | — |
@@ -238,7 +238,7 @@ ElecKoi 产品能力的 DSH Host Remote 接口。
 | `eleckoiAuthorScripts` | 原生作者脚本运行 | Remote 合同 | 提供 | `call-and-listen` | `host` | 读取明确声明原生标准的启用脚本，通过唯一运行页面的双向流等待候选规则结果；桌面默认启动装配尚在实施。 | `read`、`connect`、`getSettings`、`setSettings` |
 | `eleckoiAuthorVariables` | 原生作者变量 | Remote 合同 | 提供 | `call` | `host` | 读取原生聊天变量与配置，将 SDK 修改交给同一作者规则处理流程，并在成功后保存和发布消息变更。 | `getState`、`getConfig`、`setState`、`merge`、`applyPatch`、`reset` |
 | `eleckoiSystem` | 桌面运行状态 | Remote 合同 | 提供 | `call` | `host` | 读取当前 ElecKoi DSH Host 的架构版本与 Remote 协议状态。 | `status` |
-| `eleckoiCharactersRemote` | 角色数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和维护角色、分组及角色卡导入导出。 | `list`、`create`、`update`、`select`、`saveGroups`、`delete`、`export`、`prepareImport`、`commitImport`、`discardImport` |
+| `eleckoiCharactersRemote` | 角色数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取和维护角色、分组及角色卡复制、导入导出。 | `list`、`create`、`duplicate`、`update`、`select`、`saveGroups`、`delete`、`export`、`prepareImport`、`commitImport`、`discardImport` |
 | `eleckoiCharacterChangesRemote` | 角色数据变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知角色、分组和当前角色发生变化。 | `changes` |
 | `eleckoiPersonaRemote` | 用户资料数据 | Remote 合同 | 提供 | `call` | `host` | 通过 DSH Host 读取并保存用户名称与头像资料。 | `read`、`save` |
 | `eleckoiPersonaChangesRemote` | 用户资料变更通知 | Remote 合同 | 提供 | `listen` | `host` | 通过 DSH Remote stream 通知用户资料发生变化。 | `changes` |

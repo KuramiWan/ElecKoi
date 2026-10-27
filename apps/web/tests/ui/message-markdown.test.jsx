@@ -13,6 +13,48 @@ import {
 globalThis.React = React;
 
 describe("message markdown presentation", () => {
+  it.each(['assistant', 'user'])("hides HTML comments in %s display while retaining surrounding Markdown and source", role => {
+    const source = 'Visible **before**\n\n<!-- synthetic hidden note\n**internal syntax** -->\n\nVisible *after*';
+    const message = { id: 'synthetic-comments', role, content: source };
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, { message }));
+    expect(html).toContain('<strong>before</strong>');
+    expect(html).toContain('<em>after</em>');
+    expect(html).not.toContain('synthetic hidden note');
+    expect(html).not.toContain('internal syntax');
+    expect(message.content).toBe(source);
+  });
+
+  it('does not promote HTML inside comments to a frontend document', () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, { message: {
+      id: 'synthetic-comment-html', role: 'assistant', content: 'Before\n\n<!-- <script>syntheticHidden()</script> -->\n\nAfter',
+    } }));
+    expect(html).toContain('Before'); expect(html).toContain('After');
+    expect(html).not.toContain('syntheticHidden'); expect(html).not.toContain('iframe');
+  });
+
+  it('preserves code and escaped comment examples and hides consecutive and unfinished comments', () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, { message: {
+      id: 'synthetic-comment-examples', role: 'assistant', content: [
+        'Before <!-- hidden inline --> after', '', '<!-- hidden first --><!-- hidden second -->', '',
+        '`<!-- inline code example -->`', '', '\\<!-- escaped example -->', '',
+        '```text', '<!-- fenced code example -->', '```', '', '<!-- unfinished hidden note',
+      ].join('\n'),
+    } }));
+    expect(html).toContain('Before  after');
+    for (const label of ['inline code example', 'escaped example', 'fenced code example']) expect(html).toContain(label);
+    for (const label of ['hidden inline', 'hidden first', 'hidden second', 'unfinished hidden note']) expect(html).not.toContain(label);
+  });
+
+  it('uses source offsets for multiline comments inside blockquotes and list items', () => {
+    const html = renderToStaticMarkup(React.createElement(MessageBubble, { message: {
+      id: 'synthetic-container-comments', role: 'assistant', content: [
+        '> <!-- synthetic hidden quote', '> second hidden line -->', '> Visible quote', '',
+        '- <!-- synthetic hidden item', '  second hidden line -->', '  Visible item',
+      ].join('\n'),
+    } }));
+    expect(html).toContain('Visible quote'); expect(html).toContain('Visible item');
+    expect(html).not.toContain('synthetic hidden'); expect(html).not.toContain('second hidden line'); expect(html).not.toContain('-&gt;');
+  });
   it("keeps roleplay source line breaks in the official renderer", () => {
     const html = renderToStaticMarkup(React.createElement(MessageBubble, {
       message: {

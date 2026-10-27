@@ -62,6 +62,47 @@ export class FrontendProjectRepository {
     return this.characterDeletion.run(characterIds, operation)
   }
   recoverCharacterDeletions(): void { this.characterDeletion.recover() }
+  /** Copy project identities and resources while the caller creates the new character in its transaction. */
+  copyCharacterOwner<T>(sourceId: string, targetId: string, operation: (copy: () => void) => T): T {
+    const source = { scope: 'character' as const, characterId: sourceId };
+    const workspace = this.workspace(source);
+    if (this.characterExists(targetId) || this.index.get(SETTINGS, targetId) !== null) {
+      throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '角色前端复制需要新的所属对象。', { what: '角色前端复制目标' });
+    }
+    const copies = workspace.projects.map(project => ({
+      project: { ...structuredClone(project), id: randomUUID(), characterId: targetId },
+      files: this.readFiles(project), sourceId: project.id,
+    }));
+    const selected = copies.find(item => item.sourceId === workspace.selectedProjectId);
+    if (workspace.selectedProjectId && !selected) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '角色前端选择不属于当前角色。', { what: '角色前端选择' });
+    let started = false;
+    try {
+      return operation(() => {
+        started = true;
+        const owner = this.owner({ scope: 'character', characterId: targetId });
+        this.index.atomic(() => {
+          for (const item of copies) this.commit(item.project, item.files, owner);
+          this.settings(owner, { ...object(this.index.get(SETTINGS, sourceId)),
+            selectedProjectId: selected?.project.id ?? null });
+        });
+      });
+    } catch (error) {
+      if (started && !this.characterExists(targetId)) {
+        try {
+          this.index.atomic(() => {
+            for (const { project } of copies) this.index.delete(PROJECTS, project.id);
+            this.index.delete(SETTINGS, targetId);
+          });
+          for (const { project } of copies) {
+            const directory = resolve(this.root, project.id);
+            if (!directory.startsWith(resolve(this.root) + sep)) throw new DesktopError(ELECKOI_FAILURE_CODES.securityDenied, '角色前端复制目录超出所属范围。', { what: '角色前端复制目录' });
+            rmSync(directory, { recursive: true, force: true });
+          }
+        } catch (recoveryError) { throw new AggregateError([error, recoveryError], '角色复制失败，前端资源清理未完成。'); }
+      }
+      throw error;
+    }
+  }
   private character(p: Document): string {
     if (typeof p.characterId !== 'string' || !p.characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'Frontend operation requires an explicit character id', { field: 'characterId' })
     if (!this.characterExists(p.characterId)) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, `Character does not exist: ${p.characterId}`, { what: '角色' })
