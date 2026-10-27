@@ -14,7 +14,7 @@ import {
   variableConfigVersions
 } from '@product-data/storage/sqlite/schema/common'
 import { conversationVariableVersionIds, readConversationVariableBinding } from '@product-data/domain/conversations'
-import { openingVariableVersionIds } from '@product-data/domain/settingLibraries'
+import { openingVariableVersionIds } from '@product-data/domain/characterOpenings'
 import {
   readVariable,
   readVariableObject,

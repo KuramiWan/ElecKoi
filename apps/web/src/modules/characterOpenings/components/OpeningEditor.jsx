@@ -6,8 +6,8 @@ import {
   moveBackupOpening,
   primaryFirstOpeningMessages,
   updateOpening,
-} from "../model/settingLibraryEditing.js";
-import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
+} from "../model/openingEditing.js";
+import { MarkdownTextareaField } from "../../settingLibraries/index.js";
 import { FailureAlert } from "../../../ui/ui/FailureAlert.jsx";
 
 export function OpeningEditor({ entry, variableVersions = [], variableVersionsError = '', onChange, onRequestDelete }) {

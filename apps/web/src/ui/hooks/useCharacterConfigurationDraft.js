@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { resolveFailure } from '../../../utils/failureText.js';
+import { resolveFailure } from '../../utils/failureText.js';
 
-export function useSettingLibraryDraft({ characterId, settingLibraries, onDirtyChange, label = '设定库', onAdopt, prepareSave }) {
+export function useCharacterConfigurationDraft({ characterId, configuration, onDirtyChange, label = '设定库', onAdopt, prepareSave }) {
   const [library, setLibrary] = useState(null);
   const [persisted, setPersisted] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -37,16 +37,16 @@ export function useSettingLibraryDraft({ characterId, settingLibraries, onDirtyC
       setPersisted(loaded);
       callbacks.current.onAdopt?.(loaded);
     };
-    const stop = settingLibraries.subscribe((kind, id, snapshot) => {
+    const stop = configuration.subscribe((kind, id, snapshot) => {
       if (kind === 'configuration' && id === characterId && snapshot.status === 'ready') adopt(snapshot.value);
     });
-    const cached = settingLibraries.getSnapshot(characterId);
+    const cached = configuration.getSnapshot(characterId);
     if (cached.status === 'ready') adopt(cached.value);
-    void settingLibraries.read(characterId).catch(cause => {
+    void configuration.read(characterId).catch(cause => {
       if (active) setError(resolveFailure(cause, { fallback: `读取${label}失败` }).text);
     });
     return () => { active = false; stop(); };
-  }, [characterId, settingLibraries, label]);
+  }, [characterId, configuration, label]);
 
   function changeLibrary(updater) {
     setError('');
@@ -74,7 +74,7 @@ export function useSettingLibraryDraft({ characterId, settingLibraries, onDirtyC
       setError('');
       setSaveNotice('');
       try {
-        const saved = await settingLibraries.save(characterId, callbacks.current.prepareSave?.(snapshot) ?? snapshot);
+        const saved = await configuration.save(characterId, callbacks.current.prepareSave?.(snapshot) ?? snapshot);
         persistedRef.current = saved;
         setPersisted(saved);
         if (libraryRef.current === snapshot) {

@@ -87,28 +87,12 @@ export function switchLibraryVersion(library, versionId) {
 }
 
 function blankFixedEntries(library) {
-  return library.entries.filter((entry) => PINNED_ENTRY_IDS.has(entry.id)).map((entry) => {
-    const copied = clone(entry);
-    if (copied.kind !== "opening") return copied;
-    const first = copied.openingMessages?.find((message) => message.id === copied.defaultOpeningMessageId)
-      || copied.openingMessages?.[0]
-      || { id: "opening-default", title: "默认开场", content: "", initialVariableStateJson: "" };
-    return {
-      ...copied,
-      content: "",
-      openingMessages: [{ ...first, content: "", initialVariableStateJson: "" }],
-      defaultOpeningMessageId: first.id,
-    };
-  });
+  return library.entries.filter(entry => PINNED_ENTRY_IDS.has(entry.id)).map(clone);
 }
 
 function ensureFixedEntries(library, entries) {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  return [
-    ...blankFixedEntries(library).map((entry) => byId.get(entry.id)
-      || (entry.kind === "opening" ? clone(library.entries.find(item => item.id === entry.id)) : entry)),
-    ...entries.filter((entry) => !PINNED_ENTRY_IDS.has(entry.id)),
-  ];
+  const byId = new Map(entries.map(entry => [entry.id, entry]));
+  return [...blankFixedEntries(library).map(entry => byId.get(entry.id) || entry), ...entries.filter(entry => !PINNED_ENTRY_IDS.has(entry.id))];
 }
 
 function availableVersionName(library, requested) {
@@ -155,15 +139,18 @@ export function deleteActiveLibraryVersion(library) {
 export function importLibraryAsVersion(library, imported) {
   const synced = syncActiveVersion(library);
   const timestamp = new Date().toISOString();
+  const { openingImport, ...importedSettings } = imported;
   const version = {
-    ...clone(imported),
+    ...clone(importedSettings),
     id: createId("library"),
     name: availableVersionName(synced, imported.name || "导入版本"),
     entries: ensureFixedEntries(synced, imported.entries),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  return applyVersion({ ...synced, versions: [...synced.versions, version] }, version);
+  const result = applyVersion({ ...synced, versions: [...synced.versions, version] }, version);
+  return openingImport ? { ...result, openingImports: [...(synced.openingImports || []), { ...openingImport, id: createId('opening-version'),
+    name: version.name, createdAt: timestamp, updatedAt: timestamp }] } : result;
 }
 
 function openingMessageFromJson(value) {
@@ -243,10 +230,20 @@ function parseElecKoiExport(source) {
   if (source.format !== SETTING_LIBRARY_EXPORT_FORMAT || source.version !== SETTING_LIBRARY_EXPORT_VERSION) {
     throw new DesktopError(ELECKOI_FAILURE_CODES.dataLegacyMismatch, "这不是当前版本的 ElecKoi 设定库文件。", { what: "设定库文件", expected: "当前版本" });
   }
+  // RETIRE WHEN: 停止支持含固定开场白条目的 v3 设定库文件导入后，删除 openingImport 解码和独立版本导入分支。
+  const entries = objectList(source.entries).map(entryFromJson);
+  const openings = entries.filter(entry => entry.kind === 'opening' || entry.id === 'fixed-opening-assistant');
+  if (openings.length > 1) throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, '设定库文件包含多个开场白容器。', { what: '设定库文件的开场白' });
+  const opening = openings[0];
+  const openingMessages = opening?.openingMessages.length ? opening.openingMessages : [{
+    id: 'opening-default', title: '默认开场', content: opening?.content || '', initialVariableStateJson: '',
+  }];
   return {
+    ...(opening ? { openingImport: { enabled: opening.enabled, openingMessages,
+      defaultOpeningMessageId: opening.openingMessages.length ? opening.defaultOpeningMessageId : 'opening-default' } } : {}),
     id: createId("import"),
     name: text(source.name, "导入版本"),
-    entries: objectList(source.entries).map(entryFromJson),
+    entries: entries.filter(entry => entry.kind !== 'opening' && entry.id !== 'fixed-opening-assistant'),
     groups: objectList(source.groups).map(groupFromJson),
     promptPositions: objectList(source.prompt_positions).map(promptPositionFromJson),
     listAllExpanded: bool(source.list_all_expanded, true),

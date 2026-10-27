@@ -1,3 +1,4 @@
+import { CharacterOpeningRepository } from '../src/domain/characterOpenings'
 import { restoreEditorSchemaV12 } from './helpers/editorSchemaV12'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -159,12 +160,13 @@ const schemaV7Sql = schemaV10Sql
 function productRecords(database: Database.Database) {
   // Script libraries have separate migration and data-retention assertions.
   // Runtime-state retention has its own exact migration assertions.
-  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('conversation_generation_results', 'script_libraries', 'agent_setting_snapshots', 'conversation_state_snapshots') ORDER BY name")
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('conversation_generation_results', 'script_libraries', 'agent_setting_snapshots', 'conversation_state_snapshots', 'character_openings') ORDER BY name")
     .all() as { name: string }[]
   return Object.fromEntries(tables.map(({ name }) => [name,
     (database.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[])
+      .filter(row => name !== 'character_text_contents' || row.kind !== 'opening')
       .map((row) => Object.fromEntries(Object.entries(name === 'agent_preset_state' ? { singletonId: 1, activePresetId: row.activePresetId } : row)
-        .filter(([key]) => (name !== 'chat_sessions' || key !== 'historyUserMessageCount')
+        .filter(([key]) => (name !== 'characters' || key !== 'showOpening') && (name !== 'chat_sessions' || key !== 'historyUserMessageCount')
           && (name !== 'agent_conversations' || key !== 'variableVersionId')
           && (name !== 'agent_responses' || !['variableStateJson', 'storedRegexRulesJson'].includes(key))
           && (!['agent_presets', 'agent_preset_library_groups'].includes(name) || key !== 'purpose'))))
@@ -1143,9 +1145,9 @@ describe('shared SQLite baseline', () => {
       CREATE TEMP TRIGGER watch_text AFTER UPDATE ON character_text_contents BEGIN INSERT INTO writes VALUES (new.kind,new.characterId); END;
       CREATE TEMP TRIGGER watch_card AFTER UPDATE ON characters BEGIN INSERT INTO writes VALUES ('card',new.id); END;`)
     const current = characters.get()
-    const changed = current.items.map((item) => item.id === a.id ? { ...item, persona: { ...(item.persona as object), opening: 'changed' } } : item)
+    const changed = current.items.map((item) => item.id === a.id ? { ...item, persona: { ...(item.persona as object), image_prompt: 'changed' } } : item)
     characters.replaceAll({ ...current, items: changed })
-    expect(database.native.prepare('SELECT * FROM writes').all()).toEqual([{ kind: 'opening', card: a.id }])
+    expect(database.native.prepare('SELECT * FROM writes').all()).toEqual([{ kind: 'image_prompt', card: a.id }])
     database.native.exec('DELETE FROM writes')
     characters.replaceAll(characters.get())
     expect(database.native.prepare('SELECT * FROM writes').all()).toEqual([])
@@ -1213,8 +1215,8 @@ describe('shared SQLite baseline', () => {
     characters.replaceAll({ active_character_id: 'card-a', groups: [], items: [card()] })
     const repository = new SettingLibraryRepository(database)
     const empty = repository.get('card-a')
-    expect(empty.entries.map((entry) => entry.id)).toEqual(['fixed-opening-assistant'])
-    expect(repository.primaryOpening('card-a')).toBe('')
+    expect(empty.entries).toEqual([])
+    expect(new CharacterOpeningRepository(database).primaryOpening('card-a')).toBe('opening')
 
     const timestamp = new Date().toISOString()
     const group = { id: 'world', name: '世界', parentId: '', order: 1, treeViewOrder: 1, createdAt: timestamp, updatedAt: timestamp }
@@ -1228,8 +1230,7 @@ describe('shared SQLite baseline', () => {
       viewOrder: 0, groupViewOrder: 0, treeViewOrder: 1, createdAt: timestamp, updatedAt: timestamp
     }
     const opening = {
-      ...empty.entries.find((candidate) => candidate.id === 'fixed-opening-assistant')!,
-      content: '主开场',
+      ...new CharacterOpeningRepository(database).get('card-a'),
       openingMessages: [
         { id: 'opening-main', title: '初次见面', content: '主开场', initialVariableStateJson: '{"好感":0}' },
         { id: 'opening-backup', title: '再次见面', content: '备用开场', initialVariableStateJson: '{"好感":10}' }
@@ -1250,7 +1251,7 @@ describe('shared SQLite baseline', () => {
     const saved = repository.save('card-a', {
       ...empty,
       groups: [group],
-      entries: [opening, entry, reference]
+      entries: [entry, reference]
     })
     expect(saved.groups).toEqual([expect.objectContaining({ id: 'world', name: '世界' })])
     expect(saved.entries).toContainEqual(expect.objectContaining({
@@ -1259,23 +1260,23 @@ describe('shared SQLite baseline', () => {
       content: '群山之间的城市。',
       position: 'insert_point_3'
     }))
-    expect(saved.entries.find((candidate) => candidate.id === 'fixed-opening-assistant')).toMatchObject({
-      content: '主开场',
+    new CharacterOpeningRepository(database).save('card-a', opening)
+    expect(new CharacterOpeningRepository(database).get('card-a')).toMatchObject({
       defaultOpeningMessageId: 'opening-main',
       openingMessages: [
         expect.objectContaining({ id: 'opening-main', content: '主开场' }),
         expect.objectContaining({ id: 'opening-backup', content: '备用开场' })
       ]
     })
-    expect(repository.primaryOpening('card-a')).toBe('主开场')
+    expect(new CharacterOpeningRepository(database).primaryOpening('card-a')).toBe('主开场')
     expect(saved.entries).toContainEqual(expect.objectContaining({
       id: 'reference-capital',
       agentReadStrategy: 'normal',
       dynamicMode: 'ejs_reference',
       triggerMode: 'agent_tool'
     }))
-    expect(database.native.prepare('SELECT COUNT(*) AS count FROM setting_library_entries WHERE characterId = ?').get('card-a')).toEqual({ count: 3 })
-    expect(database.native.prepare('SELECT COUNT(*) AS count FROM setting_library_version_entries WHERE characterId = ?').get('card-a')).toEqual({ count: 3 })
+    expect(database.native.prepare('SELECT COUNT(*) AS count FROM setting_library_entries WHERE characterId = ?').get('card-a')).toEqual({ count: 2 })
+    expect(database.native.prepare('SELECT COUNT(*) AS count FROM setting_library_version_entries WHERE characterId = ?').get('card-a')).toEqual({ count: 2 })
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   })
 
@@ -1402,12 +1403,7 @@ describe('shared SQLite baseline', () => {
     const withVersion = settingLibraries.saveConversationAsVersion('card-a', conversationId, '第一段对话')
     expect(withVersion.versions.find((version) => version.name === '第一段对话')?.entries
       .find((candidate) => candidate.id === entry.id)?.content).toBe('只属于当前对话')
-    expect(() => settingLibraries.replaceConversationLibrary('card-a', conversationId, {
-      ...effective,
-      entries: effective.entries.map((candidate) => candidate.id === 'fixed-opening-assistant'
-        ? { ...candidate, content: '越权修改' }
-        : candidate)
-    })).toThrow('只允许查看')
+    expect(new CharacterOpeningRepository(database).primaryOpening('card-a')).toBe('opening')
 
     settingLibraries.deleteConversationChanges('card-a', conversationId)
     expect(settingLibraries.conversationLibrary('card-a', conversationId)).toBeUndefined()

@@ -1,3 +1,4 @@
+import { createCharacterOpenings, syncCharacterOpeningVersion } from '@shared/contracts/characterOpenings/schemas'
 import { tavernEntryScanDepth } from '@shared/foundation/tavernWorldBook'
 import { gzipSync, gunzipSync } from 'node:zlib'
 import { randomUUID } from 'node:crypto'
@@ -74,8 +75,7 @@ function convertSillyTavernCard(root: JsonObject): DecodedCharacterCard {
     variableConversion = { openingStates: [], openingVersionIds: [], consumedEntries: new Set(),
       warnings: [`变量配置未导入，原始初始化内容保留在设定和开场白中：${error instanceof Error ? error.message : String(error)}`] }
   }
-  const settingLibrary = convertedSettingLibrary(name, cleanString(data.description), openings,
-    variableConversion.openingStates, variableConversion.openingVersionIds, worldBook, variableConversion.consumedEntries)
+  const settingLibrary = convertedSettingLibrary(name, cleanString(data.description), worldBook, variableConversion.consumedEntries)
   const regexRules = convertedRegexRules(extensions)
   const worldBookCount = settingLibrary.entries.filter((entry) => entry.id.startsWith('tavern-world-entry-')).length
   const result: DecodedCharacterCard = {
@@ -94,6 +94,14 @@ function convertSillyTavernCard(root: JsonObject): DecodedCharacterCard {
     settingLibrary,
     regexRules
   }
+  const openingConfig = createCharacterOpenings('pending-character', openings[0] ?? '', openings.length > 0)
+  if (openings.length) {
+    openingConfig.openingMessages = openings.map((content, index) => ({ id: `tavern-opening-${index + 1}`,
+      title: index === 0 ? '默认开场' : `备用开场 ${index}`, content,
+      variableVersionId: variableConversion.openingVersionIds[index] ?? '', initialVariableStateJson: variableConversion.openingStates[index] ?? '' }))
+    openingConfig.defaultOpeningMessageId = openingConfig.openingMessages[0]!.id
+  }
+  result.openings = syncCharacterOpeningVersion(openingConfig)
   if (variableConversion.config) result.variableConfig = variableConversion.config
   return result
 }
@@ -101,31 +109,12 @@ function convertSillyTavernCard(root: JsonObject): DecodedCharacterCard {
 function convertedSettingLibrary(
   cardName: string,
   description: string,
-  openings: string[],
-  openingStates: string[],
-  openingVersionIds: string[],
   worldBook: JsonObject | undefined,
   consumedEntries: Set<JsonObject>
 ): SettingLibrary {
   const timestamp = new Date().toISOString()
-  const openingEntry: SettingLibraryEntry = {
-    ...emptyEntry('fixed-opening-assistant', timestamp),
-    title: 'AI角色开场白',
-    iconId: 'chat',
-    kind: 'opening',
-    content: openings[0] ?? '',
-    openingMessages: openings.map((content, index) => ({
-      id: `tavern-opening-${index + 1}`,
-      title: index === 0 ? '默认开场' : `备用开场 ${index}`,
-      content,
-      initialVariableStateJson: openingStates[index] ?? '',
-      variableVersionId: openingVersionIds[index] ?? ''
-    })),
-    defaultOpeningMessageId: openings.length ? 'tavern-opening-1' : '',
-    insertRole: 'assistant'
-  }
   const groups: SettingLibraryGroup[] = []
-  const entries: SettingLibraryEntry[] = [openingEntry]
+  const entries: SettingLibraryEntry[] = []
   if (description) {
     groups.push(settingGroup('tavern-character-basics', '角色基础设定', 1, timestamp))
     entries.push({
@@ -245,7 +234,10 @@ export function decodePortablePackage(encoded: string): PortableCharacterPackage
 
 function decodePortableRoot(root: JsonObject): PortableCharacterPackage {
   if (root.format !== 'eleckoi.character-card') throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '这不是 ElecKoi 角色卡', { what: '角色卡格式' })
-  if (root.version !== 1) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '暂不支持这个角色卡版本', { what: '角色卡版本', expected: '1' })
+  if (root.version !== 1 && root.version !== 2) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '暂不支持这个角色卡版本', { what: '角色卡版本', expected: '1 / 2' })
+  if (root.version === 2 && (typeof root.character_openings !== 'string' || !root.character_openings)) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.dataShapeInvalid, 'v2 角色卡缺少独立开场白。', { what: '角色卡的独立开场白' })
+  }
   const character = portableCharacter(record(root.character) ?? {})
   const assets = objectList(root.assets).map((asset) => ({
     key: string(asset.key),
@@ -255,6 +247,7 @@ function decodePortableRoot(root: JsonObject): PortableCharacterPackage {
   return {
     character,
     assets,
+    ...(root.character_openings === undefined ? {} : { characterOpeningsJson: string(root.character_openings) }),
     settingLibraryJson: string(root.setting_library),
     variableConfigJson: string(root.variable_config),
     regexRules: decodePortableRegexRules(root.regex_rules),
@@ -265,7 +258,8 @@ function decodePortableRoot(root: JsonObject): PortableCharacterPackage {
 function portableRoot(value: PortableCharacterPackage): JsonObject {
   return {
     format: 'eleckoi.character-card',
-    version: 1,
+    version: value.characterOpeningsJson ? 2 : 1,
+    ...(value.characterOpeningsJson ? { character_openings: value.characterOpeningsJson } : {}),
     character: {
       name: value.character.name,
       frontend_beauty_enabled: value.character.frontendBeautyEnabled,

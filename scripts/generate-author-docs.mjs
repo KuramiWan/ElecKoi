@@ -158,9 +158,12 @@ async function exampleDocuments(source) {
     variableVersion('example-variables', '从零开始', { score: 0, total: 0, level: 1 }),
     variableVersion('example-advanced-variables', '从十开始', { score: 10, total: 20, level: 2 }),
   ] };
-  const card = { format: 'eleckoi.character-card', version: 1,
+  const openingVersion = { id: 'example-openings', name: '示例开场白', enabled: true, createdAt: '', updatedAt: '',
+    openingMessages: opening.opening_messages.map(message => ({ id: message.id, title: message.title, content: message.content, variableVersionId: message.variable_version_id, initialVariableStateJson: message.initial_variable_state })), defaultOpeningMessageId: opening.default_opening_message_id };
+  const card = { format: 'eleckoi.character-card', version: 2,
+    character_openings: JSON.stringify({ characterId: 'example-character', activeVersionId: openingVersion.id, name: openingVersion.name, enabled: true, openingMessages: openingVersion.openingMessages, defaultOpeningMessageId: openingVersion.defaultOpeningMessageId, versions: [openingVersion] }),
     character: { name: '原生 SDK 示例角色', group: 'SDK 示例', opening: frontend, show_opening: true, frontend_beauty_enabled: true }, assets: [],
-    setting_library: JSON.stringify({ format: 'eleckoi.setting-library-snapshot', version: 1, active_version_id: 'example-settings', versions: [{ id: 'example-settings', name: '示例设定', entries: [opening], groups: [], prompt_positions: [], list_all_expanded: true, expanded_group_ids: [] }] }),
+    setting_library: JSON.stringify({ format: 'eleckoi.setting-library-snapshot', version: 1, active_version_id: 'example-settings', versions: [{ id: 'example-settings', name: '示例设定', entries: [], groups: [], prompt_positions: [], list_all_expanded: true, expanded_group_ids: [] }] }),
     variable_config: JSON.stringify(config),
     regex_rules: [{ id: 'example-choice-regex', name: '历史积分与选项', enabled: false, pattern: '/<option>[\\s\\S]*?<\\/option>/g',
       replacement: await source(exampleRoot + 'choices.ejs'), targets: ['AiOutput'], display_only: true, prompt_only: false, run_on_edit: true, order: 0 }],

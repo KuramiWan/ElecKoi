@@ -15,10 +15,9 @@ import {
   settingLibraryVersionGroups,
   settingLibraryVersions
 } from '@product-data/storage/sqlite/schema/common'
-import { variableConfigVersions, variableConfigs } from '@product-data/storage/sqlite/schema/common'
 import { conversationSettingChanges } from '@product-data/storage/sqlite/schema/common'
 import { readEntry, readGroup, readPromptPositions, writeEntry, writeGroup, writePromptPositions } from './settingLibraryCodec'
-import { OPENING_ENTRY_ID, normalizeSettingLibrary } from './settingLibraryNormalization'
+import { normalizeSettingLibrary } from './settingLibraryNormalization'
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 
@@ -89,25 +88,6 @@ export class SettingLibraryRepository {
     }
     if (db) restore(db)
     else this.store.withWriteTx(restore)
-  }
-
-  primaryOpening(characterId: string, db: ElecKoiDatabase = this.store.db): string {
-    const link = db.select({ revisionId: settingLibraryEntryLinks.revisionId })
-      .from(settingLibraryEntryLinks)
-      .where(and(
-        eq(settingLibraryEntryLinks.characterId, characterId),
-        eq(settingLibraryEntryLinks.entryId, OPENING_ENTRY_ID)
-      )).get()
-    if (!link) return ''
-    const content = db.select({ payloadJson: settingEntryContents.payloadJson })
-      .from(settingEntryContents)
-      .where(and(
-        eq(settingEntryContents.characterId, characterId),
-        eq(settingEntryContents.entryId, OPENING_ENTRY_ID),
-        eq(settingEntryContents.revisionId, link.revisionId)
-      )).get()
-    if (!content) throw new DesktopError(ELECKOI_FAILURE_CODES.internal, `设定“${OPENING_ENTRY_ID}”缺少内容版本。`, { what: '设定内容版本' })
-    return readEntry(content.payloadJson).content.trim()
   }
 
   get(characterId: string, db: ElecKoiDatabase = this.store.db): SettingLibrary {
@@ -497,16 +477,6 @@ export class SettingLibraryRepository {
   saveInTransaction(characterId: string, input: SettingLibrary, db: ElecKoiDatabase): SettingLibrary {
     if (input.characterId !== characterId) throw new DesktopError(ELECKOI_FAILURE_CODES.stateMismatch, '设定库与角色不匹配。', { what: '设定库与角色' })
     const normalized = normalizeSettingLibrary(characterId, input)
-    const versionIds = new Set(db.select({ id: variableConfigVersions.versionId }).from(variableConfigVersions)
-      .where(eq(variableConfigVersions.characterId, characterId)).all().map((row) => row.id))
-    if (!db.select().from(variableConfigs).where(eq(variableConfigs.characterId, characterId)).get()) {
-      versionIds.add('variable-config-default')
-    }
-    for (const version of normalized.versions) for (const entry of version.entries) for (const opening of entry.openingMessages) {
-      if (opening.variableVersionId && !versionIds.has(opening.variableVersionId)) {
-        throw new DesktopError(ELECKOI_FAILURE_CODES.lookupNotFound, `开场白“${opening.title || '未命名开场白'}”绑定的变量版本不存在。`, { what: '开场白绑定的变量版本' })
-      }
-    }
     this.persist(db, normalized)
     return normalized
   }

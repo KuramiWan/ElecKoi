@@ -608,7 +608,7 @@ window.__ModuleLoader__.load({
           inject: () => ({ layout, slots: ctx.slots, subscribeSlots, frontendConnection, locale: ctx.locale,
             theme: ctx.theme, subscribeTheme: listener => ctx.on('theme/change', listener),
             conversations: ctx.get('eleckoiConversations'), characters: ctx.eleckoiCharacters,
-            characterConfiguration: { settingLibraries: ctx.eleckoiSettingLibraries,
+            characterConfiguration: { openings: ctx.eleckoiCharacterOpenings, settingLibraries: ctx.eleckoiSettingLibraries,
               variables: ctx.eleckoiVariables, regexRules: ctx.eleckoiRegexRules,
               scripts: ctx.eleckoiScriptLibraries, scriptRuntimeConnection },
             creatorStudio: ctx.eleckoiCreatorStudio,
@@ -717,7 +717,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale', 'theme', 'eleckoiCharacters', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiScriptLibraries', 'eleckoiCreatorStudio', 'eleckoiDisplayPreferences', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets', 'eleckoiWebSearch'],
+      inject: ['slots', 'locale', 'theme', 'eleckoiCharacters', 'eleckoiCharacterOpenings', 'eleckoiSettingLibraries', 'eleckoiVariables', 'eleckoiRegexRules', 'eleckoiScriptLibraries', 'eleckoiCreatorStudio', 'eleckoiDisplayPreferences', 'eleckoiModels', 'eleckoiPersona', 'eleckoiPresets', 'eleckoiWebSearch'],
       apply
     }
   }

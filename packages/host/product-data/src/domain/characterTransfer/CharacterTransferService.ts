@@ -1,3 +1,6 @@
+import { CharacterOpeningRepository } from '@product-data/domain/characterOpenings'
+import { characterOpeningsSchema } from '@shared/contracts/characterOpenings/schemas'
+import { decodeLegacyOpeningSnapshot } from './legacyOpeningSnapshot'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { mkdir, open, unlink, type FileHandle } from 'node:fs/promises'
@@ -61,6 +64,7 @@ export class CharacterTransferService {
     private readonly regexRules: RegexRuleRepository,
     private readonly mediaAssets?: LocalMediaStore,
     private readonly scripts = new ScriptLibraryRepository(store, { character: characterExists, preset: agentPresetExists }),
+    private readonly openings = new CharacterOpeningRepository(store),
   ) {}
 
   export(characterId: string, format: CharacterExportFormat): CharacterExportResult {
@@ -87,6 +91,7 @@ export class CharacterTransferService {
       },
       assets,
       scriptLibrary: this.scripts.portable('character', characterId),
+      characterOpeningsJson: JSON.stringify(this.openings.get(characterId)),
       settingLibraryJson: encodeSettingLibrarySnapshot(this.settingLibraries.get(characterId)),
       variableConfigJson: encodeVariableConfigSnapshot(this.variables.get(characterId)),
       regexRules: this.regexRules.get(characterId).characterRules
@@ -210,6 +215,11 @@ export class CharacterTransferService {
         const variables = this.importedVariables(characterId, decoded)
         if (variables) this.variables.restoreInTransaction(characterId, variables, db)
         if (library) this.settingLibraries.saveInTransaction(characterId, library, db)
+        const openingSnapshot = decoded.packageData.characterOpeningsJson
+        const openings = openingSnapshot ? characterOpeningsSchema.parse({ ...JSON.parse(openingSnapshot), characterId })
+          : decoded.openings ? { ...decoded.openings, characterId }
+            : decoded.packageData.settingLibraryJson ? decodeLegacyOpeningSnapshot(decoded.packageData.settingLibraryJson, characterId) : undefined
+        if (openings) this.openings.saveInTransaction(characterId, openings, db)
         if (decoded.regexRules.length) {
           const current = this.regexRules.get(characterId, db)
           const imported = decoded.regexRules.map((rule) => ({ scope: 'Character' as const, rule }))

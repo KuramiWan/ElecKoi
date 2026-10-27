@@ -334,6 +334,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: '按发生顺序返回变更通知的异步流。',
       },
       {
+        signature: '@Remote readCharacterOpenings(characterId: string): CharacterOpenings',
+        description: '读取独立于设定库的角色开场白及全部命名版本。',
+        parameters: [{ name: 'characterId', description: '所属角色编号。' }],
+        returns: '当前开场白、备用开场白、变量绑定和独立版本。',
+      },
+      {
+        signature: '@Remote saveCharacterOpenings(characterId: string, value: CharacterOpenings): CharacterOpenings',
+        description: '保存角色独立开场白，不修改任何设定库版本。',
+        parameters: [{ name: 'characterId', description: '所属角色编号。' }, { name: 'value', description: '完整开场白草稿与独立版本。' }],
+        returns: '实际保存后的角色开场白配置。',
+      },
+      {
         signature: '@Remote readSettingLibrary(characterId: string): SettingLibrary',
         description: '读取完整角色设定库，包含必读、选读、触发方式和插入位置。',
         parameters: [{ name: 'characterId', description: '角色编号。' }],
@@ -374,6 +386,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: '在同一事务中保存多个脚本库；任一版本冲突时全部保留原值。',
         parameters: [{ name: 'libraries', description: '本页修改的脚本库及各自读取版本。' }],
         returns: '保存后的脚本库配置。',
+      },
+      {
+        signature: '@Remote importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningVersion[]): SettingLibrary',
+        description: '原子导入设定库，旧文件中的开场白保存为独立版本并保持当前开场白不变。',
+        parameters: [{ name: 'characterId', description: '所属角色编号。' }, { name: 'library', description: '已并入导入版本的设定库草稿。' }, { name: 'openingImports', description: '旧文件明确携带的开场白版本；不包含时传空数组。' }],
+        returns: '实际保存后的设定库；变量绑定无效时整次导入回滚。',
       },
       {
         signature: '@Remote saveSettingLibrary(characterId: string, library: SettingLibrary): SettingLibrary',
@@ -1115,7 +1133,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CharacterConfigurationChange',
-    declaration: 'export type CharacterConfigurationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'configuration\';\n    domain: \'settingLibraries\' | \'variables\' | \'regexRules\' | \'agentPresets\' | \'scripts\';\n    characterId?: string;\n};',
+    declaration: 'export type CharacterConfigurationChange = {\n    kind: \'snapshot\';\n} | {\n    kind: \'configuration\';\n    domain: \'openings\' | \'settingLibraries\' | \'variables\' | \'regexRules\' | \'agentPresets\' | \'scripts\';\n    characterId?: string;\n};',
   },
   {
     name: 'CharacterExportFormat',
@@ -1148,6 +1166,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CharacterImportSource',
     declaration: 'export type CharacterImportSource = \'eleckoi\' | \'sillytavern\';',
+  },
+  {
+    name: 'CharacterOpeningMessage',
+    declaration: 'export interface CharacterOpeningMessage {\n    id: string;\n    title: string;\n    content: string;\n    variableVersionId?: string | undefined;\n    initialVariableStateJson: string;\n}',
+  },
+  {
+    name: 'CharacterOpenings',
+    declaration: 'export interface CharacterOpenings {\n    characterId: string;\n    activeVersionId: string;\n    name: string;\n    enabled: boolean;\n    openingMessages: CharacterOpeningMessage[];\n    defaultOpeningMessageId: string;\n    versions: CharacterOpeningVersion[];\n}',
+  },
+  {
+    name: 'CharacterOpeningVersion',
+    declaration: 'export interface CharacterOpeningVersion {\n    id: string;\n    name: string;\n    enabled: boolean;\n    openingMessages: CharacterOpeningMessage[];\n    defaultOpeningMessageId: string;\n    createdAt: string;\n    updatedAt: string;\n}',
   },
   {
     name: 'CharacterPersona',

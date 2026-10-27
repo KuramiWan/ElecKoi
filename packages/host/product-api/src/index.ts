@@ -81,6 +81,8 @@ import type {
   RegexRuleScope,
   RegexRuleTarget,
   RegexRuleTestResult,
+  CharacterOpenings,
+  CharacterOpeningVersion,
   SettingLibrary,
   SettingLibraryContent,
   SettingLibraryConversation,
@@ -174,6 +176,8 @@ export type {
   RegexRuleTarget,
   RegexRuleTestResult,
   RegexRuleVersion,
+  CharacterOpenings,
+  CharacterOpeningVersion,
   SettingLibrary,
   SettingLibraryContent,
   SettingLibraryConversation,
@@ -1779,15 +1783,17 @@ export class ElecKoiPersonaApi extends TypertRemoteService {
 
 /** 管理完整设定库、变量定义和正则配置，通过官方 Typert Remote 公开跨端调用。 */
 export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
-  static inject = ['typert', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges']
+  static inject = ['typert', 'eleckoiProductData', 'eleckoiCharacterConfigurationChanges', 'eleckoiProductRecordChanges']
 
   private readonly productData: ElecKoiProductDataStore
   private readonly changeFeed: CharacterConfigurationChangeFeed
+  private readonly recordChanges: ProductRecordChangeFeed
 
   constructor(ctx: Context) {
     super(ctx, 'eleckoiCharacterConfigurationApi', { namespace: 'eleckoiCharacterConfiguration' })
     this.productData = ctx.eleckoiProductData
     this.changeFeed = ctx.eleckoiCharacterConfigurationChanges
+    this.recordChanges = ctx.eleckoiProductRecordChanges
   }
 
 
@@ -1824,6 +1830,30 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
   @Remote({ mode: 'stream' })
   changes(signal: AbortSignal): AsyncIterable<CharacterConfigurationChange> {
     return this.changeFeed.stream(signal)
+  }
+
+  /**
+   * 读取独立于设定库的角色开场白及全部命名版本。
+   * @param characterId - 所属角色编号。
+   * @returns 当前开场白、备用开场白、变量绑定和独立版本。
+   */
+  @Remote
+  readCharacterOpenings(characterId: string): CharacterOpenings {
+    return this.productData.readCharacterOpenings(characterId)
+  }
+
+  /**
+   * 保存角色独立开场白，不修改任何设定库版本。
+   * @param characterId - 所属角色编号。
+   * @param value - 完整开场白草稿与独立版本。
+   * @returns 实际保存后的角色开场白配置。
+   */
+  @Remote
+  saveCharacterOpenings(characterId: string, value: CharacterOpenings): CharacterOpenings {
+    const saved = this.productData.saveCharacterOpenings(characterId, value)
+    this.publish('openings', characterId)
+    this.recordChanges.publish({ kind: 'records', domain: 'characters', ids: [characterId] })
+    return saved
   }
 
   /**
@@ -1917,6 +1947,22 @@ export class ElecKoiCharacterConfigurationApi extends TypertRemoteService {
   saveScriptLibraries(libraries: ScriptLibrary[]): ScriptLibrary[] {
     const saved = this.productData.saveScriptLibraries(libraries)
     if (saved.length) this.publish('scripts')
+    return saved
+  }
+
+  /**
+   * 原子导入设定库，旧文件中的开场白保存为独立版本并保持当前开场白不变。
+   * @param characterId - 所属角色编号。
+   * @param library - 已并入导入版本的设定库草稿。
+   * @param openingImports - 旧文件明确携带的开场白版本；不包含时传空数组。
+   * @returns 实际保存后的设定库；变量绑定无效时整次导入回滚。
+   */
+  // RETIRE WHEN: 停止支持含开场白的 v3 设定库文件后，删除本方法、Store 导入方法及 Client 分流。
+  @Remote
+  importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningVersion[]): SettingLibrary {
+    const saved = this.productData.importSettingLibrary(characterId, library, openingImports)
+    this.publish('settingLibraries', characterId)
+    if (openingImports.length) this.publish('openings', characterId)
     return saved
   }
 

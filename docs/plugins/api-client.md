@@ -87,6 +87,47 @@ Types: [NativeAuthorChatHandlers](types-client.md#nativeauthorchathandlers) · [
 
 Source: [`packages/client/features/dsh-client-author/src/client/types.ts`](../../packages/client/features/dsh-client-author/src/client/types.ts)
 
+<a id="ctxeleckoicharacteropenings--eleckoicharacteropenings"></a>
+
+### `ctx.eleckoiCharacterOpenings` — `ElecKoiCharacterOpenings`
+
+角色独立开场白的读取、保存与变更订阅服务。
+
+```ts cordis-catalog
+/**
+ * 读取角色开场白在页面中的当前状态。
+ * @param characterId - 所属角色编号。
+ * @returns 当前页面保存的配置状态。
+ */
+getSnapshot(characterId: string): ConfigurationSnapshot<CharacterOpenings>
+
+/**
+ * 订阅独立开场白配置变化。
+ * @param listener - 接收角色编号和新状态的回调。
+ * @returns 取消订阅函数。
+ */
+subscribe(listener: (kind: 'configuration', characterId: string, snapshot: ConfigurationSnapshot<CharacterOpenings>) => void): () => void
+
+/**
+ * 读取全部开场白及独立版本并更新页面状态。
+ * @param characterId - 所属角色编号。
+ * @returns 完整的角色开场白配置。
+ */
+read(characterId: string): Promise<CharacterOpenings>
+
+/**
+ * 保存角色开场白及变量绑定，不修改设定库。
+ * @param characterId - 所属角色编号。
+ * @param value - 完整开场白配置及独立版本。
+ * @returns 实际保存后的角色开场白配置。
+ */
+save(characterId: string, value: CharacterOpenings): Promise<CharacterOpenings>
+```
+
+Types: [ConfigurationSnapshot](types-client.md#configurationsnapshot)
+
+Source: [`packages/client/features/dsh-client-character-configuration/src/client/types.ts`](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts)
+
 <a id="ctxeleckoicharacters--eleckoicharacters"></a>
 
 ### `ctx.eleckoiCharacters` — `ElecKoiCharacters`

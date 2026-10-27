@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS `chat_session_character_snapshots` (`sessionId` TEXT 
 
 CREATE TABLE IF NOT EXISTS `chat_session_variable_states` (`sessionId` TEXT NOT NULL, `kind` TEXT NOT NULL, `stateJson` TEXT NOT NULL, PRIMARY KEY(`sessionId`, `kind`), FOREIGN KEY(`sessionId`) REFERENCES `chat_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
 
-CREATE TABLE IF NOT EXISTS `characters` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `avatar` TEXT NOT NULL, `squareImage` TEXT NOT NULL, `coverImage` TEXT NOT NULL, `groupName` TEXT NOT NULL, `orderIndex` INTEGER NOT NULL, `groupViewOrder` INTEGER NOT NULL, `folder` TEXT NOT NULL, `frontendBeautyEnabled` INTEGER NOT NULL, `assistantName` TEXT NOT NULL, `assistantAvatar` TEXT NOT NULL, `profileAge` TEXT NOT NULL, `profileSex` TEXT NOT NULL, `profileHeight` TEXT NOT NULL, `profileBirthday` TEXT NOT NULL, `profileLike` TEXT NOT NULL, `showOpening` INTEGER NOT NULL, `chatBackground` TEXT NOT NULL, `chatBackgroundOpacity` REAL NOT NULL, `chatBackgroundBlur` REAL NOT NULL, `chatBackgroundScrim` REAL NOT NULL, PRIMARY KEY(`id`));
+CREATE TABLE IF NOT EXISTS `characters` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `avatar` TEXT NOT NULL, `squareImage` TEXT NOT NULL, `coverImage` TEXT NOT NULL, `groupName` TEXT NOT NULL, `orderIndex` INTEGER NOT NULL, `groupViewOrder` INTEGER NOT NULL, `folder` TEXT NOT NULL, `frontendBeautyEnabled` INTEGER NOT NULL, `assistantName` TEXT NOT NULL, `assistantAvatar` TEXT NOT NULL, `profileAge` TEXT NOT NULL, `profileSex` TEXT NOT NULL, `profileHeight` TEXT NOT NULL, `profileBirthday` TEXT NOT NULL, `profileLike` TEXT NOT NULL, `chatBackground` TEXT NOT NULL, `chatBackgroundOpacity` REAL NOT NULL, `chatBackgroundBlur` REAL NOT NULL, `chatBackgroundScrim` REAL NOT NULL, PRIMARY KEY(`id`));
+
+CREATE TABLE IF NOT EXISTS `character_openings` (`characterId` TEXT NOT NULL, `configurationJson` TEXT NOT NULL, PRIMARY KEY(`characterId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , CHECK (json_valid(`configurationJson`)));
 
 CREATE TABLE IF NOT EXISTS `character_text_contents` (`characterId` TEXT NOT NULL, `kind` TEXT NOT NULL, `content` TEXT NOT NULL, PRIMARY KEY(`characterId`, `kind`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE );
 
@@ -177,6 +179,6 @@ CREATE TABLE IF NOT EXISTS `editor_library_versions` (`kind` TEXT NOT NULL, `sco
 
 CREATE TABLE IF NOT EXISTS `regex_libraries` (`scope` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `characterId` TEXT, `presetId` TEXT, `enabled` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`scope`, `ownerId`), FOREIGN KEY(`characterId`) REFERENCES `characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`presetId`) REFERENCES `agent_presets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , CHECK (`enabled` IN (0, 1)), CHECK ((`scope` = 'global' AND `ownerId` = '' AND `characterId` IS NULL AND `presetId` IS NULL) OR (`scope` = 'character' AND `characterId` IS NOT NULL AND `ownerId` = `characterId` AND `ownerId` <> '' AND `presetId` IS NULL) OR (`scope` = 'preset' AND `presetId` IS NOT NULL AND `ownerId` = `presetId` AND `ownerId` <> '' AND `characterId` IS NULL)));
 
-PRAGMA user_version = 13;
+PRAGMA user_version = 14;
 
 COMMIT;

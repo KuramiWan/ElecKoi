@@ -1,3 +1,4 @@
+import { createCharacterOpenings } from '../../../shared/src/contracts/characterOpenings/schemas'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -78,7 +79,7 @@ describe('conversation state database', () => {
     f.db.native.pragma(`user_version=${version}`)
     installSchema(f.db.native)
     f.db.close(); f.db.open()
-    expect(f.db.native.pragma('user_version', { simple: true })).toBe(13)
+    expect(f.db.native.pragma('user_version', { simple: true })).toBe(14)
     expect(f.db.native.prepare('SELECT targetsJson FROM global_regex_rules').get()).toEqual({ targetsJson: '["AiOutput"]' })
     expect(f.history.read(f.id, f.id, 1, 'before')).toEqual(state(1))
     expect(f.history.read(f.id, f.id, 1, 'after')).toEqual(state(2, setting('accepted-task')))
@@ -134,8 +135,9 @@ it('exports current settings and every state in one archive and remaps Session i
   const f = fixture()
   f.db.native.prepare(`INSERT INTO characters(id,name,avatar,squareImage,coverImage,groupName,orderIndex,groupViewOrder,folder,
     frontendBeautyEnabled,assistantName,assistantAvatar,profileAge,profileSex,profileHeight,profileBirthday,profileLike,
-    showOpening,chatBackground,chatBackgroundOpacity,chatBackgroundBlur,chatBackgroundScrim)
-    VALUES ('synthetic-card','Synthetic','','','','',0,0,'',0,'Synthetic','','','','','','',0,'',1,0,0)`).run()
+    chatBackground,chatBackgroundOpacity,chatBackgroundBlur,chatBackgroundScrim)
+    VALUES ('synthetic-card','Synthetic','','','','',0,0,'',0,'Synthetic','','','','','','','',1,0,0)`).run()
+  f.db.native.prepare('INSERT INTO character_openings VALUES (?, ?)').run('synthetic-card', JSON.stringify(createCharacterOpenings('synthetic-card')))
   f.db.native.prepare("UPDATE chat_sessions SET characterId='synthetic-card' WHERE id=?").run(f.id)
   f.db.native.prepare("UPDATE agent_conversations SET variableVersionId='variable-config-default' WHERE id=?").run(f.id)
   f.history.recordTurn(f.id, f.id, 1, 'before', state(1))
@@ -158,8 +160,9 @@ it('rejects an imported variable snapshot whose stored initial state is not vali
   const f = fixture()
   f.db.native.prepare(`INSERT INTO characters(id,name,avatar,squareImage,coverImage,groupName,orderIndex,groupViewOrder,folder,
     frontendBeautyEnabled,assistantName,assistantAvatar,profileAge,profileSex,profileHeight,profileBirthday,profileLike,
-    showOpening,chatBackground,chatBackgroundOpacity,chatBackgroundBlur,chatBackgroundScrim)
-    VALUES ('synthetic-card','Synthetic','','','','',0,0,'',0,'Synthetic','','','','','','',0,'',1,0,0)`).run()
+    chatBackground,chatBackgroundOpacity,chatBackgroundBlur,chatBackgroundScrim)
+    VALUES ('synthetic-card','Synthetic','','','','',0,0,'',0,'Synthetic','','','','','','','',1,0,0)`).run()
+  f.db.native.prepare('INSERT INTO character_openings VALUES (?, ?)').run('synthetic-card', JSON.stringify(createCharacterOpenings('synthetic-card')))
   const configs = new VariableConfigRepository(f.db)
   const current = configs.get('synthetic-card')
   const active = current.versions.find(version => version.id === current.activeVersionId)!

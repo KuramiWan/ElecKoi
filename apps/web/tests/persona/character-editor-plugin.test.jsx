@@ -17,8 +17,8 @@ vi.mock('../../src/modules/appearance/index.js', () => ({ applyAppearanceTheme: 
 vi.mock('../../src/modules/settingLibraries/index.js', () => ({
   DynamicSettingsPanel: () => null,
   SettingLibraryPanel: () => null,
-  CharacterOpeningsPanel: () => null,
 }))
+vi.mock('../../src/modules/characterOpenings/index.js', () => ({ CharacterOpeningsPanel: () => null }))
 vi.mock('../../src/modules/variables/index.js', () => ({ VariableConfigPanel: () => null }))
 vi.mock('../../src/modules/regex/index.js', () => ({ RegexRulesPanel: () => null }))
 vi.mock('../../src/app/services/windowControls.js', () => ({
@@ -69,7 +69,7 @@ describe('character editor client extension', () => {
     try {
       await act(async () => root.render(<CharacterEditorWindow embeddedCharacterId={character.id}
         characterCatalog={{ refresh: async () => ({ items: [character] }) }}
-        characterConfiguration={{ settingLibraries: {} }} renderCharacterEditorSection={handoff} />));
+        characterConfiguration={{ openings: {} }} renderCharacterEditorSection={handoff} />));
       const labels = [...node.querySelectorAll('.character-editor-navigation button')].map(button => button.getAttribute('aria-label'));
       expect(labels.slice(0, 3)).toEqual(['基础资料', '角色开场白', '设定库']);
       await click('[aria-label="角色开场白"]');

@@ -43,11 +43,15 @@ export const characters = sqliteTable('characters', {
   profileHeight: text('profileHeight').notNull(),
   profileBirthday: text('profileBirthday').notNull(),
   profileLike: text('profileLike').notNull(),
-  showOpening: integer('showOpening').notNull(),
   chatBackground: text('chatBackground').notNull(),
   chatBackgroundOpacity: real('chatBackgroundOpacity').notNull(),
   chatBackgroundBlur: real('chatBackgroundBlur').notNull(),
   chatBackgroundScrim: real('chatBackgroundScrim').notNull(),
+})
+
+export const characterOpenings = sqliteTable('character_openings', {
+  characterId: text('characterId').notNull().primaryKey(),
+  configurationJson: text('configurationJson').notNull(),
 })
 
 export const characterTextContents = sqliteTable('character_text_contents', {
@@ -404,4 +408,4 @@ export const regexLibraries = sqliteTable('regex_libraries', {
   enabled: integer('enabled').notNull().default(sql.raw("1")),
 }, (table) => [primaryKey({ columns: [table.scope, table.ownerId] })])
 
-export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterTextContents, characterMeta, userProfile, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentPendingInputs, agentResponses, agentBranchTurns, agentOpenings, conversationStateSnapshots, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups, scriptLibraries, editorLibraryVersions, regexLibraries }
+export const commonTables = { chatSessions, chatSessionCharacterSnapshots, chatSessionVariableStates, characters, characterOpenings, characterTextContents, characterMeta, userProfile, variableConfigs, variableConfigVersions, variableConfigVersionContents, variableConfigObjects, variableConfigVariables, globalRegexRules, characterRegexRules, regexEnablementVersions, regexState, agentConversations, agentBranches, conversationSpeakers, agentTurns, agentPendingInputs, agentResponses, agentBranchTurns, agentOpenings, conversationStateSnapshots, settingLibraries, settingEntryContents, settingLibraryEntryLinks, settingLibraryGroups, settingLibraryVersions, settingLibraryVersionEntryLinks, settingLibraryVersionGroups, conversationSettingChanges, agentPresetState, agentPresetLibraryGroups, agentPresets, agentPresetContents, agentPresetEntries, agentPresetGroups, agentPresetVersions, agentPresetVersionContents, agentPresetVersionEntries, agentPresetVersionGroups, scriptLibraries, editorLibraryVersions, regexLibraries }

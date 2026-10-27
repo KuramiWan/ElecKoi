@@ -1,3 +1,6 @@
+import { createCharacterOpenings } from '@shared/contracts/characterOpenings/schemas'
+import { readCharacterOpenings } from '@product-data/domain/characterOpenings'
+import { characterOpenings } from '@product-data/storage/sqlite/schema/common'
 import { and, asc, eq } from 'drizzle-orm'
 import type { CharacterCollection, CharacterRecord } from '@shared/contracts/entities/persona'
 import { isRecord, parseJsonArray } from '@shared/foundation/json'
@@ -51,13 +54,15 @@ export class CharacterRepository {
       active_character_id: rows.some((row) => row.id === state?.activeCharacterId) ? state!.activeCharacterId : rows[0]?.id ?? '',
       groups: state ? normalizedGroups(parseJsonArray<string>(state.groupsJson)) : [],
       items: rows.map((row) => {
+        const openings = readCharacterOpenings(row.id, db)
+        const primary = openings.openingMessages.find(message => message.id === openings.defaultOpeningMessageId)!
         const content = Object.fromEntries(texts.filter((item) => item.characterId === row.id).map((item) => [item.kind, item.content]))
         return {
           ...row, group: normalizedGroup(row.groupName),
           persona: {
             assistant_name: row.assistantName, assistant_avatar: row.assistantAvatar,
             assistant_square: row.squareImage, assistant_cover: row.coverImage,
-            image_prompt: content.image_prompt ?? '', opening: content.opening ?? '', show_opening: !!row.showOpening,
+            image_prompt: content.image_prompt ?? '', opening: primary.content, show_opening: openings.enabled,
             user_name: profile?.userName ?? '你', user_avatar: profile?.userAvatar ?? '',
             user_square: profile?.userSquare ?? '', user_portrait: profile?.userPortrait ?? ''
           }
@@ -205,19 +210,20 @@ export class CharacterRepository {
       assistantName: string(persona.assistant_name, string(input.name)), assistantAvatar: string(persona.assistant_avatar, string(input.avatar)),
       profileAge: string(input.profileAge, previous?.profileAge), profileSex: string(input.profileSex, previous?.profileSex),
       profileHeight: string(input.profileHeight, previous?.profileHeight), profileBirthday: string(input.profileBirthday, previous?.profileBirthday), profileLike: string(input.profileLike, previous?.profileLike),
-      showOpening: flag(persona.show_opening ?? input.showOpening ?? previous?.showOpening),
       chatBackground: string(input.chatBackground, previous?.chatBackground),
       chatBackgroundOpacity: number(input.chatBackgroundOpacity, previous?.chatBackgroundOpacity ?? 0.72),
       chatBackgroundBlur: number(input.chatBackgroundBlur, previous?.chatBackgroundBlur ?? 2), chatBackgroundScrim: number(input.chatBackgroundScrim, previous?.chatBackgroundScrim ?? 0.5)
     }
     if (JSON.stringify(previous) !== JSON.stringify(row)) db.insert(characters).values(row).onConflictDoUpdate({ target: characters.id, set: row }).run()
+    if (!previous) db.insert(characterOpenings).values({ characterId: input.id,
+      configurationJson: JSON.stringify(createCharacterOpenings(input.id, string(persona.opening), Boolean(persona.show_opening ?? input.showOpening ?? true))) }).run()
     this.conversationCleanup.refreshCharacterIdentity(input.id, {
       name: row.assistantName,
       avatar: row.assistantAvatar,
       square: row.squareImage,
       portrait: row.coverImage
     }, db)
-    for (const kind of ['image_prompt', 'opening']) {
+    for (const kind of ['image_prompt']) {
       const current = db.select().from(characterTextContents).where(and(eq(characterTextContents.characterId, input.id), eq(characterTextContents.kind, kind))).get()
       const content = string(persona[kind], current?.content)
       if (current?.content === content) continue

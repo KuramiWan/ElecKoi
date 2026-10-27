@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { EditorLibraryVersions } from '@eleckoi/dsh-product-api/types'
-import type { SettingLibrary, SettingLibraryConversation, VariableConfig, RegexRule, RegexRuleCollection, RegexRuleEditorCollection, RegexRuleEditorImportResult, RegexRuleScope, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleTestResult, RegexRuleTarget, ScriptLibrary, ScriptLibraryScope } from '@eleckoi/dsh-product-api/types'
+import type { CharacterOpenings, SettingLibrary, SettingLibraryConversation, VariableConfig, RegexRule, RegexRuleCollection, RegexRuleEditorCollection, RegexRuleEditorImportResult, RegexRuleScope, RegexRuleImportDocument, RegexRuleImportResult, RegexRuleTestResult, RegexRuleTarget, ScriptLibrary, ScriptLibraryScope } from '@eleckoi/dsh-product-api/types'
 
 export interface ConfigurationSnapshot<T> { status: 'idle' | 'loading' | 'ready' | 'error'; value: T | null; error: string }
 
@@ -25,6 +25,35 @@ export interface EditorLibraryVersionModel<T> {
    * @returns 已保存配置与新版本标识。
    */
   save(documents: T[], versions: EditorLibraryVersions[]): Promise<{ documents: T[]; versions: EditorLibraryVersions[] }>
+}
+
+/** 角色独立开场白的读取、保存与变更订阅服务。 */
+export interface ElecKoiCharacterOpenings {
+  /**
+   * 读取角色开场白在页面中的当前状态。
+   * @param characterId - 所属角色编号。
+   * @returns 当前页面保存的配置状态。
+   */
+  getSnapshot(characterId: string): ConfigurationSnapshot<CharacterOpenings>
+  /**
+   * 订阅独立开场白配置变化。
+   * @param listener - 接收角色编号和新状态的回调。
+   * @returns 取消订阅函数。
+   */
+  subscribe(listener: (kind: 'configuration', characterId: string, snapshot: ConfigurationSnapshot<CharacterOpenings>) => void): () => void
+  /**
+   * 读取全部开场白及独立版本并更新页面状态。
+   * @param characterId - 所属角色编号。
+   * @returns 完整的角色开场白配置。
+   */
+  read(characterId: string): Promise<CharacterOpenings>
+  /**
+   * 保存角色开场白及变量绑定，不修改设定库。
+   * @param characterId - 所属角色编号。
+   * @param value - 完整开场白配置及独立版本。
+   * @returns 实际保存后的角色开场白配置。
+   */
+  save(characterId: string, value: CharacterOpenings): Promise<CharacterOpenings>
 }
 
 /** 读取和保存角色配置，保留完整字段、触发方式和提示词插入位置。 */
@@ -302,6 +331,7 @@ export interface ElecKoiScriptLibraries {
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
+    eleckoiCharacterOpenings: ElecKoiCharacterOpenings
     eleckoiSettingLibraries: ElecKoiSettingLibraries
     eleckoiVariables: ElecKoiVariables
     eleckoiRegexRules: ElecKoiRegexRules

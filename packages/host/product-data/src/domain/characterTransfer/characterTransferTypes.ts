@@ -1,3 +1,4 @@
+import type { CharacterOpenings } from '@shared/contracts/characterOpenings/schemas'
 import type { RegexRule } from '@shared/contracts/regex/schemas'
 import type { SettingLibrary } from '@shared/contracts/settingLibrary/schemas'
 import type { VariableConfig } from '@shared/contracts/variables/schemas'
@@ -25,6 +26,7 @@ export interface PortableAsset {
 export interface PortableCharacterPackage {
   character: PortableCharacter
   assets: PortableAsset[]
+  characterOpeningsJson?: string
   settingLibraryJson: string
   variableConfigJson: string
   regexRules: RegexRule[]
@@ -37,6 +39,7 @@ export interface DecodedCharacterCard {
   complete: boolean
   summary: string
   warnings?: string[]
+  openings?: CharacterOpenings
   settingLibrary?: SettingLibrary
   variableConfig?: VariableConfig
   regexRules: RegexRule[]

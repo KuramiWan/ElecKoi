@@ -140,6 +140,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'eleckoiCharacterOpenings',
+    summary: '角色独立开场白的读取、保存与变更订阅服务。',
+    description: '角色独立开场白的读取、保存与变更订阅服务。',
+    methods: [
+      {
+        signature: 'getSnapshot(characterId: string): ConfigurationSnapshot<CharacterOpenings>',
+        description: '读取角色开场白在页面中的当前状态。',
+        parameters: [{ name: 'characterId', description: '所属角色编号。' }],
+        returns: '当前页面保存的配置状态。',
+      },
+      {
+        signature: 'subscribe(listener: (kind: \'configuration\', characterId: string, snapshot: ConfigurationSnapshot<CharacterOpenings>) => void): () => void',
+        description: '订阅独立开场白配置变化。',
+        parameters: [{ name: 'listener', description: '接收角色编号和新状态的回调。' }],
+        returns: '取消订阅函数。',
+      },
+      {
+        signature: 'read(characterId: string): Promise<CharacterOpenings>',
+        description: '读取全部开场白及独立版本并更新页面状态。',
+        parameters: [{ name: 'characterId', description: '所属角色编号。' }],
+        returns: '完整的角色开场白配置。',
+      },
+      {
+        signature: 'save(characterId: string, value: CharacterOpenings): Promise<CharacterOpenings>',
+        description: '保存角色开场白及变量绑定，不修改设定库。',
+        parameters: [{ name: 'characterId', description: '所属角色编号。' }, { name: 'value', description: '完整开场白配置及独立版本。' }],
+        returns: '实际保存后的角色开场白配置。',
+      },
+    ],
+  },
+  {
     key: 'eleckoiCharacters',
     summary: '管理角色、分组、角色卡导入和浏览器下载。',
     description: '管理角色、分组、角色卡导入和浏览器下载。',

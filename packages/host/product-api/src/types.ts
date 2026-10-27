@@ -188,7 +188,7 @@ export type CharacterConfigurationChange =
   | { kind: 'snapshot' }
   | {
       kind: 'configuration'
-      domain: 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts'
+      domain: 'openings' | 'settingLibraries' | 'variables' | 'regexRules' | 'agentPresets' | 'scripts'
       characterId?: string
     }
 
@@ -469,6 +469,32 @@ export type SettingLibraryPosition =
   | 'insert_point_3'
   | 'insert_point_4'
   | 'insert_point_5'
+
+export interface CharacterOpeningMessage {
+  id: string
+  title: string
+  content: string
+  variableVersionId?: string | undefined
+  initialVariableStateJson: string
+}
+export interface CharacterOpeningVersion {
+  id: string
+  name: string
+  enabled: boolean
+  openingMessages: CharacterOpeningMessage[]
+  defaultOpeningMessageId: string
+  createdAt: string
+  updatedAt: string
+}
+export interface CharacterOpenings {
+  characterId: string
+  activeVersionId: string
+  name: string
+  enabled: boolean
+  openingMessages: CharacterOpeningMessage[]
+  defaultOpeningMessageId: string
+  versions: CharacterOpeningVersion[]
+}
 
 export interface SettingLibraryOpeningMessage {
   id: string
@@ -937,9 +963,12 @@ export interface ElecKoiProductDataStore {
   discardCharacterImports(token: string): void
   readPersona(): PersonaProfile
   savePersona(profile: PersonaProfile): PersonaProfile
+  readCharacterOpenings(characterId: string): CharacterOpenings
+  saveCharacterOpenings(characterId: string, value: CharacterOpenings): CharacterOpenings
   readSettingLibrary(characterId: string): SettingLibrary
   replaceSettingLibraryContent(characterId: string, library: SettingLibraryContent): SettingLibrary
   updateSettingLibraryEntries(characterId: string, updates: SettingLibraryEntryUpdate[]): SettingLibraryEntry[]
+  importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningVersion[]): SettingLibrary
   saveSettingLibrary(characterId: string, library: SettingLibrary): SettingLibrary
   saveSettingLibraryViewState(characterId: string, expandedGroupIds: string[]): string[]
   readConversationSettingLibraries(characterId: string): SettingLibraryConversation[]

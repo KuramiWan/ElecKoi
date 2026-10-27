@@ -20,7 +20,7 @@ it('keeps the standalone opening editor usable across themes, short windows and 
     await promisify(execFile)(require('electron'), [resolve('apps/web/tests/browser/character-openings.probe.cjs'), htmlPath, reportPath], { env, timeout: 45000, windowsHide: true });
     const reports = JSON.parse(await readFile(reportPath, 'utf8'));
     expect(reports).toHaveLength(6);
-    for (const { width, height, layout, settingsSeparated, binding } of reports) {
+    for (const { width, height, layout, settingsSeparated, binding, independentVersions } of reports) {
       expect(layout.navigation.slice(0, 3)).toEqual(['基础资料', '角色开场白', '设定库']);
       expect(layout.horizontalOverflow).toBe(false);
       expect(layout.toggle.height, JSON.stringify(layout)).toBe(16);
@@ -29,6 +29,7 @@ it('keeps the standalone opening editor usable across themes, short windows and 
       for (const control of layout.controls) { expect(control.x).toBeGreaterThanOrEqual(layout.panel.x); expect(control.right).toBeLessThanOrEqual(layout.panel.right); }
       expect(settingsSeparated).toBe(true);
       expect(binding).toBe('synthetic-variables');
+      expect(independentVersions).toBe(true);
     }
     await mkdir(resolve('output/playwright'), { recursive: true });
     for (const theme of ['light', 'dark']) for (const width of [1440, 900, 390]) await copyFile(resolve(directory, `character-openings-${theme}-${width}.png`), resolve('output/playwright', `character-openings-${theme}-${width}.png`));

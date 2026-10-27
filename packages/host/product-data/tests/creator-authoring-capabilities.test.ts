@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import productDataPlugin from '@eleckoi/dsh-product-data'
 import { creatorCapabilities, creatorToolsets } from '../src/domain/creatorStudio/capabilities'
 import { VARIABLE_INITIALIZATION_OBJECT_ID } from '../../../shared/src/contracts/variables/schemas'
-import { OPENING_ENTRY_ID } from '../src/domain/settingLibraries/index'
 
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.unstubAllEnvs() })
@@ -21,78 +20,64 @@ async function fixture() {
   data.saveSettingLibrary(characterId, data.readSettingLibrary(characterId))
   const operations = creatorCapabilities(data)
   const call = (id: string, input: unknown = {}) => operations.find(item => item.id === id)!.execute(characterId, input) as any
-  return { ctx, data, call, operations, characterId }
+  const saveOpenings = (patch: Record<string, unknown>) => {
+    const { characterId: _id, ...current } = data.readCharacterOpenings(characterId)
+    return call('character.save_openings', { ...current, ...patch })
+  }
+  return { ctx, data, call, operations, characterId, saveOpenings }
 }
 
 describe('Creator authoring matches the native setting, schema, script and regex contracts', { timeout: 30_000 }, () => {
-  it('writes every primary and alternate opening, preserves bindings and versions, and reopens the complete card', async () => {
-    const f = await fixture(), library = f.data.readSettingLibrary(f.characterId)
-    const config = f.data.readVariableConfig(f.characterId)
-    const indexes = [0, 5_000, 10_000]
-    const openings = Array.from({ length: 10_001 }, (_, index) => ({
-      id: `synthetic-opening-${index}`, title: `合成开场-${index}`, content: `他在开场-${index}。${indexes.includes(index) ? '合成长正文他𠮷'.repeat(20_000) : ''}末尾他-${index}`,
-      ...(index % 2 ? { variableVersionId: config.activeVersionId } : {}), initialVariableStateJson: JSON.stringify({ synthetic: index }),
-    }))
-    const seed = f.data.saveSettingLibrary(f.characterId, { ...library,
-      entries: library.entries.map(entry => entry.kind === 'opening' ? { ...entry, enabled: true, openingMessages: openings, defaultOpeningMessageId: openings[5_000]!.id } : entry),
-      versions: [...library.versions, { ...library.versions[0]!, id: 'synthetic-unchanged-version', name: '合成历史版本' }],
-    })
-    const normal = f.call('settings.create', { title: '合成普通设定', content: '合成原正文' })
-    const other = f.data.saveSettingLibrary('synthetic-other-character', f.data.readSettingLibrary('synthetic-other-character'))
-    const desired = seed.entries.find(entry => entry.kind === 'opening')!.openingMessages.map(opening => ({ ...opening, content: opening.content.replaceAll('他', '她') }))
-    const updated = f.call('settings.update_many', { updates: [
-      { id: OPENING_ENTRY_ID, changes: { openingMessages: desired } }, { id: normal.id, changes: { content: '合成修改后的普通正文' } },
-    ] })
-    expect(updated[0].id).toBe(OPENING_ENTRY_ID)
-    expect(JSON.stringify(updated[0].openingMessages) === JSON.stringify(desired)).toBe(true)
-    expect(updated[0].defaultOpeningMessageId).toBe(openings[5_000]!.id)
-    expect(updated[0].content === desired[5_000]!.content).toBe(true)
-    expect(updated[1]).toMatchObject({ id: normal.id, content: '合成修改后的普通正文' })
-    for (const index of indexes) expect(updated[0].openingMessages[index].content.endsWith(`末尾她-${index}`)).toBe(true)
-    expect(f.data.readSettingLibrary('synthetic-other-character')).toEqual(other)
-    const saved = f.data.readSettingLibrary(f.characterId)
-    expect(saved.activeVersionId).toBe(seed.activeVersionId)
-    expect(saved.versions.find(version => version.id === 'synthetic-unchanged-version')).toEqual(seed.versions.find(version => version.id === 'synthetic-unchanged-version'))
-    expect(JSON.stringify(saved.versions.find(version => version.id === saved.activeVersionId)!.entries.find(entry => entry.kind === 'opening')!.openingMessages) === JSON.stringify(desired)).toBe(true)
-    const chat = f.data.createConversation({ metadata: { characterId: f.characterId } })
-    expect(chat.messages[0]!.content === desired[5_000]!.content).toBe(true)
-    expect(chat.messages[0]!.selectedOpeningId).toBe(desired[5_000]!.id)
-    expect(chat.messages[0]!.openingOptions).toHaveLength(desired.length)
+  it('writes all independent openings, preserves archived versions and round-trips the complete card', async () => {
+    const f = await fixture(), initial = f.data.readCharacterOpenings(f.characterId), config = f.data.readVariableConfig(f.characterId);
+    const indexes = [0, 5_000, 10_000];
+    const messages = Array.from({ length: 10_001 }, (_, index) => ({ id: `synthetic-opening-${index}`, title: `合成开场-${index}`,
+      content: `他在开场-${index}。${indexes.includes(index) ? '合成长正文他𠮷'.repeat(20_000) : ''}末尾他-${index}`,
+      ...(index % 2 ? { variableVersionId: config.activeVersionId } : {}), initialVariableStateJson: JSON.stringify({ synthetic: index }) }));
+    const seed = f.data.saveCharacterOpenings(f.characterId, { ...initial, enabled: true, openingMessages: messages,
+      defaultOpeningMessageId: messages[5_000]!.id, versions: [...initial.versions, { ...initial.versions[0]!, id: 'synthetic-archived-version', name: '合成存档版本' }] });
+    const other = f.data.readCharacterOpenings('synthetic-other-character');
+    const settings = f.data.readSettingLibrary(f.characterId);
+    const desired = messages.map(message => ({ ...message, content: message.content.replaceAll('他', '她') }));
+    const updated = f.saveOpenings({ openingMessages: desired });
+    expect(updated.openingMessages).toEqual(desired);
+    expect(updated.defaultOpeningMessageId).toBe(messages[5_000]!.id);
+    expect(f.data.readSettingLibrary(f.characterId)).toEqual(settings);
+    expect(f.data.readCharacterOpenings('synthetic-other-character')).toEqual(other);
+    expect(updated.versions.find((version: any) => version.id === 'synthetic-archived-version')).toEqual(seed.versions.find(version => version.id === 'synthetic-archived-version'));
+    for (const index of indexes) expect(updated.openingMessages[index].content.endsWith(`末尾她-${index}`)).toBe(true);
+    const chat = f.data.createConversation({ metadata: { characterId: f.characterId } });
+    expect(chat.messages[0]!.content).toBe(desired[5_000]!.content);
+    expect(chat.messages[0]!.openingOptions).toHaveLength(desired.length);
     for (const format of ['json', 'png'] as const) {
-      const exported = f.data.exportCharacter(f.characterId, format)
-      const preview = f.data.prepareCharacterImports([{ displayName: exported.fileName, mimeType: exported.mimeType, base64: exported.base64 }], 'eleckoi')
-      const imported = f.data.commitCharacterImports(preview.token).importedCharacterIds[0]!
-      expect(JSON.stringify(f.data.readSettingLibrary(imported).entries.find(entry => entry.kind === 'opening')!.openingMessages) === JSON.stringify(desired)).toBe(true)
+      const exported = f.data.exportCharacter(f.characterId, format);
+      const preview = f.data.prepareCharacterImports([{ displayName: exported.fileName, mimeType: exported.mimeType, base64: exported.base64 }], 'eleckoi');
+      const imported = f.data.commitCharacterImports(preview.token).importedCharacterIds[0]!;
+      expect(f.data.readCharacterOpenings(imported).openingMessages).toEqual(desired);
     }
-    await f.ctx.fiber.dispose()
-    const reopened = new Context(); cleanups.push(() => reopened.fiber.dispose()); await reopened.plugin(productDataPlugin)
-    expect(reopened.eleckoiProductData.readSettingLibrary(f.characterId)).toEqual(saved)
-  }, 60_000)
+    await f.ctx.fiber.dispose();
+    const reopened = new Context(); cleanups.push(() => reopened.fiber.dispose()); await reopened.plugin(productDataPlugin);
+    expect(reopened.eleckoiProductData.readCharacterOpenings(f.characterId)).toEqual(updated);
+  }, 60_000);
 
-  it('updates the default opening directly, supports adding and removing alternates, and rolls back invalid mixed edits', async () => {
-    const f = await fixture(), opening = f.call('settings.read', { id: OPENING_ENTRY_ID })
-    const initial = opening.openingMessages[0]
-    f.call('settings.update', { id: opening.id, changes: { content: '合成主开场白', enabled: true } })
-    let current = f.call('settings.read', { id: opening.id })
-    expect(current).toMatchObject({ content: '合成主开场白', openingMessages: [{ ...initial, content: '合成主开场白' }] })
-    const alternate = { id: 'synthetic-alternate', title: '合成备用', content: '合成备用正文', initialVariableStateJson: '' }
-    f.call('settings.update', { id: opening.id, changes: { openingMessages: [...current.openingMessages, alternate], defaultOpeningMessageId: alternate.id } })
-    current = f.call('settings.read', { id: opening.id })
-    expect(current).toMatchObject({ content: alternate.content, defaultOpeningMessageId: alternate.id })
-    const normal = f.call('settings.create', { title: '合成普通设定', content: '合成普通原文' }), saved = f.data.readSettingLibrary(f.characterId)
-    for (const changes of [
-      { openingMessages: [{ ...alternate, variableVersionId: 'synthetic-missing-variable-version' }] },
-      { openingMessages: [alternate, alternate] }, { openingMessages: [] },
-      { defaultOpeningMessageId: 'synthetic-missing-opening' },
-      { openingMessages: [alternate], content: '合成冲突正文' },
-    ]) {
-      expect(() => f.call('settings.update_many', { updates: [{ id: normal.id, changes: { content: '合成不应保存' } }, { id: opening.id, changes }] })).toThrow()
-      expect(f.data.readSettingLibrary(f.characterId)).toEqual(saved)
+  it('adds and removes alternates, preserves settings and rejects invalid opening saves atomically', async () => {
+    const f = await fixture(), opening = f.call('character.read_openings');
+    const initial = opening.openingMessages[0];
+    f.saveOpenings({ openingMessages: [{ ...initial, content: '合成主开场白' }], enabled: true });
+    let current = f.call('character.read_openings');
+    const alternate = { id: 'synthetic-alternate', title: '合成备用', content: '合成备用正文', initialVariableStateJson: '' };
+    f.saveOpenings({ openingMessages: [...current.openingMessages, alternate], defaultOpeningMessageId: alternate.id });
+    current = f.call('character.read_openings');
+    const settings = f.data.readSettingLibrary(f.characterId);
+    for (const changes of [{ openingMessages: [{ ...alternate, variableVersionId: 'synthetic-missing-variable-version' }] },
+      { openingMessages: [alternate, alternate] }, { openingMessages: [] }, { defaultOpeningMessageId: 'synthetic-missing-opening' }]) {
+      expect(() => f.saveOpenings(changes)).toThrow();
+      expect(f.call('character.read_openings')).toEqual(current);
+      expect(f.data.readSettingLibrary(f.characterId)).toEqual(settings);
     }
-    f.call('settings.update', { id: opening.id, changes: { openingMessages: [alternate], content: alternate.content } })
-    f.call('settings.update', { id: opening.id, changes: { content: '' } })
-    expect(f.call('settings.read', { id: opening.id })).toMatchObject({ openingMessages: [{ ...alternate, content: '' }], content: '', defaultOpeningMessageId: alternate.id })
-  })
+    f.saveOpenings({ openingMessages: [{ ...alternate, content: '' }] });
+    expect(f.call('character.read_openings')).toMatchObject({ openingMessages: [{ ...alternate, content: '' }], defaultOpeningMessageId: alternate.id });
+  });
 
   it('changes and clears opening variable-version bindings and writes initial state used by new conversations', async () => {
     const f = await fixture()
@@ -103,18 +88,18 @@ describe('Creator authoring matches the native setting, schema, script and regex
       { ...config.versions[0]!, id: secondVersionId, name: '合成备用变量版本', variables: config.variables.map(variable => ({ ...variable, defaultValue: '22' })) },
     ] })
     expect(f.call('variables.list')).toMatchObject({ activeVersionId: config.activeVersionId, versions: [...config.versions.map(({ id, name }) => ({ id, name })), { id: secondVersionId, name: '合成备用变量版本' }] })
-    const opening = f.call('settings.read', { id: OPENING_ENTRY_ID })
+    const opening = f.call('character.read_openings')
     const message = { ...opening.openingMessages[0], content: '合成绑定开场', variableVersionId: config.activeVersionId, initialVariableStateJson: '{"synthetic":11}' }
-    f.call('settings.update', { id: opening.id, changes: { enabled: true, openingMessages: [message] } })
-    f.call('settings.update', { id: opening.id, changes: { openingMessages: [{ ...message, variableVersionId: secondVersionId }] } })
-    let saved = f.call('settings.read', { id: opening.id })
+    f.saveOpenings({ enabled: true, openingMessages: [message] })
+    f.saveOpenings({ openingMessages: [{ ...message, variableVersionId: secondVersionId }] })
+    let saved = f.call('character.read_openings')
     expect(saved.openingMessages[0]).toMatchObject({ variableVersionId: secondVersionId, initialVariableStateJson: '{"synthetic":11}' })
     const bound = f.data.createConversation({ metadata: { characterId: f.characterId } })
     expect(JSON.parse(bound.messages[0]!.variableStateJson)).toEqual({ synthetic: 22 })
     expect(bound.messages[0]!.openingOptions![0]!.variableVersionId).toBe(secondVersionId)
     expect(JSON.parse(bound.messages[0]!.openingOptions![0]!.initialVariableStateJson)).toEqual({ synthetic: 22 })
-    f.call('settings.update', { id: opening.id, changes: { openingMessages: [{ ...saved.openingMessages[0], variableVersionId: '', initialVariableStateJson: '{"synthetic":33}' }] } })
-    saved = f.call('settings.read', { id: opening.id })
+    f.saveOpenings({ openingMessages: [{ ...saved.openingMessages[0], variableVersionId: '', initialVariableStateJson: '{"synthetic":33}' }] })
+    saved = f.call('character.read_openings')
     expect(saved.openingMessages[0]).toMatchObject({ variableVersionId: '', initialVariableStateJson: '{"synthetic":33}' })
     const unbound = f.data.createConversation({ metadata: { characterId: f.characterId } })
     expect(JSON.parse(unbound.messages[0]!.variableStateJson)).toEqual({ synthetic: 33 })
@@ -122,7 +107,7 @@ describe('Creator authoring matches the native setting, schema, script and regex
     expect(f.data.readConversationDetails(bound.conversation.id).messages[0]!.openingOptions).toEqual(bound.messages[0]!.openingOptions)
     await f.ctx.fiber.dispose()
     const reopened = new Context(); cleanups.push(() => reopened.fiber.dispose()); await reopened.plugin(productDataPlugin)
-    expect(reopened.eleckoiProductData.readSettingLibrary(f.characterId).entries.find(entry => entry.kind === 'opening')!.openingMessages).toEqual(saved.openingMessages)
+    expect(reopened.eleckoiProductData.readCharacterOpenings(f.characterId).openingMessages).toEqual(saved.openingMessages)
   })
 
   it('saves and reopens every object in a variable configuration larger than one SQL parameter budget', async () => {
@@ -243,7 +228,7 @@ describe('Creator authoring matches the native setting, schema, script and regex
     expect(after.items).toHaveLength(before.items.length + 1)
     expect(after.active_character_id).toBe(before.active_character_id)
     expect(after.items.find(item => item.id === created.id)).toMatchObject({ name: '合成新角色', group: '合成新分组', avatar: '',
-      persona: { opening: '', assistant_avatar: '', assistant_square: '', assistant_cover: '', show_opening: false } })
+      persona: { opening: '', assistant_avatar: '', assistant_square: '', assistant_cover: '', show_opening: true } })
     expect(after.items.filter(item => item.id !== created.id)).toEqual(before.items)
     for (const input of [{ name: '' }, { name: '   ' }, { name: '合成新角色', characterId: f.characterId }, {}]) {
       expect(() => create.execute('', input)).toThrow()

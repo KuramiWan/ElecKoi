@@ -8,7 +8,7 @@ import TypertRegistry, { type TypertContribution } from '@deepseek-ai/dsh-typert
 import TypertGatewayService from '@deepseek-ai/dsh-api-gateway'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
 import productDataPlugin from '@eleckoi/dsh-product-data'
-import { CharacterConfigurationChangeFeed, ElecKoiAuthorScriptsApi, ElecKoiCharacterConfigurationApi,
+import { CharacterConfigurationChangeFeed, ProductRecordChangeFeed, ElecKoiAuthorScriptsApi, ElecKoiCharacterConfigurationApi,
   ElecKoiVariableProcessing, eleckoiScriptAssetsPlugin, type NativeAuthorScriptCatalog } from '@eleckoi/dsh-product-api'
 import { TYPERT } from '@eleckoi/dsh-product-api/typert'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -35,6 +35,7 @@ it('serves registered modules and relative resources through the actual Host, Re
   await ctx.plugin(productDataPlugin)
   const feed = new CharacterConfigurationChangeFeed()
   ctx.provide('eleckoiCharacterConfigurationChanges', feed); cleanups.push(() => feed.close())
+  const records = new ProductRecordChangeFeed(); ctx.provide('eleckoiProductRecordChanges', records); cleanups.push(() => records.close())
   await ctx.plugin(RemoteAccessService)
   await ctx.plugin(TypertGatewayService)
   await ctx.plugin(ElecKoiCharacterConfigurationApi)
@@ -48,6 +49,24 @@ it('serves registered modules and relative resources through the actual Host, Re
     trees: [{ type: 'script', id: 'synthetic-script', name: 'Synthetic script', enabled: true,
       content: "import { derive } from '../helpers/derive.js'; export default () => derive(2);", info: '', data: {},
       button: { enabled: false, buttons: [] }, export_with: { data: true, button: true }, runtime: { kind: 'eleckoi-module', apiVersion: 1 } }], variables: {} })
+  const invoke = (method: string, args: Record<string, unknown>) => ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method, args }) as Promise<any>
+  const openings = await invoke('readCharacterOpenings', { characterId: 'synthetic-character' })
+  const savedOpenings = await invoke('saveCharacterOpenings', { characterId: 'synthetic-character', value: { ...openings,
+    openingMessages: openings.openingMessages.map((message: any) => ({ ...message, content: '合成独立开场白' })) } })
+  expect(savedOpenings.openingMessages[0].content).toBe('合成独立开场白')
+  expect((await invoke('readSettingLibrary', { characterId: 'synthetic-character' })).entries).toEqual([])
+  const settingLibrary = await invoke('readSettingLibrary', { characterId: 'synthetic-character' })
+  const importedOpening = { ...savedOpenings.versions[0], id: 'synthetic-imported-opening', name: '合成导入开场白' }
+  await invoke('importSettingLibrary', { characterId: 'synthetic-character', library: settingLibrary, openingImports: [importedOpening] })
+  const imported = await invoke('readCharacterOpenings', { characterId: 'synthetic-character' })
+  expect(imported.activeVersionId).toBe(savedOpenings.activeVersionId)
+  expect(imported.openingMessages).toEqual(savedOpenings.openingMessages)
+  expect(imported.versions.at(-1)).toEqual(importedOpening)
+  const invalid = { ...importedOpening, id: 'synthetic-invalid-opening', openingMessages: [{ ...importedOpening.openingMessages[0], variableVersionId: 'synthetic-missing-variables' }] }
+  await expect(invoke('importSettingLibrary', { characterId: 'synthetic-character', library: { ...settingLibrary, name: '合成不应保存' }, openingImports: [invalid] })).rejects.toThrow('变量版本不存在')
+  expect((await invoke('readSettingLibrary', { characterId: 'synthetic-character' })).name).toBe(settingLibrary.name)
+  expect(await invoke('readCharacterOpenings', { characterId: 'synthetic-character' })).toEqual(imported)
+
   const workspace = () => ctx.typertGateway.invoke({ peer: ownerPeer(ctx), namespace: 'eleckoiCharacterConfiguration', method: 'readScriptWorkspace',
     args: { scope: 'character', ownerId: 'synthetic-character' } }) as Promise<{ path: string; version: string; entries: Array<{ id: string; file: string }> }>
   const before = await workspace()

@@ -31,9 +31,7 @@ function version(id, name, entries, groups = []) {
 }
 
 function library() {
-  const fixedEntries = [
-    fixed("fixed-opening-assistant", "opening", "AI角色开场白"),
-  ];
+  const fixedEntries = [];
   const first = version("v1", "第一版", [...fixedEntries, entry("a", "旧设定")]);
   const second = version("v2", "第二版", [...fixedEntries, entry("b", "第二版设定")]);
   return {
@@ -77,7 +75,7 @@ describe("setting-library versions and transfer", () => {
     expect(copied.entries.some((item) => item.id === "a")).toBe(true);
     const blank = createLibraryVersion(copied, "空白", "");
     expect(blank).toMatchObject({ activeVersionId: "library-blank", name: "空白" });
-    expect(blank.entries.map((item) => item.id)).toEqual(["fixed-opening-assistant"]);
+    expect(blank.entries.map((item) => item.id)).toEqual([]);
     vi.unstubAllGlobals();
   });
 
@@ -88,7 +86,7 @@ describe("setting-library versions and transfer", () => {
     const deleted = deleteActiveLibraryVersion(source);
     expect(deleted.versions).toHaveLength(1);
     expect(deleted).toMatchObject({ activeVersionId: "library-replacement", name: "新版本" });
-    expect(deleted.entries.map((item) => item.id)).toEqual(["fixed-opening-assistant"]);
+    expect(deleted.entries.map((item) => item.id)).toEqual([]);
     vi.unstubAllGlobals();
   });
 
@@ -100,6 +98,16 @@ describe("setting-library versions and transfer", () => {
     const imported = importLibraryAsVersion(source, parsed);
     expect(imported.versions).toHaveLength(3);
     expect(imported.activeVersionId).not.toBe("v1");
+  });
+
+  it('separates a content-only legacy opening without losing its text', () => {
+    const legacy = JSON.parse(serializeSettingLibrary(library()));
+    legacy.entries.push({ id: 'fixed-opening-assistant', kind: 'opening', content: '合成旧版完整正文', enabled: false });
+    const parsed = parseSettingLibraryFile(JSON.stringify(legacy), 'eleckoi');
+    expect(parsed.openingImport).toEqual({ enabled: false, defaultOpeningMessageId: 'opening-default', openingMessages: [
+      { id: 'opening-default', title: '默认开场', content: '合成旧版完整正文', initialVariableStateJson: '' },
+    ] });
+    expect(parsed.entries.every(entry => entry.kind !== 'opening')).toBe(true);
   });
 
   it("rebuilds selected folder ancestors and resolves title and order collisions when merging", () => {
@@ -117,51 +125,42 @@ describe("setting-library versions and transfer", () => {
     vi.unstubAllGlobals();
   });
 
-  it("exports settings separately and preserves character openings when importing them as a version", () => {
+  it("exports and imports setting identities without attaching role openings", () => {
     const source = library();
-    source.entries = source.entries.map(item => ({ ...item, contentMode: "plain_text" }));
     source.groups = [{ id: "synthetic-folder", name: "合成文件夹", parentId: "", order: 1, treeViewOrder: 1, createdAt: "", updatedAt: "" }];
     source.promptPositions = [{ id: "synthetic-position", name: "合成位置", anchor: "instructions", side: "after_setting_position", order: 1, createdAt: "", updatedAt: "" }];
-    source.entries[1] = { ...source.entries[1], groupId: "synthetic-folder", promptPositionId: "synthetic-position" };
-    source.entries[0].openingMessages = [
-      { id: "synthetic-opening-a", title: "开场一", content: "合成开场一", variableVersionId: "synthetic-variables-a", initialVariableStateJson: "" },
-      { id: "synthetic-opening-b", title: "开场二", content: "合成开场二", variableVersionId: "synthetic-variables-b", initialVariableStateJson: "{\"score\":2}" },
-    ];
-    source.entries[0].defaultOpeningMessageId = "synthetic-opening-b";
+    source.entries[0] = { ...source.entries[0], groupId: 'synthetic-folder', promptPositionId: 'synthetic-position' };
     const exported = serializeSettingLibrary(source);
     expect(JSON.parse(exported).entries.map(item => item.id)).toEqual(['a']);
-    expect(exported).not.toContain('synthetic-opening');
-    const imported = importLibraryAsVersion(source, parseSettingLibraryFile(exported, "eleckoi"));
-    expect(imported.activeVersionId).not.toBe(source.activeVersionId);
+    const imported = importLibraryAsVersion(source, parseSettingLibraryFile(exported, 'eleckoi'));
     expect(imported.entries).toEqual(source.entries);
     expect(imported.groups).toEqual(source.groups);
     expect(imported.promptPositions).toEqual(source.promptPositions);
-    const switched = switchLibraryVersion(imported, "v1");
-    expect(switched.entries[1]).toMatchObject({ id: "a", groupId: "synthetic-folder", promptPositionId: "synthetic-position" });
-    expect(switched.entries[0].openingMessages).toEqual(source.entries[0].openingMessages);
+    expect(imported.openingImports).toBeUndefined();
+    expect(switchLibraryVersion(imported, 'v1').entries).toEqual(source.entries);
   });
 
   it('preserves every long setting and imports openings explicitly included in an existing v3 file', () => {
     const source = library();
-    const opening = source.entries[0];
+    const opening = fixed("fixed-opening-assistant", "opening", "合成旧开场白");
     opening.enabled = false;
     opening.openingMessages[0] = { ...opening.openingMessages[0], content: '合成角色开场正文', variableVersionId: 'synthetic-version' };
     source.entries.push(...Array.from({ length: 10001 }, (_, index) => ({ ...entry(`synthetic-${index}`, `合成设定 ${index}`),
       content: `${index}：${'合成长正文。'.repeat(200)}末尾关键词` })));
     const exported = JSON.parse(serializeSettingLibrary(source));
     expect(exported.entries).toHaveLength(10002);
-    for (const index of [0, 5000, 10000]) expect(exported.entries[index + 1].content).toBe(source.entries[index + 2].content);
+    for (const index of [0, 5000, 10000]) expect(exported.entries[index + 1].content).toBe(source.entries[index + 1].content);
     expect(exported.entries.filter(item => item.content.endsWith('末尾关键词'))).toHaveLength(10001);
     const legacy = { ...exported, entries: [{ ...exported.entries[0], id: opening.id, kind: 'opening',
       enabled: opening.enabled, opening_messages: [{ id: 'legacy-opening', title: '合成旧开场', content: '合成旧开场正文',
         variable_version_id: 'synthetic-legacy-version', initial_variable_state: '{"score":7}' }],
       default_opening_message_id: 'legacy-opening' }, ...exported.entries] };
     const imported = importLibraryAsVersion(source, parseSettingLibraryFile(JSON.stringify(legacy), 'eleckoi'));
-    expect(imported.entries[0]).toMatchObject({ enabled: false, defaultOpeningMessageId: 'legacy-opening', openingMessages: [
+    expect(imported.openingImports[0]).toMatchObject({ enabled: false, defaultOpeningMessageId: 'legacy-opening', openingMessages: [
       { id: 'legacy-opening', content: '合成旧开场正文', variableVersionId: 'synthetic-legacy-version', initialVariableStateJson: '{"score":7}' },
     ] });
-    expect(imported.versions.find(item => item.id === 'v1').entries[0].openingMessages).toEqual(opening.openingMessages);
-    expect(imported.entries).toHaveLength(10003);
+    expect(imported.entries.every(entry => entry.kind !== 'opening')).toBe(true);
+    expect(imported.entries).toHaveLength(10002);
   });
 
   it("imports a SillyTavern world book into one folder", () => {

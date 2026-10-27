@@ -1,7 +1,8 @@
+import { readCharacterOpenings } from '@product-data/domain/characterOpenings'
 import { eq } from 'drizzle-orm'
 import type { Persona } from '@shared/contracts/entities/persona'
 import { type ElecKoiDatabase, type ElecKoiSqliteStore } from '@product-data/storage/sqlite/SqliteDatabase'
-import { characterMeta, characters, characterTextContents, userProfile } from '@product-data/storage/sqlite/schema/common'
+import { characterMeta, characters, userProfile } from '@product-data/storage/sqlite/schema/common'
 import type { LocalMediaStore, PreparedLocalMedia } from '@product-data/storage/media/LocalMediaStore'
 
 export interface PersonaConversationSync {
@@ -25,11 +26,10 @@ export class PersonaRepository {
     const profile = db.select().from(userProfile).where(eq(userProfile.id, 'default')).get()
     const state = db.select().from(characterMeta).where(eq(characterMeta.id, 'default')).get()
     const card = state?.activeCharacterId ? db.select().from(characters).where(eq(characters.id, state.activeCharacterId)).get() : undefined
-    const contents = card ? db.select().from(characterTextContents).where(eq(characterTextContents.characterId, card.id)).all() : []
-    const text = (kind: string) => contents.find((row) => row.kind === kind)?.content ?? ''
+    const openings = card ? readCharacterOpenings(card.id, db) : undefined
     return {
       assistant_name: card?.assistantName ?? '', assistant_avatar: card?.assistantAvatar ?? '', assistant_square: card?.squareImage ?? '', assistant_cover: card?.coverImage ?? '',
-      opening: text('opening'), show_opening: !!card?.showOpening,
+      opening: openings?.openingMessages.find(message => message.id === openings.defaultOpeningMessageId)?.content ?? '', show_opening: openings?.enabled ?? false,
       user_name: profile?.userName ?? '你', user_avatar: profile?.userAvatar ?? '',
       user_square: profile?.userSquare ?? '', user_portrait: profile?.userPortrait ?? '', user_cover: profile?.userCover ?? ''
     }

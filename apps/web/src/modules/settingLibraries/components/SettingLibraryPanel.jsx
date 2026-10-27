@@ -41,7 +41,7 @@ import {
 } from "../model/settingLibraryTree.js";
 import { reportFailure } from "../../../utils/failureText.js";
 
-import { useSettingLibraryDraft } from '../model/useSettingLibraryDraft.js';
+import { useCharacterConfigurationDraft } from '../../../ui/hooks/useCharacterConfigurationDraft.js';
 
 const CreateFolderIcon = SETTING_LIBRARY_CREATE_ICONS.group;
 const CreateEntryIcon = SETTING_LIBRARY_CREATE_ICONS.entry;
@@ -66,7 +66,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   const [deleteTarget, setDeleteTarget] = useState(null);
   const nameInputRef = useRef(null);
   const expandedKeysRef = useRef([]);
-  const draft = useSettingLibraryDraft({ characterId, settingLibraries, onDirtyChange,
+  const draft = useCharacterConfigurationDraft({ characterId, configuration: settingLibraries, onDirtyChange,
     onAdopt: loaded => {
       const expanded = loaded.expandedGroupIds.map(id => nodeKey('group', id));
       expandedKeysRef.current = expanded;
@@ -77,7 +77,7 @@ export const SettingLibraryPanel = forwardRef(function SettingLibraryPanel({ cha
   });
   const { library, setLibrary, persisted, setPersisted, libraryRef, persistedRef,
     dirty, saving, error, setError, saveNotice, changeLibrary, save, discard } = draft;
-  const settingLibrary = useMemo(() => library ? { ...library, entries: library.entries.filter(entry => entry.kind !== 'opening') } : null, [library]);
+  const settingLibrary = library;
   const selected = useMemo(() => findSelected(settingLibrary, selectedKey), [settingLibrary, selectedKey]);
   const nodes = useMemo(() => treeNodes(settingLibrary), [settingLibrary]);
   const searchHasResults = useMemo(() => settingLibrary ? hasSearchResults(settingLibrary, query) : false, [settingLibrary, query]);

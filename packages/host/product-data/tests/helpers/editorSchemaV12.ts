@@ -1,8 +1,10 @@
+import { restoreOpeningSchemaV13 } from './openingSchemaV13'
 import type Database from 'better-sqlite3'
 import { displayTemplatesSql, editorLibraryVersionsSql } from '../../src/storage/sqlite/migrations/0012EditorConfiguration'
 
 /** Recreate the exact v12 editor schema around the fixture's existing product records. */
 export function restoreEditorSchemaV12(database: Database.Database): void {
+  restoreOpeningSchemaV13(database)
   database.transaction(() => {
     database.exec('ALTER TABLE editor_library_versions RENAME TO fixture_editor_versions')
     database.exec(editorLibraryVersionsSql)

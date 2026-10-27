@@ -1,9 +1,10 @@
+import { characterOpeningsSchema } from '@shared/contracts/characterOpenings/schemas'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { parse } from '@babel/parser'
 import type { Context } from '@deepseek-ai/cordis'
-import { emptyEntry, OPENING_ENTRY_ID } from '../settingLibraries/index'
-import { settingLibraryAgentReadStrategySchema, settingLibraryEntryChangesSchema, settingLibraryGroupSchema, settingLibraryOpeningMessageSchema } from '@shared/contracts/settingLibrary/schemas'
+import { emptyEntry } from '../settingLibraries/index'
+import { settingLibraryAgentReadStrategySchema, settingLibraryEntryChangesSchema, settingLibraryGroupSchema } from '@shared/contracts/settingLibrary/schemas'
 import { variableItemConfigSchema, variableObjectConfigSchema, VARIABLE_INITIALIZATION_OBJECT_ID } from '@shared/contracts/variables/schemas'
 import { regexRuleEditorCollectionSchema, regexRuleSchema, regexRuleSurfaceSchema, regexRuleTargetSchema } from '@shared/contracts/regex/schemas'
 import { scriptLibrarySchema, scriptSchema, scriptFolderSchema, type ScriptLibrary, type ScriptTree } from '@shared/contracts/scripts/schemas'
@@ -98,6 +99,9 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     data.updateCharacter({ ...current, ...defined(patch), persona: { ...current.persona, ...(assistantName === undefined ? {} : { assistant_name: assistantName }) } })
     return find(data.readCharacters().items, characterId)
   })
+  operation('character', 'read_openings', '读取角色独立开场白及全部版本', 'read', empty, characterId => data.readCharacterOpenings(characterId))
+  operation('character', 'save_openings', '保存角色独立开场白、备用开场白和变量绑定', 'write',
+    z.object(characterOpeningsSchema.shape).omit({ characterId: true }), (characterId, input) => data.saveCharacterOpenings(characterId, { ...input, characterId }))
   operation('settings', 'list', '列出设定条目和文件夹', 'read', empty, characterId => {
     const library = data.readSettingLibrary(characterId)
     return { entries: library.entries.map(({ id, title, groupId, kind, agentReadStrategy, dynamicMode, contentMode, enabled, triggerMode }) => ({ id, title, groupId, kind,
@@ -111,54 +115,18 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     assertSettingFormat(entry)
     return find(data.saveSettingLibrary(characterId, { ...library, entries: [...library.entries, entry] }).entries, entry.id)
   })
-  const settingUpdateChanges = settingChanges.safeExtend({
-    openingMessages: z.array(settingLibraryOpeningMessageSchema.strict()).describe('完整主开场及备用开场列表。每项的标题、正文、变量版本绑定 variableVersionId 和初始变量 initialVariableStateJson 均可修改；variableVersionId 为空字符串表示取消绑定。先 read，保留未要求修改的项目、编号、顺序及其他字段。').optional(),
-    defaultOpeningMessageId: id.describe('主开场白的准确编号，必须存在于 openingMessages。').optional(),
-  })
-  const settingUpdate = z.object({ id, changes: settingUpdateChanges }).strict()
+  const settingUpdate = z.object({ id, changes: settingChanges }).strict()
   const updateSettings = (characterId: string, updates: z.output<typeof settingUpdate>[]) => {
     const library = data.readSettingLibrary(characterId)
-    if (new Set(updates.map(item => item.id)).size !== updates.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '同一批修改的设定编号不能重复。', { field: 'entries' })
-    const changed = new Map<string, typeof library.entries[number]>()
-    for (const input of updates) {
-      const entry = find(library.entries, input.id)
-      const patch = defined(input.changes)
-      if (entry.kind === 'opening') {
-        const unsupported = Object.keys(patch).filter(key => !['content', 'openingMessages', 'defaultOpeningMessageId', 'enabled'].includes(key))
-        if (unsupported.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, `开场白条目使用固定的分类和显示配置，不能修改这些设定字段：${unsupported.join('、')}`, { what: '开场白条目的设定字段', expected: '固定分类和显示配置' })
-        let messages = (patch.openingMessages ?? entry.openingMessages).map(defined)
-        if (!messages.length) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, '开场白列表不能为空；清空正文请将 content 设为空字符串。', { field: '开场白列表' })
-        if (new Set(messages.map(message => message.id)).size !== messages.length) throw new DesktopError(ELECKOI_FAILURE_CODES.lookupDuplicate, '开场白编号不能重复。', { what: '开场白编号' })
-        const defaultId = patch.defaultOpeningMessageId ?? entry.defaultOpeningMessageId
-        const primary = find(messages, defaultId)
-        if (patch.content !== undefined) {
-          if (patch.openingMessages && primary.content !== patch.content) throw new DesktopError(ELECKOI_FAILURE_CODES.inputInvalid, 'content 与 openingMessages 中主开场白的正文不一致。', { field: '主开场白正文' })
-          messages = messages.map(message => message.id === defaultId ? { ...message, content: patch.content! } : message)
-        }
-        changed.set(entry.id, { ...entry, ...patch, openingMessages: messages, defaultOpeningMessageId: defaultId,
-          content: find(messages, defaultId).content })
-      } else {
-        if (patch.openingMessages !== undefined || patch.defaultOpeningMessageId !== undefined) throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, 'openingMessages 和 defaultOpeningMessageId 只适用于开场白条目。', { what: '普通设定条目的开场白字段', expected: '开场白条目' })
-        const { openingMessages: _openings, defaultOpeningMessageId: _defaultOpening, ...normalPatch } = patch
-        const next = { ...entry, ...normalPatch }
-        assertSettingFormat(next)
-        changed.set(entry.id, next)
-      }
-    }
-    // Opening configuration shares the native editor's complete save validation, including variable-version bindings.
-    if ([...changed.values()].some(entry => entry.kind === 'opening')) {
-      const saved = data.saveSettingLibrary(characterId, { ...library, entries: library.entries.map(entry => changed.get(entry.id) ?? entry) })
-      return updates.map(input => find(saved.entries, input.id))
-    }
+    for (const input of updates) assertSettingFormat({ ...find(library.entries, input.id), ...defined(input.changes) })
     return data.updateSettingLibraryEntries(characterId, updates.map(input => ({ id: input.id, changes: defined(input.changes) })))
   }
-  operation('settings', 'update', '修改设定条目或主开场白、备用开场白', 'write', settingUpdate, (characterId, input) => updateSettings(characterId, [input]))
-  operation('settings', 'update_many', '在同一事务批量修改设定、开场白、启停或关键词匹配', 'write',
+  operation('settings', 'update', '修改设定条目', 'write', settingUpdate, (characterId, input) => updateSettings(characterId, [input]))
+  operation('settings', 'update_many', '在同一事务批量修改设定、启停或关键词匹配', 'write',
     z.object({ updates: z.array(settingUpdate).min(1) }).strict(), (characterId, input) => updateSettings(characterId, input.updates))
   operation('settings', 'remove', '删除设定条目', 'write', entity, (characterId, input) => {
     const library = data.readSettingLibrary(characterId)
-    const entry = find(library.entries, input.id)
-    if (entry.id === OPENING_ENTRY_ID || entry.kind === 'opening') throw new DesktopError(ELECKOI_FAILURE_CODES.safetyRefused, '不能删除固定开场白。', { guard: '固定开场白' })
+    find(library.entries, input.id)
     data.saveSettingLibrary(characterId, { ...library, entries: library.entries.filter(item => item.id !== input.id) })
     return { removedId: input.id }
   })
@@ -179,7 +147,6 @@ export function creatorCapabilities(data: Context['eleckoiProductData']): Creato
     const removed = new Set([input.id])
     for (let size = 0; size !== removed.size;) { size = removed.size; for (const group of library.groups) if (removed.has(group.parentId)) removed.add(group.id) }
     const entries = library.entries.filter(item => removed.has(item.groupId))
-    if (entries.some(item => item.kind === 'opening')) throw new DesktopError(ELECKOI_FAILURE_CODES.safetyRefused, '不能删除固定开场白。', { guard: '固定开场白' })
     data.saveSettingLibrary(characterId, { ...library, groups: library.groups.filter(item => !removed.has(item.id)),
       entries: library.entries.filter(item => !removed.has(item.groupId)), expandedGroupIds: library.expandedGroupIds.filter(id => !removed.has(id)) })
     return { removedGroupIds: [...removed], removedEntryIds: entries.map(item => item.id) }

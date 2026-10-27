@@ -1,3 +1,5 @@
+import { CharacterOpeningRepository } from '@product-data/domain/characterOpenings'
+import type { CharacterOpenings, CharacterOpeningVersion } from '@shared/contracts/characterOpenings/schemas'
 import { renderRegexEjs } from './regex-ejs'
 import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, join } from 'node:path'
@@ -181,6 +183,7 @@ class ProductDataStore {
   private personas: PersonaRepository | undefined
   private characters: CharacterRepository | undefined
   private transfers: CharacterTransferService | undefined
+  private openings: CharacterOpeningRepository | undefined
   private settingLibraries: SettingLibraryRepository | undefined
   private variables: VariableConfigRepository | undefined
   private variableStates: VariableStateRepository | undefined
@@ -206,6 +209,7 @@ class ProductDataStore {
   ) {}
 
   private databaseRepositories(): {
+    openings: CharacterOpeningRepository
     settingLibraries: SettingLibraryRepository
     variables: VariableConfigRepository
     personas: PersonaRepository
@@ -224,6 +228,7 @@ class ProductDataStore {
       this.conversationStates = new ConversationStateRepository(store)
       this.mediaAssets = media
       this.personas = new PersonaRepository(store, conversationSync, media)
+      this.openings = new CharacterOpeningRepository(store)
       this.settingLibraries = new SettingLibraryRepository(store)
       this.variables = new VariableConfigRepository(store)
       this.variableStates = new VariableStateRepository(store, this.variables)
@@ -232,7 +237,7 @@ class ProductDataStore {
         (characterId, db) => resolveConversationSeed(
           characterId,
           db,
-          this.settingLibraries!,
+          this.openings!,
           this.variables!
         )
       )
@@ -266,13 +271,15 @@ class ProductDataStore {
         this.variables,
         this.regexRules,
         media,
-        this.scripts
+        this.scripts,
+        this.openings
       )
     }
     return {
       personas: this.personas,
       characters: this.characters,
       transfers: this.transfers,
+      openings: this.openings!,
       settingLibraries: this.settingLibraries,
       variables: this.variables,
       store: this.store
@@ -280,12 +287,11 @@ class ProductDataStore {
   }
 
   private withPrimaryOpenings(collection: CharacterCollection): CharacterCollection {
-    const settingLibraries = this.databaseRepositories().settingLibraries
     return {
       ...collection,
       items: collection.items.map((character) => ({
         ...character,
-        primaryOpening: settingLibraries.primaryOpening(character.id)
+        primaryOpening: isRecord(character.persona) ? (optionalString(character.persona.opening) ?? '').trim() : ''
       }))
     }
   }
@@ -836,7 +842,7 @@ class ProductDataStore {
   }
 
   duplicateCharacter(sourceId: string): { characterId: string; collection: CharacterCollection } {
-    const { characters, settingLibraries, variables } = this.databaseRepositories();
+    const { characters, settingLibraries, variables, openings } = this.databaseRepositories();
     const collection = characters.get();
     const source = collection.items.find(item => item.id === sourceId);
     if (!source) throw new DesktopError(ELECKOI_FAILURE_CODES.characterNotFound, '找不到要复制的角色卡。', { what: '角色卡' });
@@ -853,6 +859,7 @@ class ProductDataStore {
           characters.createInTransaction({ ...source, id: characterId, name }, db, false);
           variables.restoreInTransaction(characterId, { ...config, characterId }, db);
           settingLibraries.saveInTransaction(characterId, { ...library, characterId }, db);
+          openings.saveInTransaction(characterId, { ...openings.get(sourceId, db), characterId }, db);
           const scripts = this.scripts!.importInTransaction('character', characterId, scriptLibrary, db);
           this.scripts!.saveInTransaction({ ...scripts, enabled: scriptLibrary.enabled }, db);
           const regexIds = this.regexRules!.copyCharacter(sourceId, characterId);
@@ -920,6 +927,14 @@ class ProductDataStore {
     return this.databaseRepositories().personas.save(profile)
   }
 
+  readCharacterOpenings(characterId: string): CharacterOpenings {
+    return this.databaseRepositories().openings.get(characterId)
+  }
+
+  saveCharacterOpenings(characterId: string, value: CharacterOpenings): CharacterOpenings {
+    return this.databaseRepositories().openings.save(characterId, value)
+  }
+
   readSettingLibrary(characterId: string): SettingLibrary {
     return this.databaseRepositories().settingLibraries.get(characterId)
   }
@@ -933,6 +948,19 @@ class ProductDataStore {
 
   updateSettingLibraryEntries(characterId: string, updates: SettingLibraryEntryUpdate[]) {
     return this.databaseRepositories().settingLibraries.updateEntries(characterId, updates)
+  }
+
+  // RETIRE WHEN: 停止支持含开场白的 v3 设定库文件后，连同 Remote、Client 分流及对应回归删除。
+  importSettingLibrary(characterId: string, library: SettingLibrary, openingImports: CharacterOpeningVersion[]): SettingLibrary {
+    const repositories = this.databaseRepositories()
+    return repositories.store.withWriteTx(db => {
+      const saved = repositories.settingLibraries.saveInTransaction(characterId, library, db)
+      if (openingImports.length) {
+        const current = repositories.openings.get(characterId, db)
+        repositories.openings.saveInTransaction(characterId, { ...current, versions: [...current.versions, ...openingImports] }, db)
+      }
+      return saved
+    })
   }
 
   saveSettingLibrary(characterId: string, library: SettingLibrary): SettingLibrary {
@@ -1233,6 +1261,7 @@ class ProductDataStore {
     this.personas = undefined
     this.characters = undefined
     this.transfers = undefined
+    this.openings = undefined
     this.settingLibraries = undefined
     this.variables = undefined
     this.variableStates = undefined

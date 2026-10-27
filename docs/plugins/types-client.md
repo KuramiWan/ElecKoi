@@ -487,7 +487,7 @@ export interface ElecKoiRegexEditor {
 }
 ```
 
-源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:218](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L218)
+源码：[packages/client/features/dsh-client-character-configuration/src/client/types.ts:247](../../packages/client/features/dsh-client-character-configuration/src/client/types.ts#L247)
 
 ## ModelCatalogSnapshot
 

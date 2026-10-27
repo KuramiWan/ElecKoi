@@ -1,3 +1,4 @@
+import { CharacterOpeningRepository } from '../../packages/host/product-data/src/domain/characterOpenings'
 import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -54,16 +55,14 @@ function fixture() {
   const a = variant('variant-a', 10, 2)
   const b = variant('variant-b', 100, 20)
   variables.save('synthetic-character', { ...blank, ...a, activeVersionId: a.id, versions: [a, b] })
-  const library = libraries.get('synthetic-character')
-  libraries.save('synthetic-character', { ...library, entries: library.entries.map((entry) => ({
-    ...entry, openingMessages: [
-      { id: 'opening-a', title: '开场 A', content: '合成开场 A', variableVersionId: a.id, initialVariableStateJson: '' },
-      { id: 'opening-b', title: '开场 B', content: '合成开场 B', variableVersionId: b.id, initialVariableStateJson: '' },
-    ], defaultOpeningMessageId: 'opening-a',
-  })) })
-  const conversations = new ConversationRepository(database, (characterId, db) => resolveConversationSeed(characterId, db, libraries, variables))
+  const openings = new CharacterOpeningRepository(database)
+  openings.save('synthetic-character', { ...openings.get('synthetic-character'), openingMessages: [
+    { id: 'opening-a', title: '开场 A', content: '合成开场 A', variableVersionId: a.id, initialVariableStateJson: '' },
+    { id: 'opening-b', title: '开场 B', content: '合成开场 B', variableVersionId: b.id, initialVariableStateJson: '' },
+  ], defaultOpeningMessageId: 'opening-a' })
+  const conversations = new ConversationRepository(database, (characterId, db) => resolveConversationSeed(characterId, db, new CharacterOpeningRepository(database), variables))
   const states = new VariableStateRepository(database, variables)
-  return { database, path, directory, variables, libraries, conversations, states }
+  return { database, path, directory, variables, libraries, openings, conversations, states }
 }
 
 describe('opening variable version bindings', () => {
@@ -114,12 +113,12 @@ describe('opening variable version bindings', () => {
     const library = f.libraries.get('synthetic-character')
     const exported = decodeSettingLibrarySnapshot(encodeSettingLibrarySnapshot(library), 'synthetic-character')
     const config = decodeVariableConfigSnapshot(encodeVariableConfigSnapshot(f.variables.get('synthetic-character')), 'synthetic-character')
-    expect(exported.entries[0]?.openingMessages.map((opening) => opening.variableVersionId)).toEqual(['variant-a', 'variant-b'])
+    expect(exported.entries).toEqual([])
+    expect(JSON.parse(JSON.stringify(f.openings.get('synthetic-character'))).openingMessages.map((opening: any) => opening.variableVersionId)).toEqual(['variant-a', 'variant-b'])
     expect(config.versions.map((version) => version.id)).toEqual(['variant-a', 'variant-b'])
     expect(() => f.variables.save('synthetic-character', { ...config, versions: config.versions.slice(0, 1) })).toThrow('绑定开场白')
-    expect(() => f.libraries.save('synthetic-character', { ...library, entries: library.entries.map((entry) => ({
-      ...entry, openingMessages: entry.openingMessages.map((opening) => ({ ...opening, variableVersionId: 'missing-version' })),
-    })) })).toThrow('变量版本不存在')
+    const openings = f.openings.get('synthetic-character')
+    expect(() => f.openings.save('synthetic-character', { ...openings, openingMessages: openings.openingMessages.map(opening => ({ ...opening, variableVersionId: 'missing-version' })) })).toThrow('变量版本不存在')
     const id = f.conversations.create({ metadata: { characterId: 'synthetic-character' } }).conversation.id
     expect(() => f.variables.save('synthetic-character', { ...config, ...config.versions[1]!, activeVersionId: 'variant-b', versions: [config.versions[1]!] })).toThrow('聊天使用')
     expect(f.variables.forConversation(id, 'synthetic-character').activeVersionId).toBe('variant-a')

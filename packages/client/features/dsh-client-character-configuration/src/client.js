@@ -148,7 +148,12 @@ window.__ModuleLoader__.load({
 
       async save(characterId, value) {
         const generation = this.nextGeneration(characterId)
-        const saved = this.validate(await this.request(this.saveMethod, characterId, value), characterId)
+        // RETIRE WHEN: 停止支持含开场白的 v3 设定库导入后，删除分流及 importSettingLibrary Remote。
+        const { openingImports, ...configuration } = value
+        const response = this.moduleName === 'settingLibraries' && openingImports?.length
+          ? await this.request('importSettingLibrary', characterId, configuration, openingImports)
+          : await this.request(this.saveMethod, characterId, value)
+        const saved = this.validate(response, characterId)
         if (!this.disposed && this.generations.get(characterId) === generation) {
           this.publish('configuration', characterId, { status: 'ready', value: saved, error: '' })
         }
@@ -494,6 +499,12 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const bridge = new CharacterConfigurationBridge(ctx.remote)
       const settingLibraries = new SettingLibrariesModel(bridge)
+      const openings = new CharacterConfigurationModel(bridge, 'openings', 'readCharacterOpenings', 'saveCharacterOpenings', null, (value, characterId) => {
+        if (!value || value.characterId !== characterId || !Array.isArray(value.openingMessages) || !Array.isArray(value.versions)) {
+          throw productFailure(ELECKOI_FAILURE_CODES.dataShapeInvalid, '角色开场白返回的数据格式不正确。', { what: '角色开场白配置' })
+        }
+        return value
+      })
       const variables = new CharacterConfigurationModel(
         bridge, 'variables', 'readVariableConfig', 'saveVariableConfig',
         'saveVariableConfigViewState', (value, characterId) => {
@@ -508,11 +519,13 @@ window.__ModuleLoader__.load({
       const regexEditors = new RegexEditorsModel(bridge)
       regexRules.editor = (scope, ownerId) => regexEditors.editor(scope, ownerId)
       const scripts = new ScriptLibrariesModel(bridge)
+      ctx.provide('eleckoiCharacterOpenings', openings)
       ctx.provide('eleckoiSettingLibraries', settingLibraries)
       ctx.provide('eleckoiVariables', variables)
       ctx.provide('eleckoiRegexRules', regexRules)
       ctx.provide('eleckoiScriptLibraries', scriptLibraryService(scripts, bridge))
       ctx.effect(() => {
+        openings.start()
         settingLibraries.start()
         variables.start()
         regexRules.start()
@@ -520,6 +533,7 @@ window.__ModuleLoader__.load({
         scripts.start()
         bridge.start()
         const stopReset = ctx.on('connection/reset', () => {
+          openings.refreshLoaded()
           settingLibraries.refreshLoaded()
           variables.refreshLoaded()
           regexRules.refreshLoaded()
@@ -529,6 +543,7 @@ window.__ModuleLoader__.load({
         return () => {
           stopReset()
           bridge.dispose()
+          openings.dispose()
           settingLibraries.dispose()
           variables.dispose()
           regexRules.dispose()

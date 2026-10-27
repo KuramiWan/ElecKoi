@@ -1,18 +1,18 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { OpeningEditor } from './OpeningEditor.jsx';
-import { ConfirmationDialog, SaveControl } from './SettingLibraryControls.jsx';
-import { deleteOpening } from '../model/settingLibraryEditing.js';
-import { switchLibraryVersion } from '../model/settingLibraryTransfer.js';
-import { useSettingLibraryDraft } from '../model/useSettingLibraryDraft.js';
+import { ConfirmationDialog, SaveControl } from '../../settingLibraries/index.js';
+import { deleteOpening } from '../model/openingEditing.js';
+import { syncCharacterOpeningVersion } from '@shared/contracts/characterOpenings/schemas';
+import { useCharacterConfigurationDraft } from '../../../ui/hooks/useCharacterConfigurationDraft.js';
 import { resolveFailure } from '../../../utils/failureText.js';
 
-export const CharacterOpeningsPanel = forwardRef(function CharacterOpeningsPanel({ characterId, settingLibraries, variables, onDirtyChange }, ref) {
-  const { library, persisted, dirty, saving, error, saveNotice, changeLibrary, save, discard } = useSettingLibraryDraft({
-    characterId, settingLibraries, onDirtyChange, label: '角色开场白',
+export const CharacterOpeningsPanel = forwardRef(function CharacterOpeningsPanel({ characterId, openings, variables, onDirtyChange }, ref) {
+  const { library, persisted, dirty, saving, error, saveNotice, changeLibrary, save, discard } = useCharacterConfigurationDraft({
+    characterId, configuration: openings, onDirtyChange, label: '角色开场白',
   });
   const [variableSnapshot, setVariableSnapshot] = useState({ value: null, error: '' });
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const entry = library?.entries.find(item => item.id === 'fixed-opening-assistant' && item.kind === 'opening');
+  const entry = library;
 
   useImperativeHandle(ref, () => ({ save, discard }), [library, persisted, saving]);
   useEffect(() => setDeleteTarget(null), [characterId, library?.activeVersionId]);
@@ -32,7 +32,7 @@ export const CharacterOpeningsPanel = forwardRef(function CharacterOpeningsPanel
   }, [characterId, variables]);
 
   function updateEntry(next) {
-    changeLibrary(current => ({ ...current, entries: current.entries.map(item => item.id === entry.id ? next : item) }));
+    changeLibrary(next);
   }
 
   return (
@@ -47,8 +47,14 @@ export const CharacterOpeningsPanel = forwardRef(function CharacterOpeningsPanel
         </label>}
         {library?.versions.length > 1 && <label className="character-openings-version">
           <span>版本</span>
-          <select aria-label="开场白所属版本" value={library.activeVersionId} disabled={saving}
-            onChange={event => changeLibrary(current => switchLibraryVersion(current, event.target.value))}>
+          <select aria-label="开场白版本" value={library.activeVersionId} disabled={saving}
+            onChange={event => changeLibrary(current => {
+              const synced = syncCharacterOpeningVersion(current);
+              const version = synced.versions.find(item => item.id === event.target.value);
+              if (!version) return current;
+              return { ...synced, name: version.name, activeVersionId: version.id, enabled: version.enabled,
+                openingMessages: version.openingMessages, defaultOpeningMessageId: version.defaultOpeningMessageId };
+            })}>
             {library.versions.map(version => <option key={version.id} value={version.id}>{version.id === library.activeVersionId ? library.name : version.name}</option>)}
           </select>
         </label>}

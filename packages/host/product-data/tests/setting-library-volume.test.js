@@ -51,11 +51,11 @@ describe('large character-card setting libraries', () => {
       expect(entry.conditionKeywords).toEqual(source.constant ? [] : source.secondary_keys);
     }
     const saved = data.saveSettingLibrary(characterId, imported);
-    expect(saved.entries).toHaveLength(count + 1);
+    expect(saved.entries).toHaveLength(count);
     const exported = data.exportCharacter(characterId, 'json');
     const decoded = decodeCharacterCard(Buffer.from(exported.base64, 'base64'), 'eleckoi');
     const portable = decodeSettingLibrarySnapshot(decoded.packageData.settingLibraryJson, characterId);
-    expect(portable.entries).toHaveLength(count + 1);
+    expect(portable.entries).toHaveLength(count);
     expect(portable.entries.map(entry => ({ id: entry.id, content: entry.content, keywords: entry.keywords, conditionKeywords: entry.conditionKeywords })))
       .toEqual(saved.entries.map(entry => ({ id: entry.id, content: entry.content, keywords: entry.keywords, conditionKeywords: entry.conditionKeywords })));
     await f.ctx.fiber.dispose();

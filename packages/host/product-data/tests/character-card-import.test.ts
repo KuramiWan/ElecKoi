@@ -141,7 +141,7 @@ describe('character card import', () => {
     expect(decoded.packageData.character).not.toHaveProperty('chatBackgroundScrim')
     expect(decoded.settingLibrary?.groups.map((group) => group.name)).toEqual(['角色基础设定', '世界设定'])
     expect(decoded.settingLibrary?.entries.map((entry) => entry.title)).toEqual(expect.arrayContaining([
-      'AI角色开场白', '角色描述', '舞台', '歌声'
+      '角色描述', '舞台', '歌声'
     ]))
     expect(decoded.settingLibrary?.entries.find((entry) => entry.title === '舞台')?.agentReadStrategy).toBe('required')
     expect(decoded.settingLibrary?.entries.find((entry) => entry.title === '歌声')?.keywords).toEqual(['歌曲'])
@@ -288,7 +288,7 @@ describe('character card import', () => {
     const jsonExport = transfers.export('export-character', 'json')
     const root = JSON.parse(Buffer.from(jsonExport.base64, 'base64').toString('utf8'))
     expect(jsonExport.fileName).toBe('完整角色.json')
-    expect(root).toMatchObject({ format: 'eleckoi.character-card', version: 1 })
+    expect(root).toMatchObject({ format: 'eleckoi.character-card', version: 2 })
     expect(root.character).not.toHaveProperty('chat_background_mode')
     expect(root.character).not.toHaveProperty('chat_background_opacity')
     expect(root.assets.map((asset: { key: string }) => asset.key)).toEqual([

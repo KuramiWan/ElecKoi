@@ -21,7 +21,7 @@ export const creatorToolsets = [
       'getvar("组.变量", { defaults: 0 }) 读取当前聊天变量；variables/stat_data 是同一份状态，lastUserMessage 是最近用户正文。只有取回的状态用于判断，不修改它来结算变量。',
       '代码与设定文字可混写，也可分离：分离时先创建 dynamicMode="ejs_reference"、contentMode="plain_text" 的文字条目，再在 EJS 控制器里用 <%- await getwi("文件夹/引用标题") %> 输出它。getwi 只读取已启用的 EJS 引用正文，不执行引用里的模板标记；引用不单独进入 AI 选读目录。',
       'getwi 按准确引用标题或完整设定路径匹配；标题重复时用完整路径。不可引用另一个普通/EJS 控制器，也不要用 EJS 标准 include() 代替本产品的 getwi。',
-      '创建和修改先查询准确参数和编号；更新只发送要改的字段，保留其他正文、引用、文件夹和插入位置。开场白使用同一 settings.read/update/update_many：content 修改主开场正文；openingMessages 是完整主开场及备用开场列表，可以新增、修改、删除其中项目；defaultOpeningMessageId 指定主开场编号。每项的标题、正文、variableVersionId 变量版本绑定和 initialVariableStateJson 初始变量均可修改；绑定须使用当前角色实际存在的变量版本编号，空字符串表示取消绑定。绑定版本时新对话使用该版本的初始变量；未绑定时使用开场初始变量，留空则使用当前变量版本。先读取并保留未要求修改的字段及顺序，删除主开场时同时指定新的主开场编号。开场白条目的分类、位置和模板模式固定；清空开场正文使用空字符串，不删除固定条目容器。',
+      '开场白在角色编辑器的独立页面，通过 character.read_openings 读取、character.save_openings 保存；保留主开场、备用开场、变量版本绑定、初始变量及所有独立版本。设定库版本不改变开场白。保存前读取准确编号，修改后完整保留未改字段和其他版本。',
       '多条设定使用 settings.update_many({updates:[{id,changes},...]}) 在同一事务提交，例如批量开启时每项 changes={agentReadStrategy:"keyword"}。任一编号、格式或保存失败整批不提交。文件夹通过 create_group/update_group/remove_group 管理；update_group 可改 name、parentId、order、treeViewOrder，编号和条目归属不变；remove_group 会删除该文件夹、其子文件夹和条目，不能用于只改名字。',
     ],
     examples: [

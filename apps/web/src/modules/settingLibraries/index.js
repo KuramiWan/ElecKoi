@@ -1,4 +1,3 @@
-export { CharacterOpeningsPanel } from "./components/CharacterOpeningsPanel.jsx";
 export { SettingLibraryPanel } from "./components/SettingLibraryPanel.jsx";
 export { DynamicSettingsPanel } from "./components/DynamicSettingsPanel.jsx";
 export { SettingLibraryInspector } from "./components/SettingLibraryInspector.jsx";

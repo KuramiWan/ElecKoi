@@ -56,7 +56,12 @@ app.whenReady().then(async () => {
       await wait('document.querySelectorAll(".setting-library-opening-item").length===2');
       await evaluate(`document.querySelectorAll('.setting-library-opening-toggle')[1].click()`);
       const binding = await evaluate(`document.querySelector('.setting-library-opening-fields select').value`);
-      reports.push({ theme, width, height, layout, settingsSeparated, binding });
+      await evaluate(`(() => {const select=document.querySelector('select[aria-label="开场白版本"]');select.value='synthetic-opening-archive';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await wait(`document.querySelectorAll('.setting-library-opening-item').length===1&&document.querySelector('.setting-library-opening-toggle').textContent.includes('合成存档开场')`);
+      await evaluate(`(() => {const select=document.querySelector('select[aria-label="开场白版本"]');select.value='openings-default';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await wait('document.querySelectorAll(".setting-library-opening-item").length===2');
+      await wait(`document.querySelector('.setting-library-save-button').disabled&&window.syntheticSaveCount===1`);
+      reports.push({ theme, width, height, layout, settingsSeparated, binding, independentVersions: true });
     }
     writeFileSync(reportPath, JSON.stringify(reports)); app.exit(0);
   } catch (error) {

@@ -66,6 +66,11 @@ it('copies full native card data through the strict Remote and preserves indepen
     type: 'script', id: 'synthetic-script', name: 'Synthetic script', enabled: true, content: "import '../helpers/data.js'; export default () => 7;", info: '', data: {},
     button: { enabled: false, buttons: [] }, export_with: { data: true, button: true }, runtime: { kind: 'eleckoi-module', apiVersion: 1 },
   }] })
+  const opening = data.readCharacterOpenings(sourceId)
+  const sourceOpenings = data.saveCharacterOpenings(sourceId, { ...opening, enabled: true,
+    openingMessages: [{ id: 'synthetic-main-opening', title: '合成主开场', content: long, variableVersionId: config.activeVersionId, initialVariableStateJson: '' },
+      { id: 'synthetic-backup-opening', title: '合成备用开场', content: '合成备用正文', initialVariableStateJson: '{"synthetic":1}' }],
+    defaultOpeningMessageId: 'synthetic-main-opening', versions: [...opening.versions, { ...opening.versions[0]!, id: 'synthetic-opening-archive', name: '合成开场存档' }] })
   const scriptPath = data.readScriptWorkspace('character', sourceId).path
   mkdirSync(join(scriptPath, 'helpers')); writeFileSync(join(scriptPath, 'helpers/data.js'), 'export const synthetic = 7;')
   const regex = data.readRegexEditor({ scope: 'character', ownerId: sourceId })
@@ -91,6 +96,7 @@ it('copies full native card data through the strict Remote and preserves indepen
   const copied = result.collection.items.find(item => item.id === id)!
   expect(copied).toMatchObject({ name: '合成角色（副本）', group: '合成分组', profileLike: 'Synthetic profile', chatBackground: '', persona: { assistant_name: 'Synthetic identity' } })
   expect(data.readCharacters().active_character_id).toBe(sourceId)
+  expect(data.readCharacterOpenings(id)).toEqual({ ...sourceOpenings, characterId: id })
   const copiedSetting = data.readSettingLibrary(id), copiedConfig = data.readVariableConfig(id)
   expect(copiedSetting.entries.filter(item => item.kind === 'normal')).toHaveLength(10001)
   for (const index of [0, 5000, 10000]) {
@@ -131,6 +137,7 @@ it('copies full native card data through the strict Remote and preserves indepen
   const reopenedProjects = reopened.eleckoiProductData.frontendProjects()
   expect(reopenedProjects.readFile(target, projects.selectedProjectId!).content).toBe('Copied page edited')
   reopened.eleckoiProductData.deleteCharacters([sourceId])
+  expect(reopened.eleckoiProductData.readCharacterOpenings(id)).toEqual({ ...sourceOpenings, characterId: id })
   const media = new LocalMediaStore(join(f.directory, 'media'))
   expect(readFileSync(media.pathForReference(copied.persona!.assistant_avatar)!).length).toBeGreaterThan(0)
   expect(reopenedProjects.readFile(target, projects.selectedProjectId!).content).toBe('Copied page edited')

@@ -1,19 +1,14 @@
+import { createBackupOpening, deleteOpening, duplicateOpening, moveBackupOpening, primaryFirstOpeningMessages, updateOpening } from '../../src/modules/characterOpenings/model/openingEditing.js'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  createBackupOpening,
   createEntryDraft,
   canTransferSettingNode,
   copySettingNode,
-  deleteOpening,
-  duplicateOpening,
-  moveBackupOpening,
   moveEntryToPosition,
   moveTreeNode,
   positionOrderScope,
-  primaryFirstOpeningMessages,
   SETTING_LIBRARY_PLACEMENT_ROWS,
   SETTING_LIBRARY_POSITION_OPTIONS,
-  updateOpening
 } from '../../src/modules/settingLibraries/model/settingLibraryEditing.js'
 import {
   HEADLESS_TREE_ROOT_ID,
@@ -23,7 +18,7 @@ import {
 
 function openingEntry() {
   return {
-    id: 'fixed-opening-assistant',
+    id: 'built-in-roleplay-history-compaction',
     content: '主开场',
     openingMessages: [
       { id: 'backup', title: '备用', content: '备用开场', initialVariableStateJson: '' },
@@ -36,7 +31,7 @@ function openingEntry() {
 describe('setting-library editor model', () => {
   it('uses Headless Tree post-removal slots while keeping fixed root entries pinned', () => {
     const siblings = [
-      { id: 'entry:fixed-opening-assistant', fixed: true },
+      { id: 'entry:built-in-roleplay-history-compaction', fixed: true },
       { id: 'entry:new', fixed: false },
       { id: 'entry:two', fixed: false },
       { id: 'entry:three', fixed: false }
@@ -109,11 +104,11 @@ describe('setting-library editor model', () => {
     vi.unstubAllGlobals()
   })
 
-  it('keeps the default opening first and mirrors its content into the fixed entry', () => {
+  it('keeps the selected primary opening first and edits its own message', () => {
     const source = openingEntry()
     expect(primaryFirstOpeningMessages(source).map((message) => message.id)).toEqual(['primary', 'backup'])
     const changed = updateOpening(source, 'primary', { content: '修改后的主开场' })
-    expect(changed.content).toBe('修改后的主开场')
+    expect(changed.openingMessages.find(message => message.id === 'primary').content).toBe('修改后的主开场')
     expect(changed.openingMessages[0]).toMatchObject({ id: 'primary', content: '修改后的主开场' })
   })
 
@@ -128,7 +123,7 @@ describe('setting-library editor model', () => {
     expect(moved.openingMessages.map((message) => message.id)).toEqual(['primary', 'backup', 'opening-created', 'opening-copied'])
     const withoutPrimary = deleteOpening(moved, 'primary')
     expect(withoutPrimary.defaultOpeningMessageId).toBe('backup')
-    expect(withoutPrimary.content).toBe('备用开场')
+    expect(withoutPrimary.openingMessages.find(message => message.id === 'backup').content).toBe('备用开场')
     vi.unstubAllGlobals()
   })
 
@@ -224,7 +219,7 @@ describe('setting-library editor model', () => {
         { id: 'nested', name: '嵌套', parentId: 'folder-a', treeViewOrder: 1 }
       ],
       entries: [
-        { id: 'fixed-opening-assistant', title: '开场白', groupId: '', treeViewOrder: -2 },
+        { id: 'built-in-roleplay-history-compaction', title: '开场白', groupId: '', treeViewOrder: -2 },
         { id: 'inside', title: '内部条目', groupId: 'folder-a', treeViewOrder: 2 }
       ]
     }
@@ -232,7 +227,7 @@ describe('setting-library editor model', () => {
     const moved = moveTreeNode(library, { kind: 'entry', id: 'inside' }, '', 1)
     expect(moved.entries.find((entry) => entry.id === 'inside')).toMatchObject({ groupId: '', treeViewOrder: 2 })
     expect(moved.groups.find((group) => group.id === 'nested')).toMatchObject({ parentId: 'folder-a', treeViewOrder: 1 })
-    expect(moved.entries.find((entry) => entry.id === 'fixed-opening-assistant')).toMatchObject({ groupId: '', treeViewOrder: -2 })
+    expect(moved.entries.find((entry) => entry.id === 'built-in-roleplay-history-compaction')).toMatchObject({ groupId: '', treeViewOrder: -2 })
   })
 
   it('refuses to move a folder into one of its descendants', () => {
@@ -271,7 +266,7 @@ describe('setting folder transfer', () => {
       expect(copySettingNode(source, { kind: 'group', id: 'folder-a' }, parentId)).toEqual({ library: source, key: '' });
       expect(moveTreeNode(source, { kind: 'group', id: 'folder-a' }, parentId, 0)).toBe(source);
     }
-    expect(canTransferSettingNode(source, { kind: 'entry', id: 'fixed-opening-assistant' }, '')).toBe(false);
+    expect(canTransferSettingNode(source, { kind: 'entry', id: 'built-in-roleplay-history-compaction' }, '')).toBe(false);
     expect(canTransferSettingNode(source, { kind: 'unknown', id: 'item-a' }, '')).toBe(false);
   });
 });

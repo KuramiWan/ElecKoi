@@ -96,7 +96,7 @@ function settingVersion(value: JsonObject, index: number): SettingLibraryVersion
   return {
     id: string(value.id) || `library-snapshot-${index + 1}-${randomUUID()}`,
     name: string(value.name),
-    entries: objectList(value.entries).map(settingEntry),
+    entries: objectList(value.entries).filter(entry => entry.kind !== 'opening' && entry.id !== 'fixed-opening-assistant').map(settingEntry),
     groups: objectList(value.groups).map(settingGroup),
     promptPositions: objectList(value.prompt_positions).map(promptPosition),
     listAllExpanded: boolean(value.list_all_expanded, true),

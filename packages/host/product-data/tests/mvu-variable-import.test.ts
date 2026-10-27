@@ -22,7 +22,7 @@ function decode(options: { scripts?: string[]; entries?: Array<{ name: string; c
 }
 
 function openingBindings(card: ReturnType<typeof decode>) {
-  return card.settingLibrary!.entries.find(entry => entry.kind === 'opening')!.openingMessages
+  return card.openings!.openingMessages
 }
 
 describe('MVU variable import', () => {

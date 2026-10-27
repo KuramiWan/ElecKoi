@@ -1,3 +1,4 @@
+import { createCharacterOpenings } from '../../../shared/src/contracts/characterOpenings/schemas'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,9 +24,10 @@ it('imports a conversation with its message structure under new IDs', () => {
   db.native.prepare(`INSERT INTO characters(
     id,name,avatar,squareImage,coverImage,groupName,orderIndex,groupViewOrder,folder,
     frontendBeautyEnabled,assistantName,assistantAvatar,profileAge,profileSex,profileHeight,
-    profileBirthday,profileLike,showOpening,chatBackground,chatBackgroundOpacity,
+    profileBirthday,profileLike,chatBackground,chatBackgroundOpacity,
     chatBackgroundBlur,chatBackgroundScrim
-  ) VALUES (?,'测试角色','','','','',0,0,'',0,'测试助手','','','','','','',0,'',1,0,0)`).run('character-test')
+  ) VALUES (?,'测试角色','','','','',0,0,'',0,'测试助手','','','','','','','',1,0,0)`).run('character-test')
+  db.native.prepare('INSERT INTO character_openings VALUES (?, ?)').run('character-test', JSON.stringify(createCharacterOpenings('character-test')))
   const conversations = new ConversationRepository(db)
   const source = conversations.create({ metadata: { characterId: 'character-test' } }).conversation.id
   const branch = db.native.prepare('SELECT activeBranchId AS id FROM agent_conversations WHERE id=?').get(source) as { id: string }

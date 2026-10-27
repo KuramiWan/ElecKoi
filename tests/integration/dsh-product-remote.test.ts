@@ -1,3 +1,6 @@
+import { createCharacterOpenings } from '../../packages/shared/src/contracts/characterOpenings/schemas'
+import { emptyEntry } from '../../packages/host/product-data/src/domain/settingLibraries'
+import { characterOpenings } from '@product-data/storage/sqlite/schema/common'
 import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
 import { ownerPeer } from '../support/owner-peer.js'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -429,12 +432,12 @@ describe('ElecKoi DSH Remote contract', () => {
       profileHeight: '',
       profileBirthday: '',
       profileLike: '',
-      showOpening: 0,
       chatBackground: '',
       chatBackgroundOpacity: 1,
       chatBackgroundBlur: 0,
       chatBackgroundScrim: 0
     }).run()
+    database.db.insert(characterOpenings).values({ characterId: 'character-1', configurationJson: JSON.stringify(createCharacterOpenings('character-1')) }).run()
     database.db.insert(chatSessions).values({
       id: 'conversation-1',
       title: '测试聊天',
@@ -925,7 +928,7 @@ describe('ElecKoi DSH Remote contract', () => {
       const conversationLibrary = {
         ...currentSettingLibrary,
         entries: [...currentSettingLibrary.entries, {
-          ...currentSettingLibrary.entries[0]!,
+          ...emptyEntry('conversation-entry-1'),
           id: 'conversation-entry-1',
           title: '聊天专属设定',
           kind: 'normal' as const,

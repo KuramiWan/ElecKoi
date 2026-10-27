@@ -2,7 +2,6 @@ import { Trash, X } from "../../../ui/icons/interfaceIcons.jsx";
 import { DshFolderClosedIcon } from "../../../ui/icons/dshTreeIcons.jsx";
 import { FIXED_ENTRY_IDS } from "../model/settingLibraryEditing.js";
 import { MarkdownTextareaField } from "./MarkdownTextareaField.jsx";
-import { OpeningEditor } from "./OpeningEditor.jsx";
 import { SettingEntryGlyph, SettingLibraryEntryEditor } from "./SettingLibraryEntryEditor.jsx";
 
 function EntryEditor({
@@ -19,10 +18,6 @@ function EntryEditor({
   onRequestDeleteOpening,
   onPromptPositionsChange,
 }) {
-  if (entry.kind === "opening") {
-    return <OpeningEditor entry={entry} variableVersions={variableVersions} variableVersionsError={variableVersionsError} onChange={onChange} onRequestDelete={onRequestDeleteOpening} />;
-  }
-
   const isReference = entry.dynamicMode === "ejs_reference";
   const isFixed = FIXED_ENTRY_IDS.has(entry.id);
   if (!isReference && !isFixed) {

@@ -1,3 +1,4 @@
+import { CharacterOpeningRepository } from '../../packages/host/product-data/src/domain/characterOpenings'
 import { runtimeContextsFor } from '../helpers/runtime-contexts.js'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -47,7 +48,7 @@ function setup() {
   fixtures.push({ database, directory })
   const libraries = new SettingLibraryRepository(database)
   const variables = new VariableConfigRepository(database)
-  const conversations = new ConversationRepository(database, (characterId, db) => resolveConversationSeed(characterId, db, libraries, variables))
+  const conversations = new ConversationRepository(database, (characterId, db) => resolveConversationSeed(characterId, db, new CharacterOpeningRepository(database), variables))
   const media = new LocalMediaStore(join(directory, 'media'))
   const characters = new CharacterRepository(database, conversations, media)
   const presets = new AgentPresetRepository(database)
@@ -79,7 +80,7 @@ describe('MVU imported state persistence', () => {
       status: { energy: 4, label: '  label  ' }, members: { one: { energy: 8, note: null } }, total: 8,
     })
     const conversationId = f.conversations.create({ metadata: { characterId: f.characterId } }).conversation.id
-    const opening = f.libraries.get(f.characterId).entries.find(entry => entry.kind === 'opening')!.openingMessages[1]!
+    const opening = new CharacterOpeningRepository(f.database).get(f.characterId).openingMessages[1]!
     f.conversations.selectOpening(conversationId, opening.id)
     const context = f.states.runtimeContext(conversationId, { characterId: f.characterId })!
     expect(JSON.parse(context.stateJson)).toEqual({

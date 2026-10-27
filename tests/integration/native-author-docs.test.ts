@@ -1,3 +1,4 @@
+import { CharacterOpeningRepository } from '../../packages/host/product-data/src/domain/characterOpenings'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -80,11 +81,11 @@ describe('native author developer documentation and examples', () => {
     expect(readFileSync(join(workspace.path, 'settings.html'), 'utf8')).toBe(read('settings.html'))
     expect(configs.get(characterId)).toMatchObject({ schemaCode: expect.stringContaining('z.looseObject') })
     expect(JSON.parse(configs.get(characterId).initialStateJson)).toEqual({ score: 0, total: 0, level: 1 })
-    const opening = settings.get(characterId).entries.find(entry => entry.kind === 'opening')!
+    const opening = new CharacterOpeningRepository(database).get(characterId)
     expect(opening.openingMessages).toHaveLength(2)
-    const seed = resolveConversationSeed(characterId, database.db, settings, configs)
+    const seed = resolveConversationSeed(characterId, database.db, new CharacterOpeningRepository(database), configs)
     expect(seed.openingOptions.map(item => JSON.parse(item.initialVariableStateJson).score)).toEqual([0, 10])
-    const conversations = new ConversationRepository(database, (id, db) => resolveConversationSeed(id, db, settings, configs))
+    const conversations = new ConversationRepository(database, (id, db) => resolveConversationSeed(id, db, new CharacterOpeningRepository(database), configs))
     const exampleChat = conversations.create({ metadata: { characterId } }).conversation.id
     conversations.selectOpening(exampleChat, 'example-advanced')
     expect(configs.forConversation(exampleChat, characterId).activeVersionId).toBe('example-advanced-variables')
@@ -112,7 +113,8 @@ describe('native author developer documentation and examples', () => {
       expect(stored.entries.find(entry => entry.id === 'synthetic-option')).toMatchObject({ groupId: 'synthetic-folder', promptPositionId: 'synthetic-position', enabled: true })
       expect(stored.groups[0]!.id).toBe('synthetic-folder')
       expect(stored.promptPositions[0]!.id).toBe('synthetic-position')
-      expect(stored.entries.find(entry => entry.kind === 'opening')!.openingMessages.map(item => item.variableVersionId)).toEqual(['example-variables', 'example-advanced-variables'])
+      expect(stored.entries.every(entry => entry.kind !== 'opening')).toBe(true)
+      expect(new CharacterOpeningRepository(database).get(id).openingMessages.map(item => item.variableVersionId)).toEqual(['example-variables', 'example-advanced-variables'])
     }
     const standalone = parseSettingLibraryFile(serializeSettingLibrary(settings.get(first)), 'eleckoi')
     const saved = settings.save(first, importLibraryAsVersion(settings.get(first), standalone))
@@ -124,10 +126,11 @@ describe('native author developer documentation and examples', () => {
     expect(otherPreset.id).not.toBe(imported.id)
     presets.updateEntries(imported.id, [{ id: 'example-brief', changes: { enabled: false } }, { id: 'example-detailed', changes: { enabled: true } }])
     expect(presets.get(otherPreset.id).entries.find(entry => entry.id === 'example-brief')!.enabled).toBe(true)
-    const invalid = structuredClone(saved)
-    invalid.entries.find(entry => entry.kind === 'opening')!.openingMessages[0]!.variableVersionId = 'synthetic-missing-version'
-    expect(() => settings.save(first, invalid)).toThrow(/绑定的变量版本不存在/)
-    expect(settings.get(first).entries.find(entry => entry.kind === 'opening')!.openingMessages[0]!.variableVersionId).toBe('example-variables')
+    const openings = new CharacterOpeningRepository(database)
+    const invalid = structuredClone(openings.get(first))
+    invalid.openingMessages[0]!.variableVersionId = 'synthetic-missing-version'
+    expect(() => openings.save(first, invalid)).toThrow(/绑定的变量版本不存在/)
+    expect(openings.get(first).openingMessages[0]!.variableVersionId).toBe('example-variables')
     expect(database.native.pragma('foreign_key_check')).toEqual([])
   }, 30000)
 })

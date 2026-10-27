@@ -8,30 +8,7 @@ import type {
 import { ELECKOI_FAILURE_CODES } from '@shared/contracts/errors/codes'
 import { DesktopError } from '@shared/foundation/DesktopError'
 
-export const OPENING_ENTRY_ID = 'fixed-opening-assistant'
-
 const now = (): string => new Date().toISOString()
-
-function openingEntry(source: SettingLibraryEntry | undefined, timestamp: string, active: boolean): SettingLibraryEntry {
-  const messages = source?.openingMessages.length ? source.openingMessages : [{
-    id: 'opening-default', title: '默认开场', content: source?.content ?? '', initialVariableStateJson: ''
-  }]
-  const defaultId = messages.some((message) => message.id === source?.defaultOpeningMessageId)
-    ? source!.defaultOpeningMessageId
-    : messages[0]!.id
-  const selected = messages.find((message) => message.id === defaultId)!
-  return {
-    ...emptyEntry(OPENING_ENTRY_ID, timestamp), ...source,
-    id: OPENING_ENTRY_ID, title: 'AI角色开场白', iconId: 'chat', kind: 'opening', groupId: '',
-    content: selected.content, openingMessages: messages, defaultOpeningMessageId: defaultId,
-    agentReadStrategy: 'normal', dynamicMode: 'standard', contentMode: 'plain_text',
-    keywords: [], conditionKeywords: [], keywordCondition: 'none', keywordUseRegex: false,
-    keywordIgnoreCase: true, keywordWholeWord: false, keywordRecursionDepth: 0,
-    triggerMode: 'always', position: null, promptPositionId: '', insertRole: 'assistant',
-    order: 1, viewOrder: 0, groupViewOrder: 0, treeViewOrder: 0,
-    createdAt: source?.createdAt || timestamp, updatedAt: active ? timestamp : source?.updatedAt || timestamp
-  }
-}
 
 export function emptyEntry(id: string = randomUUID(), timestamp = now()): SettingLibraryEntry {
   return {
@@ -80,15 +57,17 @@ function normalizedVersion(source: SettingLibraryVersion, active: boolean, times
     treeViewOrder: group.treeViewOrder || index + 1, createdAt: group.createdAt || timestamp,
     updatedAt: active ? timestamp : group.updatedAt || timestamp
   }))
-  const opening = openingEntry(source.entries.find((entry) => entry.id === OPENING_ENTRY_ID || entry.kind === 'opening'), timestamp, active)
-  const entries = [opening, ...source.entries.filter((entry) => entry.id !== OPENING_ENTRY_ID && entry.kind !== 'opening').map((entry, index) => ({
+  if (source.entries.some(entry => entry.kind === 'opening' || entry.id === 'fixed-opening-assistant')) {
+    throw new DesktopError(ELECKOI_FAILURE_CODES.inputUnsupported, '角色开场白须通过独立开场白配置保存。', { what: '设定库中的开场白', expected: '独立角色开场白配置' })
+  }
+  const entries = source.entries.map((entry, index) => ({
     ...entry, title: entry.title.trim(), groupId: entry.groupId.trim(),
     agentSelectionHint: entry.agentSelectionHint,
     keywords: [...new Set(entry.keywords.map((item) => item.trim()).filter(Boolean))],
     conditionKeywords: [...new Set(entry.conditionKeywords.map((item) => item.trim()).filter(Boolean))],
     order: Math.max(1, entry.order), treeViewOrder: entry.treeViewOrder || index + 1,
     createdAt: entry.createdAt || timestamp, updatedAt: active ? timestamp : entry.updatedAt || timestamp
-  }))]
+  }))
   validateTree(groups, entries)
   return {
     ...source, name: source.name.trim(), groups, entries,

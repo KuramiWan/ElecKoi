@@ -9,7 +9,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve))
 
 type ConfigurationChange =
   | { kind: 'snapshot' }
-  | { kind: 'configuration'; domain: 'settingLibraries' | 'variables' | 'regexRules' | 'scripts' | 'agentPresets'; characterId?: string }
+  | { kind: 'configuration'; domain: 'openings' | 'settingLibraries' | 'variables' | 'regexRules' | 'scripts' | 'agentPresets'; characterId?: string }
 
 function configurationChanges() {
   const queue: ConfigurationChange[] = [{ kind: 'snapshot' }]
@@ -60,6 +60,7 @@ describe('DSH ElecKoi character configuration models', () => {
     let previewFailure = false
     let scriptFailure = false
     let openFailure = false
+    let opening = { characterId: 'character-1', openingMessages: [{ id: 'synthetic-opening', content: '合成独立开场' }], versions: [] }
     const changes = configurationChanges()
     runInNewContext(source, {
       AbortController,
@@ -82,6 +83,19 @@ describe('DSH ElecKoi character configuration models', () => {
           }
         },
         eleckoiCharacterConfiguration: {
+          readCharacterOpenings: async () => {
+            calls.push('query.openings.read')
+            return { ok: true, value: opening }
+          },
+          saveCharacterOpenings: async (characterId: string, value: typeof opening) => {
+            inputs.push({ name: 'command.openings.save', input: { characterId, value } })
+            opening = value
+            return { ok: true, value }
+          },
+          importSettingLibrary: async (characterId: string, library: unknown, openingImports: unknown[]) => {
+            inputs.push({ name: 'command.setting_library.import', input: { characterId, library, openingImports } })
+            return { ok: true, value: library }
+          },
           readScriptWorkspace: async (scope: string, ownerId: string) => {
             inputs.push({ name: 'scripts.workspace', input: { scope, ownerId } })
             return { ok: true, value: { path: `synthetic-workspace/${scope}/${ownerId}`, entries: [], version: 'synthetic-version' } }
@@ -182,9 +196,18 @@ describe('DSH ElecKoi character configuration models', () => {
     const libraries = services.get('eleckoiSettingLibraries')
     const variables = services.get('eleckoiVariables')
     const regexRules = services.get('eleckoiRegexRules')
+    const openings = services.get('eleckoiCharacterOpenings')
     expect(libraries).toBeDefined()
     expect(variables).toBeDefined()
     expect(regexRules).toBeDefined()
+    await settle()
+    await openings.read('character-1')
+    await openings.save('character-1', { ...opening, openingMessages: [{ id: 'synthetic-opening', content: '合成已修改开场' }] })
+    expect(openings.getSnapshot('character-1').value.openingMessages[0].content).toBe('合成已修改开场')
+    expect(inputs.find(item => item.name === 'command.openings.save')?.input).toMatchObject({ characterId: 'character-1' })
+    changes.emit({ kind: 'configuration', domain: 'openings', characterId: 'character-1' })
+    await settle()
+    expect(calls.filter(name => name === 'query.openings.read')).toHaveLength(2)
     const scripts = services.get('eleckoiScriptLibraries')
     for (const [scope, ownerId] of [['global', ''], ['character', 'character-1'], ['preset', 'preset-1']]) await scripts.openDirectory(scope, ownerId)
     expect(inputs.filter(item => item.name === 'scripts.workspace').map(item => item.input)).toEqual([
@@ -235,6 +258,10 @@ describe('DSH ElecKoi character configuration models', () => {
     expect(regexRules.getSnapshot('character-1').value.revision).toBe(2)
     await expect(regexRules.test('input', { id: 'rule-1' }, 'AiOutput')).resolves.toMatchObject({ output: 'matched' })
     const library = libraries.getSnapshot('character-1').value
+    const openingImports = [{ id: 'synthetic-import-version' }]
+    await libraries.save('character-1', { ...library, openingImports })
+    expect(inputs.find(item => item.name === 'command.setting_library.import')?.input).toEqual({ characterId: 'character-1', library, openingImports })
+    expect(libraries.getSnapshot('character-1').value.openingImports).toBeUndefined()
     await libraries.saveConversation('character-1', 'conversation-1', library)
     await libraries.resetConversation('character-1', 'conversation-1')
     await libraries.saveConversationVersion('character-1', 'conversation-1', '版本一')
@@ -256,6 +283,7 @@ describe('DSH ElecKoi character configuration models', () => {
     expect(calls.filter(name => name === 'query.variable_config.read')).toHaveLength(3)
     expect(calls.filter(name => name === 'query.regex_rules.read')).toHaveLength(3)
     expect(calls.filter(name => name === 'query.setting_library.conversations')).toHaveLength(2)
+    expect(calls.filter(name => name === 'query.openings.read')).toHaveLength(3)
 
     branches = [{ sessionId: 'conversation-1', summary: '开场', library }]
     expect(await libraries.readConversations('character-1')).toMatchObject([

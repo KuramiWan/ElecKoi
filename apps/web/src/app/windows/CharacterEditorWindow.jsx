@@ -1,3 +1,4 @@
+import { CharacterOpeningsPanel } from "../../modules/characterOpenings/index.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpenText,
@@ -17,7 +18,7 @@ import {
   CharacterBasicInfoPanel,
 } from "../../modules/persona/index.js";
 import { applyAppearanceTheme } from "../../modules/appearance/index.js";
-import { CharacterOpeningsPanel, DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/settingLibraries/index.js";
+import { DynamicSettingsPanel, SettingLibraryPanel } from "../../modules/settingLibraries/index.js";
 import { VariableConfigPanel } from "../../modules/variables/index.js";
 import { RegexRulesPanel } from "../../modules/regex/index.js";
 import { ScriptLibrariesPanel } from '../../modules/scripts/index.js';
@@ -370,11 +371,11 @@ export function CharacterEditorWindow({ characterCatalog, characterConfiguration
       editorContent = renderCharacterEditorSection?.("card", owner, fallback) ?? fallback;
     } else if (activeSection === "openings") {
       const fallback = <CharacterOpeningsPanel ref={openingsRef} characterId={character.id}
-        settingLibraries={characterConfiguration.settingLibraries} variables={characterConfiguration.variables}
+        openings={characterConfiguration.openings} variables={characterConfiguration.variables}
         onDirtyChange={setOpeningsDirty} />;
       editorContent = renderCharacterEditorSection?.("openings", {
         characterId: character.id, dirty: openingsDirty, saving,
-        configuration: characterConfiguration.settingLibraries, onDirtyChange: setOpeningsDirty,
+        configuration: characterConfiguration.openings, onDirtyChange: setOpeningsDirty,
         setController: controller => { openingsRef.current = controller; },
       }, fallback) ?? fallback;
     } else if (activeSection === "lore") {
