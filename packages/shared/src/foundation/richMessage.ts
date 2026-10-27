@@ -19,11 +19,6 @@ const richReplacementStartMarker = '<!-- eleckoi:rich-replacement:start -->'
 const richReplacementEndMarker = '<!-- eleckoi:rich-replacement:end -->'
 const richReplacementStart = /<!--\s*eleckoi\s*:\s*rich-replacement\s*:\s*start\s*-->/i
 const richReplacementEnd = /<!--\s*eleckoi\s*:\s*rich-replacement\s*:\s*end\s*-->/i
-
-export function isRichMessageMarker(comment: string): boolean {
-  return [explicitRichMarker, richReplacementStart, richReplacementEnd]
-    .some(pattern => pattern.exec(comment)?.[0] === comment)
-}
 const htmlDocumentMarker = /(?:<!doctype\s+html\b|<(?:html|head|body)(?:\s|>))/is
 const htmlDocumentClose = /<\/(?:body|html)\s*>/is
 const scriptOrStyleBlock = /<(script|style)(?:\s[^>]*)?>.*?<\/\1\s*>/is
