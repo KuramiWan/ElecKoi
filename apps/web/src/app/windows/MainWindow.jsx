@@ -9,6 +9,7 @@ import { subscribeAppFailure } from "../../utils/appFailureOutlet.js";
 import { resolveFailure } from "../../utils/failureText.js";
 import { SidebarContent } from "./shell/components/SidebarContent.jsx";
 import { CommunityDialog } from "./shell/components/CommunityDialog.jsx";
+import { BugReportDialog, isDesktopBugReportAvailable } from "./shell/components/BugReportDialog.jsx";
 import { PluginCenterSurface, PluginListPanel } from "./shell/components/PluginCenter.jsx";
 import { SidePanelResizeHandle } from "./shell/components/SidePanelResizeHandle.jsx";
 import { TitleBar, WindowControls } from "./shell/components/TitleBar.jsx";
@@ -51,6 +52,7 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
   });
   const [chatBackgroundOpen, setChatBackgroundOpen] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
+  const [bugReportOpen, setBugReportOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState("chat");
   const [presetRequestedTab, setPresetRequestedTab] = useState("");
   const presetNavigationGuardRef = useRef(null);
@@ -275,6 +277,15 @@ export function MainWindow({ conversations, characters, characterConfiguration, 
       <CommunityDialog
         open={communityOpen}
         onClose={() => setCommunityOpen(false)}
+        onNotify={chat.notify}
+        onReportProblem={isDesktopBugReportAvailable() ? () => {
+          setCommunityOpen(false);
+          setBugReportOpen(true);
+        } : undefined}
+      />
+      <BugReportDialog
+        open={bugReportOpen}
+        onClose={() => setBugReportOpen(false)}
         onNotify={chat.notify}
       />
       <AppToast notice={chat.notice} onDismiss={chat.dismissNotice} />
